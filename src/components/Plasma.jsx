@@ -1,11 +1,15 @@
-import { useEffect, useRef } from 'react';
-import { Renderer, Program, Mesh, Triangle } from 'ogl';
-import './Plasma.css';
+import { useEffect, useRef } from "react";
+import { Renderer, Program, Mesh, Triangle } from "ogl";
+import "./Plasma.css";
 
-const hexToRgb = hex => {
+const hexToRgb = (hex) => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!result) return [1, 0.5, 0.2];
-  return [parseInt(result[1], 16) / 255, parseInt(result[2], 16) / 255, parseInt(result[3], 16) / 255];
+  return [
+    parseInt(result[1], 16) / 255,
+    parseInt(result[2], 16) / 255,
+    parseInt(result[3], 16) / 255,
+  ];
 };
 
 const vertex = `#version 300 es
@@ -81,12 +85,14 @@ void main() {
 }`;
 
 export const Plasma = ({
-  color = '#ffffff',
+  color = "#ffffff",
   speed = 1,
-  direction = 'forward',
+  direction = "forward",
   scale = 1,
   opacity = 1,
-  mouseInteractive = true
+  mouseInteractive = true,
+  // NOVÉ: jestli má běžet animace
+  animated = true,
 }) => {
   const containerRef = useRef(null);
   const mousePos = useRef({ x: 0, y: 0 });
@@ -97,27 +103,29 @@ export const Plasma = ({
 
     const useCustomColor = color ? 1.0 : 0.0;
     const customColorRgb = color ? hexToRgb(color) : [1, 1, 1];
+    const directionMultiplier =
+      direction === "reverse" ? -1.0 : direction === "pingpong" ? 1.0 : 1.0;
 
-    const directionMultiplier = direction === 'reverse' ? -1.0 : 1.0;
-
+    const maxDpr = 1.2;
     const renderer = new Renderer({
       webgl: 2,
       alpha: true,
       antialias: false,
-      dpr: Math.min(window.devicePixelRatio || 1, 2)
+      dpr: Math.min(window.devicePixelRatio || 1, maxDpr),
     });
+
     const gl = renderer.gl;
     const canvas = gl.canvas;
-    canvas.style.display = 'block';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    containerRef.current.appendChild(canvas);
+    canvas.style.display = "block";
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    containerEl.appendChild(canvas);
 
     const geometry = new Triangle(gl);
 
     const program = new Program(gl, {
-      vertex: vertex,
-      fragment: fragment,
+      vertex,
+      fragment,
       uniforms: {
         iTime: { value: 0 },
         iResolution: { value: new Float32Array([1, 1]) },
@@ -128,13 +136,13 @@ export const Plasma = ({
         uScale: { value: scale },
         uOpacity: { value: opacity },
         uMouse: { value: new Float32Array([0, 0]) },
-        uMouseInteractive: { value: mouseInteractive ? 1.0 : 0.0 }
-      }
+        uMouseInteractive: { value: mouseInteractive ? 1.0 : 0.0 },
+      },
     });
 
     const mesh = new Mesh(gl, { geometry, program });
 
-    const handleMouseMove = e => {
+    const handleMouseMove = (e) => {
       if (!mouseInteractive) return;
       const rect = containerRef.current.getBoundingClientRect();
       mousePos.current.x = e.clientX - rect.left;
@@ -145,7 +153,7 @@ export const Plasma = ({
     };
 
     if (mouseInteractive) {
-      containerEl.addEventListener('mousemove', handleMouseMove);
+      containerEl.addEventListener("mousemove", handleMouseMove);
     }
 
     const setSize = () => {
@@ -163,39 +171,51 @@ export const Plasma = ({
     setSize();
 
     let raf = 0;
-    const t0 = performance.now();
-    const loop = t => {
-      let timeValue = (t - t0) * 0.001;
-      if (direction === 'pingpong') {
-        const pingpongDuration = 10;
-        const segmentTime = timeValue % pingpongDuration;
-        const isForward = Math.floor(timeValue / pingpongDuration) % 2 === 0;
-        const u = segmentTime / pingpongDuration;
-        const smooth = u * u * (3 - 2 * u);
-        const pingpongTime = isForward ? smooth * pingpongDuration : (1 - smooth) * pingpongDuration;
-        program.uniforms.uDirection.value = 1.0;
-        program.uniforms.iTime.value = pingpongTime;
-      } else {
-        program.uniforms.iTime.value = timeValue;
-      }
-      renderer.render({ scene: mesh });
+
+    if (animated) {
+      const t0 = performance.now();
+      const loop = (t) => {
+        let timeValue = (t - t0) * 0.001;
+
+        if (direction === "pingpong") {
+          const pingpongDuration = 10.0;
+          const segmentTime = timeValue % pingpongDuration;
+          const isForward =
+            Math.floor(timeValue / pingpongDuration) % 2 === 0;
+          const u = segmentTime / pingpongDuration;
+          const smooth = u * u * (3.0 - 2.0 * u);
+          const pingpongTime = isForward
+            ? smooth * pingpongDuration
+            : (1.0 - smooth) * pingpongDuration;
+          program.uniforms.uDirection.value = 1.0;
+          program.uniforms.iTime.value = pingpongTime;
+        } else {
+          program.uniforms.iTime.value = timeValue;
+        }
+
+        renderer.render({ scene: mesh });
+        raf = requestAnimationFrame(loop);
+      };
       raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
+    } else {
+      // ANIMACE VYPNUTÁ → vyrenderuj jen jeden statický frame
+      program.uniforms.iTime.value = 0;
+      renderer.render({ scene: mesh });
+    }
 
     return () => {
-      cancelAnimationFrame(raf);
+      if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
       if (mouseInteractive && containerEl) {
-        containerEl.removeEventListener('mousemove', handleMouseMove);
+        containerEl.removeEventListener("mousemove", handleMouseMove);
       }
       try {
         containerEl?.removeChild(canvas);
       } catch {
-        console.warn('Canvas already removed from container');
+        console.warn("Canvas already removed from container");
       }
     };
-  }, [color, speed, direction, scale, opacity, mouseInteractive]);
+  }, [color, speed, direction, scale, opacity, mouseInteractive, animated]);
 
   return <div ref={containerRef} className="plasma-container" />;
 };

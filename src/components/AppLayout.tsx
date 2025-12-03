@@ -28,10 +28,26 @@ interface AppLayoutProps {
 
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [animatedBg, setAnimatedBg] = useState(true);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
     return () => unsub();
+  }, []);
+
+  // načtení nastavení animovaného pozadí z localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(
+      "settings.animatedBackground"
+    );
+    if (stored === "0") {
+      setAnimatedBg(false);
+    } else if (stored === "1") {
+      setAnimatedBg(true);
+    } else {
+      setAnimatedBg(true);
+    }
   }, []);
 
   const handleLogout = async () => {
@@ -74,7 +90,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           direction="forward"
           scale={1.2}
           opacity={0.98}
-          mouseInteractive={true}
+          mouseInteractive={animatedBg}
+          animated={animatedBg}
         />
       </div>
 

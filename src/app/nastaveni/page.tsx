@@ -6,11 +6,7 @@ import { useRouter } from "next/navigation";
 
 import type { User as FirebaseUser } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
-import {
-  doc,
-  getDoc,
-  setDoc,
-} from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 import { auth, db } from "../firebase";
 import { AppLayout } from "@/components/AppLayout";
@@ -50,6 +46,7 @@ const SETTINGS_KEYS = {
   position: "settings.position",
   mode: "settings.mode",
   monthlyGoal: "settings.monthlyGoal",
+  animatedBackground: "settings.animatedBackground",
 };
 
 function formatMoney(value: number): string {
@@ -70,6 +67,7 @@ export default function SettingsPage() {
   const [position, setPosition] = useState<Position>("manazer7");
   const [mode, setMode] = useState<CommissionMode>("accelerated");
   const [monthlyGoal, setMonthlyGoal] = useState<number>(0);
+  const [animatedBackground, setAnimatedBackground] = useState<boolean>(true);
 
   const [canChangePosition, setCanChangePosition] = useState(true);
 
@@ -99,6 +97,7 @@ export default function SettingsPage() {
         if (snap.exists()) {
           const data = snap.data() as any;
 
+          // Pozice
           if (data.position) {
             setPosition(data.position as Position);
             if (typeof window !== "undefined") {
@@ -114,6 +113,7 @@ export default function SettingsPage() {
             if (stored) setPosition(stored);
           }
 
+          // Režim provize
           if (data.commissionMode) {
             setMode(data.commissionMode as CommissionMode);
             if (typeof window !== "undefined") {
@@ -129,6 +129,7 @@ export default function SettingsPage() {
             if (stored) setMode(stored);
           }
 
+          // Měsíční cíl
           if (typeof data.monthlyGoal === "number") {
             setMonthlyGoal(data.monthlyGoal);
             if (typeof window !== "undefined") {
@@ -145,11 +146,28 @@ export default function SettingsPage() {
             if (Number.isFinite(n)) setMonthlyGoal(n);
           }
 
+          // Animované pozadí
+          if (typeof data.animatedBackground === "boolean") {
+            setAnimatedBackground(data.animatedBackground);
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(
+                SETTINGS_KEYS.animatedBackground,
+                data.animatedBackground ? "1" : "0"
+              );
+            }
+          } else if (typeof window !== "undefined") {
+            const storedAnim = window.localStorage.getItem(
+              SETTINGS_KEYS.animatedBackground
+            );
+            // defaultně zapnuto, pokud nic není
+            setAnimatedBackground(storedAnim === "0" ? false : true);
+          }
+
           setCanChangePosition(
             data.canChangePosition === false ? false : true
           );
         } else {
-          // user dokument neexistuje → zkusíme aspoň natáhnout z localStorage
+          // user dokument neexistuje → fallback na localStorage
           if (typeof window !== "undefined") {
             const storedPos = window.localStorage.getItem(
               SETTINGS_KEYS.position
@@ -160,11 +178,16 @@ export default function SettingsPage() {
             const storedGoal = window.localStorage.getItem(
               SETTINGS_KEYS.monthlyGoal
             );
+            const storedAnim = window.localStorage.getItem(
+              SETTINGS_KEYS.animatedBackground
+            );
 
             if (storedPos) setPosition(storedPos);
             if (storedMode) setMode(storedMode);
             const n = storedGoal ? Number(storedGoal) : 0;
             if (Number.isFinite(n)) setMonthlyGoal(n);
+
+            setAnimatedBackground(storedAnim === "0" ? false : true);
           }
         }
       } catch (e) {
@@ -214,8 +237,19 @@ export default function SettingsPage() {
     await saveUserFields({ monthlyGoal: value || 0 });
   };
 
+  const handleAnimatedBackgroundChange = async (value: boolean) => {
+    setAnimatedBackground(value);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        SETTINGS_KEYS.animatedBackground,
+        value ? "1" : "0"
+      );
+    }
+    await saveUserFields({ animatedBackground: value });
+  };
+
   if (!user) {
-    // redirect už běží, tady jen nic moc nerenderujeme
+    // redirect už běží, tady jen nerenderujeme nic
     return null;
   }
 
@@ -228,7 +262,7 @@ export default function SettingsPage() {
             Nastavení
           </h1>
           <p className="mt-1 text-sm text-slate-300 max-w-xl">
-            Uprav si výchozí pozici, režim provizí a svůj měsíční cíl.
+            Uprav si výchozí pozici, režim provizí, vzhled a svůj měsíční cíl.
           </p>
         </header>
 
@@ -238,7 +272,7 @@ export default function SettingsPage() {
           </div>
         ) : (
           <>
-            {/* Pozice & režim provizí – viditelné JEN když canChangePosition === true */}
+            {/* Pozice & režim provizí – jen když canChangePosition === true */}
             {canChangePosition && (
               <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -280,9 +314,7 @@ export default function SettingsPage() {
                       className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                       value={mode}
                       onChange={(e) =>
-                        handleModeChange(
-                          e.target.value as CommissionMode
-                        )
+                        handleModeChange(e.target.value as CommissionMode)
                       }
                     >
                       {COMMISSION_MODES.map((m) => (
@@ -292,13 +324,49 @@ export default function SettingsPage() {
                       ))}
                     </select>
                     <p className="text-xs text-slate-400">
-                      Zrychlený / běžný režim se používá u životního
-                      pojištění.
+                      Zrychlený / běžný režim se používá u životního pojištění.
                     </p>
                   </div>
                 </div>
               </section>
             )}
+
+            {/* Vzhled – animované pozadí */}
+            <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+                Vzhled
+              </h2>
+
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
+                    Animované pozadí (plasma)
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400 max-w-md">
+                    Když animaci vypneš, pozadí „zamrzne“ a u slabších
+                    zařízení to může zlepšit plynulost aplikace.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleAnimatedBackgroundChange(!animatedBackground)
+                  }
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full border transition ${
+                    animatedBackground
+                      ? "bg-emerald-400/80 border-emerald-300"
+                      : "bg-slate-700 border-slate-500"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      animatedBackground ? "translate-x-5" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+            </section>
 
             {/* Výkon & cíle */}
             <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
@@ -356,8 +424,8 @@ export default function SettingsPage() {
                     {user.email}
                   </div>
                   <p className="mt-1 text-xs text-slate-400">
-                    Odhlásit se můžeš kdykoliv pomocí tlačítka v levém
-                    panelu dole.
+                    Odhlásit se můžeš kdykoliv pomocí tlačítka v levém panelu
+                    dole.
                   </p>
                 </div>
               </div>
