@@ -4,12 +4,17 @@
 import Link from "next/link";
 import Image from "next/image";
 import Plasma from "@/components/Plasma";
-import { auth } from "../app/firebase";
+import { auth, db } from "../app/firebase";
 import {
   onAuthStateChanged,
   signOut,
   type User as FirebaseUser,
 } from "firebase/auth";
+import {
+  doc,
+  getDoc,
+  Timestamp,
+} from "firebase/firestore";
 import { useEffect, useState, type ReactNode } from "react";
 
 type ActivePage =
@@ -26,16 +31,32 @@ interface AppLayoutProps {
   active: ActivePage;
 }
 
+type SubscriptionStatusWeb = "none" | "active" | "expired";
+
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [animatedBg, setAnimatedBg] = useState(true);
 
+  const [subscriptionStatus, setSubscriptionStatus] =
+    useState<SubscriptionStatusWeb>("none");
+  const [hasActiveSubscription, setHasActiveSubscription] =
+    useState<boolean | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+
+  // Auth listener
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      if (!u) {
+        setHasActiveSubscription(null);
+        setSubscriptionStatus("none");
+        setLoadingProfile(false);
+      }
+    });
     return () => unsub();
   }, []);
 
-  // načtení nastavení animovaného pozadí z localStorage
+  // Animated background nastavení z localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(
@@ -59,6 +80,87 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     }
   };
 
+  // Načtení subscription profilu z Firestore
+  const loadSubscriptionProfileForUser = async (
+    currentUser: FirebaseUser | null
+  ) => {
+    const emailRaw = currentUser?.email;
+    if (!emailRaw) {
+      setHasActiveSubscription(null);
+      setSubscriptionStatus("none");
+      setLoadingProfile(false);
+      return;
+    }
+
+    const email = emailRaw.trim().toLowerCase();
+
+    setLoadingProfile(true);
+    try {
+      const ref = doc(db, "users", email);
+      const snap = await getDoc(ref);
+
+      if (!snap.exists()) {
+        setSubscriptionStatus("none");
+        setHasActiveSubscription(false);
+        return;
+      }
+
+      const data = snap.data() as any;
+      const statusRaw = data.subscriptionStatus as string | undefined;
+      const paidUntilTS = data.paidUntil as Timestamp | undefined;
+
+      let status: SubscriptionStatusWeb = "none";
+      let hasActive = false;
+
+      if (statusRaw === "active") {
+        status = "active";
+
+        if (paidUntilTS) {
+          const paidUntil = paidUntilTS.toDate();
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          if (paidUntil >= today) {
+            hasActive = true;
+          } else {
+            status = "expired";
+            hasActive = false;
+          }
+        } else {
+          // bez paidUntil = neomezený přístup (stejně jako v appce)
+          hasActive = true;
+        }
+      } else if (statusRaw === "expired") {
+        status = "expired";
+        hasActive = false;
+      } else {
+        status = "none";
+        hasActive = false;
+      }
+
+      setSubscriptionStatus(status);
+      setHasActiveSubscription(hasActive);
+    } catch (e) {
+      console.error("Chyba při načítání subscription profilu:", e);
+      setSubscriptionStatus("none");
+      setHasActiveSubscription(false);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  // Načtení subscription, když se změní user
+  useEffect(() => {
+    if (!user) return;
+    void loadSubscriptionProfileForUser(user);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  // Ruční reload z paywallu
+  const handleReloadSubscription = async () => {
+    await loadSubscriptionProfileForUser(user);
+  };
+
   const navItemBase =
     "flex items-center justify-between rounded-2xl px-4 py-2.5 transition";
   const navLabelBase = "flex items-center gap-3";
@@ -79,6 +181,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       className="shrink-0"
     />
   );
+
+  const showPaywall =
+    !!user &&
+    hasActiveSubscription === false &&
+    !loadingProfile;
 
   return (
     <main className="relative min-h-screen overflow-hidden text-slate-50">
@@ -238,7 +345,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
               <div className="mb-2 text-[11px] text-slate-400">
                 Přihlášen jako{" "}
                 <span className="block truncate text-slate-200">
-                  {user.email}
+                  {user.email ?? ""}
                 </span>
               </div>
             )}
@@ -252,9 +359,66 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           </div>
         </aside>
 
-        {/* CONTENT */}
+        {/* CONTENT / PAYWALL */}
         <div className="flex-1 flex items-center justify-center px-4 py-10">
-          {children}
+          {loadingProfile && user ? (
+            <div className="text-sm text-slate-200">
+              Načítám profil a předplatné…
+            </div>
+          ) : showPaywall ? (
+            <div className="w-full max-w-md rounded-3xl border border-white/15 bg-slate-950/90 backdrop-blur-2xl px-6 py-6 sm:px-8 sm:py-8 shadow-[0_24px_80px_rgba(0,0,0,0.9)] space-y-5 text-center">
+              <h1 className="text-xl sm:text-2xl font-semibold">
+                Předplatné vypršelo
+              </h1>
+              <p className="text-sm text-slate-200">
+                Pro další používání webu je potřeba mít aktivní
+                předplatné. Pokud máš pocit, že něco nesedí,
+                zkus načíst profil znovu nebo kontaktuj podporu.
+              </p>
+
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={handleReloadSubscription}
+                  className="w-full rounded-2xl bg-white/10 border border-white/30 px-4 py-2.5 text-sm font-medium text-slate-50 hover:bg-white/15"
+                >
+                  Mám zaplaceno, načíst znovu
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="w-full rounded-2xl bg-white text-slate-900 px-4 py-2.5 text-sm font-medium hover:bg-slate-100"
+                >
+                  Zpět na přihlášení
+                </button>
+              </div>
+
+              <div className="pt-3 border-t border-white/10 text-xs text-slate-300 space-y-1">
+                <p>Něco nehraje? Kontaktuj podporu:</p>
+                <p>
+                  E-mail:{" "}
+                  <a
+                    href="mailto:jakub.rauscher@bohemika.eu"
+                    className="underline underline-offset-2"
+                  >
+                    jakub.rauscher@bohemika.eu
+                  </a>
+                </p>
+                <p>
+                  Telefon:{" "}
+                  <a
+                    href="tel:+420602127638"
+                    className="underline underline-offset-2"
+                  >
+                    602 127 638
+                  </a>
+                </p>
+              </div>
+            </div>
+          ) : (
+            children
+          )}
         </div>
       </div>
     </main>

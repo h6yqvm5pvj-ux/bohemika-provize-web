@@ -6,10 +6,12 @@ import { useRouter } from "next/navigation";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  signOut,
 } from "firebase/auth";
-import { auth } from "../firebase";
+import { auth, db } from "../firebase";
 import Plasma from "@/components/Plasma";
 import Image from "next/image";
+import { doc, getDoc } from "firebase/firestore";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,13 +21,74 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // pokud už je přihlášený, pošli ho rovnou na /
+  // pomocná funkce: vyhodnotí, jestli má user aktivní předplatné
+  function evaluateSubscription(data: any): boolean {
+    const statusRaw = data?.subscriptionStatus as string | undefined;
+    const paidUntilTS = (data as any)?.paidUntil;
+
+    if (statusRaw !== "active") {
+      return false;
+    }
+
+    // active + bez paidUntil = neomezený přístup
+    if (!paidUntilTS || typeof paidUntilTS.toDate !== "function") {
+      return true;
+    }
+
+    const paidUntil: Date = paidUntilTS.toDate();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return paidUntil >= today;
+  }
+
+  // pokud už je přihlášený, zkusíme ověřit předplatné a podle toho pustíme dál
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        router.replace("/");
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) return;
+
+      const rawEmail = user.email;
+      if (!rawEmail) {
+        // nějaký divný user bez emailu – raději odhlásit
+        await signOut(auth);
+        return;
+      }
+
+      const normalizedEmail = rawEmail.trim().toLowerCase();
+
+      try {
+        const ref = doc(db, "users", normalizedEmail);
+        const snap = await getDoc(ref);
+
+        if (!snap.exists()) {
+          // nemáme user dok → bereme jako bez předplatného
+          await signOut(auth);
+          setError("Tento účet nemá aktivní předplatné.");
+          return;
+        }
+
+        const data = snap.data();
+        const hasActive = evaluateSubscription(data);
+
+        if (hasActive) {
+          // OK → pustíme na hlavní stránku
+          router.replace("/");
+        } else {
+          // žádné / expirované předplatné → odhlásit a ukázat hlášku
+          await signOut(auth);
+          setError("Tento účet nemá aktivní (platné) předplatné.");
+        }
+      } catch (e) {
+        console.error("Chyba při ověřování předplatného:", e);
+        await signOut(auth);
+        setError(
+          "Nepodařilo se ověřit předplatné. Zkus to prosím znovu nebo kontaktuj podporu."
+        );
+      } finally {
+        setLoading(false);
       }
     });
+
     return () => unsub();
   }, [router]);
 
@@ -35,8 +98,13 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
-      router.replace("/");
+      const trimmedEmail = email.trim().toLowerCase();
+      const trimmedPassword = password.trim();
+
+      await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
+      // dál už to řeší onAuthStateChanged výše:
+      // ověří subscription a podle toho buď router.replace("/"),
+      // nebo signOut + error.
     } catch (err: any) {
       console.error(err);
       let msg = "Nepodařilo se přihlásit. Zkontroluj e-mail a heslo.";
@@ -48,7 +116,6 @@ export default function LoginPage() {
       }
 
       setError(msg);
-    } finally {
       setLoading(false);
     }
   };
