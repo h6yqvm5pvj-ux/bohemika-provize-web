@@ -667,589 +667,594 @@ export function LifeRecordForm() {
         </p>
       </div>
 
-      {/* 1) Smrt / dožití */}
-      <BenefitCard
-        title="Smrt nebo dožití"
-        subtitle="Možnost nastavení pojistné částky."
-        enabled={deathOn}
-        onToggle={() => setDeathOn((v) => !v)}
-      >
-        {deathOn &&
-          renderAmountInput(
-            deathAmount,
-            setDeathAmount,
-            "Pojistná částka při smrti / dožití (Kč)"
+      {/* Všechny glassy boxy ve 2 sloupcích */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 1) Smrt / dožití */}
+        <BenefitCard
+          title="Smrt nebo dožití"
+          subtitle="Možnost nastavení pojistné částky."
+          enabled={deathOn}
+          onToggle={() => setDeathOn((v) => !v)}
+        >
+          {deathOn &&
+            renderAmountInput(
+              deathAmount,
+              setDeathAmount,
+              "Pojistná částka při smrti / dožití (Kč)"
+            )}
+        </BenefitCard>
+
+        {/* 2) Smrt – terminální stádium */}
+        <BenefitCard
+          title="Smrt – terminální stádium"
+          enabled={terminalOn}
+          onToggle={() => setTerminalOn((v) => !v)}
+        >
+          {terminalOn &&
+            renderAmountInput(
+              terminalAmount,
+              setTerminalAmount,
+              "Pojistná částka pro terminální stádium (Kč)"
+            )}
+        </BenefitCard>
+
+        {/* 3) Doplňkové pojištění pro případ smrti */}
+        <BenefitCard
+          title="Doplňkové pojištění pro případ smrti"
+          subtitle="Možnost více forem plnění."
+          enabled={extraDeathOn}
+          onToggle={() => setExtraDeathOn((v) => !v)}
+        >
+          {extraDeathOn && (
+            <div className="mt-3 space-y-4">
+              <ToggleRow
+                label="Konstantní pojistná částka"
+                checked={extraDeathConstantOn}
+                onChange={setExtraDeathConstantOn}
+              />
+              {extraDeathConstantOn &&
+                renderAmountInput(
+                  extraDeathConstantAmount,
+                  setExtraDeathConstantAmount,
+                  "Částka – konstantní (Kč)"
+                )}
+
+              <ToggleRow
+                label="Klesající částka"
+                checked={extraDeathDecreasingOn}
+                onChange={setExtraDeathDecreasingOn}
+              />
+              {extraDeathDecreasingOn &&
+                renderAmountInput(
+                  extraDeathDecreasingAmount,
+                  setExtraDeathDecreasingAmount,
+                  "Částka – klesající (Kč)"
+                )}
+
+              <ToggleRow
+                label="Klesající dle úroku z úvěru"
+                checked={extraDeathInterestOn}
+                onChange={setExtraDeathInterestOn}
+              />
+              {extraDeathInterestOn &&
+                renderAmountInput(
+                  extraDeathInterestAmount,
+                  setExtraDeathInterestAmount,
+                  "Částka – dle úroku (Kč)"
+                )}
+            </div>
           )}
-      </BenefitCard>
+        </BenefitCard>
 
-      {/* 2) Smrt – terminální stádium */}
-      <BenefitCard
-        title="Smrt – terminální stádium"
-        enabled={terminalOn}
-        onToggle={() => setTerminalOn((v) => !v)}
-      >
-        {terminalOn &&
-          renderAmountInput(
-            terminalAmount,
-            setTerminalAmount,
-            "Pojistná částka pro terminální stádium (Kč)"
+        {/* 4) Důchod pro pozůstalé */}
+        <BenefitCard
+          title="Důchod pro pozůstalé"
+          subtitle="Měsíční částka pro pozůstalé."
+          enabled={survivorPensionOn}
+          onToggle={() => setSurvivorPensionOn((v) => !v)}
+        >
+          {survivorPensionOn &&
+            renderAmountInput(
+              survivorPensionAmount,
+              setSurvivorPensionAmount,
+              "Měsíční důchod (Kč)"
+            )}
+        </BenefitCard>
+
+        {/* 5) Zproštění od placení pojistného */}
+        <BenefitCard
+          title="Zproštění od placení pojistného"
+          subtitle="Bez částky – nastav jen podmínky."
+          enabled={waiverOn}
+          onToggle={() => setWaiverOn((v) => !v)}
+        >
+          {waiverOn && (
+            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+              <ToggleRow
+                label="Přiznání invalidity"
+                checked={waiverInvalidityOn}
+                onChange={setWaiverInvalidityOn}
+              />
+
+              {waiverInvalidityOn && (
+                <div className="ml-1 space-y-1">
+                  <p className="text-[11px] text-slate-400">
+                    Rozsah invalidity:
+                  </p>
+                  <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+                    <ChipButton
+                      active={waiverInvalidityScope === "twoAndThree"}
+                      onClick={() =>
+                        setWaiverInvalidityScope("twoAndThree")
+                      }
+                    >
+                      2. a 3. stupeň
+                    </ChipButton>
+                    <ChipButton
+                      active={waiverInvalidityScope === "threeOnly"}
+                      onClick={() =>
+                        setWaiverInvalidityScope("threeOnly")
+                      }
+                    >
+                      Pouze 3. stupeň
+                    </ChipButton>
+                  </div>
+                </div>
+              )}
+
+              <ToggleRow
+                label="Ztráta zaměstnání"
+                checked={waiverJobLossOn}
+                onChange={setWaiverJobLossOn}
+              />
+            </div>
           )}
-      </BenefitCard>
+        </BenefitCard>
 
-      {/* 3) Doplňkové pojištění pro případ smrti */}
-      <BenefitCard
-        title="Doplňkové pojištění pro případ smrti"
-        subtitle="Možnost více forem plnění."
-        enabled={extraDeathOn}
-        onToggle={() => setExtraDeathOn((v) => !v)}
-      >
-        {extraDeathOn && (
-          <div className="mt-3 space-y-4">
-            <ToggleRow
-              label="Konstantní pojistná částka"
-              checked={extraDeathConstantOn}
-              onChange={setExtraDeathConstantOn}
-            />
-            {extraDeathConstantOn &&
-              renderAmountInput(
-                extraDeathConstantAmount,
-                setExtraDeathConstantAmount,
-                "Částka – konstantní (Kč)"
-              )}
-
-            <ToggleRow
-              label="Klesající částka"
-              checked={extraDeathDecreasingOn}
-              onChange={setExtraDeathDecreasingOn}
-            />
-            {extraDeathDecreasingOn &&
-              renderAmountInput(
-                extraDeathDecreasingAmount,
-                setExtraDeathDecreasingAmount,
-                "Částka – klesající (Kč)"
-              )}
-
-            <ToggleRow
-              label="Klesající dle úroku z úvěru"
-              checked={extraDeathInterestOn}
-              onChange={setExtraDeathInterestOn}
-            />
-            {extraDeathInterestOn &&
-              renderAmountInput(
-                extraDeathInterestAmount,
-                setExtraDeathInterestAmount,
-                "Částka – dle úroku (Kč)"
-              )}
-          </div>
+        {/* 6) Invalidita – blok 1 */}
+        {renderInvalidityBlock(
+          "Invalidita",
+          invalid1On,
+          () => setInvalid1On((v) => !v),
+          invalid1Degrees,
+          setInvalid1Degrees,
+          invalid1Type,
+          setInvalid1Type,
+          invalid1Amount1,
+          setInvalid1Amount1,
+          invalid1Amount2,
+          setInvalid1Amount2,
+          invalid1Amount3,
+          setInvalid1Amount3
         )}
-      </BenefitCard>
 
-      {/* 4) Důchod pro pozůstalé */}
-      <BenefitCard
-        title="Důchod pro pozůstalé"
-        subtitle="Měsíční částka pro pozůstalé."
-        enabled={survivorPensionOn}
-        onToggle={() => setSurvivorPensionOn((v) => !v)}
-      >
-        {survivorPensionOn &&
-          renderAmountInput(
-            survivorPensionAmount,
-            setSurvivorPensionAmount,
-            "Měsíční důchod (Kč)"
+        {/* 7) Invalidita – blok 2 */}
+        {renderInvalidityBlock(
+          "Invalidita",
+          invalid2On,
+          () => setInvalid2On((v) => !v),
+          invalid2Degrees,
+          setInvalid2Degrees,
+          invalid2Type,
+          setInvalid2Type,
+          invalid2Amount1,
+          setInvalid2Amount1,
+          invalid2Amount2,
+          setInvalid2Amount2,
+          invalid2Amount3,
+          setInvalid2Amount3
+        )}
+
+        {/* 8) Závažná onemocnění a poranění – 1 */}
+        {renderCriticalIllnessBlock(
+          ci1On,
+          () => setCi1On((v) => !v),
+          ci1Type,
+          setCi1Type,
+          ci1Repeat,
+          setCi1Repeat,
+          ci1Amount,
+          setCi1Amount
+        )}
+
+        {/* 9) Závažná onemocnění a poranění – 2 */}
+        {renderCriticalIllnessBlock(
+          ci2On,
+          () => setCi2On((v) => !v),
+          ci2Type,
+          setCi2Type,
+          ci2Repeat,
+          setCi2Repeat,
+          ci2Amount,
+          setCi2Amount
+        )}
+
+        {/* 10) Vážná onemocnění – Pro něj */}
+        <BenefitCard
+          title="Vážná onemocnění – Pro něj"
+          enabled={seriousHimOn}
+          onToggle={() => setSeriousHimOn((v) => !v)}
+        >
+          {seriousHimOn &&
+            renderAmountInput(
+              seriousHimAmount,
+              setSeriousHimAmount,
+              "Pojistná částka (Kč)"
+            )}
+        </BenefitCard>
+
+        {/* 11) Vážná onemocnění – Pro ni */}
+        <BenefitCard
+          title="Vážná onemocnění – Pro ni"
+          enabled={seriousHerOn}
+          onToggle={() => setSeriousHerOn((v) => !v)}
+        >
+          {seriousHerOn &&
+            renderAmountInput(
+              seriousHerAmount,
+              setSeriousHerAmount,
+              "Pojistná částka (Kč)"
+            )}
+        </BenefitCard>
+
+        {/* 12) Cukrovka a její komplikace */}
+        <BenefitCard
+          title="Cukrovka a její komplikace"
+          subtitle="Maximálně 1 500 000 Kč."
+          enabled={diabetesOn}
+          onToggle={() => setDiabetesOn((v) => !v)}
+        >
+          {diabetesOn &&
+            renderAmountInput(
+              diabetesAmount,
+              setDiabetesAmount,
+              "Pojistná částka (Kč)",
+              { max: 1_500_000 }
+            )}
+        </BenefitCard>
+
+        {/* 13) Závažné následky očkování */}
+        <BenefitCard
+          title="Závažné následky očkování"
+          enabled={vaccinationOn}
+          onToggle={() => setVaccinationOn((v) => !v)}
+        >
+          {vaccinationOn &&
+            renderAmountInput(
+              vaccinationAmount,
+              setVaccinationAmount,
+              "Pojistná částka (Kč)",
+              { max: 1_000_000 }
+            )}
+        </BenefitCard>
+
+        {/* 14) Smrt úrazem */}
+        <BenefitCard
+          title="Smrt úrazem"
+          enabled={deathAccOn}
+          onToggle={() => setDeathAccOn((v) => !v)}
+        >
+          {deathAccOn && (
+            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+              {renderAmountInput(
+                deathAccAmount,
+                setDeathAccAmount,
+                "Pojistná částka (Kč)"
+              )}
+              <ToggleRow
+                label="Dvojnásobné plnění při autonehodě"
+                checked={deathAccDoubleCar}
+                onChange={setDeathAccDoubleCar}
+              />
+            </div>
           )}
-      </BenefitCard>
+        </BenefitCard>
 
-      {/* 5) Zproštění od placení pojistného */}
-      <BenefitCard
-        title="Zproštění od placení pojistného"
-        subtitle="Bez částky – nastav jen podmínky."
-        enabled={waiverOn}
-        onToggle={() => setWaiverOn((v) => !v)}
-      >
-        {waiverOn && (
-          <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
-            <ToggleRow
-              label="Přiznání invalidity"
-              checked={waiverInvalidityOn}
-              onChange={setWaiverInvalidityOn}
-            />
+        {/* 15) Trvalé následky úrazu – 1 */}
+        {renderPermanentInjuryBlock(
+          perm1On,
+          () => setPerm1On((v) => !v),
+          perm1Progress,
+          setPerm1Progress,
+          perm1From,
+          setPerm1From,
+          perm1Amount,
+          setPerm1Amount
+        )}
 
-            {waiverInvalidityOn && (
-              <div className="ml-1 space-y-1">
-                <p className="text-[11px] text-slate-400">
-                  Rozsah invalidity:
+        {/* 16) Trvalé následky úrazu – 2 */}
+        {renderPermanentInjuryBlock(
+          perm2On,
+          () => setPerm2On((v) => !v),
+          perm2Progress,
+          setPerm2Progress,
+          perm2From,
+          setPerm2From,
+          perm2Amount,
+          setPerm2Amount
+        )}
+
+        {/* 17) Denní odškodné po úrazu */}
+        <BenefitCard
+          title="Denní odškodné po úrazu"
+          enabled={dailyOn}
+          onToggle={() => setDailyOn((v) => !v)}
+        >
+          {dailyOn && (
+            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+              {renderAmountInput(
+                dailyAmount,
+                setDailyAmount,
+                "Denní dávka (Kč)"
+              )}
+
+              <div className="space-y-1">
+                <p className="text-[11px] sm:text-xs text-slate-400">
+                  Plnění od:
                 </p>
                 <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
                   <ChipButton
-                    active={waiverInvalidityScope === "twoAndThree"}
-                    onClick={() =>
-                      setWaiverInvalidityScope("twoAndThree")
-                    }
+                    active={dailyFrom === "from1"}
+                    onClick={() => setDailyFrom("from1")}
                   >
-                    2. a 3. stupeň
+                    od 1. dne
                   </ChipButton>
                   <ChipButton
-                    active={waiverInvalidityScope === "threeOnly"}
-                    onClick={() => setWaiverInvalidityScope("threeOnly")}
+                    active={dailyFrom === "from22"}
+                    onClick={() => setDailyFrom("from22")}
                   >
-                    Pouze 3. stupeň
+                    od 22. dne
                   </ChipButton>
                 </div>
               </div>
-            )}
 
-            <ToggleRow
-              label="Ztráta zaměstnání"
-              checked={waiverJobLossOn}
-              onChange={setWaiverJobLossOn}
-            />
-          </div>
-        )}
-      </BenefitCard>
-
-      {/* 6) Invalidita – blok 1 */}
-      {renderInvalidityBlock(
-        "Invalidita",
-        invalid1On,
-        () => setInvalid1On((v) => !v),
-        invalid1Degrees,
-        setInvalid1Degrees,
-        invalid1Type,
-        setInvalid1Type,
-        invalid1Amount1,
-        setInvalid1Amount1,
-        invalid1Amount2,
-        setInvalid1Amount2,
-        invalid1Amount3,
-        setInvalid1Amount3
-      )}
-
-      {/* 7) Invalidita – blok 2 */}
-      {renderInvalidityBlock(
-        "Invalidita",
-        invalid2On,
-        () => setInvalid2On((v) => !v),
-        invalid2Degrees,
-        setInvalid2Degrees,
-        invalid2Type,
-        setInvalid2Type,
-        invalid2Amount1,
-        setInvalid2Amount1,
-        invalid2Amount2,
-        setInvalid2Amount2,
-        invalid2Amount3,
-        setInvalid2Amount3
-      )}
-
-      {/* 8) Závažná onemocnění a poranění – 1 */}
-      {renderCriticalIllnessBlock(
-        ci1On,
-        () => setCi1On((v) => !v),
-        ci1Type,
-        setCi1Type,
-        ci1Repeat,
-        setCi1Repeat,
-        ci1Amount,
-        setCi1Amount
-      )}
-
-      {/* 9) Závažná onemocnění a poranění – 2 */}
-      {renderCriticalIllnessBlock(
-        ci2On,
-        () => setCi2On((v) => !v),
-        ci2Type,
-        setCi2Type,
-        ci2Repeat,
-        setCi2Repeat,
-        ci2Amount,
-        setCi2Amount
-      )}
-
-      {/* 10) Vážná onemocnění – Pro něj */}
-      <BenefitCard
-        title="Vážná onemocnění – Pro něj"
-        enabled={seriousHimOn}
-        onToggle={() => setSeriousHimOn((v) => !v)}
-      >
-        {seriousHimOn &&
-          renderAmountInput(
-            seriousHimAmount,
-            setSeriousHimAmount,
-            "Pojistná částka (Kč)"
-          )}
-      </BenefitCard>
-
-      {/* 11) Vážná onemocnění – Pro ni */}
-      <BenefitCard
-        title="Vážná onemocnění – Pro ni"
-        enabled={seriousHerOn}
-        onToggle={() => setSeriousHerOn((v) => !v)}
-      >
-        {seriousHerOn &&
-          renderAmountInput(
-            seriousHerAmount,
-            setSeriousHerAmount,
-            "Pojistná částka (Kč)"
-          )}
-      </BenefitCard>
-
-      {/* 12) Cukrovka a její komplikace */}
-      <BenefitCard
-        title="Cukrovka a její komplikace"
-        subtitle="Maximálně 1 500 000 Kč."
-        enabled={diabetesOn}
-        onToggle={() => setDiabetesOn((v) => !v)}
-      >
-        {diabetesOn &&
-          renderAmountInput(
-            diabetesAmount,
-            setDiabetesAmount,
-            "Pojistná částka (Kč)",
-            { max: 1_500_000 }
-          )}
-      </BenefitCard>
-
-      {/* 13) Závažné následky očkování */}
-      <BenefitCard
-        title="Závažné následky očkování"
-        enabled={vaccinationOn}
-        onToggle={() => setVaccinationOn((v) => !v)}
-      >
-        {vaccinationOn &&
-          renderAmountInput(
-            vaccinationAmount,
-            setVaccinationAmount,
-            "Pojistná částka (Kč)",
-            { max: 1_000_000 }
-          )}
-      </BenefitCard>
-
-      {/* 14) Smrt úrazem */}
-      <BenefitCard
-        title="Smrt úrazem"
-        enabled={deathAccOn}
-        onToggle={() => setDeathAccOn((v) => !v)}
-      >
-        {deathAccOn && (
-          <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
-            {renderAmountInput(
-              deathAccAmount,
-              setDeathAccAmount,
-              "Pojistná částka (Kč)"
-            )}
-            <ToggleRow
-              label="Dvojnásobné plnění při autonehodě"
-              checked={deathAccDoubleCar}
-              onChange={setDeathAccDoubleCar}
-            />
-          </div>
-        )}
-      </BenefitCard>
-
-      {/* 15) Trvalé následky úrazu – 1 */}
-      {renderPermanentInjuryBlock(
-        perm1On,
-        () => setPerm1On((v) => !v),
-        perm1Progress,
-        setPerm1Progress,
-        perm1From,
-        setPerm1From,
-        perm1Amount,
-        setPerm1Amount
-      )}
-
-      {/* 16) Trvalé následky úrazu – 2 */}
-      {renderPermanentInjuryBlock(
-        perm2On,
-        () => setPerm2On((v) => !v),
-        perm2Progress,
-        setPerm2Progress,
-        perm2From,
-        setPerm2From,
-        perm2Amount,
-        setPerm2Amount
-      )}
-
-      {/* 17) Denní odškodné po úrazu */}
-      <BenefitCard
-        title="Denní odškodné po úrazu"
-        enabled={dailyOn}
-        onToggle={() => setDailyOn((v) => !v)}
-      >
-        {dailyOn && (
-          <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
-            {renderAmountInput(
-              dailyAmount,
-              setDailyAmount,
-              "Denní dávka (Kč)"
-            )}
-
-            <div className="space-y-1">
-              <p className="text-[11px] sm:text-xs text-slate-400">
-                Plnění od:
-              </p>
-              <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
-                <ChipButton
-                  active={dailyFrom === "from1"}
-                  onClick={() => setDailyFrom("from1")}
-                >
-                  od 1. dne
-                </ChipButton>
-                <ChipButton
-                  active={dailyFrom === "from22"}
-                  onClick={() => setDailyFrom("from22")}
-                >
-                  od 22. dne
-                </ChipButton>
+              <div className="space-y-1">
+                <p className="text-[11px] sm:text-xs text-slate-400">
+                  Progrese:
+                </p>
+                <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+                  <ChipButton
+                    active={dailyProgress === "none"}
+                    onClick={() => setDailyProgress("none")}
+                  >
+                    Bez progrese
+                  </ChipButton>
+                  <ChipButton
+                    active={dailyProgress === "with"}
+                    onClick={() => setDailyProgress("with")}
+                  >
+                    S progresí
+                  </ChipButton>
+                </div>
               </div>
             </div>
+          )}
+        </BenefitCard>
 
-            <div className="space-y-1">
-              <p className="text-[11px] sm:text-xs text-slate-400">
-                Progrese:
-              </p>
-              <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
-                <ChipButton
-                  active={dailyProgress === "none"}
-                  onClick={() => setDailyProgress("none")}
-                >
-                  Bez progrese
-                </ChipButton>
-                <ChipButton
-                  active={dailyProgress === "with"}
-                  onClick={() => setDailyProgress("with")}
-                >
-                  S progresí
-                </ChipButton>
+        {/* 18) Tělesné poškození */}
+        <BenefitCard
+          title="Tělesné poškození"
+          enabled={bodilyOn}
+          onToggle={() => setBodilyOn((v) => !v)}
+        >
+          {bodilyOn && (
+            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+              {renderAmountInput(
+                bodilyAmount,
+                setBodilyAmount,
+                "Pojistná částka (Kč)"
+              )}
+
+              <div className="space-y-1">
+                <p className="text-[11px] sm:text-xs text-slate-400">
+                  Plnění od:
+                </p>
+                <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+                  <ChipButton
+                    active={bodilyFrom === "from0"}
+                    onClick={() => setBodilyFrom("from0")}
+                  >
+                    od 0 %
+                  </ChipButton>
+                  <ChipButton
+                    active={bodilyFrom === "from6"}
+                    onClick={() => setBodilyFrom("from6")}
+                  >
+                    od 6 %
+                  </ChipButton>
+                </div>
               </div>
             </div>
-          </div>
+          )}
+        </BenefitCard>
+
+        {/* 19) Pracovní neschopnost – 1 */}
+        {renderSickLeaveBlock(
+          sick1On,
+          () => setSick1On((v) => !v),
+          sick1From,
+          setSick1From,
+          sick1Variant,
+          setSick1Variant,
+          sick1Amount,
+          setSick1Amount
         )}
-      </BenefitCard>
 
-      {/* 18) Tělesné poškození */}
-      <BenefitCard
-        title="Tělesné poškození"
-        enabled={bodilyOn}
-        onToggle={() => setBodilyOn((v) => !v)}
-      >
-        {bodilyOn && (
-          <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
-            {renderAmountInput(
-              bodilyAmount,
-              setBodilyAmount,
-              "Pojistná částka (Kč)"
-            )}
+        {/* 20) Pracovní neschopnost – 2 */}
+        {renderSickLeaveBlock(
+          sick2On,
+          () => setSick2On((v) => !v),
+          sick2From,
+          setSick2From,
+          sick2Variant,
+          setSick2Variant,
+          sick2Amount,
+          setSick2Amount
+        )}
 
-            <div className="space-y-1">
-              <p className="text-[11px] sm:text-xs text-slate-400">
-                Plnění od:
-              </p>
-              <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
-                <ChipButton
-                  active={bodilyFrom === "from0"}
-                  onClick={() => setBodilyFrom("from0")}
-                >
-                  od 0 %
-                </ChipButton>
-                <ChipButton
-                  active={bodilyFrom === "from6"}
-                  onClick={() => setBodilyFrom("from6")}
-                >
-                  od 6 %
-                </ChipButton>
+        {/* 21) Hospitalizace */}
+        <BenefitCard
+          title="Hospitalizace"
+          enabled={hospitalOn}
+          onToggle={() => setHospitalOn((v) => !v)}
+        >
+          {hospitalOn && (
+            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+              <div className="space-y-2">
+                <ToggleRow
+                  label="Plnění při úrazu"
+                  checked={hospitalAccidentOn}
+                  onChange={setHospitalAccidentOn}
+                />
+                {hospitalAccidentOn &&
+                  renderAmountInput(
+                    hospitalAccidentAmount,
+                    setHospitalAccidentAmount,
+                    "Denní dávka – úraz (Kč)"
+                  )}
+
+                <ToggleRow
+                  label="Plnění při nemoci"
+                  checked={hospitalIllnessOn}
+                  onChange={setHospitalIllnessOn}
+                />
+                {hospitalIllnessOn &&
+                  renderAmountInput(
+                    hospitalIllnessAmount,
+                    setHospitalIllnessAmount,
+                    "Denní dávka – nemoc (Kč)"
+                  )}
               </div>
-            </div>
-          </div>
-        )}
-      </BenefitCard>
-
-      {/* 19) Pracovní neschopnost – 1 */}
-      {renderSickLeaveBlock(
-        sick1On,
-        () => setSick1On((v) => !v),
-        sick1From,
-        setSick1From,
-        sick1Variant,
-        setSick1Variant,
-        sick1Amount,
-        setSick1Amount
-      )}
-
-      {/* 20) Pracovní neschopnost – 2 */}
-      {renderSickLeaveBlock(
-        sick2On,
-        () => setSick2On((v) => !v),
-        sick2From,
-        setSick2From,
-        sick2Variant,
-        setSick2Variant,
-        sick2Amount,
-        setSick2Amount
-      )}
-
-      {/* 21) Hospitalizace */}
-      <BenefitCard
-        title="Hospitalizace"
-        enabled={hospitalOn}
-        onToggle={() => setHospitalOn((v) => !v)}
-      >
-        {hospitalOn && (
-          <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
-            <div className="space-y-2">
-              <ToggleRow
-                label="Plnění při úrazu"
-                checked={hospitalAccidentOn}
-                onChange={setHospitalAccidentOn}
-              />
-              {hospitalAccidentOn &&
-                renderAmountInput(
-                  hospitalAccidentAmount,
-                  setHospitalAccidentAmount,
-                  "Denní dávka – úraz (Kč)"
-                )}
 
               <ToggleRow
-                label="Plnění při nemoci"
-                checked={hospitalIllnessOn}
-                onChange={setHospitalIllnessOn}
+                label="Progresivní plnění"
+                checked={hospitalProgressive}
+                onChange={setHospitalProgressive}
               />
-              {hospitalIllnessOn &&
-                renderAmountInput(
-                  hospitalIllnessAmount,
-                  setHospitalIllnessAmount,
-                  "Denní dávka – nemoc (Kč)"
-                )}
             </div>
-
-            <ToggleRow
-              label="Progresivní plnění"
-              checked={hospitalProgressive}
-              onChange={setHospitalProgressive}
-            />
-          </div>
-        )}
-      </BenefitCard>
-
-      {/* 22) Operace dítěte s vrozenou vadou */}
-      <BenefitCard
-        title="Operace dítěte s vrozenou vadou"
-        subtitle="Minimálně 100 000 Kč, maximálně 500 000 Kč."
-        enabled={childOperationOn}
-        onToggle={() => setChildOperationOn((v) => !v)}
-      >
-        {childOperationOn &&
-          renderAmountInput(
-            childOperationAmount,
-            (v) => setChildOperationAmount(v),
-            "Pojistná částka (Kč)",
-            { min: 100_000, max: 500_000 }
           )}
-      </BenefitCard>
+        </BenefitCard>
 
-      {/* 23) Připojištění dětí – úraz dospělé osoby */}
-      <BenefitCard
-        title="Připojištění dětí v rámci úrazového pojištění dospělé osoby"
-        enabled={childrenAccidentOn}
-        onToggle={() => setChildrenAccidentOn((v) => !v)}
-      >
-        {childrenAccidentOn && (
-          <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
-            {renderAmountInput(
-              childrenAccidentAmount,
-              setChildrenAccidentAmount,
-              "Pojistná částka (Kč)"
+        {/* 22) Operace dítěte s vrozenou vadou */}
+        <BenefitCard
+          title="Operace dítěte s vrozenou vadou"
+          subtitle="Minimálně 100 000 Kč, maximálně 500 000 Kč."
+          enabled={childOperationOn}
+          onToggle={() => setChildOperationOn((v) => !v)}
+        >
+          {childOperationOn &&
+            renderAmountInput(
+              childOperationAmount,
+              (v) => setChildOperationAmount(v),
+              "Pojistná částka (Kč)",
+              { min: 100_000, max: 500_000 }
             )}
+        </BenefitCard>
 
-            <div className="space-y-1">
-              <p className="text-[11px] sm:text-xs text-slate-400">
-                Typ plnění:
-              </p>
-              <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
-                <ChipButton
-                  active={childrenAccidentType === "same"}
-                  onClick={() => setChildrenAccidentType("same")}
-                >
-                  Shodné plnění
-                </ChipButton>
-                <ChipButton
-                  active={childrenAccidentType === "half"}
-                  onClick={() => setChildrenAccidentType("half")}
-                >
-                  Poloviční plnění
-                </ChipButton>
+        {/* 23) Připojištění dětí – úraz dospělé osoby */}
+        <BenefitCard
+          title="Připojištění dětí v rámci úrazového pojištění dospělé osoby"
+          enabled={childrenAccidentOn}
+          onToggle={() => setChildrenAccidentOn((v) => !v)}
+        >
+          {childrenAccidentOn && (
+            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+              {renderAmountInput(
+                childrenAccidentAmount,
+                setChildrenAccidentAmount,
+                "Pojistná částka (Kč)"
+              )}
+
+              <div className="space-y-1">
+                <p className="text-[11px] sm:text-xs text-slate-400">
+                  Typ plnění:
+                </p>
+                <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+                  <ChipButton
+                    active={childrenAccidentType === "same"}
+                    onClick={() => setChildrenAccidentType("same")}
+                  >
+                    Shodné plnění
+                  </ChipButton>
+                  <ChipButton
+                    active={childrenAccidentType === "half"}
+                    onClick={() => setChildrenAccidentType("half")}
+                  >
+                    Poloviční plnění
+                  </ChipButton>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </BenefitCard>
-
-      {/* 24) Náklady asistované reprodukce */}
-      <BenefitCard
-        title="Náklady asistované reprodukce"
-        enabled={assistedOn}
-        onToggle={() => setAssistedOn((v) => !v)}
-      >
-        {assistedOn &&
-          renderAmountInput(
-            assistedAmount,
-            setAssistedAmount,
-            "Pojistná částka (Kč)"
           )}
-      </BenefitCard>
+        </BenefitCard>
 
-      {/* 25) Závislost na péči II.–IV. stupně */}
-      <BenefitCard
-        title="Závislost na péči II.–IV. stupně"
-        subtitle="Minimálně 100 000 Kč, maximálně 3 000 000 Kč."
-        enabled={careDependenceOn}
-        onToggle={() => setCareDependenceOn((v) => !v)}
-      >
-        {careDependenceOn &&
-          renderAmountInput(
-            careDependenceAmount,
-            setCareDependenceAmount,
-            "Pojistná částka (Kč)",
-            { min: 100_000, max: 3_000_000 }
-          )}
-      </BenefitCard>
+        {/* 24) Náklady asistované reprodukce */}
+        <BenefitCard
+          title="Náklady asistované reprodukce"
+          enabled={assistedOn}
+          onToggle={() => setAssistedOn((v) => !v)}
+        >
+          {assistedOn &&
+            renderAmountInput(
+              assistedAmount,
+              setAssistedAmount,
+              "Pojistná částka (Kč)"
+            )}
+        </BenefitCard>
 
-      {/* 26) Celodenní ošetřování pojištěného */}
-      <BenefitCard
-        title="Celodenní ošetřování pojištěného"
-        enabled={fullCareOn}
-        onToggle={() => setFullCareOn((v) => !v)}
-      >
-        {fullCareOn &&
-          renderAmountInput(
-            fullCareAmount,
-            setFullCareAmount,
-            "Pojistná částka (Kč)"
-          )}
-      </BenefitCard>
+        {/* 25) Závislost na péči II.–IV. stupně */}
+        <BenefitCard
+          title="Závislost na péči II.–IV. stupně"
+          subtitle="Minimálně 100 000 Kč, maximálně 3 000 000 Kč."
+          enabled={careDependenceOn}
+          onToggle={() => setCareDependenceOn((v) => !v)}
+        >
+          {careDependenceOn &&
+            renderAmountInput(
+              careDependenceAmount,
+              setCareDependenceAmount,
+              "Pojistná částka (Kč)",
+              { min: 100_000, max: 3_000_000 }
+            )}
+        </BenefitCard>
 
-      {/* 27) Příspěvek na pořízení zvláštní pomůcky */}
-      <BenefitCard
-        title="Příspěvek na pořízení zvláštní pomůcky"
-        subtitle="Standardně 100 000 Kč."
-        enabled={specialAidOn}
-        onToggle={() => setSpecialAidOn((v) => !v)}
-      >
-        {specialAidOn &&
-          renderAmountInput(
-            specialAidAmount,
-            setSpecialAidAmount,
-            "Pojistná částka (Kč)"
-          )}
-      </BenefitCard>
+        {/* 26) Celodenní ošetřování pojištěného */}
+        <BenefitCard
+          title="Celodenní ošetřování pojištěného"
+          enabled={fullCareOn}
+          onToggle={() => setFullCareOn((v) => !v)}
+        >
+          {fullCareOn &&
+            renderAmountInput(
+              fullCareAmount,
+              setFullCareAmount,
+              "Pojistná částka (Kč)"
+            )}
+        </BenefitCard>
 
-      {/* 28) Zdravotní a sociální asistence */}
-      <BenefitCard
-        title="Zdravotní a sociální asistence"
-        subtitle="Bez částky – jen zapnout / vypnout."
-        enabled={healthSocialOn}
-        onToggle={() => setHealthSocialOn((v) => !v)}
-      />
+        {/* 27) Příspěvek na pořízení zvláštní pomůcky */}
+        <BenefitCard
+          title="Příspěvek na pořízení zvláštní pomůcky"
+          subtitle="Standardně 100 000 Kč."
+          enabled={specialAidOn}
+          onToggle={() => setSpecialAidOn((v) => !v)}
+        >
+          {specialAidOn &&
+            renderAmountInput(
+              specialAidAmount,
+              setSpecialAidAmount,
+              "Pojistná částka (Kč)"
+            )}
+        </BenefitCard>
+
+        {/* 28) Zdravotní a sociální asistence */}
+        <BenefitCard
+          title="Zdravotní a sociální asistence"
+          subtitle="Bez částky – jen zapnout / vypnout."
+          enabled={healthSocialOn}
+          onToggle={() => setHealthSocialOn((v) => !v)}
+        />
+      </div>
 
       {/* ZELENÉ GLASSY TLAČÍTKO VÝSLEDKY */}
       <div className="pt-4 flex justify-center">
