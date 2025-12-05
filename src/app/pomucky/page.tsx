@@ -54,7 +54,20 @@ export default function ToolsPage() {
             </p>
           </Link>
 
-          {/* Zpráva týmu – zobrazí se jen manažerům s podřízenými */}
+          {/* Export produkce do PDF */}
+          <Link
+            href="/pomucky/export-produkce"
+            className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)] hover:bg-white/10 hover:border-sky-400/70 transition cursor-pointer"
+          >
+            <h2 className="text-lg font-semibold mb-2">
+              Export produkce
+            </h2>
+            <p className="text-sm text-slate-300">
+              Vygeneruj PDF produkce za zvolené období – vlastní nebo týmovou.
+            </p>
+          </Link>
+
+          {/* Zpráva týmu – karta, co jsme dělali dřív */}
           <TeamMessageToolCard />
         </section>
       </div>
