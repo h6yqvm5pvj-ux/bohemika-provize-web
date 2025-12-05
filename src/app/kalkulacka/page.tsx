@@ -471,10 +471,17 @@ export default function CalculatorPage() {
         position,
         inputAmount: value,
         frequencyRaw: frequency,
+
+        // 🔹 Hlavní data výsledku – stejně jako v mobilní appce
+        items,
+        total,
+
+        // 🔹 Zároveň necháváme i původní objekt result
         result: {
           items,
           total,
         },
+
         clientName: clientName || null,
         contractSignedDate: signed,
         policyStartDate: start,

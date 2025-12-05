@@ -389,6 +389,7 @@ export default function HomePage() {
   }, [user]);
 
   const isManager = isManagerPosition(userMeta?.position ?? null);
+  const showTeamBox = isManager && hasTeam;
 
   const baseProduction = myImmediateSum;
   const totalWithTeam =
@@ -487,7 +488,11 @@ export default function HomePage() {
             </h1>
           </div>
 
-          <div className="grid gap-8 md:grid-cols-2">
+          <div
+            className={`grid gap-8 ${
+              showTeamBox ? "md:grid-cols-2" : "md:grid-cols-1"
+            }`}
+          >
             {/* VLASTNÍ PRODUKCE */}
             <div className="space-y-3">
               <h2 className="text-lg sm:text-xl font-semibold text-slate-50">
@@ -520,42 +525,39 @@ export default function HomePage() {
               )}
             </div>
 
-            {/* TÝMOVÁ PRODUKCE */}
-            <div className="space-y-3">
-              <h2 className="text-lg sm:text-xl font-semibold text-emerald-200">
-                Týmová produkce
-              </h2>
+            {/* TÝMOVÁ PRODUKCE – jen manažer S týmem */}
+            {showTeamBox && (
+              <div className="space-y-3">
+                <h2 className="text-lg sm:text-xl font-semibold text-emerald-200">
+                  Týmová produkce
+                </h2>
 
-              {!isManager ? (
-                <p className="text-xs sm:text-sm text-emerald-100/80">
-                  Nemáš nastavenou manažerskou pozici, týmová produkce se
-                  zatím nepočítá.
-                </p>
-              ) : loading ? (
-                <p className="text-xs sm:text-sm text-emerald-100/80">
-                  Načítám…
-                </p>
-              ) : (
-                <dl className="space-y-3">
-                  <div>
-                    <dt className="text-xs uppercase tracking-wide text-emerald-300/80">
-                      Počet smluv
-                    </dt>
-                    <dd className="text-2xl sm:text-3xl font-semibold text-emerald-100 mt-0.5">
-                      <AnimatedNumber value={teamContractsCount} />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs uppercase tracking-wide text-emerald-300/80">
-                      Provize
-                    </dt>
-                    <dd className="text-2xl sm:text-3xl font-semibold text-emerald-100 mt-0.5">
-                      <AnimatedMoney value={teamImmediateSum} />
-                    </dd>
-                  </div>
-                </dl>
-              )}
-            </div>
+                {loading ? (
+                  <p className="text-xs sm:text-sm text-emerald-100/80">
+                    Načítám…
+                  </p>
+                ) : (
+                  <dl className="space-y-3">
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-emerald-300/80">
+                        Počet smluv
+                      </dt>
+                      <dd className="text-2xl sm:text-3xl font-semibold text-emerald-100 mt-0.5">
+                        <AnimatedNumber value={teamContractsCount} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-emerald-300/80">
+                        Provize
+                      </dt>
+                      <dd className="text-2xl sm:text-3xl font-semibold text-emerald-100 mt-0.5">
+                        <AnimatedMoney value={teamImmediateSum} />
+                      </dd>
+                    </div>
+                  </dl>
+                )}
+              </div>
+            )}
           </div>
         </section>
 

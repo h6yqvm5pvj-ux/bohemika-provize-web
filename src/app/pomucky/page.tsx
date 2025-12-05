@@ -1,5 +1,9 @@
+// src/app/pomucky/page.tsx
+"use client";
+
 import Link from "next/link";
 import { AppLayout } from "@/components/AppLayout";
+import { TeamMessageToolCard } from "./TeamMessageToolCard";
 
 export default function ToolsPage() {
   return (
@@ -31,9 +35,7 @@ export default function ToolsPage() {
             href="/pomucky/zaznam"
             className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)] hover:bg-white/10 hover:border-sky-400/70 transition cursor-pointer"
           >
-            <h2 className="text-lg font-semibold mb-2">
-              Záznam z jednání
-            </h2>
+            <h2 className="text-lg font-semibold mb-2">Záznam z jednání</h2>
             <p className="text-sm text-slate-300">
               Strukturovaná pomůcka pro vyplnění Záznamu z jednání podle typu pojištění.
             </p>
@@ -51,6 +53,9 @@ export default function ToolsPage() {
               Spočítej konečnou hodnotu investice při pravidelných vkladech.
             </p>
           </Link>
+
+          {/* Zpráva týmu – zobrazí se jen manažerům s podřízenými */}
+          <TeamMessageToolCard />
         </section>
       </div>
     </AppLayout>
