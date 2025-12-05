@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-// html2pdf budeme načítat dynamicky až v prohlížeči, viz getHtml2Pdf níže
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "../../firebase";
@@ -20,19 +19,20 @@ import {
   query,
   where,
 } from "firebase/firestore";
+import { type Position } from "../../types/domain";
 
-/* ---------------------- lazy import html2pdf.js ---------------------- */
-
-/* ---------------------- lazy import html2pdf.js ---------------------- */
+/* -------------------- lazy import html2pdf.js (kvůli Next/SSR) -------------------- */
 
 let html2pdfPromise: Promise<any> | null = null;
 
 async function getHtml2Pdf() {
   if (!html2pdfPromise) {
-    // knihovna nemá oficiální typy, proto any
-    html2pdfPromise = import("html2pdf.js").then((mod: any) => mod.default ?? mod);
+    // @ts-ignore – knihovna nemá oficiální typy
+    html2pdfPromise = import("html2pdf.js").then(
+      (mod: any) => mod.default ?? mod
+    );
   }
-  return html2pdfPromise!;
+  return html2pdfPromise;
 }
 
 /* --------------------------------- typy --------------------------------- */
@@ -79,6 +79,7 @@ type EntryDoc = {
 type Subordinate = {
   email: string;
   name: string;
+  position?: Position | null;
 };
 
 type AggregatedStats = {
@@ -96,6 +97,7 @@ type AggregatedStats = {
 type PerUserStats = AggregatedStats & {
   email: string;
   name: string;
+  positionLabel?: string | null;
 };
 
 /* ---------------------------- produktové skupiny ------------------------ */
@@ -123,6 +125,70 @@ const PROPERTY_PRODUCTS: Product[] = [
   "cppcestovko",
   "axacestovko",
 ];
+
+function productCategory(p: Product): ProductCategory {
+  if (LIFE_PRODUCTS.includes(p)) return "life";
+  if (AUTO_PRODUCTS.includes(p)) return "auto";
+  if (PROPERTY_PRODUCTS.includes(p)) return "property";
+  return "nonlife";
+}
+
+const POSITION_LABELS: Record<Position, string> = {
+  poradce1: "Poradce 1",
+  poradce2: "Poradce 2",
+  poradce3: "Poradce 3",
+  poradce4: "Poradce 4",
+  poradce5: "Poradce 5",
+  poradce6: "Poradce 6",
+  poradce7: "Poradce 7",
+  poradce8: "Poradce 8",
+  poradce9: "Poradce 9",
+  poradce10: "Poradce 10",
+  manazer4: "Manažer 4",
+  manazer5: "Manažer 5",
+  manazer6: "Manažer 6",
+  manazer7: "Manažer 7",
+  manazer8: "Manažer 8",
+  manazer9: "Manažer 9",
+  manazer10: "Manažer 10",
+};
+
+function productLabel(p: Product): string {
+  switch (p) {
+    case "neon":
+      return "ČPP ŽP NEON";
+    case "flexi":
+      return "Kooperativa ŽP FLEXI";
+    case "maximaMaxEfekt":
+      return "MAXIMA ŽP MaxEfekt";
+    case "pillowInjury":
+      return "Pillow Úraz / Nemoc";
+    case "zamex":
+      return "ČPP ZAMEX";
+    case "domex":
+      return "ČPP DOMEX";
+    case "maxdomov":
+      return "Maxima MAXDOMOV";
+    case "cppAuto":
+      return "ČPP Auto";
+    case "allianzAuto":
+      return "Allianz Auto";
+    case "csobAuto":
+      return "ČSOB Auto";
+    case "uniqaAuto":
+      return "UNIQA Auto";
+    case "pillowAuto":
+      return "Pillow Auto";
+    case "kooperativaAuto":
+      return "Kooperativa Auto";
+    case "cppcestovko":
+      return "ČPP Cestovko";
+    case "axacestovko":
+      return "AXA Cestovko";
+    case "comfortcc":
+      return "Comfort Commodity";
+  }
+}
 
 /* -------------------------------- helpers ------------------------------- */
 
@@ -211,6 +277,11 @@ function labelForScope(option: ScopeOption): string {
   }
 }
 
+function positionLabel(pos?: Position | null): string | null {
+  if (!pos) return null;
+  return POSITION_LABELS[pos] ?? null;
+}
+
 function toAnnualPremium(
   amount: number,
   frequency: string | null | undefined
@@ -243,6 +314,36 @@ function escapeHtml(text: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+// html2canvas neumí lab/oklch barvy → nahradíme je běžnými hex/barvami
+function stripUnsupportedColors(html: string): string {
+  return html.replace(/(?:oklch|lab)\([^)]*\)/gi, "#0f172a");
+}
+
+function temporarilyDisableGlobalStyles(exceptNodes: Set<Node>): () => void {
+  const toggled: { sheet: StyleSheet; prev: boolean }[] = [];
+  const sheets = Array.from(document.styleSheets);
+  for (const sheet of sheets) {
+    const owner = sheet.ownerNode;
+    if (owner && exceptNodes.has(owner)) continue;
+    try {
+      const prev = (sheet as CSSStyleSheet).disabled;
+      (sheet as CSSStyleSheet).disabled = true;
+      toggled.push({ sheet, prev });
+    } catch {
+      // ignore cross-origin or read-only styles
+    }
+  }
+  return () => {
+    for (const { sheet, prev } of toggled) {
+      try {
+        (sheet as CSSStyleSheet).disabled = prev;
+      } catch {
+        // ignore
+      }
+    }
+  };
 }
 
 function getDateRange(option: DateRangeOption): { from: Date; to: Date } {
@@ -293,6 +394,8 @@ export default function ExportProductionPage() {
     () => new Set<ProductCategory>(["life", "nonlife", "auto", "property"])
   );
 
+  const [currentUserPosition, setCurrentUserPosition] =
+    useState<Position | null>(null);
   const [subordinates, setSubordinates] = useState<Subordinate[]>([]);
   const [selectedSubs, setSelectedSubs] = useState<Set<string>>(
     () => new Set()
@@ -336,6 +439,13 @@ export default function ExportProductionPage() {
       setErrorText(null);
 
       try {
+        // aktuální uživatel – kvůli pozici
+        const meDoc = await getDocs(
+          query(collection(db, "users"), where("email", "==", email))
+        );
+        const meData = meDoc.docs[0]?.data() as { position?: Position } | undefined;
+        setCurrentUserPosition(meData?.position ?? null);
+
         const usersRef = collection(db, "users");
         const subsQ = query(
           usersRef,
@@ -349,6 +459,7 @@ export default function ExportProductionPage() {
           return {
             email: e.toLowerCase(),
             name: (data.fullName as string | undefined) ?? nameFromEmail(e),
+            position: data.position ?? null,
           };
         });
 
@@ -432,6 +543,7 @@ export default function ExportProductionPage() {
     }
 
     const email = user.email.trim().toLowerCase();
+    const generatedAt = new Date();
 
     const { from, to } = getDateRange(dateRangeOption);
 
@@ -478,6 +590,7 @@ export default function ExportProductionPage() {
 
     // statistiky pro každého poradce
     const perUser = new Map<string, PerUserStats>();
+    const perProduct = new Map<Product, { annual: number; contracts: number }>();
 
     for (const entry of entriesInRange) {
       const e = (entry.userEmail ?? "").toLowerCase();
@@ -488,6 +601,10 @@ export default function ExportProductionPage() {
       // Comfort Commodity se do PDF neexportuje
       if ((p as any) === "comfortcc") continue;
 
+      // filtr podle zvolených kategorií
+      const cat = productCategory(p);
+      if (!categories.has(cat)) continue;
+
       const amount = entry.inputAmount ?? 0;
       if (!amount || !Number.isFinite(amount)) continue;
 
@@ -496,8 +613,21 @@ export default function ExportProductionPage() {
       const isProperty = PROPERTY_PRODUCTS.includes(p);
       const isNonLife = !isLife;
 
+      const annualForProduct = isLife
+        ? amount * 12
+        : toAnnualPremium(amount, entry.frequencyRaw);
+      const prevProd = perProduct.get(p) ?? { annual: 0, contracts: 0 };
+      perProduct.set(p, {
+        annual: prevProd.annual + annualForProduct,
+        contracts: prevProd.contracts + 1,
+      });
+
       let stats = perUser.get(e);
       if (!stats) {
+        const pos =
+          e === email
+            ? currentUserPosition
+            : subordinates.find((s) => s.email === e)?.position ?? null;
         stats = {
           email: e,
           name:
@@ -505,6 +635,7 @@ export default function ExportProductionPage() {
               ? nameFromEmail(e)
               : (subordinates.find((s) => s.email === e)?.name ??
                 nameFromEmail(e)),
+          positionLabel: positionLabel(pos),
           ...emptyStats(),
         };
         perUser.set(e, stats);
@@ -554,6 +685,14 @@ export default function ExportProductionPage() {
     const adviserEmail = escapeHtml(email);
     const dateLabel = escapeHtml(labelForDateRange(dateRangeOption));
     const scopeLabel = escapeHtml(labelForScope(scopeOption));
+    const generatedLabel = escapeHtml(
+      generatedAt.toLocaleString("cs-CZ", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    );
+    const periodFrom = escapeHtml(from.toLocaleDateString("cs-CZ"));
+    const periodTo = escapeHtml(to.toLocaleDateString("cs-CZ"));
 
     const cats = selectedCategories;
 
@@ -744,6 +883,13 @@ export default function ExportProductionPage() {
               <div>
                 <div class="card-user-name">${escapeHtml(stats.name)}</div>
                 <div class="card-user-email">${escapeHtml(stats.email)}</div>
+                ${
+                  stats.positionLabel
+                    ? `<div class="card-user-position">Pozice: ${escapeHtml(
+                        stats.positionLabel
+                      )}</div>`
+                    : ""
+                }
               </div>
             </div>
             <div class="card-user-body">
@@ -763,18 +909,22 @@ export default function ExportProductionPage() {
             body {
               margin: 0;
               padding: 32px 0;
-              background: #e5ebff;
+              background: linear-gradient(180deg,#e6ebfb 0%,#e9eefc 40%,#eef2ff 100%);
               font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
                 system-ui, -system-ui, sans-serif;
               color: #0f172a;
+              -webkit-font-smoothing: antialiased;
             }
             .page {
-              width: 720px;
+              width: 760px;
               margin: 0 auto;
-              background: #f9fafb;
-              border-radius: 24px;
-              box-shadow: 0 24px 80px rgba(15, 23, 42, 0.25);
-              padding: 28px 32px 32px;
+              background: #f8fbff;
+              border-radius: 26px;
+              border: 1px solid #d9e2f7;
+              box-shadow:
+                0 24px 80px rgba(15, 23, 42, 0.2),
+                0 0 0 1px rgba(255,255,255,0.7) inset;
+              padding: 32px 34px 36px;
             }
             .page-header {
               display: flex;
@@ -840,19 +990,21 @@ export default function ExportProductionPage() {
               display: flex;
               flex-direction: column;
               gap: 10px;
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+            .card-grid > * {
+              break-inside: avoid;
+              page-break-inside: avoid;
             }
             .card {
               border-radius: 18px;
-              background: linear-gradient(
-                  135deg,
-                  rgba(255,255,255,0.96),
-                  rgba(241,245,249,0.96)
-                );
-              border: 1px solid rgba(148, 163, 184, 0.35);
+              background: linear-gradient(135deg,#ffffff,#f5f7fb);
+              border: 1px solid #d6e0f2;
               box-shadow:
-                0 18px 60px rgba(15, 23, 42, 0.25),
-                0 0 0 1px rgba(148,163,184,0.2) inset;
-              padding: 14px 16px 12px;
+                0 18px 55px rgba(15, 23, 42, 0.15),
+                0 0 0 1px rgba(255,255,255,0.9) inset;
+              padding: 14px 16px 14px;
               font-size: 12px;
             }
             .card-title {
@@ -868,6 +1020,7 @@ export default function ExportProductionPage() {
               justify-content: space-between;
               gap: 12px;
               margin-top: 3px;
+              align-items: center;
             }
             .card-row span:first-child { color: #475569; }
             .card-row span:last-child {
@@ -884,6 +1037,16 @@ export default function ExportProductionPage() {
               align-items: center;
               gap: 10px;
               margin-bottom: 6px;
+            }
+            .card-user,
+            .card {
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+            .card-user-body,
+            .card-inner {
+              break-inside: avoid;
+              page-break-inside: avoid;
             }
             .avatar {
               width: 26px;
@@ -905,6 +1068,44 @@ export default function ExportProductionPage() {
               font-size: 11px;
               color: #64748b;
             }
+            .card-user-position {
+              font-size: 11px;
+              color: #475569;
+              font-weight: 600;
+            }
+            .product-table {
+              width: 100%;
+              border-spacing: 0;
+              margin-top: 10px;
+              font-size: 12px;
+              border-radius: 14px;
+              overflow: hidden;
+              box-shadow: 0 10px 28px rgba(15,23,42,0.12);
+            }
+            .product-table thead {
+              background: linear-gradient(135deg,#eef2ff,#e6ecfd);
+              color: #1e293b;
+            }
+            .product-table th {
+              padding: 10px 12px;
+              text-align: left;
+              font-weight: 700;
+              letter-spacing: 0.04em;
+              text-transform: uppercase;
+              font-size: 11px;
+              border-bottom: 1px solid #dde5f7;
+            }
+            .product-table tbody tr:nth-child(odd) { background: #ffffff; }
+            .product-table tbody tr:nth-child(even) { background: #f7f9ff; }
+            .product-table td {
+              padding: 10px 12px;
+              border-bottom: 1px solid #e4eaf7;
+              color: #334155;
+              vertical-align: top;
+            }
+            .product-table td.product { width: 55%; text-align: left; }
+            .product-table td.count { width: 15%; text-align: center; font-weight: 700; color: #0f172a; }
+            .product-table td.amount { width: 30%; text-align: right; font-weight: 700; color: #0f172a; }
             .card-user-body {
               border-top: 1px solid rgba(148,163,184,0.45);
               margin-top: 6px;
@@ -915,9 +1116,9 @@ export default function ExportProductionPage() {
             }
             .card-inner {
               border-radius: 12px;
-              background: rgba(255,255,255,0.9);
+              background: #ffffff;
               padding: 6px 8px;
-              border: 1px solid rgba(148,163,184,0.35);
+              border: 1px solid #d7e1f3;
             }
             .card-subtitle {
               font-size: 11px;
@@ -929,6 +1130,9 @@ export default function ExportProductionPage() {
               margin-top: 14px;
               font-size: 10px;
               color: #94a3b8;
+            }
+            @media print {
+              body { background: #eef2ff; }
             }
           </style>
         </head>
@@ -946,6 +1150,8 @@ export default function ExportProductionPage() {
               <div><strong>Poradce:</strong> ${adviserName}</div>
               <div><strong>E-mail:</strong> ${adviserEmail}</div>
               <div><strong>Rozsah:</strong> ${scopeLabel}</div>
+              <div><strong>Období:</strong> ${periodFrom} – ${periodTo}</div>
+              <div><strong>Vygenerováno:</strong> ${generatedLabel}</div>
             </div>
 
             <div class="divider"></div>
@@ -960,6 +1166,40 @@ export default function ExportProductionPage() {
                 }
               </div>
             </div>
+
+            ${
+              perProduct.size > 0
+                ? `
+                  <div class="divider"></div>
+                  <div>
+                    <div class="section-title">Přehled podle produktu (roční pojistné)</div>
+                    <table class="product-table">
+                      <thead>
+                        <tr>
+                          <th>Produkt</th>
+                          <th>Počet smluv</th>
+                          <th>Sjednané pojistné</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${Array.from(perProduct.entries())
+                          .sort((a, b) => b[1].annual - a[1].annual)
+                          .map(
+                            ([prod, vals]) => `
+                              <tr>
+                                <td class="product">${escapeHtml(productLabel(prod))}</td>
+                                <td class="count">${vals.contracts}</td>
+                                <td class="amount">${formatMoney(vals.annual)}</td>
+                              </tr>
+                            `
+                          )
+                          .join("")}
+                      </tbody>
+                    </table>
+                  </div>
+                `
+                : ""
+            }
 
             ${
               isTeamScope && teamCards.length > 0
@@ -1006,37 +1246,30 @@ export default function ExportProductionPage() {
 
     try {
       const { html, filenameBase } = await buildReportHtml();
-
-      const element = document.createElement("div");
-      element.innerHTML = html;
+      const safeHtml = stripUnsupportedColors(html);
+      const html2pdf = await getHtml2Pdf();
 
       const opt: any = {
         margin: [10, 10, 10, 10],
         filename: `${filenameBase}_${dateRangeOption}.pdf`,
         image: { type: "jpeg", quality: 0.96 },
-        html2canvas: { scale: 2 },
+        html2canvas: {
+          scale: 2,
+          backgroundColor: "#ffffff",
+          useCORS: true,
+          onclone: (doc: Document) => {
+            // Odstraníme všechny externí styly/linky kromě těch vygenerovaných v HTML
+            doc.querySelectorAll("link[rel='stylesheet']").forEach((n) => n.remove());
+            doc.querySelectorAll("style").forEach((n) => {
+              const text = n.textContent ?? "";
+              if (/(oklch|lab)\(/i.test(text)) n.remove();
+            });
+          },
+        },
         jsPDF: { unit: "pt", format: "a4", orientation: "portrait" },
       };
 
-      const html2pdf = await getHtml2Pdf();
-
-      // dočasně umlčíme "lab" console error z html2canvas, aby Next neházel overlay
-      const originalConsoleError = console.error;
-      console.error = (...args: any[]) => {
-        if (
-          typeof args[0] === "string" &&
-          args[0].includes('unsupported color function "lab"')
-        ) {
-          return;
-        }
-        originalConsoleError(...args);
-      };
-
-      try {
-        await html2pdf().from(element).set(opt).save();
-      } finally {
-        console.error = originalConsoleError;
-      }
+      await (html2pdf() as any).set(opt).from(safeHtml).save();
     } catch (e) {
       console.error("Chyba při generování PDF", e);
       setErrorText(
