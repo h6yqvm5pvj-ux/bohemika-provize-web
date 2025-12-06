@@ -41,6 +41,35 @@ function findImmediate(items: CommissionResultItemDTO[]): number {
   return hit?.amount ?? 0;
 }
 
+function stripUnsupportedColors(html: string): string {
+  return html.replace(/(?:oklch|lab)\([^)]*\)/gi, "#0f172a");
+}
+
+function temporarilyDisableGlobalStyles(exceptNodes: Set<Node>): () => void {
+  const toggled: { sheet: StyleSheet; prev: boolean }[] = [];
+  const sheets = Array.from(document.styleSheets);
+  for (const sheet of sheets) {
+    const owner = sheet.ownerNode;
+    if (owner && exceptNodes.has(owner)) continue;
+    try {
+      const prev = (sheet as CSSStyleSheet).disabled;
+      (sheet as CSSStyleSheet).disabled = true;
+      toggled.push({ sheet, prev });
+    } catch {
+      // ignore cross-origin
+    }
+  }
+  return () => {
+    for (const { sheet, prev } of toggled) {
+      try {
+        (sheet as CSSStyleSheet).disabled = prev;
+      } catch {
+        // ignore
+      }
+    }
+  };
+}
+
 const POSITION_LABELS: Record<Position, string> = {
   poradce1: "Poradce 1",
   poradce2: "Poradce 2",
@@ -380,28 +409,76 @@ export default function PlanProdukcePage() {
     if (!user) return;
     setGenerating(true);
     setErrorText(null);
+    let cleanup: (() => void) | null = null;
     try {
       const { html, filename } = buildPdfHtml();
+      const safeHtml = stripUnsupportedColors(html);
       const html2pdf = await getHtml2Pdf();
+      const parser = new DOMParser();
+      const parsed = parser.parseFromString(safeHtml, "text/html");
+
+      const styleEl = parsed.querySelector("style");
+      const pageEl = parsed.querySelector(".page");
+
+      const wrapper = document.createElement("div");
+      wrapper.style.position = "fixed";
+      wrapper.style.inset = "-10000px";
+      wrapper.style.width = "0";
+      wrapper.style.height = "0";
+      wrapper.style.overflow = "hidden";
+
+      if (styleEl) wrapper.appendChild(styleEl);
+      if (pageEl) wrapper.appendChild(pageEl);
+      document.body.appendChild(wrapper);
+
+      const element = pageEl;
+      if (!element) {
+        wrapper.remove();
+        throw new Error("Nepodařilo se připravit obsah PDF.");
+      }
+
+      const except = new Set<Node>(styleEl ? [styleEl] : []);
+      const reenable = temporarilyDisableGlobalStyles(except);
+      cleanup = () => {
+        reenable();
+        wrapper.remove();
+      };
+
       const opt: any = {
         margin: [10, 10, 10, 10],
         filename,
         image: { type: "jpeg", quality: 0.96 },
-        html2canvas: { scale: 2, backgroundColor: "#ffffff", useCORS: true },
+        html2canvas: {
+          scale: 2,
+          backgroundColor: "#ffffff",
+          useCORS: true,
+          onclone: (doc: Document) => {
+            doc
+              .querySelectorAll("link[rel='stylesheet']")
+              .forEach((n) => n.remove());
+            doc.querySelectorAll("style").forEach((n) => {
+              const text = n.textContent ?? "";
+              if (/(oklch|lab)\(/i.test(text)) n.remove();
+            });
+          },
+        },
         jsPDF: { unit: "pt", format: "a4", orientation: "portrait" },
       };
-      await (html2pdf() as any).set(opt).from(html).save();
+      await (html2pdf() as any).from(element).set(opt).save();
+      cleanup();
+      cleanup = null;
     } catch (e) {
       console.error("Chyba při generování PDF", e);
       setErrorText("PDF se nepodařilo vygenerovat. Zkus to prosím znovu.");
     } finally {
       setGenerating(false);
+      if (cleanup) cleanup();
     }
   };
 
   const handlePreview = () => {
     const { html } = buildPdfHtml();
-    setPreviewHtml(html);
+    setPreviewHtml(stripUnsupportedColors(html));
   };
 
   if (!user) {
