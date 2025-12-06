@@ -22,7 +22,7 @@ import {
 let html2pdfPromise: Promise<any> | null = null;
 async function getHtml2Pdf() {
   if (!html2pdfPromise) {
-    // @ts-ignore
+    // @ts-expect-error html2pdf nemá oficiální typy
     html2pdfPromise = import("html2pdf.js").then((mod: any) => mod.default ?? mod);
   }
   return html2pdfPromise;

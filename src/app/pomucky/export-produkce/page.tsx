@@ -27,7 +27,7 @@ let html2pdfPromise: Promise<any> | null = null;
 
 async function getHtml2Pdf() {
   if (!html2pdfPromise) {
-    // @ts-ignore – knihovna nemá oficiální typy
+    // @ts-expect-error – knihovna nemá oficiální typy
     html2pdfPromise = import("html2pdf.js").then(
       (mod: any) => mod.default ?? mod
     );
@@ -319,31 +319,6 @@ function escapeHtml(text: string): string {
 // html2canvas neumí lab/oklch barvy → nahradíme je běžnými hex/barvami
 function stripUnsupportedColors(html: string): string {
   return html.replace(/(?:oklch|lab)\([^)]*\)/gi, "#0f172a");
-}
-
-function temporarilyDisableGlobalStyles(exceptNodes: Set<Node>): () => void {
-  const toggled: { sheet: StyleSheet; prev: boolean }[] = [];
-  const sheets = Array.from(document.styleSheets);
-  for (const sheet of sheets) {
-    const owner = sheet.ownerNode;
-    if (owner && exceptNodes.has(owner)) continue;
-    try {
-      const prev = (sheet as CSSStyleSheet).disabled;
-      (sheet as CSSStyleSheet).disabled = true;
-      toggled.push({ sheet, prev });
-    } catch {
-      // ignore cross-origin or read-only styles
-    }
-  }
-  return () => {
-    for (const { sheet, prev } of toggled) {
-      try {
-        (sheet as CSSStyleSheet).disabled = prev;
-      } catch {
-        // ignore
-      }
-    }
-  };
 }
 
 function getDateRange(option: DateRangeOption): { from: Date; to: Date } {

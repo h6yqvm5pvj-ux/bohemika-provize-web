@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // src/app/pomucky/investicni-kalkulacka/page.tsx
 "use client";
 

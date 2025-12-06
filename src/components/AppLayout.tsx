@@ -37,7 +37,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [animatedBg, setAnimatedBg] = useState(true);
 
-  const [subscriptionStatus, setSubscriptionStatus] =
+  // status zatím nepoužíváme v UI
+  const [, setSubscriptionStatus] =
     useState<SubscriptionStatusWeb>("none");
   const [hasActiveSubscription, setHasActiveSubscription] =
     useState<boolean | null>(null);
@@ -153,7 +154,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   useEffect(() => {
     if (!user) return;
     void loadSubscriptionProfileForUser(user);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   // Ruční reload z paywallu
