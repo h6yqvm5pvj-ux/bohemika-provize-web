@@ -20,6 +20,7 @@ import {
 } from "firebase/firestore";
 
 import { AppLayout } from "@/components/AppLayout";
+import { AutoAnniversaryModal } from "@/components/AutoAnniversaryModal";
 import {
   type CommissionResultItemDTO,
   type Position,
@@ -279,11 +280,11 @@ export default function HomePage() {
 
         mySnap.forEach((docSnap) => {
           const data = docSnap.data() as any as EntryDoc;
-          const created = toDate(data.createdAt);
-          if (!created) return;
+          const signed = toDate((data as any).contractSignedDate) ?? toDate(data.createdAt);
+          if (!signed) return;
           if (
-            created.getFullYear() !== currentYear ||
-            created.getMonth() !== currentMonth
+            signed.getFullYear() !== currentYear ||
+            signed.getMonth() !== currentMonth
           ) {
             return;
           }
@@ -355,11 +356,11 @@ export default function HomePage() {
           } as EntryDoc);
 
           // pro horní "Týmovou produkci" počítáme jen aktuální měsíc
-          const created = toDate(data.createdAt);
-          if (!created) return;
+          const signed = toDate((data as any).contractSignedDate) ?? toDate(data.createdAt);
+          if (!signed) return;
           if (
-            created.getFullYear() !== currentYear ||
-            created.getMonth() !== currentMonth
+            signed.getFullYear() !== currentYear ||
+            signed.getMonth() !== currentMonth
           ) {
             return;
           }
@@ -476,6 +477,7 @@ export default function HomePage() {
 
   return (
     <AppLayout active="home">
+      {user && <AutoAnniversaryModal userId={user.uid} />}
       <div className="w-full max-w-5xl space-y-6">
         {/* PRODUKCE BOX */}
         <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-8 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
