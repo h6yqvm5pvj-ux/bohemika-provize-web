@@ -22,8 +22,10 @@ import {
 let html2pdfPromise: Promise<any> | null = null;
 async function getHtml2Pdf() {
   if (!html2pdfPromise) {
-    // @ts-expect-error html2pdf nemá oficiální typy
-    html2pdfPromise = import("html2pdf.js").then((mod: any) => mod.default ?? mod);
+    html2pdfPromise = import("html2pdf.js").then((mod: unknown) => {
+      const m = mod as { default?: unknown } & Record<string, unknown>;
+      return m.default ?? m;
+    });
   }
   return html2pdfPromise;
 }
