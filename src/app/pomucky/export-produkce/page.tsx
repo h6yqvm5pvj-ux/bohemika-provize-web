@@ -591,6 +591,7 @@ export default function ExportProductionPage() {
     // statistiky pro každého poradce
     const perUser = new Map<string, PerUserStats>();
     const perProduct = new Map<Product, { annual: number; contracts: number }>();
+    const perMonth = new Map<string, { label: string; value: number }>();
 
     for (const entry of entriesInRange) {
       const e = (entry.userEmail ?? "").toLowerCase();
@@ -604,6 +605,9 @@ export default function ExportProductionPage() {
       // filtr podle zvolených kategorií
       const cat = productCategory(p);
       if (!categories.has(cat)) continue;
+
+      const created = toDate(entry.createdAt);
+      if (!created) continue;
 
       const amount = entry.inputAmount ?? 0;
       if (!amount || !Number.isFinite(amount)) continue;
@@ -620,6 +624,18 @@ export default function ExportProductionPage() {
       perProduct.set(p, {
         annual: prevProd.annual + annualForProduct,
         contracts: prevProd.contracts + 1,
+      });
+
+      // měsíční agregace (podle data vytvoření)
+      const ym = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}`;
+      const monthLabel = created.toLocaleDateString("cs-CZ", {
+        month: "short",
+        year: "numeric",
+      });
+      const prevMonth = perMonth.get(ym) ?? { label: monthLabel, value: 0 };
+      perMonth.set(ym, {
+        label: monthLabel,
+        value: prevMonth.value + annualForProduct,
       });
 
       let stats = perUser.get(e);
@@ -704,6 +720,33 @@ export default function ExportProductionPage() {
     const perUserList = Array.from(perUser.values()).sort((a, b) =>
       a.name.localeCompare(b.name, "cs")
     );
+
+    // připravíme měsíční osu pro celé zvolené období (i když je hodnota 0)
+    const monthKeys: { key: string; label: string }[] = [];
+    const cursor = new Date(from);
+    cursor.setDate(1);
+    while (cursor <= to) {
+      const key = `${cursor.getFullYear()}-${String(
+        cursor.getMonth() + 1
+      ).padStart(2, "0")}`;
+      const label = cursor.toLocaleDateString("cs-CZ", {
+        month: "short",
+        year: "numeric",
+      });
+      monthKeys.push({ key, label });
+      cursor.setMonth(cursor.getMonth() + 1);
+      cursor.setDate(1);
+    }
+
+    const monthlyTotals = monthKeys.map(({ key, label }) => {
+      const m = perMonth.get(key);
+      return { label, value: m?.value ?? 0 };
+    });
+
+    const monthlyMax =
+      monthlyTotals.length > 0
+        ? Math.max(...monthlyTotals.map((m) => m.value))
+        : 0;
 
     const logoHtml =
       logoDataUrl != null
@@ -1106,6 +1149,42 @@ export default function ExportProductionPage() {
             .product-table td.product { width: 55%; text-align: left; }
             .product-table td.count { width: 15%; text-align: center; font-weight: 700; color: #0f172a; }
             .product-table td.amount { width: 30%; text-align: right; font-weight: 700; color: #0f172a; }
+            .monthly-chart {
+              display: flex;
+              align-items: flex-end;
+              gap: 10px;
+              padding: 12px 10px 4px;
+              border-radius: 14px;
+              background: linear-gradient(180deg,#f7f9ff 0%,#eef3ff 100%);
+              border: 1px solid #d6e0f2;
+              box-shadow: 0 10px 28px rgba(15,23,42,0.08);
+              min-height: 140px;
+            }
+            .monthly-bar {
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              gap: 6px;
+            }
+            .monthly-bar .bar {
+              width: 100%;
+              max-width: 44px;
+              border-radius: 12px 12px 6px 6px;
+              background: linear-gradient(135deg,#60a5fa,#2563eb);
+              box-shadow: 0 8px 16px rgba(37,99,235,0.25);
+              transition: transform 0.2s ease;
+            }
+            .monthly-bar .value {
+              font-size: 10px;
+              color: #0f172a;
+              font-weight: 700;
+            }
+            .monthly-bar .label {
+              font-size: 10px;
+              color: #475569;
+              text-align: center;
+            }
             .card-user-body {
               border-top: 1px solid rgba(148,163,184,0.45);
               margin-top: 6px;
@@ -1196,6 +1275,34 @@ export default function ExportProductionPage() {
                           .join("")}
                       </tbody>
                     </table>
+                  </div>
+                `
+                : ""
+            }
+
+            ${
+              monthlyTotals.length > 0
+                ? `
+                  <div class="divider"></div>
+                  <div>
+                    <div class="section-title">Vývoj produkce podle měsíců</div>
+                    <div class="monthly-chart">
+                      ${monthlyTotals
+                        .map((m) => {
+                          const height =
+                            monthlyMax > 0
+                              ? Math.max(12, Math.round((m.value / monthlyMax) * 100))
+                              : 12;
+                          return `
+                            <div class="monthly-bar">
+                              <div class="value">${formatMoney(m.value)}</div>
+                              <div class="bar" style="height:${height}px"></div>
+                              <div class="label">${escapeHtml(m.label)}</div>
+                            </div>
+                          `;
+                        })
+                        .join("")}
+                    </div>
                   </div>
                 `
                 : ""
