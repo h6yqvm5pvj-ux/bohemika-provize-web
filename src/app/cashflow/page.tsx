@@ -16,7 +16,27 @@ import {
   type Product,
   type PaymentFrequency,
   type CommissionResultItemDTO,
+  type Position,
+  type CommissionMode,
 } from "../types/domain";
+import {
+  calculateNeon,
+  calculateFlexi,
+  calculateMaxEfekt,
+  calculatePillowInjury,
+  calculateDomex,
+  calculateMaxdomov,
+  calculateCppAuto,
+  calculateAllianzAuto,
+  calculateCsobAuto,
+  calculateUniqaAuto,
+  calculatePillowAuto,
+  calculateKooperativaAuto,
+  calculateZamex,
+  calculateCppCestovko,
+  calculateAxaCestovko,
+} from "../lib/productFormulas";
+import { doc, getDoc, collection, query, where } from "firebase/firestore";
 
 /* ---------- helpers ---------- */
 
@@ -124,11 +144,15 @@ type EntryDoc = {
   items?: CommissionResultItemDTO[];
 
   userEmail?: string | null;
+  position?: Position | null;
+  mode?: CommissionMode | null;
+  inputAmount?: number | null;
   contractNumber?: string | null;
 
   policyStartDate?: any;
   createdAt?: any;
   durationYears?: number | null;
+  source?: "own" | "manager";
 };
 
 type CashflowItem = {
@@ -137,8 +161,54 @@ type CashflowItem = {
   amount: number;
   productKey: Product | "unknown";
   note?: string | null;
+  source?: "own" | "manager";
   contractNumber?: string | null;
 };
+
+function computeTotalForPosition(entry: EntryDoc, pos: Position): number {
+  const product = entry.productKey;
+  const amount = entry.inputAmount ?? 0;
+  const freq = entry.frequencyRaw ?? "annual";
+  const duration = entry.durationYears ?? 10;
+  const mode = (entry.mode as CommissionMode | null) ?? "accelerated";
+
+  if (!product || amount <= 0) return 0;
+
+  switch (product) {
+    case "neon":
+      return calculateNeon(amount, pos, duration, mode).total;
+    case "flexi":
+      return calculateFlexi(amount, pos, mode).total;
+    case "maximaMaxEfekt":
+      return calculateMaxEfekt(amount, duration, pos, mode).total;
+    case "pillowInjury":
+      return calculatePillowInjury(amount, pos, mode).total;
+    case "domex":
+      return calculateDomex(amount, freq, pos).total;
+    case "maxdomov":
+      return calculateMaxdomov(amount, freq, pos).total;
+    case "cppAuto":
+      return calculateCppAuto(amount, freq, pos).total;
+    case "allianzAuto":
+      return calculateAllianzAuto(amount, freq, pos).total;
+    case "csobAuto":
+      return calculateCsobAuto(amount, freq, pos).total;
+    case "uniqaAuto":
+      return calculateUniqaAuto(amount, freq, pos).total;
+    case "pillowAuto":
+      return calculatePillowAuto(amount, freq, pos).total;
+    case "kooperativaAuto":
+      return calculateKooperativaAuto(amount, freq, pos).total;
+    case "zamex":
+      return calculateZamex(amount, freq, pos).total;
+    case "cppcestovko":
+      return calculateCppCestovko(amount, pos).total;
+    case "axacestovko":
+      return calculateAxaCestovko(amount, pos).total;
+    default:
+      return 0;
+  }
+}
 
 type MonthGroup = {
   key: string; // "2026-4"
@@ -154,6 +224,9 @@ type YearGroup = {
   total: number;
   months: MonthGroup[];
 };
+
+type ProductFilter = "all" | "life" | "auto" | "other";
+type ScopeFilter = "combined" | "own" | "team";
 
 /* ---------- logika výplat (zjednodušený cashflow generátor) ---------- */
 
@@ -245,7 +318,15 @@ function generateCashflow(
         date,
         amount,
         productKey: product ?? "unknown",
-        note,
+        note:
+          entry.source === "manager"
+            ? note
+              ? `Manažerská · ${note}`
+              : "Manažerská"
+            : note
+            ? `Vlastní · ${note}`
+            : "Vlastní",
+        source: entry.source,
         contractNumber: entry.contractNumber ?? null,
       });
     };
@@ -479,6 +560,8 @@ export default function CashflowPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [cashflowItems, setCashflowItems] = useState<CashflowItem[]>([]);
+  const [, setUserPosition] = useState<Position | null>(null);
+  const [hasTeam, setHasTeam] = useState(false);
 
   // akordeon – roky a měsíce
   const [expandedYears, setExpandedYears] = useState<
@@ -487,6 +570,11 @@ export default function CashflowPage() {
   const [expandedMonths, setExpandedMonths] = useState<
     Record<string, boolean>
   >({});
+
+  const [scopeFilter, setScopeFilter] =
+    useState<ScopeFilter>("combined");
+  const [productFilter, setProductFilter] =
+    useState<ProductFilter>("all");
 
   // auth guard
   useEffect(() => {
@@ -508,17 +596,127 @@ export default function CashflowPage() {
     const load = async () => {
       setLoading(true);
       try {
+        const email = (user.email ?? "").toLowerCase();
+        if (!email) throw new Error("Chybí e-mail uživatele");
+
+        // zjistit pozici uživatele
+        const meSnap = await getDoc(doc(db, "users", email));
+        const myPos = (meSnap.data() as { position?: Position } | undefined)
+          ?.position;
+        setUserPosition(myPos ?? null);
+
+        // podřízení
+        const subsQ = query(
+          collection(db, "users"),
+          where("managerEmail", "==", email)
+        );
+        const subsSnap = await getDocs(subsQ);
+        const subordinateEmails = subsSnap.docs
+          .map((d) => (d.data() as any).email as string | undefined)
+          .filter(Boolean)
+          .map((e) => e!.toLowerCase());
+        const subordinatePositions: Record<string, Position | null> = {};
+        setHasTeam(subordinateEmails.length > 0);
+        subsSnap.docs.forEach((d) => {
+          const data = d.data() as any;
+          const e = (data.email as string | undefined)?.toLowerCase();
+          if (e) subordinatePositions[e] = data.position ?? null;
+        });
+
         const q = collectionGroup(db, "entries");
         const snap = await getDocs(q);
 
-        const entries: EntryDoc[] = snap.docs
+        const allEntries: EntryDoc[] = snap.docs
           .map((d) => ({
             id: d.id,
             ...(d.data() as any),
-          }))
-          .filter((e) => e.userEmail === user.email);
+          }));
 
-        const cf = generateCashflow(entries);
+        const ownEntries = allEntries
+          .filter((e) => (e.userEmail ?? "").toLowerCase() === email)
+          .map((e) => ({ ...e, source: "own" as const }));
+
+        const teamRaw =
+          subordinateEmails.length > 0
+            ? allEntries.filter((e) =>
+                subordinateEmails.includes((e.userEmail ?? "").toLowerCase())
+              )
+            : [];
+
+        // vypočítat meziprovizi pro manažera
+        const overrides: EntryDoc[] = [];
+        if (myPos && teamRaw.length > 0) {
+          for (const entry of teamRaw) {
+            const adviserTotal =
+              entry.total ??
+              (entry.items ?? []).reduce(
+                (sum, i) => sum + (i.amount ?? 0),
+                0
+              );
+            const managerTotal = computeTotalForPosition(entry, myPos);
+            const diff = managerTotal - (adviserTotal ?? 0);
+            if (!Number.isFinite(diff) || diff <= 0) continue;
+
+            overrides.push({
+              ...entry,
+              id: `${entry.id}-override`,
+              items: [
+                {
+                  title: "Okamžitá provize (manažerská)",
+                  amount: diff,
+                },
+              ],
+              total: diff,
+              source: "manager",
+              position: myPos,
+            });
+          }
+        }
+
+        let entriesForCf: EntryDoc[] = [];
+        if (scopeFilter === "own") {
+          entriesForCf = ownEntries;
+        } else if (scopeFilter === "team") {
+          entriesForCf = overrides;
+        } else {
+          entriesForCf = [...ownEntries, ...overrides];
+        }
+
+        if (productFilter !== "all") {
+          entriesForCf = entriesForCf.filter((e) => {
+            const p = e.productKey;
+            if (!p) return false;
+            if (productFilter === "life") {
+              return (
+                p === "neon" ||
+                p === "flexi" ||
+                p === "maximaMaxEfekt" ||
+                p === "pillowInjury"
+              );
+            }
+            if (productFilter === "auto") {
+              return (
+                p === "cppAuto" ||
+                p === "allianzAuto" ||
+                p === "csobAuto" ||
+                p === "uniqaAuto" ||
+                p === "pillowAuto" ||
+                p === "kooperativaAuto"
+              );
+            }
+            if (productFilter === "other") {
+              return !(
+                p === "neon" ||
+                p === "flexi" ||
+                p === "maximaMaxEfekt" ||
+                p === "pillowInjury"
+              );
+            }
+            return true;
+          });
+        }
+
+        const cf = generateCashflow(entriesForCf);
         setCashflowItems(cf);
       } catch (e) {
         console.error("Chyba při načítání cashflow:", e);
@@ -528,7 +726,7 @@ export default function CashflowPage() {
     };
 
     load();
-  }, [user]);
+  }, [user, scopeFilter, productFilter]);
 
   // seskupení podle měsíců
   const monthGroups: MonthGroup[] = useMemo(() => {
@@ -667,6 +865,93 @@ export default function CashflowPage() {
             </div>
           </div>
         </header>
+
+        {/* Filtry */}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.7)] space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                  Filtrování smluv
+                </p>
+                <p className="text-sm text-slate-200">Vlastní / tým</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
+              <button
+                type="button"
+                onClick={() => setScopeFilter("combined")}
+                className={`px-3 py-1.5 rounded-full border transition ${
+                  scopeFilter === "combined"
+                    ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
+                    : "border-white/20 text-slate-200 hover:bg-white/5"
+                }`}
+              >
+                Kombinovaný
+              </button>
+              <button
+                type="button"
+                onClick={() => setScopeFilter("own")}
+                className={`px-3 py-1.5 rounded-full border transition ${
+                  scopeFilter === "own"
+                    ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
+                    : "border-white/20 text-slate-200 hover:bg-white/5"
+                }`}
+              >
+                Vlastní
+              </button>
+              <button
+                type="button"
+                disabled={!hasTeam}
+                onClick={() => setScopeFilter("team")}
+                className={`px-3 py-1.5 rounded-full border transition ${
+                  scopeFilter === "team"
+                    ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
+                    : "border-white/20 text-slate-200 hover:bg-white/5"
+                } ${!hasTeam ? "opacity-40 cursor-not-allowed" : ""}`}
+              >
+                Týmové
+              </button>
+            </div>
+            {!hasTeam && (
+              <p className="text-[11px] text-slate-400">
+                Týmové smlouvy jsou dostupné jen pro manažery s podřízenými.
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.7)] space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                  Filtrování produktů
+                </p>
+                <p className="text-sm text-slate-200">Výběr kategorií</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
+              {[
+                ["all", "Všechny"],
+                ["life", "Život"],
+                ["auto", "Auto"],
+                ["other", "Vedlejší produkty"],
+              ].map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setProductFilter(val as ProductFilter)}
+                  className={`px-3 py-1.5 rounded-full border transition ${
+                    productFilter === val
+                      ? "bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/40"
+                      : "border-white/20 text-slate-200 hover:bg-white/5"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
 
         {loading ? (
           <p className="text-sm text-slate-300">Načítám data…</p>
