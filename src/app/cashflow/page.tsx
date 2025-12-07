@@ -390,6 +390,47 @@ function generateCashflow(
         break;
       }
 
+      case "domex": {
+        const immediateDomex =
+          items.find((i) =>
+            i.title.includes("okamžitá provize (z platby)")
+          ) ?? immediate;
+        const subsequentDomex = items.find((i) =>
+          i.title.includes("následná provize (z platby)")
+        );
+
+        const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
+        const firstPayout = estimatePayoutDate(start, agreement);
+        const subsequentStart = new Date(
+          start.getFullYear() + 1,
+          start.getMonth(),
+          start.getDate()
+        );
+
+        let payout = firstPayout;
+        while (payout <= horizonEnd) {
+          const amount =
+            payout < subsequentStart
+              ? immediateDomex?.amount
+              : subsequentDomex?.amount;
+          const notePrefix =
+            entry.source === "manager" ? "Manažerská · " : "Vlastní · ";
+          if (amount && Number.isFinite(amount) && amount !== 0) {
+            pushItem(
+              amount,
+              payout,
+              `${notePrefix}DOMEX, ${stepMonths === 1 ? "měsíčně" : `každých ${stepMonths} měsíců`}`
+            );
+          }
+          payout = new Date(
+            payout.getFullYear(),
+            payout.getMonth() + stepMonths,
+            payout.getDate()
+          );
+        }
+        break;
+      }
+
       // Pillow úraz / nemoc
       case "pillowInjury": {
         if (immediate) {

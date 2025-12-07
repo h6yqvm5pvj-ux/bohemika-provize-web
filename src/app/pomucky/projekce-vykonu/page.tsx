@@ -11,7 +11,6 @@ import {
   calculateCppAuto,
   calculateAllianzAuto,
   calculateDomex,
-  calculateMaxdomov,
 } from "@/app/lib/productFormulas";
 import { type Position, type CommissionMode } from "@/app/types/domain";
 
@@ -177,16 +176,38 @@ function projectProperty(
   start: Date,
   storno: StornoPct
 ) {
-  const one = calculateDomex(annualPremium, "annual", pos).total;
-  const two = calculateMaxdomov(annualPremium, "annual", pos).total;
-  const avg = (one + two) / 2;
+  // používáme jen DOMEX, frekvence roční, výplata dle platby
+  const dto = calculateDomex(annualPremium, "annual", pos);
+  const items = dto.items.map((it) => ({
+    title: (it.title ?? "").toLowerCase(),
+    amount: it.amount ?? 0,
+  }));
+  const immediate = items.find((i) => i.title.includes("okamžitá"));
+  const subsequent = items.find((i) => i.title.includes("následná"));
+
   const res: { date: Date; amount: number }[] = [];
   const first = new Date(start);
-  first.setMonth(first.getMonth() + 1);
-  for (let y = 0; y < YEARS; y++) {
-    const stor = Math.pow(1 - storno / 100, y);
-    res.push({ date: new Date(first.getFullYear() + y, first.getMonth(), first.getDate()), amount: avg * stor });
+  first.setMonth(first.getMonth() + 1); // první výplata další měsíc
+
+  // první rok – okamžitá provize
+  if (immediate) {
+    res.push({
+      date: new Date(first),
+      amount: immediate.amount * Math.pow(1 - storno / 100, 0),
+    });
   }
+
+  // další roky – následná provize k výročí
+  if (subsequent) {
+    for (let y = 1; y < YEARS; y++) {
+      const date = new Date(first.getFullYear() + y, first.getMonth(), first.getDate());
+      res.push({
+        date,
+        amount: subsequent.amount * Math.pow(1 - storno / 100, y),
+      });
+    }
+  }
+
   return res;
 }
 
@@ -300,9 +321,10 @@ export default function ProjectionPage() {
             Poznej kouzlo následných provizí!
           </h1>
           <p className="text-sm text-slate-300">
-            Zadej měsíční produkci. Počítáme NEON (život), průměr ČPP/Allianz
-            Auto a průměr DOMEX/MAXDOMOV. Výkon se opakuje každý měsíc, horizont
-            15 let. Pozice: {positionLabel(position)}.
+            Modelace vychází u Života z provize NEONU, u Auta průměr z provize
+            ČPP a Allianz, u Majetku z DOMEXU. Modelace počítá s tím, že produkce
+            je každý měsíc stejná. Lze započítat každoroční zdražování i míru
+            stornovosti. Pozice: {positionLabel(position)}.
           </p>
         </header>
 
@@ -354,7 +376,7 @@ export default function ProjectionPage() {
           />
           <InputCard
             title="Pojištění majetku"
-            subtitle="Roční pojistné (průměr DOMEX/MAXDOMOV)"
+            subtitle="Roční pojistné (DOMEX, výplata dle platby)"
             value={propAnnual}
             onChange={setPropAnnual}
             extra={
