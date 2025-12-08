@@ -104,10 +104,12 @@ export default function InfoPage() {
               href="https://apps.apple.com/cz/app/bohemika-provize/id6755092188?l=cs"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-full border border-emerald-400/70 bg-emerald-500/20 px-6 py-2.5 text-sm sm:text-base font-semibold text-emerald-50 shadow-[0_0_25px_rgba(16,185,129,0.55)] hover:bg-emerald-500/30 hover:border-emerald-200 transition"
             >
-              <span>📲</span>
-              <span>Odkaz na App Store</span>
+              <img
+                src="/icons/appstore.webp"
+                alt="Odkaz na App Store"
+                className="h-10 sm:h-12 w-auto"
+              />
             </a>
           </div>
         </section>

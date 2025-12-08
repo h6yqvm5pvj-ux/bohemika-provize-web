@@ -195,6 +195,46 @@ function AnimatedMoney({
   return <span>{formatMoney(animated)}</span>;
 }
 
+function AnimatedHeading({ text }: { text: string }) {
+  const chars = Array.from(text);
+  return (
+    <div className="text-3xl sm:text-4xl font-semibold text-white leading-tight flex flex-wrap gap-x-[2px]">
+      <style jsx>{`
+        @keyframes floatUpHome {
+          0% {
+            opacity: 0;
+            transform: translateY(12px) scale(0.98);
+            filter: blur(4px);
+          }
+          60% {
+            opacity: 1;
+            transform: translateY(-3px) scale(1.01);
+            filter: blur(0);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: blur(0);
+          }
+        }
+      `}</style>
+      {chars.map((ch, idx) => (
+        <span
+          key={`${ch}-${idx}`}
+          className="inline-block"
+          style={{
+            animation: "floatUpHome 620ms ease-out forwards",
+            animationDelay: `${idx * 16}ms`,
+            opacity: 0,
+          }}
+        >
+          {ch === " " ? "\u00a0" : ch}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ---------- komponenta ----------
 
 export default function HomePage() {
@@ -217,6 +257,7 @@ export default function HomePage() {
   const [lbRange, setLbRange] = useState<LeaderboardRange>("month");
 
   const [loading, setLoading] = useState(true);
+  const [greeting, setGreeting] = useState("");
 
   const now = new Date();
   const monthLabel = MONTH_LABELS[now.getMonth()];
@@ -255,16 +296,19 @@ export default function HomePage() {
         const meSnap = await getDoc(doc(usersRef, email));
         let position: Position | undefined;
         let monthlyGoal: number | null | undefined;
+        let oslovenie: string | undefined;
         if (meSnap.exists()) {
           const d = meSnap.data() as any;
           position = d.position as Position | undefined;
           monthlyGoal = (d.monthlyGoal as number | undefined) ?? null;
+          oslovenie = (d.osloveni as string | undefined)?.trim();
         }
 
         setUserMeta({
           position,
           monthlyGoal: monthlyGoal ?? null,
         });
+        setGreeting(oslovenie || nameFromEmail(email));
 
         const isManager = isManagerPosition(position);
 
@@ -425,21 +469,23 @@ export default function HomePage() {
     const sums = new Map<string, number>();
 
     for (const entry of teamEntries) {
-      const created = toDate(entry.createdAt);
-      if (!created) continue;
+      const signed =
+        toDate((entry as any).contractSignedDate) ??
+        toDate(entry.createdAt);
+      if (!signed) continue;
 
       // filtr rozsahu
       if (lbRange === "month") {
         if (
-          created.getFullYear() !== currentYear ||
-          created.getMonth() !== currentMonth
+          signed.getFullYear() !== currentYear ||
+          signed.getMonth() !== currentMonth
         ) {
           continue;
         }
       } else if (lbRange === "year") {
-        if (created.getFullYear() !== currentYear) continue;
+        if (signed.getFullYear() !== currentYear) continue;
       } else if (lbRange === "sixMonths") {
-        if (created < sixMonthsAgo) continue;
+        if (signed < sixMonthsAgo) continue;
       }
 
       const pk = entry.productKey;
@@ -479,6 +525,12 @@ export default function HomePage() {
     <AppLayout active="home">
       {user && <AutoAnniversaryModal userId={user.uid} />}
       <div className="w-full max-w-5xl space-y-6">
+        <div className="pt-2">
+          <AnimatedHeading
+            text={`Ahoj ${greeting || nameFromEmail(user?.email)}...`}
+          />
+        </div>
+
         {/* PRODUKCE BOX */}
         <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-8 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
           <div className="mb-6">

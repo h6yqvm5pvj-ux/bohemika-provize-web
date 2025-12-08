@@ -59,6 +59,7 @@ type ContractDoc = {
   contractNumber?: string | null;
 
   policyStartDate?: FirestoreTimestamp | null;
+  contractSignedDate?: FirestoreTimestamp | Date | string | null;
   createdAt?: FirestoreTimestamp | Date | string | null;
 
   durationYears?: number | null;
@@ -149,6 +150,29 @@ function productLabel(p?: Product): string {
     default:
       return "Neznámý produkt";
   }
+}
+
+function positionLabel(pos?: Position | null): string {
+  const map: Record<Position, string> = {
+    poradce1: "Poradce 1",
+    poradce2: "Poradce 2",
+    poradce3: "Poradce 3",
+    poradce4: "Poradce 4",
+    poradce5: "Poradce 5",
+    poradce6: "Poradce 6",
+    poradce7: "Poradce 7",
+    poradce8: "Poradce 8",
+    poradce9: "Poradce 9",
+    poradce10: "Poradce 10",
+    manazer4: "Manažer 4",
+    manazer5: "Manažer 5",
+    manazer6: "Manažer 6",
+    manazer7: "Manažer 7",
+    manazer8: "Manažer 8",
+    manazer9: "Manažer 9",
+    manazer10: "Manažer 10",
+  };
+  return pos ? map[pos] ?? pos : "—";
 }
 
 function frequencyText(raw?: PaymentFrequency | null): string {
@@ -467,14 +491,6 @@ export default function ContractDetailPage() {
                   {productLabel(prod)}
                 </h1>
 
-                {contract?.clientName && (
-                  <p className="text-sm text-slate-200 mt-1">
-                    Klient:{" "}
-                    <span className="font-medium">
-                      {contract.clientName}
-                    </span>
-                  </p>
-                )}
               </div>
 
               <div className="flex gap-2">
@@ -486,6 +502,27 @@ export default function ContractDetailPage() {
                 </Link>
               </div>
             </header>
+
+            {/* Klient / Produkt boxy */}
+            <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-1.5">
+                  Klient
+                </div>
+                <div className="text-lg font-semibold text-slate-50">
+                  {contract?.clientName ?? "—"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-1.5">
+                  Produkt
+                </div>
+                <div className="text-lg font-semibold text-slate-50">
+                  {productLabel(prod)}
+                </div>
+              </div>
+            </section>
 
             {/* STAVY */}
             {loading && (
@@ -503,33 +540,27 @@ export default function ContractDetailPage() {
                 {/* ZÁKLADNÍ INFO */}
                 <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl">
-                    <h3 className="text-sm font-semibold text-slate-100 mb-2">
+                    <h3 className="text-base font-semibold text-slate-100 mb-3">
                       Základní údaje
                     </h3>
-                    <dl className="space-y-1.5 text-xs text-slate-200">
+                    <dl className="space-y-2 text-sm text-slate-200">
                       <div className="flex justify-between gap-2">
-                        <dt className="text-slate-400">Produkt</dt>
-                        <dd className="font-medium text-right">
-                          {productLabel(prod)}
+                        <dt className="text-slate-300">Sjednána jako</dt>
+                        <dd className="font-semibold text-right">
+                          {positionLabel(contract.position)}
                         </dd>
                       </div>
                       <div className="flex justify-between gap-2">
-                        <dt className="text-slate-400">Pozice</dt>
-                        <dd className="font-medium text-right">
-                          {contract.position ?? "—"}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <dt className="text-slate-400">Pojistné</dt>
-                        <dd className="font-medium text-right">
+                        <dt className="text-slate-300">Pojistné</dt>
+                        <dd className="font-semibold text-right">
                           {formatMoney(premium)}
                         </dd>
                       </div>
                       <div className="flex justify-between gap-2">
-                        <dt className="text-slate-400">
+                        <dt className="text-slate-300">
                           Frekvence platby
                         </dt>
-                        <dd className="font-medium text-right">
+                        <dd className="font-semibold text-right">
                           {frequencyText(freq)}
                         </dd>
                       </div>
@@ -538,32 +569,32 @@ export default function ContractDetailPage() {
 
                   {/* DATA SMLOUVY */}
                   <div className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl">
-                    <h3 className="text-sm font-semibold text-slate-100 mb-2">
+                    <h3 className="text-base font-semibold text-slate-100 mb-3">
                       Data smlouvy
                     </h3>
-                    <dl className="space-y-1.5 text-xs text-slate-200">
+                    <dl className="space-y-2 text-sm text-slate-200">
                       <div className="flex justify-between gap-2">
-                        <dt className="text-slate-400">
-                          Datum výpočtu
-                        </dt>
-                        <dd className="font-medium text-right">
-                          {formatDate(contract.createdAt)}
+                        <dt className="text-slate-300">Datum sjednání</dt>
+                        <dd className="font-semibold text-right">
+                          {formatDate(
+                            contract.contractSignedDate ?? contract.createdAt
+                          )}
                         </dd>
                       </div>
                       <div className="flex justify-between gap-2">
-                        <dt className="text-slate-400">
+                        <dt className="text-slate-300">
                           Počátek smlouvy
                         </dt>
-                        <dd className="font-medium text-right">
+                        <dd className="font-semibold text-right">
                           {formatDate(contract.policyStartDate)}
                         </dd>
                       </div>
                       {contract.contractNumber && (
                         <div className="flex justify-between gap-2">
-                          <dt className="text-slate-400">
+                          <dt className="text-slate-300">
                             Číslo smlouvy
                           </dt>
-                          <dd className="font-medium text-right">
+                          <dd className="font-semibold text-right">
                             {contract.contractNumber}
                           </dd>
                         </div>

@@ -711,18 +711,6 @@ export default function CalculatorPage() {
 
             <div className="space-y-1">
               <label className="block text-sm font-medium">
-                Datum počátku smlouvy
-              </label>
-              <input
-                type="date"
-                className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                value={policyStartDate}
-                onChange={(e) => setPolicyStartDate(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="block text-sm font-medium">
                 Číslo smlouvy
               </label>
               <input
@@ -731,6 +719,18 @@ export default function CalculatorPage() {
                 value={contractNumber}
                 onChange={(e) => setContractNumber(e.target.value)}
                 placeholder="Např. 7503027088"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-sm font-medium">
+                Datum počátku smlouvy
+              </label>
+              <input
+                type="date"
+                className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                value={policyStartDate}
+                onChange={(e) => setPolicyStartDate(e.target.value)}
               />
             </div>
           </div>

@@ -11,6 +11,7 @@ import {
 
 import { LifeRecordForm } from "./LifeRecordForm";
 import { CarRecordForm } from "./CarRecordForm";
+import { PropertyRecordForm } from "./PropertyRecordForm";
 
 export default function RecordOfMeetingPage() {
   const [selectedType, setSelectedType] =
@@ -53,6 +54,7 @@ export default function RecordOfMeetingPage() {
         <section className="space-y-4">
           {selectedType === "life" && <LifeRecordForm />}
           {selectedType === "car" && <CarRecordForm />}
+          {selectedType === "property" && <PropertyRecordForm />}
           {/* ostatní typy necháme zatím jako placeholdery */}
         </section>
       </div>
