@@ -1,6 +1,7 @@
 // src/app/info/page.tsx
 "use client";
 
+import Image from "next/image";
 import { AppLayout } from "@/components/AppLayout";
 
 export default function InfoPage() {
@@ -105,10 +106,13 @@ export default function InfoPage() {
               target="_blank"
               rel="noreferrer"
             >
-              <img
+              <Image
                 src="/icons/appstore.webp"
                 alt="Odkaz na App Store"
+                width={200}
+                height={60}
                 className="h-10 sm:h-12 w-auto"
+                priority
               />
             </a>
           </div>

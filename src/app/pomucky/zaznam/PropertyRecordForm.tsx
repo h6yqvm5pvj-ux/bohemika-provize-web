@@ -145,7 +145,10 @@ export function PropertyRecordForm() {
   const [extraAnimalLiability, setExtraAnimalLiability] = useState(false);
   const [extraAnimalAmount, setExtraAnimalAmount] = useState("");
 
-  const toggleSet = (setState: (v: Set<string>) => void, key: string) => {
+  const toggleSet = (
+    setState: (updater: (prev: Set<string>) => Set<string>) => void,
+    key: string
+  ) => {
     setState((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
