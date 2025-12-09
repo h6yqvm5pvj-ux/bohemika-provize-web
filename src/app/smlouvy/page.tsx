@@ -47,6 +47,7 @@ type ContractDoc = {
   contractNumber?: string | null;
 
   createdAt?: FirestoreTimestamp | Date | string | null;
+  contractSignedDate?: FirestoreTimestamp | Date | string | null;
 };
 
 type AppUser = {
@@ -272,8 +273,20 @@ export default function ContractsPage() {
   const canShowTeamToggle = isManagerPosition(currentUserPosition);
 
   const displayedContracts = useMemo(() => {
-    if (showTeam && canShowTeamToggle) return teamContracts;
-    return myContracts;
+    const base =
+      showTeam && canShowTeamToggle ? teamContracts : myContracts;
+
+    return [...base].sort((a, b) => {
+      const da =
+        toDate((a as any).contractSignedDate) ??
+        toDate(a.createdAt) ??
+        new Date(0);
+      const db =
+        toDate((b as any).contractSignedDate) ??
+        toDate(b.createdAt) ??
+        new Date(0);
+      return db.getTime() - da.getTime();
+    });
   }, [showTeam, canShowTeamToggle, teamContracts, myContracts]);
 
   const filteredContracts = useMemo(() => {
@@ -387,11 +400,13 @@ export default function ContractsPage() {
             )}
           </div>
         ) : (
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
             {filteredContracts.map((c: any) => {
-              const created = toDate(c.createdAt);
-              const createdStr = created
-                ? created.toLocaleDateString("cs-CZ")
+              const signed =
+                toDate((c as any).contractSignedDate) ??
+                toDate(c.createdAt);
+              const signedStr = signed
+                ? signed.toLocaleDateString("cs-CZ")
                 : "—";
 
               const ownerEmail =
@@ -410,9 +425,9 @@ export default function ContractsPage() {
                 <Link
                   key={c.id}
                   href={`/smlouvy/${slug}`}
-                  className="block group"
+                  className="block group h-full"
                 >
-                  <article className="relative flex flex-col sm:flex-row sm:items-center gap-4 rounded-2xl border border-white/15 bg-white/[0.04] backdrop-blur-2xl px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.8)] hover:border-sky-400/70 hover:bg-white/[0.08] transition">
+                  <article className="relative flex h-full flex-col sm:flex-row sm:items-center gap-4 rounded-2xl border border-white/15 bg-white/[0.04] backdrop-blur-2xl px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.8)] hover:border-sky-400/70 hover:bg-white/[0.08] transition">
                     {/* levý barevný pruh */}
                     <div className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-gradient-to-b from-sky-400 via-indigo-400 to-emerald-400" />
 
@@ -451,12 +466,12 @@ export default function ContractsPage() {
                         </p>
                       )}
 
-                      {/* Datum přidání */}
+                      {/* Datum sjednání */}
                       <p className="text-[11px] sm:text-xs text-slate-300">
                         <span className="font-medium text-slate-200">
-                          Datum přidání:{" "}
+                          Datum sjednání:{" "}
                         </span>
-                        <span>{createdStr}</span>
+                        <span>{signedStr}</span>
                       </p>
                     </div>
 

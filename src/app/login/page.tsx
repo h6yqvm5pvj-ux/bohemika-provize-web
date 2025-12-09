@@ -10,8 +10,13 @@ import {
 } from "firebase/auth";
 import { auth, db } from "../firebase";
 import Plasma from "@/components/Plasma";
-import Image from "next/image";
 import { doc, getDoc } from "firebase/firestore";
+import { Sora } from "next/font/google";
+
+const sora = Sora({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
 
 export default function LoginPage() {
   const router = useRouter();
@@ -134,30 +139,14 @@ export default function LoginPage() {
         />
       </div>
 
-      <div className="flex min-h-screen items-center justify-center px-4">
-        {/* Glassy login karta */}
-        <div className="w-full max-w-md rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-7 sm:px-7 sm:py-8 shadow-[0_24px_80px_rgba(0,0,0,0.9)]">
-          <header className="mb-6">
-            <div className="flex items-center gap-3 mb-3">
-              <Image
-                src="/icons/bohemika_logo.png"
-                alt="Bohemika logo"
-                width={280}
-                height={80}
-                className="h-16 w-auto"
-                priority
-              />
-              <div>
-                <h1 className="text-lg sm:text-xl font-semibold">
-                  Bohemika Provize
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-300">
-                  Webová verze výpočtu provizí
-                </p>
-              </div>
-            </div>
-          </header>
+      <div className="flex min-h-screen flex-col items-center justify-center px-4 gap-8">
+        <AnimatedHeading
+          text="Bohemka.App"
+          className={sora.className}
+        />
 
+        {/* Glassy login karta */}
+        <div className="w-full max-w-xl rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-8 py-9 sm:px-10 sm:py-11 shadow-[0_30px_90px_rgba(0,0,0,0.9)]">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-slate-200">
@@ -206,5 +195,55 @@ export default function LoginPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function AnimatedHeading({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
+  const chars = Array.from(text);
+  return (
+    <div
+      className={`text-6xl sm:text-7xl font-semibold text-white leading-tight flex flex-wrap gap-x-[2px] ${
+        className ?? ""
+      }`}
+    >
+      <style jsx>{`
+        @keyframes floatUpLogin {
+          0% {
+            opacity: 0;
+            transform: translateY(14px) scale(0.98);
+            filter: blur(4px);
+          }
+          65% {
+            opacity: 1;
+            transform: translateY(-4px) scale(1.01);
+            filter: blur(0);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: blur(0);
+          }
+        }
+      `}</style>
+      {chars.map((ch, idx) => (
+        <span
+          key={`${ch}-${idx}`}
+          className="inline-block"
+          style={{
+            animation: "floatUpLogin 1200ms ease-out forwards",
+            animationDelay: `${idx * 32}ms`,
+            opacity: 0,
+          }}
+        >
+          {ch === " " ? "\u00a0" : ch}
+        </span>
+      ))}
+    </div>
   );
 }

@@ -258,6 +258,7 @@ export default function HomePage() {
 
   const [loading, setLoading] = useState(true);
   const [greeting, setGreeting] = useState("");
+  const [authReady, setAuthReady] = useState(false);
 
   const now = new Date();
   const monthLabel = MONTH_LABELS[now.getMonth()];
@@ -272,6 +273,7 @@ export default function HomePage() {
         return;
       }
       setUser(fbUser);
+      setAuthReady(true);
     });
 
     return () => unsub();
@@ -520,6 +522,8 @@ export default function HomePage() {
     lbProductFilter === "life"
       ? "Životní pojištění"
       : "Vedlejší produkty";
+
+  if (!authReady || !user) return null;
 
   return (
     <AppLayout active="home">
