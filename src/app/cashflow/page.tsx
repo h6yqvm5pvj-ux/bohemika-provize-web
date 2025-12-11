@@ -158,7 +158,7 @@ function commissionItemsForPosition(
     typeof entry.durationYears === "number" && !Number.isNaN(entry.durationYears)
       ? entry.durationYears
       : 15;
-  const mode = (entry.commissionMode ?? "accelerated") as CommissionMode;
+  const mode = (entry.commissionMode ?? entry.mode ?? "accelerated") as CommissionMode;
 
   switch (product) {
     case "neon":
@@ -209,6 +209,7 @@ type EntryDoc = {
   userEmail?: string | null;
   position?: Position | null;
   mode?: CommissionMode | null;
+  commissionMode?: CommissionMode | null;
   inputAmount?: number | null;
   contractNumber?: string | null;
 
