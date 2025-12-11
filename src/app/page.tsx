@@ -189,6 +189,7 @@ type EntryDoc = {
   frequencyRaw?: PaymentFrequency | null;
   durationYears?: number | null;
   commissionMode?: CommissionMode | null;
+  position?: Position | null;
 };
 
 type UserMeta = {
