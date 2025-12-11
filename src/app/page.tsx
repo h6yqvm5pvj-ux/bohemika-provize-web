@@ -25,7 +25,26 @@ import {
   type CommissionResultItemDTO,
   type Position,
   type Product,
+  type PaymentFrequency,
+  type CommissionMode,
 } from "./types/domain";
+import {
+  calculateNeon,
+  calculateFlexi,
+  calculateMaxEfekt,
+  calculatePillowInjury,
+  calculateDomex,
+  calculateMaxdomov,
+  calculateCppAuto,
+  calculateAllianzAuto,
+  calculateCsobAuto,
+  calculateUniqaAuto,
+  calculatePillowAuto,
+  calculateKooperativaAuto,
+  calculateZamex,
+  calculateCppCestovko,
+  calculateAxaCestovko,
+} from "./lib/productFormulas";
 
 // ---------- helpers ----------
 
@@ -79,6 +98,55 @@ function isManagerPosition(pos?: Position | null): boolean {
   return pos.startsWith("manazer");
 }
 
+function commissionItemsForPosition(
+  entry: EntryDoc,
+  pos: Position
+): CommissionResultItemDTO[] {
+  const product = entry.productKey;
+  const amount = entry.inputAmount ?? 0;
+  const freq = (entry.frequencyRaw ?? "annual") as PaymentFrequency;
+  const duration =
+    typeof entry.durationYears === "number" && !Number.isNaN(entry.durationYears)
+      ? entry.durationYears
+      : 15;
+  const mode = (entry.commissionMode ?? "accelerated") as CommissionMode;
+
+  switch (product) {
+    case "neon":
+      return calculateNeon(amount, pos, duration, mode).items;
+    case "flexi":
+      return calculateFlexi(amount, pos, mode).items;
+    case "maximaMaxEfekt":
+      return calculateMaxEfekt(amount, duration, pos, mode).items;
+    case "pillowInjury":
+      return calculatePillowInjury(amount, pos, mode).items;
+    case "domex":
+      return calculateDomex(amount, freq, pos).items;
+    case "maxdomov":
+      return calculateMaxdomov(amount, freq, pos).items;
+    case "cppAuto":
+      return calculateCppAuto(amount, freq, pos).items;
+    case "allianzAuto":
+      return calculateAllianzAuto(amount, freq, pos).items;
+    case "csobAuto":
+      return calculateCsobAuto(amount, freq, pos).items;
+    case "uniqaAuto":
+      return calculateUniqaAuto(amount, freq, pos).items;
+    case "pillowAuto":
+      return calculatePillowAuto(amount, freq, pos).items;
+    case "kooperativaAuto":
+      return calculateKooperativaAuto(amount, freq, pos).items;
+    case "zamex":
+      return calculateZamex(amount, freq, pos).items;
+    case "cppcestovko":
+      return calculateCppCestovko(amount, pos).items;
+    case "axacestovko":
+      return calculateAxaCestovko(amount, pos).items;
+    default:
+      return [];
+  }
+}
+
 function nameFromEmail(email: string | null | undefined): string {
   if (!email) return "Neznámý poradce";
   const local = email.split("@")[0] ?? "";
@@ -118,6 +186,9 @@ type EntryDoc = {
 
   productKey?: Product;
   inputAmount?: number | null;
+  frequencyRaw?: PaymentFrequency | null;
+  durationYears?: number | null;
+  commissionMode?: CommissionMode | null;
 };
 
 type UserMeta = {
@@ -364,9 +435,15 @@ export default function HomePage() {
           where("managerEmail", "==", email)
         );
         const subsSnap = await getDocs(subsQ);
-        const subEmails = subsSnap.docs
-          .map((d) => (d.data() as any).email as string | undefined)
+        const subUsers = subsSnap.docs.map((d) => d.data() as any);
+        const subEmails = subUsers
+          .map((d) => (d.email as string | undefined)?.toLowerCase())
           .filter(Boolean) as string[];
+        const subPositionMap = new Map<string, Position | undefined>();
+        subUsers.forEach((u) => {
+          const em = (u.email as string | undefined)?.toLowerCase();
+          if (em) subPositionMap.set(em, u.position as Position | undefined);
+        });
 
         if (subEmails.length === 0) {
           setHasTeam(false);
@@ -394,6 +471,7 @@ export default function HomePage() {
 
         teamSnap.forEach((docSnap) => {
           const data = docSnap.data() as any as EntryDoc;
+          const ownerEmail = (data.userEmail ?? "").toLowerCase();
 
           // pro leaderboard ukládáme všechny záznamy
           teamEntriesAll.push({
@@ -417,8 +495,27 @@ export default function HomePage() {
           const immediate = items.find((it) =>
             (it.title ?? "").toLowerCase().includes("okamžitá provize")
           );
+
           if (immediate?.amount) {
-            teamImmediate += immediate.amount;
+            const mgrPos = position;
+            const subPos =
+              subPositionMap.get(ownerEmail) ??
+              (data.position as Position | undefined) ??
+              null;
+            if (mgrPos && subPos) {
+              const mgrImmediate =
+                commissionItemsForPosition(data, mgrPos).find((i) =>
+                  (i.title ?? "").toLowerCase().includes("okamžitá")
+                )?.amount ?? 0;
+              const subImmediate =
+                commissionItemsForPosition(data, subPos).find((i) =>
+                  (i.title ?? "").toLowerCase().includes("okamžitá")
+                )?.amount ?? 0;
+              const diff = Math.max(0, mgrImmediate - subImmediate);
+              teamImmediate += diff;
+            } else {
+              teamImmediate += immediate.amount;
+            }
           }
         });
 

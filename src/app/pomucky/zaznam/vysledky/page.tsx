@@ -10,10 +10,12 @@ type LifeResultInput = {
   totalInvalidity: number;
   hasCriticalIllness: boolean;
   hasSeriousIllness: boolean;
+  hasExistingContract?: boolean;
 };
 
 export default function RecordResultsPage() {
   const [lines, setLines] = useState<string[] | null>(null);
+  const [additional, setAdditional] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -27,6 +29,7 @@ export default function RecordResultsPage() {
     try {
       const data: LifeResultInput = JSON.parse(raw);
       const recs: string[] = [];
+      const extras: string[] = [];
 
       // 1) Invalidita
       if (!data.hasInvalidity) {
@@ -56,10 +59,18 @@ export default function RecordResultsPage() {
         );
       }
 
+      if (data.hasExistingContract) {
+        extras.push(
+          "Protože jsi zvolil, že klient má již smlouvu se stejným pojistným zájmem, uveď, že klient má již uzavřenou smlouvu / smlouvy životního pojištění u pojišťovny ______ a co s nimi má v plánu. Např.: Klient má již uzavřenou smlouvu ŽP u pojišťovny Kooperativa a.s., klient ji chce vypovědět."
+        );
+      }
+
       setLines(recs);
+      setAdditional(extras);
     } catch (err) {
       console.error(err);
       setLines([]);
+      setAdditional([]);
     }
   }, []);
 
@@ -76,29 +87,64 @@ export default function RecordResultsPage() {
           </p>
         </header>
 
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
-          {lines === null ? (
-            <p className="text-sm text-slate-300">Načítám doporučení…</p>
-          ) : lines.length === 0 ? (
-            <p className="text-sm text-slate-300">
-              Zatím tu nemám žádná konkrétní doporučení. Vyplň nejdřív krytí
-              na stránce „Záznam z jednání – Život“ a znovu klikni na{" "}
-              <strong>Výsledky</strong>.
-            </p>
-          ) : (
-            <ul className="space-y-3 text-sm text-slate-50">
-              {lines.map((line, idx) => (
-                <li
-                  key={idx}
-                  className="flex items-start gap-2 leading-relaxed"
-                >
-                  <span className="mt-[3px] text-emerald-300">•</span>
-                  <span>{line}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <div className="space-y-3">
+          <div className="text-lg font-semibold text-slate-50">
+            Další požadavky, potřeby a cíle zákazníka
+          </div>
+          <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)] space-y-3">
+            <div className="flex items-start gap-2 text-sm text-slate-50 leading-relaxed">
+              <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
+              <span>
+                Klient vyžadoval vysvětlení pojmů, které jsou uvedeny v
+                pojistných podmínkách k požadovanému typu pojištění.
+              </span>
+            </div>
+            {additional === null ? (
+              <p className="text-sm text-slate-300">Načítám…</p>
+            ) : (
+              <div className="space-y-2 text-sm text-slate-50">
+                {additional.map((line, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-start gap-2 leading-relaxed"
+                  >
+                    <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
+                    <span>{line}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+
+        <div className="space-y-3">
+          <div className="text-lg font-semibold text-slate-50">
+            Popis dopadů sjednání pojištění/změny pojištění
+          </div>
+          <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
+            {lines === null ? (
+              <p className="text-sm text-slate-300">Načítám doporučení…</p>
+            ) : lines.length === 0 ? (
+              <p className="text-sm text-slate-300">
+                Zatím tu nemám žádná konkrétní doporučení. Vyplň nejdřív krytí
+                na stránce „Záznam z jednání – Život“ a znovu klikni na{" "}
+                <strong>Výsledky</strong>.
+              </p>
+            ) : (
+              <ul className="space-y-3 text-sm text-slate-50">
+                {lines.map((line, idx) => (
+                  <li
+                    key={idx}
+                    className="flex items-start gap-2 leading-relaxed"
+                  >
+                    <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       </div>
     </AppLayout>
   );

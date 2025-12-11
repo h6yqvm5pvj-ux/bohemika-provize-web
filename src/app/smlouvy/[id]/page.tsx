@@ -20,6 +20,7 @@ import {
   type CommissionResultItemDTO,
   type CommissionMode,
 } from "../../types/domain";
+import Image from "next/image";
 
 import {
   calculateNeon,
@@ -150,6 +151,46 @@ function productLabel(p?: Product): string {
     default:
       return "Neznámý produkt";
   }
+}
+
+function productIcon(p?: Product): string {
+  if (
+    p === "neon" ||
+    p === "flexi" ||
+    p === "maximaMaxEfekt" ||
+    p === "pillowInjury"
+  ) {
+    return "/icons/zivot.png";
+  }
+
+  if (
+    p === "cppAuto" ||
+    p === "allianzAuto" ||
+    p === "csobAuto" ||
+    p === "uniqaAuto" ||
+    p === "pillowAuto" ||
+    p === "kooperativaAuto"
+  ) {
+    return "/icons/icon_auto.png";
+  }
+
+  if (p === "zamex") {
+    return "/icons/icon_zamex.png";
+  }
+
+  if (p === "domex" || p === "maxdomov") {
+    return "/icons/icon_domex.png";
+  }
+
+  if (p === "cppcestovko" || p === "axacestovko") {
+    return "/icons/icon_cestovko.png";
+  }
+
+  if (p === "comfortcc") {
+    return "/icons/trezor.png";
+  }
+
+  return "/icons/produkt.png";
 }
 
 function positionLabel(pos?: Position | null): string {
@@ -449,14 +490,25 @@ export default function ContractDetailPage() {
   };
 
   // vyfiltrované položky bez řádku "Celkem"
+  const filterDomexItems = (arr: CommissionResultItemDTO[]) => {
+    if (prod !== "domex") return arr;
+    return arr.filter((it) =>
+      (it.title ?? "").toLowerCase().includes("(z platby)")
+    );
+  };
+
   const adviserItems =
-    contract?.items?.filter(
-      (it) => !it.title.toLowerCase().includes("celkem")
+    filterDomexItems(
+      (contract?.items ?? []).filter(
+        (it) => !it.title.toLowerCase().includes("celkem")
+      )
     ) ?? [];
 
   const managerItems =
-    overrideItems?.filter(
-      (it) => !it.title.toLowerCase().includes("celkem")
+    filterDomexItems(
+      (overrideItems ?? []).filter(
+        (it) => !it.title.toLowerCase().includes("celkem")
+      )
     ) ?? [];
 
   const showMeziprovision =
@@ -487,10 +539,6 @@ export default function ContractDetailPage() {
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-400 mb-1">
                   Detail smlouvy
                 </p>
-                <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
-                  {productLabel(prod)}
-                </h1>
-
               </div>
 
               <div className="flex gap-2">
@@ -509,7 +557,7 @@ export default function ContractDetailPage() {
                 <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-1.5">
                   Klient
                 </div>
-                <div className="text-lg font-semibold text-slate-50">
+                <div className="text-2xl font-semibold text-slate-50">
                   {contract?.clientName ?? "—"}
                 </div>
               </div>
@@ -519,7 +567,16 @@ export default function ContractDetailPage() {
                   Produkt
                 </div>
                 <div className="text-lg font-semibold text-slate-50">
-                  {productLabel(prod)}
+                  <div className="flex items-center gap-3">
+                    <Image
+                      src={productIcon(prod)}
+                      alt="Produkt"
+                      width={56}
+                      height={56}
+                      className="h-12 w-auto"
+                    />
+                    <span>{productLabel(prod)}</span>
+                  </div>
                 </div>
               </div>
             </section>

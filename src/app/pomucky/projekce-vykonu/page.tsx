@@ -465,7 +465,7 @@ export default function ProjectionPage() {
           className="text-4xl sm:text-5xl font-semibold text-white leading-tight"
         />
         <SplitTextAnimated
-          text="Poznej sílu následných provizí!"
+          text="Pravidelná péče o klienta zajistí pravidelný příjem!"
           className="text-3xl sm:text-4xl font-semibold text-white/90 leading-tight"
           delayOffset={600}
         />
@@ -507,6 +507,9 @@ export default function ProjectionPage() {
           >
             Změnit volbu
           </button>
+        </div>
+        <div className="text-lg sm:text-xl font-semibold text-white/90">
+          Pravidelná péče o klienta zajistí pravidelný příjem!
         </div>
         <p className="text-sm text-slate-300">
           Modelace vychází u Života z provize NEONU, u Auta průměr z provize

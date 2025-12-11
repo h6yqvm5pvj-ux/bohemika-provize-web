@@ -348,8 +348,12 @@ export default function CalculatorPage() {
 
     if (product === "domex") {
       const dto = calculateDomex(val, frequency, position);
-      setItems(dto.items);
-      setTotal(dto.total);
+      const filtered = dto.items.filter((i) =>
+        (i.title ?? "").toLowerCase().includes("(z platby)")
+      );
+      const sum = filtered.reduce((s, i) => s + (i.amount ?? 0), 0);
+      setItems(filtered);
+      setTotal(sum);
       setUnsupported(false);
       return;
     }

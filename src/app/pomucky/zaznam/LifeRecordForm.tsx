@@ -198,6 +198,9 @@ export function LifeRecordForm() {
 
   // Operace dítěte s vrozenou vadou (100 000 – 500 000)
   const [childOperationOn, setChildOperationOn] = useState(false);
+  const [hasExistingContract, setHasExistingContract] = useState<"yes" | "no">(
+    "no"
+  );
   const [childOperationAmount, setChildOperationAmount] = useState("");
 
   // Připojištění dětí – úraz dospělého
@@ -638,6 +641,7 @@ export function LifeRecordForm() {
       totalInvalidity,
       hasCriticalIllness: ci1On || ci2On,
       hasSeriousIllness: seriousHimOn || seriousHerOn,
+      hasExistingContract: hasExistingContract === "yes",
     };
 
     if (typeof window !== "undefined") {
@@ -1254,6 +1258,27 @@ export function LifeRecordForm() {
           enabled={healthSocialOn}
           onToggle={() => setHealthSocialOn((v) => !v)}
         />
+
+        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.8)] space-y-3">
+          <div className="text-sm sm:text-base font-semibold text-white">
+            Zákazník má již uzavřenou pojistnou smlouvu týkající se stejného
+            pojistného zájmu
+          </div>
+          <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+            <ChipButton
+              active={hasExistingContract === "yes"}
+              onClick={() => setHasExistingContract("yes")}
+            >
+              Ano
+            </ChipButton>
+            <ChipButton
+              active={hasExistingContract === "no"}
+              onClick={() => setHasExistingContract("no")}
+            >
+              Ne
+            </ChipButton>
+          </div>
+        </section>
       </div>
 
       {/* ZELENÉ GLASSY TLAČÍTKO VÝSLEDKY */}

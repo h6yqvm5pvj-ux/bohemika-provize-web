@@ -133,6 +133,69 @@ function productLabel(p?: Product | "unknown"): string {
   }
 }
 
+function normalizeTitleKey(title: string): string {
+  const t = title.toLowerCase();
+  if (t.includes("z platby")) return `payment-${t}`;
+  if (t.includes("za rok")) return `annual-${t}`;
+  if (t.includes("okamžitá")) return "immediate";
+  if (t.includes("po 3")) return "po3";
+  if (t.includes("po 4")) return "po4";
+  if (t.includes("2.–5.")) return "nasl25";
+  if (t.includes("5.–10.")) return "nasl510";
+  if (t.includes("od 6.")) return "nasl6plus";
+  if (t.includes("z platby")) return "subsequentByPayment";
+  return t;
+}
+
+function commissionItemsForPosition(
+  entry: EntryDoc,
+  pos: Position
+): CommissionResultItemDTO[] {
+  const product = entry.productKey;
+  const amount = entry.inputAmount ?? 0;
+  const freq = (entry.frequencyRaw ?? "annual") as PaymentFrequency;
+  const duration =
+    typeof entry.durationYears === "number" && !Number.isNaN(entry.durationYears)
+      ? entry.durationYears
+      : 15;
+  const mode = (entry.commissionMode ?? "accelerated") as CommissionMode;
+
+  switch (product) {
+    case "neon":
+      return calculateNeon(amount, pos, duration, mode).items;
+    case "flexi":
+      return calculateFlexi(amount, pos, mode).items;
+    case "maximaMaxEfekt":
+      return calculateMaxEfekt(amount, duration, pos, mode).items;
+    case "pillowInjury":
+      return calculatePillowInjury(amount, pos, mode).items;
+    case "domex":
+      return calculateDomex(amount, freq, pos).items;
+    case "maxdomov":
+      return calculateMaxdomov(amount, freq, pos).items;
+    case "cppAuto":
+      return calculateCppAuto(amount, freq, pos).items;
+    case "allianzAuto":
+      return calculateAllianzAuto(amount, freq, pos).items;
+    case "csobAuto":
+      return calculateCsobAuto(amount, freq, pos).items;
+    case "uniqaAuto":
+      return calculateUniqaAuto(amount, freq, pos).items;
+    case "pillowAuto":
+      return calculatePillowAuto(amount, freq, pos).items;
+    case "kooperativaAuto":
+      return calculateKooperativaAuto(amount, freq, pos).items;
+    case "zamex":
+      return calculateZamex(amount, freq, pos).items;
+    case "cppcestovko":
+      return calculateCppCestovko(amount, pos).items;
+    case "axacestovko":
+      return calculateAxaCestovko(amount, pos).items;
+    default:
+      return [];
+  }
+}
+
 /* ---------- typy ---------- */
 
 type EntryDoc = {
@@ -164,51 +227,6 @@ type CashflowItem = {
   source?: "own" | "manager";
   contractNumber?: string | null;
 };
-
-function computeTotalForPosition(entry: EntryDoc, pos: Position): number {
-  const product = entry.productKey;
-  const amount = entry.inputAmount ?? 0;
-  const freq = entry.frequencyRaw ?? "annual";
-  const duration = entry.durationYears ?? 10;
-  const mode = (entry.mode as CommissionMode | null) ?? "accelerated";
-
-  if (!product || amount <= 0) return 0;
-
-  switch (product) {
-    case "neon":
-      return calculateNeon(amount, pos, duration, mode).total;
-    case "flexi":
-      return calculateFlexi(amount, pos, mode).total;
-    case "maximaMaxEfekt":
-      return calculateMaxEfekt(amount, duration, pos, mode).total;
-    case "pillowInjury":
-      return calculatePillowInjury(amount, pos, mode).total;
-    case "domex":
-      return calculateDomex(amount, freq, pos).total;
-    case "maxdomov":
-      return calculateMaxdomov(amount, freq, pos).total;
-    case "cppAuto":
-      return calculateCppAuto(amount, freq, pos).total;
-    case "allianzAuto":
-      return calculateAllianzAuto(amount, freq, pos).total;
-    case "csobAuto":
-      return calculateCsobAuto(amount, freq, pos).total;
-    case "uniqaAuto":
-      return calculateUniqaAuto(amount, freq, pos).total;
-    case "pillowAuto":
-      return calculatePillowAuto(amount, freq, pos).total;
-    case "kooperativaAuto":
-      return calculateKooperativaAuto(amount, freq, pos).total;
-    case "zamex":
-      return calculateZamex(amount, freq, pos).total;
-    case "cppcestovko":
-      return calculateCppCestovko(amount, pos).total;
-    case "axacestovko":
-      return calculateAxaCestovko(amount, pos).total;
-    default:
-      return 0;
-  }
-}
 
 type MonthGroup = {
   key: string; // "2026-4"
@@ -271,20 +289,22 @@ function monthsBetweenPayments(freq?: PaymentFrequency | null): number {
 
 function generateCashflow(
   entries: EntryDoc[],
-  horizonYears = 5
+  horizonYears = 10
 ): CashflowItem[] {
   const out: CashflowItem[] = [];
-  const now = new Date();
-  const horizonEnd = new Date(
-    now.getFullYear() + horizonYears,
-    now.getMonth(),
-    now.getDate()
-  );
 
   for (const entry of entries) {
     const agreement = toDate(entry.createdAt) ?? new Date();
     const start = toDate(entry.policyStartDate) ?? agreement;
     const product = entry.productKey;
+
+    // Rozšíříme horizont o +1 měsíc, aby se vešla výplata po posunu na 1. den
+    // následujícího měsíce (estimatePayoutDate překlápí na další měsíc).
+    const horizonEnd = new Date(
+      start.getFullYear() + horizonYears,
+      start.getMonth() + 1,
+      start.getDate()
+    );
 
     const items = (entry.items ?? []).map((it) => ({
       title: (it.title ?? "").toLowerCase(),
@@ -684,30 +704,65 @@ export default function CashflowPage() {
               )
             : [];
 
-        // vypočítat meziprovizi pro manažera
+        // vypočítat meziprovizi pro manažera (po jednotlivých položkách)
         const overrides: EntryDoc[] = [];
         if (myPos && teamRaw.length > 0) {
           for (const entry of teamRaw) {
-            const adviserTotal =
-              entry.total ??
-              (entry.items ?? []).reduce(
-                (sum, i) => sum + (i.amount ?? 0),
-                0
-              );
-            const managerTotal = computeTotalForPosition(entry, myPos);
-            const diff = managerTotal - (adviserTotal ?? 0);
-            if (!Number.isFinite(diff) || diff <= 0) continue;
+            const subPos =
+              (entry.position as Position | undefined) ??
+              subordinatePositions[(entry.userEmail ?? "").toLowerCase()] ??
+              null;
+            if (!subPos) continue;
+
+            const mgrItems = commissionItemsForPosition(entry, myPos);
+            const subItems = commissionItemsForPosition(entry, subPos);
+
+            const mgrMap = new Map<
+              string,
+              { title: string; amount: number }
+            >();
+            mgrItems.forEach((it) => {
+              const key = normalizeTitleKey(it.title ?? "");
+              const prev = mgrMap.get(key);
+              mgrMap.set(key, {
+                title: it.title ?? prev?.title ?? key,
+                amount: (prev?.amount ?? 0) + (it.amount ?? 0),
+              });
+            });
+
+            const diffItems: CommissionResultItemDTO[] = [];
+            let diffTotal = 0;
+
+            subItems.forEach((it) => {
+              const key = normalizeTitleKey(it.title ?? "");
+              const mgr = mgrMap.get(key);
+              const mgrAmt = mgr?.amount ?? 0;
+              const subAmt = it.amount ?? 0;
+              const remaining = mgrAmt - subAmt;
+              if (remaining > 0) {
+                diffItems.push({
+                  title: mgr?.title ?? it.title,
+                  amount: remaining,
+                });
+                diffTotal += remaining;
+              }
+              mgrMap.delete(key);
+            });
+
+            mgrMap.forEach((val) => {
+              if (val.amount > 0) {
+                diffItems.push({ title: val.title, amount: val.amount });
+                diffTotal += val.amount;
+              }
+            });
+
+            if (diffItems.length === 0 || diffTotal <= 0) continue;
 
             overrides.push({
               ...entry,
               id: `${entry.id}-override`,
-              items: [
-                {
-                  title: "Okamžitá provize (manažerská)",
-                  amount: diff,
-                },
-              ],
-              total: diff,
+              items: diffItems,
+              total: diffTotal,
               source: "manager",
               position: myPos,
             });
@@ -757,7 +812,7 @@ export default function CashflowPage() {
           });
         }
 
-        const cf = generateCashflow(entriesForCf);
+        const cf = generateCashflow(entriesForCf, 10);
         setCashflowItems(cf);
       } catch (e) {
         console.error("Chyba při načítání cashflow:", e);
