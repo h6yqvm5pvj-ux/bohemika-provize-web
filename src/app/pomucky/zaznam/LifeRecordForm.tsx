@@ -174,6 +174,8 @@ export function LifeRecordForm() {
   const [sick1Variant, setSick1Variant] =
     useState<SickVariant>("retroFrom1");
   const [sick1Amount, setSick1Amount] = useState("");
+  const [sickAccident1, setSickAccident1] = useState(false);
+  const [sickIllness1, setSickIllness1] = useState(false);
 
   // Pracovní neschopnost – blok 2
   const [sick2On, setSick2On] = useState(false);
@@ -181,6 +183,8 @@ export function LifeRecordForm() {
   const [sick2Variant, setSick2Variant] =
     useState<SickVariant>("retroFrom1");
   const [sick2Amount, setSick2Amount] = useState("");
+  const [sickAccident2, setSickAccident2] = useState(false);
+  const [sickIllness2, setSickIllness2] = useState(false);
 
   // Hospitalizace
   const [hospitalOn, setHospitalOn] = useState(false);
@@ -554,7 +558,11 @@ export function LifeRecordForm() {
     variant: SickVariant,
     setVariant: (v: SickVariant) => void,
     amount: string,
-    setAmount: (v: string) => void
+    setAmount: (v: string) => void,
+    accident: boolean,
+    setAccident: (v: boolean) => void,
+    illness: boolean,
+    setIllness: (v: boolean) => void
   ) => (
     <BenefitCard
       title="Pracovní neschopnost"
@@ -607,6 +615,24 @@ export function LifeRecordForm() {
                 onClick={() => setVariant("nonRetro")}
               >
                 Nezpětně
+              </ChipButton>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[11px] sm:text-xs text-slate-400">Plnění:</p>
+            <div className="flex flex-wrap gap-2">
+              <ChipButton
+                active={accident}
+                onClick={() => setAccident(!accident)}
+              >
+                Úrazem
+              </ChipButton>
+              <ChipButton
+                active={illness}
+                onClick={() => setIllness(!illness)}
+              >
+                Nemocí
               </ChipButton>
             </div>
           </div>
@@ -1081,7 +1107,11 @@ export function LifeRecordForm() {
           sick1Variant,
           setSick1Variant,
           sick1Amount,
-          setSick1Amount
+          setSick1Amount,
+          sickAccident1,
+          setSickAccident1,
+          sickIllness1,
+          setSickIllness1
         )}
 
         {/* 20) Pracovní neschopnost – 2 */}
@@ -1093,7 +1123,11 @@ export function LifeRecordForm() {
           sick2Variant,
           setSick2Variant,
           sick2Amount,
-          setSick2Amount
+          setSick2Amount,
+          sickAccident2,
+          setSickAccident2,
+          sickIllness2,
+          setSickIllness2
         )}
 
         {/* 21) Hospitalizace */}
