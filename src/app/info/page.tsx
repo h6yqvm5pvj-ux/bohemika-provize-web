@@ -50,7 +50,8 @@ export default function InfoPage() {
                 na více faktorech – včasné uhrazení smlouvy klientem,
                 datum uzavření a počátku, konkrétní pojišťovna nebo jiná
                 společnost. Proto se může stát, že aplikace zobrazí
-                provizi v jiném měsíci, než bude reálně vyplacena.
+                provizi v jiném měsíci, než bude reálně vyplacena. V případě
+                vystornování či změně smlouvy je nutné smlouvu SMAZAT a přidat znovu.
               </p>
             </div>
 
@@ -97,7 +98,6 @@ export default function InfoPage() {
               doporučení na provedení servisu. Nelze ji veřejně najít a je tak přístupná
               pouze díky odkazu níže.
             </span>{" "}
-            u klientů.
           </p>
 
           <div className="pt-2">

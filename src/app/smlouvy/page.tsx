@@ -142,6 +142,42 @@ function adviserNameFromEmail(email?: string | null): string {
     .join(" ");
 }
 
+function AnimatedSplitTitle({ text }: { text: string }) {
+  return (
+    <>
+      <div className="flex flex-wrap gap-0 text-5xl sm:text-6xl lg:text-7xl font-semibold tracking-tight leading-tight">
+        {text.split("").map((char, idx) => (
+          <span
+            key={idx}
+            className="split-letter inline-block"
+            style={{ animationDelay: `${idx * 35}ms` }}
+          >
+            {char === " " ? "\u00A0" : char}
+          </span>
+        ))}
+      </div>
+      <style jsx global>{`
+        .split-letter {
+          opacity: 0;
+          transform: translateY(14px) rotate(-1deg);
+          animation: splitFade 0.65s ease-out forwards;
+        }
+
+        @keyframes splitFade {
+          from {
+            opacity: 0;
+            transform: translateY(18px) rotate(-2deg);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) rotate(0deg);
+          }
+        }
+      `}</style>
+    </>
+  );
+}
+
 export default function ContractsPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [currentUserPosition, setCurrentUserPosition] =
@@ -307,49 +343,36 @@ export default function ContractsPage() {
     <AppLayout active="contracts">
       <div className="w-full max-w-5xl space-y-6">
         {/* HEADER */}
-        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
-              Smlouvy
-            </h1>
-            {user && (
-              <p className="text-sm text-slate-300">
-                Přihlášen jako{" "}
-                <span className="font-medium text-slate-50">
-                  {user.email}
-                </span>
-              </p>
-            )}
-          </div>
-        </header>
+        <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <AnimatedSplitTitle text="Smlouvy" />
 
-        {/* PŘEPNUTÍ Moje / Týmové */}
-        {canShowTeamToggle && (
-          <div className="inline-flex rounded-full bg-slate-950/70 border border-white/15 p-1 text-xs shadow-lg shadow-black/40">
-            <button
-              type="button"
-              onClick={() => setShowTeam(false)}
-              className={`px-3 py-1.5 rounded-full transition ${
-                !showTeam
-                  ? "bg-white text-slate-900 shadow-md"
-                  : "text-slate-200"
-              }`}
-            >
-              Moje smlouvy
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowTeam(true)}
-              className={`px-3 py-1.5 rounded-full transition ${
-                showTeam
-                  ? "bg-white text-slate-900 shadow-md"
-                  : "text-slate-200"
-              }`}
-            >
-              Týmové smlouvy
-            </button>
-          </div>
-        )}
+          {canShowTeamToggle && (
+            <div className="inline-flex rounded-full bg-slate-950/70 border border-white/15 p-1 text-xs shadow-lg shadow-black/40 self-start sm:self-end">
+              <button
+                type="button"
+                onClick={() => setShowTeam(false)}
+                className={`px-3 py-1.5 rounded-full transition ${
+                  !showTeam
+                    ? "bg-white text-slate-900 shadow-md"
+                    : "text-slate-200"
+                }`}
+              >
+                Moje smlouvy
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowTeam(true)}
+                className={`px-3 py-1.5 rounded-full transition ${
+                  showTeam
+                    ? "bg-white text-slate-900 shadow-md"
+                    : "text-slate-200"
+                }`}
+              >
+                Týmové smlouvy
+              </button>
+            </div>
+          )}
+        </header>
 
         {/* SEARCH BAR */}
         <div className="mt-2">

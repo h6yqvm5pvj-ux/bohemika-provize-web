@@ -20,6 +20,7 @@ import {
   where,
 } from "firebase/firestore";
 import { type Position } from "../../types/domain";
+import SplitTitle from "../plan-produkce/SplitTitle";
 
 /* -------------------- lazy import html2pdf.js (kvůli Next/SSR) -------------------- */
 
@@ -73,6 +74,7 @@ type EntryDoc = {
   id: string;
   userEmail?: string | null;
   createdAt?: any;
+  contractSignedDate?: any;
   productKey?: Product;
   inputAmount?: number | null;
   frequencyRaw?: string | null;
@@ -323,6 +325,13 @@ function stripUnsupportedColors(html: string): string {
   return html.replace(/(?:oklch|lab)\([^)]*\)/gi, "#0f172a");
 }
 
+function contractDate(entry: EntryDoc): Date | null {
+  return (
+    toDate((entry as any).contractSignedDate) ??
+    toDate(entry.createdAt)
+  );
+}
+
 function getDateRange(option: DateRangeOption): { from: Date; to: Date } {
   const now = new Date();
   const to = new Date(now);
@@ -560,9 +569,9 @@ export default function ExportProductionPage() {
 
     // filtrovat podle období
     const entriesInRange = allEntries.filter((entry) => {
-      const created = toDate(entry.createdAt);
-      if (!created) return false;
-      return created >= from && created <= to;
+      const signed = contractDate(entry);
+      if (!signed) return false;
+      return signed >= from && signed <= to;
     });
 
     // statistiky pro každého poradce
@@ -583,7 +592,7 @@ export default function ExportProductionPage() {
       const cat = productCategory(p);
       if (!categories.has(cat)) continue;
 
-      const created = toDate(entry.createdAt);
+      const created = contractDate(entry);
       if (!created) continue;
 
       const amount = entry.inputAmount ?? 0;
@@ -1402,9 +1411,7 @@ export default function ExportProductionPage() {
     <AppLayout active="tools">
       <div className="w-full max-w-4xl space-y-6">
         <header className="mb-2">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
-            Export produkce
-          </h1>
+          <SplitTitle text="Statistika" />
           <p className="text-sm text-slate-300 mt-1">
             Vygeneruj přehled produkce do PDF – podle období, rozsahu a typu
             produktů.

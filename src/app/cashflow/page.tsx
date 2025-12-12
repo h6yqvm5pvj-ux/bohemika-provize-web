@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { auth, db } from "../firebase";
@@ -12,6 +13,7 @@ import {
 import { collectionGroup, getDocs } from "firebase/firestore";
 
 import { AppLayout } from "@/components/AppLayout";
+import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import {
   type Product,
   type PaymentFrequency,
@@ -200,6 +202,7 @@ function commissionItemsForPosition(
 
 type EntryDoc = {
   id: string;
+  originalEntryId?: string | null;
 
   productKey?: Product;
   frequencyRaw?: PaymentFrequency | null;
@@ -227,6 +230,9 @@ type CashflowItem = {
   note?: string | null;
   source?: "own" | "manager";
   contractNumber?: string | null;
+  ownerEmail: string | null;
+  entryId: string | null;
+  isManagerOverride?: boolean;
 };
 
 type MonthGroup = {
@@ -295,6 +301,12 @@ function generateCashflow(
   const out: CashflowItem[] = [];
 
   for (const entry of entries) {
+    const baseEntryId = entry.originalEntryId ?? entry.id;
+    const ownerEmail = entry.userEmail ?? null;
+    const normalizedOwnerEmail = ownerEmail
+      ? ownerEmail.toLowerCase()
+      : null;
+
     const agreement = toDate(entry.createdAt) ?? new Date();
     const start = toDate(entry.policyStartDate) ?? agreement;
     const product = entry.productKey;
@@ -349,6 +361,9 @@ function generateCashflow(
             : "Vlastní",
         source: entry.source,
         contractNumber: entry.contractNumber ?? null,
+        ownerEmail: normalizedOwnerEmail,
+        entryId: baseEntryId ?? null,
+        isManagerOverride: entry.source === "manager",
       });
     };
 
@@ -761,6 +776,7 @@ export default function CashflowPage() {
 
             overrides.push({
               ...entry,
+              originalEntryId: entry.id,
               id: `${entry.id}-override`,
               items: diffItems,
               total: diffTotal,
@@ -941,24 +957,19 @@ export default function CashflowPage() {
         {/* HEADER + souhrnný box */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
-              Cashflow provizí
-            </h1>
+            <SplitTitle text="Cashflow provizí" />
             <p className="text-xs sm:text-sm text-slate-300 mt-1">
               Přehled očekávaných výplat provizí z tvých sjednaných
               smluv.
             </p>
           </div>
 
-          <div className="rounded-2xl bg-emerald-500/15 border border-emerald-400/50 px-4 py-3 text-right shadow-[0_18px_50px_rgba(16,185,129,0.4)]">
+          <div className="rounded-2xl bg-emerald-500/15 border border-emerald-400/50 px-4 py-4 text-center shadow-[0_18px_50px_rgba(16,185,129,0.4)]">
             <div className="text-[10px] uppercase tracking-[0.18em] text-emerald-200/80 mb-1">
               Celkové očekávané cashflow
             </div>
-            <div className="text-xl sm:text-2xl font-semibold text-emerald-100">
+            <div className="text-2xl sm:text-3xl font-semibold text-emerald-100">
               {formatMoney(totalCashflow)}
-            </div>
-            <div className="text-[11px] text-emerald-200/80 mt-0.5">
-              Vygenerováno z existujících výpočtů.
             </div>
           </div>
         </header>
@@ -1061,6 +1072,7 @@ export default function CashflowPage() {
           <div className="space-y-4">
             {yearGroups.map((yearGroup) => {
               const yearOpen = expandedYears[yearGroup.year] ?? false;
+              const averageMonthly = yearGroup.total / 12;
 
               return (
                 <section
@@ -1085,10 +1097,18 @@ export default function CashflowPage() {
                     <div className="flex items-center gap-4">
                       <div className="text-right">
                         <p className="text-[11px] uppercase tracking-[0.16em] text-emerald-300/80">
-                          Součet roku
+                          Celkem na odměnách
                         </p>
                         <p className="text-base sm:text-lg font-semibold text-emerald-300">
                           {formatMoney(yearGroup.total)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[11px] uppercase tracking-[0.16em] text-emerald-300/80">
+                          Průměrná měsíční odměna
+                        </p>
+                        <p className="text-base sm:text-lg font-semibold text-emerald-300">
+                          {formatMoney(averageMonthly)}
                         </p>
                       </div>
 
@@ -1163,12 +1183,27 @@ export default function CashflowPage() {
                                     item.contractNumber.trim() !== ""
                                       ? item.contractNumber
                                       : null;
-
-                                  return (
-                                    <div
-                                      key={item.id}
-                                      className="flex items-center justify-between gap-3 rounded-xl bg-white/4 border border-white/10 px-3 py-2.5 text-xs sm:text-sm"
-                                    >
+                                  const ownerEmail =
+                                    item.ownerEmail &&
+                                    item.ownerEmail.trim() !== ""
+                                      ? item.ownerEmail.trim().toLowerCase()
+                                      : null;
+                                  const baseEntryId =
+                                    item.entryId &&
+                                    item.entryId.trim() !== ""
+                                      ? item.entryId.trim()
+                                      : null;
+                                  const contractSlug =
+                                    ownerEmail && baseEntryId
+                                      ? `${ownerEmail}___${baseEntryId}`
+                                      : null;
+                                  const href = contractSlug
+                                    ? `/smlouvy/${encodeURIComponent(contractSlug)}`
+                                    : null;
+                                  const containerClasses =
+                                    "flex items-center justify-between gap-3 rounded-xl bg-white/4 border border-white/10 px-3 py-2.5 text-xs sm:text-sm transition hover:border-emerald-300/30 hover:bg-white/6";
+                                  const content = (
+                                    <>
                                       <div className="flex flex-col">
                                         <span className="text-[11px] text-slate-400">
                                           {dateLabel}
@@ -1192,6 +1227,20 @@ export default function CashflowPage() {
                                       <div className="text-right text-sm font-semibold text-slate-50">
                                         {formatMoney(item.amount)}
                                       </div>
+                                    </>
+                                  );
+
+                                  return href ? (
+                                    <Link
+                                      key={item.id}
+                                      href={href}
+                                      className={containerClasses}
+                                    >
+                                      {content}
+                                    </Link>
+                                  ) : (
+                                    <div key={item.id} className={containerClasses}>
+                                      {content}
                                     </div>
                                   );
                                 })}

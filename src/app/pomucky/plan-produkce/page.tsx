@@ -17,6 +17,7 @@ import {
   type Position,
   type CommissionResultItemDTO,
 } from "@/app/types/domain";
+import SplitTitle from "./SplitTitle";
 
 // html2pdf lazy load
 let html2pdfPromise: Promise<any> | null = null;
@@ -123,6 +124,7 @@ function formatMoney(value: number): string {
     }) + " Kč"
   );
 }
+
 
 export default function PlanProdukcePage() {
   const [user, setUser] = useState<User | null>(null);
@@ -500,9 +502,7 @@ export default function PlanProdukcePage() {
       <div className="w-full max-w-5xl space-y-6">
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">
-              Plán produkce
-            </h1>
+            <SplitTitle text="Plán produkce" />
             <p className="text-sm text-slate-300">
               Naplánuj počet smluv a pojistné, spočítej orientační okamžitou
               provizi (pozice: {position ?? "neznámá"}).

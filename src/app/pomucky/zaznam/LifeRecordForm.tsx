@@ -645,7 +645,301 @@ export function LifeRecordForm() {
   // VÝSLEDKY – klik na zelené tlačítko
   // --------------------------------------------------
 
+  type SelectedBenefit =
+    | {
+        key: "death" | "terminal" | "extraDeath" | "survivorPension";
+        amount?: number;
+      }
+    | {
+        key: "waiver";
+        invalidity: boolean;
+        scope?: WaiverInvalidityScope;
+        jobLoss: boolean;
+      }
+    | {
+        key: "invalidity";
+        degrees: InvalidityDegreesSelection;
+        amount1?: number;
+        amount2?: number;
+        amount3?: number;
+        type: DecreasingType;
+      }
+    | {
+        key: "criticalIllness";
+        amount?: number;
+        repeat?: boolean;
+      }
+    | {
+        key: "seriousIllnessHim" | "seriousIllnessHer";
+        amount?: number;
+      }
+    | {
+        key:
+          | "diabetes"
+          | "vaccination"
+          | "deathAccident"
+          | "bodilyInjury"
+          | "healthSocial"
+          | "assistedReproduction"
+          | "careDependence"
+          | "fullCare"
+          | "specialAid"
+          | "childOperation"
+          | "childrenAccident";
+        amount?: number;
+        extra?: string;
+      }
+    | {
+        key: "permanentInjury";
+        amount?: number;
+        progress: PermanentProgress;
+        from: PermanentStart;
+      }
+    | {
+        key: "dailyAllowance";
+        amount?: number;
+        from: DailyStart;
+        progress: DailyProgress;
+      }
+    | {
+        key: "sickLeave";
+        amount?: number;
+        from: SickStart;
+        variant: SickVariant;
+        accident: boolean;
+        illness: boolean;
+      }
+    | {
+        key: "hospitalization";
+        accident: boolean;
+        illness: boolean;
+        progressive: boolean;
+        amountAccident?: number;
+        amountIllness?: number;
+      };
+
+  const collectSelectedBenefits = (): SelectedBenefit[] => {
+    const benefits: SelectedBenefit[] = [];
+
+    // základ
+    if (deathOn) {
+      benefits.push({ key: "death", amount: parseAmount(deathAmount) });
+    }
+    if (terminalOn) {
+      benefits.push({
+        key: "terminal",
+        amount: parseAmount(terminalAmount),
+      });
+    }
+    if (extraDeathOn) {
+      benefits.push({
+        key: "extraDeath",
+        amount: Math.max(
+          parseAmount(extraDeathConstantAmount),
+          parseAmount(extraDeathDecreasingAmount),
+          parseAmount(extraDeathInterestAmount)
+        ),
+      });
+    }
+    if (survivorPensionOn) {
+      benefits.push({
+        key: "survivorPension",
+        amount: parseAmount(survivorPensionAmount),
+      });
+    }
+
+    if (waiverOn) {
+      benefits.push({
+        key: "waiver",
+        invalidity: waiverInvalidityOn,
+        scope: waiverInvalidityScope,
+        jobLoss: waiverJobLossOn,
+      });
+    }
+
+    if (invalid1On) {
+      benefits.push({
+        key: "invalidity",
+        degrees: invalid1Degrees,
+        type: invalid1Type,
+        amount1: parseAmount(invalid1Amount1),
+        amount2: parseAmount(invalid1Amount2),
+        amount3: parseAmount(invalid1Amount3),
+      });
+    }
+    if (invalid2On) {
+      benefits.push({
+        key: "invalidity",
+        degrees: invalid2Degrees,
+        type: invalid2Type,
+        amount1: parseAmount(invalid2Amount1),
+        amount2: parseAmount(invalid2Amount2),
+        amount3: parseAmount(invalid2Amount3),
+      });
+    }
+
+    if (ci1On) {
+      benefits.push({
+        key: "criticalIllness",
+        amount: parseAmount(ci1Amount),
+        repeat: ci1Repeat,
+      });
+    }
+    if (ci2On) {
+      benefits.push({
+        key: "criticalIllness",
+        amount: parseAmount(ci2Amount),
+        repeat: ci2Repeat,
+      });
+    }
+
+    if (seriousHimOn) {
+      benefits.push({
+        key: "seriousIllnessHim",
+        amount: parseAmount(seriousHimAmount),
+      });
+    }
+    if (seriousHerOn) {
+      benefits.push({
+        key: "seriousIllnessHer",
+        amount: parseAmount(seriousHerAmount),
+      });
+    }
+
+    if (diabetesOn) {
+      benefits.push({
+        key: "diabetes",
+        amount: parseAmount(diabetesAmount),
+      });
+    }
+    if (vaccinationOn) {
+      benefits.push({
+        key: "vaccination",
+        amount: parseAmount(vaccinationAmount),
+      });
+    }
+
+    if (deathAccOn) {
+      benefits.push({
+        key: "deathAccident",
+        amount: parseAmount(deathAccAmount),
+        extra: deathAccDoubleCar ? "doubleCar" : undefined,
+      });
+    }
+
+    if (perm1On) {
+      benefits.push({
+        key: "permanentInjury",
+        progress: perm1Progress,
+        from: perm1From,
+        amount: parseAmount(perm1Amount),
+      });
+    }
+    if (perm2On) {
+      benefits.push({
+        key: "permanentInjury",
+        progress: perm2Progress,
+        from: perm2From,
+        amount: parseAmount(perm2Amount),
+      });
+    }
+
+    if (dailyOn) {
+      benefits.push({
+        key: "dailyAllowance",
+        from: dailyFrom,
+        progress: dailyProgress,
+        amount: parseAmount(dailyAmount),
+      });
+    }
+
+    if (bodilyOn) {
+      benefits.push({
+        key: "bodilyInjury",
+        amount: parseAmount(bodilyAmount),
+        extra: bodilyFrom,
+      });
+    }
+
+    if (sick1On) {
+      benefits.push({
+        key: "sickLeave",
+        from: sick1From,
+        variant: sick1Variant,
+        amount: parseAmount(sick1Amount),
+        accident: sickAccident1,
+        illness: sickIllness1,
+      });
+    }
+    if (sick2On) {
+      benefits.push({
+        key: "sickLeave",
+        from: sick2From,
+        variant: sick2Variant,
+        amount: parseAmount(sick2Amount),
+        accident: sickAccident2,
+        illness: sickIllness2,
+      });
+    }
+
+    if (hospitalOn) {
+      benefits.push({
+        key: "hospitalization",
+        accident: hospitalAccidentOn,
+        illness: hospitalIllnessOn,
+        progressive: hospitalProgressive,
+        amountAccident: parseAmount(hospitalAccidentAmount),
+        amountIllness: parseAmount(hospitalIllnessAmount),
+      });
+    }
+
+    if (childOperationOn) {
+      benefits.push({
+        key: "childOperation",
+        amount: parseAmount(childOperationAmount),
+      });
+    }
+    if (childrenAccidentOn) {
+      benefits.push({
+        key: "childrenAccident",
+        amount: parseAmount(childrenAccidentAmount),
+        extra: childrenAccidentType,
+      });
+    }
+    if (assistedOn) {
+      benefits.push({
+        key: "assistedReproduction",
+        amount: parseAmount(assistedAmount),
+      });
+    }
+    if (careDependenceOn) {
+      benefits.push({
+        key: "careDependence",
+        amount: parseAmount(careDependenceAmount),
+      });
+    }
+    if (fullCareOn) {
+      benefits.push({
+        key: "fullCare",
+        amount: parseAmount(fullCareAmount),
+      });
+    }
+    if (specialAidOn) {
+      benefits.push({
+        key: "specialAid",
+        amount: parseAmount(specialAidAmount),
+      });
+    }
+    if (healthSocialOn) {
+      benefits.push({ key: "healthSocial" });
+    }
+
+    return benefits;
+  };
+
   const handleResultsClick = () => {
+    const selectedBenefits = collectSelectedBenefits();
+
     const hasInvalidity = invalid1On || invalid2On;
 
     let totalInvalidity = 0;
@@ -668,6 +962,7 @@ export function LifeRecordForm() {
       hasCriticalIllness: ci1On || ci2On,
       hasSeriousIllness: seriousHimOn || seriousHerOn,
       hasExistingContract: hasExistingContract === "yes",
+      selectedBenefits,
     };
 
     if (typeof window !== "undefined") {

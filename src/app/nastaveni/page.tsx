@@ -16,6 +16,7 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { AppLayout } from "@/components/AppLayout";
 import type { Position, CommissionMode } from "../types/domain";
+import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
 const POSITIONS: { id: Position; label: string }[] = [
   { id: "poradce1", label: "Poradce 1" },
@@ -309,9 +310,7 @@ export default function SettingsPage() {
       <div className="w-full max-w-5xl space-y-6">
         {/* HEADER */}
         <header className="mb-2">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
-            Nastavení
-          </h1>
+          <SplitTitle text="Nastavení" />
           <p className="mt-1 text-sm text-slate-300 max-w-xl">
             Uprav si výchozí pozici, režim provizí a svůj měsíční cíl.
           </p>

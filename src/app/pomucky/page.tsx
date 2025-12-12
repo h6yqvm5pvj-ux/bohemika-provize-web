@@ -5,16 +5,50 @@ import Link from "next/link";
 import { AppLayout } from "@/components/AppLayout";
 import { TeamMessageToolCard } from "./TeamMessageToolCard";
 
+function AnimatedSplitTitle({ text }: { text: string }) {
+  return (
+    <>
+      <div className="flex flex-wrap gap-0 text-5xl sm:text-6xl lg:text-7xl font-semibold tracking-tight leading-tight">
+        {text.split("").map((char, idx) => (
+          <span
+            key={idx}
+            className="split-letter inline-block"
+            style={{ animationDelay: `${idx * 35}ms` }}
+          >
+            {char === " " ? "\u00A0" : char}
+          </span>
+        ))}
+      </div>
+      <style jsx global>{`
+        .split-letter {
+          opacity: 0;
+          transform: translateY(14px) rotate(-1deg);
+          animation: splitFade 0.65s ease-out forwards;
+        }
+
+        @keyframes splitFade {
+          from {
+            opacity: 0;
+            transform: translateY(18px) rotate(-2deg);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) rotate(0deg);
+          }
+        }
+      `}</style>
+    </>
+  );
+}
+
 export default function ToolsPage() {
   return (
     <AppLayout active="tools">
       <div className="w-full max-w-5xl space-y-6">
         <header className="mb-2">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
-            Pomůcky
-          </h1>
+          <AnimatedSplitTitle text="Pomůcky" />
           <p className="text-sm text-slate-300 mt-1">
-            Rychlé nástroje pro práci s klienty – argumenty, zápisy a kalkulačky.
+            Rychlé nástroje pro efektivnější práci.
           </p>
         </header>
 
@@ -26,7 +60,7 @@ export default function ToolsPage() {
           >
             <h2 className="text-lg font-semibold mb-2">Argumenty</h2>
             <p className="text-sm text-slate-300">
-              Přehled námitek a odpovědí pro život, neživot, investice a zlato.
+              Přehled Argumentů na různé typy námitek od klienta.
             </p>
           </Link>
 
@@ -37,7 +71,7 @@ export default function ToolsPage() {
           >
             <h2 className="text-lg font-semibold mb-2">Záznam z jednání</h2>
             <p className="text-sm text-slate-300">
-              Strukturovaná pomůcka pro vyplnění Záznamu z jednání podle typu pojištění.
+              Pomůcka pro správně vypsaný Záznam z jednání.
             </p>
           </Link>
 
@@ -63,7 +97,7 @@ export default function ToolsPage() {
               Statistika
             </h2>
             <p className="text-sm text-slate-300">
-              Přehled výkonu a PDF Export
+              Statistika s možností stažení v PDF.
             </p>
           </Link>
 
@@ -74,7 +108,7 @@ export default function ToolsPage() {
           >
             <h2 className="text-lg font-semibold mb-2">Plán produkce</h2>
             <p className="text-sm text-slate-300">
-              Naplánuj počet smluv a pojistné, spočítej orientační provizi.
+              Naplánuj si cíleně Produkci a rovnou uvidíš svou odměnu. Můžeš i stáhnout v PDF.
             </p>
           </Link>
 
@@ -85,7 +119,7 @@ export default function ToolsPage() {
           >
             <h2 className="text-lg font-semibold mb-2">Projekce výkonu</h2>
             <p className="text-sm text-slate-300">
-              Zadej měsíční produkci a uvidíš roční provize na 15 let dopředu.
+              Vizualizuj si výplatu do budoucna.
             </p>
           </Link>
 
