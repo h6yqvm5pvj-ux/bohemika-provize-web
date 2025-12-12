@@ -57,6 +57,8 @@ type AppUser = {
   managerEmail?: string | null;
 };
 
+type FilterMode = "latest" | "anniversary";
+
 function formatMoney(value: number | undefined | null): string {
   if (value == null || !Number.isFinite(value)) return "0 Kč";
   return (
@@ -142,6 +144,26 @@ function adviserNameFromEmail(email?: string | null): string {
     .join(" ");
 }
 
+function nextAnniversaryDate(start: Date, now: Date): Date {
+  const candidate = new Date(
+    now.getFullYear(),
+    start.getMonth(),
+    start.getDate()
+  );
+  if (candidate.getTime() < now.getTime()) {
+    candidate.setFullYear(candidate.getFullYear() + 1);
+  }
+  return candidate;
+}
+
+function isAnniversarySoon(date: Date | null): { soon: boolean; next?: Date } {
+  if (!date) return { soon: false };
+  const now = new Date();
+  const next = nextAnniversaryDate(date, now);
+  const diffDays = (next.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  return { soon: diffDays <= 60 && diffDays >= 0, next };
+}
+
 function AnimatedSplitTitle({ text }: { text: string }) {
   return (
     <>
@@ -189,6 +211,7 @@ export default function ContractsPage() {
   >([]);
 
   const [showTeam, setShowTeam] = useState(false);
+  const [filterMode, setFilterMode] = useState<FilterMode>("latest");
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -327,14 +350,36 @@ export default function ContractsPage() {
 
   const filteredContracts = useMemo(() => {
     const q = searchText.trim().toLowerCase();
-    if (!q) return displayedContracts;
+    let base = displayedContracts;
 
-    return displayedContracts.filter((c) => {
-      const client = (c.clientName ?? "").toLowerCase();
-      const contractNo = (c.contractNumber ?? "").toLowerCase();
-      return client.includes(q) || contractNo.includes(q);
-    });
-  }, [displayedContracts, searchText]);
+    if (q) {
+      base = base.filter((c) => {
+        const client = (c.clientName ?? "").toLowerCase();
+        const contractNo = (c.contractNumber ?? "").toLowerCase();
+        return client.includes(q) || contractNo.includes(q);
+      });
+    }
+
+    if (filterMode === "anniversary") {
+      const enriched = base
+        .map((c) => {
+          const start = toDate((c as any).policyStartDate);
+          const info = isAnniversarySoon(start);
+          return { contract: c, next: info.next, soon: info.soon };
+        })
+        .filter((item) => item.soon)
+        .sort(
+          (a, b) =>
+            (a.next?.getTime() ?? Number.POSITIVE_INFINITY) -
+            (b.next?.getTime() ?? Number.POSITIVE_INFINITY)
+        )
+        .map((item) => item.contract);
+
+      return enriched;
+    }
+
+    return base;
+  }, [displayedContracts, searchText, filterMode]);
 
   const hasTeamContracts =
     teamContracts.length > 0 && canShowTeamToggle;
@@ -374,9 +419,9 @@ export default function ContractsPage() {
           )}
         </header>
 
-        {/* SEARCH BAR */}
-        <div className="mt-2">
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/5 border border-white/15 shadow-[0_14px_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+        {/* SEARCH BAR + FILTER */}
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/5 border border-white/15 shadow-[0_14px_40px_rgba(0,0,0,0.6)] backdrop-blur-xl flex-1">
             <span className="text-sm">🔍</span>
             <input
               type="text"
@@ -385,6 +430,31 @@ export default function ContractsPage() {
               placeholder="Hledat klienta nebo číslo smlouvy"
               className="w-full bg-transparent border-none outline-none text-sm text-slate-50 placeholder:text-slate-400"
             />
+          </div>
+
+          <div className="inline-flex rounded-full bg-slate-950/70 border border-white/15 p-1 text-xs shadow-inner shadow-black/60">
+            <button
+              type="button"
+              onClick={() => setFilterMode("latest")}
+              className={`px-3 py-1.5 rounded-full transition ${
+                filterMode === "latest"
+                  ? "bg-white text-slate-900 shadow-md"
+                  : "text-slate-200"
+              }`}
+            >
+              Nejnovější
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterMode("anniversary")}
+              className={`px-3 py-1.5 rounded-full transition ${
+                filterMode === "anniversary"
+                  ? "bg-white text-slate-900 shadow-md"
+                  : "text-slate-200"
+              }`}
+            >
+              Blížící se výročí
+            </button>
           </div>
         </div>
 
@@ -395,7 +465,15 @@ export default function ContractsPage() {
           </p>
         ) : filteredContracts.length === 0 ? (
           <div className="mt-4 rounded-2xl border border-white/15 bg-white/5 backdrop-blur-lg px-6 py-8 text-center text-sm text-slate-200 space-y-2">
-            {searchText.trim() !== "" ? (
+            {filterMode === "anniversary" ? (
+              <>
+                <p className="font-medium">Žádná blížící se výročí</p>
+                <p className="text-slate-300 text-xs">
+                  V okně 60 dní od dneška není žádné výročí (počítáno z data
+                  počátku smlouvy).
+                </p>
+              </>
+            ) : searchText.trim() !== "" ? (
               <>
                 <p className="font-medium">Nic nenalezeno</p>
                 <p className="text-slate-300 text-xs">
@@ -431,6 +509,8 @@ export default function ContractsPage() {
               const signedStr = signed
                 ? signed.toLocaleDateString("cs-CZ")
                 : "—";
+              const policyStart = toDate((c as any).policyStartDate);
+              const anniversaryInfo = isAnniversarySoon(policyStart);
 
               const ownerEmail =
                 (showTeam && c.adviserEmail) ||
@@ -460,6 +540,23 @@ export default function ContractsPage() {
                       <div className="text-sm sm:text-base font-semibold text-slate-50">
                         {productLabel(c.productKey)}
                       </div>
+
+                      {/* Blížící se výročí */}
+                      {anniversaryInfo.soon && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-100"
+                          title={
+                            anniversaryInfo.next
+                              ? `Výročí: ${anniversaryInfo.next.toLocaleDateString(
+                                  "cs-CZ"
+                                )}`
+                              : undefined
+                          }
+                        >
+                          <span className="text-xs">⏳</span>
+                          Blížící se výročí
+                        </span>
+                      )}
 
                       {/* Číslo smlouvy */}
                       <p className="text-[11px] sm:text-xs text-slate-300">

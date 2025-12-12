@@ -1,7 +1,7 @@
 // src/app/kalkulacka/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { auth, db } from "../firebase";
@@ -35,7 +35,18 @@ import {
 } from "../lib/productFormulas";
 
 import Plasma from "@/components/Plasma";
-import { addDoc, collection, doc, serverTimestamp } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  collectionGroup,
+  doc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+  where,
+} from "firebase/firestore";
 import { AppLayout } from "@/components/AppLayout";
 
 // ---------- Pomocné ----------
@@ -296,6 +307,7 @@ export default function CalculatorPage() {
   const [amountText, setAmountText] = useState<string>("");
 
   const [clientName, setClientName] = useState<string>("");
+  const [clientSuggestions, setClientSuggestions] = useState<string[]>([]);
   const [contractSignedDate, setContractSignedDate] = useState<string>("");
   const [policyStartDate, setPolicyStartDate] = useState<string>("");
   const [contractNumber, setContractNumber] = useState<string>("");
@@ -306,6 +318,13 @@ export default function CalculatorPage() {
 
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const filteredClientSuggestions = useMemo(() => {
+    const q = clientName.trim().toLowerCase();
+    if (!q) return [];
+    return clientSuggestions
+      .filter((n) => n.toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [clientName, clientSuggestions]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (currentUser) => {
@@ -313,6 +332,36 @@ export default function CalculatorPage() {
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    const fetchClientNames = async () => {
+      if (!user?.email) {
+        setClientSuggestions([]);
+        return;
+      }
+
+      try {
+        const entries = collectionGroup(db, "entries");
+        const q = query(
+          entries,
+          where("userEmail", "==", user.email.toLowerCase()),
+          orderBy("createdAt", "desc"),
+          limit(200)
+        );
+        const snap = await getDocs(q);
+        const names = snap.docs
+          .map((d) => (d.data() as any).clientName as string | undefined)
+          .filter((n) => typeof n === "string" && n.trim().length > 0)
+          .map((n) => n!.trim());
+        const unique = Array.from(new Set(names));
+        setClientSuggestions(unique);
+      } catch (err) {
+        console.error("Failed to load client name suggestions", err);
+      }
+    };
+
+    fetchClientNames();
+  }, [user]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -745,18 +794,36 @@ export default function CalculatorPage() {
             <section className="space-y-3">
               <h2 className="text-sm font-semibold">Detaily smlouvy</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium">
-                    Jméno klienta
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                    value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
-                    placeholder="Např. Jan Novák"
-                  />
-                </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium">
+                Jméno klienta
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  value={clientName}
+                  onChange={(e) => setClientName(e.target.value)}
+                  placeholder="Např. Jan Novák"
+                  autoComplete="off"
+                />
+                {filteredClientSuggestions.length > 0 && (
+                  <div className="absolute z-30 mt-1 w-full rounded-xl border border-white/15 bg-slate-900/95 backdrop-blur-2xl shadow-[0_14px_40px_rgba(0,0,0,0.7)] overflow-hidden">
+                    {filteredClientSuggestions.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => setClientName(name)}
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-100 hover:bg-white/10"
+                      >
+                        <span>{name}</span>
+                        <span className="text-xs text-slate-400">vložit</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
 
                 <div className="space-y-1">
                   <label className="block text-sm font-medium">
