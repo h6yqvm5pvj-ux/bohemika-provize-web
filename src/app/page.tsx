@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { auth, db } from "./firebase";
@@ -548,10 +549,28 @@ export default function HomePage() {
     baseProduction + (isManager ? teamImmediateSum : 0);
 
   const monthlyGoal = userMeta?.monthlyGoal ?? null;
-  const progress =
-    monthlyGoal && monthlyGoal > 0
-      ? Math.min(100, Math.round((totalWithTeam / monthlyGoal) * 100))
+  const hasGoal = monthlyGoal != null && monthlyGoal > 0;
+  const progress = hasGoal
+    ? Math.min(100, Math.round((totalWithTeam / monthlyGoal) * 100))
+    : 0;
+  const daysInMonth = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    0
+  ).getDate();
+  const dayOfMonth = now.getDate();
+  const daysLeft = Math.max(0, daysInMonth - dayOfMonth);
+  const remainingToGoal = hasGoal
+    ? Math.max(0, monthlyGoal - totalWithTeam)
+    : 0;
+  const dailyNeeded =
+    hasGoal && daysLeft > 0 && remainingToGoal > 0
+      ? Math.ceil(remainingToGoal / daysLeft)
       : 0;
+  const dailyPace =
+    dayOfMonth > 0 ? Math.round(totalWithTeam / dayOfMonth) : 0;
+  const projectedMonthTotal =
+    dayOfMonth > 0 ? Math.round(dailyPace * daysInMonth) : 0;
   const progressTone =
     progress >= 90
       ? "from-emerald-400 via-lime-300 to-emerald-200"
@@ -727,8 +746,11 @@ export default function HomePage() {
           }`}
         >
           {/* MĚSÍČNÍ CÍL */}
-          <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)] h-full">
-            <div className="flex items-center justify-between mb-4">
+          <section className="relative overflow-hidden rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)] h-full">
+            <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(125,211,252,0.25),transparent_60%)]" />
+            <div className="pointer-events-none absolute right-0 bottom-0 h-48 w-48 rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.2),transparent_65%)]" />
+
+            <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
               <div>
                 <h2 className="text-lg sm:text-xl font-semibold">
                   Měsíční cíl
@@ -741,22 +763,78 @@ export default function HomePage() {
                 </p>
               </div>
 
-              <div className="text-right text-xs sm:text-sm">
-                <div className="text-slate-400">Plnění cíle</div>
-                <div className="text-base sm:text-lg font-semibold">
-                  {progress}%
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="text-right text-xs sm:text-sm">
+                  <div className="text-slate-400">Plnění cíle</div>
+                  <div className="text-base sm:text-lg font-semibold">
+                    {progress}%
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-400">
+                    Cíl na měsíc:{" "}
+                    <span className="font-medium text-slate-100">
+                      {monthlyGoal ? formatMoney(monthlyGoal) : "—"}
+                    </span>
+                  </div>
                 </div>
-                <div className="mt-1 text-[11px] text-slate-400">
-                  Cíl na měsíc:{" "}
-                  <span className="font-medium text-slate-100">
-                    {monthlyGoal ? formatMoney(monthlyGoal) : "—"}
-                  </span>
+                <Link
+                  href="/nastaveni"
+                  className="rounded-full border border-white/20 px-3 py-1.5 text-[11px] text-white/90 hover:bg-white/10 transition backdrop-blur-sm"
+                >
+                  Upravit cíl
+                </Link>
+              </div>
+            </div>
+
+            <div className="relative mt-3 grid gap-3 sm:grid-cols-3 text-xs text-slate-200">
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 shadow-[0_10px_34px_rgba(0,0,0,0.55)] backdrop-blur">
+                <div className="text-[11px] uppercase tracking-wide text-slate-300">
+                  Do cíle zbývá
+                </div>
+                <div className="mt-1 text-lg font-semibold text-white">
+                  {hasGoal
+                    ? remainingToGoal === 0
+                      ? "Splněno"
+                      : formatMoney(remainingToGoal)
+                    : "Nastav cíl"}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  {hasGoal ? `${progress}% hotovo` : "Cíl není nastaven"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 shadow-[0_10px_34px_rgba(0,0,0,0.55)] backdrop-blur">
+                <div className="text-[11px] uppercase tracking-wide text-slate-300">
+                  Denní tempo k cíli
+                </div>
+                <div className="mt-1 text-lg font-semibold text-white">
+                  {hasGoal
+                    ? dailyNeeded > 0
+                      ? formatMoney(dailyNeeded)
+                      : "Hotovo"
+                    : "—"}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  {daysLeft > 0 ? `Zbývá ${daysLeft} dní` : "Konec měsíce"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 shadow-[0_10px_34px_rgba(0,0,0,0.55)] backdrop-blur">
+                <div className="text-[11px] uppercase tracking-wide text-slate-300">
+                  Odhad na konec měsíce
+                </div>
+                <div className="mt-1 text-lg font-semibold text-white">
+                  {projectedMonthTotal > 0
+                    ? formatMoney(projectedMonthTotal)
+                    : "—"}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Tempo za {dayOfMonth}. den měsíce
                 </div>
               </div>
             </div>
 
             {/* progress bar */}
-            <div className="mt-3 h-3 w-full rounded-full bg-white/10 border border-white/15 backdrop-blur-xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.6)] relative">
+            <div className="relative mt-4 h-3 w-full rounded-full bg-white/10 border border-white/15 backdrop-blur-xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.6)]">
               <div className="absolute inset-0 bg-gradient-to-r from-white/10 via-white/4 to-transparent" />
               <div
                 className={`relative h-full rounded-full bg-gradient-to-r ${progressTone} transition-all duration-500 ease-out shadow-[0_0_24px_rgba(255,255,255,0.35)]`}
@@ -781,9 +859,6 @@ export default function HomePage() {
                   <h2 className="text-lg sm:text-xl font-semibold text-emerald-100">
                     Žebříček týmu
                   </h2>
-                  <p className="mt-1 text-xs text-emerald-200/80">
-                    Síň slávy podle objemu pojistného – {leaderboardLabel}.
-                  </p>
                 </div>
 
                 <div className="flex flex-col items-start sm:items-end gap-2 text-[11px] sm:text-xs">
