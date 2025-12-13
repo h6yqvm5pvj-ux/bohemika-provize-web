@@ -13,6 +13,7 @@ import {
   calculateDomex,
 } from "@/app/lib/productFormulas";
 import { type Position, type CommissionMode } from "@/app/types/domain";
+import SplitTitle from "../plan-produkce/SplitTitle";
 
 type YearRow = { year: number; total: number };
 type MonthlyTotals = Record<number, number[]>;
@@ -460,15 +461,12 @@ export default function ProjectionPage() {
   const renderIntro = () => (
     <div className="w-full max-w-4xl mx-auto py-16 text-center space-y-6">
       <div className="space-y-3">
-        <SplitTextAnimated
-          text="Vizualizuj si výplatu do budoucna"
-          className="text-4xl sm:text-5xl font-semibold text-white leading-tight"
-        />
-        <SplitTextAnimated
-          text="Pravidelná péče o klienta zajistí pravidelný příjem!"
-          className="text-3xl sm:text-4xl font-semibold text-white/90 leading-tight"
-          delayOffset={600}
-        />
+        <div className="flex justify-center">
+          <SplitTitle text="Vizualizuj si výplatu do budoucna" />
+        </div>
+        <div className="text-2xl sm:text-3xl font-semibold text-white/90 leading-tight">
+          Pravidelná péče o klienta zajistí pravidelný příjem!
+        </div>
         <p className="text-sm text-slate-300 max-w-2xl mx-auto">
           Vyber, zda modeluješ pouze vlastní produkci, nebo chceš řešit i budování
           týmu. V další kroku nastavíš vstupní data a uvidíš projekci na 15 let.
@@ -979,53 +977,5 @@ function InputCard({
       />
       {extra}
     </section>
-  );
-}
-
-function SplitTextAnimated({
-  text,
-  className,
-  delayOffset = 0,
-}: {
-  text: string;
-  className?: string;
-  delayOffset?: number;
-}) {
-  const chars = Array.from(text);
-  return (
-    <div className={className}>
-      <style jsx>{`
-        @keyframes floatUp {
-          0% {
-            opacity: 0;
-            transform: translateY(14px) scale(0.98);
-            filter: blur(4px);
-          }
-          60% {
-            opacity: 1;
-            transform: translateY(-4px) scale(1.01);
-            filter: blur(0);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-            filter: blur(0);
-          }
-        }
-      `}</style>
-      {chars.map((ch, idx) => (
-        <span
-          key={`${ch}-${idx}`}
-          className="inline-block"
-          style={{
-            animation: "floatUp 600ms ease-out forwards",
-            animationDelay: `${delayOffset + idx * 18}ms`,
-            opacity: 0,
-          }}
-        >
-          {ch === " " ? "\u00a0" : ch}
-        </span>
-      ))}
-    </div>
   );
 }

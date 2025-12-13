@@ -48,6 +48,7 @@ import {
   where,
 } from "firebase/firestore";
 import { AppLayout } from "@/components/AppLayout";
+import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
 // ---------- Pomocné ----------
 
@@ -222,42 +223,6 @@ function durationTooltip(product: Product): string | null {
     return "Zadej dobu trvání smlouvy, maximálně však 20 let. Pokud je smlouva uzavřena na déle než 20 let, zadej 20.";
   }
   return null;
-}
-
-function AnimatedSplitTitle({ text }: { text: string }) {
-  return (
-    <>
-      <div className="flex flex-wrap gap-0 text-5xl sm:text-6xl lg:text-7xl font-semibold tracking-tight leading-tight">
-        {text.split("").map((char, idx) => (
-          <span
-            key={idx}
-            className="split-letter inline-block"
-            style={{ animationDelay: `${idx * 35}ms` }}
-          >
-            {char === " " ? "\u00A0" : char}
-          </span>
-        ))}
-      </div>
-      <style jsx global>{`
-        .split-letter {
-          opacity: 0;
-          transform: translateY(14px) rotate(-1deg);
-          animation: splitFade 0.65s ease-out forwards;
-        }
-
-        @keyframes splitFade {
-          from {
-            opacity: 0;
-            transform: translateY(18px) rotate(-2deg);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) rotate(0deg);
-          }
-        }
-      `}</style>
-    </>
-  );
 }
 
 function parseNumber(text: string): number {
@@ -643,7 +608,7 @@ export default function CalculatorPage() {
       <div className="w-full max-w-6xl space-y-6">
         {/* Header */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <AnimatedSplitTitle text="Kalkulačka provizí" />
+          <SplitTitle text="Kalkulačka provizí" />
         </header>
 
         <div className="grid gap-6 items-start lg:grid-cols-[1.05fr_0.95fr]">

@@ -27,6 +27,7 @@ import {
 } from "../types/domain";
 
 import { AppLayout } from "@/components/AppLayout";
+import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
 type FirestoreTimestamp = {
   seconds: number;
@@ -162,42 +163,6 @@ function isAnniversarySoon(date: Date | null): { soon: boolean; next?: Date } {
   const next = nextAnniversaryDate(date, now);
   const diffDays = (next.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
   return { soon: diffDays <= 60 && diffDays >= 0, next };
-}
-
-function AnimatedSplitTitle({ text }: { text: string }) {
-  return (
-    <>
-      <div className="flex flex-wrap gap-0 text-5xl sm:text-6xl lg:text-7xl font-semibold tracking-tight leading-tight">
-        {text.split("").map((char, idx) => (
-          <span
-            key={idx}
-            className="split-letter inline-block"
-            style={{ animationDelay: `${idx * 35}ms` }}
-          >
-            {char === " " ? "\u00A0" : char}
-          </span>
-        ))}
-      </div>
-      <style jsx global>{`
-        .split-letter {
-          opacity: 0;
-          transform: translateY(14px) rotate(-1deg);
-          animation: splitFade 0.65s ease-out forwards;
-        }
-
-        @keyframes splitFade {
-          from {
-            opacity: 0;
-            transform: translateY(18px) rotate(-2deg);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) rotate(0deg);
-          }
-        }
-      `}</style>
-    </>
-  );
 }
 
 export default function ContractsPage() {
@@ -389,7 +354,7 @@ export default function ContractsPage() {
       <div className="w-full max-w-5xl space-y-6">
         {/* HEADER */}
         <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <AnimatedSplitTitle text="Smlouvy" />
+          <SplitTitle text="Smlouvy" />
 
           {canShowTeamToggle && (
             <div className="inline-flex rounded-full bg-slate-950/70 border border-white/15 p-1 text-xs shadow-lg shadow-black/40 self-start sm:self-end">

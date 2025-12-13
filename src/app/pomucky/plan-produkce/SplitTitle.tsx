@@ -1,10 +1,18 @@
 import React from "react";
 
-export default function SplitTitle({ text }: { text: string }) {
+export default function SplitTitle({
+  text,
+  className = "",
+}: {
+  text: string;
+  className?: string;
+}) {
   const letters = text.split("");
 
   return (
-    <div className="relative inline-flex flex-wrap text-5xl sm:text-6xl font-extrabold tracking-tight text-white">
+    <div
+      className={`relative inline-flex flex-wrap text-5xl sm:text-6xl font-extrabold tracking-tight text-white ${className}`}
+    >
       {letters.map((ch, idx) => (
         <span
           key={idx}

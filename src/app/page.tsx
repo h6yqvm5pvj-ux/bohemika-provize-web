@@ -267,40 +267,49 @@ function AnimatedMoney({
   return <span>{formatMoney(animated)}</span>;
 }
 
-function AnimatedHeading({ text }: { text: string }) {
-  const chars = Array.from(text);
+function SplitTextHeading({ text }: { text: string }) {
+  const words = text.split(" ").filter(Boolean);
   return (
-    <div className="text-3xl sm:text-4xl font-semibold text-white leading-tight flex flex-wrap gap-x-[2px]">
+    <div className="text-5xl sm:text-6xl font-extrabold tracking-tight text-white leading-tight flex flex-wrap">
       <style jsx>{`
-        @keyframes floatUpHome {
+        @keyframes splitRise {
           0% {
             opacity: 0;
-            transform: translateY(12px) scale(0.98);
-            filter: blur(4px);
+            transform: translateY(110%) skewY(6deg);
+            filter: blur(6px);
           }
           60% {
             opacity: 1;
-            transform: translateY(-3px) scale(1.01);
+            transform: translateY(-6%) skewY(0deg);
             filter: blur(0);
           }
           100% {
             opacity: 1;
-            transform: translateY(0) scale(1);
+            transform: translateY(0) skewY(0deg);
             filter: blur(0);
           }
         }
       `}</style>
-      {chars.map((ch, idx) => (
+      {words.map((word, idx) => (
         <span
-          key={`${ch}-${idx}`}
-          className="inline-block"
-          style={{
-            animation: "floatUpHome 620ms ease-out forwards",
-            animationDelay: `${idx * 16}ms`,
-            opacity: 0,
-          }}
+          key={`${word}-${idx}`}
+          className="relative flex overflow-hidden mr-3 last:mr-0 gap-[2px]"
         >
-          {ch === " " ? "\u00a0" : ch}
+          {Array.from(word).map((char, charIdx) => (
+            <span
+              key={`${word}-${idx}-${char}-${charIdx}`}
+              className="inline-block text-white drop-shadow-[0_14px_34px_rgba(0,0,0,0.6)]"
+              style={{
+                animation:
+                  "splitRise 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+                animationDelay: `${(idx * 8 + charIdx) * 38}ms`,
+                transform: "translateY(120%) skewY(8deg)",
+                opacity: 0,
+              }}
+            >
+              {char}
+            </span>
+          ))}
         </span>
       ))}
     </div>
@@ -329,11 +338,12 @@ export default function HomePage() {
   const [lbRange, setLbRange] = useState<LeaderboardRange>("month");
 
   const [loading, setLoading] = useState(true);
-  const [greeting, setGreeting] = useState("");
   const [authReady, setAuthReady] = useState(false);
 
   const now = new Date();
   const monthLabel = MONTH_LABELS[now.getMonth()];
+  const monthLabelCapitalized =
+    monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
   const year = now.getFullYear();
 
   // auth
@@ -370,19 +380,16 @@ export default function HomePage() {
         const meSnap = await getDoc(doc(usersRef, email));
         let position: Position | undefined;
         let monthlyGoal: number | null | undefined;
-        let oslovenie: string | undefined;
         if (meSnap.exists()) {
           const d = meSnap.data() as any;
           position = d.position as Position | undefined;
           monthlyGoal = (d.monthlyGoal as number | undefined) ?? null;
-          oslovenie = (d.osloveni as string | undefined)?.trim();
         }
 
         setUserMeta({
           position,
           monthlyGoal: monthlyGoal ?? null,
         });
-        setGreeting(oslovenie || nameFromEmail(email));
 
         const isManager = isManagerPosition(position);
 
@@ -545,6 +552,12 @@ export default function HomePage() {
     monthlyGoal && monthlyGoal > 0
       ? Math.min(100, Math.round((totalWithTeam / monthlyGoal) * 100))
       : 0;
+  const progressTone =
+    progress >= 90
+      ? "from-emerald-400 via-lime-300 to-emerald-200"
+      : progress >= 60
+      ? "from-amber-400 via-orange-300 to-yellow-200"
+      : "from-rose-500 via-red-400 to-orange-300";
 
   // ---------- žebříček týmu ----------
 
@@ -628,24 +641,15 @@ export default function HomePage() {
       {user && <AutoAnniversaryModal userId={user.uid} />}
       <div className="w-full max-w-5xl space-y-6">
         <div className="pt-2">
-          <AnimatedHeading
-            text={`Ahoj ${greeting || nameFromEmail(user?.email)}...`}
+          <SplitTextHeading
+            text={`Produkce ${monthLabelCapitalized} ${year}`}
           />
         </div>
 
         {/* PRODUKCE BOX */}
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-8 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
-          <div className="mb-6">
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
-              Produkce{" "}
-              <span className="text-slate-300">
-                {monthLabel} {year}
-              </span>
-            </h1>
-          </div>
-
+        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 sm:px-8 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
           <div
-            className={`grid gap-8 ${
+            className={`grid gap-6 ${
               showTeamBox ? "md:grid-cols-2" : "md:grid-cols-1"
             }`}
           >
@@ -717,175 +721,190 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* MĚSÍČNÍ CÍL */}
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-lg sm:text-xl font-semibold">
-                Měsíční cíl
-              </h2>
-              <p className="mt-1 text-xs text-slate-300">
-                Aktuálně{" "}
-                <span className="font-semibold text-slate-50">
-                  <AnimatedMoney value={totalWithTeam} />
-                </span>
-              </p>
-            </div>
-
-            <div className="text-right text-xs sm:text-sm">
-              <div className="text-slate-400">Plnění cíle</div>
-              <div className="text-base sm:text-lg font-semibold">
-                {progress}%
-              </div>
-              <div className="mt-1 text-[11px] text-slate-400">
-                Cíl na měsíc:{" "}
-                <span className="font-medium text-slate-100">
-                  {monthlyGoal ? formatMoney(monthlyGoal) : "—"}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* progress bar */}
-          <div className="mt-3 h-3 w-full rounded-full bg-slate-900/80 overflow-hidden shadow-inner shadow-black/70">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-emerald-400 transition-all duration-500 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </section>
-
-        {/* ŽEBŘÍČEK TÝMU – pouze manažer s podřízenými */}
-        {isManager && hasTeam && (
-          <section className="rounded-3xl border border-emerald-400/40 bg-emerald-500/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-7 shadow-[0_30px_90px_rgba(0,0,0,0.9)]">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
+        <div
+          className={`grid gap-6 ${
+            isManager && hasTeam ? "md:grid-cols-2" : "md:grid-cols-1"
+          }`}
+        >
+          {/* MĚSÍČNÍ CÍL */}
+          <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)] h-full">
+            <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-lg sm:text-xl font-semibold text-emerald-100">
-                  Žebříček týmu
+                <h2 className="text-lg sm:text-xl font-semibold">
+                  Měsíční cíl
                 </h2>
-                <p className="mt-1 text-xs text-emerald-200/80">
-                  Síň slávy podle objemu pojistného – {leaderboardLabel}.
+                <p className="mt-1 text-xs text-slate-300">
+                  Aktuálně{" "}
+                  <span className="font-semibold text-slate-50">
+                    <AnimatedMoney value={totalWithTeam} />
+                  </span>
                 </p>
               </div>
 
-              <div className="flex flex-col items-start sm:items-end gap-2 text-[11px] sm:text-xs">
-                <div className="inline-flex rounded-full bg-emerald-900/50 border border-emerald-400/50 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setLbProductFilter("life")}
-                    className={`px-3 py-1.5 rounded-full transition ${
-                      lbProductFilter === "life"
-                        ? "bg-white text-slate-900 shadow-md"
-                        : "text-emerald-100 hover:bg-white/5"
-                    }`}
-                  >
-                    Život
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLbProductFilter("other")}
-                    className={`px-3 py-1.5 rounded-full transition ${
-                      lbProductFilter === "other"
-                        ? "bg-white text-slate-900 shadow-md"
-                        : "text-emerald-100 hover:bg-white/5"
-                    }`}
-                  >
-                    Vedlejší produkty
-                  </button>
+              <div className="text-right text-xs sm:text-sm">
+                <div className="text-slate-400">Plnění cíle</div>
+                <div className="text-base sm:text-lg font-semibold">
+                  {progress}%
                 </div>
-
-                <div className="inline-flex rounded-full bg-emerald-900/50 border border-emerald-400/50 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setLbRange("month")}
-                    className={`px-3 py-1.5 rounded-full transition ${
-                      lbRange === "month"
-                        ? "bg-emerald-400 text-slate-900 shadow-md"
-                        : "text-emerald-100 hover:bg-white/5"
-                    }`}
-                  >
-                    Aktuální měsíc
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLbRange("sixMonths")}
-                    className={`px-3 py-1.5 rounded-full transition ${
-                      lbRange === "sixMonths"
-                        ? "bg-emerald-400 text-slate-900 shadow-md"
-                        : "text-emerald-100 hover:bg-white/5"
-                    }`}
-                  >
-                    Posledních 6 měsíců
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLbRange("year")}
-                    className={`px-3 py-1.5 rounded-full transition ${
-                      lbRange === "year"
-                        ? "bg-emerald-400 text-slate-900 shadow-md"
-                        : "text-emerald-100 hover:bg-white/5"
-                    }`}
-                  >
-                    Aktuální rok
-                  </button>
+                <div className="mt-1 text-[11px] text-slate-400">
+                  Cíl na měsíc:{" "}
+                  <span className="font-medium text-slate-100">
+                    {monthlyGoal ? formatMoney(monthlyGoal) : "—"}
+                  </span>
                 </div>
               </div>
             </div>
 
-            {leaderboardEntries.length === 0 ? (
-              <p className="text-xs sm:text-sm text-emerald-100/80">
-                Pro zvolené období a typ produktu zatím nemá tým žádnou
-                produkci.
-              </p>
-            ) : (
-              <ol className="mt-2 space-y-2">
-                {leaderboardEntries.slice(0, 10).map((row, idx) => (
-                  <li
-                    key={row.email}
-                    className="relative overflow-hidden rounded-2xl border border-emerald-400/30 bg-gradient-to-r from-emerald-500/15 via-slate-950/80 to-slate-950/90 px-4 py-3 sm:px-5 sm:py-4"
-                  >
-                    <div className="absolute inset-0 pointer-events-none opacity-60 bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.35),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.3),transparent_55%)]" />
-
-                    <div className="relative flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
-                            idx === 0
-                              ? "bg-amber-400 text-slate-900"
-                              : idx === 1
-                              ? "bg-slate-300 text-slate-900"
-                              : idx === 2
-                              ? "bg-amber-700 text-slate-50"
-                              : "bg-emerald-900/70 text-emerald-200"
-                          }`}
-                        >
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <div className="text-sm sm:text-base font-semibold text-slate-50">
-                            {row.name}
-                          </div>
-                          <div className="text-[11px] text-emerald-200/80">
-                            {leaderboardLabel}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <div className="text-[10px] uppercase tracking-wide text-emerald-300/90">
-                          Pojistné
-                        </div>
-                        <div className="text-lg sm:text-xl font-semibold text-emerald-100">
-                          <AnimatedMoney value={row.totalPremium} />
-                        </div>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            )}
+            {/* progress bar */}
+            <div className="mt-3 h-3 w-full rounded-full bg-white/10 border border-white/15 backdrop-blur-xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.6)] relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-white/10 via-white/4 to-transparent" />
+              <div
+                className={`relative h-full rounded-full bg-gradient-to-r ${progressTone} transition-all duration-500 ease-out shadow-[0_0_24px_rgba(255,255,255,0.35)]`}
+                style={{
+                  width: `${progress}%`,
+                  boxShadow:
+                    progress >= 90
+                      ? "0 0 28px rgba(52, 211, 153, 0.45)"
+                      : progress >= 60
+                      ? "0 0 24px rgba(251, 146, 60, 0.4)"
+                      : "0 0 22px rgba(248, 113, 113, 0.45)",
+                }}
+              />
+            </div>
           </section>
-        )}
+
+          {/* ŽEBŘÍČEK TÝMU – pouze manažer s podřízenými */}
+          {isManager && hasTeam && (
+            <section className="rounded-3xl border border-emerald-400/40 bg-emerald-500/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-7 shadow-[0_30px_90px_rgba(0,0,0,0.9)] h-full">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
+                <div>
+                  <h2 className="text-lg sm:text-xl font-semibold text-emerald-100">
+                    Žebříček týmu
+                  </h2>
+                  <p className="mt-1 text-xs text-emerald-200/80">
+                    Síň slávy podle objemu pojistného – {leaderboardLabel}.
+                  </p>
+                </div>
+
+                <div className="flex flex-col items-start sm:items-end gap-2 text-[11px] sm:text-xs">
+                  <div className="inline-flex rounded-full bg-emerald-900/50 border border-emerald-400/50 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setLbProductFilter("life")}
+                      className={`px-3 py-1.5 rounded-full transition ${
+                        lbProductFilter === "life"
+                          ? "bg-white text-slate-900 shadow-md"
+                          : "text-emerald-100 hover:bg-white/5"
+                      }`}
+                    >
+                      Život
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLbProductFilter("other")}
+                      className={`px-3 py-1.5 rounded-full transition ${
+                        lbProductFilter === "other"
+                          ? "bg-white text-slate-900 shadow-md"
+                          : "text-emerald-100 hover:bg-white/5"
+                      }`}
+                    >
+                      Vedlejší produkty
+                    </button>
+                  </div>
+
+                  <div className="inline-flex rounded-full bg-emerald-900/50 border border-emerald-400/50 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setLbRange("month")}
+                      className={`px-3 py-1.5 rounded-full transition ${
+                        lbRange === "month"
+                          ? "bg-emerald-400 text-slate-900 shadow-md"
+                          : "text-emerald-100 hover:bg-white/5"
+                      }`}
+                    >
+                      Aktuální měsíc
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLbRange("sixMonths")}
+                      className={`px-3 py-1.5 rounded-full transition ${
+                        lbRange === "sixMonths"
+                          ? "bg-emerald-400 text-slate-900 shadow-md"
+                          : "text-emerald-100 hover:bg-white/5"
+                      }`}
+                    >
+                      Posledních 6 měsíců
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLbRange("year")}
+                      className={`px-3 py-1.5 rounded-full transition ${
+                        lbRange === "year"
+                          ? "bg-emerald-400 text-slate-900 shadow-md"
+                          : "text-emerald-100 hover:bg-white/5"
+                      }`}
+                    >
+                      Aktuální rok
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {leaderboardEntries.length === 0 ? (
+                <p className="text-xs sm:text-sm text-emerald-100/80">
+                  Pro zvolené období a typ produktu zatím nemá tým žádnou
+                  produkci.
+                </p>
+              ) : (
+                <ol className="mt-2 space-y-2">
+                  {leaderboardEntries.slice(0, 10).map((row, idx) => (
+                    <li
+                      key={row.email}
+                      className="relative overflow-hidden rounded-2xl border border-emerald-400/30 bg-gradient-to-r from-emerald-500/15 via-slate-950/80 to-slate-950/90 px-4 py-3 sm:px-5 sm:py-4"
+                    >
+                      <div className="absolute inset-0 pointer-events-none opacity-60 bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.35),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.3),transparent_55%)]" />
+
+                      <div className="relative flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
+                              idx === 0
+                                ? "bg-amber-400 text-slate-900"
+                                : idx === 1
+                                ? "bg-slate-300 text-slate-900"
+                                : idx === 2
+                                ? "bg-amber-700 text-slate-50"
+                                : "bg-emerald-900/70 text-emerald-200"
+                            }`}
+                          >
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <div className="text-sm sm:text-base font-semibold text-slate-50">
+                              {row.name}
+                            </div>
+                            <div className="text-[11px] text-emerald-200/80">
+                              {leaderboardLabel}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-[10px] uppercase tracking-wide text-emerald-300/90">
+                            Pojistné
+                          </div>
+                          <div className="text-lg sm:text-xl font-semibold text-emerald-100">
+                            <AnimatedMoney value={row.totalPremium} />
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+          )}
+        </div>
       </div>
     </AppLayout>
   );

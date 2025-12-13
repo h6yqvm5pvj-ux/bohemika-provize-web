@@ -3,50 +3,15 @@
 
 import Link from "next/link";
 import { AppLayout } from "@/components/AppLayout";
+import SplitTitle from "./plan-produkce/SplitTitle";
 import { TeamMessageToolCard } from "./TeamMessageToolCard";
-
-function AnimatedSplitTitle({ text }: { text: string }) {
-  return (
-    <>
-      <div className="flex flex-wrap gap-0 text-5xl sm:text-6xl lg:text-7xl font-semibold tracking-tight leading-tight">
-        {text.split("").map((char, idx) => (
-          <span
-            key={idx}
-            className="split-letter inline-block"
-            style={{ animationDelay: `${idx * 35}ms` }}
-          >
-            {char === " " ? "\u00A0" : char}
-          </span>
-        ))}
-      </div>
-      <style jsx global>{`
-        .split-letter {
-          opacity: 0;
-          transform: translateY(14px) rotate(-1deg);
-          animation: splitFade 0.65s ease-out forwards;
-        }
-
-        @keyframes splitFade {
-          from {
-            opacity: 0;
-            transform: translateY(18px) rotate(-2deg);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) rotate(0deg);
-          }
-        }
-      `}</style>
-    </>
-  );
-}
 
 export default function ToolsPage() {
   return (
     <AppLayout active="tools">
       <div className="w-full max-w-5xl space-y-6">
         <header className="mb-2">
-          <AnimatedSplitTitle text="Pomůcky" />
+          <SplitTitle text="Pomůcky" />
           <p className="text-sm text-slate-300 mt-1">
             Rychlé nástroje pro efektivnější práci.
           </p>

@@ -1409,51 +1409,28 @@ export default function ExportProductionPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-4xl space-y-6">
-        <header className="mb-2">
-          <SplitTitle text="Statistika" />
-          <p className="text-sm text-slate-300 mt-1">
-            Vygeneruj přehled produkce do PDF – podle období, rozsahu a typu
-            produktů.
-          </p>
+      <div className="w-full max-w-4xl space-y-4">
+        <header className="relative">
+          <div className="flex items-end justify-between gap-4">
+            <SplitTitle
+              text="Statistika"
+              className="text-6xl sm:text-7xl lg:text-8xl"
+            />
+          </div>
+
+          <div className="hidden sm:block">
+            <img
+              src="/icons/export-produkce.png"
+              alt="Export produkce"
+              className="h-80 w-auto object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.35)] absolute right-8 top-0"
+            />
+          </div>
         </header>
 
         {/* Nastavení exportu */}
-        <section className="space-y-4">
-          {/* Volba období */}
-          <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)]">
-            <h2 className="text-sm font-semibold text-slate-50 mb-2">
-              Volba období
-            </h2>
-            <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
-              {([
-                ["currentMonth", "Aktuální měsíc"],
-                ["last3", "Poslední 3 měsíce"],
-                ["last6", "Posledních 6 měsíců"],
-                ["last12", "Posledních 12 měsíců"],
-                ["currentYear", "Aktuální rok"],
-              ] as [DateRangeOption, string][]).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setDateRangeOption(value)}
-                  className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm transition ${
-                    dateRangeOption === value
-                      ? "bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/40"
-                      : "border-white/20 text-slate-200 hover:bg-white/5"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
+        <section className="space-y-3">
           {/* Rozsah */}
-          <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
-            <h2 className="text-sm font-semibold text-slate-50">
-              Rozsah exportu
-            </h2>
+          <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.85)] inline-flex flex-col gap-2 w-fit">
             <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
               <button
                 type="button"
@@ -1507,7 +1484,7 @@ export default function ExportProductionPage() {
             )}
 
             {scopeOption === "selected" && hasTeam && (
-              <div className="mt-3 space-y-2">
+              <div className="space-y-2">
                 <p className="text-xs text-slate-300">
                   Vyber konkrétní podřízené, pro které chceš produkci
                   zahrnout do PDF.
@@ -1520,7 +1497,7 @@ export default function ExportProductionPage() {
                         key={sub.email}
                         type="button"
                         onClick={() => handleToggleSubordinate(sub.email)}
-                        className={`w-full flex items-center justify-between py-1.5 text-left rounded-xl px-2 transition ${
+                        className={`w-full flex items-center justify_between py-1.5 text-left rounded-xl px-2 transition ${
                           active
                             ? "bg-emerald-500/20 text-emerald-100"
                             : "text-slate-200 hover:bg-white/5"
@@ -1544,53 +1521,68 @@ export default function ExportProductionPage() {
             )}
           </div>
 
-          {/* Volba produktů */}
-          <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
-            <h2 className="text-sm font-semibold text-slate-50">
-              Volba produktů
-            </h2>
-            <p className="text-xs text-slate-300">
-              Zvol, které typy produktů se mají v PDF objevit.
-            </p>
-            <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
+          {/* Volba období */}
+          <div className="inline-flex flex-wrap gap-2 text-xs sm:text-sm rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.85)] w-fit">
+            {([
+              ["currentMonth", "Aktuální měsíc"],
+              ["last3", "Poslední 3 měsíce"],
+              ["last6", "Posledních 6 měsíců"],
+              ["currentYear", "Aktuální rok"],
+            ] as [DateRangeOption, string][]).map(([value, label]) => (
               <button
+                key={value}
                 type="button"
-                onClick={() =>
-                  setCategories(
-                    new Set<ProductCategory>([
-                      "life",
-                      "nonlife",
-                      "auto",
-                      "property",
-                    ])
-                  )
-                }
-                className="px-3 py-1.5 rounded-full border border-white/25 text-slate-100 hover:bg-white/10 transition"
+                onClick={() => setDateRangeOption(value)}
+                className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm transition ${
+                  dateRangeOption === value
+                    ? "bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/40"
+                    : "border-white/20 text-slate-200 hover:bg-white/5"
+                }`}
               >
-                Všechny
+                {label}
               </button>
+            ))}
+          </div>
 
-              <CheckboxChip
-                label="Životní pojištění"
-                active={categories.has("life")}
-                onClick={() => handleToggleCategory("life")}
-              />
-              <CheckboxChip
-                label="Neživotní pojištění"
-                active={categories.has("nonlife")}
-                onClick={() => handleToggleCategory("nonlife")}
-              />
-              <CheckboxChip
-                label="Auto"
-                active={categories.has("auto")}
-                onClick={() => handleToggleCategory("auto")}
-              />
-              <CheckboxChip
-                label="Majetek"
-                active={categories.has("property")}
-                onClick={() => handleToggleCategory("property")}
-              />
-            </div>
+          {/* Volba produktů */}
+          <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.85)] inline-flex flex-wrap gap-2 text-xs sm:text-sm w-fit">
+            <button
+              type="button"
+              onClick={() =>
+                setCategories(
+                  new Set<ProductCategory>([
+                    "life",
+                    "nonlife",
+                    "auto",
+                    "property",
+                  ])
+                )
+              }
+              className="px-3 py-1.5 rounded-full border border-white/25 text-slate-100 hover:bg-white/10 transition"
+            >
+              Všechny
+            </button>
+
+            <CheckboxChip
+              label="Životní pojištění"
+              active={categories.has("life")}
+              onClick={() => handleToggleCategory("life")}
+            />
+            <CheckboxChip
+              label="Neživotní pojištění"
+              active={categories.has("nonlife")}
+              onClick={() => handleToggleCategory("nonlife")}
+            />
+            <CheckboxChip
+              label="Auto"
+              active={categories.has("auto")}
+              onClick={() => handleToggleCategory("auto")}
+            />
+            <CheckboxChip
+              label="Majetek"
+              active={categories.has("property")}
+              onClick={() => handleToggleCategory("property")}
+            />
           </div>
         </section>
 
