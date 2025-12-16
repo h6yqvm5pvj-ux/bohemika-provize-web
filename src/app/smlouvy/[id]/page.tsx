@@ -652,8 +652,8 @@ export default function ContractDetailPage() {
               </div>
             </section>
 
-            {/* Info o poradci */}
-            {contract && (
+            {/* Info o poradci – zobraz pouze manažerovi na podřízené smlouvě */}
+            {contract && isManagerViewingSubordinate && (
               <section className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
                 <h3 className="text-sm font-semibold text-slate-100 mb-2">
                   Poradce
