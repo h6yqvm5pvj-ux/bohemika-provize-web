@@ -45,6 +45,7 @@ import {
   calculateZamex,
   calculateCppCestovko,
   calculateAxaCestovko,
+  calculateComfortCC,
 } from "./lib/productFormulas";
 
 // ---------- helpers ----------
@@ -143,6 +144,14 @@ function commissionItemsForPosition(
       return calculateCppCestovko(amount, pos).items;
     case "axacestovko":
       return calculateAxaCestovko(amount, pos).items;
+    case "comfortcc":
+      return calculateComfortCC({
+        fee: amount,
+        payment: entry.comfortPayment ?? 0,
+        isSavings: !!entry.comfortGradual,
+        isGradualFee: !!entry.comfortGradual,
+        position: pos,
+      }).items;
     default:
       return [];
   }
@@ -191,6 +200,8 @@ type EntryDoc = {
   durationYears?: number | null;
   commissionMode?: CommissionMode | null;
   position?: Position | null;
+  comfortPayment?: number | null;
+  comfortGradual?: boolean | null;
 };
 
 type UserMeta = {

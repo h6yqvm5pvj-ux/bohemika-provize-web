@@ -31,6 +31,7 @@ import {
   calculateZamex,
   calculateCppCestovko,
   calculateAxaCestovko,
+  calculateComfortCC,
   SUPPORTED_PRODUCTS,
 } from "../lib/productFormulas";
 
@@ -270,6 +271,8 @@ export default function CalculatorPage() {
   const [frequency, setFrequency] = useState<PaymentFrequency>("monthly");
   const [durationYears, setDurationYears] = useState<number>(15);
   const [amountText, setAmountText] = useState<string>("");
+  const [comfortGradual, setComfortGradual] = useState<boolean>(false);
+  const [comfortPaymentText, setComfortPaymentText] = useState<string>("");
 
   const [clientName, setClientName] = useState<string>("");
   const [clientSuggestions, setClientSuggestions] = useState<string[]>([]);
@@ -352,6 +355,11 @@ export default function CalculatorPage() {
       setFrequency(allowed[0]);
     }
 
+    if (product !== "comfortcc") {
+      setComfortGradual(false);
+      setComfortPaymentText("");
+    }
+
     const [min, max] = durationRange(product);
     if (durationYears < min || durationYears > max) {
       if (product === "neon") setDurationYears(15);
@@ -362,6 +370,7 @@ export default function CalculatorPage() {
 
   const recalc = () => {
     const val = parseNumber(amountText);
+    const comfortPayment = parseNumber(comfortPaymentText);
 
     if (val <= 0) {
       setItems([]);
@@ -498,6 +507,20 @@ export default function CalculatorPage() {
       return;
     }
 
+    if (product === "comfortcc") {
+      const dto = calculateComfortCC({
+        fee: val,
+        payment: comfortGradual ? comfortPayment : 0,
+        isSavings: comfortGradual,
+        isGradualFee: comfortGradual,
+        position,
+      });
+      setItems(dto.items);
+      setTotal(dto.total);
+      setUnsupported(false);
+      return;
+    }
+
     setItems([]);
     setTotal(0);
     setUnsupported(true);
@@ -506,12 +529,13 @@ export default function CalculatorPage() {
   useEffect(() => {
     recalc();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product, position, mode, frequency, durationYears, amountText]);
+  }, [product, position, mode, frequency, durationYears, amountText, comfortGradual, comfortPaymentText]);
 
   const handleSaveContract = async () => {
     if (!user) return;
 
     const value = parseNumber(amountText);
+    const comfortPayment = parseNumber(comfortPaymentText);
     if (value <= 0 || items.length === 0) return;
 
     setSaving(true);
@@ -533,7 +557,9 @@ export default function CalculatorPage() {
         productKey: product,
         createdAt: serverTimestamp(),
         position,
-        inputAmount: value,
+        inputAmount: product === "comfortcc" ? value : value,
+        comfortPayment: product === "comfortcc" && comfortGradual ? comfortPayment : null,
+        comfortGradual: product === "comfortcc" ? comfortGradual : null,
         frequencyRaw: frequency,
 
         // 🔹 Hlavní data výsledku – stejně jako v mobilní appce
@@ -743,16 +769,79 @@ export default function CalculatorPage() {
               </div>
             </section>
 
-            {/* Částka */}
-            <section className="space-y-1">
-              <label className="block text-sm font-medium">Částka</label>
-              <input
-                type="number"
-                className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                value={amountText}
-                onChange={(e) => setAmountText(e.target.value)}
-                placeholder={placeholderForAmount(product, frequency)}
-              />
+            {/* Comfort Commodity – toggle poplatku */}
+            {product === "comfortcc" && (
+              <section className="space-y-2">
+                <div className="text-sm font-medium">Comfort Commodity</div>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <div className="text-[12px] uppercase tracking-wide text-slate-400 mb-1">
+                      Poplatek
+                    </div>
+                    <div className="inline-flex rounded-full border border-white/15 bg-white/5 p-1">
+                      <button
+                        type="button"
+                        onClick={() => setComfortGradual(false)}
+                        className={`px-3 py-1.5 rounded-full text-sm transition ${
+                          !comfortGradual
+                            ? "bg-white text-slate-900 shadow"
+                            : "text-slate-100"
+                        }`}
+                      >
+                        Jednorázový poplatek
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setComfortGradual(true)}
+                        className={`px-3 py-1.5 rounded-full text-sm transition ${
+                          comfortGradual
+                            ? "bg-white text-slate-900 shadow"
+                            : "text-slate-100"
+                        }`}
+                      >
+                        Postupný poplatek
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Poplatky / částka */}
+            <section className="space-y-3">
+              <div className="space-y-1">
+                <label className="block text-sm font-medium">
+                  {product === "comfortcc"
+                    ? "Poplatek (zde se určuje provize z poplatku klienta)"
+                    : "Částka"}
+                </label>
+                <input
+                  type="number"
+                  className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  value={amountText}
+                  onChange={(e) => setAmountText(e.target.value)}
+                  placeholder={
+                    product === "comfortcc"
+                      ? "Zadejte poplatek"
+                      : placeholderForAmount(product, frequency)
+                  }
+                />
+              </div>
+
+              {product === "comfortcc" && comfortGradual && (
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium">
+                    Pravidelná platba
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    value={comfortPaymentText}
+                    onChange={(e) => setComfortPaymentText(e.target.value)}
+                    placeholder="Zadejte pravidelnou platbu"
+                  />
+                </div>
+              )}
             </section>
 
             {/* Detaily smlouvy */}

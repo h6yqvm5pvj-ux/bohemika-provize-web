@@ -38,6 +38,7 @@ import {
   calculateZamex,
   calculateCppCestovko,
   calculateAxaCestovko,
+  calculateComfortCC,
 } from "../../lib/productFormulas";
 
 type FirestoreTimestamp = {
@@ -52,6 +53,8 @@ type ContractDoc = {
   position?: Position;
   inputAmount?: number;
   frequencyRaw?: PaymentFrequency | null;
+  comfortPayment?: number | null;
+  comfortGradual?: boolean | null;
   total?: number;
   items?: CommissionResultItemDTO[];
 
@@ -259,6 +262,8 @@ function calculateResultForPosition(
 
   const amount = c.inputAmount ?? 0;
   const freq = (c.frequencyRaw ?? "annual") as PaymentFrequency;
+  const comfortPayment = c.comfortPayment ?? 0;
+  const comfortGradual = !!c.comfortGradual;
 
   const years =
     typeof c.durationYears === "number" && !Number.isNaN(c.durationYears)
@@ -298,6 +303,14 @@ function calculateResultForPosition(
       return calculateCppCestovko(amount, position);
     case "axacestovko":
       return calculateAxaCestovko(amount, position);
+    case "comfortcc":
+      return calculateComfortCC({
+        fee: amount,
+        payment: comfortGradual ? comfortPayment : 0,
+        isSavings: comfortGradual,
+        isGradualFee: comfortGradual,
+        position,
+      });
     default:
       return null;
   }
