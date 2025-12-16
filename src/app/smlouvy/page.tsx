@@ -162,7 +162,12 @@ function isAnniversarySoon(date: Date | null): { soon: boolean; next?: Date } {
   const now = new Date();
   const next = nextAnniversaryDate(date, now);
   const diffDays = (next.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  return { soon: diffDays <= 60 && diffDays >= 0, next };
+  // nové smlouvy (první rok) nechceme označovat jako "blížící se"
+  const oneYearMs = 365 * 24 * 60 * 60 * 1000;
+  const firstAnniversary = new Date(date.getTime() + oneYearMs);
+  const isBeforeFirstAnniv = now < firstAnniversary;
+  const soon = diffDays <= 60 && diffDays >= 0 && !isBeforeFirstAnniv;
+  return { soon, next };
 }
 
 export default function ContractsPage() {
@@ -226,21 +231,31 @@ export default function ContractsPage() {
         }));
         setMyContracts(myList);
 
-        // 3) Podřízení – users s managerEmail == current user
-        const teamUsersQ = query(
-          collection(db, "users"),
-          where("managerEmail", "==", user.email)
-        );
-        const teamUsersSnap = await getDocs(teamUsersQ);
-        const teamUsers: AppUser[] = teamUsersSnap.docs.map((d) => {
-          const data = d.data() as any;
-          return {
-            id: d.id,
-            email: (data.email ?? d.id) as string,
-            position: (data.position ?? null) as Position | null,
-            managerEmail: (data.managerEmail ?? null) as string | null,
-          };
-        });
+        // 3) Podřízení – celý strom pod sebou (manažer může mít manažera pod sebou)
+        const usersCol = collection(db, "users");
+        const visited = new Set<string>();
+        const teamUsers: AppUser[] = [];
+        const queue: string[] = [user.email.toLowerCase()];
+
+        while (queue.length > 0) {
+          const mgrEmail = queue.shift()!;
+          const snap = await getDocs(
+            query(usersCol, where("managerEmail", "==", mgrEmail))
+          );
+          snap.docs.forEach((d) => {
+            const data = d.data() as any;
+            const em = ((data.email as string | undefined) ?? d.id).toLowerCase();
+            if (!em || visited.has(em)) return;
+            visited.add(em);
+            teamUsers.push({
+              id: d.id,
+              email: em,
+              position: (data.position ?? null) as Position | null,
+              managerEmail: (data.managerEmail ?? null) as string | null,
+            });
+            queue.push(em);
+          });
+        }
 
         if (teamUsers.length === 0) {
           setTeamContracts([]);
@@ -248,9 +263,7 @@ export default function ContractsPage() {
           return;
         }
 
-        const teamEmails = teamUsers
-          .map((u) => u.email)
-          .filter((e) => !!e);
+        const teamEmails = teamUsers.map((u) => u.email).filter(Boolean);
 
         const teamContractsAll: ContractDoc[] = [];
 

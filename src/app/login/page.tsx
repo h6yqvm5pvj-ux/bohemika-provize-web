@@ -7,6 +7,7 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import { auth, db } from "../firebase";
 import Plasma from "@/components/Plasma";
@@ -25,6 +26,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetStatus, setResetStatus] = useState<string | null>(null);
 
   // pomocná funkce: vyhodnotí, jestli má user aktivní předplatné
   function evaluateSubscription(data: any): boolean {
@@ -125,6 +127,27 @@ export default function LoginPage() {
     }
   };
 
+  const handleReset = async () => {
+    setError(null);
+    setResetStatus(null);
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      setResetStatus("Zadej e-mail, kam ti máme poslat odkaz na nové heslo.");
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, trimmedEmail);
+      setResetStatus("Poslal jsem odkaz pro obnovení hesla na zadaný e-mail.");
+    } catch (err: any) {
+      console.error("reset error", err);
+      let msg = "Nepodařilo se odeslat odkaz pro obnovení.";
+      if (err?.code === "auth/user-not-found") {
+        msg = "Účet s tímto e-mailem neexistuje.";
+      }
+      setResetStatus(msg);
+    }
+  };
+
   return (
     <main className="relative min-h-screen overflow-hidden text-slate-50">
       {/* Černé pozadí + plasma jako všude */}
@@ -176,11 +199,26 @@ export default function LoginPage() {
                 className="w-full rounded-xl border border-white/15 bg-slate-950/50 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/80 focus:border-sky-500/80"
                 placeholder="••••••••"
               />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={loading}
+                  className="text-[11px] text-sky-200 hover:text-sky-100 transition disabled:opacity-60"
+                >
+                  Zapomenuté heslo?
+                </button>
+              </div>
             </div>
 
             {error && (
               <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/40 rounded-xl px-3 py-2">
                 {error}
+              </p>
+            )}
+            {resetStatus && (
+              <p className="text-xs text-sky-200 bg-sky-500/10 border border-sky-400/40 rounded-xl px-3 py-2">
+                {resetStatus}
               </p>
             )}
 

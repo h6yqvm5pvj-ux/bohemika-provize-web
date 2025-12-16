@@ -389,11 +389,30 @@ export default function ExportProductionPage() {
   const [loadingSubs, setLoadingSubs] = useState(false);
 
   const [generating, setGenerating] = useState(false);
+  const [sending, setSending] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [sendStatus, setSendStatus] = useState<
+    { type: "ok" | "error"; msg: string } | null
+  >(null);
+  const [showEmailForm, setShowEmailForm] = useState(false);
 
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
 
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [recipient, setRecipient] = useState("");
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPass, setSmtpPass] = useState("");
+
+  const blobToBase64 = async (blob: Blob): Promise<string> => {
+    const buffer = await blob.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  };
 
   const hasTeam = subordinates.length > 0;
   const isTeamScope =
@@ -412,6 +431,12 @@ export default function ExportProductionPage() {
     });
     return () => unsub();
   }, [router]);
+
+  useEffect(() => {
+    if (user?.email && !smtpUser) {
+      setSmtpUser(user.email);
+    }
+  }, [user, smtpUser]);
 
   /* ------------------------- podřízení --------------------------- */
 
@@ -1393,6 +1418,95 @@ export default function ExportProductionPage() {
     }
   };
 
+  const handleSendEmail = async () => {
+    if (!user?.email) return;
+    if (!validateScopeConfig()) return;
+
+    if (!recipient.trim()) {
+      setSendStatus({ type: "error", msg: "Vyplň e-mail příjemce." });
+      return;
+    }
+    if (!smtpUser.trim() || !smtpPass.trim()) {
+      setSendStatus({
+        type: "error",
+        msg: "Vyplň SMTP uživatele a heslo.",
+      });
+      return;
+    }
+
+    setSending(true);
+    setSendStatus(null);
+
+    try {
+      const { html, filenameBase } = await buildReportHtml();
+      const safeHtml = stripUnsupportedColors(html);
+      const html2pdf = await getHtml2Pdf();
+
+      const opt: any = {
+        margin: [10, 10, 10, 10],
+        filename: `${filenameBase}_${dateRangeOption}.pdf`,
+        image: { type: "jpeg", quality: 0.96 },
+        html2canvas: {
+          scale: 2,
+          backgroundColor: "#ffffff",
+          useCORS: true,
+          onclone: (doc: Document) => {
+            doc.querySelectorAll("link[rel='stylesheet']").forEach((n) => n.remove());
+            doc.querySelectorAll("style").forEach((n) => {
+              const text = n.textContent ?? "";
+              if (/(oklch|lab)\(/i.test(text)) n.remove();
+            });
+          },
+        },
+        jsPDF: { unit: "pt", format: "a4", orientation: "portrait" },
+      };
+
+      const worker = (html2pdf() as any).from(safeHtml).set(opt).toPdf();
+      const blob = await worker.output("blob");
+      const base64 = await blobToBase64(blob);
+
+      const rangeLabelMap: Record<DateRangeOption, string> = {
+        currentMonth: "aktuální měsíc",
+        last3: "poslední 3 měsíce",
+        last6: "posledních 6 měsíců",
+        last12: "posledních 12 měsíců",
+        currentYear: "aktuální rok",
+      };
+      const subject = `Statistika produkce – ${rangeLabelMap[dateRangeOption] ?? dateRangeOption}`;
+      const filename = `${filenameBase}_${dateRangeOption}.pdf`;
+
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: recipient.trim(),
+          subject,
+          text: "V příloze posílám export produkce.",
+          pdfBase64: base64,
+          smtpUser,
+          smtpPass,
+          from: smtpUser,
+          filename,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || "Odeslání selhalo");
+      }
+
+      setSendStatus({ type: "ok", msg: "E-mail odeslán." });
+    } catch (e) {
+      console.error("Chyba při odesílání e-mailu", e);
+      setSendStatus({
+        type: "error",
+        msg: "Odeslání se nepovedlo. Zkontroluj údaje a zkus to znovu.",
+      });
+    } finally {
+      setSending(false);
+    }
+  };
+
   /* ----------------------------- render ----------------------------- */
 
   if (!user) {
@@ -1611,7 +1725,83 @@ export default function ExportProductionPage() {
           >
             {generating ? "Generuji PDF…" : "Vygenerovat PDF"}
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowEmailForm((v) => !v);
+              setSendStatus(null);
+            }}
+            disabled={generating || sending}
+            className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-7 py-2.5 text-sm sm:text-base font-semibold text-white shadow-[0_0_22px_rgba(255,255,255,0.25)] hover:bg-white/15 transition disabled:opacity-60 disabled:cursor-not-allowed backdrop-blur"
+          >
+            {sending ? "Odesílám…" : showEmailForm ? "Skrýt odeslání" : "Odeslat e‑mailem"}
+          </button>
         </div>
+
+        {showEmailForm && (
+          <div className="mx-auto mt-2 w-full max-w-4xl rounded-2xl border border-white/10 bg-white/5 backdrop-blur px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.55)]">
+            <div className="grid gap-3 sm:grid-cols-[1.3fr_1.1fr_1fr] items-end">
+              <label className="space-y-1 text-sm text-slate-200">
+                <span className="block text-[11px] uppercase tracking-wide text-slate-400">
+                  E-mail příjemce
+                </span>
+                <input
+                  type="email"
+                  value={recipient}
+                  onChange={(e) => setRecipient(e.target.value)}
+                  className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  placeholder="klient@example.com"
+                />
+              </label>
+
+              <label className="space-y-1 text-sm text-slate-200">
+                <span className="block text-[11px] uppercase tracking-wide text-slate-400">
+                  Zadej firemní e-mail
+                </span>
+                <input
+                  type="email"
+                  value={smtpUser}
+                  onChange={(e) => setSmtpUser(e.target.value)}
+                  className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  placeholder="tvoje@domena.cz"
+                />
+              </label>
+
+              <label className="space-y-1 text-sm text-slate-200">
+                <span className="block text-[11px] uppercase tracking-wide text-slate-400">
+                  Zadej heslo k e-mailu
+                </span>
+                <input
+                  type="password"
+                  value={smtpPass}
+                  onChange={(e) => setSmtpPass(e.target.value)}
+                  className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  placeholder="••••••••"
+                />
+              </label>
+            </div>
+            {sendStatus && (
+              <p
+                className={`mt-2 text-xs ${
+                  sendStatus.type === "ok" ? "text-emerald-200" : "text-rose-200"
+                }`}
+              >
+                {sendStatus.msg}
+              </p>
+            )}
+            <div className="mt-3 text-right">
+              <button
+                type="button"
+                onClick={handleSendEmail}
+                disabled={generating || sending}
+                className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white shadow-[0_0_18px_rgba(255,255,255,0.25)] hover:bg-white/15 transition disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {sending ? "Odesílám…" : "Odeslat e‑mailem"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Náhled PDF na stránce */}
         {previewHtml && (

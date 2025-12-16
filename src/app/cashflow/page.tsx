@@ -682,23 +682,32 @@ export default function CashflowPage() {
           ?.position;
         setUserPosition(myPos ?? null);
 
-        // podřízení
-        const subsQ = query(
-          collection(db, "users"),
-          where("managerEmail", "==", email)
-        );
-        const subsSnap = await getDocs(subsQ);
-        const subordinateEmails = subsSnap.docs
-          .map((d) => (d.data() as any).email as string | undefined)
-          .filter(Boolean)
-          .map((e) => e!.toLowerCase());
+        // podřízení – celý strom manažerů/podřízených
+        const usersCol = collection(db, "users");
+        const visited = new Set<string>();
         const subordinatePositions: Record<string, Position | null> = {};
+        const managerOf: Record<string, string | null> = {};
+        const queue: string[] = [email];
+
+        while (queue.length > 0) {
+          const mgrEmail = queue.shift()!;
+          const subsSnap = await getDocs(
+            query(usersCol, where("managerEmail", "==", mgrEmail))
+          );
+          subsSnap.docs.forEach((d) => {
+            const data = d.data() as any;
+            const em = (data.email as string | undefined)?.toLowerCase();
+            if (!em || visited.has(em)) return;
+            visited.add(em);
+            subordinatePositions[em] =
+              (data.position as Position | undefined) ?? null;
+            managerOf[em] = mgrEmail;
+            queue.push(em);
+          });
+        }
+
+        const subordinateEmails = Array.from(visited);
         setHasTeam(subordinateEmails.length > 0);
-        subsSnap.docs.forEach((d) => {
-          const data = d.data() as any;
-          const e = (data.email as string | undefined)?.toLowerCase();
-          if (e) subordinatePositions[e] = data.position ?? null;
-        });
 
         const q = collectionGroup(db, "entries");
         const snap = await getDocs(q);
@@ -724,14 +733,24 @@ export default function CashflowPage() {
         const overrides: EntryDoc[] = [];
         if (myPos && teamRaw.length > 0) {
           for (const entry of teamRaw) {
+            const ownerEmail = (entry.userEmail ?? "").toLowerCase();
             const subPos =
               (entry.position as Position | undefined) ??
-              subordinatePositions[(entry.userEmail ?? "").toLowerCase()] ??
+              subordinatePositions[ownerEmail] ??
               null;
+            const ownerManagerEmail = managerOf[ownerEmail] ?? null;
+            const ownerManagerPos = ownerManagerEmail
+              ? subordinatePositions[ownerManagerEmail] ?? null
+              : null;
+            const comparePos = ownerManagerPos ?? subPos;
+
             if (!subPos) continue;
 
             const mgrItems = commissionItemsForPosition(entry, myPos);
-            const subItems = commissionItemsForPosition(entry, subPos);
+            const baselineItems = commissionItemsForPosition(
+              entry,
+              comparePos ?? subPos
+            );
 
             const mgrMap = new Map<
               string,
@@ -749,7 +768,7 @@ export default function CashflowPage() {
             const diffItems: CommissionResultItemDTO[] = [];
             let diffTotal = 0;
 
-            subItems.forEach((it) => {
+            baselineItems.forEach((it) => {
               const key = normalizeTitleKey(it.title ?? "");
               const mgr = mgrMap.get(key);
               const mgrAmt = mgr?.amount ?? 0;
@@ -955,14 +974,8 @@ export default function CashflowPage() {
     <AppLayout active="cashflow">
       <div className="w-full max-w-5xl space-y-6">
         {/* HEADER + souhrnný box */}
-        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <SplitTitle text="Cashflow provizí" />
-            <p className="text-xs sm:text-sm text-slate-300 mt-1">
-              Přehled očekávaných výplat provizí z tvých sjednaných
-              smluv.
-            </p>
-          </div>
+        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <SplitTitle text="Cashflow provizí" />
 
           <div className="rounded-2xl bg-emerald-500/15 border border-emerald-400/50 px-4 py-4 text-center shadow-[0_18px_50px_rgba(16,185,129,0.4)]">
             <div className="text-[10px] uppercase tracking-[0.18em] text-emerald-200/80 mb-1">

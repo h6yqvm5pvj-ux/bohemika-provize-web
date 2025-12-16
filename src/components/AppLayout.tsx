@@ -217,10 +217,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
               />
               <div>
                 <div className="text-sm font-semibold tracking-tight">
-                  Bohemika Provize
+                  Bohemka.App
                 </div>
                 <div className="text-[11px] text-slate-400">
-                  Webová verze výpočtu provizí
                 </div>
               </div>
             </div>

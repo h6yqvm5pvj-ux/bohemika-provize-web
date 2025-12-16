@@ -131,9 +131,11 @@ function supportsBenefit(
       const okProgress = cap.permanentInjury.progressions.includes(
         benefit.progress
       );
-      const okThreshold = cap.permanentInjury.thresholds.includes(
-        benefit.from
-      );
+      const okThreshold =
+        cap.permanentInjury.thresholds.includes(benefit.from) ||
+        // tolerujeme from0001 jako from0 (Kooperativa umí od 0 %)
+        (benefit.from === "from0001" &&
+          cap.permanentInjury.thresholds.includes("from0"));
       return okProgress && okThreshold;
     }
     case "dailyAllowance": {
@@ -328,7 +330,15 @@ function buildRecommendation(
     }
 
     if (supportsBenefit(benefit, capability.entries)) {
-      const t = describeBenefit(benefit);
+      let t = describeBenefit(benefit);
+      if (
+        productKey === "kooperativaFlexi" &&
+        benefit.key === "permanentInjury" &&
+        benefit.from === "from0001" &&
+        t?.includes("0,001 %")
+      ) {
+        t = t.replace("0,001 %", "0 %");
+      }
       if (t) texts.push(t);
     }
   });

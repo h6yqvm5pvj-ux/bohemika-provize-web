@@ -444,15 +444,40 @@ export default function HomePage() {
           where("managerEmail", "==", email)
         );
         const subsSnap = await getDocs(subsQ);
-        const subUsers = subsSnap.docs.map((d) => d.data() as any);
-        const subEmails = subUsers
-          .map((d) => (d.email as string | undefined)?.toLowerCase())
-          .filter(Boolean) as string[];
+        const directSubs = subsSnap.docs.map((d) => d.data() as any);
+
+        // BFS pro celý strom podřízených (podřízený manažer má své další)
+        const visited = new Set<string>();
         const subPositionMap = new Map<string, Position | undefined>();
-        subUsers.forEach((u) => {
+        const managerOf = new Map<string, string | null>();
+        const queue: string[] = [];
+
+        for (const u of directSubs) {
           const em = (u.email as string | undefined)?.toLowerCase();
-          if (em) subPositionMap.set(em, u.position as Position | undefined);
-        });
+          if (!em) continue;
+          visited.add(em);
+          queue.push(em);
+          subPositionMap.set(em, u.position as Position | undefined);
+          managerOf.set(em, email.toLowerCase());
+        }
+
+        while (queue.length > 0) {
+          const currentManager = queue.shift()!;
+          const subSnap = await getDocs(
+            query(usersRef, where("managerEmail", "==", currentManager))
+          );
+          subSnap.forEach((docSnap) => {
+            const d = docSnap.data() as any;
+            const em = (d.email as string | undefined)?.toLowerCase();
+            if (!em || visited.has(em)) return;
+            visited.add(em);
+            queue.push(em);
+            subPositionMap.set(em, d.position as Position | undefined);
+            managerOf.set(em, currentManager);
+          });
+        }
+
+        const subEmails = Array.from(visited);
 
         if (subEmails.length === 0) {
           setHasTeam(false);
@@ -465,68 +490,78 @@ export default function HomePage() {
 
         setHasTeam(true);
 
-        const limitedSubEmails = subEmails.slice(0, 10);
-
-        const teamQ = query(
-          collectionGroup(db, "entries"),
-          where("userEmail", "in", limitedSubEmails)
-        );
-
-        const teamSnap = await getDocs(teamQ);
-
         let teamCount = 0;
         let teamImmediate = 0;
         const teamEntriesAll: EntryDoc[] = [];
 
-        teamSnap.forEach((docSnap) => {
-          const data = docSnap.data() as any as EntryDoc;
-          const ownerEmail = (data.userEmail ?? "").toLowerCase();
+        const chunks: string[][] = [];
+        for (let i = 0; i < subEmails.length; i += 10) {
+          chunks.push(subEmails.slice(i, i + 10));
+        }
 
-          // pro leaderboard ukládáme všechny záznamy
-          teamEntriesAll.push({
-            ...(data as any),
-            id: docSnap.id,
-          } as EntryDoc);
-
-          // pro horní "Týmovou produkci" počítáme jen aktuální měsíc
-          const signed = toDate((data as any).contractSignedDate) ?? toDate(data.createdAt);
-          if (!signed) return;
-          if (
-            signed.getFullYear() !== currentYear ||
-            signed.getMonth() !== currentMonth
-          ) {
-            return;
-          }
-
-          teamCount += 1;
-
-          const items = (data.items ?? []) as CommissionResultItemDTO[];
-          const immediate = items.find((it) =>
-            (it.title ?? "").toLowerCase().includes("okamžitá provize")
+        for (const chunk of chunks) {
+          const teamQ = query(
+            collectionGroup(db, "entries"),
+            where("userEmail", "in", chunk)
           );
 
-          if (immediate?.amount) {
-            const mgrPos = position;
-            const subPos =
-              subPositionMap.get(ownerEmail) ??
-              (data.position as Position | undefined) ??
-              null;
-            if (mgrPos && subPos) {
-              const mgrImmediate =
-                commissionItemsForPosition(data, mgrPos).find((i) =>
-                  (i.title ?? "").toLowerCase().includes("okamžitá")
-                )?.amount ?? 0;
-              const subImmediate =
-                commissionItemsForPosition(data, subPos).find((i) =>
-                  (i.title ?? "").toLowerCase().includes("okamžitá")
-                )?.amount ?? 0;
-              const diff = Math.max(0, mgrImmediate - subImmediate);
-              teamImmediate += diff;
-            } else {
-              teamImmediate += immediate.amount;
+          const teamSnap = await getDocs(teamQ);
+
+          teamSnap.forEach((docSnap) => {
+            const data = docSnap.data() as any as EntryDoc;
+            const ownerEmail = (data.userEmail ?? "").toLowerCase();
+
+            // pro leaderboard ukládáme všechny záznamy
+            teamEntriesAll.push({
+              ...(data as any),
+              id: docSnap.id,
+            } as EntryDoc);
+
+            // pro horní "Týmovou produkci" počítáme jen aktuální měsíc
+            const signed = toDate((data as any).contractSignedDate) ?? toDate(data.createdAt);
+            if (!signed) return;
+            if (
+              signed.getFullYear() !== currentYear ||
+              signed.getMonth() !== currentMonth
+            ) {
+              return;
             }
-          }
-        });
+
+            teamCount += 1;
+
+            const items = (data.items ?? []) as CommissionResultItemDTO[];
+            const immediate = items.find((it) =>
+              (it.title ?? "").toLowerCase().includes("okamžitá provize")
+            );
+
+            if (immediate?.amount) {
+              const mgrPos = position;
+              const subPos =
+                subPositionMap.get(ownerEmail) ??
+                (data.position as Position | undefined) ??
+                null;
+              const ownerManagerEmail = managerOf.get(ownerEmail) ?? null;
+              const ownerManagerPos = ownerManagerEmail
+                ? subPositionMap.get(ownerManagerEmail) ?? null
+                : null;
+              const comparePos = ownerManagerPos ?? subPos;
+              if (mgrPos && subPos) {
+                const mgrImmediate =
+                  commissionItemsForPosition(data, mgrPos).find((i) =>
+                    (i.title ?? "").toLowerCase().includes("okamžitá")
+                  )?.amount ?? 0;
+                const subImmediate =
+                  commissionItemsForPosition(data, comparePos ?? subPos).find((i) =>
+                    (i.title ?? "").toLowerCase().includes("okamžitá")
+                  )?.amount ?? 0;
+                const diff = Math.max(0, mgrImmediate - subImmediate);
+                teamImmediate += diff;
+              } else {
+                teamImmediate += immediate.amount;
+              }
+            }
+          });
+        }
 
         setTeamContractsCount(teamCount);
         setTeamImmediateSum(teamImmediate);
@@ -547,6 +582,8 @@ export default function HomePage() {
   const baseProduction = myImmediateSum;
   const totalWithTeam =
     baseProduction + (isManager ? teamImmediateSum : 0);
+  const totalContractsCount =
+    myContractsCount + (showTeamBox ? teamContractsCount : 0);
 
   const monthlyGoal = userMeta?.monthlyGoal ?? null;
   const hasGoal = monthlyGoal != null && monthlyGoal > 0;
@@ -666,10 +703,10 @@ export default function HomePage() {
         </div>
 
         {/* PRODUKCE BOX */}
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 sm:px-8 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
+        <section className="rounded-3xl border border-white/12 bg-white/2 backdrop-blur-2xl px-5 py-5 sm:px-8 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
           <div
             className={`grid gap-6 ${
-              showTeamBox ? "md:grid-cols-2" : "md:grid-cols-1"
+              showTeamBox ? "md:grid-cols-3" : "md:grid-cols-2"
             }`}
           >
             {/* VLASTNÍ PRODUKCE */}
@@ -737,6 +774,38 @@ export default function HomePage() {
                 )}
               </div>
             )}
+
+            {/* CELKOVÁ PRODUKCE */}
+            <div className="space-y-3">
+              <h2 className="text-lg sm:text-xl font-semibold text-cyan-100">
+                Celková produkce
+              </h2>
+
+              {loading ? (
+                <p className="text-xs sm:text-sm text-cyan-100/80">
+                  Načítám…
+                </p>
+              ) : (
+                <dl className="space-y-3">
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-cyan-200/80">
+                      Počet smluv
+                    </dt>
+                    <dd className="text-2xl sm:text-3xl font-semibold text-cyan-50 mt-0.5">
+                      <AnimatedNumber value={totalContractsCount} />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-cyan-200/80">
+                      Provize
+                    </dt>
+                    <dd className="text-2xl sm:text-3xl font-semibold text-cyan-50 mt-0.5">
+                      <AnimatedMoney value={totalWithTeam} />
+                    </dd>
+                  </div>
+                </dl>
+              )}
+            </div>
           </div>
         </section>
 

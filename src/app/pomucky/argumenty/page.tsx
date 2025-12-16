@@ -18,14 +18,13 @@ const CATEGORY_META: {
   id: FilterCategory;
   label: string;
   shortLabel: string;
-  emoji: string;
 }[] = [
-  { id: "all", label: "Vše", shortLabel: "Vše", emoji: "⭐️" },
-  { id: "life", label: "Životní pojištění", shortLabel: "Život", emoji: "❤️" },
-  { id: "nonLife", label: "Neživotní pojištění", shortLabel: "Neživot", emoji: "🏠" },
-  { id: "investment", label: "Investice", shortLabel: "Investice", emoji: "📈" },
-  { id: "gold", label: "Zlato", shortLabel: "Zlato", emoji: "🥇" },
-  { id: "general", label: "Obecné námitky", shortLabel: "Obecné", emoji: "💬" },
+  { id: "all", label: "Vše", shortLabel: "Vše" },
+  { id: "life", label: "Životní pojištění", shortLabel: "Život" },
+  { id: "nonLife", label: "Neživotní pojištění", shortLabel: "Neživot" },
+  { id: "investment", label: "Investice", shortLabel: "Investice" },
+  { id: "gold", label: "Zlato", shortLabel: "Zlato" },
+  { id: "general", label: "Obecné námitky", shortLabel: "Obecné" },
 ];
 
 const OBJECTIONS: Objection[] = [
@@ -178,22 +177,6 @@ const OBJECTIONS: Objection[] = [
   },
 ];
 
-// emoji pro jednotlivé odrážky
-function emojiForBullet(index: number): string {
-  switch (index) {
-    case 0:
-      return "👉";
-    case 1:
-      return "✅";
-    case 2:
-      return "💡";
-    case 3:
-      return "⚠️";
-    default:
-      return "•";
-  }
-}
-
 // jednoduchý markdown: **tučné**
 function renderWithBold(text: string) {
   const parts = text.split(/\*\*(.*?)\*\*/g);
@@ -277,7 +260,6 @@ export default function ArgumentsPage() {
                     : "bg-slate-900/40 text-slate-200 hover:bg-slate-900/70"
                 }`}
               >
-                <span>{cat.emoji}</span>
                 <span>{cat.shortLabel}</span>
               </button>
             ))}
@@ -304,18 +286,21 @@ export default function ArgumentsPage() {
                   }
                   className="w-full flex items-center gap-2 text-left"
                 >
-                  <span className="text-lg">
-                    {catMeta?.emoji ?? "💬"}
-                  </span>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-slate-50">
-                      {obj.title}
-                    </p>
-                    {catMeta && (
-                      <p className="text-[11px] text-slate-400">
-                        {catMeta.label}
+                  <div className="flex-1 flex items-center gap-2">
+                    <span className="relative inline-flex h-3.5 w-3.5">
+                      <span className="absolute inset-0 rounded-full bg-emerald-300 opacity-70 blur-[2px]" />
+                      <span className="relative inline-block h-full w-full rounded-full bg-emerald-400" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-50">
+                        {obj.title}
                       </p>
-                    )}
+                      {catMeta && (
+                        <p className="text-[11px] text-slate-400">
+                          {catMeta.label}
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <span className="text-xs text-slate-400">
                     {open ? "▴" : "▾"}
@@ -329,9 +314,7 @@ export default function ArgumentsPage() {
                         key={idx}
                         className="flex items-start gap-2 text-sm text-slate-100"
                       >
-                        <span className="mt-[2px]">
-                          {emojiForBullet(idx)}
-                        </span>
+                        <span className="mt-[6px] inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]" />
                         <p className="leading-snug">
                           {renderWithBold(b)}
                         </p>

@@ -66,6 +66,18 @@ type ContractDoc = {
   durationYears?: number | null;
 };
 
+function nameFromEmail(email?: string | null): string {
+  if (!email) return "Neznámý poradce";
+  const local = email.split("@")[0] ?? "";
+  const parts = local.split(/[.\-_]/).filter(Boolean);
+  if (parts.length === 0) return email;
+  const cap = (s: string) =>
+    s.length === 0
+      ? s
+      : s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  return parts.map(cap).join(" ");
+}
+
 // ---------- helpers ----------
 
 function toDate(value: unknown): Date | null {
@@ -331,6 +343,9 @@ export default function ContractDetailPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [showAdvisorDetails, setShowAdvisorDetails] = useState(false);
+  const [ownerPosition, setOwnerPosition] = useState<Position | null>(null);
+  const [ownerManagerEmail, setOwnerManagerEmail] = useState<string | null>(null);
+  const [ownerManagerPosition, setOwnerManagerPosition] = useState<Position | null>(null);
 
   // auth
   useEffect(() => {
@@ -389,6 +404,33 @@ export default function ContractDetailPage() {
             ...data,
           };
           setContract(c);
+
+          // meta o poradci
+          try {
+            const userRef = doc(db, "users", ownerEmail);
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+              const d = userSnap.data() as any;
+              const pos = (d.position ?? null) as Position | null;
+              const mgrEmail =
+                ((d.managerEmail as string | undefined) ?? null)?.toLowerCase() ??
+                null;
+              setOwnerPosition(pos);
+              setOwnerManagerEmail(mgrEmail);
+
+              if (mgrEmail) {
+                const mgrSnap = await getDoc(doc(db, "users", mgrEmail));
+                if (mgrSnap.exists()) {
+                  const md = mgrSnap.data() as any;
+                  setOwnerManagerPosition(
+                    (md.position ?? null) as Position | null
+                  );
+                }
+              }
+            }
+          } catch (metaErr) {
+            console.error("Chyba při načítání uživatele smlouvy:", metaErr);
+          }
         }
       } catch (e) {
         console.error(e);
@@ -443,7 +485,21 @@ export default function ContractDetailPage() {
       return;
     }
 
-    const subItems = contract.items ?? [];
+    const baselinePos =
+      ownerManagerPosition ??
+      ownerPosition ??
+      ((contract.position as Position | null) ?? null);
+    const baselineMode =
+      (contract as any)?.commissionMode ?? managerMode ?? null;
+
+    const baselineResult =
+      baselinePos != null
+        ? calculateResultForPosition(contract, baselinePos, baselineMode)
+        : null;
+
+    const subItems = baselineResult?.items ?? contract.items ?? [];
+    const subTotal = baselineResult?.total ?? contract.total ?? 0;
+
     const diffItems: CommissionResultItemDTO[] = managerResult.items.map(
       (mgrItem, idx) => {
         const subAmount = subItems[idx]?.amount ?? 0;
@@ -454,7 +510,7 @@ export default function ContractDetailPage() {
       }
     );
 
-    const diffTotal = managerResult.total - (contract.total ?? 0);
+    const diffTotal = managerResult.total - subTotal;
 
     setOverrideItems(diffItems);
     setOverrideTotal(diffTotal);
@@ -463,6 +519,8 @@ export default function ContractDetailPage() {
     managerPosition,
     managerMode,
     isManagerViewingSubordinate,
+    ownerManagerPosition,
+    ownerPosition,
   ]);
 
   // mazání smlouvy
@@ -580,6 +638,44 @@ export default function ContractDetailPage() {
                 </div>
               </div>
             </section>
+
+            {/* Info o poradci */}
+            {contract && (
+              <section className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
+                <h3 className="text-sm font-semibold text-slate-100 mb-2">
+                  Poradce
+                </h3>
+                <dl className="space-y-1 text-sm text-slate-200">
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-300">Sjednal</dt>
+                    <dd className="font-semibold text-right">
+                      {nameFromEmail(contract.userEmail)}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-300">Pozice</dt>
+                    <dd className="font-semibold text-right">
+                      {positionLabel(
+                        ownerPosition ?? (contract.position as Position | null)
+                      )}
+                    </dd>
+                  </div>
+                  {ownerManagerEmail && (
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-slate-300">Nadřízený</dt>
+                      <dd className="font-semibold text-right">
+                        {nameFromEmail(ownerManagerEmail)}
+                        {ownerManagerPosition && (
+                          <span className="text-[11px] text-slate-400 block">
+                            {positionLabel(ownerManagerPosition)}
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </section>
+            )}
 
             {/* STAVY */}
             {loading && (

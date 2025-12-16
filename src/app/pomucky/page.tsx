@@ -62,7 +62,7 @@ export default function ToolsPage() {
               Statistika
             </h2>
             <p className="text-sm text-slate-300">
-              Statistika s možností stažení v PDF.
+              Statistika s možností stažení v PDF a Odeslání mailem.
             </p>
           </Link>
 
@@ -85,6 +85,21 @@ export default function ToolsPage() {
             <h2 className="text-lg font-semibold mb-2">Projekce výkonu</h2>
             <p className="text-sm text-slate-300">
               Vizualizuj si výplatu do budoucna.
+            </p>
+          </Link>
+
+          {/* Generátor PDF pozvánky */}
+          {/* Kalkulačka pracovní neschopnosti */}
+          <Link
+            href="/pomucky/pracovni-neschopenka"
+            className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)] hover:bg-white/10 hover:border-sky-400/70 transition cursor-pointer"
+          >
+            <h2 className="text-lg font-semibold mb-2">
+              Jak nastavit Pracovní neschopnost
+            </h2>
+            <p className="text-sm text-slate-300">
+              Kalkulačka na stanovení pojistné částky pro případ pracovní
+              neschopnosti.
             </p>
           </Link>
 
