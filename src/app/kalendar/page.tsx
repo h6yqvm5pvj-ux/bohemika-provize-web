@@ -27,6 +27,16 @@ type CalendarEvent = {
   notify?: boolean;
 };
 
+type ContractEntry = {
+  id: string;
+  productKey?: string | null;
+  contractNumber?: string | null;
+  clientName?: string | null;
+  policyStartDate?: any;
+  contractSignedDate?: any;
+  createdAt?: any;
+};
+
 const TZ = "Europe/Prague";
 
 const formatDateKey = (d: Date) =>
@@ -48,6 +58,63 @@ function formatDateLabel(d: Date) {
   });
 }
 
+function toDate(value: any): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (value?.seconds) {
+    const ms = value.seconds * 1000 + Math.floor((value.nanoseconds ?? 0) / 1_000_000);
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function addYears(date: Date, years: number) {
+  const copy = new Date(date.getTime());
+  copy.setFullYear(copy.getFullYear() + years);
+  return copy;
+}
+
+function productLabel(p?: string | null): string {
+  switch (p) {
+    case "neon":
+      return "ČPP ŽP NEON";
+    case "flexi":
+      return "Kooperativa ŽP FLEXI";
+    case "maximaMaxEfekt":
+      return "MAXIMA ŽP MaxEfekt";
+    case "pillowInjury":
+      return "Pillow Úraz / Nemoc";
+    case "zamex":
+      return "ČPP ZAMEX";
+    case "domex":
+      return "ČPP DOMEX";
+    case "maxdomov":
+      return "Maxima MAXDOMOV";
+    case "cppAuto":
+      return "ČPP Auto";
+    case "allianzAuto":
+      return "Allianz Auto";
+    case "csobAuto":
+      return "ČSOB Auto";
+    case "uniqaAuto":
+      return "UNIQA Auto";
+    case "pillowAuto":
+      return "Pillow Auto";
+    case "kooperativaAuto":
+      return "Kooperativa Auto";
+    case "cppcestovko":
+      return "ČPP Cestovko";
+    case "axacestovko":
+      return "AXA Cestovko";
+    case "comfortcc":
+      return "Comfort Commodity";
+    default:
+      return "Produkt neuveden";
+  }
+}
+
 export default function CalendarPage() {
   const today = new Date();
   const [month, setMonth] = useState(today.getMonth());
@@ -64,6 +131,9 @@ export default function CalendarPage() {
   const [notify, setNotify] = useState(true);
 
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [contracts, setContracts] = useState<ContractEntry[]>([]);
+  const [showAnniversaries, setShowAnniversaries] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<{ iso: string; date: Date } | null>(null);
 
   // auth
   useEffect(() => {
@@ -108,6 +178,28 @@ export default function CalendarPage() {
     load();
   }, [user]);
 
+  // load contracts for anniversaries
+  useEffect(() => {
+    const loadContracts = async () => {
+      if (!user?.email) {
+        setContracts([]);
+        return;
+      }
+      try {
+        const col = collection(db, "users", user.email, "entries");
+        const snap = await getDocs(col);
+        const list: ContractEntry[] = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        }));
+        setContracts(list);
+      } catch (e) {
+        console.error("Cannot load contracts for anniversaries", e);
+      }
+    };
+    loadContracts();
+  }, [user]);
+
   const days = useMemo(() => {
     const firstDay = new Date(year, month, 1);
     const startWeekday = (firstDay.getDay() + 6) % 7; // Po=0
@@ -135,15 +227,68 @@ export default function CalendarPage() {
     return res;
   }, [month, year]);
 
+  const anniversaryEvents = useMemo(() => {
+    if (!showAnniversaries) return [];
+    const firstOfMonth = new Date(year, month, 1);
+    const lastOfMonth = new Date(year, month + 1, 0);
+    const daysInCurrentMonth = lastOfMonth.getDate();
+
+    const out: CalendarEvent[] = [];
+    for (const c of contracts) {
+      // Výročí se řídí podle počátku smlouvy (policyStartDate)
+      const startRaw = toDate((c as any).policyStartDate);
+      if (!startRaw) continue;
+
+      // Odřízneme čas, ať nedělá posun mezi roky/měsíci
+      const start = new Date(
+        startRaw.getFullYear(),
+        startRaw.getMonth(),
+        startRaw.getDate(),
+        0,
+        0,
+        0,
+        0
+      );
+
+      // Render jen ve stejném měsíci jako počátek smlouvy
+      if (month !== start.getMonth()) continue;
+
+      const day = Math.min(start.getDate(), daysInCurrentMonth);
+      const candidate = new Date(year, month, day);
+
+      const firstAnniversary = addYears(start, 1);
+      if (
+        candidate >= firstAnniversary &&
+        candidate >= firstOfMonth &&
+        candidate <= lastOfMonth
+      ) {
+        const iso = formatDateKey(candidate);
+        out.push({
+          id: `anniv-${c.id}-${iso}`,
+          title: `Výročí smlouvy (${c.contractNumber ?? "bez č."})`,
+          date: iso,
+          time: "09:00",
+          note: `${c.clientName ?? "Klient"} • ${productLabel(c.productKey)}`,
+          notify: true,
+        });
+      }
+    }
+    return out;
+  }, [contracts, month, year, showAnniversaries]);
+  const allEvents = useMemo(
+    () => (showAnniversaries ? [...events, ...anniversaryEvents] : events),
+    [events, anniversaryEvents, showAnniversaries]
+  );
+
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
-    for (const ev of events) {
+    for (const ev of allEvents) {
       const arr = map.get(ev.date) ?? [];
       arr.push(ev);
       map.set(ev.date, arr);
     }
     return map;
-  }, [events]);
+  }, [allEvents]);
 
   const visibleEvents = events
     .slice()
@@ -275,6 +420,15 @@ export default function CalendarPage() {
               >
                 →
               </button>
+              <label className="inline-flex items-center gap-1 text-xs text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={showAnniversaries}
+                  onChange={(e) => setShowAnniversaries(e.target.checked)}
+                  className="h-4 w-4 rounded border border-white/30 bg-slate-900/70 text-sky-500 focus:ring-2 focus:ring-sky-500"
+                />
+                Výročí smluv
+              </label>
             </div>
           </div>
 
@@ -295,11 +449,12 @@ export default function CalendarPage() {
               return (
                 <div
                   key={idx}
-                  className={`rounded-xl border px-2 py-2 h-24 flex flex-col gap-1 ${
+                  onClick={() => setSelectedDay({ iso, date: day.date })}
+                  className={`rounded-xl border px-2 py-2 h-24 flex flex-col gap-1 cursor-pointer transition ${
                     day.isCurrentMonth
                       ? "border-white/10 bg-white/5"
                       : "border-white/5 bg-white/[0.03] text-slate-400"
-                  } ${isToday ? "ring-1 ring-sky-400/70" : ""}`}
+                  } ${isToday ? "ring-1 ring-sky-400/70" : ""} hover:border-sky-300/60 hover:bg-white/10`}
                 >
                   <div className="text-xs font-semibold text-white">{day.date.getDate()}</div>
                   <div className="flex-1 space-y-1 overflow-hidden">
@@ -454,6 +609,94 @@ export default function CalendarPage() {
             )}
           </div>
         </section>
+
+        {selectedDay && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+            onClick={() => setSelectedDay(null)}
+          >
+            <div
+              className="relative w-full max-w-3xl rounded-3xl border border-white/15 bg-slate-900/80 px-6 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.75)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedDay(null)}
+                className="absolute right-4 top-4 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white hover:bg-white/20"
+              >
+                Zavřít
+              </button>
+
+              <div className="text-lg font-semibold text-white">
+                {formatDateLabel(selectedDay.date)}
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {(() => {
+                  const items =
+                    eventsByDay.get(selectedDay.iso) ?? [];
+                  const sorted = items
+                    .slice()
+                    .sort((a, b) =>
+                      (a.time ?? "99:99").localeCompare(b.time ?? "99:99")
+                    );
+
+                  if (sorted.length === 0) {
+                    return (
+                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+                        Žádné události pro tento den.
+                      </div>
+                    );
+                  }
+
+                  return sorted.map((ev) => (
+                    <div
+                      key={ev.id}
+                      className="rounded-2xl border border-white/12 bg-gradient-to-br from-white/10 via-slate-900/40 to-slate-950/50 px-4 py-3 text-sm text-white"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-[11px] uppercase tracking-wide text-sky-200/80">
+                          {ev.id.startsWith("anniv-") ? "Výročí smlouvy" : "Událost"}
+                        </div>
+                        {!ev.id.startsWith("anniv-") && (
+                          <button
+                            type="button"
+                            onClick={() => deleteEvent(ev.id)}
+                            className="text-[11px] text-slate-300 hover:text-rose-200"
+                          >
+                            Smazat
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="mt-1 flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold">
+                            {ev.time ? `${ev.time} • ` : ""}
+                            {ev.title}
+                          </div>
+                          {ev.note && (
+                            <div className="text-[12px] text-slate-300 mt-1">
+                              {ev.note}
+                            </div>
+                          )}
+                          {ev.notify === false && (
+                            <div className="text-[11px] text-amber-300 mt-1">
+                              Notifikace vypnuta pro tuto událost
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {formatDateLabel(selectedDay.date)}
+                        </div>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AppLayout>
   );
