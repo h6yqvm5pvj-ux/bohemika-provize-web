@@ -184,6 +184,7 @@ export default function ContractsPage() {
   const [filterMode, setFilterMode] = useState<FilterMode>("latest");
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(10);
 
   // auth
   useEffect(() => {
@@ -359,6 +360,10 @@ export default function ContractsPage() {
     return base;
   }, [displayedContracts, searchText, filterMode]);
 
+  useEffect(() => {
+    setVisibleCount(10);
+  }, [filterMode, searchText, showTeam, displayedContracts.length]);
+
   const hasTeamContracts =
     teamContracts.length > 0 && canShowTeamToggle;
 
@@ -479,13 +484,14 @@ export default function ContractsPage() {
             )}
           </div>
         ) : (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-            {filteredContracts.map((c: any) => {
-              const signed =
-                toDate((c as any).contractSignedDate) ??
-                toDate(c.createdAt);
-              const signedStr = signed
-                ? signed.toLocaleDateString("cs-CZ")
+          <div className="mt-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {filteredContracts.slice(0, visibleCount).map((c: any) => {
+                const signed =
+                  toDate((c as any).contractSignedDate) ??
+                  toDate(c.createdAt);
+                const signedStr = signed
+                  ? signed.toLocaleDateString("cs-CZ")
                 : "—";
               const policyStart = toDate((c as any).policyStartDate);
               const anniversaryInfo = isAnniversarySoon(policyStart);
@@ -585,7 +591,20 @@ export default function ContractsPage() {
                   </article>
                 </Link>
               );
-            })}
+              })}
+            </div>
+
+            {filteredContracts.length > visibleCount && (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((c) => c + 10)}
+                  className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm text-slate-50 hover:bg-white/10 transition shadow-[0_10px_30px_rgba(0,0,0,0.6)]"
+                >
+                  Načíst dalších 10
+                </button>
+              </div>
+            )}
           </div>
         )}
 

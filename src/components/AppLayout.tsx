@@ -21,6 +21,7 @@ type ActivePage =
   | "home"
   | "calc"
   | "contracts"
+  | "calendar"
   | "cashflow"
   | "info"
   | "tools"
@@ -272,6 +273,23 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 <span>Smlouvy</span>
               </span>
               {renderBadge(active === "contracts")}
+            </Link>
+
+            {/* Provizní kalendář */}
+            {/* Kalendář */}
+            <Link
+              href="/kalendar"
+              className={`${navItemBase} ${
+                active === "calendar"
+                  ? "bg-white/10 text-slate-50"
+                  : "text-slate-200 hover:bg-white/5"
+              }`}
+            >
+              <span className={navLabelBase}>
+                {icon}
+                <span>Kalendář</span>
+              </span>
+              {renderBadge(active === "calendar")}
             </Link>
 
             {/* Provizní kalendář */}

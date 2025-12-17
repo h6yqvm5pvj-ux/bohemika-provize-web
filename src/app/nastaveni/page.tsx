@@ -82,6 +82,8 @@ export default function SettingsPage() {
   >(null);
   const [changingPassword, setChangingPassword] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [fcmActive, setFcmActive] = useState<boolean | null>(null);
+  const [notifyMinutes, setNotifyMinutes] = useState<number>(60);
 
   // auth
   useEffect(() => {
@@ -159,6 +161,15 @@ export default function SettingsPage() {
             if (Number.isFinite(n)) setMonthlyGoal(n);
           }
 
+          if (typeof data.notifyMinutes === "number") {
+            setNotifyMinutes(data.notifyMinutes);
+          }
+          if (typeof data.fcmToken === "string" && data.fcmToken.trim().length > 0) {
+            setFcmActive(true);
+          } else {
+            setFcmActive(false);
+          }
+
           setCanChangePosition(
             data.canChangePosition === false ? false : true
           );
@@ -228,6 +239,11 @@ export default function SettingsPage() {
       );
     }
     await saveUserFields({ monthlyGoal: value || 0 });
+  };
+
+  const handleNotifyMinutesChange = async (value: number) => {
+    setNotifyMinutes(value);
+    await saveUserFields({ notifyMinutes: value });
   };
 
   const handleChangePassword = async () => {
@@ -423,6 +439,66 @@ export default function SettingsPage() {
                   Cíl se používá v přehledu na domovské stránce. Hodnota se
                   ukládá k tvému účtu.
                 </p>
+              </div>
+            </section>
+
+            {/* Notifikace */}
+            <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+                Notifikace
+              </h2>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-400">
+                        Stav
+                      </p>
+                      <p className="text-sm text-slate-200">
+                        {fcmActive === null
+                          ? "Načítám…"
+                          : fcmActive
+                          ? "Aktivní – zařízení má uložený FCM token"
+                          : "Neaktivní – není uložený FCM token z mobilní appky"}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                        fcmActive
+                          ? "bg-emerald-500/15 text-emerald-100 border border-emerald-400/40"
+                          : "bg-rose-500/15 text-rose-100 border border-rose-400/40"
+                      }`}
+                    >
+                      {fcmActive ? "Aktivní" : "Neaktivní"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Pokud je stav Neaktivní, otevři mobilní appku a přihlas se – FCM
+                    token se uloží do profilu.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 space-y-2">
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Předstihem (minuty) pro notifikaci z kalendáře
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1440}
+                    value={notifyMinutes}
+                    onChange={(e) =>
+                      handleNotifyMinutesChange(
+                        Math.max(0, Math.min(1440, Number(e.target.value) || 0))
+                      )
+                    }
+                    className="w-full rounded-xl border border-white/15 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  />
+                  <p className="text-[11px] text-slate-400">
+                    Použije se při odeslání push notifikace z kalendáře (výchozí 60 min).
+                  </p>
+                </div>
               </div>
             </section>
 

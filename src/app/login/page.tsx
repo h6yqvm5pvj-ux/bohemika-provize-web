@@ -158,7 +158,8 @@ export default function LoginPage() {
           direction="forward"
           scale={1.2}
           opacity={0.96}
-          mouseInteractive={true}
+          mouseInteractive={false}
+          animated={false}
         />
       </div>
 

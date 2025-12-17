@@ -595,7 +595,8 @@ export default function ContractDetailPage() {
           direction="forward"
           scale={1.1}
           opacity={0.85}
-          mouseInteractive={true}
+          mouseInteractive={false}
+          animated={false}
         />
       </div>
 

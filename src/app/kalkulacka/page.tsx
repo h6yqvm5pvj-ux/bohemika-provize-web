@@ -601,7 +601,8 @@ export default function CalculatorPage() {
             direction="forward"
             scale={1.1}
             opacity={0.8}
-            mouseInteractive={true}
+            mouseInteractive={false}
+            animated={false}
           />
         </div>
 
