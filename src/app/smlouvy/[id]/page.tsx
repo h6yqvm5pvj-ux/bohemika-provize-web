@@ -499,9 +499,7 @@ export default function ContractDetailPage() {
     }
 
     const baselinePos =
-      ownerManagerPosition ??
-      ownerPosition ??
-      ((contract.position as Position | null) ?? null);
+      ownerPosition ?? ((contract.position as Position | null) ?? null);
     const baselineMode =
       (contract as any)?.commissionMode ?? managerMode ?? null;
 

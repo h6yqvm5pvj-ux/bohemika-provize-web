@@ -37,6 +37,7 @@ import {
   calculateZamex,
   calculateCppCestovko,
   calculateAxaCestovko,
+  calculateComfortCC,
 } from "../lib/productFormulas";
 import { doc, getDoc, collection, query, where } from "firebase/firestore";
 
@@ -193,6 +194,14 @@ function commissionItemsForPosition(
       return calculateCppCestovko(amount, pos).items;
     case "axacestovko":
       return calculateAxaCestovko(amount, pos).items;
+    case "comfortcc":
+      return calculateComfortCC({
+        fee: amount,
+        payment: entry.comfortPayment ?? 0,
+        isSavings: !!entry.comfortGradual,
+        isGradualFee: !!entry.comfortGradual,
+        position: pos,
+      }).items;
     default:
       return [];
   }
@@ -215,6 +224,8 @@ type EntryDoc = {
   commissionMode?: CommissionMode | null;
   inputAmount?: number | null;
   contractNumber?: string | null;
+  comfortPayment?: number | null;
+  comfortGradual?: boolean | null;
 
   policyStartDate?: any;
   createdAt?: any;

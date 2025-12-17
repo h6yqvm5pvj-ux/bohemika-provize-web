@@ -1,7 +1,7 @@
 // src/app/pomucky/invalidita/page.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import { AppLayout } from "@/components/AppLayout";
@@ -26,6 +26,7 @@ function formatMoney(value: number): string {
 
 export default function InvaliditaPage() {
   const [age, setAge] = useState(35);
+  const [ageInput, setAgeInput] = useState("35");
   const [netIncome, setNetIncome] = useState(32830);
   const [coverageYears, setCoverageYears] = useState(65 - 35);
 
@@ -51,6 +52,11 @@ export default function InvaliditaPage() {
     const num = Number(val.replace(",", "."));
     return Number.isFinite(num) ? num : fallback;
   };
+
+  useEffect(() => {
+    // Auto-prefill coverage to remaining years to 65 whenever age changes
+    setCoverageYears(Math.max(0, 65 - age));
+  }, [age]);
 
   const disabled = totalMonths <= 0 || netIncome <= 0 || age <= 0;
 
@@ -96,12 +102,16 @@ export default function InvaliditaPage() {
               </span>
               <input
                 type="number"
-                min={1}
-                max={100}
-                value={age}
+                value={ageInput}
                 onChange={(e) => {
-                  const v = handleNumber(e.target.value, age);
-                  setAge(Math.max(1, Math.min(100, Math.round(v))));
+                  const raw = e.target.value;
+                  setAgeInput(raw);
+                  if (raw === "") {
+                    setAge(0);
+                    return;
+                  }
+                  const v = handleNumber(raw, age);
+                  setAge(Math.max(1, Math.round(v)));
                 }}
                 className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               />

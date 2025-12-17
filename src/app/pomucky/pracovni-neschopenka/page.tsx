@@ -1,4 +1,3 @@
-// src/app/pomucky/pracovni-neschopenka/page.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -146,7 +145,7 @@ export default function PracovniNeschopenkaPage() {
               Zadej čistý měsíční příjem.
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-3">
               {results.map((period) => (
                 <div
                   key={period.id}
@@ -156,9 +155,7 @@ export default function PracovniNeschopenkaPage() {
                     <div className="text-sm font-semibold text-white">
                       {period.label}
                     </div>
-                    <div className="text-[11px] text-slate-400">
-                      {period.note}
-                    </div>
+                    <div className="text-[11px] text-slate-400">{period.note}</div>
                   </div>
 
                   <div className="space-y-3">
@@ -183,9 +180,7 @@ export default function PracovniNeschopenkaPage() {
 
                     <div className="flex items-start justify-between rounded-xl border border-white/6 bg-white/2 px-3 py-2.5">
                       <div className="text-sm text-slate-200">
-                        <div className="font-semibold text-white">
-                          Pokles příjmu
-                        </div>
+                        <div className="font-semibold text-white">Pokles příjmu</div>
                         <div className="text-[11px] text-slate-400">
                           Co chybí oproti čistému příjmu
                         </div>
@@ -235,15 +230,12 @@ export default function PracovniNeschopenkaPage() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-amber-100 uppercase tracking-[0.16em]">
-                Upozornění na krácení (–50 %)
+                Upozornění na krácení (–50 %) nemocenské dávky vyplácené státem.
               </h3>
               <p className="text-sm text-amber-50/90">
                 Rvačka, opilost, zneužití látek nebo úmyslný přestupek/trestný čin
                 snižují dávku o polovinu.
               </p>
-            </div>
-            <div className="inline-flex items-center rounded-full border border-amber-200/70 bg-amber-200/10 px-4 py-1.5 text-[11px] text-amber-50 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-              Zohledni při stanovení komerční dávky
             </div>
           </div>
         </section>
@@ -274,7 +266,7 @@ export default function PracovniNeschopenkaPage() {
               540 Kč/den).
             </li>
             <li>
-              Dávka se snižuje o 50 %, pokud klient způsobil PN rvačkou, opilostí,
+              Nemocenská dávka se snižuje o 50 %, pokud klient způsobil PN rvačkou, opilostí,
               zneužitím návykových látek či úmyslným trestným činem/přestupkem.
             </li>
           </ul>
