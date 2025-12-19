@@ -399,108 +399,92 @@ export default function SettingsPage() {
               </section>
             )}
 
-            {/* Výkon & cíle */}
-            <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
-                Výkon &amp; cíle
-              </h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              {/* Výkon & cíle */}
+              <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
+                <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+                  Výkon &amp; cíle
+                </h2>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide">
-                    Měsíční cíl provizí
-                  </label>
-                  <span className="text-xs text-slate-400">
-                    Aktuálně:{" "}
-                    <span className="font-medium text-slate-100">
-                      {monthlyGoal
-                        ? formatMoney(monthlyGoal)
-                        : "Žádný cíl"}
-                    </span>
-                  </span>
-                </div>
-
-                <select
-                  className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  value={monthlyGoal}
-                  onChange={(e) =>
-                    handleMonthlyGoalChange(Number(e.target.value))
-                  }
-                >
-                  <option value={0}>Žádný cíl</option>
-                  {GOAL_STEPS.map((v) => (
-                    <option key={v} value={v}>
-                      {formatMoney(v)}
-                    </option>
-                  ))}
-                </select>
-
-                <p className="text-xs text-slate-400">
-                  Cíl se používá v přehledu na domovské stránce. Hodnota se
-                  ukládá k tvému účtu.
-                </p>
-              </div>
-            </section>
-
-            {/* Notifikace */}
-            <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
-                Notifikace
-              </h2>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 space-y-2">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-slate-400">
-                        Stav
-                      </p>
-                      <p className="text-sm text-slate-200">
-                        {fcmActive === null
-                          ? "Načítám…"
-                          : fcmActive
-                          ? "Aktivní – zařízení má uložený FCM token"
-                          : "Neaktivní – není uložený FCM token z mobilní appky"}
-                      </p>
-                    </div>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide">
+                      Měsíční cíl provizí
+                    </label>
+                    <span className="text-xs text-slate-400">
+                      Aktuálně:{" "}
+                      <span className="font-medium text-slate-100">
+                        {monthlyGoal ? formatMoney(monthlyGoal) : "Žádný cíl"}
+                      </span>
+                    </span>
+                  </div>
+
+                  <select
+                    className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    value={monthlyGoal}
+                    onChange={(e) => handleMonthlyGoalChange(Number(e.target.value))}
+                  >
+                    <option value={0}>Žádný cíl</option>
+                    {GOAL_STEPS.map((v) => (
+                      <option key={v} value={v}>
+                        {formatMoney(v)}
+                      </option>
+                    ))}
+                  </select>
+
+                  <p className="text-xs text-slate-400">
+                    Cíl se používá v přehledu na domovské stránce. Hodnota se ukládá k tvému účtu.
+                  </p>
+                </div>
+              </section>
+
+              {/* Notifikace */}
+              <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+                      Notifikace
+                    </h2>
                     <span
-                      className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold border ${
                         fcmActive
-                          ? "bg-emerald-500/15 text-emerald-100 border border-emerald-400/40"
-                          : "bg-rose-500/15 text-rose-100 border border-rose-400/40"
+                          ? "bg-emerald-500/15 text-emerald-100 border-emerald-400/40"
+                          : "bg-rose-500/15 text-rose-100 border-rose-400/40"
                       }`}
                     >
                       {fcmActive ? "Aktivní" : "Neaktivní"}
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    Pokud je stav Neaktivní, otevři mobilní appku a přihlas se – FCM
-                    token se uloží do profilu.
-                  </p>
-                </div>
 
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 space-y-2">
-                  <label className="text-xs uppercase tracking-wide text-slate-400">
-                    Předstihem (minuty) pro notifikaci z kalendáře
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={1440}
-                    value={notifyMinutes}
-                    onChange={(e) =>
-                      handleNotifyMinutesChange(
-                        Math.max(0, Math.min(1440, Number(e.target.value) || 0))
-                      )
-                    }
-                    className="w-full rounded-xl border border-white/15 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  />
-                  <p className="text-[11px] text-slate-400">
-                    Použije se při odeslání push notifikace z kalendáře (výchozí 60 min).
-                  </p>
+                  {!fcmActive && (
+                    <p className="text-sm text-slate-200">
+                      Otevři mobilní appku a přihlas se – FCM token se uloží do profilu.
+                    </p>
+                  )}
+
+                  <div className="space-y-1">
+                    <label className="text-xs uppercase tracking-wide text-slate-400">
+                      Předstih notifikace (minuty)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={1440}
+                      value={notifyMinutes}
+                      onChange={(e) =>
+                        handleNotifyMinutesChange(
+                          Math.max(0, Math.min(1440, Number(e.target.value) || 0))
+                        )
+                      }
+                      className="w-full rounded-xl border border-white/15 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    />
+                    <p className="text-[11px] text-slate-400">
+                      Použije se při odeslání push notifikace z kalendáře (výchozí 60 min).
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </section>
+              </section>
+            </div>
 
             {/* Účet */}
             <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">

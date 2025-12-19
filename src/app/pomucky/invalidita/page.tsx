@@ -7,10 +7,10 @@ import SplitTitle from "../plan-produkce/SplitTitle";
 import { AppLayout } from "@/components/AppLayout";
 
 const SCENARIOS = [
+  { id: "veryLow", label: "Velmi nízké", ratios: [0.1, 0.2, 0.3] },
   { id: "low", label: "Nízké", ratios: [0.3, 0.5, 0.8] },
   { id: "medium", label: "Střední", ratios: [0.4, 0.6, 1.0] },
   { id: "high", label: "Vyšší", ratios: [0.5, 0.75, 1.2] },
-  { id: "veryLow", label: "Velmi nízké", ratios: [0.1, 0.2, 0.3] },
 ] as const;
 
 const DEGREE_LABELS = ["1. stupeň", "2. stupeň", "3. stupeň"];
@@ -161,7 +161,7 @@ export default function InvaliditaPage() {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.75)] space-y-4">
+        <section className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-white">Výstup</h2>
@@ -180,7 +180,7 @@ export default function InvaliditaPage() {
               Zadej věk, příjem a délku krytí (musí být kladná).
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {results.map((scenario) => (
                 <div
                   key={scenario.id}
@@ -209,11 +209,11 @@ export default function InvaliditaPage() {
                             {Math.round(scenario.ratios[idx] * 100)} % příjmu
                           </div>
                         </div>
-                        <div className="text-right text-sm text-white">
-                          <div className="font-semibold">
+                        <div className="text-right text-sm text-white leading-tight">
+                          <div className="font-semibold whitespace-nowrap">
                             {formatMoney(m)} / měsíc
                           </div>
-                          <div className="text-[11px] text-emerald-200/80">
+                          <div className="text-[11px] font-semibold text-emerald-200/90 whitespace-nowrap">
                             celkem {formatMoney(scenario.lump[idx])}
                           </div>
                         </div>

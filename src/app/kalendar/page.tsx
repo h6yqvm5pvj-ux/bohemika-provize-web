@@ -25,6 +25,7 @@ type CalendarEvent = {
   time?: string;
   note?: string;
   notify?: boolean;
+  clientName?: string;
 };
 
 type ContractEntry = {
@@ -129,6 +130,7 @@ export default function CalendarPage() {
   const [time, setTime] = useState("");
   const [note, setNote] = useState("");
   const [notify, setNotify] = useState(true);
+  const [clientName, setClientName] = useState("");
 
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [contracts, setContracts] = useState<ContractEntry[]>([]);
@@ -165,6 +167,7 @@ export default function CalendarPage() {
             time: typeof data.time === "string" ? data.time : undefined,
             note: data.note ?? undefined,
             notify: data.notify ?? true,
+            clientName: data.clientName ?? undefined,
           };
         });
         setEvents(list);
@@ -280,6 +283,15 @@ export default function CalendarPage() {
     [events, anniversaryEvents, showAnniversaries]
   );
 
+  const clientSuggestions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of contracts) {
+      const name = (c.clientName ?? "").trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "cs"));
+  }, [contracts]);
+
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     for (const ev of allEvents) {
@@ -315,6 +327,7 @@ export default function CalendarPage() {
         time: effectiveTime,
         note: note.trim() || null,
         notify,
+        clientName: clientName.trim() || null,
         createdAt: serverTimestamp(),
       };
 
@@ -329,6 +342,7 @@ export default function CalendarPage() {
           time: newEvent.time ?? undefined,
           note: (newEvent.note as string | null) ?? undefined,
           notify,
+          clientName: newEvent.clientName ?? undefined,
         },
       ]);
 
@@ -336,6 +350,7 @@ export default function CalendarPage() {
       setNote("");
       setTime("");
       setNotify(true);
+      setClientName("");
     } catch (e) {
       console.error("Cannot add event", e);
     } finally {
@@ -520,6 +535,23 @@ export default function CalendarPage() {
               </label>
 
               <label className="space-y-1 text-sm text-slate-200 sm:col-span-2">
+                <span className="text-xs uppercase tracking-wide text-slate-400">Klient</span>
+                <input
+                  list="client-suggestions"
+                  type="text"
+                  value={clientName}
+                  onChange={(e) => setClientName(e.target.value)}
+                  className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  placeholder="Jméno klienta (našeptává dle existujících smluv)"
+                />
+                <datalist id="client-suggestions">
+                  {clientSuggestions.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </label>
+
+              <label className="space-y-1 text-sm text-slate-200 sm:col-span-2">
                 <span className="text-xs uppercase tracking-wide text-slate-400">Poznámka</span>
                 <textarea
                   value={note}
@@ -592,6 +624,12 @@ export default function CalendarPage() {
                         {formatDateLabel(d)}
                         {ev.time ? ` • ${ev.time}` : ""}
                       </div>
+
+                      {ev.clientName && (
+                        <div className="text-[11px] text-slate-300 mt-1">
+                          Klient: {ev.clientName}
+                        </div>
+                      )}
 
                       {ev.note && (
                         <div className="text-[11px] text-slate-400 mt-1">{ev.note}</div>
@@ -672,19 +710,24 @@ export default function CalendarPage() {
                       <div className="mt-1 flex items-start justify-between gap-3">
                         <div>
                           <div className="font-semibold">
-                            {ev.time ? `${ev.time} • ` : ""}
-                            {ev.title}
+                          {ev.time ? `${ev.time} • ` : ""}
+                          {ev.title}
+                        </div>
+                        {ev.note && (
+                          <div className="text-[12px] text-slate-300 mt-1">
+                            {ev.note}
                           </div>
-                          {ev.note && (
-                            <div className="text-[12px] text-slate-300 mt-1">
-                              {ev.note}
-                            </div>
-                          )}
-                          {ev.notify === false && (
-                            <div className="text-[11px] text-amber-300 mt-1">
-                              Notifikace vypnuta pro tuto událost
-                            </div>
-                          )}
+                        )}
+                        {ev.clientName && (
+                          <div className="text-[11px] text-slate-300 mt-1">
+                            Klient: {ev.clientName}
+                          </div>
+                        )}
+                        {ev.notify === false && (
+                          <div className="text-[11px] text-amber-300 mt-1">
+                            Notifikace vypnuta pro tuto událost
+                          </div>
+                        )}
                         </div>
                         <div className="text-[11px] text-slate-400">
                           {formatDateLabel(selectedDay.date)}

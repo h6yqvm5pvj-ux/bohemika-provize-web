@@ -10,7 +10,7 @@ import {
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { doc, getDoc, deleteDoc } from "firebase/firestore";
+import { doc, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
 
 import Plasma from "@/components/Plasma";
 import {
@@ -48,6 +48,7 @@ type FirestoreTimestamp = {
 
 type ContractDoc = {
   id: string;
+  note?: string | null;
 
   productKey?: Product;
   position?: Position;
@@ -359,6 +360,10 @@ export default function ContractDetailPage() {
   const [ownerPosition, setOwnerPosition] = useState<Position | null>(null);
   const [ownerManagerEmail, setOwnerManagerEmail] = useState<string | null>(null);
   const [ownerManagerPosition, setOwnerManagerPosition] = useState<Position | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [noteSaved, setNoteSaved] = useState(false);
 
   // auth
   useEffect(() => {
@@ -417,6 +422,7 @@ export default function ContractDetailPage() {
             ...data,
           };
           setContract(c);
+          setNoteDraft((data.note as string | undefined) ?? "");
 
           // meta o poradci
           try {
@@ -478,6 +484,25 @@ export default function ContractDetailPage() {
     const owner = contract.userEmail.trim().toLowerCase();
     return current !== owner;
   }, [user, contract, managerPosition]);
+
+  const handleSaveNote = async () => {
+    if (!ownerEmail || !entryId || !isOwnContract) return;
+    setSavingNote(true);
+    setNoteError(null);
+    setNoteSaved(false);
+
+    try {
+      const ref = doc(db, "users", ownerEmail, "entries", entryId);
+      await updateDoc(ref, { note: noteDraft.trim() });
+      setContract((prev) => (prev ? { ...prev, note: noteDraft.trim() } : prev));
+      setNoteSaved(true);
+    } catch (e) {
+      console.error("Chyba při ukládání poznámky:", e);
+      setNoteError("Poznámku se nepodařilo uložit. Zkus to prosím znovu.");
+    } finally {
+      setSavingNote(false);
+    }
+  };
 
   // výpočet meziprovize
   useEffect(() => {
@@ -881,6 +906,57 @@ export default function ContractDetailPage() {
                     )}
                   </section>
                 )}
+
+                {/* POZNÁMKA */}
+                <section className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)] space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-base font-semibold text-slate-100">
+                      Poznámka ke smlouvě
+                    </h3>
+                    {noteSaved && (
+                      <span className="text-[11px] text-emerald-300">
+                        Uloženo
+                      </span>
+                    )}
+                  </div>
+
+                  {noteError && (
+                    <p className="text-xs text-amber-200 bg-amber-900/40 border border-amber-500/60 rounded-lg px-3 py-2">
+                      {noteError}
+                    </p>
+                  )}
+
+                  {isOwnContract ? (
+                    <div className="space-y-3">
+                      <textarea
+                        value={noteDraft}
+                        onChange={(e) => {
+                          setNoteDraft(e.target.value);
+                          setNoteSaved(false);
+                        }}
+                        rows={4}
+                        className="w-full rounded-2xl border border-white/15 bg-slate-950/50 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 resize-none"
+                        placeholder="Sem si můžeš napsat poznámku jen pro sebe…"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleSaveNote}
+                          disabled={savingNote}
+                          className="inline-flex items-center rounded-xl border border-emerald-400/70 bg-emerald-500/25 px-4 py-2 text-xs sm:text-sm font-semibold text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.4)] hover:bg-emerald-500/35 hover:border-emerald-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {savingNote ? "Ukládám…" : "Uložit poznámku"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
+                      {contract.note?.trim()
+                        ? contract.note.trim()
+                        : "Autor smlouvy zatím žádnou poznámku nepřidal."}
+                    </div>
+                  )}
+                </section>
 
                 {/* SMAZAT SMLOUVU */}
                 <section className="pt-2">

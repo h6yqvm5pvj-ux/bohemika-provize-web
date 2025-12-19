@@ -77,6 +77,17 @@ export default function ToolsPage() {
             </p>
           </Link>
 
+          {/* Katastr nemovitostí (CUZK) */}
+          <Link
+            href="/cuzk"
+            className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)] hover:bg-white/10 hover:border-sky-400/70 transition cursor-pointer"
+          >
+            <h2 className="text-lg font-semibold mb-2">Katastr nemovitostí</h2>
+            <p className="text-sm text-slate-300">
+              Vyhledej údaje z CUZK podle kódu adresního místa (RÚIAN) s autorizací přes tvůj účet.
+            </p>
+          </Link>
+
           {/* Projekce výkonu */}
           <Link
             href="/pomucky/projekce-vykonu"

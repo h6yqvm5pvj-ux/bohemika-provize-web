@@ -205,23 +205,19 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
       <div className="relative flex min-h-screen">
         {/* SIDEBAR */}
-        <aside className="flex w-72 flex-col border-r border-white/10 bg-slate-950/70 backdrop-blur-2xl">
-          <div className="px-6 py-5 border-b border-white/10">
-            <div className="flex items-center gap-3">
+        <aside className="flex w-60 flex-col border-r border-white/10 bg-slate-950/70 backdrop-blur-2xl">
+          <div className="px-5 py-5 border-b border-white/10">
+            <div className="flex items-center gap-3 justify-center">
               <Image
                 src="/icons/bohemika_logo.png"
                 alt="Bohemika logo"
-                width={180}
-                height={48}
-                className="h-10 w-auto"
+                width={140}
+                height={50}
+                className="h-12 w-auto"
                 priority
               />
-              <div>
-                <div className="text-sm font-semibold tracking-tight">
-                  Bohemka.App
-                </div>
-                <div className="text-[11px] text-slate-400">
-                </div>
+              <div className="text-base font-semibold tracking-tight">
+                Bohemka.App
               </div>
             </div>
           </div>

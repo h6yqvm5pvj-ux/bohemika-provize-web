@@ -519,7 +519,7 @@ export default function PlanProdukcePage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <PlanCard
             title="Životní pojištění"
-            hint="Počítáme orientačně jako NEON (měsíční pojistné)."
+            premiumLabel="Celkové měsíční pojistné (Kč)"
             contracts={lifeContracts}
             premium={lifePremium}
             onContractsChange={setLifeContracts}
@@ -529,7 +529,7 @@ export default function PlanProdukcePage() {
 
           <PlanCard
             title="Auta"
-            hint="Roční pojistné, průměrně jako Kooperativa Auto."
+            premiumLabel="Celkové roční pojistné (Kč)"
             contracts={autoContracts}
             premium={autoPremium}
             onContractsChange={setAutoContracts}
@@ -539,7 +539,7 @@ export default function PlanProdukcePage() {
 
           <PlanCard
             title="Majetek"
-            hint="Roční pojistné, průměr z DOMEX a MAXDOMOV."
+            premiumLabel="Celkové roční pojistné (Kč)"
             contracts={propertyContracts}
             premium={propertyPremium}
             onContractsChange={setPropertyContracts}
@@ -622,7 +622,7 @@ export default function PlanProdukcePage() {
 
 function PlanCard({
   title,
-  hint,
+  premiumLabel,
   contracts,
   premium,
   onContractsChange,
@@ -630,7 +630,7 @@ function PlanCard({
   estimate,
 }: {
   title: string;
-  hint: string;
+  premiumLabel: string;
   contracts: string;
   premium: string;
   onContractsChange: (v: string) => void;
@@ -639,9 +639,8 @@ function PlanCard({
 }) {
   return (
     <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
-      <div>
+      <div className="text-center">
         <h2 className="text-lg font-semibold text-white">{title}</h2>
-        <p className="text-xs text-slate-300">{hint}</p>
       </div>
 
       <div className="space-y-2">
@@ -660,7 +659,7 @@ function PlanCard({
 
       <div className="space-y-2">
         <label className="block text-xs font-semibold text-slate-200">
-          Celkové pojistné (Kč)
+          {premiumLabel}
         </label>
         <input
           type="number"

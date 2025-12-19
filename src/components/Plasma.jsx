@@ -144,6 +144,7 @@ export const Plasma = ({
 
     const handleMouseMove = (e) => {
       if (!mouseInteractive) return;
+      if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       mousePos.current.x = e.clientX - rect.left;
       mousePos.current.y = e.clientY - rect.top;
@@ -153,10 +154,11 @@ export const Plasma = ({
     };
 
     if (mouseInteractive) {
-      containerEl.addEventListener("mousemove", handleMouseMove);
+      containerEl?.addEventListener("mousemove", handleMouseMove);
     }
 
     const setSize = () => {
+      if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const width = Math.max(1, Math.floor(rect.width));
       const height = Math.max(1, Math.floor(rect.height));
@@ -167,8 +169,10 @@ export const Plasma = ({
     };
 
     const ro = new ResizeObserver(setSize);
-    ro.observe(containerEl);
-    setSize();
+    if (containerEl) {
+      ro.observe(containerEl);
+      setSize();
+    }
 
     let raf = 0;
 
