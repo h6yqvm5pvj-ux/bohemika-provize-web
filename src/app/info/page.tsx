@@ -31,7 +31,7 @@ export default function InfoPage() {
                 Kalkulačka
               </h2>
               <p className="text-slate-200">
-                Kalkulačku vnímej jako orientační nástroj k výpočtům
+                Kalkulačka je orientační nástroj k výpočtům
                 provizí. Může dojít k situaci, kdy se změní provizní
                 podmínky a nebudou včas zaktualizovány, což by vedlo k
                 nesprávnému výsledku. Vždy se proto v případě nejasností
