@@ -46,6 +46,8 @@ const PRODUCT_LABEL: Record<Product, string> = {
   uniqaAuto: "UNIQA Auto",
   pillowAuto: "Pillow Auto",
   kooperativaAuto: "Kooperativa Auto",
+  cppPPRs: "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS",
+  cppPPRbez: "ČPP Pojištění majetku a odpovědnosti podnikatelů",
   cppcestovko: "ČPP Cestovko",
   axacestovko: "AXA Cestovko",
   comfortcc: "Comfort Commodity",
