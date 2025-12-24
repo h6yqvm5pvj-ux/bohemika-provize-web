@@ -91,10 +91,14 @@ function productLabel(p?: string | null): string {
       return "ČPP ZAMEX";
     case "domex":
       return "ČPP DOMEX";
+    case "cppPPRbez":
+      return "ČPP Pojištění majetku a odpovědnosti podnikatelů";
     case "maxdomov":
       return "Maxima MAXDOMOV";
     case "cppAuto":
       return "ČPP Auto";
+    case "cppPPRs":
+      return "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS";
     case "allianzAuto":
       return "Allianz Auto";
     case "csobAuto":

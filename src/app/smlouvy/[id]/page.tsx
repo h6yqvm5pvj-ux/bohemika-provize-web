@@ -30,6 +30,8 @@ import {
   calculateDomex,
   calculateMaxdomov,
   calculateCppAuto,
+  calculateCppPPRbez,
+  calculateCppPPRs,
   calculateAllianzAuto,
   calculateCsobAuto,
   calculateUniqaAuto,
@@ -144,10 +146,14 @@ function productLabel(p?: Product): string {
       return "ČPP ZAMEX";
     case "domex":
       return "ČPP DOMEX";
+    case "cppPPRbez":
+      return "ČPP Pojištění majetku a odpovědnosti podnikatelů";
     case "maxdomov":
       return "Maxima MAXDOMOV";
     case "cppAuto":
       return "ČPP Auto";
+    case "cppPPRs":
+      return "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS";
     case "allianzAuto":
       return "Allianz Auto";
     case "csobAuto":
@@ -194,7 +200,7 @@ function productIcon(p?: Product): string {
     return "/icons/icon_zamex.png";
   }
 
-  if (p === "domex" || p === "maxdomov") {
+  if (p === "domex" || p === "maxdomov" || p === "cppPPRs" || p === "cppPPRbez") {
     return "/icons/icon_domex.png";
   }
 
@@ -284,10 +290,14 @@ function calculateResultForPosition(
       return calculatePillowInjury(amount, position, usedMode);
     case "domex":
       return calculateDomex(amount, freq, position);
+    case "cppPPRbez":
+      return calculateCppPPRbez(amount, freq, position);
     case "maxdomov":
       return calculateMaxdomov(amount, freq, position);
     case "cppAuto":
       return calculateCppAuto(amount, freq, position);
+    case "cppPPRs":
+      return calculateCppPPRs(amount, freq, position);
     case "allianzAuto":
       return calculateAllianzAuto(amount, freq, position);
     case "csobAuto":

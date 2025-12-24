@@ -23,6 +23,8 @@ import {
   calculateDomex,
   calculateMaxdomov,
   calculateCppAuto,
+  calculateCppPPRbez,
+  calculateCppPPRs,
   calculateAllianzAuto,
   calculateCsobAuto,
   calculateUniqaAuto,
@@ -41,6 +43,7 @@ import {
   collection,
   collectionGroup,
   doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -71,6 +74,14 @@ const PRODUCT_OPTIONS: { id: Product; label: string }[] = [
   { id: "domex", label: "ČPP DOMEX" },
   { id: "maxdomov", label: "Maxima MAXDOMOV" },
   { id: "cppAuto", label: "ČPP Auto" },
+  {
+    id: "cppPPRs",
+    label: "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS",
+  },
+  {
+    id: "cppPPRbez",
+    label: "ČPP Pojištění majetku a odpovědnosti podnikatelů",
+  },
   { id: "allianzAuto", label: "Allianz Auto" },
   { id: "csobAuto", label: "ČSOB Auto" },
   { id: "uniqaAuto", label: "UNIQA Auto" },
@@ -106,7 +117,10 @@ function productIcon(product: Product): string {
     return "/icons/icon_zamex.png";
   }
 
-  if (product === "domex" || product === "maxdomov") {
+  if (product === "domex" || product === "maxdomov" || product === "cppPPRbez") {
+    return "/icons/icon_domex.png";
+  }
+  if (product === "cppPPRs") {
     return "/icons/icon_domex.png";
   }
 
@@ -154,6 +168,8 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "csobAuto":
     case "uniqaAuto":
     case "zamex":
+    case "cppPPRbez":
+    case "cppPPRs":
       return ["quarterly", "semiannual", "annual"];
     case "cppcestovko":
     case "axacestovko":
@@ -350,6 +366,27 @@ export default function CalculatorPage() {
   }, []);
 
   useEffect(() => {
+    const loadUserPosition = async () => {
+      if (!user?.email) return;
+      try {
+        const email = user.email.toLowerCase();
+        const userSnap = await getDoc(doc(db, "users", email));
+        const pos = (userSnap.data()?.position as Position | undefined) ?? null;
+        if (pos) {
+          setPosition(pos);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem("settings.position", pos);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load user position", err);
+      }
+    };
+
+    loadUserPosition();
+  }, [user]);
+
+  useEffect(() => {
     const allowed = allowedFrequencies(product);
     if (!allowed.includes(frequency)) {
       setFrequency(allowed[0]);
@@ -437,6 +474,26 @@ export default function CalculatorPage() {
 
     if (product === "cppAuto") {
       const dto = calculateCppAuto(val, frequency, position);
+      setItems(dto.items);
+      setTotal(dto.total);
+      setUnsupported(false);
+      return;
+    }
+
+    if (product === "cppPPRbez") {
+      const dto = calculateCppPPRbez(val, frequency, position);
+      const filtered = dto.items.filter((i) =>
+        (i.title ?? "").toLowerCase().includes("(z platby)")
+      );
+      const sum = filtered.reduce((s, i) => s + (i.amount ?? 0), 0);
+      setItems(filtered);
+      setTotal(sum);
+      setUnsupported(false);
+      return;
+    }
+
+    if (product === "cppPPRs") {
+      const dto = calculateCppPPRs(val, frequency, position);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);

@@ -302,6 +302,35 @@ export const CashflowGenerator = {
           break;
         }
 
+        // ============= DOMEX / ČPP PPR bez ÚPIS – dle frekvence, po 1. výročí následná =============
+        case "domex":
+        case "cppPPRbez": {
+          const immediateDomex =
+            items.find((i) =>
+              i.titleLower.includes("okamžitá provize (z platby)")
+            ) ?? immediate;
+          const subsequentDomex = items.find((i) =>
+            i.titleLower.includes("následná provize (z platby)")
+          );
+
+          const monthsStep = monthsBetweenPayments(entry.frequencyRaw);
+          const firstPayout = estimatePayoutDate(start, agreement);
+          const subsequentStart = anniversaryPlusYears(1);
+
+          let payout = firstPayout;
+          while (payout <= horizonEnd) {
+            const amount =
+              payout < subsequentStart
+                ? immediateDomex?.amount
+                : subsequentDomex?.amount ?? immediateDomex?.amount;
+            if (amount && Number.isFinite(amount) && amount !== 0) {
+              addItem(amount, payout);
+            }
+            payout = addMonths(payout, monthsStep);
+          }
+          break;
+        }
+
         // ============= ZAMEX – opakovaně dle frekvence =============
         case "zamex": {
           if (!immediate) break;
@@ -318,6 +347,7 @@ export const CashflowGenerator = {
 
         // ============= OSTATNÍ AUTO – podle frekvence (ČPP, ČSOB, Kooperativa) =============
         case "cppAuto":
+        case "cppPPRs":
         case "csobAuto":
         case "kooperativaAuto": {
           if (!immediate) break;

@@ -29,11 +29,13 @@ import {
   calculateDomex,
   calculateMaxdomov,
   calculateCppAuto,
+  calculateCppPPRbez,
   calculateAllianzAuto,
   calculateCsobAuto,
   calculateUniqaAuto,
   calculatePillowAuto,
   calculateKooperativaAuto,
+  calculateCppPPRs,
   calculateZamex,
   calculateCppCestovko,
   calculateAxaCestovko,
@@ -111,10 +113,14 @@ function productLabel(p?: Product | "unknown"): string {
       return "ČPP ZAMEX";
     case "domex":
       return "ČPP DOMEX";
+    case "cppPPRbez":
+      return "ČPP Pojištění majetku a odpovědnosti podnikatelů";
     case "maxdomov":
       return "Maxima MAXDOMOV";
     case "cppAuto":
       return "ČPP Auto";
+    case "cppPPRs":
+      return "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS";
     case "allianzAuto":
       return "Allianz Auto";
     case "csobAuto":
@@ -174,6 +180,8 @@ function commissionItemsForPosition(
       return calculatePillowInjury(amount, pos, mode).items;
     case "domex":
       return calculateDomex(amount, freq, pos).items;
+    case "cppPPRbez":
+      return calculateCppPPRbez(amount, freq, pos).items;
     case "maxdomov":
       return calculateMaxdomov(amount, freq, pos).items;
     case "cppAuto":
@@ -184,6 +192,8 @@ function commissionItemsForPosition(
       return calculateCsobAuto(amount, freq, pos).items;
     case "uniqaAuto":
       return calculateUniqaAuto(amount, freq, pos).items;
+    case "cppPPRs":
+      return calculateCppPPRs(amount, freq, pos).items;
     case "pillowAuto":
       return calculatePillowAuto(amount, freq, pos).items;
     case "kooperativaAuto":
@@ -437,7 +447,8 @@ function generateCashflow(
         break;
       }
 
-      case "domex": {
+      case "domex":
+      case "cppPPRbez": {
         const immediateDomex =
           items.find((i) =>
             i.title.includes("okamžitá provize (z platby)")
@@ -466,7 +477,9 @@ function generateCashflow(
             pushItem(
               amount,
               payout,
-              `${notePrefix}DOMEX, ${stepMonths === 1 ? "měsíčně" : `každých ${stepMonths} měsíců`}`
+              `${notePrefix}${product === "domex" ? "DOMEX" : "ČPP PPR"}, ${
+                stepMonths === 1 ? "měsíčně" : `každých ${stepMonths} měsíců`
+              }`
             );
           }
           payout = new Date(
@@ -569,6 +582,7 @@ function generateCashflow(
 
       // Auto ČPP / ČSOB / Koop – dle frekvence
       case "cppAuto":
+      case "cppPPRs":
       case "csobAuto":
       case "kooperativaAuto": {
         if (!immediate) break;

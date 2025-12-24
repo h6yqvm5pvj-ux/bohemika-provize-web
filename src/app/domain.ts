@@ -17,7 +17,9 @@ export type Product =
   | "kooperativaAuto"
   | "cppcestovko"
   | "axacestovko"
-  | "comfortcc";
+  | "comfortcc"
+  | "cppPPRs"
+  | "cppPPRbez";
 
 // 👉 PaymentFrequency (.monthly, .quarterly, …)
 export type PaymentFrequency =

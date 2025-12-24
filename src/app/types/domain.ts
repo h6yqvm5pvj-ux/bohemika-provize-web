@@ -16,7 +16,9 @@ export type Product =
   | "kooperativaAuto"
   | "cppcestovko"
   | "axacestovko"
-  | "comfortcc";
+  | "comfortcc"
+  | "cppPPRs"
+  | "cppPPRbez";
 
 export type Position =
   | "poradce1"

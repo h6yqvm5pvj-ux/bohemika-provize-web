@@ -48,8 +48,10 @@ type Product =
   | "pillowInjury"
   | "zamex"
   | "domex"
+  | "cppPPRbez"
   | "maxdomov"
   | "cppAuto"
+  | "cppPPRs"
   | "allianzAuto"
   | "csobAuto"
   | "uniqaAuto"
@@ -124,8 +126,10 @@ const AUTO_PRODUCTS: Product[] = [
 
 const PROPERTY_PRODUCTS: Product[] = [
   "domex",
+  "cppPPRbez",
   "maxdomov",
   "zamex",
+  "cppPPRs",
   "cppcestovko",
   "axacestovko",
 ];
@@ -171,10 +175,14 @@ function productLabel(p: Product): string {
       return "ČPP ZAMEX";
     case "domex":
       return "ČPP DOMEX";
+    case "cppPPRbez":
+      return "ČPP Pojištění majetku a odpovědnosti podnikatelů";
     case "maxdomov":
       return "Maxima MAXDOMOV";
     case "cppAuto":
       return "ČPP Auto";
+    case "cppPPRs":
+      return "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS";
     case "allianzAuto":
       return "Allianz Auto";
     case "csobAuto":

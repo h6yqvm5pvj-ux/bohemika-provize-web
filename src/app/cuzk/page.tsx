@@ -564,7 +564,7 @@ export default function CuzkPage() {
         {/* ✅ vždy NAD výsledkem (kvůli dropdownu) */}
         <div className="grid gap-5 lg:grid-cols-[1.35fr_0.85fr] items-start">
           {/* Levý box: dotaz */}
-          <section className="relative z-30 isolate overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br from-white/8 via-slate-900/40 to-slate-950/60 backdrop-blur-2xl px-6 py-6 shadow-[0_18px_70px_rgba(0,0,0,0.85)] space-y-5">
+          <section className="relative z-30 isolate overflow-visible rounded-3xl border border-white/15 bg-gradient-to-br from-white/8 via-slate-900/40 to-slate-950/60 backdrop-blur-2xl px-6 py-6 shadow-[0_18px_70px_rgba(0,0,0,0.85)] space-y-5">
             <div className="absolute inset-0 pointer-events-none opacity-60 bg-[radial-gradient(circle_at_20%_20%,rgba(56,189,248,0.25),transparent_35%),radial-gradient(circle_at_85%_15%,rgba(94,234,212,0.25),transparent_32%)]" />
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
