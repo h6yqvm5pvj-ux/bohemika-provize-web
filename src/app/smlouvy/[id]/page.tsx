@@ -52,6 +52,9 @@ type ContractDoc = {
   id: string;
   note?: string | null;
   paid?: boolean | null;
+  managerEmailSnapshot?: string | null;
+  managerPositionSnapshot?: Position | null;
+  managerModeSnapshot?: CommissionMode | null;
 
   productKey?: Product;
   position?: Position;
@@ -498,6 +501,11 @@ export default function ContractDetailPage() {
     return current !== owner;
   }, [user, contract, managerPosition]);
 
+  const effectiveManagerPosition =
+    (contract as any)?.managerPositionSnapshot ?? managerPosition;
+  const effectiveManagerMode =
+    (contract as any)?.managerModeSnapshot ?? managerMode;
+
   const handleSaveNote = async () => {
     if (!ownerEmail || !entryId || !isOwnContract) return;
     setSavingNote(true);
@@ -536,7 +544,7 @@ export default function ContractDetailPage() {
 
   // výpočet meziprovize
   useEffect(() => {
-    if (!contract || !managerPosition || !isManagerViewingSubordinate) {
+    if (!contract || !effectiveManagerPosition || !isManagerViewingSubordinate) {
       setOverrideItems(null);
       setOverrideTotal(null);
       return;
@@ -544,8 +552,8 @@ export default function ContractDetailPage() {
 
     const managerResult = calculateResultForPosition(
       contract,
-      managerPosition,
-      managerMode
+      effectiveManagerPosition,
+      effectiveManagerMode
     );
     if (!managerResult) {
       setOverrideItems(null);
@@ -847,7 +855,7 @@ export default function ContractDetailPage() {
                 {showMeziprovision && (
                   <section className="space-y-3">
                     <h3 className="text-sm font-semibold text-emerald-200">
-                      Meziprovize pro {managerPosition ?? "manažera"}
+                      Meziprovize pro {effectiveManagerPosition ?? "manažera"}
                     </h3>
                     <div className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
                       {managerItems.map((item) => (

@@ -302,6 +302,9 @@ export default function CalculatorPage() {
 
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [managerEmailSnapshot, setManagerEmailSnapshot] = useState<string | null>(null);
+  const [managerPositionSnapshot, setManagerPositionSnapshot] = useState<Position | null>(null);
+  const [managerModeSnapshot, setManagerModeSnapshot] = useState<CommissionMode | null>(null);
   const filteredClientSuggestions = useMemo(() => {
     const q = clientName.trim().toLowerCase();
     if (!q) return [];
@@ -371,11 +374,30 @@ export default function CalculatorPage() {
       try {
         const email = user.email.toLowerCase();
         const userSnap = await getDoc(doc(db, "users", email));
-        const pos = (userSnap.data()?.position as Position | undefined) ?? null;
+        const data = userSnap.data() as any;
+        const pos = (data?.position as Position | undefined) ?? null;
         if (pos) {
           setPosition(pos);
           if (typeof window !== "undefined") {
             window.localStorage.setItem("settings.position", pos);
+          }
+        }
+
+        const mgrEmail = (data?.managerEmail as string | undefined)?.toLowerCase() ?? null;
+        setManagerEmailSnapshot(mgrEmail ?? null);
+
+        if (mgrEmail) {
+          try {
+            const mgrSnap = await getDoc(doc(db, "users", mgrEmail));
+            if (mgrSnap.exists()) {
+              const mgrData = mgrSnap.data() as any;
+              const mgrPos = (mgrData.position as Position | undefined) ?? null;
+              const mgrMode = (mgrData.commissionMode as CommissionMode | undefined) ?? null;
+              setManagerPositionSnapshot(mgrPos);
+              setManagerModeSnapshot(mgrMode ?? null);
+            }
+          } catch (mgrErr) {
+            console.error("Failed to load manager snapshot", mgrErr);
           }
         }
       } catch (err) {
@@ -610,6 +632,32 @@ export default function CalculatorPage() {
       const start =
         policyStartDate.trim().length > 0 ? new Date(policyStartDate) : null;
 
+      // Snapshot aktuálního nadřízeného a jeho pozice/režimu – uložíme k záznamu
+      let mgrEmail = managerEmailSnapshot;
+      let mgrPos = managerPositionSnapshot;
+      let mgrMode = managerModeSnapshot;
+      try {
+        const userSnap = await getDoc(userRef);
+        const data = userSnap.data() as any;
+        mgrEmail =
+          (data?.managerEmail as string | undefined)?.toLowerCase() ??
+          mgrEmail ??
+          null;
+        if (mgrEmail) {
+          const mgrSnap = await getDoc(doc(db, "users", mgrEmail));
+          if (mgrSnap.exists()) {
+            const md = mgrSnap.data() as any;
+            mgrPos = (md.position as Position | undefined) ?? mgrPos ?? null;
+            mgrMode =
+              (md.commissionMode as CommissionMode | undefined) ??
+              mgrMode ??
+              null;
+          }
+        }
+      } catch (snapshotErr) {
+        console.error("Failed to snapshot manager info", snapshotErr);
+      }
+
       await addDoc(entriesRef, {
         productKey: product,
         createdAt: serverTimestamp(),
@@ -635,6 +683,9 @@ export default function CalculatorPage() {
         durationYears: shouldShowDuration(product) ? durationYears : null,
         userEmail: email,
         contractNumber: contractNumber || null,
+        managerEmailSnapshot: mgrEmail ?? null,
+        managerPositionSnapshot: mgrPos ?? null,
+        managerModeSnapshot: mgrMode ?? null,
       });
 
       setSaveMessage("Smlouva byla uložena mezi sepsané.");

@@ -158,7 +158,8 @@ function normalizeTitleKey(title: string): string {
 
 function commissionItemsForPosition(
   entry: EntryDoc,
-  pos: Position
+  pos: Position,
+  forcedMode?: CommissionMode | null
 ): CommissionResultItemDTO[] {
   const product = entry.productKey;
   const amount = entry.inputAmount ?? 0;
@@ -167,7 +168,10 @@ function commissionItemsForPosition(
     typeof entry.durationYears === "number" && !Number.isNaN(entry.durationYears)
       ? entry.durationYears
       : 15;
-  const mode = (entry.commissionMode ?? entry.mode ?? "accelerated") as CommissionMode;
+  const mode = (forcedMode ??
+    entry.commissionMode ??
+    entry.mode ??
+    "accelerated") as CommissionMode;
 
   switch (product) {
     case "neon":
@@ -232,6 +236,9 @@ type EntryDoc = {
   position?: Position | null;
   mode?: CommissionMode | null;
   commissionMode?: CommissionMode | null;
+  managerEmailSnapshot?: string | null;
+  managerPositionSnapshot?: Position | null;
+  managerModeSnapshot?: CommissionMode | null;
   inputAmount?: number | null;
   contractNumber?: string | null;
   comfortPayment?: number | null;
@@ -764,18 +771,28 @@ export default function CashflowPage() {
               (entry.position as Position | undefined) ??
               subordinatePositions[ownerEmail] ??
               null;
-            const ownerManagerEmail = managerOf[ownerEmail] ?? null;
-            const ownerManagerPos = ownerManagerEmail
-              ? subordinatePositions[ownerManagerEmail] ?? null
-              : null;
-            const comparePos = ownerManagerPos ?? subPos;
-
             if (!subPos) continue;
 
-            const mgrItems = commissionItemsForPosition(entry, myPos);
+            const effectiveMgrPos =
+              (entry.managerPositionSnapshot as Position | null | undefined) ??
+              myPos;
+            if (!effectiveMgrPos) continue;
+
+            const effectiveMgrMode =
+              (entry.managerModeSnapshot as CommissionMode | null | undefined) ??
+              (entry.commissionMode as CommissionMode | null | undefined) ??
+              (entry.mode as CommissionMode | null | undefined) ??
+              null;
+
+            const mgrItems = commissionItemsForPosition(
+              entry,
+              effectiveMgrPos,
+              effectiveMgrMode
+            );
             const baselineItems = commissionItemsForPosition(
               entry,
-              comparePos ?? subPos
+              subPos,
+              entry.commissionMode ?? entry.mode ?? null
             );
 
             const mgrMap = new Map<
@@ -826,7 +843,9 @@ export default function CashflowPage() {
               items: diffItems,
               total: diffTotal,
               source: "manager",
-              position: myPos,
+              position: effectiveMgrPos,
+              managerPositionSnapshot: effectiveMgrPos,
+              managerModeSnapshot: effectiveMgrMode,
             });
           }
         }

@@ -62,6 +62,31 @@ type AppUser = {
 };
 
 type FilterMode = "latest" | "anniversary";
+type ProductCategory =
+  | "life"
+  | "auto"
+  | "property"
+  | "travel"
+  | "comfort"
+  | "liability";
+
+const PRODUCT_CATEGORY_MAP: Record<ProductCategory, Product[]> = {
+  life: ["neon", "flexi", "pillowInjury", "maximaMaxEfekt"],
+  auto: ["cppAuto", "allianzAuto", "csobAuto", "uniqaAuto", "pillowAuto", "kooperativaAuto"],
+  property: ["cppPPRs", "cppPPRbez", "domex", "maxdomov"],
+  travel: ["cppcestovko", "axacestovko"],
+  comfort: ["comfortcc"],
+  liability: ["zamex", "domex", "cppPPRs", "cppPPRbez"],
+};
+
+const CATEGORY_DEFS: { id: ProductCategory; label: string }[] = [
+  { id: "life", label: "Životní pojištění" },
+  { id: "auto", label: "Auto" },
+  { id: "property", label: "Majetek" },
+  { id: "travel", label: "Cestovko" },
+  { id: "comfort", label: "Comfort Commodity" },
+  { id: "liability", label: "Odpovědnost" },
+];
 
 function formatMoney(value: number | undefined | null): string {
   if (value == null || !Number.isFinite(value)) return "0 Kč";
@@ -177,6 +202,19 @@ function isAnniversarySoon(date: Date | null): { soon: boolean; next?: Date } {
   return { soon, next };
 }
 
+function productMatchesCategory(
+  product: Product | undefined,
+  categories: Set<ProductCategory>
+): boolean {
+  if (!product) return false;
+  if (categories.size === 0) return true;
+  for (const cat of categories) {
+    const list = PRODUCT_CATEGORY_MAP[cat];
+    if (list.includes(product)) return true;
+  }
+  return false;
+}
+
 export default function ContractsPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [currentUserPosition, setCurrentUserPosition] =
@@ -197,6 +235,8 @@ export default function ContractsPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkMarking, setBulkMarking] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState<Set<ProductCategory>>(new Set());
 
   // auth
   useEffect(() => {
@@ -358,7 +398,14 @@ export default function ContractsPage() {
           const info = isAnniversarySoon(start);
           return { contract: c, next: info.next, soon: info.soon };
         })
-        .filter((item) => item.soon)
+        .filter(
+          (item) =>
+            item.soon &&
+            productMatchesCategory(
+              (item.contract as any).productKey as Product | undefined,
+              selectedCategories
+            )
+        )
         .sort(
           (a, b) =>
             (a.next?.getTime() ?? Number.POSITIVE_INFINITY) -
@@ -369,8 +416,10 @@ export default function ContractsPage() {
       return enriched;
     }
 
-    return base;
-  }, [displayedContracts, searchText, filterMode]);
+    return base.filter((c) =>
+      productMatchesCategory(c.productKey as Product | undefined, selectedCategories)
+    );
+  }, [displayedContracts, searchText, filterMode, selectedCategories]);
 
   useEffect(() => {
     setVisibleCount(10);
@@ -555,6 +604,13 @@ export default function ContractsPage() {
             </div>
 
             <div className="inline-flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setFilterModalOpen(true)}
+                className="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-white/20"
+              >
+                Filtr
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -830,6 +886,83 @@ export default function ContractsPage() {
           </p>
         )}
       </div>
+
+      {filterModalOpen && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setFilterModalOpen(false)}
+          />
+          <div className="relative w-full max-w-lg rounded-3xl border border-white/15 bg-slate-950/80 backdrop-blur-2xl p-6 space-y-4 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-50">Filtry produktů</h3>
+              <button
+                type="button"
+                onClick={() => setFilterModalOpen(false)}
+                className="text-sm text-slate-300 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {CATEGORY_DEFS.map((cat) => {
+                const active = selectedCategories.has(cat.id);
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() =>
+                      setSelectedCategories((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(cat.id)) {
+                          next.delete(cat.id);
+                        } else {
+                          next.add(cat.id);
+                        }
+                        return next;
+                      })
+                    }
+                    className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
+                      active
+                        ? "border-emerald-400/70 bg-emerald-500/10 text-emerald-50"
+                        : "border-white/20 bg-white/5 text-slate-200 hover:border-white/35"
+                    }`}
+                  >
+                    <span className="text-sm font-medium">{cat.label}</span>
+                    <span
+                      className={`h-5 w-5 rounded-full border ${
+                        active
+                          ? "bg-emerald-400 border-emerald-300 text-emerald-950"
+                          : "border-white/30"
+                      }`}
+                    >
+                      {active ? "✓" : ""}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-between pt-2 text-sm">
+              <button
+                type="button"
+                onClick={() => setSelectedCategories(new Set())}
+                className="rounded-xl border border-white/20 bg-white/5 px-4 py-2 text-slate-100 hover:bg-white/10"
+              >
+                Vymazat filtry
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterModalOpen(false)}
+                className="rounded-xl bg-emerald-500/80 px-4 py-2 font-semibold text-emerald-950 hover:bg-emerald-400"
+              >
+                Použít
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

@@ -534,7 +534,7 @@ export default function SettingsPage() {
 
                   <div className="space-y-1">
                     <label className="text-xs uppercase tracking-wide text-slate-400">
-                      Předstih notifikace (minuty)
+                      Nastav kolik minut před událostí ti má přijít notifikace.
                     </label>
                     <input
                       type="number"
