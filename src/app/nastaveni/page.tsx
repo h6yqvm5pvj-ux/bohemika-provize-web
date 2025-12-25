@@ -571,9 +571,9 @@ export default function SettingsPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                     {[
-                      { id: "plasma", label: "Plasma", swatch: "bg-gradient-to-br from-indigo-500 to-purple-600" },
-                      { id: "black", label: "Černá", swatch: "bg-black" },
-                      { id: "blue", label: "Modrá", swatch: "bg-blue-900" },
+                      { id: "plasma" as const, label: "Plasma", swatch: "bg-gradient-to-br from-indigo-500 to-purple-600" },
+                      { id: "black" as const, label: "Černá", swatch: "bg-black" },
+                      { id: "blue" as const, label: "Modrá", swatch: "bg-blue-900" },
                     ].map((opt) => {
                       const isActive =
                         (opt.id === "plasma" && !simpleBackground) ||
@@ -582,11 +582,7 @@ export default function SettingsPage() {
                         <button
                           key={opt.id}
                           type="button"
-                          onClick={() =>
-                            handleBackgroundPreset(
-                              opt.id as "plasma" | "black" | "white" | "blue"
-                            )
-                          }
+                          onClick={() => handleBackgroundPreset(opt.id)}
                           className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition ${
                             isActive
                               ? "border-emerald-400/80 bg-white/10"
