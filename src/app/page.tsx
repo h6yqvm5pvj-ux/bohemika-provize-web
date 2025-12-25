@@ -436,7 +436,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <h2 className="text-lg sm:text-xl font-semibold text-white">
-            Osobní produkce — posledních 12 měsíců
+            Graf produkce — posledních 12 měsíců
           </h2>
           <p className="text-xs text-slate-300">
             Život = měsíční pojistné, vedlejší produkty = roční pojistné

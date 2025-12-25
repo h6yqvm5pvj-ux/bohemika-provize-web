@@ -36,7 +36,9 @@ type SubscriptionStatusWeb = "none" | "active" | "expired";
 
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [animatedBg, setAnimatedBg] = useState(true);
+  const [animatedBg, setAnimatedBg] = useState<boolean>(true);
+  const [simpleBg, setSimpleBg] = useState<boolean>(false);
+  const [backgroundColor, setBackgroundColor] = useState<"black" | "blue" | null>(null);
 
   // status zatím nepoužíváme v UI
   const [, setSubscriptionStatus] =
@@ -61,17 +63,74 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   // Animated background nastavení z localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(
-      "settings.animatedBackground"
-    );
-    if (stored === "0") {
-      setAnimatedBg(false);
-    } else if (stored === "1") {
-      setAnimatedBg(true);
-    } else {
-      setAnimatedBg(true);
-    }
+    const updateFromStorage = () => {
+      const storedAnimated = window.localStorage.getItem(
+        "settings.animatedBackground"
+      );
+      if (storedAnimated === "0") {
+        setAnimatedBg(false);
+      } else if (storedAnimated === "1") {
+        setAnimatedBg(true);
+      } else {
+        setAnimatedBg(true);
+      }
+
+      const storedSimple =
+        window.localStorage.getItem("settings.simpleBackground") === "1";
+      setSimpleBg(storedSimple);
+
+      const storedColor = window.localStorage.getItem(
+        "settings.backgroundColor"
+      ) as "black" | "blue" | null;
+      setBackgroundColor(storedColor ?? null);
+    };
+
+    updateFromStorage();
+    const handler = () => updateFromStorage();
+    const customHandler = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ simpleBg?: boolean; animatedBg?: boolean; backgroundColor?: string }>).detail;
+      if (detail && typeof detail.simpleBg === "boolean") {
+        setSimpleBg(detail.simpleBg);
+      } else {
+        updateFromStorage();
+      }
+      if (detail && typeof detail.animatedBg === "boolean") {
+        setAnimatedBg(detail.animatedBg);
+      }
+      if (detail && typeof detail.backgroundColor === "string") {
+        const bg = detail.backgroundColor === "black" || detail.backgroundColor === "blue" ? detail.backgroundColor : null;
+        setBackgroundColor(bg);
+      } else if (detail && detail.simpleBg === false) {
+        setBackgroundColor(null);
+      }
+    };
+    window.addEventListener("storage", handler);
+    window.addEventListener("settings:updateBackground", customHandler as any);
+    return () => {
+      window.removeEventListener("storage", handler);
+      window.removeEventListener("settings:updateBackground", customHandler as any);
+    };
   }, []);
+
+  // Přepínání třídy na body kvůli čistě černému pozadí
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const body = document.body;
+
+    // vyčisti staré třídy
+    body.classList.remove(
+      "simple-bg",
+      "simple-bg-black",
+      "simple-bg-white",
+      "simple-bg-blue"
+    );
+
+    if (simpleBg) {
+      body.classList.add("simple-bg");
+      const color = backgroundColor ?? "black";
+      body.classList.add(`simple-bg-${color}`);
+    }
+  }, [simpleBg, backgroundColor]);
 
   const handleLogout = async () => {
     try {
@@ -192,14 +251,30 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     <main className="relative min-h-screen overflow-hidden text-slate-50">
       {/* PLASMA BACKGROUND */}
       <div className="fixed inset-0 -z-10 bg-black">
-        <Plasma
-          color="#6366f1"
-          speed={0.6}
-          direction="forward"
-          scale={1.2}
-          opacity={0.98}
-          mouseInteractive={animatedBg}
-          animated={animatedBg}
+        <div
+          className="plasma-layer h-full w-full"
+          style={{ display: simpleBg ? "none" : "block" }}
+        >
+          <Plasma
+            color="#6366f1"
+            speed={0.6}
+            direction="forward"
+            scale={1.2}
+            opacity={0.98}
+            mouseInteractive={animatedBg}
+            animated={animatedBg}
+          />
+        </div>
+        <div
+          className="plain-bg-layer h-full w-full"
+          style={{
+            backgroundColor:
+              (backgroundColor ?? "black") === "blue"
+                ? "#0a1b3a"
+                : "#000",
+            opacity: simpleBg ? 1 : 0,
+            transition: "opacity 150ms ease",
+          }}
         />
       </div>
 

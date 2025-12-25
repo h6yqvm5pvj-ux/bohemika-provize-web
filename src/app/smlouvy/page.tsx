@@ -13,10 +13,12 @@ import {
   collection,
   collectionGroup,
   doc,
+  deleteDoc,
   getDoc,
   getDocs,
   orderBy,
   query,
+  updateDoc,
   where,
 } from "firebase/firestore";
 
@@ -36,6 +38,7 @@ type FirestoreTimestamp = {
 
 type ContractDoc = {
   id: string;
+  paid?: boolean | null;
 
   productKey?: Product;
   position?: Position;
@@ -189,6 +192,11 @@ export default function ContractsPage() {
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(10);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkMarking, setBulkMarking] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   // auth
   useEffect(() => {
@@ -366,10 +374,111 @@ export default function ContractsPage() {
 
   useEffect(() => {
     setVisibleCount(10);
+    setSelectedKeys(new Set());
+    setSelectMode(false);
   }, [filterMode, searchText, showTeam, displayedContracts.length]);
 
   const hasTeamContracts =
     teamContracts.length > 0 && canShowTeamToggle;
+
+  const toggleSelect = (key: string) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedKeys(new Set());
+    setSelectMode(false);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedKeys.size === 0) return;
+    const confirmed = window.confirm(
+      "Opravdu chceš smazat vybrané smlouvy? Tuto akci nelze vrátit."
+    );
+    if (!confirmed) return;
+
+    setBulkDeleting(true);
+    setBulkError(null);
+
+    try {
+      for (const key of Array.from(selectedKeys)) {
+        const [ownerEmail, entryId] = key.split("___");
+        if (!ownerEmail || !entryId) continue;
+        await deleteDoc(doc(db, "users", ownerEmail, "entries", entryId));
+      }
+
+      setMyContracts((prev) =>
+        prev.filter(
+          (c) =>
+            !selectedKeys.has(
+              `${(c.userEmail ?? "").toLowerCase()}___${c.id}`
+            )
+        )
+      );
+      setTeamContracts((prev) =>
+        prev.filter(
+          (c) =>
+            !selectedKeys.has(
+              `${(c.userEmail ?? "").toLowerCase()}___${c.id}`
+            )
+        )
+      );
+
+      clearSelection();
+    } catch (e) {
+      console.error("Chyba při hromadném mazání", e);
+      setBulkError("Nepodařilo se smazat všechny smlouvy. Zkus to prosím znovu.");
+      setBulkDeleting(false);
+    }
+  };
+
+  const handleBulkMarkPaid = async () => {
+    if (selectedKeys.size === 0) return;
+    setBulkMarking(true);
+    setBulkError(null);
+
+    try {
+      for (const key of Array.from(selectedKeys)) {
+        const [ownerEmail, entryId] = key.split("___");
+        if (!ownerEmail || !entryId) continue;
+        await updateDoc(doc(db, "users", ownerEmail, "entries", entryId), {
+          paid: true,
+        });
+      }
+
+      setMyContracts((prev) =>
+        prev.map((c) => {
+          const k = `${(c.userEmail ?? "").toLowerCase()}___${c.id}`;
+          if (selectedKeys.has(k)) {
+            return { ...c, paid: true };
+          }
+          return c;
+        })
+      );
+      setTeamContracts((prev) =>
+        prev.map((c) => {
+          const k = `${(c.userEmail ?? "").toLowerCase()}___${c.id}`;
+          if (selectedKeys.has(k)) {
+            return { ...c, paid: true };
+          }
+          return c;
+        })
+      );
+      clearSelection();
+    } catch (e) {
+      console.error("Chyba při hromadném označení zaplaceno", e);
+      setBulkError("Nepodařilo se označit vybrané smlouvy jako zaplacené. Zkus to prosím znovu.");
+      setBulkMarking(false);
+    }
+  };
 
   return (
     <AppLayout active="contracts">
@@ -406,7 +515,7 @@ export default function ContractsPage() {
           )}
         </header>
 
-        {/* SEARCH BAR + FILTER */}
+        {/* SEARCH BAR + FILTER + BULK ACTIONS */}
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/5 border border-white/15 shadow-[0_14px_40px_rgba(0,0,0,0.6)] backdrop-blur-xl flex-1">
             <span className="text-sm">🔍</span>
@@ -419,29 +528,79 @@ export default function ContractsPage() {
             />
           </div>
 
-          <div className="inline-flex rounded-full bg-slate-950/70 border border-white/15 p-1 text-xs shadow-inner shadow-black/60">
-            <button
-              type="button"
-              onClick={() => setFilterMode("latest")}
-              className={`px-3 py-1.5 rounded-full transition ${
-                filterMode === "latest"
-                  ? "bg-white text-slate-900 shadow-md"
-                  : "text-slate-200"
-              }`}
-            >
-              Nejnovější
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterMode("anniversary")}
-              className={`px-3 py-1.5 rounded-full transition ${
-                filterMode === "anniversary"
-                  ? "bg-white text-slate-900 shadow-md"
-                  : "text-slate-200"
-              }`}
-            >
-              Blížící se výročí
-            </button>
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <div className="inline-flex rounded-full bg-slate-950/70 border border-white/15 p-1 text-xs shadow-inner shadow-black/60">
+              <button
+                type="button"
+                onClick={() => setFilterMode("latest")}
+                className={`px-3 py-1.5 rounded-full transition ${
+                  filterMode === "latest"
+                    ? "bg-white text-slate-900 shadow-md"
+                    : "text-slate-200"
+                }`}
+              >
+                Nejnovější
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterMode("anniversary")}
+                className={`px-3 py-1.5 rounded-full transition ${
+                  filterMode === "anniversary"
+                    ? "bg-white text-slate-900 shadow-md"
+                    : "text-slate-200"
+                }`}
+              >
+                Blížící se výročí
+              </button>
+            </div>
+
+            <div className="inline-flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectMode) {
+                    clearSelection();
+                  } else {
+                    setSelectMode(true);
+                  }
+                }}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  selectMode
+                    ? "border-rose-300/70 bg-rose-500/15 text-rose-100"
+                    : "border-white/25 bg-white/10 text-slate-100 hover:bg-white/20"
+                }`}
+              >
+                {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
+              </button>
+              {selectMode && (
+                <button
+                  type="button"
+                  disabled={selectedKeys.size === 0 || bulkDeleting}
+                  onClick={handleBulkDelete}
+                  className="rounded-full border border-rose-300 bg-rose-500/80 text-slate-900 px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                >
+                  {bulkDeleting
+                    ? "Mažu…"
+                    : selectedKeys.size === 0
+                    ? "Smazat"
+                    : `Smazat (${selectedKeys.size})`}
+                </button>
+              )}
+              {selectMode && (
+                <button
+                  type="button"
+                  disabled={selectedKeys.size === 0 || bulkMarking}
+                  onClick={handleBulkMarkPaid}
+                  className="rounded-full border border-emerald-300 bg-emerald-500/80 text-emerald-950 px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                >
+                  {bulkMarking
+                    ? "Ukládám…"
+                    : selectedKeys.size === 0
+                    ? "Označit zaplaceno"
+                    : `Zaplaceno (${selectedKeys.size})`}
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -489,6 +648,11 @@ export default function ContractsPage() {
           </div>
         ) : (
           <div className="mt-4 space-y-3">
+            {bulkError && (
+              <div className="rounded-2xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+                {bulkError}
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {filteredContracts.slice(0, visibleCount).map((c: any) => {
                 const signed =
@@ -500,91 +664,108 @@ export default function ContractsPage() {
               const policyStart = toDate((c as any).policyStartDate);
               const anniversaryInfo = isAnniversarySoon(policyStart);
 
-              const ownerEmail =
+              const ownerEmailRaw =
                 (showTeam && c.adviserEmail) ||
                 c.userEmail ||
                 "";
+              const ownerEmail = ownerEmailRaw.toLowerCase();
 
               const slug = `${ownerEmail}___${c.id}`;
+              const selectionKey = `${ownerEmail}___${c.id}`;
+              const isSelected = selectedKeys.has(selectionKey);
 
               const adviserName =
                 showTeam && ownerEmail
                   ? adviserNameFromEmail(ownerEmail)
                   : "";
 
-              return (
-                <Link
-                  key={c.id}
-                  href={`/smlouvy/${slug}`}
-                  className="block group h-full"
-                >
-                  <article className="relative flex h-full flex-col sm:flex-row sm:items-center gap-4 rounded-2xl border border-white/15 bg-white/[0.04] backdrop-blur-2xl px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.8)] hover:border-sky-400/70 hover:bg-white/[0.08] transition">
-                    {/* levý barevný pruh */}
-                    <div className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-gradient-to-b from-sky-400 via-indigo-400 to-emerald-400" />
+              const CardContent = (
+                  <article
+                    className={`relative flex h-full flex-col sm:flex-row sm:items-center gap-4 rounded-2xl border border-white/15 bg-white/[0.04] backdrop-blur-2xl px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.8)] hover:border-sky-400/70 hover:bg-white/[0.08] transition ${
+                      isSelected ? "border-emerald-400/80 ring-2 ring-emerald-300/50" : ""
+                    }`}
+                  >
+                  {/* levý barevný pruh */}
+                  <div className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-gradient-to-b from-sky-400 via-indigo-400 to-emerald-400" />
 
-                    {/* TEXTOVÁ ČÁST */}
-                    <div className="pl-3 flex-1 space-y-1">
-                      {/* Název produktu */}
-                      <div className="text-sm sm:text-base font-semibold text-slate-50">
-                        {productLabel(c.productKey)}
-                      </div>
+                  {selectMode && (
+                    <div className="absolute right-3 top-3">
+                      <span
+                        className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${
+                          isSelected
+                            ? "bg-emerald-400 text-slate-900 border-emerald-300"
+                            : "border-white/30 bg-white/10 text-slate-200"
+                        }`}
+                      >
+                        ✓
+                      </span>
+                    </div>
+                  )}
 
-                      {/* Blížící se výročí */}
-                      {anniversaryInfo.soon && (
-                        <span
-                          className="inline-flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-100"
-                          title={
-                            anniversaryInfo.next
-                              ? `Výročí: ${anniversaryInfo.next.toLocaleDateString(
-                                  "cs-CZ"
-                                )}`
-                              : undefined
-                          }
-                        >
-                          <span className="text-xs">⏳</span>
-                          Blížící se výročí
-                        </span>
-                      )}
-
-                      {/* Číslo smlouvy */}
-                      <p className="text-[11px] sm:text-xs text-slate-300">
-                        <span className="font-medium text-slate-200">
-                          Číslo smlouvy:{" "}
-                        </span>
-                        <span>{c.contractNumber ?? "—"}</span>
-                      </p>
-
-                      {/* Klient */}
-                      {c.clientName && (
-                        <p className="text-[11px] sm:text-xs text-slate-300">
-                          <span className="font-medium text-slate-200">
-                            Klient:{" "}
-                          </span>
-                          <span>{c.clientName}</span>
-                        </p>
-                      )}
-
-                      {/* Sjednal (jen u týmových smluv) */}
-                      {adviserName && (
-                        <p className="text-[11px] sm:text-xs text-slate-300">
-                          <span className="font-medium text-slate-200">
-                            Sjednal:{" "}
-                          </span>
-                          <span>{adviserName}</span>
-                        </p>
-                      )}
-
-                      {/* Datum sjednání */}
-                      <p className="text-[11px] sm:text-xs text-slate-300">
-                        <span className="font-medium text-slate-200">
-                          Datum sjednání:{" "}
-                        </span>
-                        <span>{signedStr}</span>
-                      </p>
+                  {/* TEXTOVÁ ČÁST */}
+                  <div className="pl-3 flex-1 space-y-1">
+                    {/* Název produktu */}
+                    <div className="text-sm sm:text-base font-semibold text-slate-50">
+                      {productLabel(c.productKey)}
                     </div>
 
-                    {/* POJISTNÉ VPRAVO */}
-                    <div className="flex flex-row sm:flex-col items-end sm:items-end gap-1 min-w-[130px]">
+                    {/* Blížící se výročí */}
+                    {anniversaryInfo.soon && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-100"
+                        title={
+                          anniversaryInfo.next
+                            ? `Výročí: ${anniversaryInfo.next.toLocaleDateString(
+                                "cs-CZ"
+                              )}`
+                            : undefined
+                        }
+                      >
+                        <span className="text-xs">⏳</span>
+                        Blížící se výročí
+                      </span>
+                    )}
+
+                    {/* Číslo smlouvy */}
+                    <p className="text-[11px] sm:text-xs text-slate-300">
+                      <span className="font-medium text-slate-200">
+                        Číslo smlouvy:{" "}
+                      </span>
+                      <span>{c.contractNumber ?? "—"}</span>
+                    </p>
+
+                    {/* Klient */}
+                    {c.clientName && (
+                      <p className="text-[11px] sm:text-xs text-slate-300">
+                        <span className="font-medium text-slate-200">
+                          Klient:{" "}
+                        </span>
+                        <span>{c.clientName}</span>
+                      </p>
+                    )}
+
+                    {/* Sjednal (jen u týmových smluv) */}
+                    {adviserName && (
+                      <p className="text-[11px] sm:text-xs text-slate-300">
+                        <span className="font-medium text-slate-200">
+                          Sjednal:{" "}
+                        </span>
+                        <span>{adviserName}</span>
+                      </p>
+                    )}
+
+                    {/* Datum sjednání */}
+                    <p className="text-[11px] sm:text-xs text-slate-300">
+                      <span className="font-medium text-slate-200">
+                        Datum sjednání:{" "}
+                      </span>
+                      <span>{signedStr}</span>
+                    </p>
+                  </div>
+
+                  {/* POJISTNÉ VPRAVO */}
+                  <div className="flex flex-row sm:flex-col items-end sm:items-end gap-2 min-w-[140px]">
+                    <div className="flex flex-row sm:flex-col items-end sm:items-end gap-1">
                       <span className="text-[11px] sm:text-xs uppercase tracking-wide text-slate-300">
                         Pojistné
                       </span>
@@ -592,7 +773,35 @@ export default function ContractsPage() {
                         {formatMoney(c.inputAmount ?? 0)}
                       </span>
                     </div>
-                  </article>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold border ${
+                        c.paid
+                          ? "bg-emerald-500/15 border-emerald-400/50 text-emerald-100"
+                          : "bg-rose-500/15 border-rose-400/50 text-rose-100"
+                      }`}
+                    >
+                      {c.paid ? "Zaplaceno" : "Nezaplaceno"}
+                    </span>
+                  </div>
+                </article>
+              );
+
+              return selectMode ? (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => toggleSelect(selectionKey)}
+                  className="block group h-full text-left"
+                >
+                  {CardContent}
+                </button>
+              ) : (
+                <Link
+                  key={c.id}
+                  href={`/smlouvy/${slug}`}
+                  className="block group h-full"
+                >
+                  {CardContent}
                 </Link>
               );
               })}

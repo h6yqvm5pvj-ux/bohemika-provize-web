@@ -178,6 +178,42 @@ body {
     animation: plasma-shift 22s ease-in-out infinite alternate;
   }
 
+  body.simple-bg {
+    background-color: #000;
+    background-image: none;
+    animation: none;
+  }
+
+  /* bílý režim už nepodporujeme */
+  body.simple-bg.simple-bg-white {
+    background-color: #000;
+    color: #e5e7eb;
+  }
+
+  body.simple-bg.simple-bg-blue {
+    background-color: #0a1b3a;
+  }
+
+  /* Vypnuto: bílé přebarvení */
+
+  /* schovej plasmu pokud je jednoduché pozadí */
+  body.simple-bg .plasma-layer {
+    display: none !important;
+  }
+
+  body.simple-bg .plain-bg-layer {
+    display: block !important;
+  }
+
+  body.simple-bg.simple-bg-white .border-white\/10,
+  body.simple-bg.simple-bg-white .border-white\/12,
+  body.simple-bg.simple-bg-white .border-white\/15,
+  body.simple-bg.simple-bg-white .border-white\/20,
+  body.simple-bg.simple-bg-white .border-white\/25,
+  body.simple-bg.simple-bg-white .border-white\/30 {
+    border-color: rgba(15, 23, 42, 0.16) !important;
+  }
+
   /* jemná mřížka přes celou stránku */
   body::before {
     content: "";
@@ -209,6 +245,17 @@ body {
     opacity: 0.9;
     animation: plasma-glow 26s ease-in-out infinite alternate;
     z-index: -1;
+  }
+
+  body.simple-bg::before,
+  body.simple-bg::after {
+    display: none;
+    animation: none;
+  }
+
+  body.simple-bg.simple-bg-white::before,
+  body.simple-bg.simple-bg-white::after {
+    display: none;
   }
 }
 

@@ -51,6 +51,7 @@ type FirestoreTimestamp = {
 type ContractDoc = {
   id: string;
   note?: string | null;
+  paid?: boolean | null;
 
   productKey?: Product;
   position?: Position;
@@ -374,6 +375,8 @@ export default function ContractDetailPage() {
   const [savingNote, setSavingNote] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [noteSaved, setNoteSaved] = useState(false);
+  const [updatingPaid, setUpdatingPaid] = useState(false);
+  const [paidError, setPaidError] = useState<string | null>(null);
 
   // auth
   useEffect(() => {
@@ -514,6 +517,23 @@ export default function ContractDetailPage() {
     }
   };
 
+  const handleTogglePaid = async () => {
+    if (!ownerEmail || !entryId || !isOwnContract) return;
+    const nextValue = !(contract?.paid ?? false);
+    setUpdatingPaid(true);
+    setPaidError(null);
+    try {
+      const ref = doc(db, "users", ownerEmail, "entries", entryId);
+      await updateDoc(ref, { paid: nextValue });
+      setContract((prev) => (prev ? { ...prev, paid: nextValue } : prev));
+    } catch (e) {
+      console.error("Chyba při ukládání stavu platby:", e);
+      setPaidError("Nepodařilo se uložit stav platby. Zkus to prosím znovu.");
+    } finally {
+      setUpdatingPaid(false);
+    }
+  };
+
   // výpočet meziprovize
   useEffect(() => {
     if (!contract || !managerPosition || !isManagerViewingSubordinate) {
@@ -646,7 +666,22 @@ export default function ContractDetailPage() {
                 </p>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 items-center">
+                {isOwnContract && (
+                  <button
+                    type="button"
+                    onClick={handleTogglePaid}
+                    disabled={updatingPaid}
+                    className={`rounded-full px-3 py-1.5 text-xs sm:text-sm font-semibold border transition ${
+                      contract?.paid
+                        ? "bg-emerald-500/80 border-emerald-400 text-emerald-900"
+                        : "bg-rose-500/20 border-rose-400/70 text-rose-100"
+                    } ${updatingPaid ? "opacity-60" : ""}`}
+                  >
+                    {contract?.paid ? "Zaplaceno" : "Nezaplaceno"}
+                  </button>
+                )}
+
                 <Link
                   href="/smlouvy"
                   className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-xs sm:text-sm text-slate-50 hover:bg-white/10"
@@ -732,6 +767,11 @@ export default function ContractDetailPage() {
             {!loading && error && (
               <div className="rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
                 {error}
+              </div>
+            )}
+            {!loading && paidError && (
+              <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+                {paidError}
               </div>
             )}
 

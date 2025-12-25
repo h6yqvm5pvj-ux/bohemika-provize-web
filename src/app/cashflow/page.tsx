@@ -664,6 +664,7 @@ export default function CashflowPage() {
   const [cashflowItems, setCashflowItems] = useState<CashflowItem[]>([]);
   const [, setUserPosition] = useState<Position | null>(null);
   const [hasTeam, setHasTeam] = useState(false);
+  const [showPastYears, setShowPastYears] = useState(false);
 
   // akordeon – roky a měsíce
   const [expandedYears, setExpandedYears] = useState<
@@ -885,13 +886,20 @@ export default function CashflowPage() {
     load();
   }, [user, scopeFilter, productFilter]);
 
+  const filteredCashflowItems = useMemo(() => {
+    if (showPastYears) return cashflowItems;
+    const now = new Date();
+    const startNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    return cashflowItems.filter((i) => i.date >= startNextMonth);
+  }, [cashflowItems, showPastYears]);
+
   // seskupení podle měsíců
   const monthGroups: MonthGroup[] = useMemo(() => {
-    if (cashflowItems.length === 0) return [];
+    if (filteredCashflowItems.length === 0) return [];
 
     const map = new Map<string, MonthGroup>();
 
-    for (const item of cashflowItems) {
+    for (const item of filteredCashflowItems) {
       const d = item.date;
       const year = d.getFullYear();
       const monthIndex = d.getMonth();
@@ -924,7 +932,7 @@ export default function CashflowPage() {
     });
 
     return arr;
-  }, [cashflowItems]);
+  }, [filteredCashflowItems]);
 
   // seskupení měsíců do roků
   const yearGroups: YearGroup[] = useMemo(() => {
@@ -977,8 +985,8 @@ export default function CashflowPage() {
   }, [yearGroups, monthGroups]);
 
   const totalCashflow = useMemo(
-    () => cashflowItems.reduce((sum, i) => sum + i.amount, 0),
-    [cashflowItems]
+    () => filteredCashflowItems.reduce((sum, i) => sum + i.amount, 0),
+    [filteredCashflowItems]
   );
 
   const toggleYear = (year: number) => {
@@ -1002,12 +1010,22 @@ export default function CashflowPage() {
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <SplitTitle text="Cashflow provizí" />
 
-          <div className="rounded-2xl bg-emerald-500/15 border border-emerald-400/50 px-4 py-4 text-center shadow-[0_18px_50px_rgba(16,185,129,0.4)]">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-emerald-200/80 mb-1">
-              Celkové očekávané cashflow
-            </div>
-            <div className="text-2xl sm:text-3xl font-semibold text-emerald-100">
-              {formatMoney(totalCashflow)}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowPastYears((v) => !v)}
+              className="rounded-full border border-white/25 bg-white/10 backdrop-blur-md px-4 py-2 text-sm text-white shadow-[0_12px_32px_rgba(255,255,255,0.15)] hover:bg-white/20 transition"
+            >
+              {showPastYears ? "Skrýt předchozí roky" : "Zobrazit předchozí roky"}
+            </button>
+
+            <div className="rounded-2xl bg-emerald-500/15 border border-emerald-400/50 px-4 py-4 text-center shadow-[0_18px_50px_rgba(16,185,129,0.4)]">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-emerald-200/80 mb-1">
+                Celkové očekávané cashflow
+              </div>
+              <div className="text-2xl sm:text-3xl font-semibold text-emerald-100">
+                {formatMoney(totalCashflow)}
+              </div>
             </div>
           </div>
         </header>
@@ -1115,7 +1133,7 @@ export default function CashflowPage() {
               return (
                 <section
                   key={yearGroup.year}
-                  className="rounded-2xl bg-slate-950/80 border border-white/12 backdrop-blur-2xl px-4 py-4 sm:px-5 sm:py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)]"
+                  className="cashflow-card-year rounded-2xl bg-slate-950/80 border border-white/12 backdrop-blur-2xl px-4 py-4 sm:px-5 sm:py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] simple-bg-white:bg-white simple-bg-white:border-slate-200 simple-bg-white:shadow-[0_12px_36px_rgba(15,23,42,0.12)]"
                 >
                   {/* HLAVIČKA ROKU */}
                   <button
@@ -1124,34 +1142,34 @@ export default function CashflowPage() {
                     className="flex w-full items-center justify-between gap-3 text-left"
                   >
                     <div>
-                      <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400 simple-bg-white:text-slate-500">
                         Rok výplat
                       </p>
-                      <h2 className="text-lg sm:text-xl font-semibold text-slate-50">
+                      <h2 className="text-lg sm:text-xl font-semibold text-slate-50 simple-bg-white:text-slate-900">
                         Rok {yearGroup.year}
                       </h2>
                     </div>
 
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-emerald-300/80">
+                        <p className="text-[11px] uppercase tracking-[0.16em] text-emerald-300/80 simple-bg-white:text-slate-500">
                           Celkem na odměnách
                         </p>
-                        <p className="text-base sm:text-lg font-semibold text-emerald-300">
+                        <p className="text-base sm:text-lg font-semibold text-emerald-300 simple-bg-white:text-slate-900">
                           {formatMoney(yearGroup.total)}
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-emerald-300/80">
+                        <p className="text-[11px] uppercase tracking-[0.16em] text-emerald-300/80 simple-bg-white:text-slate-500">
                           Průměrná měsíční odměna
                         </p>
-                        <p className="text-base sm:text-lg font-semibold text-emerald-300">
+                        <p className="text-base sm:text-lg font-semibold text-emerald-300 simple-bg-white:text-slate-900">
                           {formatMoney(averageMonthly)}
                         </p>
                       </div>
 
                       <span
-                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-white/5 text-xs transition-transform ${
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-white/5 text-xs transition-transform simple-bg-white:border-slate-300 simple-bg-white:bg-white ${
                           yearOpen ? "rotate-90" : ""
                         }`}
                       >
@@ -1169,7 +1187,7 @@ export default function CashflowPage() {
                         return (
                           <div
                             key={month.key}
-                            className="rounded-2xl bg-slate-950/70 border border-white/10 backdrop-blur-xl px-3 py-3 sm:px-4 sm:py-4 shadow-[0_12px_40px_rgba(0,0,0,0.7)]"
+                            className="cashflow-card-month rounded-2xl bg-slate-950/70 border border-white/10 backdrop-blur-xl px-3 py-3 sm:px-4 sm:py-4 shadow-[0_12px_40px_rgba(0,0,0,0.7)] simple-bg-white:bg-white simple-bg-white:border-slate-200 simple-bg-white:text-slate-900 simple-bg-white:shadow-[0_10px_28px_rgba(15,23,42,0.1)]"
                           >
                             {/* HLAVIČKA MĚSÍCE */}
                             <button
@@ -1178,26 +1196,26 @@ export default function CashflowPage() {
                               className="flex w-full items-center justify-between gap-3 text-left"
                             >
                               <div>
-                                <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                                <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400 simple-bg-white:text-slate-500">
                                   Měsíc výplaty
                                 </p>
-                                <h3 className="text-base sm:text-lg font-semibold text-slate-50">
+                                <h3 className="text-base sm:text-lg font-semibold text-slate-50 simple-bg-white:text-slate-900">
                                   {month.label}
                                 </h3>
                               </div>
 
                               <div className="flex items-center gap-4">
                                 <div className="text-right">
-                                  <p className="text-[10px] uppercase tracking-[0.16em] text-emerald-300/80">
+                                  <p className="text-[10px] uppercase tracking-[0.16em] text-emerald-300/80 simple-bg-white:text-slate-500">
                                     Součet
                                   </p>
-                                  <p className="text-sm sm:text-base font-semibold text-emerald-300">
+                                  <p className="text-sm sm:text-base font-semibold text-emerald-300 simple-bg-white:text-slate-900">
                                     {formatMoney(month.total)}
                                   </p>
                                 </div>
 
                                 <span
-                                  className={`inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[11px] transition-transform ${
+                                  className={`inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[11px] transition-transform simple-bg-white:border-slate-300 simple-bg-white:bg-white ${
                                     isOpen ? "rotate-90" : ""
                                   }`}
                                 >

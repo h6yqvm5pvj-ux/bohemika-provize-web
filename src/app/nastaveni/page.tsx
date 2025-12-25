@@ -52,6 +52,8 @@ const SETTINGS_KEYS = {
   position: "settings.position",
   mode: "settings.mode",
   monthlyGoal: "settings.monthlyGoal",
+  simpleBackground: "settings.simpleBackground",
+  backgroundColor: "settings.backgroundColor",
 };
 
 function formatMoney(value: number): string {
@@ -84,6 +86,8 @@ export default function SettingsPage() {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [fcmActive, setFcmActive] = useState<boolean | null>(null);
   const [notifyMinutes, setNotifyMinutes] = useState<number>(60);
+  const [simpleBackground, setSimpleBackground] = useState(false);
+  const [backgroundColor, setBackgroundColor] = useState<"black" | "blue">("black");
 
   // auth
   useEffect(() => {
@@ -164,6 +168,32 @@ export default function SettingsPage() {
           if (typeof data.notifyMinutes === "number") {
             setNotifyMinutes(data.notifyMinutes);
           }
+          if (typeof data.simpleBackground === "boolean") {
+            setSimpleBackground(data.simpleBackground);
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(
+                SETTINGS_KEYS.simpleBackground,
+                data.simpleBackground ? "1" : "0"
+              );
+            }
+          } else if (typeof window !== "undefined") {
+            const stored = window.localStorage.getItem(
+              SETTINGS_KEYS.simpleBackground
+            );
+            if (stored === "1") setSimpleBackground(true);
+          }
+          if (typeof data.backgroundColor === "string") {
+            const c = data.backgroundColor as "black" | "blue";
+            setBackgroundColor(c);
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, c);
+            }
+          } else if (typeof window !== "undefined") {
+            const stored = window.localStorage.getItem(
+              SETTINGS_KEYS.backgroundColor
+            ) as "black" | "blue" | null;
+            if (stored) setBackgroundColor(stored);
+          }
           if (typeof data.fcmToken === "string" && data.fcmToken.trim().length > 0) {
             setFcmActive(true);
           } else {
@@ -185,11 +215,19 @@ export default function SettingsPage() {
             const storedGoal = window.localStorage.getItem(
               SETTINGS_KEYS.monthlyGoal
             );
+            const storedSimple = window.localStorage.getItem(
+              SETTINGS_KEYS.simpleBackground
+            );
+            const storedColor = window.localStorage.getItem(
+              SETTINGS_KEYS.backgroundColor
+            ) as "black" | "blue" | null;
 
             if (storedPos) setPosition(storedPos);
             if (storedMode) setMode(storedMode);
             const n = storedGoal ? Number(storedGoal) : 0;
             if (Number.isFinite(n)) setMonthlyGoal(n);
+            if (storedSimple === "1") setSimpleBackground(true);
+            if (storedColor) setBackgroundColor(storedColor);
           }
         }
       } catch (e) {
@@ -244,6 +282,38 @@ export default function SettingsPage() {
   const handleNotifyMinutesChange = async (value: number) => {
     setNotifyMinutes(value);
     await saveUserFields({ notifyMinutes: value });
+  };
+
+  const handleBackgroundPreset = async (preset: "plasma" | "black" | "blue") => {
+    const isPlasma = preset === "plasma";
+    const color = isPlasma ? null : (preset as "black" | "blue");
+
+    setSimpleBackground(!isPlasma);
+    setBackgroundColor(color ?? "black");
+
+    if (typeof window !== "undefined") {
+      if (isPlasma) {
+        window.localStorage.setItem(SETTINGS_KEYS.simpleBackground, "0");
+        window.localStorage.removeItem(SETTINGS_KEYS.backgroundColor);
+      } else {
+        window.localStorage.setItem(SETTINGS_KEYS.simpleBackground, "1");
+        window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, color ?? "black");
+      }
+      window.dispatchEvent(
+        new CustomEvent("settings:updateBackground", {
+          detail: {
+            simpleBg: !isPlasma,
+            animatedBg: isPlasma,
+            backgroundColor: color,
+          },
+        })
+      );
+    }
+
+    await saveUserFields({
+      simpleBackground: !isPlasma,
+      backgroundColor: color,
+    });
   };
 
   const handleChangePassword = async () => {
@@ -481,6 +551,60 @@ export default function SettingsPage() {
                     <p className="text-[11px] text-slate-400">
                       Použije se při odeslání push notifikace z kalendáře (výchozí 60 min).
                     </p>
+                  </div>
+                </div>
+              </section>
+
+              {/* Vzhled */}
+              <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+                        Pozadí aplikace
+                      </h2>
+                      <p className="text-xs text-slate-400">
+                        Vyber, zda chceš animovanou plasmu, nebo jednoduchou barvu.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    {[
+                      { id: "plasma", label: "Plasma", swatch: "bg-gradient-to-br from-indigo-500 to-purple-600" },
+                      { id: "black", label: "Černá", swatch: "bg-black" },
+                      { id: "blue", label: "Modrá", swatch: "bg-blue-900" },
+                    ].map((opt) => {
+                      const isActive =
+                        (opt.id === "plasma" && !simpleBackground) ||
+                        (opt.id !== "plasma" && simpleBackground && backgroundColor === opt.id);
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() =>
+                            handleBackgroundPreset(
+                              opt.id as "plasma" | "black" | "white" | "blue"
+                            )
+                          }
+                          className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition ${
+                            isActive
+                              ? "border-emerald-400/80 bg-white/10"
+                              : "border-white/15 bg-white/5 hover:border-white/25"
+                          }`}
+                        >
+                          <span
+                            className={`h-9 w-9 rounded-full border border-white/20 ${opt.swatch}`}
+                            style={
+                              opt.id === "white"
+                                ? { boxShadow: "inset 0 0 0 1px rgba(15,23,42,0.1)" }
+                                : undefined
+                            }
+                          />
+                          <span className="text-sm text-slate-100">{opt.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </section>
