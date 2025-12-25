@@ -96,6 +96,13 @@ export default function ToolsPage() {
         category: "Obecné",
         render: () => <TeamMessageToolCard key="zprava-tymu" />,
       },
+      {
+        key: "struktura",
+        category: "Obecné",
+        title: "Struktura",
+        description: "Interaktivní strom tvé struktury – vidíš své nadřízené i podřízené.",
+        href: "/pomucky/struktura",
+      },
     ],
     []
   );

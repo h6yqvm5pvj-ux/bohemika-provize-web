@@ -239,6 +239,11 @@ type EntryDoc = {
   managerEmailSnapshot?: string | null;
   managerPositionSnapshot?: Position | null;
   managerModeSnapshot?: CommissionMode | null;
+  managerChain?: {
+    email: string | null;
+    position: Position | null;
+    commissionMode: CommissionMode | null;
+  }[];
   inputAmount?: number | null;
   contractNumber?: string | null;
   comfortPayment?: number | null;
@@ -773,13 +778,39 @@ export default function CashflowPage() {
               null;
             if (!subPos) continue;
 
+            const chain =
+              (entry.managerChain as EntryDoc["managerChain"]) ?? [];
+            const idx = chain.findIndex(
+              (c) => (c.email ?? "").toLowerCase() === email
+            );
+
+            const managerSnap = idx >= 0 ? chain[idx] : null;
+            const childSnap =
+              idx > 0
+                ? chain[idx - 1]
+                : {
+                    email: ownerEmail,
+                    position: subPos,
+                    commissionMode:
+                      (entry.commissionMode as CommissionMode | null | undefined) ??
+                      (entry.mode as CommissionMode | null | undefined) ??
+                      null,
+                  };
+
             const effectiveMgrPos =
-              (entry.managerPositionSnapshot as Position | null | undefined) ??
-              myPos;
+              (managerSnap?.position as Position | null | undefined) ?? myPos;
             if (!effectiveMgrPos) continue;
 
             const effectiveMgrMode =
+              (managerSnap?.commissionMode as CommissionMode | null | undefined) ??
               (entry.managerModeSnapshot as CommissionMode | null | undefined) ??
+              (entry.commissionMode as CommissionMode | null | undefined) ??
+              (entry.mode as CommissionMode | null | undefined) ??
+              null;
+
+            const baselinePos = childSnap?.position ?? subPos;
+            const baselineMode =
+              (childSnap?.commissionMode as CommissionMode | null | undefined) ??
               (entry.commissionMode as CommissionMode | null | undefined) ??
               (entry.mode as CommissionMode | null | undefined) ??
               null;
@@ -791,8 +822,8 @@ export default function CashflowPage() {
             );
             const baselineItems = commissionItemsForPosition(
               entry,
-              subPos,
-              entry.commissionMode ?? entry.mode ?? null
+              baselinePos as Position,
+              baselineMode
             );
 
             const mgrMap = new Map<
@@ -846,6 +877,7 @@ export default function CashflowPage() {
               position: effectiveMgrPos,
               managerPositionSnapshot: effectiveMgrPos,
               managerModeSnapshot: effectiveMgrMode,
+              managerChain: chain,
             });
           }
         }

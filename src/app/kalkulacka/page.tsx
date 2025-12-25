@@ -92,6 +92,77 @@ const PRODUCT_OPTIONS: { id: Product; label: string }[] = [
   { id: "comfortcc", label: "Comfort Commodity" },
 ];
 
+const POSITION_ORDER: Position[] = [
+  "poradce1",
+  "poradce2",
+  "poradce3",
+  "poradce4",
+  "poradce5",
+  "poradce6",
+  "poradce7",
+  "poradce8",
+  "poradce9",
+  "poradce10",
+  "manazer4",
+  "manazer5",
+  "manazer6",
+  "manazer7",
+  "manazer8",
+  "manazer9",
+  "manazer10",
+];
+
+function positionLabel(pos: Position): string {
+  const map: Record<Position, string> = {
+    poradce1: "Poradce 1",
+    poradce2: "Poradce 2",
+    poradce3: "Poradce 3",
+    poradce4: "Poradce 4",
+    poradce5: "Poradce 5",
+    poradce6: "Poradce 6",
+    poradce7: "Poradce 7",
+    poradce8: "Poradce 8",
+    poradce9: "Poradce 9",
+    poradce10: "Poradce 10",
+    manazer4: "Manažer 4",
+    manazer5: "Manažer 5",
+    manazer6: "Manažer 6",
+    manazer7: "Manažer 7",
+    manazer8: "Manažer 8",
+    manazer9: "Manažer 9",
+    manazer10: "Manažer 10",
+  };
+  return map[pos] ?? pos;
+}
+
+function allowedPositionsForUser(current: Position | null): Position[] {
+  if (!current) return POSITION_ORDER;
+
+  const idx = POSITION_ORDER.indexOf(current);
+  if (idx === -1) return POSITION_ORDER;
+
+  // Poradce -> jen poradci <= current
+  if (current.startsWith("poradce")) {
+    return POSITION_ORDER.filter(
+      (p) => p.startsWith("poradce") && POSITION_ORDER.indexOf(p) <= idx
+    );
+  }
+
+  // Manažer -> poradci 1..N a manažeři 4..N
+  const level = Number(current.replace("manazer", ""));
+  return POSITION_ORDER.filter((p) => {
+    if (p.startsWith("poradce")) {
+      const lv = Number(p.replace("poradce", ""));
+      return lv <= level;
+    }
+    if (p.startsWith("manazer")) {
+      const lv = Number(p.replace("manazer", ""));
+      return lv <= level;
+    }
+    return false;
+  });
+}
+
 function productIcon(product: Product): string {
   if (
     product === "neon" ||
@@ -305,6 +376,9 @@ export default function CalculatorPage() {
   const [managerEmailSnapshot, setManagerEmailSnapshot] = useState<string | null>(null);
   const [managerPositionSnapshot, setManagerPositionSnapshot] = useState<Position | null>(null);
   const [managerModeSnapshot, setManagerModeSnapshot] = useState<CommissionMode | null>(null);
+  const [managerChainSnapshot, setManagerChainSnapshot] = useState<
+    { email: string | null; position: Position | null; commissionMode: CommissionMode | null }[]
+  >([]);
   const filteredClientSuggestions = useMemo(() => {
     const q = clientName.trim().toLowerCase();
     if (!q) return [];
@@ -386,6 +460,8 @@ export default function CalculatorPage() {
         const mgrEmail = (data?.managerEmail as string | undefined)?.toLowerCase() ?? null;
         setManagerEmailSnapshot(mgrEmail ?? null);
 
+        const chain: { email: string | null; position: Position | null; commissionMode: CommissionMode | null }[] = [];
+
         if (mgrEmail) {
           try {
             const mgrSnap = await getDoc(doc(db, "users", mgrEmail));
@@ -395,11 +471,42 @@ export default function CalculatorPage() {
               const mgrMode = (mgrData.commissionMode as CommissionMode | undefined) ?? null;
               setManagerPositionSnapshot(mgrPos);
               setManagerModeSnapshot(mgrMode ?? null);
+
+              chain.push({
+                email: mgrEmail,
+                position: mgrPos,
+                commissionMode: mgrMode ?? null,
+              });
+
+              // projít hierarchii výš (max 5 úrovní, proti cyklům)
+              let currentEmail = (mgrData.managerEmail as string | undefined)?.toLowerCase() ?? null;
+              let depth = 0;
+              const visited = new Set<string>();
+              visited.add(mgrEmail);
+              while (currentEmail && depth < 5 && !visited.has(currentEmail)) {
+                visited.add(currentEmail);
+                const upperSnap = await getDoc(doc(db, "users", currentEmail));
+                if (!upperSnap.exists()) break;
+                const upperData = upperSnap.data() as any;
+                const upperPos = (upperData.position as Position | undefined) ?? null;
+                const upperMode =
+                  (upperData.commissionMode as CommissionMode | undefined) ?? null;
+                chain.push({
+                  email: currentEmail,
+                  position: upperPos,
+                  commissionMode: upperMode,
+                });
+                currentEmail =
+                  (upperData.managerEmail as string | undefined)?.toLowerCase() ?? null;
+                depth += 1;
+              }
             }
           } catch (mgrErr) {
             console.error("Failed to load manager snapshot", mgrErr);
           }
         }
+
+        setManagerChainSnapshot(chain);
       } catch (err) {
         console.error("Failed to load user position", err);
       }
@@ -686,6 +793,7 @@ export default function CalculatorPage() {
         managerEmailSnapshot: mgrEmail ?? null,
         managerPositionSnapshot: mgrPos ?? null,
         managerModeSnapshot: mgrMode ?? null,
+        managerChain: managerChainSnapshot,
       });
 
       setSaveMessage("Smlouva byla uložena mezi sepsané.");
@@ -824,6 +932,23 @@ export default function CalculatorPage() {
 
             {/* Doba trvání + frekvence */}
             <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="block text-sm font-medium">
+                  Sjednána jako (pozice)
+                </label>
+                <select
+                  className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  value={position}
+                  onChange={(e) => setPosition(e.target.value as Position)}
+                >
+                  {allowedPositionsForUser(position).map((p) => (
+                    <option key={p} value={p}>
+                      {positionLabel(p)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {shouldShowDuration(product) && (
                 <div className="space-y-1">
                   <label className="block text-sm font-medium">
