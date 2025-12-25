@@ -56,6 +56,8 @@ import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
 // ---------- Pomocné ----------
 
+const LIFE_PRODUCTS: Product[] = ["neon", "flexi", "pillowInjury", "maximaMaxEfekt"];
+
 function formatMoney(value: number): string {
   if (Number.isNaN(value)) return "0 Kč";
   return (
@@ -135,21 +137,21 @@ function positionLabel(pos: Position): string {
   return map[pos] ?? pos;
 }
 
-function allowedPositionsForUser(current: Position | null): Position[] {
-  if (!current) return POSITION_ORDER;
+function allowedPositionsForUser(base: Position | null): Position[] {
+  if (!base) return POSITION_ORDER;
 
-  const idx = POSITION_ORDER.indexOf(current);
+  const idx = POSITION_ORDER.indexOf(base);
   if (idx === -1) return POSITION_ORDER;
 
-  // Poradce -> jen poradci <= current
-  if (current.startsWith("poradce")) {
+  if (base.startsWith("poradce")) {
+    // Poradce → jen poradci až do své úrovně
     return POSITION_ORDER.filter(
       (p) => p.startsWith("poradce") && POSITION_ORDER.indexOf(p) <= idx
     );
   }
 
-  // Manažer -> poradci 1..N a manažeři 4..N
-  const level = Number(current.replace("manazer", ""));
+  // Manažer → poradci 1..level a manažeři 4..level
+  const level = Number(base.replace("manazer", ""));
   return POSITION_ORDER.filter((p) => {
     if (p.startsWith("poradce")) {
       const lv = Number(p.replace("poradce", ""));
@@ -379,6 +381,8 @@ export default function CalculatorPage() {
   const [managerChainSnapshot, setManagerChainSnapshot] = useState<
     { email: string | null; position: Position | null; commissionMode: CommissionMode | null }[]
   >([]);
+  const [userCommissionMode, setUserCommissionMode] = useState<CommissionMode | null>(null);
+  const [baseUserPosition, setBaseUserPosition] = useState<Position | null>(null);
   const filteredClientSuggestions = useMemo(() => {
     const q = clientName.trim().toLowerCase();
     if (!q) return [];
@@ -432,6 +436,7 @@ export default function CalculatorPage() {
     ) as Position | null;
     if (storedPosition) {
       setPosition(storedPosition);
+      setBaseUserPosition(storedPosition);
     }
 
     const storedMode = window.localStorage.getItem(
@@ -452,6 +457,7 @@ export default function CalculatorPage() {
         const pos = (data?.position as Position | undefined) ?? null;
         if (pos) {
           setPosition(pos);
+          setBaseUserPosition(pos);
           if (typeof window !== "undefined") {
             window.localStorage.setItem("settings.position", pos);
           }
@@ -459,6 +465,14 @@ export default function CalculatorPage() {
 
         const mgrEmail = (data?.managerEmail as string | undefined)?.toLowerCase() ?? null;
         setManagerEmailSnapshot(mgrEmail ?? null);
+        const userMode = (data?.commissionMode as CommissionMode | undefined) ?? null;
+        if (userMode) {
+          setUserCommissionMode(userMode);
+          setMode(userMode);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem("settings.mode", userMode);
+          }
+        }
 
         const chain: { email: string | null; position: Position | null; commissionMode: CommissionMode | null }[] = [];
 
@@ -532,6 +546,9 @@ export default function CalculatorPage() {
       else if (product === "maximaMaxEfekt") setDurationYears(10);
       else setDurationYears(min);
     }
+
+    // pokud uživatel má zrychlený režim, dovolíme přepnout pro konkrétní smlouvu
+    // defaultně zůstává nastavený režim z profilu (mode)
   }, [product, frequency, durationYears]);
 
   const recalc = () => {
@@ -769,6 +786,7 @@ export default function CalculatorPage() {
         productKey: product,
         createdAt: serverTimestamp(),
         position,
+        commissionMode: mode,
         inputAmount: product === "comfortcc" ? value : value,
         comfortPayment: product === "comfortcc" && comfortGradual ? comfortPayment : null,
         comfortGradual: product === "comfortcc" ? comfortGradual : null,
@@ -844,6 +862,7 @@ export default function CalculatorPage() {
   const hasFrequencyPicker = allowed.length > 1;
   const currentProduct = PRODUCT_OPTIONS.find((p) => p.id === product)!;
   const durationHelp = durationTooltip(product);
+  const canChooseMode = LIFE_PRODUCTS.includes(product) && userCommissionMode === "accelerated";
 
   return (
     <AppLayout active="calc">
@@ -930,7 +949,7 @@ export default function CalculatorPage() {
               </div>
             </section>
 
-            {/* Doba trvání + frekvence */}
+            {/* Doba trvání + frekvence + režim */}
             <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="block text-sm font-medium">
@@ -941,7 +960,7 @@ export default function CalculatorPage() {
                   value={position}
                   onChange={(e) => setPosition(e.target.value as Position)}
                 >
-                  {allowedPositionsForUser(position).map((p) => (
+                  {allowedPositionsForUser(baseUserPosition ?? position).map((p) => (
                     <option key={p} value={p}>
                       {positionLabel(p)}
                     </option>
@@ -1001,6 +1020,25 @@ export default function CalculatorPage() {
                   </p>
                 )}
               </div>
+
+              {canChooseMode && (
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="block text-sm font-medium">
+                    Režim výplaty provize (jen pro životní produkty)
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    value={mode}
+                    onChange={(e) => setMode(e.target.value as CommissionMode)}
+                  >
+                    <option value="accelerated">Zrychlený</option>
+                    <option value="standard">Běžný</option>
+                  </select>
+                  <p className="text-[11px] text-slate-400">
+                    Předvyplněno tvým režimem, ale můžeš přepnout pro tuto konkrétní smlouvu.
+                  </p>
+                </div>
+              )}
             </section>
 
             {/* Comfort Commodity – toggle poplatku */}
