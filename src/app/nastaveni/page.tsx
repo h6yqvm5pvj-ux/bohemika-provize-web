@@ -591,11 +591,6 @@ export default function SettingsPage() {
                         >
                           <span
                             className={`h-9 w-9 rounded-full border border-white/20 ${opt.swatch}`}
-                            style={
-                              opt.id === "white"
-                                ? { boxShadow: "inset 0 0 0 1px rgba(15,23,42,0.1)" }
-                                : undefined
-                            }
                           />
                           <span className="text-sm text-slate-100">{opt.label}</span>
                         </button>
