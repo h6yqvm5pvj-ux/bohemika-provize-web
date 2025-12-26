@@ -292,6 +292,44 @@ function normalizeTitleForCompare(title: string | undefined | null): string {
     .trim();
 }
 
+function diffItemsByTitle(
+  upper: CommissionResultItemDTO[] | null | undefined,
+  lower: CommissionResultItemDTO[] | null | undefined
+): { items: CommissionResultItemDTO[]; total: number } {
+  const upperMap = new Map<string, { title: string; amount: number }>();
+  (upper ?? []).forEach((it) => {
+    const key = normalizeTitleForCompare(it.title);
+    const prev = upperMap.get(key);
+    upperMap.set(key, {
+      title: it.title ?? prev?.title ?? key,
+      amount: (prev?.amount ?? 0) + (it.amount ?? 0),
+    });
+  });
+
+  const diffs: CommissionResultItemDTO[] = [];
+  let total = 0;
+
+  (lower ?? []).forEach((it) => {
+    const key = normalizeTitleForCompare(it.title);
+    const up = upperMap.get(key);
+    const diff = (up?.amount ?? 0) - (it.amount ?? 0);
+    if (diff > 0) {
+      diffs.push({ title: up?.title ?? it.title, amount: diff });
+      total += diff;
+    }
+    upperMap.delete(key);
+  });
+
+  upperMap.forEach((val) => {
+    if (val.amount > 0) {
+      diffs.push({ title: val.title, amount: val.amount });
+      total += val.amount;
+    }
+  });
+
+  return { items: diffs, total };
+}
+
 // spočítá kompletní výsledek pro danou pozici (stejné formule jako v kalkulačce)
 function calculateResultForPosition(
   c: ContractDoc,
@@ -760,20 +798,10 @@ export default function ContractDetailPage() {
     const subItems = baselineResult?.items ?? contract.items ?? [];
     const subTotal = baselineResult?.total ?? contract.total ?? 0;
 
-    const diffItems: CommissionResultItemDTO[] = managerResult.items.map(
-      (mgrItem, idx) => {
-        const subAmount = subItems[idx]?.amount ?? 0;
-        return {
-          title: mgrItem.title,
-          amount: mgrItem.amount - subAmount,
-        };
-      }
-    );
+    const mainDiff = diffItemsByTitle(managerResult.items, subItems);
 
-    const diffTotal = managerResult.total - subTotal;
-
-    setOverrideItems(diffItems);
-    setOverrideTotal(diffTotal);
+    setOverrideItems(mainDiff.items);
+    setOverrideTotal(mainDiff.total);
 
     // meziprovize pro přímého manažera pod sjednavatelem (např. manazer7)
     if (childSnap && childEmail && advisorPos) {
@@ -789,72 +817,52 @@ export default function ContractDetailPage() {
         (storedChildOverride.total ?? 0) > 0 &&
         (storedChildOverride.items ?? []).length > 0;
 
+      const childCalcUpper = calculateResultForPosition(
+        contract,
+        childSnap.position as Position,
+        childMode
+      );
+      const childCalcLower = calculateResultForPosition(contract, advisorPos, advisorMode);
+
+      const childComputed =
+        childCalcUpper && childCalcLower
+          ? diffItemsByTitle(childCalcUpper.items, childCalcLower.items)
+          : null;
+
       if (childSnapshotValid) {
         const items = storedChildOverride.items ?? null;
         const totalFromItems =
           items?.reduce((sum, it) => sum + (it.amount ?? 0), 0) ?? null;
-        setChildOverrideItems(items);
-        setChildOverrideTotal(totalFromItems);
+        const useSnapshot =
+          totalFromItems != null &&
+          totalFromItems > 0 &&
+          (!childComputed || Math.abs((childComputed.total ?? 0) - totalFromItems) < 1e-6);
+
+        if (useSnapshot) {
+          setChildOverrideItems(items);
+          setChildOverrideTotal(totalFromItems);
+        } else if (childComputed && childComputed.total > 0) {
+          setChildOverrideItems(childComputed.items);
+          setChildOverrideTotal(childComputed.total);
+        } else {
+          setChildOverrideItems(null);
+          setChildOverrideTotal(null);
+        }
+        setChildOverrideLabel(
+          (childSnap.position as Position | null | undefined) ??
+            normalizeTitleForCompare(childSnap.email ?? childEmail)
+        );
+      } else if (childComputed && childComputed.total > 0) {
+        setChildOverrideItems(childComputed.items);
+        setChildOverrideTotal(childComputed.total);
         setChildOverrideLabel(
           (childSnap.position as Position | null | undefined) ??
             normalizeTitleForCompare(childSnap.email ?? childEmail)
         );
       } else {
-        const childDiff = (() => {
-          const upper = calculateResultForPosition(
-            contract,
-            childSnap.position as Position,
-            childMode
-          );
-          const lower = calculateResultForPosition(contract, advisorPos, advisorMode);
-          if (!upper || !lower) return null;
-
-          const upperMap = new Map<string, { title: string; amount: number }>();
-          upper.items.forEach((it) => {
-            const key = normalizeTitleForCompare(it.title);
-            const prev = upperMap.get(key);
-            upperMap.set(key, {
-              title: it.title ?? prev?.title ?? key,
-              amount: (prev?.amount ?? 0) + (it.amount ?? 0),
-            });
-          });
-
-          const diffs: CommissionResultItemDTO[] = [];
-          let total = 0;
-
-          lower.items.forEach((it) => {
-            const key = normalizeTitleForCompare(it.title);
-            const up = upperMap.get(key);
-            const diff = (up?.amount ?? 0) - (it.amount ?? 0);
-            if (diff > 0) {
-              diffs.push({ title: up?.title ?? it.title, amount: diff });
-              total += diff;
-            }
-            upperMap.delete(key);
-          });
-
-          upperMap.forEach((val) => {
-            if (val.amount > 0) {
-              diffs.push({ title: val.title, amount: val.amount });
-              total += val.amount;
-            }
-          });
-
-          return { items: diffs, total };
-        })();
-
-        if (childDiff && childDiff.total > 0) {
-          setChildOverrideItems(childDiff.items);
-          setChildOverrideTotal(childDiff.total);
-          setChildOverrideLabel(
-            (childSnap.position as Position | null | undefined) ??
-              normalizeTitleForCompare(childSnap.email ?? childEmail)
-          );
-        } else {
-          setChildOverrideItems(null);
-          setChildOverrideTotal(null);
-          setChildOverrideLabel(null);
-        }
+        setChildOverrideItems(null);
+        setChildOverrideTotal(null);
+        setChildOverrideLabel(null);
       }
     } else {
       setChildOverrideItems(null);
