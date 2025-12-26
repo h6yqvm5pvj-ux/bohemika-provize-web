@@ -77,6 +77,8 @@ type ContractDoc = {
   total?: number;
   items?: CommissionResultItemDTO[];
 
+  commissionMode?: CommissionMode | null;
+
   userEmail?: string | null;
   clientName?: string | null;
   contractNumber?: string | null;
