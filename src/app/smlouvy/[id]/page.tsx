@@ -269,6 +269,22 @@ function isManagerPosition(pos?: Position | null): boolean {
   return pos.startsWith("manazer");
 }
 
+function toDateInputValue(value: unknown): string {
+  const d = toDate(value);
+  if (!d) return "";
+  const iso = d.toISOString();
+  return iso.slice(0, 10);
+}
+
+function normalizeTitleForCompare(title: string | undefined | null): string {
+  if (!title) return "";
+  return title
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim();
+}
+
 // spočítá kompletní výsledek pro danou pozici (stejné formule jako v kalkulačce)
 function calculateResultForPosition(
   c: ContractDoc,
@@ -490,6 +506,11 @@ export default function ContractDetailPage() {
   const total = contract?.total ?? 0;
   const freq = contract?.frequencyRaw ?? null;
   const prod = contract?.productKey as Product | undefined;
+  const durationYears =
+    typeof contract?.durationYears === "number" && !Number.isNaN(contract.durationYears)
+      ? contract.durationYears
+      : null;
+  const showDurationForNeon = prod === "neon" && durationYears;
 
   const isOwnContract = useMemo(() => {
     if (!user?.email || !contract?.userEmail) return false;
@@ -512,6 +533,91 @@ export default function ContractDetailPage() {
     (contract as any)?.managerPositionSnapshot ?? managerPosition;
   const effectiveManagerMode =
     (contract as any)?.managerModeSnapshot ?? managerMode;
+
+  const [editMode, setEditMode] = useState(false);
+  const [editClientName, setEditClientName] = useState("");
+  const [editContractNumber, setEditContractNumber] = useState("");
+  const [editContractSigned, setEditContractSigned] = useState("");
+  const [editPolicyStart, setEditPolicyStart] = useState("");
+  const [editDuration, setEditDuration] = useState<number | null>(null);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [detailsSaved, setDetailsSaved] = useState(false);
+
+  const resetEditFields = () => {
+    if (!contract) return;
+    setEditClientName(contract.clientName ?? "");
+    setEditContractNumber(contract.contractNumber ?? "");
+    setEditContractSigned(toDateInputValue(contract.contractSignedDate ?? contract.createdAt));
+    setEditPolicyStart(toDateInputValue(contract.policyStartDate));
+    setEditDuration(
+      typeof contract.durationYears === "number" && !Number.isNaN(contract.durationYears)
+        ? contract.durationYears
+        : null
+    );
+  };
+
+  useEffect(() => {
+    if (!contract) return;
+    resetEditFields();
+    setDetailsSaved(false);
+    setDetailsError(null);
+  }, [contract]);
+
+  const handleSaveDetails = async () => {
+    if (!isOwnContract || !ownerEmail || !entryId) return;
+    setSavingDetails(true);
+    setDetailsError(null);
+    setDetailsSaved(false);
+
+    try {
+      const ref = doc(db, "users", ownerEmail, "entries", entryId);
+      const trimmedName = editClientName.trim();
+      const trimmedNumber = editContractNumber.trim();
+      const signedDate = editContractSigned ? new Date(editContractSigned) : null;
+      const startDate = editPolicyStart ? new Date(editPolicyStart) : null;
+      const durationVal =
+        prod === "neon" && typeof editDuration === "number" && !Number.isNaN(editDuration)
+          ? Math.max(1, Math.min(40, editDuration))
+          : null;
+
+      const updates: Record<string, any> = {
+        clientName: trimmedName || null,
+        contractNumber: trimmedNumber || null,
+        contractSignedDate: signedDate ?? null,
+        policyStartDate: startDate ?? null,
+      };
+      if (prod === "neon") {
+        updates.durationYears = durationVal ?? null;
+      }
+
+      await updateDoc(ref, updates);
+
+      setContract((prev) =>
+        prev
+          ? {
+              ...prev,
+              clientName: trimmedName || null,
+              contractNumber: trimmedNumber || null,
+              contractSignedDate: signedDate ?? null,
+              policyStartDate: startDate ?? null,
+              durationYears:
+                prod === "neon"
+                  ? durationVal ?? prev.durationYears ?? null
+                  : prev.durationYears ?? null,
+            }
+          : prev
+      );
+
+      setEditMode(false);
+      setDetailsSaved(true);
+    } catch (e) {
+      console.error("Chyba při ukládání detailů smlouvy:", e);
+      setDetailsError("Nepodařilo se uložit změny. Zkus to prosím znovu.");
+    } finally {
+      setSavingDetails(false);
+    }
+  };
 
   const handleSaveNote = async () => {
     if (!ownerEmail || !entryId || !isOwnContract) return;
@@ -551,17 +657,10 @@ export default function ContractDetailPage() {
 
   // výpočet meziprovize
   useEffect(() => {
-    const storedOverride =
-      (contract?.managerOverrides as ContractDoc["managerOverrides"])?.find(
-        (o) =>
-          o.email?.toLowerCase() === user?.email?.toLowerCase()
-      ) ?? null;
-
-    if (storedOverride && isManagerViewingSubordinate) {
-      setOverrideItems(storedOverride.items ?? null);
-      setOverrideTotal(storedOverride.total ?? null);
-      return;
-    }
+    const managerModeForOverride: CommissionMode =
+      (effectiveManagerMode as CommissionMode | null) ??
+      (managerMode as CommissionMode | null) ??
+      "standard";
 
     if (!contract || !effectiveManagerPosition || !isManagerViewingSubordinate) {
       setOverrideItems(null);
@@ -569,10 +668,35 @@ export default function ContractDetailPage() {
       return;
     }
 
+    const storedOverride =
+      (contract?.managerOverrides as ContractDoc["managerOverrides"])?.find(
+        (o) => o.email?.toLowerCase() === user?.email?.toLowerCase()
+      ) ?? null;
+
+    if (storedOverride) {
+      const advisorTitles = new Set(
+        (contract.items ?? []).map((it) => normalizeTitleForCompare(it.title as string))
+      );
+      const overrideTitles = (storedOverride.items ?? []).map((it) =>
+        normalizeTitleForCompare(it.title as string)
+      );
+
+      const hasSameCount = overrideTitles.length === advisorTitles.size;
+      const allTitlesMatch =
+        overrideTitles.length > 0 &&
+        overrideTitles.every((t) => t && advisorTitles.has(t));
+
+      if (hasSameCount && allTitlesMatch) {
+        setOverrideItems(storedOverride.items ?? null);
+        setOverrideTotal(storedOverride.total ?? null);
+        return;
+      }
+    }
+
     const managerResult = calculateResultForPosition(
       contract,
       effectiveManagerPosition,
-      effectiveManagerMode
+      managerModeForOverride
     );
     if (!managerResult) {
       setOverrideItems(null);
@@ -582,8 +706,7 @@ export default function ContractDetailPage() {
 
     const baselinePos =
       ownerPosition ?? ((contract.position as Position | null) ?? null);
-    const baselineMode =
-      (contract as any)?.commissionMode ?? managerMode ?? null;
+    const baselineMode = managerModeForOverride;
 
     const baselineResult =
       baselinePos != null
@@ -709,6 +832,43 @@ export default function ContractDetailPage() {
                   </button>
                 )}
 
+                {isOwnContract && !editMode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDetailsSaved(false);
+                      setEditMode(true);
+                    }}
+                    className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs sm:text-sm text-slate-50 hover:bg-white/15"
+                  >
+                    Upravit údaje
+                  </button>
+                )}
+
+                {isOwnContract && editMode && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleSaveDetails}
+                      disabled={savingDetails}
+                      className="rounded-xl border border-emerald-300/50 bg-emerald-500/70 px-3 py-2 text-xs sm:text-sm font-semibold text-emerald-950 hover:bg-emerald-400 transition disabled:opacity-60"
+                    >
+                      {savingDetails ? "Ukládám…" : "Uložit změny"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetEditFields();
+                        setEditMode(false);
+                      }}
+                      disabled={savingDetails}
+                      className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-xs sm:text-sm text-slate-50 hover:bg-white/10 disabled:opacity-60"
+                    >
+                      Zrušit
+                    </button>
+                  </>
+                )}
+
                 <Link
                   href="/smlouvy"
                   className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-xs sm:text-sm text-slate-50 hover:bg-white/10"
@@ -718,15 +878,36 @@ export default function ContractDetailPage() {
               </div>
             </header>
 
+            {detailsError && (
+              <div className="rounded-xl border border-rose-400/60 bg-rose-500/15 px-4 py-2 text-sm text-rose-100">
+                {detailsError}
+              </div>
+            )}
+            {detailsSaved && (
+              <div className="rounded-xl border border-emerald-400/50 bg-emerald-500/15 px-4 py-2 text-sm text-emerald-100">
+                Změny byly uloženy.
+              </div>
+            )}
+
             {/* Klient / Produkt boxy */}
             <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
                 <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-1.5">
                   Klient
                 </div>
-                <div className="text-2xl font-semibold text-slate-50">
-                  {contract?.clientName ?? "—"}
-                </div>
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={editClientName}
+                    onChange={(e) => setEditClientName(e.target.value)}
+                    className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-lg font-semibold text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    placeholder="Jméno klienta"
+                  />
+                ) : (
+                  <div className="text-2xl font-semibold text-slate-50">
+                    {contract?.clientName ?? "—"}
+                  </div>
+                )}
               </div>
 
               <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
@@ -843,8 +1024,15 @@ export default function ContractDetailPage() {
                       <div className="flex justify-between gap-2">
                         <dt className="text-slate-300">Datum sjednání</dt>
                         <dd className="font-semibold text-right">
-                          {formatDate(
-                            contract.contractSignedDate ?? contract.createdAt
+                          {editMode ? (
+                            <input
+                              type="date"
+                              value={editContractSigned}
+                              onChange={(e) => setEditContractSigned(e.target.value)}
+                              className="rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                            />
+                          ) : (
+                            formatDate(contract.contractSignedDate ?? contract.createdAt)
                           )}
                         </dd>
                       </div>
@@ -853,18 +1041,63 @@ export default function ContractDetailPage() {
                           Počátek smlouvy
                         </dt>
                         <dd className="font-semibold text-right">
-                          {formatDate(contract.policyStartDate)}
+                          {editMode ? (
+                            <input
+                              type="date"
+                              value={editPolicyStart}
+                              onChange={(e) => setEditPolicyStart(e.target.value)}
+                              className="rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                            />
+                          ) : (
+                            formatDate(contract.policyStartDate)
+                          )}
                         </dd>
                       </div>
-                      {contract.contractNumber && (
+                      {showDurationForNeon && (
                         <div className="flex justify-between gap-2">
-                          <dt className="text-slate-300">
-                            Číslo smlouvy
-                          </dt>
+                          <dt className="text-slate-300">Doba trvání (provize)</dt>
                           <dd className="font-semibold text-right">
-                            {contract.contractNumber}
+                            {editMode ? (
+                              <input
+                                type="number"
+                                min={1}
+                                max={40}
+                                value={editDuration ?? ""}
+                                onChange={(e) =>
+                                  setEditDuration(e.target.value ? Number(e.target.value) : null)
+                                }
+                                className="w-20 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                              />
+                            ) : (
+                              `${durationYears} ${durationYears === 1 ? "rok" : "let"}`
+                            )}
                           </dd>
                         </div>
+                      )}
+                      {editMode ? (
+                        <div className="flex justify-between gap-2">
+                          <dt className="text-slate-300">Číslo smlouvy</dt>
+                          <dd className="font-semibold text-right w-40">
+                            <input
+                              type="text"
+                              value={editContractNumber}
+                              onChange={(e) => setEditContractNumber(e.target.value)}
+                              className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                              placeholder="Číslo smlouvy"
+                            />
+                          </dd>
+                        </div>
+                      ) : (
+                        contract.contractNumber && (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-slate-300">
+                              Číslo smlouvy
+                            </dt>
+                            <dd className="font-semibold text-right">
+                              {contract.contractNumber}
+                            </dd>
+                          </div>
+                        )
                       )}
                     </dl>
                   </div>
