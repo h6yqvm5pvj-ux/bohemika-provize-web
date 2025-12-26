@@ -76,7 +76,7 @@ type ContractDoc = {
   clientName?: string | null;
   contractNumber?: string | null;
 
-  policyStartDate?: FirestoreTimestamp | null;
+  policyStartDate?: FirestoreTimestamp | Date | string | null;
   contractSignedDate?: FirestoreTimestamp | Date | string | null;
   createdAt?: FirestoreTimestamp | Date | string | null;
 
