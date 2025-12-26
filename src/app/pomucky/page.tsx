@@ -11,6 +11,7 @@ export default function ToolsPage() {
   const FILTERS = [
     "Všechny",
     "Pojištění majetku",
+    "Pojištění vozidel",
     "Životní pojištění",
     "Finance",
     "Obecné",
@@ -68,6 +69,21 @@ export default function ToolsPage() {
         title: "ČAP Kalkulačka",
         description: "Kalkulace orientační pojistné hodnoty rodinného domu.",
         href: "https://www.cap.cz/kophn",
+        external: true,
+      },
+      {
+        key: "data-o-vozidle",
+        category: "Pojištění vozidel",
+        title: "Data o vozidle",
+        description: "Přehledné místo pro technické údaje, VIN a historii vozu.",
+        href: "/pomucky/data-o-vozidle",
+      },
+      {
+        key: "kontrola-tachometru",
+        category: "Pojištění vozidel",
+        title: "Kontrola tachometru",
+        description: "Ověř si nájezd vozidla online během pár vteřin.",
+        href: "https://www.kontrolatachometru.cz/",
         external: true,
       },
       {

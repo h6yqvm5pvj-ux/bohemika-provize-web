@@ -244,6 +244,13 @@ type EntryDoc = {
     position: Position | null;
     commissionMode: CommissionMode | null;
   }[];
+  managerOverrides?: {
+    email: string | null;
+    position: Position | null;
+    commissionMode: CommissionMode | null;
+    items: CommissionResultItemDTO[];
+    total: number;
+  }[];
   inputAmount?: number | null;
   contractNumber?: string | null;
   comfortPayment?: number | null;
@@ -783,6 +790,31 @@ export default function CashflowPage() {
             const idx = chain.findIndex(
               (c) => (c.email ?? "").toLowerCase() === email
             );
+
+            const storedOverride =
+              (entry.managerOverrides as EntryDoc["managerOverrides"])?.find(
+                (o) => (o.email ?? "").toLowerCase() === email
+              ) ?? null;
+
+            if (storedOverride) {
+              overrides.push({
+                ...entry,
+                originalEntryId: entry.id,
+                id: `${entry.id}-override`,
+                items: storedOverride.items ?? [],
+                total: storedOverride.total ?? 0,
+                source: "manager",
+                position: storedOverride.position ?? myPos,
+                managerPositionSnapshot: storedOverride.position ?? myPos,
+                managerModeSnapshot:
+                  storedOverride.commissionMode ??
+                  entry.managerModeSnapshot ??
+                  entry.commissionMode ??
+                  entry.mode ??
+                  null,
+              });
+              continue;
+            }
 
             const managerSnap = idx >= 0 ? chain[idx] : null;
             const childSnap =

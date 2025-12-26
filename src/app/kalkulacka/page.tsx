@@ -137,6 +137,20 @@ function positionLabel(pos: Position): string {
   return map[pos] ?? pos;
 }
 
+function normalizeTitleKey(title: string): string {
+  const t = title.toLowerCase();
+  if (t.includes("z platby")) return `payment-${t}`;
+  if (t.includes("za rok")) return `annual-${t}`;
+  if (t.includes("okamžitá")) return "immediate";
+  if (t.includes("po 3")) return "po3";
+  if (t.includes("po 4")) return "po4";
+  if (t.includes("2.–5.")) return "nasl25";
+  if (t.includes("5.–10.")) return "nasl510";
+  if (t.includes("od 6.")) return "nasl6plus";
+  if (t.includes("z platby")) return "subsequentByPayment";
+  return t;
+}
+
 function allowedPositionsForUser(base: Position | null): Position[] {
   if (!base) return POSITION_ORDER;
 
@@ -381,6 +395,15 @@ export default function CalculatorPage() {
   const [managerChainSnapshot, setManagerChainSnapshot] = useState<
     { email: string | null; position: Position | null; commissionMode: CommissionMode | null }[]
   >([]);
+  const [managerOverridesSnapshot, setManagerOverridesSnapshot] = useState<
+    {
+      email: string | null;
+      position: Position | null;
+      commissionMode: CommissionMode | null;
+      items: CommissionResultItemDTO[];
+      total: number;
+    }[]
+  >([]);
   const [userCommissionMode, setUserCommissionMode] = useState<CommissionMode | null>(null);
   const [baseUserPosition, setBaseUserPosition] = useState<Position | null>(null);
   const filteredClientSuggestions = useMemo(() => {
@@ -543,13 +566,23 @@ export default function CalculatorPage() {
     const [min, max] = durationRange(product);
     if (durationYears < min || durationYears > max) {
       if (product === "neon") setDurationYears(15);
-      else if (product === "maximaMaxEfekt") setDurationYears(10);
+      else if (product === "maximaMaxEfekt") setDurationYears(20);
       else setDurationYears(min);
     }
 
     // pokud uživatel má zrychlený režim, dovolíme přepnout pro konkrétní smlouvu
     // defaultně zůstává nastavený režim z profilu (mode)
   }, [product, frequency, durationYears]);
+
+  // ČPP ŽP NEON má být vždy předvyplněno na 15 let
+  useEffect(() => {
+    if (product === "neon") {
+      setDurationYears(15);
+    }
+    if (product === "maximaMaxEfekt") {
+      setDurationYears(20);
+    }
+  }, [product]);
 
   const recalc = () => {
     const val = parseNumber(amountText);
@@ -760,6 +793,7 @@ export default function CalculatorPage() {
       let mgrEmail = managerEmailSnapshot;
       let mgrPos = managerPositionSnapshot;
       let mgrMode = managerModeSnapshot;
+      let overridesForChain: typeof managerOverridesSnapshot = [];
       try {
         const userSnap = await getDoc(userRef);
         const data = userSnap.data() as any;
@@ -781,6 +815,67 @@ export default function CalculatorPage() {
       } catch (snapshotErr) {
         console.error("Failed to snapshot manager info", snapshotErr);
       }
+
+      // předpočítej meziprovize pro celý chain (od poradce výš)
+      const baseResult = computeItemsForPositionAndMode(position, mode);
+      if (baseResult) {
+        let baselineItems = baseResult.items;
+        const diffs: typeof managerOverridesSnapshot = [];
+
+        managerChainSnapshot.forEach((mgr) => {
+          if (!mgr.position) return;
+          const mgrRes = computeItemsForPositionAndMode(
+            mgr.position,
+            mgr.commissionMode ?? mode
+          );
+          if (!mgrRes) return;
+
+          const mgrMap = new Map<string, { title: string; amount: number }>();
+          mgrRes.items.forEach((it) => {
+            const key = normalizeTitleKey(it.title ?? "");
+            const prev = mgrMap.get(key);
+            mgrMap.set(key, {
+              title: it.title ?? prev?.title ?? key,
+              amount: (prev?.amount ?? 0) + (it.amount ?? 0),
+            });
+          });
+
+          const baselineMap = new Map<string, number>();
+          baselineItems.forEach((it) => {
+            const key = normalizeTitleKey(it.title ?? "");
+            baselineMap.set(key, (baselineMap.get(key) ?? 0) + (it.amount ?? 0));
+          });
+
+          const diffItems: CommissionResultItemDTO[] = [];
+          let diffTotal = 0;
+
+          mgrMap.forEach((val, key) => {
+            const subAmt = baselineMap.get(key) ?? 0;
+            const rem = val.amount - subAmt;
+            if (rem > 0) {
+              diffItems.push({ title: val.title, amount: rem });
+              diffTotal += rem;
+            }
+          });
+
+          if (diffItems.length > 0 && diffTotal > 0) {
+            diffs.push({
+              email: mgr.email ?? null,
+              position: mgr.position,
+              commissionMode: mgr.commissionMode ?? mode,
+              items: diffItems,
+              total: diffTotal,
+            });
+          }
+
+          // baseline pro vyšší úroveň je aktuální manažer
+          baselineItems = mgrRes.items;
+        });
+
+        overridesForChain = diffs;
+      }
+
+      setManagerOverridesSnapshot(overridesForChain);
 
       await addDoc(entriesRef, {
         productKey: product,
@@ -812,6 +907,7 @@ export default function CalculatorPage() {
         managerPositionSnapshot: mgrPos ?? null,
         managerModeSnapshot: mgrMode ?? null,
         managerChain: managerChainSnapshot,
+        managerOverrides: managerOverridesSnapshot,
       });
 
       setSaveMessage("Smlouva byla uložena mezi sepsané.");
@@ -863,6 +959,82 @@ export default function CalculatorPage() {
   const currentProduct = PRODUCT_OPTIONS.find((p) => p.id === product)!;
   const durationHelp = durationTooltip(product);
   const canChooseMode = LIFE_PRODUCTS.includes(product) && userCommissionMode === "accelerated";
+
+  const computeItemsForPositionAndMode = (
+    pos: Position | null,
+    customMode?: CommissionMode | null
+  ): { items: CommissionResultItemDTO[]; total: number } | null => {
+    if (!pos) return null;
+    const val = parseNumber(amountText);
+    const freq = frequency;
+    const years = durationYears;
+    const usedMode = (customMode ?? mode) as CommissionMode;
+
+    switch (product) {
+      case "neon": {
+        const [min, max] = durationRange("neon");
+        const y = Math.min(max, Math.max(min, years));
+        return calculateNeon(val, pos, y, usedMode);
+      }
+      case "flexi":
+        return calculateFlexi(val, pos, usedMode);
+      case "maximaMaxEfekt": {
+        const [min, max] = durationRange("maximaMaxEfekt");
+        const y = Math.min(max, Math.max(min, years));
+        return calculateMaxEfekt(val, y, pos, usedMode);
+      }
+      case "pillowInjury":
+        return calculatePillowInjury(val, pos, usedMode);
+      case "domex": {
+        const dto = calculateDomex(val, freq, pos);
+        const filtered = dto.items.filter((i) =>
+          (i.title ?? "").toLowerCase().includes("(z platby)")
+        );
+        const sum = filtered.reduce((s, i) => s + (i.amount ?? 0), 0);
+        return { items: filtered, total: sum };
+      }
+      case "maxdomov":
+        return calculateMaxdomov(val, freq, pos);
+      case "cppAuto":
+        return calculateCppAuto(val, freq, pos);
+      case "cppPPRbez": {
+        const dto = calculateCppPPRbez(val, freq, pos);
+        const filtered = dto.items.filter((i) =>
+          (i.title ?? "").toLowerCase().includes("(z platby)")
+        );
+        const sum = filtered.reduce((s, i) => s + (i.amount ?? 0), 0);
+        return { items: filtered, total: sum };
+      }
+      case "cppPPRs":
+        return calculateCppPPRs(val, freq, pos);
+      case "allianzAuto":
+        return calculateAllianzAuto(val, freq, pos);
+      case "csobAuto":
+        return calculateCsobAuto(val, freq, pos);
+      case "uniqaAuto":
+        return calculateUniqaAuto(val, freq, pos);
+      case "pillowAuto":
+        return calculatePillowAuto(val, freq, pos);
+      case "kooperativaAuto":
+        return calculateKooperativaAuto(val, freq, pos);
+      case "zamex":
+        return calculateZamex(val, freq, pos);
+      case "cppcestovko":
+        return calculateCppCestovko(val, pos);
+      case "axacestovko":
+        return calculateAxaCestovko(val, pos);
+      case "comfortcc":
+        return calculateComfortCC({
+          fee: val,
+          payment: comfortGradual ? parseNumber(comfortPaymentText) : 0,
+          isSavings: comfortGradual,
+          isGradualFee: comfortGradual,
+          position: pos,
+        });
+      default:
+        return null;
+    }
+  };
 
   return (
     <AppLayout active="calc">
@@ -949,25 +1121,8 @@ export default function CalculatorPage() {
               </div>
             </section>
 
-            {/* Doba trvání + frekvence + režim */}
+            {/* Doba trvání + frekvence */}
             <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="block text-sm font-medium">
-                  Sjednána jako (pozice)
-                </label>
-                <select
-                  className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  value={position}
-                  onChange={(e) => setPosition(e.target.value as Position)}
-                >
-                  {allowedPositionsForUser(baseUserPosition ?? position).map((p) => (
-                    <option key={p} value={p}>
-                      {positionLabel(p)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               {shouldShowDuration(product) && (
                 <div className="space-y-1">
                   <label className="block text-sm font-medium">
@@ -1020,25 +1175,6 @@ export default function CalculatorPage() {
                   </p>
                 )}
               </div>
-
-              {canChooseMode && (
-                <div className="space-y-1 sm:col-span-2">
-                  <label className="block text-sm font-medium">
-                    Režim výplaty provize (jen pro životní produkty)
-                  </label>
-                  <select
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                    value={mode}
-                    onChange={(e) => setMode(e.target.value as CommissionMode)}
-                  >
-                    <option value="accelerated">Zrychlený</option>
-                    <option value="standard">Běžný</option>
-                  </select>
-                  <p className="text-[11px] text-slate-400">
-                    Předvyplněno tvým režimem, ale můžeš přepnout pro tuto konkrétní smlouvu.
-                  </p>
-                </div>
-              )}
             </section>
 
             {/* Comfort Commodity – toggle poplatku */}
@@ -1122,7 +1258,7 @@ export default function CalculatorPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="block text-sm font-medium">
-                Jméno klienta
+                Jméno a příjmení klienta
               </label>
               <div className="relative">
                 <input
@@ -1188,6 +1324,45 @@ export default function CalculatorPage() {
                   />
                 </div>
               </div>
+            </section>
+
+            {/* Pozice a režim pro tuto smlouvu */}
+            <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="block text-sm font-medium">
+                  Sjednána jako (pozice)
+                </label>
+                <select
+                  className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  value={position}
+                  onChange={(e) => setPosition(e.target.value as Position)}
+                >
+                  {allowedPositionsForUser(baseUserPosition ?? position).map((p) => (
+                    <option key={p} value={p}>
+                      {positionLabel(p)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {canChooseMode && (
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium">
+                    Režim provize
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    value={mode}
+                    onChange={(e) => setMode(e.target.value as CommissionMode)}
+                  >
+                    <option value="accelerated">Zrychlený</option>
+                    <option value="standard">Běžný</option>
+                  </select>
+                  <p className="text-[11px] text-slate-400">
+                    Předvyplněno tvým režimem, ale můžeš přepnout pro tuto konkrétní smlouvu.
+                  </p>
+                </div>
+              )}
             </section>
           </div>
 

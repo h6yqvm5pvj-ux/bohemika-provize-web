@@ -55,6 +55,13 @@ type ContractDoc = {
   managerEmailSnapshot?: string | null;
   managerPositionSnapshot?: Position | null;
   managerModeSnapshot?: CommissionMode | null;
+  managerOverrides?: {
+    email: string | null;
+    position: Position | null;
+    commissionMode: CommissionMode | null;
+    items: CommissionResultItemDTO[];
+    total: number;
+  }[];
 
   productKey?: Product;
   position?: Position;
@@ -544,6 +551,18 @@ export default function ContractDetailPage() {
 
   // výpočet meziprovize
   useEffect(() => {
+    const storedOverride =
+      (contract?.managerOverrides as ContractDoc["managerOverrides"])?.find(
+        (o) =>
+          o.email?.toLowerCase() === user?.email?.toLowerCase()
+      ) ?? null;
+
+    if (storedOverride && isManagerViewingSubordinate) {
+      setOverrideItems(storedOverride.items ?? null);
+      setOverrideTotal(storedOverride.total ?? null);
+      return;
+    }
+
     if (!contract || !effectiveManagerPosition || !isManagerViewingSubordinate) {
       setOverrideItems(null);
       setOverrideTotal(null);
