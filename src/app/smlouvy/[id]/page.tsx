@@ -396,6 +396,11 @@ export default function ContractDetailPage() {
     CommissionResultItemDTO[] | null
   >(null);
   const [overrideTotal, setOverrideTotal] = useState<number | null>(null);
+  const [childOverrideItems, setChildOverrideItems] = useState<
+    CommissionResultItemDTO[] | null
+  >(null);
+  const [childOverrideTotal, setChildOverrideTotal] = useState<number | null>(null);
+  const [childOverrideLabel, setChildOverrideLabel] = useState<string | null>(null);
 
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -537,9 +542,9 @@ export default function ContractDetailPage() {
   }, [user, contract, managerPosition]);
 
   const effectiveManagerPosition =
-    (contract as any)?.managerPositionSnapshot ?? managerPosition;
+    managerPosition ?? ((contract as any)?.managerPositionSnapshot as Position | null | undefined) ?? null;
   const effectiveManagerMode =
-    (contract as any)?.managerModeSnapshot ?? managerMode;
+    managerMode ?? ((contract as any)?.managerModeSnapshot as CommissionMode | null | undefined) ?? null;
 
   const [editMode, setEditMode] = useState(false);
   const [editClientName, setEditClientName] = useState("");
@@ -672,6 +677,9 @@ export default function ContractDetailPage() {
     if (!contract || !effectiveManagerPosition || !isManagerViewingSubordinate) {
       setOverrideItems(null);
       setOverrideTotal(null);
+      setChildOverrideItems(null);
+      setChildOverrideTotal(null);
+      setChildOverrideLabel(null);
       return;
     }
 
@@ -693,7 +701,9 @@ export default function ContractDetailPage() {
         overrideTitles.length > 0 &&
         overrideTitles.every((t) => t && advisorTitles.has(t));
 
-      if (hasSameCount && allTitlesMatch) {
+      const overrideTotalValid = (storedOverride.total ?? 0) > 0;
+
+      if (hasSameCount && allTitlesMatch && overrideTotalValid) {
         setOverrideItems(storedOverride.items ?? null);
         setOverrideTotal(storedOverride.total ?? null);
         return;
@@ -718,20 +728,36 @@ export default function ContractDetailPage() {
 
     const childSnap = idx > 0 ? chain[idx - 1] : null;
 
-    const baselinePos =
+    const baselinePosCurrent =
       (childSnap?.position as Position | null | undefined) ??
       ownerPosition ??
       ((contract.position as Position | null) ?? null);
 
-    const baselineMode =
+    const baselineModeCurrent =
       (childSnap?.commissionMode as CommissionMode | null | undefined) ??
+      (contract.managerModeSnapshot as CommissionMode | null | undefined) ??
       (contract.commissionMode as CommissionMode | null | undefined) ??
       (contract as any)?.mode ??
-      managerModeForOverride;
+      "standard";
+
+    const advisorPos =
+      ownerPosition ?? ((contract.position as Position | null) ?? null);
+    const advisorMode =
+      (contract.commissionMode as CommissionMode | null | undefined) ??
+      (contract as any)?.mode ??
+      "standard";
+
+    const childEmail =
+      (childSnap?.email as string | null | undefined)?.toLowerCase() ?? null;
+
+    const storedChildOverride =
+      (contract?.managerOverrides as ContractDoc["managerOverrides"])?.find(
+        (o) => (o.email ?? "").toLowerCase() === (childEmail ?? "")
+      ) ?? null;
 
     const baselineResult =
-      baselinePos != null
-        ? calculateResultForPosition(contract, baselinePos, baselineMode)
+      baselinePosCurrent != null
+        ? calculateResultForPosition(contract, baselinePosCurrent, baselineModeCurrent)
         : null;
 
     const subItems = baselineResult?.items ?? contract.items ?? [];
@@ -751,6 +777,83 @@ export default function ContractDetailPage() {
 
     setOverrideItems(diffItems);
     setOverrideTotal(diffTotal);
+
+    // meziprovize pro přímého manažera pod sjednavatelem (např. manazer7)
+    if (childSnap && childEmail && advisorPos) {
+      const childSnapshotValid =
+        storedChildOverride &&
+        (storedChildOverride.total ?? 0) > 0 &&
+        (storedChildOverride.items ?? []).length > 0;
+
+      if (childSnapshotValid) {
+        setChildOverrideItems(storedChildOverride.items ?? null);
+        setChildOverrideTotal(storedChildOverride.total ?? null);
+        setChildOverrideLabel(
+          (childSnap.position as Position | null | undefined) ??
+            normalizeTitleForCompare(childSnap.email ?? childEmail)
+        );
+      } else {
+        const childDiff = (() => {
+          const upper = calculateResultForPosition(
+            contract,
+            childSnap.position as Position,
+            (childSnap.commissionMode as CommissionMode | null | undefined) ?? baselineModeCurrent
+          );
+          const lower = calculateResultForPosition(contract, advisorPos, advisorMode);
+          if (!upper || !lower) return null;
+
+          const upperMap = new Map<string, { title: string; amount: number }>();
+          upper.items.forEach((it) => {
+            const key = normalizeTitleForCompare(it.title);
+            const prev = upperMap.get(key);
+            upperMap.set(key, {
+              title: it.title ?? prev?.title ?? key,
+              amount: (prev?.amount ?? 0) + (it.amount ?? 0),
+            });
+          });
+
+          const diffs: CommissionResultItemDTO[] = [];
+          let total = 0;
+
+          lower.items.forEach((it) => {
+            const key = normalizeTitleForCompare(it.title);
+            const up = upperMap.get(key);
+            const diff = (up?.amount ?? 0) - (it.amount ?? 0);
+            if (diff > 0) {
+              diffs.push({ title: up?.title ?? it.title, amount: diff });
+              total += diff;
+            }
+            upperMap.delete(key);
+          });
+
+          upperMap.forEach((val) => {
+            if (val.amount > 0) {
+              diffs.push({ title: val.title, amount: val.amount });
+              total += val.amount;
+            }
+          });
+
+          return { items: diffs, total };
+        })();
+
+        if (childDiff && childDiff.total > 0) {
+          setChildOverrideItems(childDiff.items);
+          setChildOverrideTotal(childDiff.total);
+          setChildOverrideLabel(
+            (childSnap.position as Position | null | undefined) ??
+              normalizeTitleForCompare(childSnap.email ?? childEmail)
+          );
+        } else {
+          setChildOverrideItems(null);
+          setChildOverrideTotal(null);
+          setChildOverrideLabel(null);
+        }
+      }
+    } else {
+      setChildOverrideItems(null);
+      setChildOverrideTotal(null);
+      setChildOverrideLabel(null);
+    }
   }, [
     contract,
     managerPosition,
@@ -806,10 +909,23 @@ export default function ContractDetailPage() {
       )
     ) ?? [];
 
+  const childManagerItems =
+    filterDomexItems(
+      (childOverrideItems ?? []).filter(
+        (it) => !it.title.toLowerCase().includes("celkem")
+      )
+    ) ?? [];
+
   const showMeziprovision =
     managerItems.length > 0 &&
     overrideTotal != null &&
     isManagerViewingSubordinate;
+
+  const showChildMeziprovision =
+    childManagerItems.length > 0 &&
+    childOverrideTotal != null &&
+    isManagerViewingSubordinate &&
+    childOverrideLabel;
 
   return (
     <main className="relative min-h-screen overflow-hidden text-slate-50">
@@ -1126,34 +1242,69 @@ export default function ContractDetailPage() {
 
                 {/* MEZIPROVIZE – jen když manažer kouká na podřízeného */}
                 {showMeziprovision && (
-                  <section className="space-y-3">
-                    <h3 className="text-sm font-semibold text-emerald-200">
-                      Meziprovize pro {effectiveManagerPosition ?? "manažera"}
-                    </h3>
-                    <div className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
-                      {managerItems.map((item) => (
-                        <div
-                          key={item.title}
-                          className="flex items-baseline justify-between gap-3 py-2"
-                        >
-                          <span className="text-sm text-slate-200">
-                            {item.title}
+                  <section className="space-y-4">
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-semibold text-emerald-200">
+                        Meziprovize pro {effectiveManagerPosition ?? "manažera"}
+                      </h3>
+                      <div className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
+                        {managerItems.map((item) => (
+                          <div
+                            key={item.title}
+                            className="flex items-baseline justify-between gap-3 py-2"
+                          >
+                            <span className="text-sm text-slate-200">
+                              {item.title}
+                            </span>
+                            <span className="text-sm font-semibold text-emerald-300">
+                              {formatMoney(item.amount)}
+                            </span>
+                          </div>
+                        ))}
+
+                        <div className="flex items-center justify-between pt-3">
+                          <span className="text-sm font-semibold">
+                            Celkem meziprovize
                           </span>
-                          <span className="text-sm font-semibold text-emerald-300">
-                            {formatMoney(item.amount)}
+                          <span className="text-base font-bold text-emerald-300">
+                            {formatMoney(overrideTotal)}
                           </span>
                         </div>
-                      ))}
-
-                      <div className="flex items-center justify-between pt-3">
-                        <span className="text-sm font-semibold">
-                          Celkem meziprovize
-                        </span>
-                        <span className="text-base font-bold text-emerald-300">
-                          {formatMoney(overrideTotal)}
-                        </span>
                       </div>
                     </div>
+
+                    {showChildMeziprovision && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-semibold text-emerald-200">
+                          Meziprovize pro podřízeného manažera
+                          {childOverrideLabel ? ` (${childOverrideLabel})` : ""}
+                        </h4>
+                        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/20 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
+                          {childManagerItems.map((item) => (
+                            <div
+                              key={item.title}
+                              className="flex items-baseline justify-between gap-3 py-2"
+                            >
+                              <span className="text-sm text-slate-200">
+                                {item.title}
+                              </span>
+                              <span className="text-sm font-medium text-slate-50">
+                                {formatMoney(item.amount)}
+                              </span>
+                            </div>
+                          ))}
+
+                          <div className="flex items-center justify-between pt-3">
+                            <span className="text-sm font-semibold">
+                              Celkem meziprovize
+                            </span>
+                            <span className="text-base font-bold text-emerald-300">
+                              {formatMoney(childOverrideTotal ?? 0)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </section>
                 )}
 
