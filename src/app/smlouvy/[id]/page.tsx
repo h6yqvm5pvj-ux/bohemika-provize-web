@@ -55,6 +55,11 @@ type ContractDoc = {
   managerEmailSnapshot?: string | null;
   managerPositionSnapshot?: Position | null;
   managerModeSnapshot?: CommissionMode | null;
+  managerChain?: {
+    email: string | null;
+    position: Position | null;
+    commissionMode: CommissionMode | null;
+  }[];
   managerOverrides?: {
     email: string | null;
     position: Position | null;
