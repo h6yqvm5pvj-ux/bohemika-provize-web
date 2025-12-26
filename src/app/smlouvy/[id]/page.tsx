@@ -709,21 +709,23 @@ export default function ContractDetailPage() {
       return;
     }
 
-    const baselinePos =
-      (() => {
-        const idx =
-          ((contract.managerChain as ContractDoc["managerChain"]) ?? []).findIndex(
-            (c) => (c.email ?? "").toLowerCase() === user?.email?.toLowerCase()
-          );
-        const chain = (contract.managerChain as ContractDoc["managerChain"]) ?? [];
-        if (idx > 0) {
-          const child = chain[idx - 1];
-          return (child?.position as Position | null | undefined) ?? null;
-        }
-        return ownerPosition ?? ((contract.position as Position | null) ?? null);
-      })();
+    const chain = (contract.managerChain as ContractDoc["managerChain"]) ?? [];
+    const idx = chain.findIndex(
+      (c) => (c.email ?? "").toLowerCase() === user?.email?.toLowerCase()
+    );
 
-    const baselineMode = managerModeForOverride;
+    const childSnap = idx > 0 ? chain[idx - 1] : null;
+
+    const baselinePos =
+      (childSnap?.position as Position | null | undefined) ??
+      ownerPosition ??
+      ((contract.position as Position | null) ?? null);
+
+    const baselineMode =
+      (childSnap?.commissionMode as CommissionMode | null | undefined) ??
+      (contract.commissionMode as CommissionMode | null | undefined) ??
+      (contract as any)?.mode ??
+      managerModeForOverride;
 
     const baselineResult =
       baselinePos != null
