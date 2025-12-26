@@ -839,6 +839,8 @@ export default function CashflowPage() {
               (entry.commissionMode as CommissionMode | null | undefined) ??
               (entry.mode as CommissionMode | null | undefined) ??
               null;
+            const managerModeForOverride =
+              (effectiveMgrMode as CommissionMode | null) ?? "standard";
 
             const baselinePos = childSnap?.position ?? subPos;
             const baselineMode =
@@ -850,12 +852,12 @@ export default function CashflowPage() {
             const mgrItems = commissionItemsForPosition(
               entry,
               effectiveMgrPos,
-              effectiveMgrMode
+              managerModeForOverride
             );
             const baselineItems = commissionItemsForPosition(
               entry,
               baselinePos as Position,
-              baselineMode
+              managerModeForOverride
             );
 
             const mgrMap = new Map<

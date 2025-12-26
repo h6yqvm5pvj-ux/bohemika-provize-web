@@ -136,7 +136,8 @@ function normalizeToAnnual(amount: number, frequency?: PaymentFrequency | null):
 
 function commissionItemsForPosition(
   entry: EntryDoc,
-  pos: Position
+  pos: Position,
+  modeOverride?: CommissionMode | null
 ): CommissionResultItemDTO[] {
   const product = entry.productKey;
   const amount = entry.inputAmount ?? 0;
@@ -145,7 +146,7 @@ function commissionItemsForPosition(
     typeof entry.durationYears === "number" && !Number.isNaN(entry.durationYears)
       ? entry.durationYears
       : 15;
-  const mode = (entry.commissionMode ?? "accelerated") as CommissionMode;
+  const mode = (modeOverride ?? entry.commissionMode ?? "accelerated") as CommissionMode;
 
   switch (product) {
     case "neon":
@@ -245,6 +246,7 @@ type EntryDoc = {
 
 type UserMeta = {
   position?: Position;
+  commissionMode?: CommissionMode | null;
   monthlyGoal?: number | null;
   managerEmail?: string | null;
 };
@@ -712,18 +714,22 @@ export default function HomePage() {
         const meSnap = await getDoc(doc(usersRef, email));
         let position: Position | undefined;
         let monthlyGoal: number | null | undefined;
+        let myMode: CommissionMode | null = null;
         if (meSnap.exists()) {
           const d = meSnap.data() as any;
           position = d.position as Position | undefined;
           monthlyGoal = (d.monthlyGoal as number | undefined) ?? null;
+          myMode = (d.commissionMode as CommissionMode | undefined) ?? null;
         }
 
         setUserMeta({
           position,
+          commissionMode: myMode,
           monthlyGoal: monthlyGoal ?? null,
         });
 
         const isManager = isManagerPosition(position);
+        const managerMode = (myMode as CommissionMode | null) ?? null;
 
         // 2) moje smlouvy
         const myQ = query(
@@ -884,11 +890,19 @@ export default function HomePage() {
               const comparePos = ownerManagerPos ?? subPos;
               if (mgrPos && subPos) {
                 const mgrImmediate =
-                  commissionItemsForPosition(data, mgrPos).find((i) =>
+                  commissionItemsForPosition(
+                    data,
+                    mgrPos,
+                    managerMode
+                  ).find((i) =>
                     (i.title ?? "").toLowerCase().includes("okamžitá")
                   )?.amount ?? 0;
                 const subImmediate =
-                  commissionItemsForPosition(data, comparePos ?? subPos).find((i) =>
+                  commissionItemsForPosition(
+                    data,
+                    comparePos ?? subPos,
+                    managerMode
+                  ).find((i) =>
                     (i.title ?? "").toLowerCase().includes("okamžitá")
                   )?.amount ?? 0;
                 const diff = Math.max(0, mgrImmediate - subImmediate);
