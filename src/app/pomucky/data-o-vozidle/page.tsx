@@ -61,7 +61,6 @@ export default function VehicleDataPage() {
     setLoading(true);
     setError(null);
     setResult(null);
-    setShowJson(false);
 
     try {
       const data = await rsvVehicleLookupByVin(vin);
