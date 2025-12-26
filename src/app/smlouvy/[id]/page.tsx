@@ -705,7 +705,19 @@ export default function ContractDetailPage() {
     }
 
     const baselinePos =
-      ownerPosition ?? ((contract.position as Position | null) ?? null);
+      (() => {
+        const idx =
+          ((contract.managerChain as ContractDoc["managerChain"]) ?? []).findIndex(
+            (c) => (c.email ?? "").toLowerCase() === user?.email?.toLowerCase()
+          );
+        const chain = (contract.managerChain as ContractDoc["managerChain"]) ?? [];
+        if (idx > 0) {
+          const child = chain[idx - 1];
+          return (child?.position as Position | null | undefined) ?? null;
+        }
+        return ownerPosition ?? ((contract.position as Position | null) ?? null);
+      })();
+
     const baselineMode = managerModeForOverride;
 
     const baselineResult =
