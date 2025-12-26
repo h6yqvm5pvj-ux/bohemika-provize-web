@@ -733,12 +733,9 @@ export default function ContractDetailPage() {
       ownerPosition ??
       ((contract.position as Position | null) ?? null);
 
-    const baselineModeCurrent =
-      (childSnap?.commissionMode as CommissionMode | null | undefined) ??
-      (contract.managerModeSnapshot as CommissionMode | null | undefined) ??
-      (contract.commissionMode as CommissionMode | null | undefined) ??
-      (contract as any)?.mode ??
-      "standard";
+    // pro rozdíl vůči aktuálnímu manažerovi použijeme jeho režim (typicky běžný),
+    // i když podřízený má zrychlený.
+    const baselineModeCurrent = managerModeForOverride;
 
     const advisorPos =
       ownerPosition ?? ((contract.position as Position | null) ?? null);
@@ -793,13 +790,13 @@ export default function ContractDetailPage() {
             normalizeTitleForCompare(childSnap.email ?? childEmail)
         );
       } else {
-        const childDiff = (() => {
-          const upper = calculateResultForPosition(
-            contract,
-            childSnap.position as Position,
-            (childSnap.commissionMode as CommissionMode | null | undefined) ?? baselineModeCurrent
-          );
-          const lower = calculateResultForPosition(contract, advisorPos, advisorMode);
+      const childDiff = (() => {
+        const upper = calculateResultForPosition(
+          contract,
+          childSnap.position as Position,
+          (childSnap.commissionMode as CommissionMode | null | undefined) ?? managerModeForOverride
+        );
+        const lower = calculateResultForPosition(contract, advisorPos, advisorMode);
           if (!upper || !lower) return null;
 
           const upperMap = new Map<string, { title: string; amount: number }>();
