@@ -777,26 +777,36 @@ export default function ContractDetailPage() {
 
     // meziprovize pro přímého manažera pod sjednavatelem (např. manazer7)
     if (childSnap && childEmail && advisorPos) {
+      const childMode =
+        (childSnap?.commissionMode as CommissionMode | null | undefined) ??
+        (contract.managerModeSnapshot as CommissionMode | null | undefined) ??
+        (contract.commissionMode as CommissionMode | null | undefined) ??
+        (contract as any)?.mode ??
+        "accelerated";
+
       const childSnapshotValid =
         storedChildOverride &&
         (storedChildOverride.total ?? 0) > 0 &&
         (storedChildOverride.items ?? []).length > 0;
 
       if (childSnapshotValid) {
-        setChildOverrideItems(storedChildOverride.items ?? null);
-        setChildOverrideTotal(storedChildOverride.total ?? null);
+        const items = storedChildOverride.items ?? null;
+        const totalFromItems =
+          items?.reduce((sum, it) => sum + (it.amount ?? 0), 0) ?? null;
+        setChildOverrideItems(items);
+        setChildOverrideTotal(totalFromItems);
         setChildOverrideLabel(
           (childSnap.position as Position | null | undefined) ??
             normalizeTitleForCompare(childSnap.email ?? childEmail)
         );
       } else {
-      const childDiff = (() => {
-        const upper = calculateResultForPosition(
-          contract,
-          childSnap.position as Position,
-          (childSnap.commissionMode as CommissionMode | null | undefined) ?? managerModeForOverride
-        );
-        const lower = calculateResultForPosition(contract, advisorPos, advisorMode);
+        const childDiff = (() => {
+          const upper = calculateResultForPosition(
+            contract,
+            childSnap.position as Position,
+            childMode
+          );
+          const lower = calculateResultForPosition(contract, advisorPos, advisorMode);
           if (!upper || !lower) return null;
 
           const upperMap = new Map<string, { title: string; amount: number }>();
