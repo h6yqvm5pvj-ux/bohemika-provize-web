@@ -292,12 +292,39 @@ function normalizeTitleForCompare(title: string | undefined | null): string {
     .trim();
 }
 
+function stripTotalRows(
+  arr: CommissionResultItemDTO[] | null | undefined
+): CommissionResultItemDTO[] {
+  return (arr ?? []).filter(
+    (it) => !normalizeTitleForCompare(it.title).includes("celkem")
+  );
+}
+
+function itemMultiplier(title: string | undefined | null): number {
+  const norm = normalizeTitleForCompare(title);
+  if (norm.includes("2.–5.")) return 4; // roky 2–5
+  if (norm.includes("5.–10.")) return 6; // roky 5–10
+  return 1;
+}
+
+function computeTotalWithMultipliers(
+  items: CommissionResultItemDTO[] | null | undefined
+): number {
+  return stripTotalRows(items).reduce((sum, it) => {
+    const amt = it.amount ?? 0;
+    return sum + amt * itemMultiplier(it.title);
+  }, 0);
+}
+
 function diffItemsByTitle(
   upper: CommissionResultItemDTO[] | null | undefined,
   lower: CommissionResultItemDTO[] | null | undefined
 ): { items: CommissionResultItemDTO[]; total: number } {
+  const upperClean = stripTotalRows(upper);
+  const lowerClean = stripTotalRows(lower);
+
   const upperMap = new Map<string, { title: string; amount: number }>();
-  (upper ?? []).forEach((it) => {
+  upperClean.forEach((it) => {
     const key = normalizeTitleForCompare(it.title);
     const prev = upperMap.get(key);
     upperMap.set(key, {
@@ -309,13 +336,14 @@ function diffItemsByTitle(
   const diffs: CommissionResultItemDTO[] = [];
   let total = 0;
 
-  (lower ?? []).forEach((it) => {
+  lowerClean.forEach((it) => {
     const key = normalizeTitleForCompare(it.title);
     const up = upperMap.get(key);
     const diff = (up?.amount ?? 0) - (it.amount ?? 0);
     if (diff > 0) {
-      diffs.push({ title: up?.title ?? it.title, amount: diff });
-      total += diff;
+      const title = up?.title ?? it.title;
+      diffs.push({ title, amount: diff });
+      total += diff * itemMultiplier(title);
     }
     upperMap.delete(key);
   });
@@ -323,7 +351,7 @@ function diffItemsByTitle(
   upperMap.forEach((val) => {
     if (val.amount > 0) {
       diffs.push({ title: val.title, amount: val.amount });
-      total += val.amount;
+      total += val.amount * itemMultiplier(val.title);
     }
   });
 
@@ -727,10 +755,13 @@ export default function ContractDetailPage() {
       ) ?? null;
 
     if (storedOverride) {
+      const sanitizedAdvisorItems = stripTotalRows(contract.items);
+      const sanitizedOverrideItems = stripTotalRows(storedOverride.items);
+
       const advisorTitles = new Set(
-        (contract.items ?? []).map((it) => normalizeTitleForCompare(it.title as string))
+        sanitizedAdvisorItems.map((it) => normalizeTitleForCompare(it.title as string))
       );
-      const overrideTitles = (storedOverride.items ?? []).map((it) =>
+      const overrideTitles = sanitizedOverrideItems.map((it) =>
         normalizeTitleForCompare(it.title as string)
       );
 
@@ -739,11 +770,14 @@ export default function ContractDetailPage() {
         overrideTitles.length > 0 &&
         overrideTitles.every((t) => t && advisorTitles.has(t));
 
-      const overrideTotalValid = (storedOverride.total ?? 0) > 0;
+      const overrideTotalFromItems = computeTotalWithMultipliers(
+        sanitizedOverrideItems
+      );
+      const overrideTotalValid = overrideTotalFromItems > 0;
 
       if (hasSameCount && allTitlesMatch && overrideTotalValid) {
-        setOverrideItems(storedOverride.items ?? null);
-        setOverrideTotal(storedOverride.total ?? null);
+        setOverrideItems(sanitizedOverrideItems ?? null);
+        setOverrideTotal(overrideTotalFromItems);
         return;
       }
     }
@@ -789,6 +823,8 @@ export default function ContractDetailPage() {
       (contract?.managerOverrides as ContractDoc["managerOverrides"])?.find(
         (o) => (o.email ?? "").toLowerCase() === (childEmail ?? "")
       ) ?? null;
+    const storedChildItems = stripTotalRows(storedChildOverride?.items);
+    const storedChildTotal = computeTotalWithMultipliers(storedChildItems);
 
     const baselineResult =
       baselinePosCurrent != null
@@ -796,7 +832,6 @@ export default function ContractDetailPage() {
         : null;
 
     const subItems = baselineResult?.items ?? contract.items ?? [];
-    const subTotal = baselineResult?.total ?? contract.total ?? 0;
 
     const mainDiff = diffItemsByTitle(managerResult.items, subItems);
 
@@ -814,8 +849,8 @@ export default function ContractDetailPage() {
 
       const childSnapshotValid =
         storedChildOverride &&
-        (storedChildOverride.total ?? 0) > 0 &&
-        (storedChildOverride.items ?? []).length > 0;
+        storedChildItems.length > 0 &&
+        storedChildTotal > 0;
 
       const childCalcUpper = calculateResultForPosition(
         contract,
@@ -830,9 +865,8 @@ export default function ContractDetailPage() {
           : null;
 
       if (childSnapshotValid) {
-        const items = storedChildOverride.items ?? null;
-        const totalFromItems =
-          items?.reduce((sum, it) => sum + (it.amount ?? 0), 0) ?? null;
+        const items = storedChildItems ?? null;
+        const totalFromItems = storedChildTotal ?? null;
         const useSnapshot =
           totalFromItems != null &&
           totalFromItems > 0 &&

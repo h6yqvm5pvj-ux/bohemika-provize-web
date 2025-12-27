@@ -151,6 +151,10 @@ function normalizeTitleKey(title: string): string {
   return t;
 }
 
+function stripTotalRows(items: CommissionResultItemDTO[] = []): CommissionResultItemDTO[] {
+  return items.filter((it) => !normalizeTitleKey(it.title ?? "").includes("celkem"));
+}
+
 function allowedPositionsForUser(base: Position | null): Position[] {
   if (!base) return POSITION_ORDER;
 
@@ -819,7 +823,7 @@ export default function CalculatorPage() {
       // předpočítej meziprovize pro celý chain (od poradce výš)
       const baseResult = computeItemsForPositionAndMode(position, mode);
       if (baseResult) {
-        let baselineItems = baseResult.items;
+        let baselineItems = stripTotalRows(baseResult.items);
         const diffs: typeof managerOverridesSnapshot = [];
 
         managerChainSnapshot.forEach((mgr) => {
@@ -830,8 +834,10 @@ export default function CalculatorPage() {
           );
           if (!mgrRes) return;
 
+          const mgrItems = stripTotalRows(mgrRes.items);
+
           const mgrMap = new Map<string, { title: string; amount: number }>();
-          mgrRes.items.forEach((it) => {
+          mgrItems.forEach((it) => {
             const key = normalizeTitleKey(it.title ?? "");
             const prev = mgrMap.get(key);
             mgrMap.set(key, {
@@ -869,7 +875,7 @@ export default function CalculatorPage() {
           }
 
           // baseline pro vyšší úroveň je aktuální manažer
-          baselineItems = mgrRes.items;
+          baselineItems = mgrItems;
         });
 
         overridesForChain = diffs;

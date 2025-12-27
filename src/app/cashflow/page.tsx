@@ -156,6 +156,10 @@ function normalizeTitleKey(title: string): string {
   return t;
 }
 
+function stripTotalRows(items: CommissionResultItemDTO[] = []): CommissionResultItemDTO[] {
+  return items.filter((it) => !normalizeTitleKey(it.title ?? "").includes("celkem"));
+}
+
 function commissionItemsForPosition(
   entry: EntryDoc,
   pos: Position,
@@ -849,15 +853,19 @@ export default function CashflowPage() {
               (entry.mode as CommissionMode | null | undefined) ??
               null;
 
-            const mgrItems = commissionItemsForPosition(
-              entry,
-              effectiveMgrPos,
-              managerModeForOverride
+            const mgrItems = stripTotalRows(
+              commissionItemsForPosition(
+                entry,
+                effectiveMgrPos,
+                managerModeForOverride
+              )
             );
-            const baselineItems = commissionItemsForPosition(
-              entry,
-              baselinePos as Position,
-              managerModeForOverride
+            const baselineItems = stripTotalRows(
+              commissionItemsForPosition(
+                entry,
+                baselinePos as Position,
+                managerModeForOverride
+              )
             );
 
             const mgrMap = new Map<
