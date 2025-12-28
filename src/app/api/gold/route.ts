@@ -11,7 +11,7 @@ let lastOk: { usdPerOz: number; usdCzk: number; czkPerOz: number; ts: number } |
 let lastHistory:
   | {
       czkSeries: DailyPoint[]; // CZK / unce (denní body)
-      changesPct: { "1y": number; "2y": number; "3y": number; "5y": number; "10y": number };
+      changesPct: { "1d": number; "3m": number; "1y": number; "2y": number; "3y": number; "5y": number; "10y": number };
       asOfDate: string;
       ts: number;
     }
@@ -99,10 +99,16 @@ async function fetchStooqDaily(symbol: string): Promise<DailyPoint[]> {
 
 type DailyPoint = { date: string; close: number };
 
-type HistoryPoint = { t: number; v: number }; // t=ms timestamp, v=CZK/oz
+type HistoryPoint = { t: number; v: number }; // t=unix seconds (UTC), v=CZK/oz
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+function isMaxRange(range: string | null): boolean {
+  if (!range) return false;
+  const r = range.toLowerCase();
+  return r === "max" || r === "all";
 }
 
 function rangeToDays(range: string | null): number | null {
@@ -118,26 +124,44 @@ function rangeToDays(range: string | null): number | null {
   return null;
 }
 
-function buildHistoryPointsFromCzkSeries(czkSeries: DailyPoint[], days: number): HistoryPoint[] {
+function buildHistoryPointsFromCzkSeries(czkSeries: DailyPoint[], days: number | null): HistoryPoint[] {
   if (!czkSeries.length) return [];
 
-  const latest = czkSeries[czkSeries.length - 1];
-  const latestDate = new Date(latest.date + "T00:00:00Z");
-  const cutoff = new Date(latestDate);
-  cutoff.setUTCDate(cutoff.getUTCDate() - days);
-  const cutoffYmd = toYmd(cutoff);
+  let points: HistoryPoint[] = [];
 
-  let points = czkSeries
-    .filter((p) => p.date >= cutoffYmd)
-    .map((p) => ({ t: Date.parse(p.date + "T00:00:00Z"), v: round2(p.close) }))
-    .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v) && p.v > 0);
+  const toUnixSeconds = (ymd: string) => Math.floor(Date.parse(ymd + "T00:00:00Z") / 1000);
 
-  // downsample, aby to bylo svižné i na 10 let
+  // MAX / ALL: vezmeme celou dostupnou historii
+  if (days == null || !Number.isFinite(days)) {
+    points = czkSeries
+      .map((p) => ({ t: toUnixSeconds(p.date), v: round2(p.close) }))
+      .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v) && p.v > 0);
+  } else {
+    const latest = czkSeries[czkSeries.length - 1];
+    const latestDate = new Date(latest.date + "T00:00:00Z");
+    const cutoff = new Date(latestDate);
+    cutoff.setUTCDate(cutoff.getUTCDate() - days);
+    const cutoffYmd = toYmd(cutoff);
+
+    points = czkSeries
+      .filter((p) => p.date >= cutoffYmd)
+      .map((p) => ({ t: toUnixSeconds(p.date), v: round2(p.close) }))
+      .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v) && p.v > 0);
+  }
+
+  // downsample, aby to bylo svižné i na MAX
   const MAX_POINTS = 1200;
   if (points.length > MAX_POINTS) {
     const step = Math.ceil(points.length / MAX_POINTS);
-    points = points.filter((_, idx) => idx % step === 0);
+    const down = points.filter((_, idx) => idx % step === 0);
+    // zajisti, že poslední bod (nejnovější) zůstane vždy v datech
+    const last = points[points.length - 1];
+    if (!down.length || down[down.length - 1].t !== last.t) down.push(last);
+    points = down;
   }
+
+  // jistota řazení podle času
+  points.sort((a, b) => a.t - b.t);
 
   return points;
 }
@@ -161,7 +185,7 @@ function pctChange(latest: number, past: number) {
 async function computeGoldCzkSeriesAndChanges(): Promise<
   | {
       czkSeries: DailyPoint[];
-      changesPct: { "1y": number; "2y": number; "3y": number; "5y": number; "10y": number };
+      changesPct: { "1d": number; "3m": number; "1y": number; "2y": number; "3y": number; "5y": number; "10y": number };
       asOfDate: string;
     }
   | null
@@ -205,21 +229,33 @@ async function computeGoldCzkSeriesAndChanges(): Promise<
   const latest = czkSeries[czkSeries.length - 1];
 
   const now = new Date(latest.date + "T00:00:00Z");
-  const t1 = toYmd(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
-  const t2 = toYmd(new Date(now.getFullYear() - 2, now.getMonth(), now.getDate()));
-  const t3 = toYmd(new Date(now.getFullYear() - 3, now.getMonth(), now.getDate()));
-  const t5 = toYmd(new Date(now.getFullYear() - 5, now.getMonth(), now.getDate()));
-  const t10 = toYmd(new Date(now.getFullYear() - 10, now.getMonth(), now.getDate()));
 
+  // 3 měsíce zpět (kalendářně)
+  const now3m = new Date(now);
+  now3m.setUTCMonth(now3m.getUTCMonth() - 3);
+  const t3m = toYmd(now3m);
+
+  const t1 = toYmd(new Date(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate()));
+  const t2 = toYmd(new Date(now.getUTCFullYear() - 2, now.getUTCMonth(), now.getUTCDate()));
+  const t3 = toYmd(new Date(now.getUTCFullYear() - 3, now.getUTCMonth(), now.getUTCDate()));
+  const t5 = toYmd(new Date(now.getUTCFullYear() - 5, now.getUTCMonth(), now.getUTCDate()));
+  const t10 = toYmd(new Date(now.getUTCFullYear() - 10, now.getUTCMonth(), now.getUTCDate()));
+
+  const p3m = findClosestOnOrBefore(czkSeries, t3m);
   const p1 = findClosestOnOrBefore(czkSeries, t1);
   const p2 = findClosestOnOrBefore(czkSeries, t2);
   const p3 = findClosestOnOrBefore(czkSeries, t3);
   const p5 = findClosestOnOrBefore(czkSeries, t5);
   const p10 = findClosestOnOrBefore(czkSeries, t10);
 
-  if (!p1 || !p2 || !p3 || !p5 || !p10) return null;
+  // 1d = změna proti předchozímu dostupnému dni (typicky včerejšek; o víkendu pátek)
+  const prevDay = czkSeries.length >= 2 ? czkSeries[czkSeries.length - 2] : null;
+
+  if (!p3m || !p1 || !p2 || !p3 || !p5 || !p10 || !prevDay) return null;
 
   const changesPct = {
+    "1d": pctChange(latest.close, prevDay.close),
+    "3m": pctChange(latest.close, p3m.close),
     "1y": pctChange(latest.close, p1.close),
     "2y": pctChange(latest.close, p2.close),
     "3y": pctChange(latest.close, p3.close),
@@ -300,15 +336,18 @@ export async function GET(req: Request) {
     const daysParam = url.searchParams.get("days");
     const rangeParam = url.searchParams.get("range");
 
-    const daysFromRange = rangeToDays(rangeParam);
     const daysFromParam = daysParam ? Number.parseInt(daysParam, 10) : NaN;
 
+    // MAX může přijít buď přes `range=max|all`, nebo některé UI posílá extrémně vysoké `days`
+    const maxMode = isMaxRange(rangeParam) || (Number.isFinite(daysFromParam) && daysFromParam >= 3652 * 2);
+
+    const daysFromRange = maxMode ? null : rangeToDays(rangeParam);
+
     // default: 3 roky (aby graf hned dával smysl)
-    const days = clamp(
-      Number.isFinite(daysFromParam) ? daysFromParam : daysFromRange ?? 1095,
-      7,
-      3652
-    );
+    // Pozn.: 10 let je limit pouze pro "ne-MAX" režimy, aby graf zůstal svižný.
+    const days = maxMode
+      ? null
+      : clamp(Number.isFinite(daysFromParam) ? daysFromParam : daysFromRange ?? 1095, 7, 3652);
 
     const [usdPerOz, usdCzk, histAll] = await Promise.all([
       fetchGoldUsdPerOz(),
@@ -327,13 +366,24 @@ export async function GET(req: Request) {
       // percent změny jsou vždy v CZK/oz (nezávisle na UI jednotkách)
       ...(histAll ? { changesPct: histAll.changesPct, asOfDate: histAll.asOfDate } : {}),
       history, // denní (downsampled) CZK/oz body pro graf
-      historyDays: days,
+      historyDays: days ?? null,
+      historyMax: maxMode,
     });
   } catch (err: any) {
     // fallback: poslední úspěšná hodnota (pokud existuje)
     if (lastOk) {
+      const fallbackUrl = new URL(req.url);
+      const fallbackRange = fallbackUrl.searchParams.get("range");
+      const fallbackDaysParam = fallbackUrl.searchParams.get("days");
+      const fallbackDaysFromParam = fallbackDaysParam ? Number.parseInt(fallbackDaysParam, 10) : NaN;
+
+      const fallbackMax =
+        isMaxRange(fallbackRange) || (Number.isFinite(fallbackDaysFromParam) && fallbackDaysFromParam >= 3652 * 2);
+
       const histAll = await computeGoldCzkSeriesAndChanges().catch(() => null);
-      const history = histAll?.czkSeries ? buildHistoryPointsFromCzkSeries(histAll.czkSeries, 1095) : [];
+      const history = histAll?.czkSeries
+        ? buildHistoryPointsFromCzkSeries(histAll.czkSeries, fallbackMax ? null : 1095)
+        : [];
 
       return NextResponse.json({
         ok: true,
@@ -341,7 +391,8 @@ export async function GET(req: Request) {
         stale: true,
         ...(histAll ? { changesPct: histAll.changesPct, asOfDate: histAll.asOfDate } : {}),
         history,
-        historyDays: 1095,
+        historyDays: fallbackMax ? null : 1095,
+        historyMax: fallbackMax,
       });
     }
 

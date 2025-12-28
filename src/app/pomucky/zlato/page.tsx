@@ -25,6 +25,8 @@ type GoldApiResponse = {
   czkSeries?: any[];
 
   changes?: {
+    d1?: number;
+    m3?: number;
     y1?: number;
     y2?: number;
     y3?: number;
@@ -32,6 +34,8 @@ type GoldApiResponse = {
     y10?: number;
   };
   changesPct?: {
+    "1d"?: number;
+    "3m"?: number;
     "1y"?: number;
     "2y"?: number;
     "3y"?: number;
@@ -46,8 +50,12 @@ const UNITS = {
   g1: { label: "1 g", grams: 1 },
   g5: { label: "5 g", grams: 5 },
   g10: { label: "10 g", grams: 10 },
-  oz: { label: "Unce", grams: OUNCE_G },
+  g20: { label: "20 g", grams: 20 },
+  oz: { label: "1 oz", grams: OUNCE_G },
   g50: { label: "50 g", grams: 50 },
+  g100: { label: "100 g", grams: 100 },
+  g250: { label: "250 g", grams: 250 },
+  kg1: { label: "1 kg", grams: 1000 },
 } as const;
 
 const RANGES = {
@@ -57,10 +65,21 @@ const RANGES = {
   y3: { label: "3 roky", days: 3 * 366 },
   y5: { label: "5 let", days: 5 * 366 },
   y10: { label: "10 let", days: 10 * 366 },
+  max: { label: "MAX", days: 30 * 366 },
 } as const;
 
 type UnitKey = keyof typeof UNITS;
 type RangeKey = keyof typeof RANGES;
+
+function downsamplePoints(pts: Point[], maxPoints = 1400): Point[] {
+  if (!pts || pts.length <= maxPoints) return pts;
+  const step = Math.ceil(pts.length / maxPoints);
+  const out: Point[] = [];
+  for (let i = 0; i < pts.length; i += step) out.push(pts[i]);
+  const last = pts[pts.length - 1];
+  if (out[out.length - 1]?.t !== last.t) out.push(last);
+  return out;
+}
 
 function formatCzk(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return "—";
@@ -195,6 +214,8 @@ async function fetchGold(input?: { days?: number; range?: RangeKey }): Promise<{
     j.changes ??
     (fromPct
       ? {
+          d1: Number.isFinite(Number(fromPct["1d"])) ? Number(fromPct["1d"]) : undefined,
+          m3: Number.isFinite(Number(fromPct["3m"])) ? Number(fromPct["3m"]) : undefined,
           y1: Number.isFinite(Number(fromPct["1y"])) ? Number(fromPct["1y"]) : undefined,
           y2: Number.isFinite(Number(fromPct["2y"])) ? Number(fromPct["2y"]) : undefined,
           y3: Number.isFinite(Number(fromPct["3y"])) ? Number(fromPct["3y"]) : undefined,
@@ -477,13 +498,84 @@ export default function GoldToolPage() {
     return (czkPerOz / OUNCE_G) * selected.grams;
   }, [czkPerOz, selected.grams]);
 
+  // animovaný „counter“ pro hlavní cenu
+  const [displayPrice, setDisplayPrice] = useState<number | null>(null);
+  const animRef = useRef<number | null>(null);
+  const displayedRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const target = czkForSelectedUnit;
+
+    if (loading || target == null || !Number.isFinite(target)) {
+      setDisplayPrice(null);
+      displayedRef.current = null;
+      if (animRef.current) {
+        window.cancelAnimationFrame(animRef.current);
+        animRef.current = null;
+      }
+      return;
+    }
+
+    const from = displayedRef.current;
+
+    // první render / po chybě: nastav rovnou bez animace
+    if (from == null || !Number.isFinite(from)) {
+      setDisplayPrice(target);
+      displayedRef.current = target;
+      return;
+    }
+
+    const diff = target - from;
+
+    // drobná změna: bez animace
+    if (Math.abs(diff) < 0.5) {
+      setDisplayPrice(target);
+      displayedRef.current = target;
+      return;
+    }
+
+    if (animRef.current) {
+      window.cancelAnimationFrame(animRef.current);
+      animRef.current = null;
+    }
+
+    const start = performance.now();
+    const duration = 650; // ms
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const v = from + diff * easeOutCubic(t);
+      setDisplayPrice(v);
+      displayedRef.current = v;
+
+      if (t < 1) {
+        animRef.current = window.requestAnimationFrame(step);
+      } else {
+        animRef.current = null;
+        displayedRef.current = target;
+        setDisplayPrice(target);
+      }
+    };
+
+    animRef.current = window.requestAnimationFrame(step);
+
+    return () => {
+      if (animRef.current) {
+        window.cancelAnimationFrame(animRef.current);
+        animRef.current = null;
+      }
+    };
+  }, [czkForSelectedUnit, loading, unit]);
+
   // graf kopíruje vybranou jednotku
   const chartPoints: Point[] = useMemo(() => {
     const base = history.length >= 2 ? history : series;
     if (!base.length) return [];
 
     const factor = selected.grams / OUNCE_G;
-    return base.map((p) => ({ t: p.t, v: p.v * factor }));
+    const scaled = base.map((p) => ({ t: p.t, v: p.v * factor }));
+    return downsamplePoints(scaled, 1400);
   }, [history, series, selected.grams]);
 
   const loadInitial = async (days: number) => {
@@ -563,31 +655,36 @@ export default function GoldToolPage() {
           </Link>
         </header>
 
-        <section className="rounded-4xl border border-white/10 bg-white/5 backdrop-blur-3xl px-6 py-6 sm:px-8 sm:py-8 shadow-[0_28px_90px_rgba(0,0,0,0.75)] space-y-6">
+        <section className="space-y-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-white">Aktuální cena</h2>
               <p className="text-xs text-slate-300">
-                Zobrazení v CZK. Přepínej jednotky (g / unce). Graf je historický dle vybraného rozsahu, aktuální cena se
+                Zobrazení v CZK. Aktuální cena se
                 obnovuje cca 1× za minutu.
               </p>
             </div>
-            <div className="flex gap-2 sm:justify-end flex-wrap">
-              {(Object.keys(UNITS) as UnitKey[]).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setUnit(k)}
-                  className={[
-                    "rounded-full px-4 py-2 text-sm font-semibold border transition",
-                    unit === k
-                      ? "border-emerald-200/80 bg-emerald-500/20 text-emerald-50 shadow-[0_0_22px_rgba(16,185,129,0.35)]"
-                      : "border-white/15 bg-white/5 text-slate-100 hover:bg-white/10",
-                  ].join(" ")}
-                >
-                  {UNITS[k].label}
-                </button>
-              ))}
+            <div className="sm:justify-end">
+              <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-white/15 bg-white/5 p-1 backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.35)]">
+                {(Object.keys(UNITS) as UnitKey[]).map((k) => {
+                  const active = unit === k;
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setUnit(k)}
+                      className={[
+                        "whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition",
+                        active
+                          ? "bg-emerald-500/25 text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.25)]"
+                          : "text-slate-100 hover:bg-white/10",
+                      ].join(" ")}
+                    >
+                      {UNITS[k].label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -599,22 +696,28 @@ export default function GoldToolPage() {
 
           <div className="space-y-4">
             <div className="rounded-3xl border border-white/10 bg-slate-950/50 px-5 py-5 space-y-4">
-              <div className="text-[11px] uppercase tracking-wider text-slate-400">Cena ({selected.label})</div>
-              <div className="text-3xl sm:text-4xl font-semibold text-white">
-                {loading ? "Načítám…" : formatCzk(czkForSelectedUnit)}
-              </div>
-              <div className="text-xs text-slate-400">
-                {lastUpdated ? `Aktualizováno: ${lastUpdated.toLocaleString("cs-CZ")}` : ""}
-              </div>
+              <div className="grid gap-4 md:grid-cols-[1fr_360px] md:items-start">
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400">Cena ({selected.label})</div>
+                  <div className="text-6xl sm:text-7xl lg:text-[5.25rem] font-semibold leading-none tracking-tight text-emerald-200 drop-shadow-[0_0_18px_rgba(16,185,129,0.18)]">
+                    {loading ? "Načítám…" : formatCzk(displayPrice ?? czkForSelectedUnit)}
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    {lastUpdated ? `Aktualizováno: ${lastUpdated.toLocaleString("cs-CZ")}` : ""}
+                  </div>
+                </div>
 
-              <div className="space-y-2">
-                <div className="text-[11px] uppercase tracking-wider text-slate-400">Nárůst / pokles (CZK / unce)</div>
-                <div className="flex flex-wrap gap-2">
-                  <ChangeChip label="1 rok" value={changes?.y1} />
-                  <ChangeChip label="2 roky" value={changes?.y2} />
-                  <ChangeChip label="3 roky" value={changes?.y3} />
-                  <ChangeChip label="5 let" value={changes?.y5} />
-                  <ChangeChip label="10 let" value={changes?.y10} />
+                <div className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400">Nárůst / pokles (CZK / unce)</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <ChangeChip label="1 den" value={changes?.d1} />
+                    <ChangeChip label="3 měsíce" value={changes?.m3} />
+                    <ChangeChip label="1 rok" value={changes?.y1} />
+                    <ChangeChip label="2 roky" value={changes?.y2} />
+                    <ChangeChip label="3 roky" value={changes?.y3} />
+                    <ChangeChip label="5 let" value={changes?.y5} />
+                    <ChangeChip label="10 let" value={changes?.y10} />
+                  </div>
                 </div>
               </div>
 
