@@ -104,6 +104,30 @@ body {
   margin: 0;
 }
 
+/* Vypnutí animací pro uživatele (toggle nebo prefers-reduced-motion) */
+:root[data-motion="off"] {
+  scroll-behavior: auto !important;
+}
+
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    scroll-behavior: auto !important;
+  }
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
 /* Dark varianta shadcn */
 .dark {
   --background: oklch(0.145 0 0);

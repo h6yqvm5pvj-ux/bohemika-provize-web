@@ -1,7 +1,7 @@
 // src/app/smlouvy/[id]/page.tsx
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -88,6 +88,12 @@ type ContractDoc = {
   createdAt?: FirestoreTimestamp | Date | string | null;
 
   durationYears?: number | null;
+};
+
+type ToastMessage = {
+  id: number;
+  type: "success" | "error";
+  message: string;
 };
 
 function nameFromEmail(email?: string | null): string {
@@ -427,6 +433,61 @@ function calculateResultForPosition(
   }
 }
 
+const Spinner = ({ className = "h-4 w-4" }: { className?: string }) => (
+  <span
+    className={`inline-block animate-spin rounded-full border-2 border-white/30 border-t-white/80 ${className}`}
+    aria-hidden="true"
+  />
+);
+
+const Skeleton = ({ className = "" }: { className?: string }) => (
+  <div className={`animate-pulse rounded-xl bg-white/10 ${className}`} />
+);
+
+function Toasts({
+  items,
+  onDismiss,
+}: {
+  items: ToastMessage[];
+  onDismiss: (id: number) => void;
+}) {
+  return (
+    <div className="pointer-events-none fixed top-6 right-4 z-50 flex max-w-md flex-col gap-3">
+      {items.map((toast) => {
+        const isError = toast.type === "error";
+        return (
+          <div
+            key={toast.id}
+            className={`pointer-events-auto rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-md ${
+              isError
+                ? "border-rose-400/50 bg-rose-600/20 text-rose-50 shadow-rose-900/40"
+                : "border-emerald-400/50 bg-emerald-500/20 text-emerald-50 shadow-emerald-900/40"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={`mt-0.5 h-2.5 w-2.5 rounded-full ${
+                  isError ? "bg-rose-300" : "bg-emerald-300"
+                }`}
+                aria-hidden="true"
+              />
+              <div className="flex-1 text-sm font-medium">{toast.message}</div>
+              <button
+                type="button"
+                onClick={() => onDismiss(toast.id)}
+                className="text-xs text-white/80 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/60 rounded-full px-2"
+                aria-label="Zavřít upozornění"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ---------- PAGE ----------
 
 export default function ContractDetailPage() {
@@ -481,6 +542,46 @@ export default function ContractDetailPage() {
   const [noteSaved, setNoteSaved] = useState(false);
   const [updatingPaid, setUpdatingPaid] = useState(false);
   const [paidError, setPaidError] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const toastTimeouts = useRef<number[]>([]);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const pushToast = useCallback(
+    (message: string, type: ToastMessage["type"] = "success") => {
+      const id = Date.now() + Math.floor(Math.random() * 1000);
+      setToasts((prev) => [...prev, { id, type, message }]);
+      const timeoutId = window.setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+        toastTimeouts.current = toastTimeouts.current.filter((tid) => tid !== timeoutId);
+      }, 3800);
+      toastTimeouts.current.push(timeoutId);
+    },
+    []
+  );
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      toastTimeouts.current.forEach((id) => clearTimeout(id));
+    };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowDeleteModal(false);
+      }
+    };
+    if (showDeleteModal) {
+      window.addEventListener("keydown", onKey);
+    }
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [showDeleteModal]);
 
   // auth
   useEffect(() => {
@@ -689,9 +790,11 @@ export default function ContractDetailPage() {
 
       setEditMode(false);
       setDetailsSaved(true);
+      pushToast("Detaily smlouvy byly uloženy.", "success");
     } catch (e) {
       console.error("Chyba při ukládání detailů smlouvy:", e);
       setDetailsError("Nepodařilo se uložit změny. Zkus to prosím znovu.");
+      pushToast("Nepodařilo se uložit změny. Zkus to prosím znovu.", "error");
     } finally {
       setSavingDetails(false);
     }
@@ -708,9 +811,11 @@ export default function ContractDetailPage() {
       await updateDoc(ref, { note: noteDraft.trim() });
       setContract((prev) => (prev ? { ...prev, note: noteDraft.trim() } : prev));
       setNoteSaved(true);
+      pushToast("Poznámka byla uložena.", "success");
     } catch (e) {
       console.error("Chyba při ukládání poznámky:", e);
       setNoteError("Poznámku se nepodařilo uložit. Zkus to prosím znovu.");
+      pushToast("Poznámku se nepodařilo uložit. Zkus to prosím znovu.", "error");
     } finally {
       setSavingNote(false);
     }
@@ -725,9 +830,14 @@ export default function ContractDetailPage() {
       const ref = doc(db, "users", ownerEmail, "entries", entryId);
       await updateDoc(ref, { paid: nextValue });
       setContract((prev) => (prev ? { ...prev, paid: nextValue } : prev));
+      pushToast(
+        nextValue ? "Smlouva označena jako zaplacená." : "Platba označena jako neuhrazená.",
+        "success"
+      );
     } catch (e) {
       console.error("Chyba při ukládání stavu platby:", e);
       setPaidError("Nepodařilo se uložit stav platby. Zkus to prosím znovu.");
+      pushToast("Nepodařilo se uložit stav platby. Zkus to prosím znovu.", "error");
     } finally {
       setUpdatingPaid(false);
     }
@@ -915,23 +1025,21 @@ export default function ContractDetailPage() {
   // mazání smlouvy
   const handleDelete = async () => {
     if (!ownerEmail || !entryId) return;
-    const confirmed = window.confirm(
-      "Opravdu chceš tuto smlouvu smazat? Tuto akci nelze vrátit."
-    );
-    if (!confirmed) return;
-
     setDeleting(true);
     setDeleteError(null);
 
     try {
       const ref = doc(db, "users", ownerEmail, "entries", entryId);
       await deleteDoc(ref);
+      setShowDeleteModal(false);
+      pushToast("Smlouva byla smazána.", "success");
       window.location.href = "/smlouvy";
     } catch (e) {
       console.error("Chyba při mazání smlouvy:", e);
       setDeleteError(
         "Smlouvu se nepodařilo smazat. Zkus to prosím znovu."
       );
+      pushToast("Smlouvu se nepodařilo smazat. Zkus to prosím znovu.", "error");
       setDeleting(false);
     }
   };
@@ -976,6 +1084,70 @@ export default function ContractDetailPage() {
     isManagerViewingSubordinate &&
     childOverrideLabel;
 
+  const renderLoadingSkeleton = () => (
+    <div className="space-y-6">
+      <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
+          <Skeleton className="h-3 w-20 mb-2" />
+          <Skeleton className="h-7 w-40" />
+        </div>
+        <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
+          <Skeleton className="h-3 w-20 mb-2" />
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-12 w-12 rounded-2xl" />
+            <Skeleton className="h-6 w-36" />
+          </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl">
+          <Skeleton className="h-4 w-28 mb-4" />
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={`s-basic-${i}`} className="flex justify-between gap-3">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-3 w-28" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl">
+          <Skeleton className="h-4 w-28 mb-4" />
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={`s-dates-${i}`} className="flex justify-between gap-3">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-3 w-28" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3">
+        <Skeleton className="h-4 w-32 mb-4" />
+        <div className="divide-y divide-white/10">
+          {[1, 2, 3].map((i) => (
+            <div key={`s-provize-${i}`} className="flex items-center justify-between gap-3 py-3">
+              <Skeleton className="h-3 w-40" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+          ))}
+          <div className="flex items-center justify-between pt-3">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-4 w-24" />
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
+        <Skeleton className="h-4 w-32 mb-4" />
+        <Skeleton className="h-24 w-full" />
+      </section>
+    </div>
+  );
+
   return (
     <main className="relative min-h-screen overflow-hidden text-slate-50">
       {/* Plasma pozadí jako na ostatních stránkách */}
@@ -990,6 +1162,8 @@ export default function ContractDetailPage() {
           animated={false}
         />
       </div>
+
+      <Toasts items={toasts} onDismiss={dismissToast} />
 
       <div className="relative flex min-h-screen items-center justify-center px-4 py-10">
         <div className="w-full max-w-4xl">
@@ -1008,13 +1182,14 @@ export default function ContractDetailPage() {
                     type="button"
                     onClick={handleTogglePaid}
                     disabled={updatingPaid}
-                    className={`rounded-full px-3 py-1.5 text-xs sm:text-sm font-semibold border transition ${
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs sm:text-sm font-semibold border transition ${
                       contract?.paid
                         ? "bg-emerald-500/80 border-emerald-400 text-emerald-900"
                         : "bg-rose-500/20 border-rose-400/70 text-rose-100"
                     } ${updatingPaid ? "opacity-60" : ""}`}
                   >
-                    {contract?.paid ? "Zaplaceno" : "Nezaplaceno"}
+                    {updatingPaid && <Spinner className="h-3 w-3 border-2 border-emerald-100/70 border-t-white/90" />}
+                    <span>{contract?.paid ? "Zaplaceno" : "Nezaplaceno"}</span>
                   </button>
                 )}
 
@@ -1037,9 +1212,12 @@ export default function ContractDetailPage() {
                       type="button"
                       onClick={handleSaveDetails}
                       disabled={savingDetails}
-                      className="rounded-xl border border-emerald-300/50 bg-emerald-500/70 px-3 py-2 text-xs sm:text-sm font-semibold text-emerald-950 hover:bg-emerald-400 transition disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/50 bg-emerald-500/70 px-3 py-2 text-xs sm:text-sm font-semibold text-emerald-950 hover:bg-emerald-400 transition disabled:opacity-60"
                     >
-                      {savingDetails ? "Ukládám…" : "Uložit změny"}
+                      {savingDetails && (
+                        <Spinner className="h-3.5 w-3.5 border-emerald-100/90 border-t-emerald-900" />
+                      )}
+                      <span>{savingDetails ? "Ukládám…" : "Uložit změny"}</span>
                     </button>
                     <button
                       type="button"
@@ -1075,102 +1253,99 @@ export default function ContractDetailPage() {
               </div>
             )}
 
-            {/* Klient / Produkt boxy */}
-            <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-1.5">
-                  Klient
-                </div>
-                {editMode ? (
-                  <input
-                    type="text"
-                    value={editClientName}
-                    onChange={(e) => setEditClientName(e.target.value)}
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-lg font-semibold text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                    placeholder="Jméno klienta"
-                  />
-                ) : (
-                  <div className="text-2xl font-semibold text-slate-50">
-                    {contract?.clientName ?? "—"}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-1.5">
-                  Produkt
-                </div>
-                <div className="text-lg font-semibold text-slate-50">
-                  <div className="flex items-center gap-3">
-                    <Image
-                      src={productIcon(prod)}
-                      alt="Produkt"
-                      width={56}
-                      height={56}
-                      className="h-12 w-auto"
-                    />
-                    <span>{productLabel(prod)}</span>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Info o poradci – zobraz pouze manažerovi na podřízené smlouvě */}
-            {contract && isManagerViewingSubordinate && (
-              <section className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
-                <h3 className="text-sm font-semibold text-slate-100 mb-2">
-                  Poradce
-                </h3>
-                <dl className="space-y-1 text-sm text-slate-200">
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-slate-300">Sjednal</dt>
-                    <dd className="font-semibold text-right">
-                      {nameFromEmail(contract.userEmail)}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-slate-300">Pozice</dt>
-                    <dd className="font-semibold text-right">
-                      {positionLabel(
-                        ownerPosition ?? (contract.position as Position | null)
-                      )}
-                    </dd>
-                  </div>
-                  {ownerManagerEmail && (
-                    <div className="flex justify-between gap-2">
-                      <dt className="text-slate-300">Nadřízený</dt>
-                      <dd className="font-semibold text-right">
-                        {nameFromEmail(ownerManagerEmail)}
-                        {ownerManagerPosition && (
-                          <span className="text-[11px] text-slate-400 block">
-                            {positionLabel(ownerManagerPosition)}
-                          </span>
-                        )}
-                      </dd>
-                    </div>
-                  )}
-                </dl>
-              </section>
-            )}
-
-            {/* STAVY */}
-            {loading && (
-              <p className="text-sm text-slate-300">Načítám smlouvu…</p>
-            )}
-
-            {!loading && error && (
+            {loading ? (
+              renderLoadingSkeleton()
+            ) : error ? (
               <div className="rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
                 {error}
               </div>
-            )}
-            {!loading && paidError && (
-              <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
-                {paidError}
-              </div>
-            )}
+            ) : contract ? (
+              <>
+                {/* Klient / Produkt boxy */}
+                <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
+                    <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-1.5">
+                      Klient
+                    </div>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={editClientName}
+                        onChange={(e) => setEditClientName(e.target.value)}
+                        className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-lg font-semibold text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                        placeholder="Jméno klienta"
+                      />
+                    ) : (
+                      <div className="text-2xl font-semibold text-slate-50">
+                        {contract?.clientName ?? "—"}
+                      </div>
+                    )}
+                  </div>
 
-            {!loading && !error && contract && (
-              <div className="space-y-6">
+                  <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
+                    <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-1.5">
+                      Produkt
+                    </div>
+                    <div className="text-lg font-semibold text-slate-50">
+                      <div className="flex items-center gap-3">
+                        <Image
+                          src={productIcon(prod)}
+                          alt="Produkt"
+                          width={56}
+                          height={56}
+                          className="h-12 w-auto"
+                        />
+                        <span>{productLabel(prod)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Info o poradci – zobraz pouze manažerovi na podřízené smlouvě */}
+                {contract && isManagerViewingSubordinate && (
+                  <section className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
+                    <h3 className="text-sm font-semibold text-slate-100 mb-2">
+                      Poradce
+                    </h3>
+                    <dl className="space-y-1 text-sm text-slate-200">
+                      <div className="flex justify-between gap-2">
+                        <dt className="text-slate-300">Sjednal</dt>
+                        <dd className="font-semibold text-right">
+                          {nameFromEmail(contract.userEmail)}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <dt className="text-slate-300">Pozice</dt>
+                        <dd className="font-semibold text-right">
+                          {positionLabel(
+                            ownerPosition ?? (contract.position as Position | null)
+                          )}
+                        </dd>
+                      </div>
+                      {ownerManagerEmail && (
+                        <div className="flex justify-between gap-2">
+                          <dt className="text-slate-300">Nadřízený</dt>
+                          <dd className="font-semibold text-right">
+                            {nameFromEmail(ownerManagerEmail)}
+                            {ownerManagerPosition && (
+                              <span className="text-[11px] text-slate-400 block">
+                                {positionLabel(ownerManagerPosition)}
+                              </span>
+                            )}
+                          </dd>
+                        </div>
+                      )}
+                    </dl>
+                  </section>
+                )}
+
+                {paidError && (
+                  <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+                    {paidError}
+                  </div>
+                )}
+
+                <div className="space-y-6">
                 {/* ZÁKLADNÍ INFO */}
                 <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl">
@@ -1476,7 +1651,10 @@ export default function ContractDetailPage() {
                           disabled={savingNote}
                           className="inline-flex items-center rounded-xl border border-emerald-400/70 bg-emerald-500/25 px-4 py-2 text-xs sm:text-sm font-semibold text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.4)] hover:bg-emerald-500/35 hover:border-emerald-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
                         >
-                          {savingNote ? "Ukládám…" : "Uložit poznámku"}
+                          {savingNote && (
+                            <Spinner className="h-3.5 w-3.5 border-emerald-100/90 border-t-emerald-900" />
+                          )}
+                          <span>{savingNote ? "Ukládám…" : "Uložit poznámku"}</span>
                         </button>
                       </div>
                     </div>
@@ -1499,19 +1677,89 @@ export default function ContractDetailPage() {
                   <div className="flex justify-end">
                     <button
                       type="button"
-                      onClick={handleDelete}
+                      onClick={() => {
+                        setDeleteError(null);
+                        setShowDeleteModal(true);
+                      }}
                       disabled={deleting}
                       className="inline-flex items-center rounded-xl border border-red-500/70 bg-red-600/80 px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-lg shadow-red-500/40 hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      {deleting ? "Mažu…" : "Smazat smlouvu"}
+                      {deleting && (
+                        <Spinner className="h-4 w-4 border-white/80 border-t-red-900" />
+                      )}
+                      <span>{deleting ? "Mažu…" : "Smazat smlouvu"}</span>
                     </button>
                   </div>
                 </section>
               </div>
-            )}
+              </>
+            ) : null}
           </div>
         </div>
       </div>
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+            aria-label="Zavřít potvrzení mazání"
+            onClick={() => setShowDeleteModal(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Potvrzení smazání smlouvy"
+            className="relative z-10 w-full max-w-md rounded-2xl border border-red-400/60 bg-slate-950/95 p-6 shadow-2xl shadow-red-900/40"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-50">
+                  Opravdu smazat smlouvu?
+                </h3>
+                <p className="mt-1 text-sm text-slate-300">
+                  Akce je nevratná. Potvrď prosím kliknutím na tlačítko Smazat.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="rounded-full px-2 text-slate-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-red-300"
+                aria-label="Zavřít"
+              >
+                ×
+              </button>
+            </div>
+
+            {deleteError && (
+              <p className="mt-3 text-xs text-rose-200 bg-rose-900/40 border border-rose-500/50 rounded-lg px-3 py-2">
+                {deleteError}
+              </p>
+            )}
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-xs sm:text-sm text-slate-50 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="inline-flex items-center gap-2 rounded-xl border border-red-400/70 bg-red-600/80 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-lg shadow-red-500/40 hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {deleting && (
+                  <Spinner className="h-4 w-4 border-white/80 border-t-red-900" />
+                )}
+                <span>{deleting ? "Mažu…" : "Smazat"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

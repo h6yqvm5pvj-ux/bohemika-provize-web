@@ -54,6 +54,7 @@ const SETTINGS_KEYS = {
   monthlyGoal: "settings.monthlyGoal",
   simpleBackground: "settings.simpleBackground",
   backgroundColor: "settings.backgroundColor",
+  reduceMotion: "settings.reduceMotion",
 };
 
 function formatMoney(value: number): string {
@@ -88,6 +89,17 @@ export default function SettingsPage() {
   const [notifyMinutes, setNotifyMinutes] = useState<number>(60);
   const [simpleBackground, setSimpleBackground] = useState(false);
   const [backgroundColor, setBackgroundColor] = useState<"black" | "blue">("black");
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  const applyMotionPreference = (off: boolean) => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    if (off) {
+      root.setAttribute("data-motion", "off");
+    } else {
+      root.removeAttribute("data-motion");
+    }
+  };
 
   // auth
   useEffect(() => {
@@ -193,6 +205,24 @@ export default function SettingsPage() {
               SETTINGS_KEYS.backgroundColor
             ) as "black" | "blue" | null;
             if (stored) setBackgroundColor(stored);
+            const storedMotion = window.localStorage.getItem(
+              SETTINGS_KEYS.reduceMotion
+            );
+            if (storedMotion === "1") {
+              setReduceMotion(true);
+              applyMotionPreference(true);
+            }
+          }
+
+          if (typeof data.reduceMotion === "boolean") {
+            setReduceMotion(data.reduceMotion);
+            applyMotionPreference(data.reduceMotion);
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(
+                SETTINGS_KEYS.reduceMotion,
+                data.reduceMotion ? "1" : "0"
+              );
+            }
           }
           if (typeof data.fcmToken === "string" && data.fcmToken.trim().length > 0) {
             setFcmActive(true);
@@ -228,6 +258,13 @@ export default function SettingsPage() {
             if (Number.isFinite(n)) setMonthlyGoal(n);
             if (storedSimple === "1") setSimpleBackground(true);
             if (storedColor) setBackgroundColor(storedColor);
+            const storedMotion = window.localStorage.getItem(
+              SETTINGS_KEYS.reduceMotion
+            );
+            if (storedMotion === "1") {
+              setReduceMotion(true);
+              applyMotionPreference(true);
+            }
           }
         }
       } catch (e) {
@@ -239,6 +276,10 @@ export default function SettingsPage() {
 
     loadMeta();
   }, [user]);
+
+  useEffect(() => {
+    applyMotionPreference(reduceMotion);
+  }, [reduceMotion]);
 
   async function saveUserFields(partial: Record<string, any>) {
     const email = user?.email;
@@ -314,6 +355,17 @@ export default function SettingsPage() {
       simpleBackground: !isPlasma,
       backgroundColor: color,
     });
+  };
+
+  const handleReduceMotionChange = async (value: boolean) => {
+    setReduceMotion(value);
+    applyMotionPreference(value);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SETTINGS_KEYS.reduceMotion, value ? "1" : "0");
+    }
+
+    await saveUserFields({ reduceMotion: value });
   };
 
   const handleChangePassword = async () => {
@@ -558,7 +610,7 @@ export default function SettingsPage() {
               {/* Vzhled */}
               <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
                       <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
                         Pozadí aplikace
@@ -566,6 +618,29 @@ export default function SettingsPage() {
                       <p className="text-xs text-slate-400">
                         Vyber, zda chceš animovanou plasmu, nebo jednoduchou barvu.
                       </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs uppercase tracking-[0.16em] text-slate-400">
+                        Animace
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleReduceMotionChange(!reduceMotion)}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          reduceMotion
+                            ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
+                            : "border-white/20 bg-white/5 text-slate-100 hover:border-white/35"
+                        }`}
+                        aria-pressed={reduceMotion}
+                      >
+                        <span
+                          className={`h-2.5 w-2.5 rounded-full ${
+                            reduceMotion ? "bg-emerald-300" : "bg-slate-300"
+                          }`}
+                          aria-hidden="true"
+                        />
+                        {reduceMotion ? "Animace vypnuté" : "Animace zapnuté"}
+                      </button>
                     </div>
                   </div>
 

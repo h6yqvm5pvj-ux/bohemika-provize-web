@@ -14,6 +14,7 @@ export default function ToolsPage() {
     "Pojištění vozidel",
     "Životní pojištění",
     "Finance",
+    "Investice",
     "Obecné",
   ] as const;
 
@@ -37,7 +38,7 @@ export default function ToolsPage() {
       },
       {
         key: "investicni-kalkulacka",
-        category: "Obecné",
+        category: "Investice",
         title: "Investiční kalkulačka",
         description: "Spočítej konečnou hodnotu investice při pravidelných vkladech.",
         href: "/pomucky/investicni-kalkulacka",
@@ -55,6 +56,13 @@ export default function ToolsPage() {
         title: "Plán produkce",
         description: "Naplánuj si cíleně Produkci a rovnou uvidíš svou odměnu. Můžeš i stáhnout v PDF.",
         href: "/pomucky/plan-produkce",
+      },
+      {
+        key: "zlato",
+        category: "Investice",
+        title: "Zlato",
+        description: "Přehled a kalkulace pro investice do zlata.",
+        href: "/pomucky/zlato",
       },
       {
         key: "katastr",
