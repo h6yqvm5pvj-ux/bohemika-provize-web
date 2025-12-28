@@ -563,16 +563,15 @@ export default function GoldToolPage() {
           </Link>
         </header>
 
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-            <div className="space-y-1">
+        <section className="rounded-4xl border border-white/10 bg-white/5 backdrop-blur-3xl px-6 py-6 sm:px-8 sm:py-8 shadow-[0_28px_90px_rgba(0,0,0,0.75)] space-y-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
               <h2 className="text-lg font-semibold text-white">Aktuální cena</h2>
               <p className="text-xs text-slate-300">
                 Zobrazení v CZK. Přepínej jednotky (g / unce). Graf je historický dle vybraného rozsahu, aktuální cena se
                 obnovuje cca 1× za minutu.
               </p>
             </div>
-
             <div className="flex gap-2 sm:justify-end flex-wrap">
               {(Object.keys(UNITS) as UnitKey[]).map((k) => (
                 <button
@@ -598,17 +597,28 @@ export default function GoldToolPage() {
             </div>
           ) : null}
 
-          <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-3xl border border-white/10 bg-slate-950/40 px-5 py-5">
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-white/10 bg-slate-950/50 px-5 py-5 space-y-4">
               <div className="text-[11px] uppercase tracking-wider text-slate-400">Cena ({selected.label})</div>
-              <div className="mt-2 text-3xl sm:text-4xl font-semibold text-white">
+              <div className="text-3xl sm:text-4xl font-semibold text-white">
                 {loading ? "Načítám…" : formatCzk(czkForSelectedUnit)}
               </div>
-              <div className="mt-2 text-xs text-slate-400">
+              <div className="text-xs text-slate-400">
                 {lastUpdated ? `Aktualizováno: ${lastUpdated.toLocaleString("cs-CZ")}` : ""}
               </div>
 
-              <div className="mt-5 space-y-3">
+              <div className="space-y-2">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400">Nárůst / pokles (CZK / unce)</div>
+                <div className="flex flex-wrap gap-2">
+                  <ChangeChip label="1 rok" value={changes?.y1} />
+                  <ChangeChip label="2 roky" value={changes?.y2} />
+                  <ChangeChip label="3 roky" value={changes?.y3} />
+                  <ChangeChip label="5 let" value={changes?.y5} />
+                  <ChangeChip label="10 let" value={changes?.y10} />
+                </div>
+              </div>
+
+              <div className="space-y-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-[11px] uppercase tracking-wider text-slate-400">
                     Graf ({RANGES[range].label})
@@ -636,19 +646,6 @@ export default function GoldToolPage() {
 
                 <GoldChart points={chartPoints} />
               </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <div className="text-[11px] uppercase tracking-wider text-slate-400">Nárůst / pokles (CZK / unce)</div>
-                <div className="flex flex-wrap gap-2">
-                  <ChangeChip label="1 rok" value={changes?.y1} />
-                  <ChangeChip label="2 roky" value={changes?.y2} />
-                  <ChangeChip label="3 roky" value={changes?.y3} />
-                  <ChangeChip label="5 let" value={changes?.y5} />
-                  <ChangeChip label="10 let" value={changes?.y10} />
-                </div>
-              </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Zlato (CZK / unce)" value={formatCzk(czkPerOz)} />
@@ -657,7 +654,7 @@ export default function GoldToolPage() {
                 <Field label="Cena (CZK / 1 g)" value={czkPerOz == null ? "—" : formatCzk(czkPerOz / OUNCE_G)} />
               </div>
 
-              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-[12px] text-slate-300">
+              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-[12px] text-slate-300">
                 <span className="text-slate-300">Data jsou orientační.</span>
 
                 <span className="relative group">
