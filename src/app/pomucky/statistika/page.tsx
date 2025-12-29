@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
@@ -235,7 +235,7 @@ function makeId() {
   return `c-${Math.random().toString(36).slice(2, 8)}-${Date.now()}`;
 }
 
-export default function StatistikaPage() {
+function StatistikaPageInner() {
   const { year, month, daysInMonth, label } = useMemo(() => monthMeta(), []);
   const todayIndex = useMemo(() => {
     const now = new Date();
@@ -1121,5 +1121,13 @@ export default function StatistikaPage() {
         </div>
       ) : null}
     </AppLayout>
+  );
+}
+
+export default function StatistikaPage() {
+  return (
+    <Suspense fallback={<div className="p-4 text-sm text-slate-300">Načítám…</div>}>
+      <StatistikaPageInner />
+    </Suspense>
   );
 }
