@@ -13,7 +13,11 @@ import {
 import {
   doc,
   getDoc,
+  getDocs,
   Timestamp,
+  collection,
+  query,
+  where,
 } from "firebase/firestore";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -23,6 +27,7 @@ type ActivePage =
   | "contracts"
   | "calendar"
   | "cashflow"
+  | "team"
   | "info"
   | "tools"
   | "settings";
@@ -46,6 +51,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [hasActiveSubscription, setHasActiveSubscription] =
     useState<boolean | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [hasTeam, setHasTeam] = useState(false);
 
   // Auth listener
   useEffect(() => {
@@ -55,6 +61,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         setHasActiveSubscription(null);
         setSubscriptionStatus("none");
         setLoadingProfile(false);
+        setHasTeam(false);
       }
     });
     return () => unsub();
@@ -216,6 +223,26 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     void loadSubscriptionProfileForUser(user);
   }, [user]);
 
+  // Zda má tým
+  useEffect(() => {
+    const loadTeam = async () => {
+      if (!user?.email) {
+        setHasTeam(false);
+        return;
+      }
+      try {
+        const email = user.email.toLowerCase();
+        const usersCol = collection(db, "users");
+        const snap = await getDocs(query(usersCol, where("managerEmail", "==", email)));
+        setHasTeam(snap.size > 0);
+      } catch (e) {
+        console.error("Chyba při načítání podřízených:", e);
+        setHasTeam(false);
+      }
+    };
+    loadTeam();
+  }, [user]);
+
   // Ruční reload z paywallu
   const handleReloadSubscription = async () => {
     await loadSubscriptionProfileForUser(user);
@@ -313,6 +340,24 @@ export function AppLayout({ children, active }: AppLayoutProps) {
               </span>
               {renderBadge(active === "home")}
             </Link>
+
+            {/* Můj tým */}
+            {hasTeam ? (
+              <Link
+                href="/muj-tym"
+                className={`${navItemBase} ${
+                  active === "team"
+                    ? "bg-white/10 text-slate-50"
+                    : "text-slate-200 hover:bg-white/5"
+                }`}
+              >
+                <span className={navLabelBase}>
+                  {icon}
+                  <span>Můj tým</span>
+                </span>
+                {renderBadge(active === "team")}
+              </Link>
+            ) : null}
 
             {/* Kalkulačka */}
             <Link

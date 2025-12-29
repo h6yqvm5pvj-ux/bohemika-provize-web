@@ -3,6 +3,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+
 import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "./plan-produkce/SplitTitle";
 import { TeamMessageToolCard } from "./TeamMessageToolCard";
@@ -47,6 +48,13 @@ export default function ToolsPage() {
         key: "statistika",
         category: "Finance",
         title: "Statistika",
+        description: "Denní statistika oslovení, schůzek a smluv s výpočtem provize.",
+        href: "/pomucky/statistika",
+      },
+      {
+        key: "export-produkce",
+        category: "Finance",
+        title: "Export produkce",
         description: "Statistika s možností stažení v PDF a Odeslání mailem.",
         href: "/pomucky/export-produkce",
       },
