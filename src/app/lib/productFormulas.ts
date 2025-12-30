@@ -1350,10 +1350,13 @@ export function calculateCppPPRs(
   const perPayment = amount * coef;
   const annualTotal = perPayment * periodsPerYear(frequency);
 
-  const items: CommissionResultItemDTO[] = [
-    { title: "💼 Okamžitá provize", amount: perPayment },
-    { title: "📅 Provize za rok", amount: annualTotal },
-  ];
+  const items: CommissionResultItemDTO[] = [{ title: "💼 Okamžitá provize", amount: perPayment }];
+
+  // pro roční frekvenci je roční provize shodná s okamžitou, proto ji neukládáme duplicitně
+  if (frequency !== "annual") {
+    items.push({ title: "📅 Provize za rok", amount: annualTotal });
+  }
+
   return { items, total: annualTotal };
 }
 

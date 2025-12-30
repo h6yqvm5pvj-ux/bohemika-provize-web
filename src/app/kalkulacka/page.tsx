@@ -821,65 +821,76 @@ export default function CalculatorPage() {
       }
 
       // předpočítej meziprovize pro celý chain (od poradce výš)
-      const baseResult = computeItemsForPositionAndMode(position, mode);
-      if (baseResult) {
-        let baselineItems = stripTotalRows(baseResult.items);
-        const diffs: typeof managerOverridesSnapshot = [];
+      const diffs: typeof managerOverridesSnapshot = [];
+      let childPositionForBaseline: Position | null = position;
 
-        managerChainSnapshot.forEach((mgr) => {
-          if (!mgr.position) return;
-          const mgrRes = computeItemsForPositionAndMode(
-            mgr.position,
-            mgr.commissionMode ?? mode
-          );
-          if (!mgrRes) return;
+      managerChainSnapshot.forEach((mgr) => {
+        if (!mgr.position) return;
+        const mgrMode = mgr.commissionMode ?? mode;
 
-          const mgrItems = stripTotalRows(mgrRes.items);
+        // Výsledek aktuálního manažera v jeho režimu
+        const mgrRes = computeItemsForPositionAndMode(mgr.position, mgrMode);
+        // Baseline: podřízený (poradce nebo nižší manažer) spočítaný ve stejném režimu, i když má zrychlený
+        const baselineRes = childPositionForBaseline
+          ? computeItemsForPositionAndMode(childPositionForBaseline, mgrMode)
+          : null;
 
-          const mgrMap = new Map<string, { title: string; amount: number }>();
-          mgrItems.forEach((it) => {
-            const key = normalizeTitleKey(it.title ?? "");
-            const prev = mgrMap.get(key);
-            mgrMap.set(key, {
-              title: it.title ?? prev?.title ?? key,
-              amount: (prev?.amount ?? 0) + (it.amount ?? 0),
-            });
+        if (!mgrRes || !baselineRes) {
+          childPositionForBaseline = mgr.position;
+          return;
+        }
+
+        const mgrItems = stripTotalRows(mgrRes.items);
+        const baselineItems = stripTotalRows(baselineRes.items);
+
+        const mgrMap = new Map<string, { title: string; amount: number }>();
+        mgrItems.forEach((it) => {
+          const key = normalizeTitleKey(it.title ?? "");
+          const prev = mgrMap.get(key);
+          mgrMap.set(key, {
+            title: it.title ?? prev?.title ?? key,
+            amount: (prev?.amount ?? 0) + (it.amount ?? 0),
           });
-
-          const baselineMap = new Map<string, number>();
-          baselineItems.forEach((it) => {
-            const key = normalizeTitleKey(it.title ?? "");
-            baselineMap.set(key, (baselineMap.get(key) ?? 0) + (it.amount ?? 0));
-          });
-
-          const diffItems: CommissionResultItemDTO[] = [];
-          let diffTotal = 0;
-
-          mgrMap.forEach((val, key) => {
-            const subAmt = baselineMap.get(key) ?? 0;
-            const rem = val.amount - subAmt;
-            if (rem > 0) {
-              diffItems.push({ title: val.title, amount: rem });
-              diffTotal += rem;
-            }
-          });
-
-          if (diffItems.length > 0 && diffTotal > 0) {
-            diffs.push({
-              email: mgr.email ?? null,
-              position: mgr.position,
-              commissionMode: mgr.commissionMode ?? mode,
-              items: diffItems,
-              total: diffTotal,
-            });
-          }
-
-          // baseline pro vyšší úroveň je aktuální manažer
-          baselineItems = mgrItems;
         });
 
-        overridesForChain = diffs;
-      }
+        const diffItems: CommissionResultItemDTO[] = [];
+        let diffTotal = 0;
+
+        baselineItems.forEach((it) => {
+          const key = normalizeTitleKey(it.title ?? "");
+          const mgrVal = mgrMap.get(key);
+          const mgrAmt = mgrVal?.amount ?? 0;
+          const subAmt = it.amount ?? 0;
+          const rem = mgrAmt - subAmt;
+          if (rem > 0) {
+            diffItems.push({ title: mgrVal?.title ?? it.title, amount: rem });
+            diffTotal += rem;
+          }
+          mgrMap.delete(key);
+        });
+
+        mgrMap.forEach((val) => {
+          if (val.amount > 0) {
+            diffItems.push({ title: val.title, amount: val.amount });
+            diffTotal += val.amount;
+          }
+        });
+
+        if (diffItems.length > 0 && diffTotal > 0) {
+          diffs.push({
+            email: mgr.email ?? null,
+            position: mgr.position,
+            commissionMode: mgrMode,
+            items: diffItems,
+            total: diffTotal,
+          });
+        }
+
+        // podřízený pro další iteraci je aktuální manažer
+        childPositionForBaseline = mgr.position;
+      });
+
+      overridesForChain = diffs;
 
       setManagerOverridesSnapshot(overridesForChain);
 
@@ -913,7 +924,7 @@ export default function CalculatorPage() {
         managerPositionSnapshot: mgrPos ?? null,
         managerModeSnapshot: mgrMode ?? null,
         managerChain: managerChainSnapshot,
-        managerOverrides: managerOverridesSnapshot,
+        managerOverrides: overridesForChain,
       });
 
       setSaveMessage("Smlouva byla uložena mezi sepsané.");

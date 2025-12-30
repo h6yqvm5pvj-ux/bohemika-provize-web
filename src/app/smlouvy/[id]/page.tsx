@@ -316,7 +316,17 @@ function itemMultiplier(title: string | undefined | null): number {
 function computeTotalWithMultipliers(
   items: CommissionResultItemDTO[] | null | undefined
 ): number {
-  return stripTotalRows(items).reduce((sum, it) => {
+  const cleaned = stripTotalRows(items);
+  const hasYearly = cleaned.some((it) =>
+    normalizeTitleForCompare(it.title).includes("provize za rok")
+  );
+  const source = hasYearly
+    ? cleaned.filter((it) =>
+        normalizeTitleForCompare(it.title).includes("provize za rok")
+      )
+    : cleaned;
+
+  return source.reduce((sum, it) => {
     const amt = it.amount ?? 0;
     return sum + amt * itemMultiplier(it.title);
   }, 0);
@@ -340,16 +350,16 @@ function diffItemsByTitle(
   });
 
   const diffs: CommissionResultItemDTO[] = [];
-  let total = 0;
 
+  let runningTotal = 0;
   lowerClean.forEach((it) => {
     const key = normalizeTitleForCompare(it.title);
     const up = upperMap.get(key);
     const diff = (up?.amount ?? 0) - (it.amount ?? 0);
     if (diff > 0) {
-      const title = up?.title ?? it.title;
-      diffs.push({ title, amount: diff });
-      total += diff * itemMultiplier(title);
+      const titleVal = up?.title ?? it.title;
+      diffs.push({ title: titleVal, amount: diff });
+      runningTotal += diff * itemMultiplier(titleVal);
     }
     upperMap.delete(key);
   });
@@ -357,9 +367,18 @@ function diffItemsByTitle(
   upperMap.forEach((val) => {
     if (val.amount > 0) {
       diffs.push({ title: val.title, amount: val.amount });
-      total += val.amount * itemMultiplier(val.title);
+      runningTotal += val.amount * itemMultiplier(val.title);
     }
   });
+
+  const hasYearly = diffs.some((it) =>
+    normalizeTitleForCompare(it.title).includes("provize za rok")
+  );
+  const total = hasYearly
+    ? diffs
+        .filter((it) => normalizeTitleForCompare(it.title).includes("provize za rok"))
+        .reduce((sum, it) => sum + (it.amount ?? 0) * itemMultiplier(it.title), 0)
+    : runningTotal;
 
   return { items: diffs, total };
 }
@@ -529,6 +548,8 @@ export default function ContractDetailPage() {
   >(null);
   const [childOverrideTotal, setChildOverrideTotal] = useState<number | null>(null);
   const [childOverrideLabel, setChildOverrideLabel] = useState<string | null>(null);
+  const [childOverrideName, setChildOverrideName] = useState<string | null>(null);
+  const [childOverridePosition, setChildOverridePosition] = useState<Position | null>(null);
 
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -861,10 +882,14 @@ export default function ContractDetailPage() {
       return;
     }
 
+    // nejprve zkus použít uloženou meziprovizi pro aktuálního manažera
     const storedOverride =
       (contract?.managerOverrides as ContractDoc["managerOverrides"])?.find(
         (o) => o.email?.toLowerCase() === user?.email?.toLowerCase()
       ) ?? null;
+
+    let resolvedOverrideItems: CommissionResultItemDTO[] | null = null;
+    let resolvedOverrideTotal: number | null = null;
 
     if (storedOverride) {
       const sanitizedAdvisorItems = stripTotalRows(contract.items);
@@ -888,29 +913,39 @@ export default function ContractDetailPage() {
       const overrideTotalValid = overrideTotalFromItems > 0;
 
       if (hasSameCount && allTitlesMatch && overrideTotalValid) {
-        setOverrideItems(sanitizedOverrideItems ?? null);
-        setOverrideTotal(overrideTotalFromItems);
-        return;
+        resolvedOverrideItems = sanitizedOverrideItems ?? null;
+        resolvedOverrideTotal = overrideTotalFromItems;
       }
     }
 
-    const managerResult = calculateResultForPosition(
-      contract,
-      effectiveManagerPosition,
-      managerModeForOverride
-    );
-    if (!managerResult) {
-      setOverrideItems(null);
-      setOverrideTotal(null);
-      return;
-    }
-
     const chain = (contract.managerChain as ContractDoc["managerChain"]) ?? [];
-    const idx = chain.findIndex(
-      (c) => (c.email ?? "").toLowerCase() === user?.email?.toLowerCase()
-    );
+    const normalizedUserEmail = user?.email?.toLowerCase() ?? null;
 
-    const childSnap = idx > 0 ? chain[idx - 1] : null;
+    const idxByEmail = chain.findIndex(
+      (c) => (c.email ?? "").toLowerCase() === normalizedUserEmail
+    );
+    const idxByPosition =
+      idxByEmail < 0 && effectiveManagerPosition
+        ? chain.findIndex((c) => c.position === effectiveManagerPosition)
+        : -1;
+    const resolvedIdx = idxByEmail >= 0 ? idxByEmail : idxByPosition;
+
+    const fallbackChild =
+      resolvedIdx < 0 && chain.length > 0 ? chain[chain.length - 1] : null;
+
+    const childSnap =
+      resolvedIdx > 0
+        ? chain[resolvedIdx - 1]
+        : fallbackChild ??
+          (ownerManagerPosition
+            ? {
+                email: ownerManagerEmail,
+                position: ownerManagerPosition,
+                commissionMode:
+                  (contract.managerModeSnapshot as CommissionMode | null | undefined) ??
+                  null,
+              }
+            : null);
 
     const baselinePosCurrent =
       (childSnap?.position as Position | null | undefined) ??
@@ -928,6 +963,37 @@ export default function ContractDetailPage() {
       (contract as any)?.mode ??
       "standard";
 
+    // pokud není validní snapshot, dopočítej meziprovizi
+    if (!resolvedOverrideItems) {
+      const managerResult = calculateResultForPosition(
+        contract,
+        effectiveManagerPosition,
+        managerModeForOverride
+      );
+      if (!managerResult) {
+        setOverrideItems(null);
+        setOverrideTotal(null);
+        setChildOverrideItems(null);
+        setChildOverrideTotal(null);
+        setChildOverrideLabel(null);
+        return;
+      }
+
+      const baselineResultMain =
+        baselinePosCurrent != null
+          ? calculateResultForPosition(contract, baselinePosCurrent, baselineModeCurrent)
+          : null;
+
+      const subItemsMain = baselineResultMain?.items ?? contract.items ?? [];
+      const mainDiff = diffItemsByTitle(managerResult.items, subItemsMain);
+
+      resolvedOverrideItems = mainDiff.items;
+      resolvedOverrideTotal = mainDiff.total;
+    }
+
+    setOverrideItems(resolvedOverrideItems ?? null);
+    setOverrideTotal(resolvedOverrideTotal ?? null);
+
     const childEmail =
       (childSnap?.email as string | null | undefined)?.toLowerCase() ?? null;
 
@@ -937,18 +1003,6 @@ export default function ContractDetailPage() {
       ) ?? null;
     const storedChildItems = stripTotalRows(storedChildOverride?.items);
     const storedChildTotal = computeTotalWithMultipliers(storedChildItems);
-
-    const baselineResult =
-      baselinePosCurrent != null
-        ? calculateResultForPosition(contract, baselinePosCurrent, baselineModeCurrent)
-        : null;
-
-    const subItems = baselineResult?.items ?? contract.items ?? [];
-
-    const mainDiff = diffItemsByTitle(managerResult.items, subItems);
-
-    setOverrideItems(mainDiff.items);
-    setOverrideTotal(mainDiff.total);
 
     // meziprovize pro přímého manažera pod sjednavatelem (např. manazer7)
     if (childSnap && childEmail && advisorPos) {
@@ -987,12 +1041,18 @@ export default function ContractDetailPage() {
         if (useSnapshot) {
           setChildOverrideItems(items);
           setChildOverrideTotal(totalFromItems);
+          setChildOverrideName(nameFromEmail(childSnap.email ?? childEmail));
+          setChildOverridePosition((childSnap.position as Position | null | undefined) ?? null);
         } else if (childComputed && childComputed.total > 0) {
           setChildOverrideItems(childComputed.items);
           setChildOverrideTotal(childComputed.total);
+          setChildOverrideName(nameFromEmail(childSnap.email ?? childEmail));
+          setChildOverridePosition((childSnap.position as Position | null | undefined) ?? null);
         } else {
           setChildOverrideItems(null);
           setChildOverrideTotal(null);
+          setChildOverrideName(null);
+          setChildOverridePosition(null);
         }
         setChildOverrideLabel(
           (childSnap.position as Position | null | undefined) ??
@@ -1005,15 +1065,21 @@ export default function ContractDetailPage() {
           (childSnap.position as Position | null | undefined) ??
             normalizeTitleForCompare(childSnap.email ?? childEmail)
         );
+        setChildOverrideName(nameFromEmail(childSnap.email ?? childEmail));
+        setChildOverridePosition((childSnap.position as Position | null | undefined) ?? null);
       } else {
         setChildOverrideItems(null);
         setChildOverrideTotal(null);
         setChildOverrideLabel(null);
+        setChildOverrideName(null);
+        setChildOverridePosition(null);
       }
     } else {
       setChildOverrideItems(null);
       setChildOverrideTotal(null);
       setChildOverrideLabel(null);
+      setChildOverrideName(null);
+      setChildOverridePosition(null);
     }
   }, [
     contract,
@@ -1057,24 +1123,38 @@ export default function ContractDetailPage() {
     );
   };
 
+  const filterAnnualYearlyDupes = (arr: CommissionResultItemDTO[]) => {
+    if (prod !== "cppPPRs" || freq !== "annual") return arr;
+    return arr.filter(
+      (it) =>
+        !normalizeTitleForCompare(it.title).includes("provize za rok")
+    );
+  };
+
   const adviserItems =
-    filterDomexItems(
-      (contract?.items ?? []).filter(
-        (it) => !it.title.toLowerCase().includes("celkem")
+    filterAnnualYearlyDupes(
+      filterDomexItems(
+        (contract?.items ?? []).filter(
+          (it) => !it.title.toLowerCase().includes("celkem")
+        )
       )
     ) ?? [];
 
   const managerItems =
-    filterDomexItems(
-      (overrideItems ?? []).filter(
-        (it) => !it.title.toLowerCase().includes("celkem")
+    filterAnnualYearlyDupes(
+      filterDomexItems(
+        (overrideItems ?? []).filter(
+          (it) => !it.title.toLowerCase().includes("celkem")
+        )
       )
     ) ?? [];
 
   const childManagerItems =
-    filterDomexItems(
-      (childOverrideItems ?? []).filter(
-        (it) => !it.title.toLowerCase().includes("celkem")
+    filterAnnualYearlyDupes(
+      filterDomexItems(
+        (childOverrideItems ?? []).filter(
+          (it) => !it.title.toLowerCase().includes("celkem")
+        )
       )
     ) ?? [];
 
@@ -1486,25 +1566,31 @@ export default function ContractDetailPage() {
 
                 {/* MEZIPROVIZE – jen když manažer kouká na podřízeného */}
                 {showMeziprovision && (
-                  <section className="space-y-4">
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-semibold text-emerald-200">
-                        Meziprovize pro {effectiveManagerPosition ?? "manažera"}
-                      </h3>
-                      <div className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
-                        {managerItems.map((item) => (
-                          <div
-                            key={item.title}
-                            className="flex items-baseline justify-between gap-3 py-2"
-                          >
-                            <span className="text-sm text-slate-200">
-                              {item.title}
-                            </span>
-                            <span className="text-sm font-semibold text-emerald-300">
-                              {formatMoney(item.amount)}
-                            </span>
-                          </div>
-                        ))}
+      <section className="space-y-4">
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-emerald-200">
+            Meziprovize pro{" "}
+            {nameFromEmail(user?.email)}
+            {effectiveManagerPosition && (
+              <span className="text-xs text-slate-400 ml-2">
+                {positionLabel(effectiveManagerPosition)}
+              </span>
+            )}
+          </h3>
+          <div className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
+            {managerItems.map((item) => (
+              <div
+                key={item.title}
+                className="flex items-baseline justify-between gap-3 py-2"
+              >
+                <span className="text-sm text-slate-200">
+                  {item.title}
+                </span>
+                <span className="text-sm font-semibold text-emerald-300">
+                  {formatMoney(item.amount)}
+                </span>
+              </div>
+            ))}
 
                         <div className="flex items-center justify-between pt-3">
                           <span className="text-sm font-semibold">
@@ -1517,17 +1603,22 @@ export default function ContractDetailPage() {
                       </div>
                     </div>
 
-                    {showChildMeziprovision && (
-                      <div className="space-y-2">
-                        <h4 className="text-xs font-semibold text-emerald-200">
-                          Meziprovize pro podřízeného manažera
-                          {childOverrideLabel ? ` (${childOverrideLabel})` : ""}
-                        </h4>
-                        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/20 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
-                          {childManagerItems.map((item) => (
-                            <div
-                              key={item.title}
-                              className="flex items-baseline justify-between gap-3 py-2"
+      {showChildMeziprovision && (
+        <div className="space-y-2">
+          <h4 className="text-xs font-semibold text-emerald-200">
+            Meziprovize pro podřízeného manažera{" "}
+            {childOverrideName ?? ""}
+            {childOverridePosition && (
+              <span className="text-[11px] text-slate-400 ml-1">
+                ({positionLabel(childOverridePosition)})
+              </span>
+            )}
+          </h4>
+          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/20 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
+            {childManagerItems.map((item) => (
+              <div
+                key={item.title}
+                className="flex items-baseline justify-between gap-3 py-2"
                             >
                               <span className="text-sm text-slate-200">
                                 {item.title}
