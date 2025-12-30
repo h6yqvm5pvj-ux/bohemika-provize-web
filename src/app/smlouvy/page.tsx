@@ -215,6 +215,38 @@ function productMatchesCategory(
   return false;
 }
 
+type ContractsCache = {
+  userEmail: string;
+  position: Position | null;
+  myContracts: ContractDoc[];
+  teamContracts: (ContractDoc & { adviserEmail: string | null })[];
+  savedAt: number;
+};
+
+const CONTRACTS_CACHE_KEY = "contracts_cache_v1";
+
+function readContractsCache(email: string | null | undefined): ContractsCache | null {
+  if (!email || typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(CONTRACTS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ContractsCache;
+    if (parsed.userEmail !== email) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeContractsCache(cache: ContractsCache) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(CONTRACTS_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // best-effort cache
+  }
+}
+
 export default function ContractsPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [currentUserPosition, setCurrentUserPosition] =
@@ -228,7 +260,7 @@ export default function ContractsPage() {
   const [showTeam, setShowTeam] = useState(false);
   const [filterMode, setFilterMode] = useState<FilterMode>("latest");
   const [searchText, setSearchText] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(10);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -256,7 +288,15 @@ export default function ContractsPage() {
         return;
       }
 
-      setLoading(true);
+      const cached = readContractsCache(user.email);
+      if (cached) {
+        setMyContracts(cached.myContracts ?? []);
+        setTeamContracts(cached.teamContracts ?? []);
+        setCurrentUserPosition(cached.position ?? null);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
 
       try {
         // 1) info o uživateli (pozice)
@@ -350,6 +390,14 @@ export default function ContractsPage() {
         });
 
         setTeamContracts(withEmails);
+
+        writeContractsCache({
+          userEmail: user.email,
+          position: pos,
+          myContracts: myList,
+          teamContracts: withEmails,
+          savedAt: Date.now(),
+        });
       } catch (e) {
         console.error(e);
       } finally {

@@ -139,7 +139,8 @@ export default function TeamPage() {
     };
 
     loadTeam();
-  }, [userEmail, selectedEmail]);
+    // only depends on signed-in user; selection should not retrigger fetch
+  }, [userEmail]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();

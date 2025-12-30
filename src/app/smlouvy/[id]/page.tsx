@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import { auth, db } from "../../firebase";
 import {
@@ -491,6 +491,7 @@ function Toasts({
 // ---------- PAGE ----------
 
 export default function ContractDetailPage() {
+  const router = useRouter();
   const params = useParams<{ id: string }>();
   const rawId = params?.id;
 
@@ -545,6 +546,7 @@ export default function ContractDetailPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const toastTimeouts = useRef<number[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [unauthorized, setUnauthorized] = useState(false);
 
   const pushToast = useCallback(
     (message: string, type: ToastMessage["type"] = "success") => {
@@ -1024,7 +1026,10 @@ export default function ContractDetailPage() {
 
   // mazání smlouvy
   const handleDelete = async () => {
-    if (!ownerEmail || !entryId) return;
+    if (!ownerEmail || !entryId || !canDelete) {
+      setDeleteError("Nemáš oprávnění tuto smlouvu smazat.");
+      return;
+    }
     setDeleting(true);
     setDeleteError(null);
 
@@ -1083,6 +1088,21 @@ export default function ContractDetailPage() {
     childOverrideTotal != null &&
     isManagerViewingSubordinate &&
     childOverrideLabel;
+
+  const canDelete = isOwnContract || isManagerViewingSubordinate;
+
+  // pokud je načtený kontrakt a uživatel nemá oprávnění, schovej data a přesměruj
+  useEffect(() => {
+    if (loading || !user || !contract) return;
+    const canView = isOwnContract || isManagerViewingSubordinate;
+    if (!canView && !unauthorized) {
+      setUnauthorized(true);
+      setContract(null);
+      setError("Nemáš oprávnění tuto smlouvu zobrazit.");
+      setShowDeleteModal(false);
+      router.replace("/smlouvy");
+    }
+  }, [loading, user, contract, isOwnContract, isManagerViewingSubordinate, unauthorized, router]);
 
   const renderLoadingSkeleton = () => (
     <div className="space-y-6">
@@ -1668,29 +1688,31 @@ export default function ContractDetailPage() {
                 </section>
 
                 {/* SMAZAT SMLOUVU */}
-                <section className="pt-2">
-                  {deleteError && (
-                    <p className="mb-2 text-xs text-red-300">
-                      {deleteError}
-                    </p>
-                  )}
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDeleteError(null);
-                        setShowDeleteModal(true);
-                      }}
-                      disabled={deleting}
-                      className="inline-flex items-center rounded-xl border border-red-500/70 bg-red-600/80 px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-lg shadow-red-500/40 hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {deleting && (
-                        <Spinner className="h-4 w-4 border-white/80 border-t-red-900" />
-                      )}
-                      <span>{deleting ? "Mažu…" : "Smazat smlouvu"}</span>
-                    </button>
-                  </div>
-                </section>
+                {canDelete && (
+                  <section className="pt-2">
+                    {deleteError && (
+                      <p className="mb-2 text-xs text-red-300">
+                        {deleteError}
+                      </p>
+                    )}
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeleteError(null);
+                          setShowDeleteModal(true);
+                        }}
+                        disabled={deleting}
+                        className="inline-flex items-center rounded-xl border border-red-500/70 bg-red-600/80 px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-lg shadow-red-500/40 hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {deleting && (
+                          <Spinner className="h-4 w-4 border-white/80 border-t-red-900" />
+                        )}
+                        <span>{deleting ? "Mažu…" : "Smazat smlouvu"}</span>
+                      </button>
+                    </div>
+                  </section>
+                )}
               </div>
               </>
             ) : null}
@@ -1698,7 +1720,7 @@ export default function ContractDetailPage() {
         </div>
       </div>
 
-      {showDeleteModal && (
+      {canDelete && showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
           <button
             type="button"
