@@ -1,62 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isSignedIn() {
-      return request.auth != null && request.auth.token.email != null;
-    }
-
-    function normalizeEmail(email) {
-      return email == null ? "" : lower(email);
-    }
-
-    function isOwner(userEmail) {
-      return isSignedIn() && normalizeEmail(request.auth.token.email) == normalizeEmail(userEmail);
-    }
-
-    // Přímý nadřízený: pole managerEmail v dokumentu uživatele.
-    function isDirectManagerOf(userEmail) {
-      let userDoc = get(/databases/$(database)/documents/users/$(userEmail));
-      return userDoc.exists()
-        && userDoc.data.managerEmail != null
-        && normalizeEmail(userDoc.data.managerEmail) == normalizeEmail(request.auth.token.email);
-    }
-
-    // Libovolný nadřízený v předpočítaném řetězci managerChain uloženém u smlouvy.
-    // Firestore rules neumí map/where, proto explicitně projdeme prvních pár úrovní.
-    function isInManagerChain(entryData) {
-      return entryData.managerChain is list && (
-        (entryData.managerChain.size() > 0 && entryData.managerChain[0].email != null &&
-          normalizeEmail(entryData.managerChain[0].email) == normalizeEmail(request.auth.token.email)) ||
-        (entryData.managerChain.size() > 1 && entryData.managerChain[1].email != null &&
-          normalizeEmail(entryData.managerChain[1].email) == normalizeEmail(request.auth.token.email)) ||
-        (entryData.managerChain.size() > 2 && entryData.managerChain[2].email != null &&
-          normalizeEmail(entryData.managerChain[2].email) == normalizeEmail(request.auth.token.email)) ||
-        (entryData.managerChain.size() > 3 && entryData.managerChain[3].email != null &&
-          normalizeEmail(entryData.managerChain[3].email) == normalizeEmail(request.auth.token.email)) ||
-        (entryData.managerChain.size() > 4 && entryData.managerChain[4].email != null &&
-          normalizeEmail(entryData.managerChain[4].email) == normalizeEmail(request.auth.token.email)) ||
-        (entryData.managerChain.size() > 5 && entryData.managerChain[5].email != null &&
-          normalizeEmail(entryData.managerChain[5].email) == normalizeEmail(request.auth.token.email)) ||
-        (entryData.managerChain.size() > 6 && entryData.managerChain[6].email != null &&
-          normalizeEmail(entryData.managerChain[6].email) == normalizeEmail(request.auth.token.email)) ||
-        (entryData.managerChain.size() > 7 && entryData.managerChain[7].email != null &&
-          normalizeEmail(entryData.managerChain[7].email) == normalizeEmail(request.auth.token.email)) ||
-        (entryData.managerChain.size() > 8 && entryData.managerChain[8].email != null &&
-          normalizeEmail(entryData.managerChain[8].email) == normalizeEmail(request.auth.token.email)) ||
-        (entryData.managerChain.size() > 9 && entryData.managerChain[9].email != null &&
-          normalizeEmail(entryData.managerChain[9].email) == normalizeEmail(request.auth.token.email))
-      );
-    }
-
-    match /users/{userEmail}/entries/{entryId} {
-      allow read: if isOwner(userEmail) || isDirectManagerOf(userEmail) || isInManagerChain(resource.data);
-      allow delete: if isOwner(userEmail) || isDirectManagerOf(userEmail) || isInManagerChain(resource.data);
-      allow create, update: if isOwner(userEmail); // ponecháme tvorbu/úpravy jen autorovi
-    }
-
-    // default deny
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if request.auth != null;
     }
   }
 }
