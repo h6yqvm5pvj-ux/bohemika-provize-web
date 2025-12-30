@@ -695,53 +695,12 @@ export default function HomePage() {
     return () => unsub();
   }, [router]);
 
-  type HomeCache = {
-    myContractsCount: number;
-    myImmediateSum: number;
-    myEntries: EntryDoc[];
-    teamContractsCount: number;
-    teamImmediateSum: number;
-    teamEntries: EntryDoc[];
-    userMeta: UserMeta | null;
-    hasTeam: boolean;
-    cachedAt: number;
-  };
-
-  const applyCache = (cache: HomeCache) => {
-    setUserMeta(cache.userMeta);
-    setMyContractsCount(cache.myContractsCount);
-    setMyImmediateSum(cache.myImmediateSum);
-    setMyEntries(cache.myEntries ?? []);
-    setTeamContractsCount(cache.teamContractsCount);
-    setTeamImmediateSum(cache.teamImmediateSum);
-    setTeamEntries(cache.teamEntries ?? []);
-    setHasTeam(cache.hasTeam);
-  };
-
   // načtení statistik
   useEffect(() => {
     if (!user?.email) return;
 
-    const nowDate = new Date();
-    const cacheKey = `home-prod-${user.email.toLowerCase()}-${nowDate.getFullYear()}-${nowDate.getMonth()}`;
-    let cached: HomeCache | null = null;
-
-    try {
-      const raw = typeof window !== "undefined" ? window.sessionStorage.getItem(cacheKey) : null;
-      if (raw) {
-        const parsed = JSON.parse(raw) as HomeCache;
-        if (parsed && typeof parsed.cachedAt === "number") {
-          cached = parsed;
-          applyCache(parsed);
-          setLoading(false);
-        }
-      }
-    } catch (e) {
-      console.warn("Nešlo načíst cache produkce", e);
-    }
-
     const load = async () => {
-      setLoading(!cached);
+      setLoading(true);
 
       try {
         const email = user.email!;
@@ -958,30 +917,6 @@ export default function HomePage() {
         setTeamContractsCount(teamCount);
         setTeamImmediateSum(teamImmediate);
         setTeamEntries(teamEntriesAll);
-        setHasTeam(teamCount > 0);
-
-        const cachePayload: HomeCache = {
-          myContractsCount: myCount,
-          myImmediateSum: myImmediate,
-          myEntries: myEntriesList,
-          teamContractsCount: teamCount,
-          teamImmediateSum: teamImmediate,
-          teamEntries: teamEntriesAll,
-          userMeta: {
-            position,
-            commissionMode: myMode,
-            monthlyGoal: monthlyGoal ?? null,
-          },
-          hasTeam: teamCount > 0,
-          cachedAt: Date.now(),
-        };
-        if (typeof window !== "undefined") {
-          try {
-            window.sessionStorage.setItem(cacheKey, JSON.stringify(cachePayload));
-          } catch (err) {
-            console.warn("Cache produkce se nepodařilo uložit", err);
-          }
-        }
       } catch (e) {
         console.error("Chyba při načítání produkce:", e);
       } finally {
