@@ -88,6 +88,10 @@ type ContractDoc = {
   createdAt?: FirestoreTimestamp | Date | string | null;
 
   durationYears?: number | null;
+  carMake?: string | null;
+  carPlate?: string | null;
+  carVin?: string | null;
+  carTp?: string | null;
 };
 
 type ToastMessage = {
@@ -197,6 +201,17 @@ function productLabel(p?: Product): string {
     default:
       return "Neznámý produkt";
   }
+}
+
+function isAutoProduct(p?: Product | null): boolean {
+  return (
+    p === "cppAuto" ||
+    p === "allianzAuto" ||
+    p === "csobAuto" ||
+    p === "uniqaAuto" ||
+    p === "pillowAuto" ||
+    p === "kooperativaAuto"
+  );
 }
 
 function productIcon(p?: Product): string {
@@ -742,6 +757,10 @@ export default function ContractDetailPage() {
   const [editContractSigned, setEditContractSigned] = useState("");
   const [editPolicyStart, setEditPolicyStart] = useState("");
   const [editDuration, setEditDuration] = useState<number | null>(null);
+  const [editCarMake, setEditCarMake] = useState("");
+  const [editCarPlate, setEditCarPlate] = useState("");
+  const [editCarVin, setEditCarVin] = useState("");
+  const [editCarTp, setEditCarTp] = useState("");
   const [savingDetails, setSavingDetails] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [detailsSaved, setDetailsSaved] = useState(false);
@@ -757,6 +776,10 @@ export default function ContractDetailPage() {
         ? contract.durationYears
         : null
     );
+    setEditCarMake(contract.carMake ?? "");
+    setEditCarPlate(contract.carPlate ?? "");
+    setEditCarVin(contract.carVin ?? "");
+    setEditCarTp(contract.carTp ?? "");
   };
 
   useEffect(() => {
@@ -778,17 +801,33 @@ export default function ContractDetailPage() {
       const trimmedNumber = editContractNumber.trim();
       const signedDate = editContractSigned ? new Date(editContractSigned) : null;
       const startDate = editPolicyStart ? new Date(editPolicyStart) : null;
-      const durationVal =
-        prod === "neon" && typeof editDuration === "number" && !Number.isNaN(editDuration)
-          ? Math.max(1, Math.min(40, editDuration))
-          : null;
+    const durationVal =
+      prod === "neon" && typeof editDuration === "number" && !Number.isNaN(editDuration)
+        ? Math.max(1, Math.min(40, editDuration))
+        : null;
 
-      const updates: Record<string, any> = {
-        clientName: trimmedName || null,
-        contractNumber: trimmedNumber || null,
-        contractSignedDate: signedDate ?? null,
-        policyStartDate: startDate ?? null,
-      };
+    const autoFields =
+      isAutoProduct(prod ?? null)
+        ? {
+            carMake: editCarMake.trim() || null,
+            carPlate: editCarPlate.trim() || null,
+            carVin: editCarVin.trim() || null,
+            carTp: editCarTp.trim() || null,
+          }
+        : {
+            carMake: null,
+            carPlate: null,
+            carVin: null,
+            carTp: null,
+          };
+
+    const updates: Record<string, any> = {
+      clientName: trimmedName || null,
+      contractNumber: trimmedNumber || null,
+      contractSignedDate: signedDate ?? null,
+      policyStartDate: startDate ?? null,
+      ...autoFields,
+    };
       if (prod === "neon") {
         updates.durationYears = durationVal ?? null;
       }
@@ -807,6 +846,19 @@ export default function ContractDetailPage() {
                 prod === "neon"
                   ? durationVal ?? prev.durationYears ?? null
                   : prev.durationYears ?? null,
+              ...(isAutoProduct(prod ?? null)
+                ? {
+                    carMake: autoFields.carMake,
+                    carPlate: autoFields.carPlate,
+                    carVin: autoFields.carVin,
+                    carTp: autoFields.carTp,
+                  }
+                : {
+                    carMake: null,
+                    carPlate: null,
+                    carVin: null,
+                    carTp: null,
+                  }),
             }
           : prev
       );
@@ -1555,19 +1607,94 @@ export default function ContractDetailPage() {
                               Číslo smlouvy
                             </dt>
                             <dd className="font-semibold text-right">
-                              {contract.contractNumber}
-                            </dd>
-                          </div>
-                        )
-                      )}
-                    </dl>
-                  </div>
-                </section>
+                          {contract.contractNumber}
+                        </dd>
+                      </div>
+                    )
+                  )}
+                </dl>
+              </div>
+            </section>
 
-                {/* MEZIPROVIZE – jen když manažer kouká na podřízeného */}
-                {showMeziprovision && (
-      <section className="space-y-4">
-        <div className="space-y-3">
+            {/* AUTO DETAILY */}
+            {isAutoProduct(prod) && (
+              <section className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl">
+                <h3 className="text-base font-semibold text-slate-100 mb-3">
+                  Detaily vozidla
+                </h3>
+                <dl className="space-y-2 text-sm text-slate-200">
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-300">Značka / model</dt>
+                    <dd className="font-semibold text-right w-40">
+                      {editMode ? (
+                        <input
+                          type="text"
+                          value={editCarMake}
+                          onChange={(e) => setEditCarMake(e.target.value)}
+                          className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          placeholder="Např. Škoda Octavia"
+                        />
+                      ) : (
+                        contract.carMake || "—"
+                      )}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-300">SPZ</dt>
+                    <dd className="font-semibold text-right w-32">
+                      {editMode ? (
+                        <input
+                          type="text"
+                          value={editCarPlate}
+                          onChange={(e) => setEditCarPlate(e.target.value)}
+                          className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          placeholder="SPZ"
+                        />
+                      ) : (
+                        contract.carPlate || "—"
+                      )}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-300">VIN</dt>
+                    <dd className="font-semibold text-right w-48">
+                      {editMode ? (
+                        <input
+                          type="text"
+                          value={editCarVin}
+                          onChange={(e) => setEditCarVin(e.target.value)}
+                          className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          placeholder="VIN"
+                        />
+                      ) : (
+                        contract.carVin || "—"
+                      )}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-300">TP</dt>
+                    <dd className="font-semibold text-right w-32">
+                      {editMode ? (
+                        <input
+                          type="text"
+                          value={editCarTp}
+                          onChange={(e) => setEditCarTp(e.target.value)}
+                          className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          placeholder="TP"
+                        />
+                      ) : (
+                        contract.carTp || "—"
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+            )}
+
+            {/* MEZIPROVIZE – jen když manažer kouká na podřízeného */}
+            {showMeziprovision && (
+              <section className="space-y-4">
+                <div className="space-y-3">
           <h3 className="text-sm font-semibold text-emerald-200">
             Meziprovize pro{" "}
             {nameFromEmail(user?.email)}
