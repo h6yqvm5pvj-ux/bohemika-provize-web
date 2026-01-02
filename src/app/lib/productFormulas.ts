@@ -2001,3 +2001,95 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "axacestovko",
   "comfortcc",
 ];
+
+export function getCoefficientSummary(
+  product: Product | null,
+  position: Position | null,
+  mode: CommissionMode | null
+): { label: string; value: number }[] {
+  if (!product || !position) return [];
+  const m = mode ?? "accelerated";
+
+  switch (product) {
+    case "neon": {
+      const k = neonCoefficients(position, m);
+      return [
+        { label: "Okamžitá provize", value: k.okamzita },
+        { label: "Provize po 3 letech", value: k.po3 },
+        { label: "Provize po 4 letech", value: k.po4 },
+        { label: "Následná provize (2.–5. rok)", value: k.n2to5 },
+        { label: "Následná provize (5.–10. rok)", value: k.n5to10 },
+      ];
+    }
+    case "flexi": {
+      const k = flexiCoefficients(position, m);
+      return [
+        { label: "Okamžitá provize", value: k.okamzita },
+        { label: "Provize po 3 letech", value: k.po3 },
+        { label: "Provize po 4 letech", value: k.po4 },
+        { label: "Následná provize (od 6. roku)", value: k.naslednaOd6 },
+      ];
+    }
+    case "maximaMaxEfekt": {
+      const k = maxEfektCoefficients(position, m);
+      return [
+        { label: "Okamžitá provize", value: k.okamzita },
+        { label: "Provize po 3 letech", value: k.po3 },
+        { label: "Provize po 4 letech", value: k.po4 },
+        { label: "Následná provize (od 5. roku)", value: k.n5plus },
+      ];
+    }
+    case "pillowInjury": {
+      const k = pillowInjuryCoefficients(position, m);
+      return [
+        { label: "Okamžitá provize", value: k.okamzita },
+        { label: "Provize po 3 letech", value: k.po3 },
+        { label: "Provize po 4 letech", value: k.po4 },
+      ];
+    }
+    case "domex": {
+      return [
+        { label: "Okamžitá provize (z platby)", value: domexCoefficient(position) },
+        { label: "Následná provize (z platby)", value: domexSubsequentCoefficient(position) },
+      ];
+    }
+    case "maxdomov": {
+      return [
+        { label: "Okamžitá provize", value: maxdomovImmediateCoefficient(position) },
+        { label: "Následná provize", value: maxdomovSubsequentCoefficient(position) },
+      ];
+    }
+    case "cppAuto":
+      return [{ label: "Koeficient (z platby)", value: cppAutoCoefficient(position) }];
+    case "cppPPRbez":
+      return [
+        { label: "Okamžitá provize (z platby)", value: cppPPRbezImmediateCoefficient(position) },
+        { label: "Následná provize (z platby)", value: cppPPRbezSubsequentCoefficient(position) },
+      ];
+    case "cppPPRs":
+      return [{ label: "Koeficient (z platby)", value: cppPPRsCoefficient(position) }];
+    case "allianzAuto":
+      return [{ label: "Koeficient (z platby)", value: allianzAutoCoefficient(position) / 100 }];
+    case "csobAuto":
+      return [{ label: "Koeficient (z platby)", value: csobAutoCoefficient(position) }];
+    case "uniqaAuto":
+      return [{ label: "Koeficient (z platby)", value: uniqaAutoCoefficient(position) }];
+    case "pillowAuto":
+      return [{ label: "Koeficient (z platby)", value: pillowAutoCoefficient(position) / 100 }];
+    case "kooperativaAuto":
+      return [{ label: "Koeficient (z platby)", value: kooperativaAutoCoefficient(position) / 100 }];
+    case "zamex":
+      return [{ label: "Koeficient (z platby)", value: zamexCoefficient(position) }];
+    case "cppcestovko":
+      return [{ label: "Koeficient", value: cppCestovkoCoefficient(position) }];
+    case "axacestovko":
+      return [{ label: "Koeficient", value: axaCestovkoCoefficient(position) }];
+    case "comfortcc":
+      return [
+        { label: "Okamžitá provize", value: comfortCCImmediateCoefficient(position) },
+        { label: "Následná provize", value: comfortCCSubsequentCoefficient(position) },
+      ];
+    default:
+      return [];
+  }
+}

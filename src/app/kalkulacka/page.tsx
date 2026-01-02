@@ -35,6 +35,7 @@ import {
   calculateAxaCestovko,
   calculateComfortCC,
   SUPPORTED_PRODUCTS,
+  getCoefficientSummary,
 } from "../lib/productFormulas";
 
 import Plasma from "@/components/Plasma";
@@ -67,6 +68,27 @@ function formatMoney(value: number): string {
   );
 }
 
+function formatCoefficientNumber(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "—";
+  return value.toLocaleString("cs-CZ", { maximumFractionDigits: 6 });
+}
+
+const paymentsPerYear = (f: PaymentFrequency) =>
+  f === "monthly" ? 12 : f === "quarterly" ? 4 : f === "semiannual" ? 2 : 1;
+
+const frequencyLabel = (f: PaymentFrequency) => {
+  switch (f) {
+    case "monthly":
+      return "měsíční";
+    case "quarterly":
+      return "čtvrtletní";
+    case "semiannual":
+      return "pololetní";
+    case "annual":
+      return "roční";
+  }
+};
+
 const PRODUCT_OPTIONS: { id: Product; label: string }[] = [
   { id: "neon", label: "ČPP ŽP NEON" },
   { id: "flexi", label: "Kooperativa ŽP FLEXI" },
@@ -93,6 +115,9 @@ const PRODUCT_OPTIONS: { id: Product; label: string }[] = [
   { id: "axacestovko", label: "AXA Cestovko" },
   { id: "comfortcc", label: "Comfort Commodity" },
 ];
+
+const productLabel = (p: Product | null) =>
+  PRODUCT_OPTIONS.find((o) => o.id === p)?.label ?? (p ?? "—");
 
 const POSITION_ORDER: Position[] = [
   "poradce1",
@@ -410,6 +435,49 @@ export default function CalculatorPage() {
   >([]);
   const [userCommissionMode, setUserCommissionMode] = useState<CommissionMode | null>(null);
   const [baseUserPosition, setBaseUserPosition] = useState<Position | null>(null);
+  const [showCoefModal, setShowCoefModal] = useState(false);
+
+  const coefList = useMemo(
+    () => getCoefficientSummary(product ?? null, position ?? null, mode ?? null),
+    [product, position, mode]
+  );
+  const coefExplanation = useMemo(() => {
+    if (!product) return "";
+    const payLabel = frequencyLabel(frequency);
+    const payPerYear = paymentsPerYear(frequency);
+    switch (product) {
+      case "neon":
+        return "Výpočet: měsíční pojistné × 12 × doba trvání × koeficient. Následné provize jsou roční: roční pojistné × koeficient (2.–5. rok a 5.–10. rok).";
+      case "flexi":
+        return "Výpočet: roční pojistné (měsíční × 12) × koeficient/100 pro každou položku; následná se vyplácí ročně od 6. roku.";
+      case "maximaMaxEfekt":
+        return "Výpočet: roční pojistné × doba trvání × koeficient pro okamžitou/po 3/po 4 letech. Následná: roční pojistné × koeficient ročně od 5. roku.";
+      case "pillowInjury":
+        return "Výpočet: roční pojistné (měsíční × 12) × koeficient/100 pro jednotlivé položky.";
+      case "domex":
+        return `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}).`;
+      case "maxdomov":
+        return `Výpočet: platba (${payLabel}) × koeficient (získatelská i následná). Roční částka = × počet plateb (${payPerYear}).`;
+      case "cppAuto":
+      case "allianzAuto":
+      case "csobAuto":
+      case "uniqaAuto":
+      case "pillowAuto":
+      case "kooperativaAuto":
+      case "zamex":
+        return `Výpočet: platba (${payLabel}) × koeficient; roční částka = × počet plateb (${payPerYear}).`;
+      case "cppPPRbez":
+      case "cppPPRs":
+        return `Výpočet: platba (${payLabel}) × koeficient (získatelská / následná). Roční varianta = × počet plateb (${payPerYear}).`;
+      case "cppcestovko":
+      case "axacestovko":
+        return "Výpočet: pojistné × koeficient (jednorázově).";
+      case "comfortcc":
+        return "Výpočet: jednorázový poplatek × koeficient (okamžitá). U postupného poplatku se přičítá pravidelná platba × koeficient × počet plateb.";
+      default:
+        return "";
+    }
+  }, [product, frequency]);
   const filteredClientSuggestions = useMemo(() => {
     const q = clientName.trim().toLowerCase();
     if (!q) return [];
@@ -1464,12 +1532,88 @@ export default function CalculatorPage() {
                       {formatMoney(total)}
                     </span>
                   </div>
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCoefModal(true)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/70 bg-emerald-500/20 px-3 py-2 text-xs sm:text-sm font-semibold text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.3)] hover:bg-emerald-500/30 transition"
+                    >
+                      Zobrazit koeficienty
+                    </button>
+                  </div>
                 </div>
               );
             })()}
           </section>
         </div>
       </div>
+
+      {showCoefModal && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+            aria-label="Zavřít koeficienty"
+            onClick={() => setShowCoefModal(false)}
+          />
+          <div className="relative z-50 w-full max-w-md rounded-2xl border border-emerald-400/60 bg-slate-950/95 p-6 shadow-2xl shadow-emerald-900/40">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-50">Koeficienty</h3>
+                <p className="mt-1 text-sm text-slate-300">
+                  {product ? productLabel(product) : "—"} · pozice {positionLabel(position)} · režim {mode}
+                </p>
+                {coefExplanation && (
+                  <p className="mt-2 text-xs text-slate-400 leading-relaxed">
+                    {coefExplanation}
+                  </p>
+                )}
+                {product && (product === "neon" || product === "flexi" || product === "maximaMaxEfekt" || product === "pillowInjury") && (
+                  <p className="mt-2 text-xs font-semibold text-rose-300">
+                    UPOZORNĚNÍ: Výpočet okamžité provize počítá s tím, že je zpracována karta klienta dle podmínek!
+                  </p>
+                )}
+                {product === "neon" && (
+                  <p className="mt-1 text-xs font-semibold text-rose-300">
+                    Aktuální koeficienty – platnost od 01.07.2024
+                  </p>
+                )}
+                {product === "csobAuto" && (
+                  <p className="mt-1 text-xs font-semibold text-rose-300">
+                    Aktuální koeficienty – platnost od 01.11.2024
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCoefModal(false)}
+                className="rounded-full px-2 text-slate-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                aria-label="Zavřít"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {coefList.length > 0 ? (
+                coefList.map((c, idx) => (
+                  <div
+                    key={`${c.label}-${idx}`}
+                    className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100"
+                  >
+                    <span className="text-slate-300">{c.label}</span>
+                    <span className="font-semibold">{formatCoefficientNumber(c.value)}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-300">
+                  Pro tento produkt nebo pozici nemám koeficienty k zobrazení.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

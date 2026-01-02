@@ -42,6 +42,10 @@ import {
   calculateAxaCestovko,
   calculateComfortCC,
 } from "../../lib/productFormulas";
+import { DomexDetailPanel, type DomexFields } from "../components/DomexDetailPanel";
+import { AutoDetailPanel, type AutoFields } from "../components/AutoDetailPanel";
+import { NeonDetailPanel, type NeonFields } from "../components/NeonDetailPanel";
+import { FlexiDetailPanel, type FlexiFields } from "../components/FlexiDetailPanel";
 
 type FirestoreTimestamp = {
   seconds: number;
@@ -92,6 +96,128 @@ type ContractDoc = {
   carPlate?: string | null;
   carVin?: string | null;
   carTp?: string | null;
+  carLiabilityLimit?: number | null;
+  carHullSumInsured?: number | null;
+  carHullDeductible?: number | null;
+  carAssistancePlan?: string | null;
+  carAddonGlass?: boolean | null;
+  carAddonAnimalCollision?: boolean | null;
+  carAddonAnimalDamage?: boolean | null;
+  carAddonVandalism?: boolean | null;
+  carAddonTheft?: boolean | null;
+  carAddonNatural?: boolean | null;
+  carAddonOwnDamage?: boolean | null;
+  carAddonGap?: boolean | null;
+  carAddonSmartGap?: boolean | null;
+  carAddonServisPro?: boolean | null;
+  carAddonReplacementCar?: boolean | null;
+  carAddonLuggage?: boolean | null;
+  carAddonPassengerInjury?: boolean | null;
+
+  domexDetail?: {
+    address?: string | null;
+    propertyType?: string | null;
+    propertyCoverage?: string | null;
+    sumInsured?: number | null;
+    deductible?: number | null;
+    householdType?: string | null;
+    householdCoverage?: string | null;
+    householdSumInsured?: number | null;
+    householdDeductible?: number | null;
+    outbuildingSumInsured?: number | null;
+    liabilitySumInsured?: number | null;
+    liabilityDeductible?: number | null;
+    liabilityMobile?: boolean | null;
+    liabilityTenant?: boolean | null;
+    liabilityLandlord?: boolean | null;
+    assistancePlus?: boolean | null;
+    note?: string | null;
+  } | null;
+  neonDetail?: {
+    version?: string | null;
+    deathType?: string | null;
+    deathAmount?: number | null;
+    death2Type?: string | null;
+    death2Amount?: number | null;
+    deathTerminalAmount?: number | null;
+    waiverInvalidity?: boolean | null;
+    waiverUnemployment?: boolean | null;
+    invalidityAType?: string | null;
+    invalidityA1?: number | null;
+    invalidityA2?: number | null;
+    invalidityA3?: number | null;
+    invalidityBType?: string | null;
+    invalidityB1?: number | null;
+    invalidityB2?: number | null;
+    invalidityB3?: number | null;
+    invalidityPension?: boolean | null;
+    criticalIllnessType?: string | null;
+    criticalIllnessAmount?: number | null;
+    childSurgeryAmount?: number | null;
+    vaccinationCompAmount?: number | null;
+    diabetesAmount?: number | null;
+    deathAccidentAmount?: number | null;
+    injuryPermanentAmount?: number | null;
+    hospitalizationAmount?: number | null;
+    workIncapacityStart?: string | null;
+    workIncapacityBackpay?: string | null;
+    workIncapacityAmount?: number | null;
+    careDependencyAmount?: number | null;
+    specialAidAmount?: number | null;
+    caregivingAmount?: number | null;
+    reproductionCostAmount?: number | null;
+    cppHelp?: boolean | null;
+    liabilityCitizenLimit?: number | null;
+    liabilityEmployeeLimit?: number | null;
+    travelInsurance?: boolean | null;
+    accidentDailyBenefit?: number | null;
+  } | null;
+  flexiDetail?: {
+    deathAmount?: number | null;
+    deathTypedType?: string | null;
+    deathTypedAmount?: number | null;
+    deathAccidentAmount?: number | null;
+    seriousIllnessType?: string | null;
+    seriousIllnessAmount?: number | null;
+    seriousIllnessForHim?: number | null;
+    seriousIllnessForHer?: number | null;
+    permanentIllnessAmount?: number | null;
+    invalidityIllnessType?: string | null;
+    invalidityIllness1?: number | null;
+    invalidityIllness2?: number | null;
+    invalidityIllness3?: number | null;
+    hospitalGeneralAmount?: number | null;
+    workIncapacityStart?: string | null;
+    workIncapacityBackpay?: string | null;
+    workIncapacityAmount?: number | null;
+    caregivingAmount?: number | null;
+    permanentAccidentAmount?: number | null;
+    injuryDamageAmount?: number | null;
+    accidentDailyBenefit?: number | null;
+    hospitalAccidentAmount?: number | null;
+    invalidityAccidentType?: string | null;
+    invalidityAccident1?: number | null;
+    invalidityAccident2?: number | null;
+    invalidityAccident3?: number | null;
+    trafficDeathAccidentAmount?: number | null;
+    trafficPermanentAccidentAmount?: number | null;
+    trafficInjuryDamageAmount?: number | null;
+    trafficAccidentDailyBenefit?: number | null;
+    trafficHospitalAccidentAmount?: number | null;
+    trafficWorkIncapacityAmount?: number | null;
+    trafficInvalidityAmount?: number | null;
+    loanDeathAmount?: number | null;
+    loanInvalidityType?: string | null;
+    loanInvalidity1?: number | null;
+    loanInvalidity2?: number | null;
+    loanInvalidity3?: number | null;
+    loanIllnessAmount?: number | null;
+    loanWorkIncapacityAmount?: number | null;
+    addonMajakBasic?: boolean | null;
+    addonMajakPlus?: boolean | null;
+    addonLiabilityCitizen?: number | null;
+    addonTravel?: boolean | null;
+  } | null;
 };
 
 type ToastMessage = {
@@ -565,6 +691,7 @@ export default function ContractDetailPage() {
   const [childOverrideLabel, setChildOverrideLabel] = useState<string | null>(null);
   const [childOverrideName, setChildOverrideName] = useState<string | null>(null);
   const [childOverridePosition, setChildOverridePosition] = useState<Position | null>(null);
+  const [showProductPanel, setShowProductPanel] = useState(false);
 
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -761,6 +888,649 @@ export default function ContractDetailPage() {
   const [editCarPlate, setEditCarPlate] = useState("");
   const [editCarVin, setEditCarVin] = useState("");
   const [editCarTp, setEditCarTp] = useState("");
+  const [editCarLiabilityLimit, setEditCarLiabilityLimit] = useState("");
+  const [editCarHullSumInsured, setEditCarHullSumInsured] = useState("");
+  const [editCarHullDeductible, setEditCarHullDeductible] = useState("");
+  const [editCarAssistancePlan, setEditCarAssistancePlan] = useState("");
+  const [editCarAddonGlass, setEditCarAddonGlass] = useState(false);
+  const [editCarAddonAnimalCollision, setEditCarAddonAnimalCollision] = useState(false);
+  const [editCarAddonAnimalDamage, setEditCarAddonAnimalDamage] = useState(false);
+  const [editCarAddonVandalism, setEditCarAddonVandalism] = useState(false);
+  const [editCarAddonTheft, setEditCarAddonTheft] = useState(false);
+  const [editCarAddonNatural, setEditCarAddonNatural] = useState(false);
+  const [editCarAddonOwnDamage, setEditCarAddonOwnDamage] = useState(false);
+  const [editCarAddonGap, setEditCarAddonGap] = useState(false);
+  const [editCarAddonSmartGap, setEditCarAddonSmartGap] = useState(false);
+  const [editCarAddonServisPro, setEditCarAddonServisPro] = useState(false);
+  const [editCarAddonReplacementCar, setEditCarAddonReplacementCar] = useState(false);
+  const [editCarAddonLuggage, setEditCarAddonLuggage] = useState(false);
+  const [editCarAddonPassengerInjury, setEditCarAddonPassengerInjury] = useState(false);
+  const [editNeonVersion, setEditNeonVersion] = useState("");
+  const [editNeonDeathType, setEditNeonDeathType] = useState("");
+  const [editNeonDeathAmount, setEditNeonDeathAmount] = useState("");
+  const [editNeonDeath2Type, setEditNeonDeath2Type] = useState("");
+  const [editNeonDeath2Amount, setEditNeonDeath2Amount] = useState("");
+  const [editNeonDeathTerminalAmount, setEditNeonDeathTerminalAmount] = useState("");
+  const [editNeonWaiverInvalidity, setEditNeonWaiverInvalidity] = useState(false);
+  const [editNeonWaiverUnemployment, setEditNeonWaiverUnemployment] = useState(false);
+  const [editNeonInvalidityAType, setEditNeonInvalidityAType] = useState("");
+  const [editNeonInvalidityA1, setEditNeonInvalidityA1] = useState("");
+  const [editNeonInvalidityA2, setEditNeonInvalidityA2] = useState("");
+  const [editNeonInvalidityA3, setEditNeonInvalidityA3] = useState("");
+  const [editNeonInvalidityBType, setEditNeonInvalidityBType] = useState("");
+  const [editNeonInvalidityB1, setEditNeonInvalidityB1] = useState("");
+  const [editNeonInvalidityB2, setEditNeonInvalidityB2] = useState("");
+  const [editNeonInvalidityB3, setEditNeonInvalidityB3] = useState("");
+  const [editNeonInvalidityPension, setEditNeonInvalidityPension] = useState(false);
+  const [editNeonCriticalType, setEditNeonCriticalType] = useState("");
+  const [editNeonCriticalAmount, setEditNeonCriticalAmount] = useState("");
+  const [editNeonChildSurgeryAmount, setEditNeonChildSurgeryAmount] = useState("");
+  const [editNeonVaccinationCompAmount, setEditNeonVaccinationCompAmount] = useState("");
+  const [editNeonDiabetesAmount, setEditNeonDiabetesAmount] = useState("");
+  const [editNeonDeathAccidentAmount, setEditNeonDeathAccidentAmount] = useState("");
+  const [editNeonInjuryPermanentAmount, setEditNeonInjuryPermanentAmount] = useState("");
+  const [editNeonHospitalizationAmount, setEditNeonHospitalizationAmount] = useState("");
+  const [editNeonWorkIncapacityStart, setEditNeonWorkIncapacityStart] = useState("");
+  const [editNeonWorkIncapacityBackpay, setEditNeonWorkIncapacityBackpay] = useState("");
+  const [editNeonWorkIncapacityAmount, setEditNeonWorkIncapacityAmount] = useState("");
+  const [editNeonCareDependencyAmount, setEditNeonCareDependencyAmount] = useState("");
+  const [editNeonSpecialAidAmount, setEditNeonSpecialAidAmount] = useState("");
+  const [editNeonCaregivingAmount, setEditNeonCaregivingAmount] = useState("");
+  const [editNeonReproductionCostAmount, setEditNeonReproductionCostAmount] = useState("");
+  const [editNeonCppHelp, setEditNeonCppHelp] = useState(false);
+  const [editNeonLiabilityCitizenLimit, setEditNeonLiabilityCitizenLimit] = useState("");
+  const [editNeonLiabilityEmployeeLimit, setEditNeonLiabilityEmployeeLimit] = useState("");
+  const [editNeonTravelInsurance, setEditNeonTravelInsurance] = useState(false);
+  const [editNeonAccidentDailyBenefit, setEditNeonAccidentDailyBenefit] = useState("");
+  const [editFlexiDeathAmount, setEditFlexiDeathAmount] = useState("");
+  const [editFlexiDeathTypedType, setEditFlexiDeathTypedType] = useState("");
+  const [editFlexiDeathTypedAmount, setEditFlexiDeathTypedAmount] = useState("");
+  const [editFlexiDeathAccidentAmount, setEditFlexiDeathAccidentAmount] = useState("");
+  const [editFlexiSeriousIllnessType, setEditFlexiSeriousIllnessType] = useState("");
+  const [editFlexiSeriousIllnessAmount, setEditFlexiSeriousIllnessAmount] = useState("");
+  const [editFlexiIllnessForHim, setEditFlexiIllnessForHim] = useState("");
+  const [editFlexiIllnessForHer, setEditFlexiIllnessForHer] = useState("");
+  const [editFlexiPermanentIllnessAmount, setEditFlexiPermanentIllnessAmount] = useState("");
+  const [editFlexiInvalidityIllnessType, setEditFlexiInvalidityIllnessType] = useState("");
+  const [editFlexiInvalidityIllness1, setEditFlexiInvalidityIllness1] = useState("");
+  const [editFlexiInvalidityIllness2, setEditFlexiInvalidityIllness2] = useState("");
+  const [editFlexiInvalidityIllness3, setEditFlexiInvalidityIllness3] = useState("");
+  const [editFlexiHospitalGeneralAmount, setEditFlexiHospitalGeneralAmount] = useState("");
+  const [editFlexiWorkIncapacityStart, setEditFlexiWorkIncapacityStart] = useState("");
+  const [editFlexiWorkIncapacityBackpay, setEditFlexiWorkIncapacityBackpay] = useState("");
+  const [editFlexiWorkIncapacityAmount, setEditFlexiWorkIncapacityAmount] = useState("");
+  const [editFlexiCaregivingAmount, setEditFlexiCaregivingAmount] = useState("");
+  const [editFlexiPermanentAccidentAmount, setEditFlexiPermanentAccidentAmount] = useState("");
+  const [editFlexiInjuryDamageAmount, setEditFlexiInjuryDamageAmount] = useState("");
+  const [editFlexiAccidentDailyBenefit, setEditFlexiAccidentDailyBenefit] = useState("");
+  const [editFlexiHospitalAccidentAmount, setEditFlexiHospitalAccidentAmount] = useState("");
+  const [editFlexiInvalidityAccidentType, setEditFlexiInvalidityAccidentType] = useState("");
+  const [editFlexiInvalidityAccident1, setEditFlexiInvalidityAccident1] = useState("");
+  const [editFlexiInvalidityAccident2, setEditFlexiInvalidityAccident2] = useState("");
+  const [editFlexiInvalidityAccident3, setEditFlexiInvalidityAccident3] = useState("");
+  const [editFlexiTrafficDeathAccidentAmount, setEditFlexiTrafficDeathAccidentAmount] = useState("");
+  const [editFlexiTrafficPermanentAccidentAmount, setEditFlexiTrafficPermanentAccidentAmount] = useState("");
+  const [editFlexiTrafficInjuryDamageAmount, setEditFlexiTrafficInjuryDamageAmount] = useState("");
+  const [editFlexiTrafficAccidentDailyBenefit, setEditFlexiTrafficAccidentDailyBenefit] = useState("");
+  const [editFlexiTrafficHospitalAccidentAmount, setEditFlexiTrafficHospitalAccidentAmount] = useState("");
+  const [editFlexiTrafficWorkIncapacityAmount, setEditFlexiTrafficWorkIncapacityAmount] = useState("");
+  const [editFlexiTrafficInvalidityAmount, setEditFlexiTrafficInvalidityAmount] = useState("");
+  const [editFlexiLoanDeathAmount, setEditFlexiLoanDeathAmount] = useState("");
+  const [editFlexiLoanInvalidityType, setEditFlexiLoanInvalidityType] = useState("");
+  const [editFlexiLoanInvalidity1, setEditFlexiLoanInvalidity1] = useState("");
+  const [editFlexiLoanInvalidity2, setEditFlexiLoanInvalidity2] = useState("");
+  const [editFlexiLoanInvalidity3, setEditFlexiLoanInvalidity3] = useState("");
+  const [editFlexiLoanIllnessAmount, setEditFlexiLoanIllnessAmount] = useState("");
+  const [editFlexiLoanWorkIncapacityAmount, setEditFlexiLoanWorkIncapacityAmount] = useState("");
+  const [editFlexiAddonMajakBasic, setEditFlexiAddonMajakBasic] = useState(false);
+  const [editFlexiAddonMajakPlus, setEditFlexiAddonMajakPlus] = useState(false);
+  const [editFlexiAddonLiabilityCitizen, setEditFlexiAddonLiabilityCitizen] = useState("");
+  const [editFlexiAddonTravel, setEditFlexiAddonTravel] = useState(false);
+  const [editDomexAddress, setEditDomexAddress] = useState("");
+  const [editDomexPropertyType, setEditDomexPropertyType] = useState("");
+  const [editDomexPropertyCoverage, setEditDomexPropertyCoverage] = useState("");
+  const [editDomexSumInsured, setEditDomexSumInsured] = useState("");
+  const [editDomexDeductible, setEditDomexDeductible] = useState("");
+  const [editDomexHouseholdType, setEditDomexHouseholdType] = useState("");
+  const [editDomexHouseholdCoverage, setEditDomexHouseholdCoverage] = useState("");
+  const [editDomexHouseholdSumInsured, setEditDomexHouseholdSumInsured] = useState("");
+  const [editDomexHouseholdDeductible, setEditDomexHouseholdDeductible] = useState("");
+  const [editDomexOutbuildingSumInsured, setEditDomexOutbuildingSumInsured] = useState("");
+  const [editDomexLiabilitySumInsured, setEditDomexLiabilitySumInsured] = useState("");
+  const [editDomexLiabilityDeductible, setEditDomexLiabilityDeductible] = useState("");
+  const [editDomexLiabilityMobile, setEditDomexLiabilityMobile] = useState(false);
+  const [editDomexLiabilityTenant, setEditDomexLiabilityTenant] = useState(false);
+  const [editDomexLiabilityLandlord, setEditDomexLiabilityLandlord] = useState(false);
+  const [editDomexAssistancePlus, setEditDomexAssistancePlus] = useState(false);
+  const [editDomexNote, setEditDomexNote] = useState("");
+
+  const autoFields: AutoFields = {
+    carMake: editCarMake,
+    carPlate: editCarPlate,
+    carVin: editCarVin,
+    carTp: editCarTp,
+    carLiabilityLimit: editCarLiabilityLimit,
+    carHullSumInsured: editCarHullSumInsured,
+    carHullDeductible: editCarHullDeductible,
+    carAssistancePlan: editCarAssistancePlan,
+    carAddonGlass: editCarAddonGlass,
+    carAddonAnimalCollision: editCarAddonAnimalCollision,
+    carAddonAnimalDamage: editCarAddonAnimalDamage,
+    carAddonVandalism: editCarAddonVandalism,
+    carAddonTheft: editCarAddonTheft,
+    carAddonNatural: editCarAddonNatural,
+    carAddonOwnDamage: editCarAddonOwnDamage,
+    carAddonGap: editCarAddonGap,
+    carAddonSmartGap: editCarAddonSmartGap,
+    carAddonServisPro: editCarAddonServisPro,
+    carAddonReplacementCar: editCarAddonReplacementCar,
+    carAddonLuggage: editCarAddonLuggage,
+    carAddonPassengerInjury: editCarAddonPassengerInjury,
+  };
+
+  const neonFields: NeonFields = {
+    version: editNeonVersion,
+    deathType: editNeonDeathType,
+    deathAmount: editNeonDeathAmount,
+    death2Type: editNeonDeath2Type,
+    death2Amount: editNeonDeath2Amount,
+    deathTerminalAmount: editNeonDeathTerminalAmount,
+    waiverInvalidity: editNeonWaiverInvalidity,
+    waiverUnemployment: editNeonWaiverUnemployment,
+    invalidityAType: editNeonInvalidityAType,
+    invalidityA1: editNeonInvalidityA1,
+    invalidityA2: editNeonInvalidityA2,
+    invalidityA3: editNeonInvalidityA3,
+    invalidityBType: editNeonInvalidityBType,
+    invalidityB1: editNeonInvalidityB1,
+    invalidityB2: editNeonInvalidityB2,
+    invalidityB3: editNeonInvalidityB3,
+    invalidityPension: editNeonInvalidityPension,
+    criticalType: editNeonCriticalType,
+    criticalAmount: editNeonCriticalAmount,
+    childSurgeryAmount: editNeonChildSurgeryAmount,
+    vaccinationCompAmount: editNeonVaccinationCompAmount,
+    accidentDailyBenefit: editNeonAccidentDailyBenefit,
+    diabetesAmount: editNeonDiabetesAmount,
+    deathAccidentAmount: editNeonDeathAccidentAmount,
+    injuryPermanentAmount: editNeonInjuryPermanentAmount,
+    hospitalizationAmount: editNeonHospitalizationAmount,
+    workIncapacityStart: editNeonWorkIncapacityStart,
+    workIncapacityBackpay: editNeonWorkIncapacityBackpay,
+    workIncapacityAmount: editNeonWorkIncapacityAmount,
+    careDependencyAmount: editNeonCareDependencyAmount,
+    specialAidAmount: editNeonSpecialAidAmount,
+    caregivingAmount: editNeonCaregivingAmount,
+    reproductionCostAmount: editNeonReproductionCostAmount,
+    cppHelp: editNeonCppHelp,
+    liabilityCitizenLimit: editNeonLiabilityCitizenLimit,
+    liabilityEmployeeLimit: editNeonLiabilityEmployeeLimit,
+    travelInsurance: editNeonTravelInsurance,
+  };
+
+  const flexiFields: FlexiFields = {
+    deathAmount: editFlexiDeathAmount,
+    deathTypedType: editFlexiDeathTypedType,
+    deathTypedAmount: editFlexiDeathTypedAmount,
+    deathAccidentAmount: editFlexiDeathAccidentAmount,
+    seriousIllnessType: editFlexiSeriousIllnessType,
+    seriousIllnessAmount: editFlexiSeriousIllnessAmount,
+    seriousIllnessForHim: editFlexiIllnessForHim,
+    seriousIllnessForHer: editFlexiIllnessForHer,
+    permanentIllnessAmount: editFlexiPermanentIllnessAmount,
+    invalidityIllnessType: editFlexiInvalidityIllnessType,
+    invalidityIllness1: editFlexiInvalidityIllness1,
+    invalidityIllness2: editFlexiInvalidityIllness2,
+    invalidityIllness3: editFlexiInvalidityIllness3,
+    hospitalGeneralAmount: editFlexiHospitalGeneralAmount,
+    workIncapacityStart: editFlexiWorkIncapacityStart,
+    workIncapacityBackpay: editFlexiWorkIncapacityBackpay,
+    workIncapacityAmount: editFlexiWorkIncapacityAmount,
+    caregivingAmount: editFlexiCaregivingAmount,
+    permanentAccidentAmount: editFlexiPermanentAccidentAmount,
+    injuryDamageAmount: editFlexiInjuryDamageAmount,
+    accidentDailyBenefit: editFlexiAccidentDailyBenefit,
+    hospitalAccidentAmount: editFlexiHospitalAccidentAmount,
+    invalidityAccidentType: editFlexiInvalidityAccidentType,
+    invalidityAccident1: editFlexiInvalidityAccident1,
+    invalidityAccident2: editFlexiInvalidityAccident2,
+    invalidityAccident3: editFlexiInvalidityAccident3,
+    trafficDeathAccidentAmount: editFlexiTrafficDeathAccidentAmount,
+    trafficPermanentAccidentAmount: editFlexiTrafficPermanentAccidentAmount,
+    trafficInjuryDamageAmount: editFlexiTrafficInjuryDamageAmount,
+    trafficAccidentDailyBenefit: editFlexiTrafficAccidentDailyBenefit,
+    trafficHospitalAccidentAmount: editFlexiTrafficHospitalAccidentAmount,
+    trafficWorkIncapacityAmount: editFlexiTrafficWorkIncapacityAmount,
+    trafficInvalidityAmount: editFlexiTrafficInvalidityAmount,
+    loanDeathAmount: editFlexiLoanDeathAmount,
+    loanInvalidityType: editFlexiLoanInvalidityType,
+    loanInvalidity1: editFlexiLoanInvalidity1,
+    loanInvalidity2: editFlexiLoanInvalidity2,
+    loanInvalidity3: editFlexiLoanInvalidity3,
+    loanIllnessAmount: editFlexiLoanIllnessAmount,
+    loanWorkIncapacityAmount: editFlexiLoanWorkIncapacityAmount,
+    addonMajakBasic: editFlexiAddonMajakBasic,
+    addonMajakPlus: editFlexiAddonMajakPlus,
+    addonLiabilityCitizen: editFlexiAddonLiabilityCitizen,
+    addonTravel: editFlexiAddonTravel,
+  };
+
+  const domexFields: DomexFields = {
+    address: editDomexAddress,
+    propertyType: editDomexPropertyType,
+    propertyCoverage: editDomexPropertyCoverage,
+    sumInsured: editDomexSumInsured,
+    deductible: editDomexDeductible,
+    outbuildingSumInsured: editDomexOutbuildingSumInsured,
+    householdType: editDomexHouseholdType,
+    householdCoverage: editDomexHouseholdCoverage,
+    householdSumInsured: editDomexHouseholdSumInsured,
+    householdDeductible: editDomexHouseholdDeductible,
+    liabilitySumInsured: editDomexLiabilitySumInsured,
+    liabilityDeductible: editDomexLiabilityDeductible,
+    liabilityMobile: editDomexLiabilityMobile,
+    liabilityTenant: editDomexLiabilityTenant,
+    liabilityLandlord: editDomexLiabilityLandlord,
+    assistancePlus: editDomexAssistancePlus,
+    note: editDomexNote,
+  };
+
+  const handleAutoFieldChange = useCallback(
+    (key: keyof AutoFields, value: string | boolean) => {
+      switch (key) {
+        case "carMake":
+          setEditCarMake(String(value));
+          break;
+        case "carPlate":
+          setEditCarPlate(String(value));
+          break;
+        case "carVin":
+          setEditCarVin(String(value));
+          break;
+        case "carTp":
+          setEditCarTp(String(value));
+          break;
+        case "carLiabilityLimit":
+          setEditCarLiabilityLimit(String(value));
+          break;
+        case "carHullSumInsured":
+          setEditCarHullSumInsured(String(value));
+          break;
+        case "carHullDeductible":
+          setEditCarHullDeductible(String(value));
+          break;
+        case "carAssistancePlan":
+          setEditCarAssistancePlan(String(value));
+          break;
+        case "carAddonGlass":
+          setEditCarAddonGlass(Boolean(value));
+          break;
+        case "carAddonAnimalCollision":
+          setEditCarAddonAnimalCollision(Boolean(value));
+          break;
+        case "carAddonAnimalDamage":
+          setEditCarAddonAnimalDamage(Boolean(value));
+          break;
+        case "carAddonVandalism":
+          setEditCarAddonVandalism(Boolean(value));
+          break;
+        case "carAddonTheft":
+          setEditCarAddonTheft(Boolean(value));
+          break;
+        case "carAddonNatural":
+          setEditCarAddonNatural(Boolean(value));
+          break;
+        case "carAddonOwnDamage":
+          setEditCarAddonOwnDamage(Boolean(value));
+          break;
+        case "carAddonGap":
+          setEditCarAddonGap(Boolean(value));
+          break;
+        case "carAddonSmartGap":
+          setEditCarAddonSmartGap(Boolean(value));
+          break;
+        case "carAddonServisPro":
+          setEditCarAddonServisPro(Boolean(value));
+          break;
+        case "carAddonReplacementCar":
+          setEditCarAddonReplacementCar(Boolean(value));
+          break;
+        case "carAddonLuggage":
+          setEditCarAddonLuggage(Boolean(value));
+          break;
+        case "carAddonPassengerInjury":
+          setEditCarAddonPassengerInjury(Boolean(value));
+          break;
+        default:
+          break;
+      }
+    },
+    []
+  );
+
+  const handleNeonFieldChange = useCallback(
+    (key: keyof NeonFields, value: string | boolean) => {
+      switch (key) {
+        case "version":
+          setEditNeonVersion(String(value));
+          break;
+        case "deathType":
+          setEditNeonDeathType(String(value));
+          break;
+        case "deathAmount":
+          setEditNeonDeathAmount(String(value));
+          break;
+        case "death2Type":
+          setEditNeonDeath2Type(String(value));
+          break;
+        case "death2Amount":
+          setEditNeonDeath2Amount(String(value));
+          break;
+        case "deathTerminalAmount":
+          setEditNeonDeathTerminalAmount(String(value));
+          break;
+        case "waiverInvalidity":
+          setEditNeonWaiverInvalidity(Boolean(value));
+          break;
+        case "waiverUnemployment":
+          setEditNeonWaiverUnemployment(Boolean(value));
+          break;
+        case "invalidityAType":
+          setEditNeonInvalidityAType(String(value));
+          break;
+        case "invalidityA1":
+          setEditNeonInvalidityA1(String(value));
+          break;
+        case "invalidityA2":
+          setEditNeonInvalidityA2(String(value));
+          break;
+        case "invalidityA3":
+          setEditNeonInvalidityA3(String(value));
+          break;
+        case "invalidityBType":
+          setEditNeonInvalidityBType(String(value));
+          break;
+        case "invalidityB1":
+          setEditNeonInvalidityB1(String(value));
+          break;
+        case "invalidityB2":
+          setEditNeonInvalidityB2(String(value));
+          break;
+        case "invalidityB3":
+          setEditNeonInvalidityB3(String(value));
+          break;
+        case "invalidityPension":
+          setEditNeonInvalidityPension(Boolean(value));
+          break;
+        case "criticalType":
+          setEditNeonCriticalType(String(value));
+          break;
+        case "criticalAmount":
+          setEditNeonCriticalAmount(String(value));
+          break;
+        case "childSurgeryAmount":
+          setEditNeonChildSurgeryAmount(String(value));
+          break;
+        case "vaccinationCompAmount":
+          setEditNeonVaccinationCompAmount(String(value));
+          break;
+        case "diabetesAmount":
+          setEditNeonDiabetesAmount(String(value));
+          break;
+        case "deathAccidentAmount":
+          setEditNeonDeathAccidentAmount(String(value));
+          break;
+        case "injuryPermanentAmount":
+          setEditNeonInjuryPermanentAmount(String(value));
+          break;
+        case "hospitalizationAmount":
+          setEditNeonHospitalizationAmount(String(value));
+          break;
+        case "workIncapacityStart":
+          setEditNeonWorkIncapacityStart(String(value));
+          break;
+        case "workIncapacityBackpay":
+          setEditNeonWorkIncapacityBackpay(String(value));
+          break;
+        case "workIncapacityAmount":
+          setEditNeonWorkIncapacityAmount(String(value));
+          break;
+        case "careDependencyAmount":
+          setEditNeonCareDependencyAmount(String(value));
+          break;
+        case "specialAidAmount":
+          setEditNeonSpecialAidAmount(String(value));
+          break;
+        case "caregivingAmount":
+          setEditNeonCaregivingAmount(String(value));
+          break;
+        case "reproductionCostAmount":
+          setEditNeonReproductionCostAmount(String(value));
+          break;
+        case "cppHelp":
+          setEditNeonCppHelp(Boolean(value));
+          break;
+        case "liabilityCitizenLimit":
+          setEditNeonLiabilityCitizenLimit(String(value));
+          break;
+        case "liabilityEmployeeLimit":
+          setEditNeonLiabilityEmployeeLimit(String(value));
+          break;
+        case "travelInsurance":
+          setEditNeonTravelInsurance(Boolean(value));
+          break;
+        case "accidentDailyBenefit":
+          setEditNeonAccidentDailyBenefit(String(value));
+          break;
+        default:
+          break;
+      }
+    },
+    []
+  );
+
+  const handleFlexiFieldChange = useCallback(
+    (key: keyof FlexiFields, value: string | boolean) => {
+      switch (key) {
+        case "deathAmount":
+          setEditFlexiDeathAmount(String(value));
+          break;
+        case "deathTypedType":
+          setEditFlexiDeathTypedType(String(value));
+          break;
+        case "deathTypedAmount":
+          setEditFlexiDeathTypedAmount(String(value));
+          break;
+        case "deathAccidentAmount":
+          setEditFlexiDeathAccidentAmount(String(value));
+          break;
+        case "seriousIllnessType":
+          setEditFlexiSeriousIllnessType(String(value));
+          break;
+        case "seriousIllnessAmount":
+          setEditFlexiSeriousIllnessAmount(String(value));
+          break;
+        case "seriousIllnessForHim":
+          setEditFlexiIllnessForHim(String(value));
+          break;
+        case "seriousIllnessForHer":
+          setEditFlexiIllnessForHer(String(value));
+          break;
+        case "permanentIllnessAmount":
+          setEditFlexiPermanentIllnessAmount(String(value));
+          break;
+        case "invalidityIllnessType":
+          setEditFlexiInvalidityIllnessType(String(value));
+          break;
+        case "invalidityIllness1":
+          setEditFlexiInvalidityIllness1(String(value));
+          break;
+        case "invalidityIllness2":
+          setEditFlexiInvalidityIllness2(String(value));
+          break;
+        case "invalidityIllness3":
+          setEditFlexiInvalidityIllness3(String(value));
+          break;
+        case "hospitalGeneralAmount":
+          setEditFlexiHospitalGeneralAmount(String(value));
+          break;
+        case "workIncapacityStart":
+          setEditFlexiWorkIncapacityStart(String(value));
+          break;
+        case "workIncapacityBackpay":
+          setEditFlexiWorkIncapacityBackpay(String(value));
+          break;
+        case "workIncapacityAmount":
+          setEditFlexiWorkIncapacityAmount(String(value));
+          break;
+        case "caregivingAmount":
+          setEditFlexiCaregivingAmount(String(value));
+          break;
+        case "permanentAccidentAmount":
+          setEditFlexiPermanentAccidentAmount(String(value));
+          break;
+        case "injuryDamageAmount":
+          setEditFlexiInjuryDamageAmount(String(value));
+          break;
+        case "accidentDailyBenefit":
+          setEditFlexiAccidentDailyBenefit(String(value));
+          break;
+        case "hospitalAccidentAmount":
+          setEditFlexiHospitalAccidentAmount(String(value));
+          break;
+        case "invalidityAccidentType":
+          setEditFlexiInvalidityAccidentType(String(value));
+          break;
+        case "invalidityAccident1":
+          setEditFlexiInvalidityAccident1(String(value));
+          break;
+        case "invalidityAccident2":
+          setEditFlexiInvalidityAccident2(String(value));
+          break;
+        case "invalidityAccident3":
+          setEditFlexiInvalidityAccident3(String(value));
+          break;
+        case "trafficDeathAccidentAmount":
+          setEditFlexiTrafficDeathAccidentAmount(String(value));
+          break;
+        case "trafficPermanentAccidentAmount":
+          setEditFlexiTrafficPermanentAccidentAmount(String(value));
+          break;
+        case "trafficInjuryDamageAmount":
+          setEditFlexiTrafficInjuryDamageAmount(String(value));
+          break;
+        case "trafficAccidentDailyBenefit":
+          setEditFlexiTrafficAccidentDailyBenefit(String(value));
+          break;
+        case "trafficHospitalAccidentAmount":
+          setEditFlexiTrafficHospitalAccidentAmount(String(value));
+          break;
+        case "trafficWorkIncapacityAmount":
+          setEditFlexiTrafficWorkIncapacityAmount(String(value));
+          break;
+        case "trafficInvalidityAmount":
+          setEditFlexiTrafficInvalidityAmount(String(value));
+          break;
+        case "loanDeathAmount":
+          setEditFlexiLoanDeathAmount(String(value));
+          break;
+        case "loanInvalidityType":
+          setEditFlexiLoanInvalidityType(String(value));
+          break;
+        case "loanInvalidity1":
+          setEditFlexiLoanInvalidity1(String(value));
+          break;
+        case "loanInvalidity2":
+          setEditFlexiLoanInvalidity2(String(value));
+          break;
+        case "loanInvalidity3":
+          setEditFlexiLoanInvalidity3(String(value));
+          break;
+        case "loanIllnessAmount":
+          setEditFlexiLoanIllnessAmount(String(value));
+          break;
+        case "loanWorkIncapacityAmount":
+          setEditFlexiLoanWorkIncapacityAmount(String(value));
+          break;
+        case "addonMajakBasic":
+          setEditFlexiAddonMajakBasic(Boolean(value));
+          break;
+        case "addonMajakPlus":
+          setEditFlexiAddonMajakPlus(Boolean(value));
+          break;
+        case "addonLiabilityCitizen":
+          setEditFlexiAddonLiabilityCitizen(String(value));
+          break;
+        case "addonTravel":
+          setEditFlexiAddonTravel(Boolean(value));
+          break;
+        default:
+          break;
+      }
+    },
+    []
+  );
+
+  const handleDomexFieldChange = useCallback(
+    (key: keyof DomexFields, value: string | boolean) => {
+      switch (key) {
+        case "address":
+          setEditDomexAddress(String(value));
+          break;
+        case "propertyType":
+          setEditDomexPropertyType(String(value));
+          break;
+        case "propertyCoverage":
+          setEditDomexPropertyCoverage(String(value));
+          break;
+        case "sumInsured":
+          setEditDomexSumInsured(String(value));
+          break;
+        case "deductible":
+          setEditDomexDeductible(String(value));
+          break;
+        case "outbuildingSumInsured":
+          setEditDomexOutbuildingSumInsured(String(value));
+          break;
+        case "householdType":
+          setEditDomexHouseholdType(String(value));
+          break;
+        case "householdCoverage":
+          setEditDomexHouseholdCoverage(String(value));
+          break;
+        case "householdSumInsured":
+          setEditDomexHouseholdSumInsured(String(value));
+          break;
+        case "householdDeductible":
+          setEditDomexHouseholdDeductible(String(value));
+          break;
+        case "liabilitySumInsured":
+          setEditDomexLiabilitySumInsured(String(value));
+          break;
+        case "liabilityDeductible":
+          setEditDomexLiabilityDeductible(String(value));
+          break;
+        case "liabilityMobile":
+          setEditDomexLiabilityMobile(Boolean(value));
+          break;
+        case "liabilityTenant":
+          setEditDomexLiabilityTenant(Boolean(value));
+          break;
+        case "liabilityLandlord":
+          setEditDomexLiabilityLandlord(Boolean(value));
+          break;
+        case "assistancePlus":
+          setEditDomexAssistancePlus(Boolean(value));
+          break;
+        case "note":
+          setEditDomexNote(String(value));
+          break;
+        default:
+          break;
+      }
+    },
+    []
+  );
   const [savingDetails, setSavingDetails] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [detailsSaved, setDetailsSaved] = useState(false);
@@ -780,6 +1550,445 @@ export default function ContractDetailPage() {
     setEditCarPlate(contract.carPlate ?? "");
     setEditCarVin(contract.carVin ?? "");
     setEditCarTp(contract.carTp ?? "");
+    setEditCarLiabilityLimit(
+      contract.carLiabilityLimit != null && Number.isFinite(contract.carLiabilityLimit)
+        ? String(contract.carLiabilityLimit)
+        : ""
+    );
+    setEditCarHullSumInsured(
+      contract.carHullSumInsured != null && Number.isFinite(contract.carHullSumInsured)
+        ? String(contract.carHullSumInsured)
+        : ""
+    );
+    setEditCarHullDeductible(
+      contract.carHullDeductible != null && Number.isFinite(contract.carHullDeductible)
+        ? String(contract.carHullDeductible)
+        : ""
+    );
+    setEditCarAssistancePlan(contract.carAssistancePlan ?? "");
+    setEditCarAddonGlass(!!contract.carAddonGlass);
+    setEditCarAddonAnimalCollision(!!contract.carAddonAnimalCollision);
+    setEditCarAddonAnimalDamage(!!contract.carAddonAnimalDamage);
+    setEditCarAddonVandalism(!!contract.carAddonVandalism);
+    setEditCarAddonTheft(!!contract.carAddonTheft);
+    setEditCarAddonNatural(!!contract.carAddonNatural);
+    setEditCarAddonOwnDamage(!!contract.carAddonOwnDamage);
+    setEditCarAddonGap(!!contract.carAddonGap);
+    setEditCarAddonSmartGap(!!contract.carAddonSmartGap);
+    setEditCarAddonServisPro(!!contract.carAddonServisPro);
+    setEditCarAddonReplacementCar(!!contract.carAddonReplacementCar);
+    setEditCarAddonLuggage(!!contract.carAddonLuggage);
+    setEditCarAddonPassengerInjury(!!contract.carAddonPassengerInjury);
+    setEditNeonVersion(contract.neonDetail?.version ?? "");
+    setEditNeonDeathType(contract.neonDetail?.deathType ?? "");
+    setEditNeonDeathAmount(
+      contract.neonDetail?.deathAmount != null && Number.isFinite(contract.neonDetail.deathAmount)
+        ? String(contract.neonDetail.deathAmount)
+        : ""
+    );
+    setEditNeonDeath2Type(contract.neonDetail?.death2Type ?? "");
+    setEditNeonDeath2Amount(
+      contract.neonDetail?.death2Amount != null && Number.isFinite(contract.neonDetail.death2Amount)
+        ? String(contract.neonDetail.death2Amount)
+        : ""
+    );
+    setEditNeonDeathTerminalAmount(
+      contract.neonDetail?.deathTerminalAmount != null &&
+      Number.isFinite(contract.neonDetail.deathTerminalAmount)
+        ? String(contract.neonDetail.deathTerminalAmount)
+        : ""
+    );
+    setEditNeonWaiverInvalidity(!!contract.neonDetail?.waiverInvalidity);
+    setEditNeonWaiverUnemployment(!!contract.neonDetail?.waiverUnemployment);
+    setEditNeonInvalidityAType(contract.neonDetail?.invalidityAType ?? "");
+    setEditNeonInvalidityA1(
+      contract.neonDetail?.invalidityA1 != null && Number.isFinite(contract.neonDetail.invalidityA1)
+        ? String(contract.neonDetail.invalidityA1)
+        : ""
+    );
+    setEditNeonInvalidityA2(
+      contract.neonDetail?.invalidityA2 != null && Number.isFinite(contract.neonDetail.invalidityA2)
+        ? String(contract.neonDetail.invalidityA2)
+        : ""
+    );
+    setEditNeonInvalidityA3(
+      contract.neonDetail?.invalidityA3 != null && Number.isFinite(contract.neonDetail.invalidityA3)
+        ? String(contract.neonDetail.invalidityA3)
+        : ""
+    );
+    setEditNeonInvalidityBType(contract.neonDetail?.invalidityBType ?? "");
+    setEditNeonInvalidityB1(
+      contract.neonDetail?.invalidityB1 != null && Number.isFinite(contract.neonDetail.invalidityB1)
+        ? String(contract.neonDetail.invalidityB1)
+        : ""
+    );
+    setEditNeonInvalidityB2(
+      contract.neonDetail?.invalidityB2 != null && Number.isFinite(contract.neonDetail.invalidityB2)
+        ? String(contract.neonDetail.invalidityB2)
+        : ""
+    );
+    setEditNeonInvalidityB3(
+      contract.neonDetail?.invalidityB3 != null && Number.isFinite(contract.neonDetail.invalidityB3)
+        ? String(contract.neonDetail.invalidityB3)
+        : ""
+    );
+    setEditNeonInvalidityPension(!!contract.neonDetail?.invalidityPension);
+    setEditNeonCriticalType(contract.neonDetail?.criticalIllnessType ?? "");
+    setEditNeonCriticalAmount(
+      contract.neonDetail?.criticalIllnessAmount != null &&
+      Number.isFinite(contract.neonDetail.criticalIllnessAmount)
+        ? String(contract.neonDetail.criticalIllnessAmount)
+        : ""
+    );
+    setEditNeonChildSurgeryAmount(
+      contract.neonDetail?.childSurgeryAmount != null &&
+      Number.isFinite(contract.neonDetail.childSurgeryAmount)
+        ? String(contract.neonDetail.childSurgeryAmount)
+        : ""
+    );
+    setEditNeonVaccinationCompAmount(
+      contract.neonDetail?.vaccinationCompAmount != null &&
+      Number.isFinite(contract.neonDetail.vaccinationCompAmount)
+        ? String(contract.neonDetail.vaccinationCompAmount)
+        : ""
+    );
+    setEditNeonDiabetesAmount(
+      contract.neonDetail?.diabetesAmount != null && Number.isFinite(contract.neonDetail.diabetesAmount)
+        ? String(contract.neonDetail.diabetesAmount)
+        : ""
+    );
+    setEditNeonDeathAccidentAmount(
+      contract.neonDetail?.deathAccidentAmount != null &&
+      Number.isFinite(contract.neonDetail.deathAccidentAmount)
+        ? String(contract.neonDetail.deathAccidentAmount)
+        : ""
+    );
+    setEditNeonInjuryPermanentAmount(
+      contract.neonDetail?.injuryPermanentAmount != null &&
+      Number.isFinite(contract.neonDetail.injuryPermanentAmount)
+        ? String(contract.neonDetail.injuryPermanentAmount)
+        : ""
+    );
+    setEditNeonHospitalizationAmount(
+      contract.neonDetail?.hospitalizationAmount != null &&
+      Number.isFinite(contract.neonDetail.hospitalizationAmount)
+        ? String(contract.neonDetail.hospitalizationAmount)
+        : ""
+    );
+    setEditNeonWorkIncapacityStart(contract.neonDetail?.workIncapacityStart ?? "");
+    setEditNeonWorkIncapacityBackpay(contract.neonDetail?.workIncapacityBackpay ?? "");
+    setEditNeonWorkIncapacityAmount(
+      contract.neonDetail?.workIncapacityAmount != null &&
+      Number.isFinite(contract.neonDetail.workIncapacityAmount)
+        ? String(contract.neonDetail.workIncapacityAmount)
+        : ""
+    );
+    setEditNeonCareDependencyAmount(
+      contract.neonDetail?.careDependencyAmount != null &&
+      Number.isFinite(contract.neonDetail.careDependencyAmount)
+        ? String(contract.neonDetail.careDependencyAmount)
+        : ""
+    );
+    setEditNeonSpecialAidAmount(
+      contract.neonDetail?.specialAidAmount != null &&
+      Number.isFinite(contract.neonDetail.specialAidAmount)
+        ? String(contract.neonDetail.specialAidAmount)
+        : ""
+    );
+    setEditNeonCaregivingAmount(
+      contract.neonDetail?.caregivingAmount != null &&
+      Number.isFinite(contract.neonDetail.caregivingAmount)
+        ? String(contract.neonDetail.caregivingAmount)
+        : ""
+    );
+    setEditNeonReproductionCostAmount(
+      contract.neonDetail?.reproductionCostAmount != null &&
+      Number.isFinite(contract.neonDetail.reproductionCostAmount)
+        ? String(contract.neonDetail.reproductionCostAmount)
+        : ""
+    );
+    setEditNeonCppHelp(!!contract.neonDetail?.cppHelp);
+    setEditNeonLiabilityCitizenLimit(
+      contract.neonDetail?.liabilityCitizenLimit != null &&
+      Number.isFinite(contract.neonDetail.liabilityCitizenLimit)
+        ? String(contract.neonDetail.liabilityCitizenLimit)
+        : ""
+    );
+    setEditNeonLiabilityEmployeeLimit(
+      contract.neonDetail?.liabilityEmployeeLimit != null &&
+      Number.isFinite(contract.neonDetail.liabilityEmployeeLimit)
+        ? String(contract.neonDetail.liabilityEmployeeLimit)
+        : ""
+    );
+    setEditNeonTravelInsurance(!!contract.neonDetail?.travelInsurance);
+    setEditNeonAccidentDailyBenefit(
+      contract.neonDetail?.accidentDailyBenefit != null &&
+      Number.isFinite(contract.neonDetail.accidentDailyBenefit)
+        ? String(contract.neonDetail.accidentDailyBenefit)
+        : ""
+    );
+    setEditFlexiDeathAmount(
+      contract.flexiDetail?.deathAmount != null && Number.isFinite(contract.flexiDetail.deathAmount)
+        ? String(contract.flexiDetail.deathAmount)
+        : ""
+    );
+    setEditFlexiDeathTypedType(contract.flexiDetail?.deathTypedType ?? "");
+    setEditFlexiDeathTypedAmount(
+      contract.flexiDetail?.deathTypedAmount != null && Number.isFinite(contract.flexiDetail.deathTypedAmount)
+        ? String(contract.flexiDetail.deathTypedAmount)
+        : ""
+    );
+    setEditFlexiDeathAccidentAmount(
+      contract.flexiDetail?.deathAccidentAmount != null &&
+      Number.isFinite(contract.flexiDetail.deathAccidentAmount)
+        ? String(contract.flexiDetail.deathAccidentAmount)
+        : ""
+    );
+    setEditFlexiSeriousIllnessType(contract.flexiDetail?.seriousIllnessType ?? "");
+    setEditFlexiSeriousIllnessAmount(
+      contract.flexiDetail?.seriousIllnessAmount != null &&
+      Number.isFinite(contract.flexiDetail.seriousIllnessAmount)
+        ? String(contract.flexiDetail.seriousIllnessAmount)
+        : ""
+    );
+    setEditFlexiIllnessForHim(
+      contract.flexiDetail?.seriousIllnessForHim != null &&
+      Number.isFinite(contract.flexiDetail.seriousIllnessForHim)
+        ? String(contract.flexiDetail.seriousIllnessForHim)
+        : ""
+    );
+    setEditFlexiIllnessForHer(
+      contract.flexiDetail?.seriousIllnessForHer != null &&
+      Number.isFinite(contract.flexiDetail.seriousIllnessForHer)
+        ? String(contract.flexiDetail.seriousIllnessForHer)
+        : ""
+    );
+    setEditFlexiPermanentIllnessAmount(
+      contract.flexiDetail?.permanentIllnessAmount != null &&
+      Number.isFinite(contract.flexiDetail.permanentIllnessAmount)
+        ? String(contract.flexiDetail.permanentIllnessAmount)
+        : ""
+    );
+    setEditFlexiInvalidityIllnessType(contract.flexiDetail?.invalidityIllnessType ?? "");
+    setEditFlexiInvalidityIllness1(
+      contract.flexiDetail?.invalidityIllness1 != null &&
+      Number.isFinite(contract.flexiDetail.invalidityIllness1)
+        ? String(contract.flexiDetail.invalidityIllness1)
+        : ""
+    );
+    setEditFlexiInvalidityIllness2(
+      contract.flexiDetail?.invalidityIllness2 != null &&
+      Number.isFinite(contract.flexiDetail.invalidityIllness2)
+        ? String(contract.flexiDetail.invalidityIllness2)
+        : ""
+    );
+    setEditFlexiInvalidityIllness3(
+      contract.flexiDetail?.invalidityIllness3 != null &&
+      Number.isFinite(contract.flexiDetail.invalidityIllness3)
+        ? String(contract.flexiDetail.invalidityIllness3)
+        : ""
+    );
+    setEditFlexiHospitalGeneralAmount(
+      contract.flexiDetail?.hospitalGeneralAmount != null &&
+      Number.isFinite(contract.flexiDetail.hospitalGeneralAmount)
+        ? String(contract.flexiDetail.hospitalGeneralAmount)
+        : ""
+    );
+    setEditFlexiWorkIncapacityStart(contract.flexiDetail?.workIncapacityStart ?? "");
+    setEditFlexiWorkIncapacityBackpay(contract.flexiDetail?.workIncapacityBackpay ?? "");
+    setEditFlexiWorkIncapacityAmount(
+      contract.flexiDetail?.workIncapacityAmount != null &&
+      Number.isFinite(contract.flexiDetail.workIncapacityAmount)
+        ? String(contract.flexiDetail.workIncapacityAmount)
+        : ""
+    );
+    setEditFlexiCaregivingAmount(
+      contract.flexiDetail?.caregivingAmount != null &&
+      Number.isFinite(contract.flexiDetail.caregivingAmount)
+        ? String(contract.flexiDetail.caregivingAmount)
+        : ""
+    );
+    setEditFlexiPermanentAccidentAmount(
+      contract.flexiDetail?.permanentAccidentAmount != null &&
+      Number.isFinite(contract.flexiDetail.permanentAccidentAmount)
+        ? String(contract.flexiDetail.permanentAccidentAmount)
+        : ""
+    );
+    setEditFlexiInjuryDamageAmount(
+      contract.flexiDetail?.injuryDamageAmount != null &&
+      Number.isFinite(contract.flexiDetail.injuryDamageAmount)
+        ? String(contract.flexiDetail.injuryDamageAmount)
+        : ""
+    );
+    setEditFlexiAccidentDailyBenefit(
+      contract.flexiDetail?.accidentDailyBenefit != null &&
+      Number.isFinite(contract.flexiDetail.accidentDailyBenefit)
+        ? String(contract.flexiDetail.accidentDailyBenefit)
+        : ""
+    );
+    setEditFlexiHospitalAccidentAmount(
+      contract.flexiDetail?.hospitalAccidentAmount != null &&
+      Number.isFinite(contract.flexiDetail.hospitalAccidentAmount)
+        ? String(contract.flexiDetail.hospitalAccidentAmount)
+        : ""
+    );
+    setEditFlexiInvalidityAccidentType(contract.flexiDetail?.invalidityAccidentType ?? "");
+    setEditFlexiInvalidityAccident1(
+      contract.flexiDetail?.invalidityAccident1 != null &&
+      Number.isFinite(contract.flexiDetail.invalidityAccident1)
+        ? String(contract.flexiDetail.invalidityAccident1)
+        : ""
+    );
+    setEditFlexiInvalidityAccident2(
+      contract.flexiDetail?.invalidityAccident2 != null &&
+      Number.isFinite(contract.flexiDetail.invalidityAccident2)
+        ? String(contract.flexiDetail.invalidityAccident2)
+        : ""
+    );
+    setEditFlexiInvalidityAccident3(
+      contract.flexiDetail?.invalidityAccident3 != null &&
+      Number.isFinite(contract.flexiDetail.invalidityAccident3)
+        ? String(contract.flexiDetail.invalidityAccident3)
+        : ""
+    );
+    setEditFlexiTrafficDeathAccidentAmount(
+      contract.flexiDetail?.trafficDeathAccidentAmount != null &&
+      Number.isFinite(contract.flexiDetail.trafficDeathAccidentAmount)
+        ? String(contract.flexiDetail.trafficDeathAccidentAmount)
+        : ""
+    );
+    setEditFlexiTrafficPermanentAccidentAmount(
+      contract.flexiDetail?.trafficPermanentAccidentAmount != null &&
+      Number.isFinite(contract.flexiDetail.trafficPermanentAccidentAmount)
+        ? String(contract.flexiDetail.trafficPermanentAccidentAmount)
+        : ""
+    );
+    setEditFlexiTrafficInjuryDamageAmount(
+      contract.flexiDetail?.trafficInjuryDamageAmount != null &&
+      Number.isFinite(contract.flexiDetail.trafficInjuryDamageAmount)
+        ? String(contract.flexiDetail.trafficInjuryDamageAmount)
+        : ""
+    );
+    setEditFlexiTrafficAccidentDailyBenefit(
+      contract.flexiDetail?.trafficAccidentDailyBenefit != null &&
+      Number.isFinite(contract.flexiDetail.trafficAccidentDailyBenefit)
+        ? String(contract.flexiDetail.trafficAccidentDailyBenefit)
+        : ""
+    );
+    setEditFlexiTrafficHospitalAccidentAmount(
+      contract.flexiDetail?.trafficHospitalAccidentAmount != null &&
+      Number.isFinite(contract.flexiDetail.trafficHospitalAccidentAmount)
+        ? String(contract.flexiDetail.trafficHospitalAccidentAmount)
+        : ""
+    );
+    setEditFlexiTrafficWorkIncapacityAmount(
+      contract.flexiDetail?.trafficWorkIncapacityAmount != null &&
+      Number.isFinite(contract.flexiDetail.trafficWorkIncapacityAmount)
+        ? String(contract.flexiDetail.trafficWorkIncapacityAmount)
+        : ""
+    );
+    setEditFlexiTrafficInvalidityAmount(
+      contract.flexiDetail?.trafficInvalidityAmount != null &&
+      Number.isFinite(contract.flexiDetail.trafficInvalidityAmount)
+        ? String(contract.flexiDetail.trafficInvalidityAmount)
+        : ""
+    );
+    setEditFlexiLoanDeathAmount(
+      contract.flexiDetail?.loanDeathAmount != null &&
+      Number.isFinite(contract.flexiDetail.loanDeathAmount)
+        ? String(contract.flexiDetail.loanDeathAmount)
+        : ""
+    );
+    setEditFlexiLoanInvalidityType(contract.flexiDetail?.loanInvalidityType ?? "");
+    setEditFlexiLoanInvalidity1(
+      contract.flexiDetail?.loanInvalidity1 != null &&
+      Number.isFinite(contract.flexiDetail.loanInvalidity1)
+        ? String(contract.flexiDetail.loanInvalidity1)
+        : ""
+    );
+    setEditFlexiLoanInvalidity2(
+      contract.flexiDetail?.loanInvalidity2 != null &&
+      Number.isFinite(contract.flexiDetail.loanInvalidity2)
+        ? String(contract.flexiDetail.loanInvalidity2)
+        : ""
+    );
+    setEditFlexiLoanInvalidity3(
+      contract.flexiDetail?.loanInvalidity3 != null &&
+      Number.isFinite(contract.flexiDetail.loanInvalidity3)
+        ? String(contract.flexiDetail.loanInvalidity3)
+        : ""
+    );
+    setEditFlexiLoanIllnessAmount(
+      contract.flexiDetail?.loanIllnessAmount != null &&
+      Number.isFinite(contract.flexiDetail.loanIllnessAmount)
+        ? String(contract.flexiDetail.loanIllnessAmount)
+        : ""
+    );
+    setEditFlexiLoanWorkIncapacityAmount(
+      contract.flexiDetail?.loanWorkIncapacityAmount != null &&
+      Number.isFinite(contract.flexiDetail.loanWorkIncapacityAmount)
+        ? String(contract.flexiDetail.loanWorkIncapacityAmount)
+        : ""
+    );
+    setEditFlexiAddonMajakBasic(!!contract.flexiDetail?.addonMajakBasic);
+    setEditFlexiAddonMajakPlus(!!contract.flexiDetail?.addonMajakPlus);
+    setEditFlexiAddonLiabilityCitizen(
+      contract.flexiDetail?.addonLiabilityCitizen != null &&
+      Number.isFinite(contract.flexiDetail.addonLiabilityCitizen)
+        ? String(contract.flexiDetail.addonLiabilityCitizen)
+        : ""
+    );
+    setEditFlexiAddonTravel(!!contract.flexiDetail?.addonTravel);
+    setEditDomexAddress(contract.domexDetail?.address ?? "");
+    setEditDomexPropertyType(contract.domexDetail?.propertyType ?? "");
+    setEditDomexPropertyCoverage(contract.domexDetail?.propertyCoverage ?? "");
+    setEditDomexSumInsured(
+      contract.domexDetail?.sumInsured != null && Number.isFinite(contract.domexDetail.sumInsured)
+        ? String(contract.domexDetail.sumInsured)
+        : ""
+    );
+    setEditDomexDeductible(
+      contract.domexDetail?.deductible != null && Number.isFinite(contract.domexDetail.deductible)
+        ? String(contract.domexDetail.deductible)
+        : ""
+    );
+    setEditDomexHouseholdType(contract.domexDetail?.householdType ?? "");
+    setEditDomexHouseholdCoverage(contract.domexDetail?.householdCoverage ?? "");
+    setEditDomexHouseholdSumInsured(
+      contract.domexDetail?.householdSumInsured != null &&
+      Number.isFinite(contract.domexDetail.householdSumInsured)
+        ? String(contract.domexDetail.householdSumInsured)
+        : ""
+    );
+    setEditDomexHouseholdDeductible(
+      contract.domexDetail?.householdDeductible != null &&
+      Number.isFinite(contract.domexDetail.householdDeductible)
+        ? String(contract.domexDetail.householdDeductible)
+        : ""
+    );
+    setEditDomexOutbuildingSumInsured(
+      contract.domexDetail?.outbuildingSumInsured != null &&
+      Number.isFinite(contract.domexDetail.outbuildingSumInsured)
+        ? String(contract.domexDetail.outbuildingSumInsured)
+        : ""
+    );
+    setEditDomexLiabilitySumInsured(
+      contract.domexDetail?.liabilitySumInsured != null &&
+      Number.isFinite(contract.domexDetail.liabilitySumInsured)
+        ? String(contract.domexDetail.liabilitySumInsured)
+        : ""
+    );
+    setEditDomexLiabilityDeductible(
+      contract.domexDetail?.liabilityDeductible != null &&
+      Number.isFinite(contract.domexDetail.liabilityDeductible)
+        ? String(contract.domexDetail.liabilityDeductible)
+        : ""
+    );
+    setEditDomexLiabilityMobile(!!contract.domexDetail?.liabilityMobile);
+    setEditDomexLiabilityTenant(!!contract.domexDetail?.liabilityTenant);
+    setEditDomexLiabilityLandlord(!!contract.domexDetail?.liabilityLandlord);
+    setEditDomexAssistancePlus(!!contract.domexDetail?.assistancePlus);
+    setEditDomexNote(contract.domexDetail?.note ?? "");
   };
 
   useEffect(() => {
@@ -796,38 +2005,204 @@ export default function ContractDetailPage() {
     setDetailsSaved(false);
 
     try {
+      const toNumberOrNull = (txt: string) => {
+        const trimmed = txt.trim().replace(",", ".");
+        if (!trimmed) return null;
+        const n = Number(trimmed);
+        return Number.isFinite(n) ? n : null;
+      };
+
       const ref = doc(db, "users", ownerEmail, "entries", entryId);
       const trimmedName = editClientName.trim();
       const trimmedNumber = editContractNumber.trim();
       const signedDate = editContractSigned ? new Date(editContractSigned) : null;
       const startDate = editPolicyStart ? new Date(editPolicyStart) : null;
-    const durationVal =
-      prod === "neon" && typeof editDuration === "number" && !Number.isNaN(editDuration)
-        ? Math.max(1, Math.min(40, editDuration))
-        : null;
+      const durationVal =
+        prod === "neon" && typeof editDuration === "number" && !Number.isNaN(editDuration)
+          ? Math.max(1, Math.min(40, editDuration))
+          : null;
 
-    const autoFields =
-      isAutoProduct(prod ?? null)
-        ? {
-            carMake: editCarMake.trim() || null,
-            carPlate: editCarPlate.trim() || null,
-            carVin: editCarVin.trim() || null,
-            carTp: editCarTp.trim() || null,
+      const autoFields =
+        isAutoProduct(prod ?? null)
+          ? {
+              carMake: editCarMake.trim() || null,
+              carPlate: editCarPlate.trim() || null,
+              carVin: editCarVin.trim() || null,
+              carTp: editCarTp.trim() || null,
+              carLiabilityLimit: toNumberOrNull(editCarLiabilityLimit),
+              carHullSumInsured: toNumberOrNull(editCarHullSumInsured),
+              carHullDeductible: toNumberOrNull(editCarHullDeductible),
+              carAssistancePlan: editCarAssistancePlan.trim() || null,
+              carAddonGlass: !!editCarAddonGlass,
+              carAddonAnimalCollision: !!editCarAddonAnimalCollision,
+              carAddonAnimalDamage: !!editCarAddonAnimalDamage,
+              carAddonVandalism: !!editCarAddonVandalism,
+              carAddonTheft: !!editCarAddonTheft,
+              carAddonNatural: !!editCarAddonNatural,
+              carAddonOwnDamage: !!editCarAddonOwnDamage,
+              carAddonGap: !!editCarAddonGap,
+              carAddonSmartGap: !!editCarAddonSmartGap,
+              carAddonServisPro: !!editCarAddonServisPro,
+              carAddonReplacementCar: !!editCarAddonReplacementCar,
+              carAddonLuggage: !!editCarAddonLuggage,
+              carAddonPassengerInjury: !!editCarAddonPassengerInjury,
+            }
+          : {
+              carMake: null,
+              carPlate: null,
+              carVin: null,
+              carTp: null,
+              carLiabilityLimit: null,
+              carHullSumInsured: null,
+              carHullDeductible: null,
+              carAssistancePlan: null,
+              carAddonGlass: null,
+              carAddonAnimalCollision: null,
+              carAddonAnimalDamage: null,
+              carAddonVandalism: null,
+              carAddonTheft: null,
+              carAddonNatural: null,
+              carAddonOwnDamage: null,
+              carAddonGap: null,
+              carAddonSmartGap: null,
+              carAddonServisPro: null,
+              carAddonReplacementCar: null,
+              carAddonLuggage: null,
+              carAddonPassengerInjury: null,
+            };
+
+      const domexUpdate =
+        prod === "domex"
+          ? {
+              domexDetail: {
+                address: editDomexAddress.trim() || null,
+                propertyType: editDomexPropertyType.trim() || null,
+                propertyCoverage: editDomexPropertyCoverage.trim() || null,
+                sumInsured: toNumberOrNull(editDomexSumInsured),
+                deductible: toNumberOrNull(editDomexDeductible),
+                householdType: editDomexHouseholdType.trim() || null,
+                householdCoverage: editDomexHouseholdCoverage.trim() || null,
+                householdSumInsured: toNumberOrNull(editDomexHouseholdSumInsured),
+                householdDeductible: toNumberOrNull(editDomexHouseholdDeductible),
+                outbuildingSumInsured: toNumberOrNull(editDomexOutbuildingSumInsured),
+                liabilitySumInsured: toNumberOrNull(editDomexLiabilitySumInsured),
+                liabilityDeductible: toNumberOrNull(editDomexLiabilityDeductible),
+                liabilityMobile: !!editDomexLiabilityMobile,
+                liabilityTenant: !!editDomexLiabilityTenant,
+                liabilityLandlord: !!editDomexLiabilityLandlord,
+              assistancePlus: !!editDomexAssistancePlus,
+              note: editDomexNote.trim() || null,
+            },
           }
-        : {
-            carMake: null,
-            carPlate: null,
-            carVin: null,
-            carTp: null,
-          };
+        : { domexDetail: null };
 
-    const updates: Record<string, any> = {
-      clientName: trimmedName || null,
-      contractNumber: trimmedNumber || null,
-      contractSignedDate: signedDate ?? null,
-      policyStartDate: startDate ?? null,
-      ...autoFields,
-    };
+      const neonUpdate =
+        prod === "neon"
+          ? {
+              neonDetail: {
+                version: editNeonVersion.trim() || null,
+                deathType: editNeonDeathType.trim() || null,
+                deathAmount: toNumberOrNull(editNeonDeathAmount),
+                death2Type: editNeonDeath2Type.trim() || null,
+                death2Amount: toNumberOrNull(editNeonDeath2Amount),
+                deathTerminalAmount: toNumberOrNull(editNeonDeathTerminalAmount),
+                waiverInvalidity: !!editNeonWaiverInvalidity,
+                waiverUnemployment: !!editNeonWaiverUnemployment,
+                invalidityAType: editNeonInvalidityAType.trim() || null,
+                invalidityA1: toNumberOrNull(editNeonInvalidityA1),
+                invalidityA2: toNumberOrNull(editNeonInvalidityA2),
+                invalidityA3: toNumberOrNull(editNeonInvalidityA3),
+                invalidityBType: editNeonInvalidityBType.trim() || null,
+                invalidityB1: toNumberOrNull(editNeonInvalidityB1),
+                invalidityB2: toNumberOrNull(editNeonInvalidityB2),
+                invalidityB3: toNumberOrNull(editNeonInvalidityB3),
+                invalidityPension: !!editNeonInvalidityPension,
+                criticalIllnessType: editNeonCriticalType.trim() || null,
+                criticalIllnessAmount: toNumberOrNull(editNeonCriticalAmount),
+                childSurgeryAmount: toNumberOrNull(editNeonChildSurgeryAmount),
+                vaccinationCompAmount: toNumberOrNull(editNeonVaccinationCompAmount),
+                accidentDailyBenefit: toNumberOrNull(editNeonAccidentDailyBenefit),
+                diabetesAmount: toNumberOrNull(editNeonDiabetesAmount),
+                deathAccidentAmount: toNumberOrNull(editNeonDeathAccidentAmount),
+                injuryPermanentAmount: toNumberOrNull(editNeonInjuryPermanentAmount),
+                hospitalizationAmount: toNumberOrNull(editNeonHospitalizationAmount),
+                workIncapacityStart: editNeonWorkIncapacityStart.trim() || null,
+                workIncapacityBackpay: editNeonWorkIncapacityBackpay.trim() || null,
+                workIncapacityAmount: toNumberOrNull(editNeonWorkIncapacityAmount),
+                careDependencyAmount: toNumberOrNull(editNeonCareDependencyAmount),
+                specialAidAmount: toNumberOrNull(editNeonSpecialAidAmount),
+                caregivingAmount: toNumberOrNull(editNeonCaregivingAmount),
+                reproductionCostAmount: toNumberOrNull(editNeonReproductionCostAmount),
+                cppHelp: !!editNeonCppHelp,
+                liabilityCitizenLimit: toNumberOrNull(editNeonLiabilityCitizenLimit),
+                liabilityEmployeeLimit: toNumberOrNull(editNeonLiabilityEmployeeLimit),
+                travelInsurance: !!editNeonTravelInsurance,
+              },
+            }
+          : { neonDetail: null };
+
+      const flexiUpdate =
+        prod === "flexi"
+          ? {
+              flexiDetail: {
+                deathAmount: toNumberOrNull(editFlexiDeathAmount),
+                deathTypedType: editFlexiDeathTypedType.trim() || null,
+                deathTypedAmount: toNumberOrNull(editFlexiDeathTypedAmount),
+                deathAccidentAmount: toNumberOrNull(editFlexiDeathAccidentAmount),
+                seriousIllnessType: editFlexiSeriousIllnessType.trim() || null,
+                seriousIllnessAmount: toNumberOrNull(editFlexiSeriousIllnessAmount),
+                seriousIllnessForHim: toNumberOrNull(editFlexiIllnessForHim),
+                seriousIllnessForHer: toNumberOrNull(editFlexiIllnessForHer),
+                permanentIllnessAmount: toNumberOrNull(editFlexiPermanentIllnessAmount),
+                invalidityIllnessType: editFlexiInvalidityIllnessType.trim() || null,
+                invalidityIllness1: toNumberOrNull(editFlexiInvalidityIllness1),
+                invalidityIllness2: toNumberOrNull(editFlexiInvalidityIllness2),
+                invalidityIllness3: toNumberOrNull(editFlexiInvalidityIllness3),
+                hospitalGeneralAmount: toNumberOrNull(editFlexiHospitalGeneralAmount),
+                workIncapacityStart: editFlexiWorkIncapacityStart.trim() || null,
+                workIncapacityBackpay: editFlexiWorkIncapacityBackpay.trim() || null,
+                workIncapacityAmount: toNumberOrNull(editFlexiWorkIncapacityAmount),
+                caregivingAmount: toNumberOrNull(editFlexiCaregivingAmount),
+                permanentAccidentAmount: toNumberOrNull(editFlexiPermanentAccidentAmount),
+                injuryDamageAmount: toNumberOrNull(editFlexiInjuryDamageAmount),
+                accidentDailyBenefit: toNumberOrNull(editFlexiAccidentDailyBenefit),
+                hospitalAccidentAmount: toNumberOrNull(editFlexiHospitalAccidentAmount),
+                invalidityAccidentType: editFlexiInvalidityAccidentType.trim() || null,
+                invalidityAccident1: toNumberOrNull(editFlexiInvalidityAccident1),
+                invalidityAccident2: toNumberOrNull(editFlexiInvalidityAccident2),
+                invalidityAccident3: toNumberOrNull(editFlexiInvalidityAccident3),
+                trafficDeathAccidentAmount: toNumberOrNull(editFlexiTrafficDeathAccidentAmount),
+                trafficPermanentAccidentAmount: toNumberOrNull(editFlexiTrafficPermanentAccidentAmount),
+                trafficInjuryDamageAmount: toNumberOrNull(editFlexiTrafficInjuryDamageAmount),
+                trafficAccidentDailyBenefit: toNumberOrNull(editFlexiTrafficAccidentDailyBenefit),
+                trafficHospitalAccidentAmount: toNumberOrNull(editFlexiTrafficHospitalAccidentAmount),
+                trafficWorkIncapacityAmount: toNumberOrNull(editFlexiTrafficWorkIncapacityAmount),
+                trafficInvalidityAmount: toNumberOrNull(editFlexiTrafficInvalidityAmount),
+                loanDeathAmount: toNumberOrNull(editFlexiLoanDeathAmount),
+                loanInvalidityType: editFlexiLoanInvalidityType.trim() || null,
+                loanInvalidity1: toNumberOrNull(editFlexiLoanInvalidity1),
+                loanInvalidity2: toNumberOrNull(editFlexiLoanInvalidity2),
+                loanInvalidity3: toNumberOrNull(editFlexiLoanInvalidity3),
+                loanIllnessAmount: toNumberOrNull(editFlexiLoanIllnessAmount),
+                loanWorkIncapacityAmount: toNumberOrNull(editFlexiLoanWorkIncapacityAmount),
+                addonMajakBasic: !!editFlexiAddonMajakBasic,
+                addonMajakPlus: !!editFlexiAddonMajakPlus,
+                addonLiabilityCitizen: toNumberOrNull(editFlexiAddonLiabilityCitizen),
+                addonTravel: !!editFlexiAddonTravel,
+              },
+            }
+          : { flexiDetail: null };
+
+      const updates: Record<string, any> = {
+        clientName: trimmedName || null,
+        contractNumber: trimmedNumber || null,
+        contractSignedDate: signedDate ?? null,
+        policyStartDate: startDate ?? null,
+        ...autoFields,
+        ...neonUpdate,
+        ...flexiUpdate,
+        ...domexUpdate,
+      };
       if (prod === "neon") {
         updates.durationYears = durationVal ?? null;
       }
@@ -852,13 +2227,57 @@ export default function ContractDetailPage() {
                     carPlate: autoFields.carPlate,
                     carVin: autoFields.carVin,
                     carTp: autoFields.carTp,
+                    carLiabilityLimit: autoFields.carLiabilityLimit,
+                    carHullSumInsured: autoFields.carHullSumInsured,
+                    carHullDeductible: autoFields.carHullDeductible,
+                    carAssistancePlan: autoFields.carAssistancePlan,
+                    carAddonGlass: autoFields.carAddonGlass,
+                    carAddonAnimalCollision: autoFields.carAddonAnimalCollision,
+                    carAddonAnimalDamage: autoFields.carAddonAnimalDamage,
+                    carAddonVandalism: autoFields.carAddonVandalism,
+                    carAddonTheft: autoFields.carAddonTheft,
+                    carAddonNatural: autoFields.carAddonNatural,
+                    carAddonOwnDamage: autoFields.carAddonOwnDamage,
+                    carAddonGap: autoFields.carAddonGap,
+                    carAddonSmartGap: autoFields.carAddonSmartGap,
+                    carAddonServisPro: autoFields.carAddonServisPro,
+                    carAddonReplacementCar: autoFields.carAddonReplacementCar,
+                    carAddonLuggage: autoFields.carAddonLuggage,
+                    carAddonPassengerInjury: autoFields.carAddonPassengerInjury,
+                    neonDetail: neonUpdate.neonDetail,
                   }
                 : {
                     carMake: null,
                     carPlate: null,
                     carVin: null,
                     carTp: null,
+                    carLiabilityLimit: null,
+                    carHullSumInsured: null,
+                    carHullDeductible: null,
+                    carAssistancePlan: null,
+                    carAddonGlass: null,
+                    carAddonAnimalCollision: null,
+                    carAddonAnimalDamage: null,
+                    carAddonVandalism: null,
+                    carAddonTheft: null,
+                    carAddonNatural: null,
+                    carAddonOwnDamage: null,
+                    carAddonGap: null,
+                    carAddonSmartGap: null,
+                    carAddonServisPro: null,
+                    carAddonReplacementCar: null,
+                    carAddonLuggage: null,
+                    carAddonPassengerInjury: null,
+                    neonDetail: neonUpdate.neonDetail,
                   }),
+              ...(prod === "domex"
+                ? {
+                    domexDetail: domexUpdate.domexDetail,
+                  }
+                : { domexDetail: null }),
+              ...(prod === "flexi"
+                ? { flexiDetail: flexiUpdate.flexiDetail }
+                : { flexiDetail: null }),
             }
           : prev
       );
@@ -1318,8 +2737,9 @@ export default function ContractDetailPage() {
       <Toasts items={toasts} onDismiss={dismissToast} />
 
       <div className="relative flex min-h-screen items-center justify-center px-4 py-10">
-        <div className="w-full max-w-4xl">
-          <div className="rounded-3xl bg-white/5 border border-white/15 shadow-[0_24px_80px_rgba(0,0,0,0.85)] backdrop-blur-2xl p-6 sm:p-8 space-y-6">
+        <div className="w-full max-w-6xl">
+          <div className="flex items-stretch gap-3">
+            <div className="flex-1 rounded-3xl bg-white/5 border border-white/15 shadow-[0_24px_80px_rgba(0,0,0,0.85)] backdrop-blur-2xl p-6 sm:p-8 space-y-6 transition-all duration-300">
             {/* HEADER */}
             <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
@@ -1616,81 +3036,6 @@ export default function ContractDetailPage() {
               </div>
             </section>
 
-            {/* AUTO DETAILY */}
-            {isAutoProduct(prod) && (
-              <section className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl">
-                <h3 className="text-base font-semibold text-slate-100 mb-3">
-                  Detaily vozidla
-                </h3>
-                <dl className="space-y-2 text-sm text-slate-200">
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-slate-300">Značka / model</dt>
-                    <dd className="font-semibold text-right w-40">
-                      {editMode ? (
-                        <input
-                          type="text"
-                          value={editCarMake}
-                          onChange={(e) => setEditCarMake(e.target.value)}
-                          className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                          placeholder="Např. Škoda Octavia"
-                        />
-                      ) : (
-                        contract.carMake || "—"
-                      )}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-slate-300">SPZ</dt>
-                    <dd className="font-semibold text-right w-32">
-                      {editMode ? (
-                        <input
-                          type="text"
-                          value={editCarPlate}
-                          onChange={(e) => setEditCarPlate(e.target.value)}
-                          className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                          placeholder="SPZ"
-                        />
-                      ) : (
-                        contract.carPlate || "—"
-                      )}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-slate-300">VIN</dt>
-                    <dd className="font-semibold text-right w-48">
-                      {editMode ? (
-                        <input
-                          type="text"
-                          value={editCarVin}
-                          onChange={(e) => setEditCarVin(e.target.value)}
-                          className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                          placeholder="VIN"
-                        />
-                      ) : (
-                        contract.carVin || "—"
-                      )}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-slate-300">TP</dt>
-                    <dd className="font-semibold text-right w-32">
-                      {editMode ? (
-                        <input
-                          type="text"
-                          value={editCarTp}
-                          onChange={(e) => setEditCarTp(e.target.value)}
-                          className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                          placeholder="TP"
-                        />
-                      ) : (
-                        contract.carTp || "—"
-                      )}
-                    </dd>
-                  </div>
-                </dl>
-              </section>
-            )}
-
             {/* MEZIPROVIZE – jen když manažer kouká na podřízeného */}
             {showMeziprovision && (
               <section className="space-y-4">
@@ -1730,22 +3075,22 @@ export default function ContractDetailPage() {
                       </div>
                     </div>
 
-      {showChildMeziprovision && (
-        <div className="space-y-2">
-          <h4 className="text-xs font-semibold text-emerald-200">
-            Meziprovize pro podřízeného manažera{" "}
-            {childOverrideName ?? ""}
-            {childOverridePosition && (
-              <span className="text-[11px] text-slate-400 ml-1">
-                ({positionLabel(childOverridePosition)})
-              </span>
-            )}
-          </h4>
-          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/20 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
-            {childManagerItems.map((item) => (
-              <div
-                key={item.title}
-                className="flex items-baseline justify-between gap-3 py-2"
+                    {showChildMeziprovision && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-semibold text-emerald-200">
+                          Meziprovize pro podřízeného manažera{" "}
+                          {childOverrideName ?? ""}
+                          {childOverridePosition && (
+                            <span className="text-[11px] text-slate-400 ml-1">
+                              ({positionLabel(childOverridePosition)})
+                            </span>
+                          )}
+                        </h4>
+                        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/20 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
+                          {childManagerItems.map((item) => (
+                            <div
+                              key={item.title}
+                              className="flex items-baseline justify-between gap-3 py-2"
                             >
                               <span className="text-sm text-slate-200">
                                 {item.title}
@@ -1934,6 +3279,69 @@ export default function ContractDetailPage() {
               </div>
               </>
             ) : null}
+            </div>
+
+            <div className="flex flex-col items-center">
+              <button
+                type="button"
+                onClick={() => setShowProductPanel((v) => !v)}
+                className={`h-full min-h-[160px] w-10 rounded-2xl border transition ${
+                  showProductPanel
+                    ? "bg-emerald-500/90 border-emerald-300 text-emerald-950"
+                    : "bg-emerald-500/60 border-emerald-300/60 text-emerald-50 hover:bg-emerald-500/80"
+                } flex items-center justify-center font-semibold text-xs tracking-wide`}
+                style={{ writingMode: "vertical-rl" }}
+              >
+                DETAIL
+              </button>
+            </div>
+
+            {showProductPanel && (
+              <div className="w-[360px] rounded-3xl bg-white/5 border border-white/15 shadow-[0_24px_80px_rgba(0,0,0,0.7)] backdrop-blur-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-100">
+                    Detail produktu
+                  </h3>
+                  <span className="text-xs text-slate-400">{productLabel(prod)}</span>
+                </div>
+                {isAutoProduct(prod) && (
+                  <AutoDetailPanel
+                    prod={prod}
+                    editMode={editMode}
+                    fields={autoFields}
+                    contract={contract}
+                    onChange={handleAutoFieldChange}
+                  />
+                )}
+                {prod === "neon" && (
+                  <NeonDetailPanel
+                    prod={prod}
+                    editMode={editMode}
+                    fields={neonFields}
+                    contract={contract?.neonDetail ?? null}
+                    onChange={handleNeonFieldChange}
+                  />
+                )}
+                {prod === "domex" && (
+                  <DomexDetailPanel
+                    prod={prod}
+                    editMode={editMode}
+                    fields={domexFields}
+                    domexDetail={contract?.domexDetail ?? null}
+                    onChange={handleDomexFieldChange}
+                  />
+                )}
+                {prod === "flexi" && (
+                  <FlexiDetailPanel
+                    prod={prod}
+                    editMode={editMode}
+                    fields={flexiFields}
+                    contract={contract?.flexiDetail ?? null}
+                    onChange={handleFlexiFieldChange}
+                  />
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
