@@ -257,6 +257,7 @@ type EntryDoc = {
   }[];
   inputAmount?: number | null;
   contractNumber?: string | null;
+  clientName?: string | null;
   comfortPayment?: number | null;
   comfortGradual?: boolean | null;
 
@@ -274,6 +275,7 @@ type CashflowItem = {
   note?: string | null;
   source?: "own" | "manager";
   contractNumber?: string | null;
+  clientName?: string | null;
   ownerEmail: string | null;
   entryId: string | null;
   isManagerOverride?: boolean;
@@ -405,6 +407,7 @@ function generateCashflow(
             : "Vlastní",
         source: entry.source,
         contractNumber: entry.contractNumber ?? null,
+        clientName: entry.clientName ?? null,
         ownerEmail: normalizedOwnerEmail,
         entryId: baseEntryId ?? null,
         isManagerOverride: entry.source === "manager",
@@ -816,6 +819,7 @@ export default function CashflowPage() {
                   entry.commissionMode ??
                   entry.mode ??
                   null,
+                clientName: entry.clientName ?? null,
               });
               continue;
             }
@@ -920,6 +924,7 @@ export default function CashflowPage() {
               managerPositionSnapshot: effectiveMgrPos,
               managerModeSnapshot: effectiveMgrMode,
               managerChain: chain,
+              clientName: entry.clientName ?? null,
             });
           }
         }
@@ -982,8 +987,8 @@ export default function CashflowPage() {
   const filteredCashflowItems = useMemo(() => {
     if (showPastYears) return cashflowItems;
     const now = new Date();
-    const startNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    return cashflowItems.filter((i) => i.date >= startNextMonth);
+    const startCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    return cashflowItems.filter((i) => i.date >= startCurrentMonth);
   }, [cashflowItems, showPastYears]);
 
   // seskupení podle měsíců
@@ -1332,6 +1337,11 @@ export default function CashflowPage() {
                                     item.contractNumber.trim() !== ""
                                       ? item.contractNumber
                                       : null;
+                                  const clientName =
+                                    item.clientName &&
+                                    item.clientName.trim() !== ""
+                                      ? item.clientName.trim()
+                                      : null;
                                   const ownerEmail =
                                     item.ownerEmail &&
                                     item.ownerEmail.trim() !== ""
@@ -1366,6 +1376,11 @@ export default function CashflowPage() {
                                             </span>
                                           )}
                                         </span>
+                                        {clientName && (
+                                          <span className="text-[11px] text-slate-300">
+                                            Klient: {clientName}
+                                          </span>
+                                        )}
                                         {item.note && (
                                           <span className="text-[11px] text-slate-400">
                                             {item.note}

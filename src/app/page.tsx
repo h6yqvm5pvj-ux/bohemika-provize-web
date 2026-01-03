@@ -441,17 +441,11 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
           <h2 className="text-lg sm:text-xl font-semibold text-white">
             Graf produkce — posledních 12 měsíců
           </h2>
-          <p className="text-xs text-slate-300">
-            Život = měsíční pojistné, vedlejší produkty = roční pojistné
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-200">
           <span className="inline-flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-cyan-300" />
-            Celkem (život měsíčně + vedlejší ročně)
-            <span className="font-semibold text-white">
-              {formatMoney(latest.totalCombined)}
-            </span>
+            <span className="font-semibold text-white">{formatMoney(latest.totalCombined)}</span>
           </span>
         </div>
       </div>

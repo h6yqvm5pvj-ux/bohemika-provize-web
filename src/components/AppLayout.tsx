@@ -44,8 +44,9 @@ const loadFirestore = () => {
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [animatedBg, setAnimatedBg] = useState<boolean>(true);
-  const [simpleBg, setSimpleBg] = useState<boolean>(false);
+  const [simpleBg, setSimpleBg] = useState<boolean>(true);
   const [backgroundColor, setBackgroundColor] = useState<"black" | "blue" | null>(null);
+  const [bgReady, setBgReady] = useState(false);
 
   // status zatím nepoužíváme v UI
   const [, setSubscriptionStatus] =
@@ -53,7 +54,13 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [hasActiveSubscription, setHasActiveSubscription] =
     useState<boolean | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
-  const [hasTeam, setHasTeam] = useState(false);
+  const [hasTeam, setHasTeam] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const cached = window.sessionStorage.getItem("app.hasTeam");
+    if (cached === "0") return false;
+    if (cached === "1") return true;
+    return true; // defaultně ukážeme, ať nebliká
+  });
 
   // Auth listener
   useEffect(() => {
@@ -72,26 +79,24 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   // Animated background nastavení z localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
+    let mounted = true;
     const updateFromStorage = () => {
       const storedAnimated = window.localStorage.getItem(
         "settings.animatedBackground"
       );
-      if (storedAnimated === "0") {
-        setAnimatedBg(false);
-      } else if (storedAnimated === "1") {
-        setAnimatedBg(true);
-      } else {
-        setAnimatedBg(true);
-      }
+      if (!mounted) return;
+      if (storedAnimated === "0") setAnimatedBg(false);
+      else if (storedAnimated === "1") setAnimatedBg(true);
+      else setAnimatedBg(true);
 
-      const storedSimple =
-        window.localStorage.getItem("settings.simpleBackground") === "1";
-      setSimpleBg(storedSimple);
+      const storedSimple = window.localStorage.getItem("settings.simpleBackground");
+      setSimpleBg(storedSimple === "1");
 
       const storedColor = window.localStorage.getItem(
         "settings.backgroundColor"
       ) as "black" | "blue" | null;
-      setBackgroundColor(storedColor ?? null);
+      setBackgroundColor(storedColor === "black" || storedColor === "blue" ? storedColor : null);
+      setBgReady(true);
     };
 
     updateFromStorage();
@@ -118,6 +123,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     return () => {
       window.removeEventListener("storage", handler);
       window.removeEventListener("settings:updateBackground", customHandler as any);
+      mounted = false;
     };
   }, []);
 
@@ -230,23 +236,41 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   // Zda má tým
   useEffect(() => {
     const loadTeam = async () => {
-      if (!user?.email) {
-        setHasTeam(false);
-        return;
+      if (!user?.email) return;
+      let cancelled = false;
+      const cacheKey = `app.hasTeam:${user.email.toLowerCase()}`;
+
+      if (typeof window !== "undefined") {
+        const cached = window.sessionStorage.getItem(cacheKey);
+        if (cached !== null) {
+          setHasTeam(cached === "1");
+        }
       }
+
       try {
         const { getFirestore, collection, query, where, getDocs } =
           await loadFirestore();
+        if (cancelled) return;
         const db = getFirestore(firebaseApp);
         const email = user.email.toLowerCase();
         const usersCol = collection(db, "users");
         const snap = await getDocs(query(usersCol, where("managerEmail", "==", email)));
-        setHasTeam(snap.size > 0);
+        const has = snap.size > 0;
+        if (cancelled) return;
+        setHasTeam(has);
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(cacheKey, has ? "1" : "0");
+        }
       } catch (e) {
         console.error("Chyba při načítání podřízených:", e);
-        setHasTeam(false);
+        // ponecháme předchozí hodnotu, ať nebliká
       }
+
+      return () => {
+        cancelled = true;
+      };
     };
+
     loadTeam();
   }, [user]);
 
@@ -285,20 +309,19 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     <main className="relative min-h-screen overflow-hidden text-slate-50">
       {/* PLASMA BACKGROUND */}
       <div className="fixed inset-0 -z-10 bg-black">
-        <div
-          className="plasma-layer h-full w-full"
-          style={{ display: simpleBg ? "none" : "block" }}
-        >
-          <Plasma
-            color="#6366f1"
-            speed={0.6}
-            direction="forward"
-            scale={1.2}
-            opacity={0.98}
-            mouseInteractive={animatedBg}
-            animated={animatedBg}
-          />
-        </div>
+        {bgReady && !simpleBg && (
+          <div className="plasma-layer h-full w-full">
+            <Plasma
+              color="#6366f1"
+              speed={0.6}
+              direction="forward"
+              scale={1.2}
+              opacity={0.98}
+              mouseInteractive={animatedBg}
+              animated={animatedBg}
+            />
+          </div>
+        )}
         <div
           className="plain-bg-layer h-full w-full"
           style={{
@@ -352,6 +375,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             {hasTeam ? (
               <Link
                 href="/muj-tym"
+                prefetch={false}
                 className={`${navItemBase} ${
                   active === "team"
                     ? "bg-white/10 text-slate-50"
