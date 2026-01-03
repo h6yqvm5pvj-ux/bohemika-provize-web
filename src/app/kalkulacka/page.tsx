@@ -1458,16 +1458,29 @@ export default function CalculatorPage() {
                 Výsledky
               </h2>
 
-              <button
-                type="button"
-                onClick={handleSaveContract}
-                disabled={
-                  saving || items.length === 0 || parseNumber(amountText) <= 0
-                }
-                className="inline-flex items-center rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-emerald-500/40 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {saving ? "Ukládám…" : "Sepsáno"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCoefModal(true)}
+                  disabled={unsupported}
+                  className={`inline-flex items-center gap-2 rounded-xl border border-emerald-400/70 bg-emerald-500/20 px-3 py-2 text-xs sm:text-sm font-semibold text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.3)] hover:bg-emerald-500/30 transition ${
+                    unsupported ? "opacity-60 cursor-not-allowed" : ""
+                  }`}
+                >
+                  Zobrazit koeficienty
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveContract}
+                  disabled={
+                    saving || items.length === 0 || parseNumber(amountText) <= 0
+                  }
+                  className="inline-flex items-center rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-emerald-500/40 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {saving ? "Ukládám…" : "Sepsáno"}
+                </button>
+              </div>
             </div>
 
             {saveMessage && (
@@ -1531,15 +1544,6 @@ export default function CalculatorPage() {
                     <span className="text-xl sm:text-2xl font-bold text-emerald-200">
                       {formatMoney(total)}
                     </span>
-                  </div>
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowCoefModal(true)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/70 bg-emerald-500/20 px-3 py-2 text-xs sm:text-sm font-semibold text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.3)] hover:bg-emerald-500/30 transition"
-                    >
-                      Zobrazit koeficienty
-                    </button>
                   </div>
                 </div>
               );

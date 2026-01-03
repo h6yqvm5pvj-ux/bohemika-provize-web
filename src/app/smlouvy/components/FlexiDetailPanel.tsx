@@ -254,6 +254,12 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
     hasValue(fields.invalidityIllness1) ||
     hasValue(fields.invalidityIllness2) ||
     hasValue(fields.invalidityIllness3);
+  const showInvalidityIllness1 =
+    editMode || contract?.invalidityIllness1 != null || hasValue(fields.invalidityIllness1);
+  const showInvalidityIllness2 =
+    editMode || contract?.invalidityIllness2 != null || hasValue(fields.invalidityIllness2);
+  const showInvalidityIllness3 =
+    editMode || contract?.invalidityIllness3 != null || hasValue(fields.invalidityIllness3);
   const hasHospitalGeneral = editMode || contract?.hospitalGeneralAmount != null || hasValue(fields.hospitalGeneralAmount);
   const hasWorkIncapacity =
     editMode ||
@@ -274,6 +280,12 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
     hasValue(fields.invalidityAccident1) ||
     hasValue(fields.invalidityAccident2) ||
     hasValue(fields.invalidityAccident3);
+  const showInvalidityAccident1 =
+    editMode || contract?.invalidityAccident1 != null || hasValue(fields.invalidityAccident1);
+  const showInvalidityAccident2 =
+    editMode || contract?.invalidityAccident2 != null || hasValue(fields.invalidityAccident2);
+  const showInvalidityAccident3 =
+    editMode || contract?.invalidityAccident3 != null || hasValue(fields.invalidityAccident3);
   const hasTraffic =
     editMode ||
     contract?.trafficDeathAccidentAmount != null ||
@@ -413,39 +425,45 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
           <div className="text-xs uppercase tracking-wide text-emerald-200">
             Invalidita / snížená soběstačnost (úraz nebo nemoc)
           </div>
-          <AmountRow
-            label="Stupeň 1"
-            amountValue={fields.invalidityIllness1}
-            amountKey="invalidityIllness1"
-            typeValue={fields.invalidityIllnessType}
-            typeKey="invalidityIllnessType"
-            showType
-            editMode={editMode}
-            onChange={onChange}
-            contractAmount={contract?.invalidityIllness1 ?? null}
-          />
-          <AmountRow
-            label="Stupeň 2"
-            amountValue={fields.invalidityIllness2}
-            amountKey="invalidityIllness2"
-            typeValue={fields.invalidityIllnessType}
-            typeKey="invalidityIllnessType"
-            showType
-            editMode={editMode}
-            onChange={onChange}
-            contractAmount={contract?.invalidityIllness2 ?? null}
-          />
-          <AmountRow
-            label="Stupeň 3"
-            amountValue={fields.invalidityIllness3}
-            amountKey="invalidityIllness3"
-            typeValue={fields.invalidityIllnessType}
-            typeKey="invalidityIllnessType"
-            showType
-            editMode={editMode}
-            onChange={onChange}
-            contractAmount={contract?.invalidityIllness3 ?? null}
-          />
+          {showInvalidityIllness3 && (
+            <AmountRow
+              label="Stupeň 3"
+              amountValue={fields.invalidityIllness3}
+              amountKey="invalidityIllness3"
+              typeValue={fields.invalidityIllnessType}
+              typeKey="invalidityIllnessType"
+              showType
+              editMode={editMode}
+              onChange={onChange}
+              contractAmount={contract?.invalidityIllness3 ?? null}
+            />
+          )}
+          {showInvalidityIllness2 && (
+            <AmountRow
+              label="Stupeň 2"
+              amountValue={fields.invalidityIllness2}
+              amountKey="invalidityIllness2"
+              typeValue={fields.invalidityIllnessType}
+              typeKey="invalidityIllnessType"
+              showType
+              editMode={editMode}
+              onChange={onChange}
+              contractAmount={contract?.invalidityIllness2 ?? null}
+            />
+          )}
+          {showInvalidityIllness1 && (
+            <AmountRow
+              label="Stupeň 1"
+              amountValue={fields.invalidityIllness1}
+              amountKey="invalidityIllness1"
+              typeValue={fields.invalidityIllnessType}
+              typeKey="invalidityIllnessType"
+              showType
+              editMode={editMode}
+              onChange={onChange}
+              contractAmount={contract?.invalidityIllness1 ?? null}
+            />
+          )}
         </div>
       )}
 
@@ -591,39 +609,45 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
           <div className="text-xs uppercase tracking-wide text-emerald-200">
             Invalidita / snížená soběstačnost (úraz)
           </div>
-          <AmountRow
-            label="Stupeň 1"
-            amountValue={fields.invalidityAccident1}
-            amountKey="invalidityAccident1"
-            typeValue={fields.invalidityAccidentType}
-            typeKey="invalidityAccidentType"
-            showType
-            editMode={editMode}
-            onChange={onChange}
-            contractAmount={contract?.invalidityAccident1 ?? null}
-          />
-          <AmountRow
-            label="Stupeň 2"
-            amountValue={fields.invalidityAccident2}
-            amountKey="invalidityAccident2"
-            typeValue={fields.invalidityAccidentType}
-            typeKey="invalidityAccidentType"
-            showType
-            editMode={editMode}
-            onChange={onChange}
-            contractAmount={contract?.invalidityAccident2 ?? null}
-          />
-          <AmountRow
-            label="Stupeň 3"
-            amountValue={fields.invalidityAccident3}
-            amountKey="invalidityAccident3"
-            typeValue={fields.invalidityAccidentType}
-            typeKey="invalidityAccidentType"
-            showType
-            editMode={editMode}
-            onChange={onChange}
-            contractAmount={contract?.invalidityAccident3 ?? null}
-          />
+          {showInvalidityAccident3 && (
+            <AmountRow
+              label="Stupeň 3"
+              amountValue={fields.invalidityAccident3}
+              amountKey="invalidityAccident3"
+              typeValue={fields.invalidityAccidentType}
+              typeKey="invalidityAccidentType"
+              showType
+              editMode={editMode}
+              onChange={onChange}
+              contractAmount={contract?.invalidityAccident3 ?? null}
+            />
+          )}
+          {showInvalidityAccident2 && (
+            <AmountRow
+              label="Stupeň 2"
+              amountValue={fields.invalidityAccident2}
+              amountKey="invalidityAccident2"
+              typeValue={fields.invalidityAccidentType}
+              typeKey="invalidityAccidentType"
+              showType
+              editMode={editMode}
+              onChange={onChange}
+              contractAmount={contract?.invalidityAccident2 ?? null}
+            />
+          )}
+          {showInvalidityAccident1 && (
+            <AmountRow
+              label="Stupeň 1"
+              amountValue={fields.invalidityAccident1}
+              amountKey="invalidityAccident1"
+              typeValue={fields.invalidityAccidentType}
+              typeKey="invalidityAccidentType"
+              showType
+              editMode={editMode}
+              onChange={onChange}
+              contractAmount={contract?.invalidityAccident1 ?? null}
+            />
+          )}
         </div>
       )}
 
@@ -718,14 +742,14 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
           />
           <div className="space-y-1">
             <div className="text-slate-200 text-sm font-semibold">Invalidita / snížená soběstačnost</div>
-            {(editMode || hasAmount(contract?.loanInvalidity1, fields.loanInvalidity1)) && (
+            {(editMode || hasAmount(contract?.loanInvalidity3, fields.loanInvalidity3)) && (
               <AmountRow
-                label="Stupeň 1"
-                amountValue={fields.loanInvalidity1}
-                amountKey="loanInvalidity1"
+                label="Stupeň 3"
+                amountValue={fields.loanInvalidity3}
+                amountKey="loanInvalidity3"
                 editMode={editMode}
                 onChange={onChange}
-                contractAmount={contract?.loanInvalidity1 ?? null}
+                contractAmount={contract?.loanInvalidity3 ?? null}
               />
             )}
             {(editMode || hasAmount(contract?.loanInvalidity2, fields.loanInvalidity2)) && (
@@ -738,14 +762,14 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
                 contractAmount={contract?.loanInvalidity2 ?? null}
               />
             )}
-            {(editMode || hasAmount(contract?.loanInvalidity3, fields.loanInvalidity3)) && (
+            {(editMode || hasAmount(contract?.loanInvalidity1, fields.loanInvalidity1)) && (
               <AmountRow
-                label="Stupeň 3"
-                amountValue={fields.loanInvalidity3}
-                amountKey="loanInvalidity3"
+                label="Stupeň 1"
+                amountValue={fields.loanInvalidity1}
+                amountKey="loanInvalidity1"
                 editMode={editMode}
                 onChange={onChange}
-                contractAmount={contract?.loanInvalidity3 ?? null}
+                contractAmount={contract?.loanInvalidity1 ?? null}
               />
             )}
           </div>

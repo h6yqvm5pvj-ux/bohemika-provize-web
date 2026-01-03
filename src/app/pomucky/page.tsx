@@ -1,12 +1,11 @@
 // src/app/pomucky/page.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactElement } from "react";
 import Link from "next/link";
 
 import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "./plan-produkce/SplitTitle";
-import { TeamMessageToolCard } from "./TeamMessageToolCard";
 
 export default function ToolsPage() {
   const FILTERS = [
@@ -21,7 +20,17 @@ export default function ToolsPage() {
 
   const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>("Všechny");
 
-  const tools = useMemo(
+  type Tool = {
+    key: string;
+    category: (typeof FILTERS)[number];
+    title: string;
+    description: string;
+    href?: string;
+    external?: boolean;
+    render?: () => ReactElement;
+  };
+
+  const tools: Tool[] = useMemo(
     () => [
       {
         key: "argumenty",
@@ -122,18 +131,6 @@ export default function ToolsPage() {
         title: "Jak nastavit Invaliditu",
         description: "Kalkulačka na stanovení pojistné částky pro Invaliditu 1., 2. a 3. stupně dle poklesu příjmu.",
         href: "/pomucky/invalidita",
-      },
-      {
-        key: "zprava-tymu",
-        category: "Obecné",
-        render: () => <TeamMessageToolCard key="zprava-tymu" />,
-      },
-      {
-        key: "struktura",
-        category: "Obecné",
-        title: "Struktura",
-        description: "Interaktivní strom tvé struktury – vidíš své nadřízené i podřízené.",
-        href: "/pomucky/struktura",
       },
     ],
     []

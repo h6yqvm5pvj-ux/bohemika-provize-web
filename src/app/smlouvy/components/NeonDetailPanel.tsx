@@ -242,6 +242,9 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
     fields.invalidityA1.trim() !== "" ||
     fields.invalidityA2.trim() !== "" ||
     fields.invalidityA3.trim() !== "";
+  const showInvalidityA1 = editMode || contract?.invalidityA1 != null || fields.invalidityA1.trim() !== "";
+  const showInvalidityA2 = editMode || contract?.invalidityA2 != null || fields.invalidityA2.trim() !== "";
+  const showInvalidityA3 = editMode || contract?.invalidityA3 != null || fields.invalidityA3.trim() !== "";
   const hasInvalidityB =
     editMode ||
     contract?.invalidityB1 != null ||
@@ -250,6 +253,9 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
     fields.invalidityB1.trim() !== "" ||
     fields.invalidityB2.trim() !== "" ||
     fields.invalidityB3.trim() !== "";
+  const showInvalidityB1 = editMode || contract?.invalidityB1 != null || fields.invalidityB1.trim() !== "";
+  const showInvalidityB2 = editMode || contract?.invalidityB2 != null || fields.invalidityB2.trim() !== "";
+  const showInvalidityB3 = editMode || contract?.invalidityB3 != null || fields.invalidityB3.trim() !== "";
   const hasCritical =
     editMode || contract?.criticalIllnessAmount != null || fields.criticalAmount.trim() !== "";
   const hasChildSurgery =
@@ -384,78 +390,84 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       {(editMode || hasInvalidityA) && (
         <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
           <div className="text-xs uppercase tracking-wide text-emerald-200">Invalidita</div>
-          {renderAmountRow({
-            label: "Stupeň 1",
-            typeValue: fields.invalidityAType,
-            amountValue: fields.invalidityA1,
-            typeKey: "invalidityAType",
-            amountKey: "invalidityA1",
-            editMode,
-            onChange,
-            contractType: contract?.invalidityAType,
-            contractAmount: contract?.invalidityA1 ?? null,
-          })}
-          {renderAmountRow({
-            label: "Stupeň 2",
-            typeValue: fields.invalidityAType,
-            amountValue: fields.invalidityA2,
-            typeKey: "invalidityAType",
-            amountKey: "invalidityA2",
-            editMode,
-            onChange,
-            contractType: contract?.invalidityAType,
-            contractAmount: contract?.invalidityA2 ?? null,
-          })}
-          {renderAmountRow({
-            label: "Stupeň 3",
-            typeValue: fields.invalidityAType,
-            amountValue: fields.invalidityA3,
-            typeKey: "invalidityAType",
-            amountKey: "invalidityA3",
-            editMode,
-            onChange,
-            contractType: contract?.invalidityAType,
-            contractAmount: contract?.invalidityA3 ?? null,
-          })}
+          {showInvalidityA3 &&
+            renderAmountRow({
+              label: "Stupeň 3",
+              typeValue: fields.invalidityAType,
+              amountValue: fields.invalidityA3,
+              typeKey: "invalidityAType",
+              amountKey: "invalidityA3",
+              editMode,
+              onChange,
+              contractType: contract?.invalidityAType,
+              contractAmount: contract?.invalidityA3 ?? null,
+            })}
+          {showInvalidityA2 &&
+            renderAmountRow({
+              label: "Stupeň 2",
+              typeValue: fields.invalidityAType,
+              amountValue: fields.invalidityA2,
+              typeKey: "invalidityAType",
+              amountKey: "invalidityA2",
+              editMode,
+              onChange,
+              contractType: contract?.invalidityAType,
+              contractAmount: contract?.invalidityA2 ?? null,
+            })}
+          {showInvalidityA1 &&
+            renderAmountRow({
+              label: "Stupeň 1",
+              typeValue: fields.invalidityAType,
+              amountValue: fields.invalidityA1,
+              typeKey: "invalidityAType",
+              amountKey: "invalidityA1",
+              editMode,
+              onChange,
+              contractType: contract?.invalidityAType,
+              contractAmount: contract?.invalidityA1 ?? null,
+            })}
         </div>
       )}
 
       {(editMode || hasInvalidityB) && (
         <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
           <div className="text-xs uppercase tracking-wide text-emerald-200">Invalidita (2)</div>
-          {renderAmountRow({
-            label: "Stupeň 1",
-            typeValue: fields.invalidityBType,
-            amountValue: fields.invalidityB1,
-            typeKey: "invalidityBType",
-            amountKey: "invalidityB1",
-            editMode,
-            onChange,
-            contractType: contract?.invalidityBType,
-            contractAmount: contract?.invalidityB1 ?? null,
-          })}
-          {renderAmountRow({
-            label: "Stupeň 2",
-            typeValue: fields.invalidityBType,
-            amountValue: fields.invalidityB2,
-            typeKey: "invalidityBType",
-            amountKey: "invalidityB2",
-            editMode,
-            onChange,
-            contractType: contract?.invalidityBType,
-            contractAmount: contract?.invalidityB2 ?? null,
-          })}
-          {renderAmountRow({
-            label: "Stupeň 3",
-            typeValue: fields.invalidityBType,
-            amountValue: fields.invalidityB3,
-            typeKey: "invalidityBType",
-            amountKey: "invalidityB3",
-            editMode,
-            onChange,
-            contractType: contract?.invalidityBType,
-            contractAmount: contract?.invalidityB3 ?? null,
-          })}
+          {showInvalidityB3 &&
+            renderAmountRow({
+              label: "Stupeň 3",
+              typeValue: fields.invalidityBType,
+              amountValue: fields.invalidityB3,
+              typeKey: "invalidityBType",
+              amountKey: "invalidityB3",
+              editMode,
+              onChange,
+              contractType: contract?.invalidityBType,
+              contractAmount: contract?.invalidityB3 ?? null,
+            })}
+          {showInvalidityB2 &&
+            renderAmountRow({
+              label: "Stupeň 2",
+              typeValue: fields.invalidityBType,
+              amountValue: fields.invalidityB2,
+              typeKey: "invalidityBType",
+              amountKey: "invalidityB2",
+              editMode,
+              onChange,
+              contractType: contract?.invalidityBType,
+              contractAmount: contract?.invalidityB2 ?? null,
+            })}
+          {showInvalidityB1 &&
+            renderAmountRow({
+              label: "Stupeň 1",
+              typeValue: fields.invalidityBType,
+              amountValue: fields.invalidityB1,
+              typeKey: "invalidityBType",
+              amountKey: "invalidityB1",
+              editMode,
+              onChange,
+              contractType: contract?.invalidityBType,
+              contractAmount: contract?.invalidityB1 ?? null,
+            })}
         </div>
       )}
 

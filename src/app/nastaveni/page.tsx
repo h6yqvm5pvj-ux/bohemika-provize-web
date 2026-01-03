@@ -522,44 +522,6 @@ export default function SettingsPage() {
             )}
 
             <div className="grid gap-4 md:grid-cols-2">
-              {/* Výkon & cíle */}
-              <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
-                <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
-                  Výkon &amp; cíle
-                </h2>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide">
-                      Měsíční cíl provizí
-                    </label>
-                    <span className="text-xs text-slate-400">
-                      Aktuálně:{" "}
-                      <span className="font-medium text-slate-100">
-                        {monthlyGoal ? formatMoney(monthlyGoal) : "Žádný cíl"}
-                      </span>
-                    </span>
-                  </div>
-
-                  <select
-                    className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                    value={monthlyGoal}
-                    onChange={(e) => handleMonthlyGoalChange(Number(e.target.value))}
-                  >
-                    <option value={0}>Žádný cíl</option>
-                    {GOAL_STEPS.map((v) => (
-                      <option key={v} value={v}>
-                        {formatMoney(v)}
-                      </option>
-                    ))}
-                  </select>
-
-                  <p className="text-xs text-slate-400">
-                    Cíl se používá v přehledu na domovské stránce. Hodnota se ukládá k tvému účtu.
-                  </p>
-                </div>
-              </section>
-
               {/* Notifikace */}
               <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
                 <div className="flex flex-col gap-3">

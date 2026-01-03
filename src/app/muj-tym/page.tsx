@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, getDocs, limit as fbLimit, orderBy, query, where } from "firebase/firestore";
+import { collection, collectionGroup, doc, getDoc, getDocs, limit as fbLimit, orderBy, query, where } from "firebase/firestore";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
@@ -16,6 +16,11 @@ type Member = {
   name: string;
   position?: Position | null;
   managerEmail?: string | null;
+};
+
+type FirestoreTimestamp = {
+  seconds: number;
+  nanoseconds?: number;
 };
 
 function nameFromEmail(email: string | null | undefined): string {
@@ -51,6 +56,24 @@ function positionLabel(pos?: Position | null): string {
   return map[pos] ?? pos;
 }
 
+function isManagerPosition(pos?: Position | null): boolean {
+  if (!pos) return false;
+  return pos.startsWith("manazer");
+}
+
+function toDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "object" && value !== null && "seconds" in value && typeof (value as any).seconds === "number") {
+    const v = value as FirestoreTimestamp;
+    const ms = v.seconds * 1000 + Math.floor((v.nanoseconds ?? 0) / 1_000_000);
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(value as any);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export default function TeamPage() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -59,6 +82,10 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(true);
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [lastActive, setLastActive] = useState<Record<string, number | null>>({});
+  const [contractCounts, setContractCounts] = useState<Record<string, { total: number; month: number }>>({});
+  const [contractsLoaded, setContractsLoaded] = useState(false);
+  const [contractsError, setContractsError] = useState(false);
+  const [userPosition, setUserPosition] = useState<Position | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -77,12 +104,22 @@ export default function TeamPage() {
     const loadTeam = async () => {
       if (!userEmail) {
         setMembers([]);
+        setUserPosition(null);
         setLoading(false);
         return;
       }
       setLoading(true);
       try {
         const usersCol = collection(db, "users");
+        // načtení vlastní pozice
+        try {
+          const meSnap = await getDoc(doc(usersCol, userEmail));
+          const pos = meSnap.exists() ? ((meSnap.data() as any).position as Position | undefined) ?? null : null;
+          setUserPosition(pos);
+        } catch (err) {
+          console.error("Chyba při načítání pozice uživatele", err);
+          setUserPosition(null);
+        }
         const queue = [userEmail];
         const visited = new Set<string>();
         const all: Member[] = [];
@@ -142,6 +179,56 @@ export default function TeamPage() {
     // only depends on signed-in user; selection should not retrigger fetch
   }, [userEmail]);
 
+  useEffect(() => {
+    const loadContractCounts = async () => {
+      if (members.length === 0) {
+        setContractCounts({});
+        setContractsLoaded(true);
+        setContractsError(false);
+        return;
+      }
+      setContractsLoaded(false);
+      setContractsError(false);
+      try {
+        const emails = Array.from(new Set(members.map((m) => m.email.toLowerCase()))); // dedupe
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+        const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+        const stats: Record<string, { total: number; month: number }> = {};
+        const entries = collectionGroup(db, "entries");
+        const chunkSize = 10;
+
+        for (let i = 0; i < emails.length; i += chunkSize) {
+          const chunk = emails.slice(i, i + chunkSize);
+          const snap = await getDocs(query(entries, where("userEmail", "in", chunk)));
+          snap.docs.forEach((docSnap) => {
+            const data = docSnap.data() as any;
+            const email = (data.userEmail as string | undefined)?.toLowerCase();
+            if (!email) return;
+            const current = stats[email] ?? { total: 0, month: 0 };
+            current.total += 1;
+            const date = toDate((data as any).contractSignedDate ?? data.createdAt);
+            const ts = date?.getTime();
+            if (ts != null && ts >= monthStart && ts < nextMonthStart) {
+              current.month += 1;
+            }
+            stats[email] = current;
+          });
+        }
+
+        setContractCounts(stats);
+      } catch (e) {
+        console.error("Chyba při načítání počtu smluv", e);
+        setContractCounts({});
+        setContractsError(true);
+      } finally {
+        setContractsLoaded(true);
+      }
+    };
+
+    void loadContractCounts();
+  }, [members]);
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return members;
@@ -163,6 +250,15 @@ export default function TeamPage() {
       return "—";
     }
   };
+
+  const contractCountLabel = (email: string, key: "total" | "month") => {
+    if (!contractsLoaded || contractsError) return "—";
+    const stats = contractCounts[email];
+    const value = key === "total" ? stats?.total : stats?.month;
+    return value != null ? String(value) : "0";
+  };
+
+  const canSendTeamMessage = isManagerPosition(userPosition) && members.length > 0;
 
   return (
     <AppLayout active="team">
@@ -188,6 +284,22 @@ export default function TeamPage() {
                   className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
                 />
               </div>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/pomucky/struktura"
+                  className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/25 transition"
+                >
+                  Struktura
+                </Link>
+                {canSendTeamMessage ? (
+                  <Link
+                    href="/pomucky/zprava-tymu"
+                    className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/25 transition"
+                  >
+                    Zpráva týmu
+                  </Link>
+                ) : null}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-[0.75fr_1.25fr] gap-4 items-start">
@@ -211,6 +323,12 @@ export default function TeamPage() {
                           <div className="text-sm font-semibold">{m.name}</div>
                           <div className="text-xs text-slate-400">{m.email}</div>
                           <div className="text-[11px] text-slate-500">Naposledy: {formatLastActive(m.email)}</div>
+                          <div className="text-[11px] text-slate-500">
+                            Celkem smluv: {contractCountLabel(m.email, "total")}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            Smluv tento měsíc: {contractCountLabel(m.email, "month")}
+                          </div>
                         </div>
                         <div className="text-[11px] rounded-full border border-white/10 px-2 py-1 text-slate-300">
                           {positionLabel(m.position)}
@@ -232,6 +350,12 @@ export default function TeamPage() {
                         <div className="text-sm text-slate-300">Pozice: {positionLabel(selected.position)}</div>
                         <div className="text-sm text-slate-300">
                           Naposledy aktivní: {formatLastActive(selected.email)}
+                        </div>
+                        <div className="text-sm text-slate-300">
+                          Celkem smluv: {contractCountLabel(selected.email, "total")}
+                        </div>
+                        <div className="text-sm text-slate-300">
+                          Smluv tento měsíc: {contractCountLabel(selected.email, "month")}
                         </div>
                       </>
                     ) : (
@@ -263,6 +387,10 @@ export default function TeamPage() {
                             <div className="font-semibold text-white">{sub.name}</div>
                             <div className="text-xs text-slate-400">{sub.email}</div>
                             <div className="text-[11px] text-slate-500">Pozice: {positionLabel(sub.position)}</div>
+                            <div className="text-[11px] text-slate-500">
+                              Celkem smluv: {contractCountLabel(sub.email, "total")} • Tento měsíc:{" "}
+                              {contractCountLabel(sub.email, "month")}
+                            </div>
                           </div>
                         ))}
                       </div>

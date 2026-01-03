@@ -16,6 +16,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  updateDoc,
   query,
   where,
 } from "firebase/firestore";
@@ -670,6 +671,10 @@ export default function HomePage() {
   const [selectedSubordinate, setSelectedSubordinate] = useState<string | null>(null);
   const [subPickerOpen, setSubPickerOpen] = useState(false);
   const [subSearch, setSubSearch] = useState("");
+  const [editGoalOpen, setEditGoalOpen] = useState(false);
+  const [goalInput, setGoalInput] = useState("");
+  const [savingGoal, setSavingGoal] = useState(false);
+  const [goalError, setGoalError] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [authReady, setAuthReady] = useState(false);
@@ -948,30 +953,42 @@ export default function HomePage() {
   const progress = hasGoal
     ? Math.min(100, Math.round((totalWithTeam / monthlyGoal) * 100))
     : 0;
-  const daysInMonth = new Date(
-    now.getFullYear(),
-    now.getMonth() + 1,
-    0
-  ).getDate();
-  const dayOfMonth = now.getDate();
-  const daysLeft = Math.max(0, daysInMonth - dayOfMonth);
   const remainingToGoal = hasGoal
     ? Math.max(0, monthlyGoal - totalWithTeam)
     : 0;
-  const dailyNeeded =
-    hasGoal && daysLeft > 0 && remainingToGoal > 0
-      ? Math.ceil(remainingToGoal / daysLeft)
-      : 0;
-  const dailyPace =
-    dayOfMonth > 0 ? Math.round(totalWithTeam / dayOfMonth) : 0;
-  const projectedMonthTotal =
-    dayOfMonth > 0 ? Math.round(dailyPace * daysInMonth) : 0;
   const progressTone =
     progress >= 90
       ? "from-emerald-400 via-lime-300 to-emerald-200"
       : progress >= 60
       ? "from-amber-400 via-orange-300 to-yellow-200"
       : "from-rose-500 via-red-400 to-orange-300";
+
+  useEffect(() => {
+    setGoalInput(monthlyGoal != null && Number.isFinite(monthlyGoal) ? String(monthlyGoal) : "");
+  }, [monthlyGoal]);
+
+  const saveMonthlyGoal = async () => {
+    if (!user?.email) return;
+    const raw = (goalInput ?? "").toString().replace(/\s+/g, "");
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setGoalError("Zadej částku 0 nebo víc.");
+      return;
+    }
+    setGoalError(null);
+    setSavingGoal(true);
+    try {
+      const ref = doc(db, "users", user.email);
+      await updateDoc(ref, { monthlyGoal: parsed });
+      setUserMeta((prev) => (prev ? { ...prev, monthlyGoal: parsed } : prev));
+      setEditGoalOpen(false);
+    } catch (e) {
+      console.error("Uložení měsíčního cíle selhalo", e);
+      setGoalError("Uložení se nepodařilo. Zkus to znovu.");
+    } finally {
+      setSavingGoal(false);
+    }
+  };
 
   const subordinates = useMemo(() => {
     const map = new Map<string, { email: string; name: string }>();
@@ -1259,6 +1276,49 @@ export default function HomePage() {
         >
           {/* MĚSÍČNÍ CÍL */}
           <section className="relative overflow-hidden rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)] h-full">
+            {editGoalOpen && (
+              <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-slate-900/95 p-5 shadow-[0_24px_60px_rgba(0,0,0,0.65)]">
+                  <h3 className="text-base font-semibold text-white">Upravit měsíční cíl</h3>
+                  <p className="mt-1 text-sm text-slate-300">
+                    Zadej částku provize, kterou chceš tento měsíc dosáhnout.
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    <input
+                      type="number"
+                      value={goalInput}
+                      onChange={(e) => setGoalInput(e.target.value)}
+                      className="w-full rounded-xl border border-white/15 bg-slate-800/80 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400"
+                      placeholder="Např. 50000"
+                      autoFocus
+                      min={0}
+                    />
+                    {goalError ? <div className="text-xs text-rose-300">{goalError}</div> : null}
+                  </div>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGoalError(null);
+                        setEditGoalOpen(false);
+                      }}
+                      className="rounded-xl border border-white/15 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10 transition"
+                      disabled={savingGoal}
+                    >
+                      Zrušit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveMonthlyGoal}
+                      disabled={savingGoal}
+                      className="rounded-xl border border-emerald-300/70 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/30 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {savingGoal ? "Ukládám…" : "Uložit"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(125,211,252,0.25),transparent_60%)]" />
             <div className="pointer-events-none absolute right-0 bottom-0 h-48 w-48 rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.2),transparent_65%)]" />
 
@@ -1288,16 +1348,17 @@ export default function HomePage() {
                     </span>
                   </div>
                 </div>
-                <Link
-                  href="/nastaveni"
+                <button
+                  type="button"
+                  onClick={() => setEditGoalOpen(true)}
                   className="rounded-full border border-white/20 px-3 py-1.5 text-[11px] text-white/90 hover:bg-white/10 transition backdrop-blur-sm"
                 >
                   Upravit cíl
-                </Link>
+                </button>
               </div>
             </div>
 
-            <div className="relative mt-3 grid gap-3 sm:grid-cols-3 text-xs text-slate-200">
+            <div className="relative mt-3 grid gap-3 sm:grid-cols-1 text-xs text-slate-200">
               <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 shadow-[0_10px_34px_rgba(0,0,0,0.55)] backdrop-blur">
                 <div className="text-[11px] uppercase tracking-wide text-slate-300">
                   Do cíle zbývá
@@ -1311,36 +1372,6 @@ export default function HomePage() {
                 </div>
                 <div className="text-[11px] text-slate-400">
                   {hasGoal ? `${progress}% hotovo` : "Cíl není nastaven"}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 shadow-[0_10px_34px_rgba(0,0,0,0.55)] backdrop-blur">
-                <div className="text-[11px] uppercase tracking-wide text-slate-300">
-                  Denní tempo k cíli
-                </div>
-                <div className="mt-1 text-lg font-semibold text-white">
-                  {hasGoal
-                    ? dailyNeeded > 0
-                      ? formatMoney(dailyNeeded)
-                      : "Hotovo"
-                    : "—"}
-                </div>
-                <div className="text-[11px] text-slate-400">
-                  {daysLeft > 0 ? `Zbývá ${daysLeft} dní` : "Konec měsíce"}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 shadow-[0_10px_34px_rgba(0,0,0,0.55)] backdrop-blur">
-                <div className="text-[11px] uppercase tracking-wide text-slate-300">
-                  Odhad na konec měsíce
-                </div>
-                <div className="mt-1 text-lg font-semibold text-white">
-                  {projectedMonthTotal > 0
-                    ? formatMoney(projectedMonthTotal)
-                    : "—"}
-                </div>
-                <div className="text-[11px] text-slate-400">
-                  Tempo za {dayOfMonth}. den měsíce
                 </div>
               </div>
             </div>
