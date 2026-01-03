@@ -171,6 +171,7 @@ const renderAmountRow = ({
   onChange,
   contractType,
   contractAmount,
+  hideEmptyType = false,
 }: {
   label: string;
   typeValue: string;
@@ -181,11 +182,12 @@ const renderAmountRow = ({
   onChange: (key: keyof NeonFields, value: string | boolean) => void;
   contractType?: string | null;
   contractAmount?: number | null;
+  hideEmptyType?: boolean;
 }) => (
   <div className="space-y-1">
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-slate-300">{label}</span>
-      <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-slate-300 whitespace-nowrap">{label}</span>
+      <div className="flex items-center gap-3 flex-1 justify-end min-w-[140px]">
         {editMode ? (
           <select
             value={typeValue}
@@ -199,12 +201,16 @@ const renderAmountRow = ({
               </option>
             ))}
           </select>
-        ) : (
-          <span className="text-sm font-semibold">
-            {sumTypeLabel(contractType ?? typeValue)}
+          ) : (
+          <span className="text-sm font-semibold text-right min-w-[88px] whitespace-nowrap">
+            {(() => {
+              const rawType = contractType ?? typeValue;
+              if (!rawType && hideEmptyType) return "";
+              return sumTypeLabel(rawType);
+            })()}
           </span>
         )}
-        <div className="w-40">
+        <div className="min-w-[120px] text-right whitespace-nowrap">
           {editMode ? (
             <input
               type="number"
@@ -327,6 +333,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
               onChange,
               contractType: contract?.deathType,
               contractAmount: contract?.deathAmount ?? null,
+              hideEmptyType: true,
             })}
           {hasDeath2 &&
             renderAmountRow({
@@ -339,6 +346,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
               onChange,
               contractType: contract?.death2Type,
               contractAmount: contract?.death2Amount ?? null,
+              hideEmptyType: true,
             })}
           {hasTerminal && (
             <div className="flex justify-between gap-2">
@@ -390,42 +398,44 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       {(editMode || hasInvalidityA) && (
         <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
           <div className="text-xs uppercase tracking-wide text-emerald-200">Invalidita</div>
-          {showInvalidityA3 &&
-            renderAmountRow({
-              label: "Stupeň 3",
-              typeValue: fields.invalidityAType,
-              amountValue: fields.invalidityA3,
-              typeKey: "invalidityAType",
-              amountKey: "invalidityA3",
-              editMode,
-              onChange,
-              contractType: contract?.invalidityAType,
-              contractAmount: contract?.invalidityA3 ?? null,
-            })}
-          {showInvalidityA2 &&
-            renderAmountRow({
-              label: "Stupeň 2",
-              typeValue: fields.invalidityAType,
-              amountValue: fields.invalidityA2,
-              typeKey: "invalidityAType",
-              amountKey: "invalidityA2",
-              editMode,
-              onChange,
-              contractType: contract?.invalidityAType,
-              contractAmount: contract?.invalidityA2 ?? null,
-            })}
-          {showInvalidityA1 &&
-            renderAmountRow({
-              label: "Stupeň 1",
-              typeValue: fields.invalidityAType,
-              amountValue: fields.invalidityA1,
-              typeKey: "invalidityAType",
-              amountKey: "invalidityA1",
-              editMode,
-              onChange,
-              contractType: contract?.invalidityAType,
-              contractAmount: contract?.invalidityA1 ?? null,
-            })}
+          <div className="space-y-2">
+            {showInvalidityA3 &&
+              renderAmountRow({
+                label: "3. stupeň",
+                typeValue: fields.invalidityAType,
+                amountValue: fields.invalidityA3,
+                typeKey: "invalidityAType",
+                amountKey: "invalidityA3",
+                editMode,
+                onChange,
+                contractType: contract?.invalidityAType,
+                contractAmount: contract?.invalidityA3 ?? null,
+              })}
+            {showInvalidityA2 &&
+              renderAmountRow({
+                label: "2. stupeň",
+                typeValue: fields.invalidityAType,
+                amountValue: fields.invalidityA2,
+                typeKey: "invalidityAType",
+                amountKey: "invalidityA2",
+                editMode,
+                onChange,
+                contractType: contract?.invalidityAType,
+                contractAmount: contract?.invalidityA2 ?? null,
+              })}
+            {showInvalidityA1 &&
+              renderAmountRow({
+                label: "1. stupeň",
+                typeValue: fields.invalidityAType,
+                amountValue: fields.invalidityA1,
+                typeKey: "invalidityAType",
+                amountKey: "invalidityA1",
+                editMode,
+                onChange,
+                contractType: contract?.invalidityAType,
+                contractAmount: contract?.invalidityA1 ?? null,
+              })}
+          </div>
         </div>
       )}
 
@@ -434,7 +444,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
           <div className="text-xs uppercase tracking-wide text-emerald-200">Invalidita (2)</div>
           {showInvalidityB3 &&
             renderAmountRow({
-              label: "Stupeň 3",
+              label: "3. stupeň",
               typeValue: fields.invalidityBType,
               amountValue: fields.invalidityB3,
               typeKey: "invalidityBType",
@@ -446,7 +456,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
             })}
           {showInvalidityB2 &&
             renderAmountRow({
-              label: "Stupeň 2",
+              label: "2. stupeň",
               typeValue: fields.invalidityBType,
               amountValue: fields.invalidityB2,
               typeKey: "invalidityBType",
@@ -458,7 +468,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
             })}
           {showInvalidityB1 &&
             renderAmountRow({
-              label: "Stupeň 1",
+              label: "1. stupeň",
               typeValue: fields.invalidityBType,
               amountValue: fields.invalidityB1,
               typeKey: "invalidityBType",

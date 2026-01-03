@@ -1582,6 +1582,11 @@ export default function CalculatorPage() {
                     Aktuální koeficienty – platnost od 01.07.2024
                   </p>
                 )}
+                {product === "allianzAuto" && (
+                  <p className="mt-1 text-xs font-semibold text-rose-300">
+                    Aktuální koeficienty – platnost od 01.08.2019
+                  </p>
+                )}
                 {product === "csobAuto" && (
                   <p className="mt-1 text-xs font-semibold text-rose-300">
                     Aktuální koeficienty – platnost od 01.11.2024
