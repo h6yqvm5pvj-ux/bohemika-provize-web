@@ -1,0 +1,1 @@
+export { calculateDomex } from "../productFormulas";

@@ -4,21 +4,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import Plasma from "@/components/Plasma";
-import { auth, db } from "../app/firebase";
+import { auth } from "../app/firebase-auth";
+import { firebaseApp } from "../app/firebase-app";
 import {
   onAuthStateChanged,
   signOut,
   type User as FirebaseUser,
 } from "firebase/auth";
-import {
-  doc,
-  getDoc,
-  getDocs,
-  Timestamp,
-  collection,
-  query,
-  where,
-} from "firebase/firestore";
+import type { Timestamp } from "firebase/firestore";
 import { useEffect, useState, type ReactNode } from "react";
 
 type ActivePage =
@@ -38,6 +31,15 @@ interface AppLayoutProps {
 }
 
 type SubscriptionStatusWeb = "none" | "active" | "expired";
+
+type FirestoreExports = typeof import("firebase/firestore");
+let firestorePromise: Promise<FirestoreExports> | null = null;
+const loadFirestore = () => {
+  if (!firestorePromise) {
+    firestorePromise = import("firebase/firestore");
+  }
+  return firestorePromise;
+};
 
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -160,6 +162,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       return;
     }
 
+    const { getFirestore, doc, getDoc } = await loadFirestore();
+    const db = getFirestore(firebaseApp);
     const email = emailRaw.trim().toLowerCase();
 
     setLoadingProfile(true);
@@ -231,6 +235,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         return;
       }
       try {
+        const { getFirestore, collection, query, where, getDocs } =
+          await loadFirestore();
+        const db = getFirestore(firebaseApp);
         const email = user.email.toLowerCase();
         const usersCol = collection(db, "users");
         const snap = await getDocs(query(usersCol, where("managerEmail", "==", email)));

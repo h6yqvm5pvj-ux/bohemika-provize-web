@@ -6,7 +6,7 @@ import Link from "next/link";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "../plan-produkce/SplitTitle";
-import { auth } from "@/app/firebase";
+import { auth } from "@/app/firebase-auth";
 import { rsvVehicleLookupByVin } from "@/app/lib/rsv";
 
 function safeStr(v: unknown): string {

@@ -1,0 +1,1 @@
+export { calculateUniqaAuto } from "../productFormulas";

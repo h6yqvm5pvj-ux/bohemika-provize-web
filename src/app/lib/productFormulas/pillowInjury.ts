@@ -1,0 +1,1 @@
+export { calculatePillowInjury } from "../productFormulas";

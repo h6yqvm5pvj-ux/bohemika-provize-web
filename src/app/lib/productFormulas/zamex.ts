@@ -1,0 +1,1 @@
+export { calculateZamex } from "../productFormulas";

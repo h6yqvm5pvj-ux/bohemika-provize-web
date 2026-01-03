@@ -1,0 +1,1 @@
+export { calculateAxaCestovko } from "../productFormulas";

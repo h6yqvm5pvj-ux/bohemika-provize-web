@@ -1,5 +1,5 @@
 // src/app/lib/rsv.ts
-import { auth } from "@/app/firebase";
+import { auth } from "@/app/firebase-auth";
 
 const RSV_FUNCTION_URL =
   process.env.NEXT_PUBLIC_RSV_LOOKUP_URL ??

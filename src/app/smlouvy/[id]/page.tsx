@@ -23,26 +23,6 @@ import {
 } from "../../types/domain";
 import Image from "next/image";
 
-import {
-  calculateNeon,
-  calculateFlexi,
-  calculateMaxEfekt,
-  calculatePillowInjury,
-  calculateDomex,
-  calculateMaxdomov,
-  calculateCppAuto,
-  calculateCppPPRbez,
-  calculateCppPPRs,
-  calculateAllianzAuto,
-  calculateCsobAuto,
-  calculateUniqaAuto,
-  calculatePillowAuto,
-  calculateKooperativaAuto,
-  calculateZamex,
-  calculateCppCestovko,
-  calculateAxaCestovko,
-  calculateComfortCC,
-} from "../../lib/productFormulas";
 import type { DomexFields } from "../components/DomexDetailPanel";
 import type { AutoFields } from "../components/AutoDetailPanel";
 import type { NeonFields } from "../components/NeonDetailPanel";
@@ -71,15 +51,6 @@ const FlexiDetailPanel = dynamic(
   () => import("../components/FlexiDetailPanel").then((mod) => mod.FlexiDetailPanel),
   { ssr: false, loading: DetailFallback }
 );
-
-type ProductFormulasModule = typeof import("../../lib/productFormulas");
-let productFormulasPromise: Promise<ProductFormulasModule> | null = null;
-const loadProductFormulas = () => {
-  if (!productFormulasPromise) {
-    productFormulasPromise = import("../../lib/productFormulas");
-  }
-  return productFormulasPromise;
-};
 
 type FirestoreTimestamp = {
   seconds: number;
@@ -270,6 +241,67 @@ function nameFromEmail(email?: string | null): string {
       ? s
       : s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
   return parts.map(cap).join(" ");
+}
+
+function preloadFormulaModule(product?: Product | null) {
+  switch (product) {
+    case "neon":
+      import("../../lib/productFormulas/neon");
+      break;
+    case "flexi":
+      import("../../lib/productFormulas/flexi");
+      break;
+    case "maximaMaxEfekt":
+      import("../../lib/productFormulas/maximaMaxEfekt");
+      break;
+    case "pillowInjury":
+      import("../../lib/productFormulas/pillowInjury");
+      break;
+    case "domex":
+      import("../../lib/productFormulas/domex");
+      break;
+    case "cppPPRbez":
+      import("../../lib/productFormulas/cppPPRbez");
+      break;
+    case "maxdomov":
+      import("../../lib/productFormulas/maxdomov");
+      break;
+    case "cppAuto":
+      import("../../lib/productFormulas/cppAuto");
+      break;
+    case "cppPPRs":
+      import("../../lib/productFormulas/cppPPRs");
+      break;
+    case "allianzAuto":
+      import("../../lib/productFormulas/allianzAuto");
+      break;
+    case "csobAuto":
+      import("../../lib/productFormulas/csobAuto");
+      break;
+    case "uniqaAuto":
+      import("../../lib/productFormulas/uniqaAuto");
+      break;
+    case "pillowAuto":
+      import("../../lib/productFormulas/pillowAuto");
+      break;
+    case "kooperativaAuto":
+      import("../../lib/productFormulas/kooperativaAuto");
+      break;
+    case "zamex":
+      import("../../lib/productFormulas/zamex");
+      break;
+    case "cppcestovko":
+      import("../../lib/productFormulas/cppcestovko");
+      break;
+    case "axacestovko":
+      import("../../lib/productFormulas/axacestovko");
+      break;
+    case "comfortcc":
+      import("../../lib/productFormulas/comfortcc");
+      break;
+    default:
+      break;
+  }
 }
 
 // ---------- helpers ----------
@@ -564,7 +596,6 @@ async function calculateResultForPosition(
   position: Position,
   mode: CommissionMode | null
 ): Promise<{ items: CommissionResultItemDTO[]; total: number } | null> {
-  const formulas = await loadProductFormulas();
   const product = c.productKey;
   if (!product) return null;
 
@@ -581,48 +612,106 @@ async function calculateResultForPosition(
   const usedMode = (mode ?? "standard") as CommissionMode;
 
   switch (product) {
-    case "neon":
-      return formulas.calculateNeon(amount, position, years, usedMode);
-    case "flexi":
-      return formulas.calculateFlexi(amount, position, usedMode);
-    case "maximaMaxEfekt":
-      return formulas.calculateMaxEfekt(amount, years, position, usedMode);
-    case "pillowInjury":
-      return formulas.calculatePillowInjury(amount, position, usedMode);
-    case "domex":
-      return formulas.calculateDomex(amount, freq, position);
-    case "cppPPRbez":
-      return formulas.calculateCppPPRbez(amount, freq, position);
-    case "maxdomov":
-      return formulas.calculateMaxdomov(amount, freq, position);
-    case "cppAuto":
-      return formulas.calculateCppAuto(amount, freq, position);
-    case "cppPPRs":
-      return formulas.calculateCppPPRs(amount, freq, position);
-    case "allianzAuto":
-      return formulas.calculateAllianzAuto(amount, freq, position);
-    case "csobAuto":
-      return formulas.calculateCsobAuto(amount, freq, position);
-    case "uniqaAuto":
-      return formulas.calculateUniqaAuto(amount, freq, position);
-    case "pillowAuto":
-      return formulas.calculatePillowAuto(amount, freq, position);
-    case "kooperativaAuto":
-      return formulas.calculateKooperativaAuto(amount, freq, position);
-    case "zamex":
-      return formulas.calculateZamex(amount, freq, position);
-    case "cppcestovko":
-      return formulas.calculateCppCestovko(amount, position);
-    case "axacestovko":
-      return formulas.calculateAxaCestovko(amount, position);
-    case "comfortcc":
-      return formulas.calculateComfortCC({
+    case "neon": {
+      const { calculateNeon } = await import("../../lib/productFormulas/neon");
+      return calculateNeon(amount, position, years, usedMode);
+    }
+    case "flexi": {
+      const { calculateFlexi } = await import("../../lib/productFormulas/flexi");
+      return calculateFlexi(amount, position, usedMode);
+    }
+    case "maximaMaxEfekt": {
+      const { calculateMaxEfekt } = await import(
+        "../../lib/productFormulas/maximaMaxEfekt"
+      );
+      return calculateMaxEfekt(amount, years, position, usedMode);
+    }
+    case "pillowInjury": {
+      const { calculatePillowInjury } = await import(
+        "../../lib/productFormulas/pillowInjury"
+      );
+      return calculatePillowInjury(amount, position, usedMode);
+    }
+    case "domex": {
+      const { calculateDomex } = await import("../../lib/productFormulas/domex");
+      return calculateDomex(amount, freq, position);
+    }
+    case "cppPPRbez": {
+      const { calculateCppPPRbez } = await import(
+        "../../lib/productFormulas/cppPPRbez"
+      );
+      return calculateCppPPRbez(amount, freq, position);
+    }
+    case "maxdomov": {
+      const { calculateMaxdomov } = await import(
+        "../../lib/productFormulas/maxdomov"
+      );
+      return calculateMaxdomov(amount, freq, position);
+    }
+    case "cppAuto": {
+      const { calculateCppAuto } = await import("../../lib/productFormulas/cppAuto");
+      return calculateCppAuto(amount, freq, position);
+    }
+    case "cppPPRs": {
+      const { calculateCppPPRs } = await import("../../lib/productFormulas/cppPPRs");
+      return calculateCppPPRs(amount, freq, position);
+    }
+    case "allianzAuto": {
+      const { calculateAllianzAuto } = await import(
+        "../../lib/productFormulas/allianzAuto"
+      );
+      return calculateAllianzAuto(amount, freq, position);
+    }
+    case "csobAuto": {
+      const { calculateCsobAuto } = await import("../../lib/productFormulas/csobAuto");
+      return calculateCsobAuto(amount, freq, position);
+    }
+    case "uniqaAuto": {
+      const { calculateUniqaAuto } = await import(
+        "../../lib/productFormulas/uniqaAuto"
+      );
+      return calculateUniqaAuto(amount, freq, position);
+    }
+    case "pillowAuto": {
+      const { calculatePillowAuto } = await import(
+        "../../lib/productFormulas/pillowAuto"
+      );
+      return calculatePillowAuto(amount, freq, position);
+    }
+    case "kooperativaAuto": {
+      const { calculateKooperativaAuto } = await import(
+        "../../lib/productFormulas/kooperativaAuto"
+      );
+      return calculateKooperativaAuto(amount, freq, position);
+    }
+    case "zamex": {
+      const { calculateZamex } = await import("../../lib/productFormulas/zamex");
+      return calculateZamex(amount, freq, position);
+    }
+    case "cppcestovko": {
+      const { calculateCppCestovko } = await import(
+        "../../lib/productFormulas/cppcestovko"
+      );
+      return calculateCppCestovko(amount, position);
+    }
+    case "axacestovko": {
+      const { calculateAxaCestovko } = await import(
+        "../../lib/productFormulas/axacestovko"
+      );
+      return calculateAxaCestovko(amount, position);
+    }
+    case "comfortcc": {
+      const { calculateComfortCC } = await import(
+        "../../lib/productFormulas/comfortcc"
+      );
+      return calculateComfortCC({
         fee: amount,
         payment: comfortGradual ? comfortPayment : 0,
         isSavings: comfortGradual,
         isGradualFee: comfortGradual,
         position,
       });
+    }
     default:
       return null;
   }
@@ -815,9 +904,7 @@ export default function ContractDetailPage() {
   }, [user]);
 
   useEffect(() => {
-    if (contract?.productKey) {
-      loadProductFormulas();
-    }
+    preloadFormulaModule(contract?.productKey ?? null);
   }, [contract?.productKey]);
 
   // načtení smlouvy – users/{email}/entries/{entryId}

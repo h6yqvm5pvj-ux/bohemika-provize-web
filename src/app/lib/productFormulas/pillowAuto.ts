@@ -1,0 +1,1 @@
+export { calculatePillowAuto } from "../productFormulas";
