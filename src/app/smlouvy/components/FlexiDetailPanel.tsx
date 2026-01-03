@@ -48,6 +48,8 @@ export type FlexiFields = {
   addonTravel: boolean;
 };
 
+type FlexiFieldKey = keyof FlexiFields;
+
 export type FlexiDetail = {
   deathAmount?: number | null;
   deathTypedType?: string | null;
@@ -94,6 +96,14 @@ export type FlexiDetail = {
   addonLiabilityCitizen?: number | null;
   addonTravel?: boolean | null;
 } | null;
+
+type Props = {
+  prod?: Product | null;
+  editMode: boolean;
+  fields: FlexiFields;
+  contract: FlexiDetail;
+  onChange: (key: FlexiFieldKey, value: string | boolean) => void;
+};
 
 const formatMoney = (value: number | undefined | null) =>
   value != null && Number.isFinite(value)
