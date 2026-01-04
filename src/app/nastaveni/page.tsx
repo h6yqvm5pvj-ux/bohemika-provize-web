@@ -48,6 +48,32 @@ const GOAL_STEPS: number[] = Array.from(
   (_, i) => 5_000 + i * 5_000
 );
 
+type NotificationSettings = {
+  types: {
+    newContract: boolean;
+    anniversary: boolean;
+    unpaid: boolean;
+    team: boolean;
+  };
+  channels: {
+    email: boolean;
+    push: boolean;
+  };
+};
+
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  types: {
+    newContract: true,
+    anniversary: true,
+    unpaid: true,
+    team: true,
+  },
+  channels: {
+    email: true,
+    push: true,
+  },
+};
+
 const SETTINGS_KEYS = {
   position: "settings.position",
   mode: "settings.mode",
@@ -87,6 +113,9 @@ export default function SettingsPage() {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [fcmActive, setFcmActive] = useState<boolean | null>(null);
   const [notifyMinutes, setNotifyMinutes] = useState<number>(60);
+  const [notificationSettings, setNotificationSettings] =
+    useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
+  const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
   const [simpleBackground, setSimpleBackground] = useState(false);
   const [backgroundColor, setBackgroundColor] = useState<"black" | "blue">("black");
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -230,6 +259,14 @@ export default function SettingsPage() {
             setFcmActive(false);
           }
 
+          if (data.notificationSettings) {
+            const incoming = data.notificationSettings as NotificationSettings;
+            setNotificationSettings({
+              types: { ...DEFAULT_NOTIFICATION_SETTINGS.types, ...(incoming.types ?? {}) },
+              channels: { ...DEFAULT_NOTIFICATION_SETTINGS.channels, ...(incoming.channels ?? {}) },
+            });
+          }
+
           setCanChangePosition(
             data.canChangePosition === false ? false : true
           );
@@ -323,6 +360,67 @@ export default function SettingsPage() {
   const handleNotifyMinutesChange = async (value: number) => {
     setNotifyMinutes(value);
     await saveUserFields({ notifyMinutes: value });
+  };
+
+  const persistNotificationSettings = async (
+    next: NotificationSettings,
+    additional?: Record<string, any>
+  ) => {
+    setNotificationSettings(next);
+    await saveUserFields({
+      notificationSettings: next,
+      ...(additional ?? {}),
+    });
+  };
+
+  const toggleNotificationType = async (key: keyof NotificationSettings["types"]) => {
+    const next = {
+      ...notificationSettings,
+      types: { ...notificationSettings.types, [key]: !notificationSettings.types[key] },
+    };
+    await persistNotificationSettings(next);
+  };
+
+  const toggleNotificationChannel = async (key: keyof NotificationSettings["channels"]) => {
+    const next = {
+      ...notificationSettings,
+      channels: { ...notificationSettings.channels, [key]: !notificationSettings.channels[key] },
+    };
+    await persistNotificationSettings(next);
+  };
+
+  const handleTestPush = async () => {
+    if (!user) {
+      setTestPushStatus("Nejsi přihlášený.");
+      return;
+    }
+    setTestPushStatus("Posílám testovací notifikaci…");
+
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch(
+        "https://europe-central2-bohemikasmlouvy.cloudfunctions.net/sendTestPush",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ message: "Test push z Nastavení" }),
+        }
+      );
+
+      const json = (await res.json()) as any;
+      if (!res.ok || json?.ok !== true) {
+        const msg = json?.error || json?.detail || "Odeslání selhalo.";
+        setTestPushStatus(`Chyba: ${msg}`);
+        return;
+      }
+
+      setTestPushStatus("Testovací notifikace odeslána.");
+    } catch (err) {
+      setTestPushStatus(`Chyba: ${(err as any)?.message || String(err)}`);
+    }
   };
 
   const handleBackgroundPreset = async (preset: "plasma" | "black" | "blue") => {
@@ -521,10 +619,10 @@ export default function SettingsPage() {
               </section>
             )}
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-2">
               {/* Notifikace */}
-              <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
-                <div className="flex flex-col gap-3">
+              <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-4 py-4 sm:px-6 sm:py-5 space-y-3 shadow-[0_14px_40px_rgba(0,0,0,0.55)]">
+                <div className="flex flex-col gap-2.5">
                   <div className="flex items-center justify-between">
                     <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
                       Notifikace
@@ -546,7 +644,7 @@ export default function SettingsPage() {
                     </p>
                   )}
 
-                  <div className="space-y-1">
+                  <div className="space-y-1.5 max-w-sm">
                     <label className="text-xs uppercase tracking-wide text-slate-400">
                       Nastav kolik minut před událostí ti má přijít notifikace.
                     </label>
@@ -566,12 +664,89 @@ export default function SettingsPage() {
                       Použije se při odeslání push notifikace z kalendáře (výchozí 60 min).
                     </p>
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <div className="text-xs uppercase tracking-wide text-slate-400">Typy notifikací</div>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { id: "newContract", label: "Nová smlouva" },
+                          { id: "anniversary", label: "Výročí" },
+                          { id: "unpaid", label: "Nezaplaceno" },
+                          { id: "team", label: "Týmové akce" },
+                        ].map((t) => {
+                          const active = notificationSettings.types[t.id as keyof NotificationSettings["types"]];
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => toggleNotificationType(t.id as keyof NotificationSettings["types"])}
+                              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                                active
+                                  ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-50"
+                                  : "border-white/20 bg-white/5 text-slate-200 hover:border-white/35"
+                              }`}
+                            >
+                              {t.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="text-xs uppercase tracking-wide text-slate-400">Kanály</div>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { id: "email", label: "E-mail" },
+                          { id: "push", label: "Push" },
+                        ].map((c) => {
+                          const active = notificationSettings.channels[c.id as keyof NotificationSettings["channels"]];
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => toggleNotificationChannel(c.id as keyof NotificationSettings["channels"])}
+                              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                                active
+                                  ? "border-sky-300/60 bg-sky-500/15 text-sky-50"
+                                  : "border-white/20 bg-white/5 text-slate-200 hover:border-white/35"
+                              }`}
+                            >
+                              {c.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-0.5">
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-slate-400">Testovací push</div>
+                      <p className="text-[11px] text-slate-400">
+                        Ověř, že push chodí. Pokud nepřijde, zkontroluj FCM token v mobilní appce.
+                      </p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                      {testPushStatus && (
+                        <span className="text-[11px] text-slate-300">{testPushStatus}</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleTestPush}
+                        className="rounded-full border border-emerald-300/60 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/30 transition"
+                      >
+                        Odeslat test
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </section>
 
               {/* Vzhled */}
-              <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
-                <div className="space-y-3">
+              <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-4 py-4 sm:px-6 sm:py-5 space-y-3 shadow-[0_14px_40px_rgba(0,0,0,0.55)]">
+                <div className="space-y-2.5">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
                       <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
@@ -606,11 +781,15 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="flex gap-3 h-60">
                     {[
-                      { id: "plasma" as const, label: "Plasma", swatch: "bg-gradient-to-br from-indigo-500 to-purple-600" },
-                      { id: "black" as const, label: "Černá", swatch: "bg-black" },
-                      { id: "blue" as const, label: "Modrá", swatch: "bg-blue-900" },
+                      {
+                        id: "plasma" as const,
+                        label: "PLASMA",
+                        bg: "bg-gradient-to-b from-indigo-500 via-purple-500 to-emerald-500",
+                      },
+                      { id: "black" as const, label: "ČERNÁ", bg: "bg-black" },
+                      { id: "blue" as const, label: "MODRÁ", bg: "bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900" },
                     ].map((opt) => {
                       const isActive =
                         (opt.id === "plasma" && !simpleBackground) ||
@@ -620,16 +799,25 @@ export default function SettingsPage() {
                           key={opt.id}
                           type="button"
                           onClick={() => handleBackgroundPreset(opt.id)}
-                          className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition ${
+                          className={`relative flex-1 overflow-hidden rounded-2xl border transition ${
                             isActive
-                              ? "border-emerald-400/80 bg-white/10"
-                              : "border-white/15 bg-white/5 hover:border-white/25"
+                              ? "border-emerald-300/70 shadow-[0_10px_30px_rgba(16,185,129,0.35)]"
+                              : "border-white/15 hover:border-white/30"
                           }`}
                         >
+                          <div className={`absolute inset-0 ${opt.bg}`} />
+                          <div className="absolute inset-0 bg-black/25" />
+                          {isActive && (
+                            <div className="absolute top-2 right-2 rounded-full border border-emerald-200/70 bg-emerald-500/70 text-[10px] font-semibold text-emerald-950 px-2 py-0.5">
+                              Aktivní
+                            </div>
+                          )}
                           <span
-                            className={`h-9 w-9 rounded-full border border-white/20 ${opt.swatch}`}
-                          />
-                          <span className="text-sm text-slate-100">{opt.label}</span>
+                            className="relative h-full w-full flex items-center justify-center text-sm font-bold tracking-[0.4em] text-white/90"
+                            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+                          >
+                            {opt.label}
+                          </span>
                         </button>
                       );
                     })}

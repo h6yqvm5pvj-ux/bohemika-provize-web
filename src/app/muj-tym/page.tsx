@@ -159,7 +159,13 @@ export default function TeamPage() {
                   fbLimit(1)
                 )
               );
-              const ts = snap.docs[0]?.data()?.savedAt as number | undefined;
+              const raw = snap.docs[0]?.data()?.savedAt;
+              let d = toDate(raw);
+              if (!d && typeof raw === "number") {
+                const isSeconds = raw < 10_000_000_000; // heuristic
+                d = new Date(isSeconds ? raw * 1000 : raw);
+              }
+              const ts = d?.getTime();
               return [m.email, Number.isFinite(ts) ? Number(ts) : null] as const;
             } catch {
               return [m.email, null] as const;
@@ -302,10 +308,15 @@ export default function TeamPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[0.75fr_1.25fr] gap-4 items-start">
-              <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.35)]">
-                <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-2">Podřízení</div>
-                <div className="divide-y divide-white/5 border border-white/10 rounded-xl overflow-hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-[0.8fr_1.2fr] gap-4 items-start">
+              <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/70 via-slate-900/60 to-slate-950/80 p-4 shadow-[0_20px_80px_rgba(0,0,0,0.45)] space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Podřízení</div>
+                  <span className="text-[11px] rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-slate-300">
+                    {filtered.length} osob
+                  </span>
+                </div>
+                <div className="space-y-2">
                   {filtered.map((m) => {
                     const isSelected = m.email === selectedEmail;
                     return (
@@ -313,24 +324,14 @@ export default function TeamPage() {
                         key={m.email}
                         onClick={() => setSelectedEmail(m.email)}
                         className={[
-                          "w-full text-left px-3 py-3 flex items-center justify-between gap-3 transition",
+                          "w-full text-left px-3 py-3 rounded-2xl border transition flex items-center justify-between gap-3",
                           isSelected
-                            ? "bg-sky-500/15 border-l-2 border-l-sky-300 text-white"
-                            : "hover:bg-white/5 text-slate-100",
+                            ? "border-sky-300/70 bg-sky-500/15 text-white shadow-[0_10px_40px_rgba(56,189,248,0.2)]"
+                            : "border-white/8 bg-white/5 text-slate-100 hover:border-white/20 hover:bg-white/8",
                         ].join(" ")}
                       >
-                        <div>
-                          <div className="text-sm font-semibold">{m.name}</div>
-                          <div className="text-xs text-slate-400">{m.email}</div>
-                          <div className="text-[11px] text-slate-500">Naposledy: {formatLastActive(m.email)}</div>
-                          <div className="text-[11px] text-slate-500">
-                            Celkem smluv: {contractCountLabel(m.email, "total")}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            Smluv tento měsíc: {contractCountLabel(m.email, "month")}
-                          </div>
-                        </div>
-                        <div className="text-[11px] rounded-full border border-white/10 px-2 py-1 text-slate-300">
+                        <div className="text-sm font-semibold">{m.name}</div>
+                        <div className="text-[11px] rounded-full border border-white/10 bg-white/5 px-2 py-1 text-slate-300">
                           {positionLabel(m.position)}
                         </div>
                       </button>
@@ -339,64 +340,80 @@ export default function TeamPage() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.35)] space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wider text-slate-400">Detail</div>
-                    {selected ? (
-                      <>
-                        <div className="text-lg font-semibold text-white leading-tight">{selected.name}</div>
-                        <div className="text-sm text-slate-300">{selected.email}</div>
-                        <div className="text-sm text-slate-300">Pozice: {positionLabel(selected.position)}</div>
-                        <div className="text-sm text-slate-300">
-                          Naposledy aktivní: {formatLastActive(selected.email)}
-                        </div>
-                        <div className="text-sm text-slate-300">
-                          Celkem smluv: {contractCountLabel(selected.email, "total")}
-                        </div>
-                        <div className="text-sm text-slate-300">
-                          Smluv tento měsíc: {contractCountLabel(selected.email, "month")}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-sm text-slate-400">Vyber podřízeného vlevo.</div>
-                    )}
-                  </div>
-                  {selected ? (
-                    <Link
-                      href={`/pomucky/statistika?user=${encodeURIComponent(selected.email)}`}
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/25 transition"
-                    >
-                      Statistiky
-                    </Link>
-                  ) : null}
-                </div>
-
+              <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/70 via-slate-900/60 to-slate-950/80 p-5 shadow-[0_20px_80px_rgba(0,0,0,0.45)] space-y-4">
                 {selected ? (
-                  <div className="space-y-2">
-                    <div className="text-[11px] uppercase tracking-wider text-slate-400">Podřízení</div>
-                    {subordinatesOfSelected.length === 0 ? (
-                      <p className="text-sm text-slate-400">Nemá podřízené.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {subordinatesOfSelected.map((sub) => (
-                          <div
-                            key={sub.email}
-                            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200"
-                          >
-                            <div className="font-semibold text-white">{sub.name}</div>
-                            <div className="text-xs text-slate-400">{sub.email}</div>
-                            <div className="text-[11px] text-slate-500">Pozice: {positionLabel(sub.position)}</div>
-                            <div className="text-[11px] text-slate-500">
-                              Celkem smluv: {contractCountLabel(sub.email, "total")} • Tento měsíc:{" "}
-                              {contractCountLabel(sub.email, "month")}
-                            </div>
-                          </div>
-                        ))}
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-1">Detail</div>
+                        <div className="text-2xl font-bold text-white leading-tight">{selected.name}</div>
+                        <p className="text-sm text-slate-300 mt-1">{selected.email}</p>
                       </div>
-                    )}
-                  </div>
-                ) : null}
+                      <div className="flex gap-2">
+                        <Link
+                          href={`/pomucky/statistika?user=${encodeURIComponent(selected.email)}`}
+                          className="rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/25 transition"
+                        >
+                          Statistiky
+                        </Link>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-1">
+                        <div className="text-[11px] uppercase tracking-wide text-slate-400">Pozice</div>
+                        <div className="text-sm font-semibold text-white">{positionLabel(selected.position)}</div>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-1">
+                        <div className="text-[11px] uppercase tracking-wide text-slate-400">Naposledy aktivní</div>
+                        <div className="text-sm font-semibold text-white">{formatLastActive(selected.email)}</div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-slate-400">Celkem smluv</div>
+                        <div className="text-lg font-bold text-white">{contractCountLabel(selected.email, "total")}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-slate-400">Smluv tento měsíc</div>
+                        <div className="text-lg font-bold text-white">{contractCountLabel(selected.email, "month")}</div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Podřízení</div>
+                        <span className="text-[11px] text-slate-400">
+                          {subordinatesOfSelected.length} {subordinatesOfSelected.length === 1 ? "osoba" : "osob"}
+                        </span>
+                      </div>
+                      {subordinatesOfSelected.length === 0 ? (
+                        <div className="text-sm text-slate-400 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                          Nemá podřízené.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {subordinatesOfSelected.map((sub) => (
+                            <div
+                              key={sub.email}
+                              className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 space-y-1"
+                            >
+                              <div className="text-sm font-semibold text-white">{sub.name}</div>
+                              <div className="text-xs text-slate-400">{sub.email}</div>
+                              <div className="text-xs text-slate-400">
+                                {positionLabel(sub.position)} · Celkem: {contractCountLabel(sub.email, "total")} · Tento měsíc:{" "}
+                                {contractCountLabel(sub.email, "month")}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-slate-400">Vyber podřízeného vlevo.</div>
+                )}
               </div>
             </div>
           </>

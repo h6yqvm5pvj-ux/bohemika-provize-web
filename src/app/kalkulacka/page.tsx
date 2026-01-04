@@ -367,6 +367,28 @@ function parseNumber(text: string): number {
 const SUPPORTED_LABEL =
   "Tento produkt zatím není na webu dopočítaný – aktuálně počítáme všechny produkty kromě Comfort Commodity.";
 
+function paymentBasedTotals(
+  items: CommissionResultItemDTO[],
+  multiplier: number
+): { immediate: number; subsequent: number } {
+  let immediate = 0;
+  let subsequent = 0;
+
+  items.forEach((it) => {
+    const t = (it.title ?? "").toLowerCase();
+    if (t.includes("okamžitá")) {
+      immediate += it.amount ?? 0;
+    } else if (t.includes("následná")) {
+      subsequent += it.amount ?? 0;
+    }
+  });
+
+  return {
+    immediate: immediate * multiplier,
+    subsequent: subsequent * multiplier,
+  };
+}
+
 function cleanResultTitle(title: string): string {
   const match = title.match(/[\p{L}\p{N}]/u);
   if (!match) return title.trim();
@@ -418,6 +440,12 @@ export default function CalculatorPage() {
 
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  const paymentBasedTotalsMemo = useMemo(() => {
+    if ((product !== "domex" && product !== "maxdomov") || items.length === 0) return null;
+    const multiplier = paymentsPerYear(frequency);
+    return paymentBasedTotals(items, multiplier);
+  }, [product, items, frequency]);
   const [managerEmailSnapshot, setManagerEmailSnapshot] = useState<string | null>(null);
   const [managerPositionSnapshot, setManagerPositionSnapshot] = useState<Position | null>(null);
   const [managerModeSnapshot, setManagerModeSnapshot] = useState<CommissionMode | null>(null);
@@ -708,17 +736,21 @@ export default function CalculatorPage() {
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
       );
-      const sum = filtered.reduce((s, i) => s + (i.amount ?? 0), 0);
+      const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
       setItems(filtered);
-      setTotal(sum);
+      setTotal(totals.immediate + totals.subsequent);
       setUnsupported(false);
       return;
     }
 
     if (product === "maxdomov") {
       const dto = calculateMaxdomov(val, frequency, position);
-      setItems(dto.items);
-      setTotal(dto.total);
+      const filtered = dto.items.filter((i) =>
+        (i.title ?? "").toLowerCase().includes("(z platby)")
+      );
+      const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
+      setItems(filtered);
+      setTotal(totals.immediate + totals.subsequent);
       setUnsupported(false);
       return;
     }
@@ -1075,11 +1107,17 @@ export default function CalculatorPage() {
         const filtered = dto.items.filter((i) =>
           (i.title ?? "").toLowerCase().includes("(z platby)")
         );
-        const sum = filtered.reduce((s, i) => s + (i.amount ?? 0), 0);
-        return { items: filtered, total: sum };
+        const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
+        return { items: filtered, total: totals.immediate + totals.subsequent };
       }
-      case "maxdomov":
-        return calculateMaxdomov(val, freq, pos);
+      case "maxdomov": {
+        const dto = calculateMaxdomov(val, freq, pos);
+        const filtered = dto.items.filter((i) =>
+          (i.title ?? "").toLowerCase().includes("(z platby)")
+        );
+        const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
+        return { items: filtered, total: totals.immediate + totals.subsequent };
+      }
       case "cppAuto":
         return calculateCppAuto(val, freq, pos);
       case "cppPPRbez": {
@@ -1378,7 +1416,7 @@ export default function CalculatorPage() {
                   </label>
                   <input
                     type="date"
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 [color-scheme:dark]"
                     value={contractSignedDate}
                     onChange={(e) => setContractSignedDate(e.target.value)}
                   />
@@ -1403,7 +1441,7 @@ export default function CalculatorPage() {
                   </label>
                   <input
                     type="date"
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 [color-scheme:dark]"
                     value={policyStartDate}
                     onChange={(e) => setPolicyStartDate(e.target.value)}
                   />
@@ -1540,10 +1578,29 @@ export default function CalculatorPage() {
                   })}
 
                   <div className="pt-2 flex items-center justify-between">
-                    <span className="font-semibold text-emerald-50">Celkem</span>
-                    <span className="text-xl sm:text-2xl font-bold text-emerald-200">
-                      {formatMoney(total)}
-                    </span>
+                    {(product === "domex" || product === "maxdomov") && paymentBasedTotalsMemo ? (
+                      <div className="w-full space-y-1 text-emerald-50">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold">Celkem v 1. roce</span>
+                          <span className="text-xl sm:text-2xl font-bold text-emerald-200">
+                            {formatMoney(paymentBasedTotalsMemo.immediate)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold">Celkem ročně následně</span>
+                          <span className="text-xl sm:text-2xl font-bold text-emerald-200">
+                            {formatMoney(paymentBasedTotalsMemo.subsequent)}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="font-semibold text-emerald-50">Celkem</span>
+                        <span className="text-xl sm:text-2xl font-bold text-emerald-200">
+                          {formatMoney(total)}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
               );

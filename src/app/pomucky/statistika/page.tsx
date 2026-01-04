@@ -413,7 +413,8 @@ function StatistikaPageInner() {
             contracts,
           };
           loaded[idx] = dayEntry;
-          loadedSaved[idx] = hasContent(dayEntry);
+          // Pokud existuje uložený dokument, považujeme den za uložený i při nulových hodnotách
+          loadedSaved[idx] = true;
         });
 
         await Promise.all(promises);
@@ -593,7 +594,8 @@ function StatistikaPageInner() {
       };
       await setDoc(ref, payload, { merge: true });
       setSaveStatus((prev) => ({ ...prev, [idx]: "ok" }));
-      setSavedDays((prev) => ({ ...prev, [idx]: hasContent(day) }));
+      // Označ jako uložené i když jsou hodnoty nulové
+      setSavedDays((prev) => ({ ...prev, [idx]: true }));
     } catch (e) {
       console.error("Chyba při ukládání dne", e);
       setSaveStatus((prev) => ({ ...prev, [idx]: "error" }));

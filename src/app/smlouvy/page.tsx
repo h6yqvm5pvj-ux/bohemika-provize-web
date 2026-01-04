@@ -69,6 +69,16 @@ type ProductCategory =
   | "travel"
   | "comfort"
   | "liability";
+type Institution =
+  | "cpp"
+  | "kooperativa"
+  | "maxima"
+  | "allianz"
+  | "uniqa"
+  | "csob"
+  | "pillow"
+  | "axa"
+  | "comfort";
 
 const PRODUCT_CATEGORY_MAP: Record<ProductCategory, Product[]> = {
   life: ["neon", "flexi", "pillowInjury", "maximaMaxEfekt"],
@@ -86,6 +96,39 @@ const CATEGORY_DEFS: { id: ProductCategory; label: string }[] = [
   { id: "travel", label: "Cestovko" },
   { id: "comfort", label: "Comfort Commodity" },
   { id: "liability", label: "Odpovědnost" },
+];
+
+const PRODUCT_INSTITUTION_MAP: Record<Product, Institution> = {
+  neon: "cpp",
+  flexi: "kooperativa",
+  maximaMaxEfekt: "maxima",
+  pillowInjury: "pillow",
+  zamex: "cpp",
+  domex: "cpp",
+  maxdomov: "maxima",
+  cppAuto: "cpp",
+  allianzAuto: "allianz",
+  csobAuto: "csob",
+  uniqaAuto: "uniqa",
+  pillowAuto: "pillow",
+  kooperativaAuto: "kooperativa",
+  cppcestovko: "cpp",
+  axacestovko: "axa",
+  comfortcc: "comfort",
+  cppPPRs: "cpp",
+  cppPPRbez: "cpp",
+};
+
+const INSTITUTION_DEFS: { id: Institution; label: string }[] = [
+  { id: "cpp", label: "ČPP" },
+  { id: "kooperativa", label: "Kooperativa" },
+  { id: "maxima", label: "Maxima" },
+  { id: "allianz", label: "Allianz" },
+  { id: "uniqa", label: "UNIQA" },
+  { id: "csob", label: "ČSOB" },
+  { id: "pillow", label: "Pillow" },
+  { id: "axa", label: "AXA" },
+  { id: "comfort", label: "Comfort Commodity" },
 ];
 
 function formatMoney(value: number | undefined | null): string {
@@ -215,6 +258,28 @@ function productMatchesCategory(
   return false;
 }
 
+function productMatchesInstitution(
+  product: Product | undefined,
+  institutions: Set<Institution>
+): boolean {
+  if (!product) return false;
+  if (institutions.size === 0) return true;
+  const inst = PRODUCT_INSTITUTION_MAP[product];
+  if (!inst) return false;
+  return institutions.has(inst);
+}
+
+function productMatchesFilters(
+  product: Product | undefined,
+  categories: Set<ProductCategory>,
+  institutions: Set<Institution>
+): boolean {
+  return (
+    productMatchesCategory(product, categories) &&
+    productMatchesInstitution(product, institutions)
+  );
+}
+
 type ContractsCache = {
   userEmail: string;
   position: Position | null;
@@ -269,6 +334,7 @@ export default function ContractsPage() {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<ProductCategory>>(new Set());
+  const [selectedInstitutions, setSelectedInstitutions] = useState<Set<Institution>>(new Set());
 
   // auth
   useEffect(() => {
@@ -449,9 +515,10 @@ export default function ContractsPage() {
         .filter(
           (item) =>
             item.soon &&
-            productMatchesCategory(
+            productMatchesFilters(
               (item.contract as any).productKey as Product | undefined,
-              selectedCategories
+              selectedCategories,
+              selectedInstitutions
             )
         )
         .sort(
@@ -465,9 +532,13 @@ export default function ContractsPage() {
     }
 
     return base.filter((c) =>
-      productMatchesCategory(c.productKey as Product | undefined, selectedCategories)
+      productMatchesFilters(
+        c.productKey as Product | undefined,
+        selectedCategories,
+        selectedInstitutions
+      )
     );
-  }, [displayedContracts, searchText, filterMode, selectedCategories]);
+  }, [displayedContracts, searchText, filterMode, selectedCategories, selectedInstitutions]);
 
   useEffect(() => {
     setVisibleCount(10);
@@ -943,7 +1014,7 @@ export default function ContractsPage() {
           />
           <div className="relative w-full max-w-lg rounded-3xl border border-white/15 bg-slate-950/80 backdrop-blur-2xl p-6 space-y-4 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-50">Filtry produktů</h3>
+              <h3 className="text-lg font-semibold text-slate-50">Filtry</h3>
               <button
                 type="button"
                 onClick={() => setFilterModalOpen(false)}
@@ -953,49 +1024,97 @@ export default function ContractsPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {CATEGORY_DEFS.map((cat) => {
-                const active = selectedCategories.has(cat.id);
-                return (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() =>
-                      setSelectedCategories((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(cat.id)) {
-                          next.delete(cat.id);
-                        } else {
-                          next.add(cat.id);
-                        }
-                        return next;
-                      })
-                    }
-                    className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
-                      active
-                        ? "border-emerald-400/70 bg-emerald-500/10 text-emerald-50"
-                        : "border-white/20 bg-white/5 text-slate-200 hover:border-white/35"
-                    }`}
-                  >
-                    <span className="text-sm font-medium">{cat.label}</span>
-                    <span
-                      className={`h-5 w-5 rounded-full border ${
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-100">Produkty</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {CATEGORY_DEFS.map((cat) => {
+                  const active = selectedCategories.has(cat.id);
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedCategories((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(cat.id)) {
+                            next.delete(cat.id);
+                          } else {
+                            next.add(cat.id);
+                          }
+                          return next;
+                        })
+                      }
+                      className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
                         active
-                          ? "bg-emerald-400 border-emerald-300 text-emerald-950"
-                          : "border-white/30"
+                          ? "border-emerald-400/70 bg-emerald-500/10 text-emerald-50"
+                          : "border-white/20 bg-white/5 text-slate-200 hover:border-white/35"
                       }`}
                     >
-                      {active ? "✓" : ""}
-                    </span>
-                  </button>
-                );
-              })}
+                      <span className="text-sm font-medium">{cat.label}</span>
+                      <span
+                        className={`h-5 w-5 rounded-full border ${
+                          active
+                            ? "bg-emerald-400 border-emerald-300 text-emerald-950"
+                            : "border-white/30"
+                        }`}
+                      >
+                        {active ? "✓" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-100">Instituce</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {INSTITUTION_DEFS.map((inst) => {
+                  const active = selectedInstitutions.has(inst.id);
+                  return (
+                    <button
+                      key={inst.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedInstitutions((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(inst.id)) {
+                            next.delete(inst.id);
+                          } else {
+                            next.add(inst.id);
+                          }
+                          return next;
+                        })
+                      }
+                      className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
+                        active
+                          ? "border-emerald-400/70 bg-emerald-500/10 text-emerald-50"
+                          : "border-white/20 bg-white/5 text-slate-200 hover:border-white/35"
+                      }`}
+                    >
+                      <span className="text-sm font-medium">{inst.label}</span>
+                      <span
+                        className={`h-5 w-5 rounded-full border ${
+                          active
+                            ? "bg-emerald-400 border-emerald-300 text-emerald-950"
+                            : "border-white/30"
+                        }`}
+                      >
+                        {active ? "✓" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="flex justify-between pt-2 text-sm">
               <button
                 type="button"
-                onClick={() => setSelectedCategories(new Set())}
+                onClick={() => {
+                  setSelectedCategories(new Set());
+                  setSelectedInstitutions(new Set());
+                }}
                 className="rounded-xl border border-white/20 bg-white/5 px-4 py-2 text-slate-100 hover:bg-white/10"
               >
                 Vymazat filtry

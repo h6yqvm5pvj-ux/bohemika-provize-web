@@ -11,7 +11,7 @@ import {
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { doc, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, updateDoc } from "firebase/firestore";
 
 import Plasma from "@/components/Plasma";
 import {
@@ -352,6 +352,21 @@ function formatMoney(value: number | undefined | null): string {
   );
 }
 
+function formatDateInputValue(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function todayInputValue(): string {
+  return formatDateInputValue(new Date());
+}
+
+function isLifeProduct(p?: Product | null): boolean {
+  return p === "neon" || p === "flexi" || p === "maximaMaxEfekt" || p === "pillowInjury";
+}
+
 function productLabel(p?: Product): string {
   switch (p) {
     case "neon":
@@ -484,6 +499,39 @@ function frequencyText(raw?: PaymentFrequency | null): string {
   }
 }
 
+function paymentsPerYear(freq?: PaymentFrequency | null): number {
+  switch (freq) {
+    case "monthly":
+      return 12;
+    case "quarterly":
+      return 4;
+    case "semiannual":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function paymentBasedTotals(
+  items: CommissionResultItemDTO[],
+  multiplier: number
+): { immediate: number; subsequent: number } {
+  let immediate = 0;
+  let subsequent = 0;
+  items.forEach((it) => {
+    const norm = normalizeTitleForCompare(it.title);
+    if (norm.includes("okamžitá provize")) {
+      immediate += it.amount ?? 0;
+    } else if (norm.includes("následná provize")) {
+      subsequent += it.amount ?? 0;
+    }
+  });
+  return {
+    immediate: immediate * multiplier,
+    subsequent: subsequent * multiplier,
+  };
+}
+
 function isManagerPosition(pos?: Position | null): boolean {
   if (!pos) return false;
   return pos.startsWith("manazer");
@@ -503,6 +551,30 @@ function normalizeTitleForCompare(title: string | undefined | null): string {
     .replace(/\s+/g, " ")
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .trim();
+}
+
+function cleanResultTitle(title: string): string {
+  const match = title.match(/[\p{L}\p{N}]/u);
+  if (!match) return title.trim();
+  return title.slice(title.indexOf(match[0])).trim();
+}
+
+function resultIconForTitle(title: string): string | null {
+  const t = cleanResultTitle(title).toLowerCase();
+
+  if (t.startsWith("okamžitá provize") || t.startsWith("získatelská provize")) {
+    return "/icons/penize2.png";
+  }
+
+  if (t.includes("po 3 letech") || t.includes("po 4 letech")) {
+    return "/icons/kalendar.png";
+  }
+
+  if (t.startsWith("následná provize")) {
+    return "/icons/nasledna.png";
+  }
+
+  return null;
 }
 
 function stripTotalRows(
@@ -975,15 +1047,16 @@ export default function ContractDetailPage() {
   }, [ownerEmail, entryId]);
 
   const premium = contract?.inputAmount ?? 0;
-  const total = contract?.total ?? 0;
-  const freq = contract?.frequencyRaw ?? null;
+  const contractTotal = contract?.total ?? 0;
+  const freq = (contract?.frequencyRaw as PaymentFrequency | null | undefined) ?? null;
   const prod = contract?.productKey as Product | undefined;
+  const isPaymentBasedProduct = prod === "domex" || prod === "maxdomov";
+  const paymentMultiplier = isPaymentBasedProduct ? paymentsPerYear(freq) : 1;
   const durationYears =
     typeof contract?.durationYears === "number" && !Number.isNaN(contract.durationYears)
       ? contract.durationYears
       : null;
   const showDurationForNeon = prod === "neon" && durationYears;
-
   const isOwnContract = useMemo(() => {
     if (!user?.email || !contract?.userEmail) return false;
     return (
@@ -2727,12 +2800,19 @@ export default function ContractDetailPage() {
     }
   };
 
-  // vyfiltrované položky bez řádku "Celkem"
-  const filterDomexItems = (arr: CommissionResultItemDTO[]) => {
-    if (prod !== "domex") return arr;
-    return arr.filter((it) =>
-      (it.title ?? "").toLowerCase().includes("(z platby)")
-    );
+  // vyfiltrované položky bez řádku "Celkem" a bez ročních součtů u produktů placených dle platby
+  const filterPaymentBasedItems = (arr: CommissionResultItemDTO[]) => {
+    if (prod === "domex") {
+      return arr.filter((it) =>
+        (it.title ?? "").toLowerCase().includes("(z platby)")
+      );
+    }
+    if (prod === "maxdomov") {
+      return arr.filter(
+        (it) => !(it.title ?? "").toLowerCase().includes("získatelská")
+      );
+    }
+    return arr;
   };
 
   const filterAnnualYearlyDupes = (arr: CommissionResultItemDTO[]) => {
@@ -2745,7 +2825,7 @@ export default function ContractDetailPage() {
 
   const adviserItems =
     filterAnnualYearlyDupes(
-      filterDomexItems(
+      filterPaymentBasedItems(
         (contract?.items ?? []).filter(
           (it) => !it.title.toLowerCase().includes("celkem")
         )
@@ -2754,7 +2834,7 @@ export default function ContractDetailPage() {
 
   const managerItems =
     filterAnnualYearlyDupes(
-      filterDomexItems(
+      filterPaymentBasedItems(
         (overrideItems ?? []).filter(
           (it) => !it.title.toLowerCase().includes("celkem")
         )
@@ -2763,7 +2843,7 @@ export default function ContractDetailPage() {
 
   const childManagerItems =
     filterAnnualYearlyDupes(
-      filterDomexItems(
+      filterPaymentBasedItems(
         (childOverrideItems ?? []).filter(
           (it) => !it.title.toLowerCase().includes("celkem")
         )
@@ -2782,6 +2862,30 @@ export default function ContractDetailPage() {
     childOverrideLabel;
 
   const canDelete = isOwnContract || isManagerViewingSubordinate;
+
+  const adviserSum = adviserItems.reduce((sum, it) => sum + (it.amount ?? 0), 0);
+  const managerSum = managerItems.reduce((sum, it) => sum + (it.amount ?? 0), 0);
+  const childManagerSum = childManagerItems.reduce(
+    (sum, it) => sum + (it.amount ?? 0),
+    0
+  );
+
+  const paymentBasedAdviserTotals = isPaymentBasedProduct
+    ? paymentBasedTotals(adviserItems, paymentMultiplier)
+    : null;
+  const paymentBasedManagerTotals = isPaymentBasedProduct
+    ? paymentBasedTotals(managerItems, paymentMultiplier)
+    : null;
+  const paymentBasedChildManagerTotals = isPaymentBasedProduct
+    ? paymentBasedTotals(childManagerItems, paymentMultiplier)
+    : null;
+
+  const adviserTotalDisplay =
+    isPaymentBasedProduct ? adviserSum * paymentMultiplier : contractTotal;
+  const managerTotalDisplay =
+    isPaymentBasedProduct ? managerSum * paymentMultiplier : overrideTotal ?? 0;
+  const childManagerTotalDisplay =
+    isPaymentBasedProduct ? childManagerSum * paymentMultiplier : childOverrideTotal ?? 0;
 
   // pokud je načtený kontrakt a uživatel nemá oprávnění, schovej data a přesměruj
   useEffect(() => {
@@ -3191,27 +3295,59 @@ export default function ContractDetailPage() {
             )}
           </h3>
           <div className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
-            {managerItems.map((item) => (
-              <div
-                key={item.title}
-                className="flex items-baseline justify-between gap-3 py-2"
-              >
-                <span className="text-sm text-slate-200">
-                  {item.title}
-                </span>
-                <span className="text-sm font-semibold text-emerald-300">
-                  {formatMoney(item.amount)}
-                </span>
-              </div>
-            ))}
+            {managerItems.map((item) => {
+              const icon = resultIconForTitle(item.title);
+              return (
+                <div
+                  key={item.title}
+                  className="flex items-baseline justify-between gap-3 py-2"
+                >
+                  <span className="flex items-center gap-3 text-sm text-slate-200">
+                    {icon && (
+                      <span className="relative h-5 w-5 flex-shrink-0">
+                        <Image
+                          src={icon}
+                          alt=""
+                          fill
+                          className="object-contain"
+                        />
+                      </span>
+                    )}
+                    <span>{cleanResultTitle(item.title)}</span>
+                  </span>
+                  <span className="text-sm font-semibold text-emerald-300">
+                    {formatMoney(item.amount)}
+                  </span>
+                </div>
+              );
+            })}
 
                         <div className="flex items-center justify-between pt-3">
-                          <span className="text-sm font-semibold">
-                            Celkem meziprovize
-                          </span>
-                          <span className="text-base font-bold text-emerald-300">
-                            {formatMoney(overrideTotal)}
-                          </span>
+                          {isPaymentBasedProduct && paymentBasedManagerTotals ? (
+                            <div className="w-full space-y-1 text-sm">
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold">Celkem v 1. roce</span>
+                                <span className="text-base font-bold text-emerald-300">
+                                  {formatMoney(paymentBasedManagerTotals.immediate)}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold">Celkem ročně následně</span>
+                                <span className="text-base font-bold text-emerald-300">
+                                  {formatMoney(paymentBasedManagerTotals.subsequent)}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <span className="text-sm font-semibold">
+                                Celkem meziprovize
+                              </span>
+                              <span className="text-base font-bold text-emerald-300">
+                                {formatMoney(managerTotalDisplay)}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -3228,27 +3364,59 @@ export default function ContractDetailPage() {
                           )}
                         </h4>
                         <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/20 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
-                          {childManagerItems.map((item) => (
-                            <div
-                              key={item.title}
-                              className="flex items-baseline justify-between gap-3 py-2"
-                            >
-                              <span className="text-sm text-slate-200">
-                                {item.title}
-                              </span>
-                              <span className="text-sm font-medium text-slate-50">
-                                {formatMoney(item.amount)}
-                              </span>
-                            </div>
-                          ))}
+                          {childManagerItems.map((item) => {
+                            const icon = resultIconForTitle(item.title);
+                            return (
+                              <div
+                                key={item.title}
+                                className="flex items-baseline justify-between gap-3 py-2"
+                              >
+                                <span className="flex items-center gap-3 text-sm text-slate-200">
+                                  {icon && (
+                                    <span className="relative h-5 w-5 flex-shrink-0">
+                                      <Image
+                                        src={icon}
+                                        alt=""
+                                        fill
+                                        className="object-contain"
+                                      />
+                                    </span>
+                                  )}
+                                  <span>{cleanResultTitle(item.title)}</span>
+                                </span>
+                                <span className="text-sm font-medium text-slate-50">
+                                  {formatMoney(item.amount)}
+                                </span>
+                              </div>
+                            );
+                          })}
 
                           <div className="flex items-center justify-between pt-3">
-                            <span className="text-sm font-semibold">
-                              Celkem meziprovize
-                            </span>
-                            <span className="text-base font-bold text-emerald-300">
-                              {formatMoney(childOverrideTotal ?? 0)}
-                            </span>
+                            {isPaymentBasedProduct && paymentBasedChildManagerTotals ? (
+                              <div className="w-full space-y-1 text-sm">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold">Celkem v 1. roce</span>
+                                  <span className="text-base font-bold text-emerald-300">
+                                    {formatMoney(paymentBasedChildManagerTotals.immediate)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold">Celkem ročně následně</span>
+                                  <span className="text-base font-bold text-emerald-300">
+                                    {formatMoney(paymentBasedChildManagerTotals.subsequent)}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <span className="text-sm font-semibold">
+                                  Celkem meziprovize
+                                </span>
+                                <span className="text-base font-bold text-emerald-300">
+                                  {formatMoney(childManagerTotalDisplay)}
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -3264,27 +3432,59 @@ export default function ContractDetailPage() {
                       Výpočet provizí
                     </h3>
                     <div className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
-                      {adviserItems.map((item) => (
-                        <div
-                          key={item.title}
-                          className="flex items-baseline justify-between gap-3 py-2"
-                        >
-                          <span className="text-sm text-slate-200">
-                            {item.title}
-                          </span>
-                          <span className="text-sm font-medium text-slate-50">
-                            {formatMoney(item.amount)}
-                          </span>
-                        </div>
-                      ))}
+                      {adviserItems.map((item) => {
+                        const icon = resultIconForTitle(item.title);
+                        return (
+                          <div
+                            key={item.title}
+                            className="flex items-baseline justify-between gap-3 py-2"
+                          >
+                            <span className="flex items-center gap-3 text-sm text-slate-200">
+                              {icon && (
+                                <span className="relative h-5 w-5 flex-shrink-0">
+                                  <Image
+                                    src={icon}
+                                    alt=""
+                                    fill
+                                    className="object-contain"
+                                  />
+                                </span>
+                              )}
+                              <span>{cleanResultTitle(item.title)}</span>
+                            </span>
+                            <span className="text-sm font-medium text-slate-50">
+                              {formatMoney(item.amount)}
+                            </span>
+                          </div>
+                        );
+                      })}
 
                       <div className="flex items-center justify-between pt-3">
-                        <span className="text-sm font-semibold">
-                          Celkem
-                        </span>
-                        <span className="text-base font-bold">
-                          {formatMoney(total)}
-                        </span>
+                        {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
+                          <div className="w-full space-y-1 text-sm">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold">Celkem v 1. roce</span>
+                              <span className="text-base font-bold">
+                                {formatMoney(paymentBasedAdviserTotals.immediate)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold">Celkem ročně následně</span>
+                              <span className="text-base font-bold">
+                                {formatMoney(paymentBasedAdviserTotals.subsequent)}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="text-sm font-semibold">
+                              Celkem
+                            </span>
+                            <span className="text-base font-bold">
+                              {formatMoney(adviserTotalDisplay)}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </section>
@@ -3308,29 +3508,61 @@ export default function ContractDetailPage() {
                       </span>
                     </button>
 
-                    {showAdvisorDetails && (
+                        {showAdvisorDetails && (
                       <div className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
-                        {adviserItems.map((item) => (
-                          <div
-                            key={item.title}
-                            className="flex items-baseline justify-between gap-3 py-2"
-                          >
-                            <span className="text-sm text-slate-200">
-                              {item.title}
-                            </span>
-                            <span className="text-sm font-medium text-slate-50">
-                              {formatMoney(item.amount)}
-                            </span>
-                          </div>
-                        ))}
+                        {adviserItems.map((item) => {
+                          const icon = resultIconForTitle(item.title);
+                          return (
+                            <div
+                              key={item.title}
+                              className="flex items-baseline justify-between gap-3 py-2"
+                            >
+                              <span className="flex items-center gap-3 text-sm text-slate-200">
+                                {icon && (
+                                  <span className="relative h-5 w-5 flex-shrink-0">
+                                    <Image
+                                      src={icon}
+                                      alt=""
+                                      fill
+                                      className="object-contain"
+                                    />
+                                  </span>
+                                )}
+                                <span>{cleanResultTitle(item.title)}</span>
+                              </span>
+                              <span className="text-sm font-medium text-slate-50">
+                                {formatMoney(item.amount)}
+                              </span>
+                            </div>
+                          );
+                        })}
 
                         <div className="flex items-center justify-between pt-3">
-                          <span className="text-sm font-semibold">
-                            Celkem
-                          </span>
-                          <span className="text-base font-bold">
-                            {formatMoney(total)}
-                          </span>
+                          {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
+                            <div className="w-full space-y-1 text-sm">
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold">Celkem v 1. roce</span>
+                                <span className="text-base font-bold">
+                                  {formatMoney(paymentBasedAdviserTotals.immediate)}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold">Celkem ročně následně</span>
+                                <span className="text-base font-bold">
+                                  {formatMoney(paymentBasedAdviserTotals.subsequent)}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <span className="text-sm font-semibold">
+                                Celkem
+                              </span>
+                              <span className="text-base font-bold">
+                                {formatMoney(adviserTotalDisplay)}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
                     )}
