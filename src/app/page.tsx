@@ -381,9 +381,9 @@ type ChartMode = "personal" | "team" | "combined" | "specific";
 
 function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const plotWidth = Math.max(640, data.length * 48);
+  const plotWidth = Math.min(560, Math.max(320, data.length * 42));
   const plotHeight = 180;
-  const paddingX = 36;
+  const paddingX = 28;
   const paddingY = 24;
   const viewWidth = plotWidth + paddingX * 2;
   const viewHeight = plotHeight + paddingY * 2 + 26;
@@ -435,7 +435,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
   );
 
   return (
-    <div className="rounded-3xl border border-white/12 bg-white/4 backdrop-blur-2xl p-6 shadow-[0_22px_80px_rgba(0,0,0,0.85)]">
+    <div className="rounded-3xl border border-white/12 bg-slate-900/75 backdrop-blur-2xl p-5 sm:p-6 shadow-[0_22px_80px_rgba(0,0,0,0.85)]">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <h2 className="text-lg sm:text-xl font-semibold text-white">
@@ -451,7 +451,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <div className="min-w-[640px]">
+        <div className="min-w-0 w-full max-w-full">
           <svg
             viewBox={`0 0 ${viewWidth} ${viewHeight}`}
             role="img"
@@ -1149,7 +1149,7 @@ export default function HomePage() {
   return (
     <AppLayout active="home">
       {user && <AutoAnniversaryModal userId={user.uid} />}
-      <div className="w-full max-w-5xl space-y-6">
+      <div className="w-full max-w-5xl space-y-6 px-3 sm:px-0 min-w-0">
         <div className="pt-2">
           <SplitTextHeading
             text={`Produkce ${monthLabelCapitalized} ${year}`}
@@ -1157,7 +1157,7 @@ export default function HomePage() {
         </div>
 
         {/* PRODUKCE BOX */}
-        <section className="rounded-3xl border border-white/12 bg-white/2 backdrop-blur-2xl px-5 py-5 sm:px-8 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
+        <section className="rounded-3xl border border-white/12 bg-slate-900/75 backdrop-blur-2xl px-5 py-5 sm:px-8 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
           <div
             className={`grid gap-6 ${
               showTeamBox ? "md:grid-cols-3" : "md:grid-cols-2"
@@ -1269,7 +1269,7 @@ export default function HomePage() {
           }`}
         >
           {/* MĚSÍČNÍ CÍL */}
-          <section className="relative overflow-hidden rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)] h-full">
+          <section className="relative overflow-hidden rounded-3xl border border-white/15 bg-slate-900/80 backdrop-blur-2xl px-4 py-5 sm:px-10 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)] h-full min-w-0">
             {editGoalOpen && (
               <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                 <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-slate-900/95 p-5 shadow-[0_24px_60px_rgba(0,0,0,0.65)]">
@@ -1353,7 +1353,7 @@ export default function HomePage() {
             </div>
 
             <div className="relative mt-3 grid gap-3 sm:grid-cols-1 text-xs text-slate-200">
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 shadow-[0_10px_34px_rgba(0,0,0,0.55)] backdrop-blur">
+              <div className="rounded-2xl border border-white/10 bg-slate-900/70 px-3 py-3 shadow-[0_10px_34px_rgba(0,0,0,0.55)] backdrop-blur">
                 <div className="text-[11px] uppercase tracking-wide text-slate-300">
                   Do cíle zbývá
                 </div>
@@ -1518,7 +1518,7 @@ export default function HomePage() {
           )}
         </div>
 
-        <section className="rounded-3xl border border-white/10 bg-white/3 backdrop-blur-2xl px-5 py-5 sm:px-7 sm:py-6 shadow-[0_22px_80px_rgba(0,0,0,0.85)]">
+        <section className="rounded-3xl border border-white/12 bg-slate-900/80 backdrop-blur-2xl px-5 py-5 sm:px-7 sm:py-6 shadow-[0_22px_80px_rgba(0,0,0,0.85)] overflow-hidden">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
             <div>
               <h2 className="text-lg sm:text-xl font-semibold text-white">
