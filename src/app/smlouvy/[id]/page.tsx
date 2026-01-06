@@ -2608,19 +2608,22 @@ export default function ContractDetailPage() {
       const fallbackChild =
         resolvedIdx < 0 && chain.length > 0 ? chain[chain.length - 1] : null;
 
+      // pro přímého nadřízeného (index 0) žádného "podřízeného manažera" neukazujeme
       const childSnap =
         resolvedIdx > 0
           ? chain[resolvedIdx - 1]
-          : fallbackChild ??
-            (ownerManagerPosition
-              ? {
-                  email: ownerManagerEmail,
-                  position: ownerManagerPosition,
-                  commissionMode:
-                    (contract.managerModeSnapshot as CommissionMode | null | undefined) ??
-                    null,
-                }
-              : null);
+          : resolvedIdx < 0
+            ? fallbackChild ??
+              (ownerManagerPosition
+                ? {
+                    email: ownerManagerEmail,
+                    position: ownerManagerPosition,
+                    commissionMode:
+                      (contract.managerModeSnapshot as CommissionMode | null | undefined) ??
+                      null,
+                  }
+                : null)
+            : null;
 
       const baselinePosCurrent =
         (childSnap?.position as Position | null | undefined) ??

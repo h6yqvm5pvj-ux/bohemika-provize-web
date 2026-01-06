@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import Plasma from "@/components/Plasma";
 import { auth } from "../app/firebase-auth";
 import { firebaseApp } from "../app/firebase-app";
@@ -43,10 +44,12 @@ const loadFirestore = () => {
 
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [animatedBg, setAnimatedBg] = useState<boolean>(true);
   const [simpleBg, setSimpleBg] = useState<boolean>(true);
   const [backgroundColor, setBackgroundColor] = useState<"black" | "blue" | null>(null);
   const [bgReady, setBgReady] = useState(false);
+  const pathname = usePathname();
 
   // status zatím nepoužíváme v UI
   const [, setSubscriptionStatus] =
@@ -126,6 +129,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       mounted = false;
     };
   }, []);
+
+  // zavřít mobilní menu po změně stránky
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
 
   // Přepínání třídy na body kvůli čistě černému pozadí
   useEffect(() => {
@@ -283,6 +291,23 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     "flex items-center justify-between rounded-2xl px-4 py-2.5 transition";
   const navLabelBase = "flex items-center gap-3";
 
+  const navItems: {
+    key: ActivePage;
+    href: string;
+    label: string;
+    requiresTeam?: boolean;
+  }[] = [
+    { key: "home", href: "/", label: "Domů" },
+    { key: "team", href: "/muj-tym", label: "Můj tým", requiresTeam: true },
+    { key: "calc", href: "/kalkulacka", label: "Kalkulačka" },
+    { key: "contracts", href: "/smlouvy", label: "Smlouvy" },
+    { key: "calendar", href: "/kalendar", label: "Kalendář" },
+    { key: "cashflow", href: "/cashflow", label: "Provizní kalendář" },
+    { key: "tools", href: "/pomucky", label: "Pomůcky" },
+    { key: "info", href: "/info", label: "Info" },
+    { key: "settings", href: "/nastaveni", label: "Nastavení" },
+  ];
+
   const renderBadge = (isActive: boolean) =>
     isActive && (
       <span className="text-[11px] rounded-full bg-emerald-500/20 px-3 py-0.5 text-emerald-300">
@@ -337,7 +362,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
       <div className="relative flex min-h-screen">
         {/* SIDEBAR */}
-        <aside className="flex w-60 flex-col border-r border-white/10 bg-slate-950/70 backdrop-blur-2xl">
+        <aside className="hidden w-60 flex-col border-r border-white/10 bg-slate-950/70 backdrop-blur-2xl lg:flex">
           <div className="px-5 py-5 border-b border-white/10">
             <div className="flex items-center gap-3 justify-center">
               <Image
@@ -355,153 +380,27 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           </div>
 
           <nav className="flex-1 px-4 py-5 space-y-1 text-base">
-            {/* Domů */}
-            <Link
-              href="/"
-              className={`${navItemBase} ${
-                active === "home"
-                  ? "bg-white/10 text-slate-50"
-                  : "text-slate-200 hover:bg-white/5"
-              }`}
-            >
-              <span className={navLabelBase}>
-                {icon}
-                <span>Domů</span>
-              </span>
-              {renderBadge(active === "home")}
-            </Link>
-
-            {/* Můj tým */}
-            {hasTeam ? (
-              <Link
-                href="/muj-tym"
-                prefetch={false}
-                className={`${navItemBase} ${
-                  active === "team"
-                    ? "bg-white/10 text-slate-50"
-                    : "text-slate-200 hover:bg-white/5"
-                }`}
-              >
-                <span className={navLabelBase}>
-                  {icon}
-                  <span>Můj tým</span>
-                </span>
-                {renderBadge(active === "team")}
-              </Link>
-            ) : null}
-
-            {/* Kalkulačka */}
-            <Link
-              href="/kalkulacka"
-              className={`${navItemBase} ${
-                active === "calc"
-                  ? "bg-white/10 text-slate-50"
-                  : "text-slate-200 hover:bg-white/5"
-              }`}
-            >
-              <span className={navLabelBase}>
-                {icon}
-                <span>Kalkulačka</span>
-              </span>
-              {renderBadge(active === "calc")}
-            </Link>
-
-            {/* Smlouvy */}
-            <Link
-              href="/smlouvy"
-              className={`${navItemBase} ${
-                active === "contracts"
-                  ? "bg-white/10 text-slate-50"
-                  : "text-slate-200 hover:bg-white/5"
-              }`}
-            >
-              <span className={navLabelBase}>
-                {icon}
-                <span>Smlouvy</span>
-              </span>
-              {renderBadge(active === "contracts")}
-            </Link>
-
-            {/* Provizní kalendář */}
-            {/* Kalendář */}
-            <Link
-              href="/kalendar"
-              className={`${navItemBase} ${
-                active === "calendar"
-                  ? "bg-white/10 text-slate-50"
-                  : "text-slate-200 hover:bg-white/5"
-              }`}
-            >
-              <span className={navLabelBase}>
-                {icon}
-                <span>Kalendář</span>
-              </span>
-              {renderBadge(active === "calendar")}
-            </Link>
-
-            {/* Provizní kalendář */}
-            <Link
-              href="/cashflow"
-              className={`${navItemBase} ${
-                active === "cashflow"
-                  ? "bg-white/10 text-slate-50"
-                  : "text-slate-200 hover:bg-white/5"
-              }`}
-            >
-              <span className={navLabelBase}>
-                {icon}
-                <span>Provizní kalendář</span>
-              </span>
-              {renderBadge(active === "cashflow")}
-            </Link>
-
-            {/* Pomůcky */}
-            <Link
-              href="/pomucky"
-              className={`${navItemBase} ${
-                active === "tools"
-                  ? "bg-white/10 text-slate-50"
-                  : "text-slate-200 hover:bg-white/5"
-              }`}
-            >
-              <span className={navLabelBase}>
-                {icon}
-                <span>Pomůcky</span>
-              </span>
-              {renderBadge(active === "tools")}
-            </Link>
-
-            {/* Info */}
-            <Link
-              href="/info"
-              className={`${navItemBase} ${
-                active === "info"
-                  ? "bg-white/10 text-slate-50"
-                  : "text-slate-200 hover:bg-white/5"
-              }`}
-            >
-              <span className={navLabelBase}>
-                {icon}
-                <span>Info</span>
-              </span>
-              {renderBadge(active === "info")}
-            </Link>
-
-            {/* Nastavení */}
-            <Link
-              href="/nastaveni"
-              className={`${navItemBase} ${
-                active === "settings"
-                  ? "bg-white/10 text-slate-50"
-                  : "text-slate-200 hover:bg-white/5"
-              }`}
-            >
-              <span className={navLabelBase}>
-                {icon}
-                <span>Nastavení</span>
-              </span>
-              {renderBadge(active === "settings")}
-            </Link>
+            {navItems.map((item) => {
+              if (item.requiresTeam && !hasTeam) return null;
+              return (
+                <Link
+                  key={item.key}
+                  href={item.href}
+                  prefetch={item.key === "team" ? false : true}
+                  className={`${navItemBase} ${
+                    active === item.key
+                      ? "bg-white/10 text-slate-50"
+                      : "text-slate-200 hover:bg-white/5"
+                  }`}
+                >
+                  <span className={navLabelBase}>
+                    {icon}
+                    <span>{item.label}</span>
+                  </span>
+                  {renderBadge(active === item.key)}
+                </Link>
+              );
+            })}
           </nav>
 
           <div className="mt-auto border-t border-white/10 px-5 py-3.5 text-sm">
@@ -523,66 +422,171 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           </div>
         </aside>
 
-        {/* CONTENT / PAYWALL */}
-        <div className="flex-1 flex items-center justify-center px-4 py-10">
-          {loadingProfile && user ? (
-            <div className="text-sm text-slate-200">
-              Načítám profil a předplatné…
+        <div className="flex-1 flex flex-col">
+          {/* MOBILE TOP BAR */}
+          <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-slate-950/80 px-4 py-3 backdrop-blur lg:hidden">
+            <div className="flex items-center gap-2">
+              <Image
+                src="/icons/bohemika_logo.png"
+                alt="Bohemika logo"
+                width={110}
+                height={40}
+                className="h-10 w-auto"
+                priority
+              />
+              <span className="text-sm font-semibold text-slate-100">Bohemka.App</span>
             </div>
-          ) : showPaywall ? (
-            <div className="w-full max-w-md rounded-3xl border border-white/15 bg-slate-950/90 backdrop-blur-2xl px-6 py-6 sm:px-8 sm:py-8 shadow-[0_24px_80px_rgba(0,0,0,0.9)] space-y-5 text-center">
-              <h1 className="text-xl sm:text-2xl font-semibold">
-                Předplatné vypršelo
-              </h1>
-              <p className="text-sm text-slate-200">
-                Pro další používání webu je potřeba mít aktivní
-                předplatné. Pokud máš pocit, že něco nesedí,
-                zkus načíst profil znovu nebo kontaktuj podporu.
-              </p>
+            <div className="flex items-center gap-2">
+              {user && (
+                <span className="max-w-[150px] truncate text-xs text-slate-300">
+                  {user.email}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen((prev) => !prev)}
+                className="rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-slate-100 bg-white/5 hover:bg-white/10"
+              >
+                Menu
+              </button>
+            </div>
+          </header>
 
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={handleReloadSubscription}
-                  className="w-full rounded-2xl bg-white/10 border border-white/30 px-4 py-2.5 text-sm font-medium text-slate-50 hover:bg-white/15"
-                >
-                  Mám zaplaceno, načíst znovu
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="w-full rounded-2xl bg-white text-slate-900 px-4 py-2.5 text-sm font-medium hover:bg-slate-100"
-                >
-                  Zpět na přihlášení
-                </button>
-              </div>
-
-              <div className="pt-3 border-t border-white/10 text-xs text-slate-300 space-y-1">
-                <p>Něco nehraje? Kontaktuj podporu:</p>
-                <p>
-                  E-mail:{" "}
-                  <a
-                    href="mailto:jakub.rauscher@bohemika.eu"
-                    className="underline underline-offset-2"
+          {/* MOBILE NAV OVERLAY */}
+          {mobileMenuOpen && (
+            <div className="fixed inset-0 z-30 lg:hidden">
+              <div
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                onClick={() => setMobileMenuOpen(false)}
+              />
+              <div className="relative h-full w-80 max-w-[82%] border-r border-white/10 bg-slate-950/95 px-4 py-5 shadow-2xl">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Image
+                      src="/icons/bohemika_logo.png"
+                      alt="Bohemika logo"
+                      width={110}
+                      height={40}
+                      className="h-10 w-auto"
+                      priority
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 hover:bg-white/10"
                   >
-                    jakub.rauscher@bohemika.eu
-                  </a>
-                </p>
-                <p>
-                  Telefon:{" "}
-                  <a
-                    href="tel:+420602127638"
-                    className="underline underline-offset-2"
+                    Zavřít
+                  </button>
+                </div>
+
+                <nav className="space-y-1">
+                  {navItems.map((item) => {
+                    if (item.requiresTeam && !hasTeam) return null;
+                    return (
+                      <Link
+                        key={item.key}
+                        href={item.href}
+                        prefetch={item.key === "team" ? false : true}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`${navItemBase} ${
+                          active === item.key
+                            ? "bg-white/10 text-slate-50"
+                            : "text-slate-200 hover:bg-white/5"
+                        }`}
+                      >
+                        <span className={navLabelBase}>
+                          {icon}
+                          <span>{item.label}</span>
+                        </span>
+                        {renderBadge(active === item.key)}
+                      </Link>
+                    );
+                  })}
+                </nav>
+
+                <div className="mt-6 border-t border-white/10 pt-4">
+                  {user && (
+                    <div className="mb-3 text-[11px] text-slate-400">
+                      Přihlášen jako{" "}
+                      <span className="block truncate text-slate-200">
+                        {user.email ?? ""}
+                      </span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="w-full rounded-xl bg-white text-xs font-medium text-slate-900 py-2 hover:bg-slate-100"
                   >
-                    602 127 638
-                  </a>
-                </p>
+                    Odhlásit se
+                  </button>
+                </div>
               </div>
             </div>
-          ) : (
-            children
           )}
+
+          {/* CONTENT / PAYWALL */}
+          <div className="flex-1 flex items-start justify-center px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+            {loadingProfile && user ? (
+              <div className="text-sm text-slate-200">
+                Načítám profil a předplatné…
+              </div>
+            ) : showPaywall ? (
+              <div className="w-full max-w-md rounded-3xl border border-white/15 bg-slate-950/90 backdrop-blur-2xl px-6 py-6 sm:px-8 sm:py-8 shadow-[0_24px_80px_rgba(0,0,0,0.9)] space-y-5 text-center">
+                <h1 className="text-xl sm:text-2xl font-semibold">
+                  Předplatné vypršelo
+                </h1>
+                <p className="text-sm text-slate-200">
+                  Pro další používání webu je potřeba mít aktivní
+                  předplatné. Pokud máš pocit, že něco nesedí,
+                  zkus načíst profil znovu nebo kontaktuj podporu.
+                </p>
+
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={handleReloadSubscription}
+                    className="w-full rounded-2xl bg-white/10 border border-white/30 px-4 py-2.5 text-sm font-medium text-slate-50 hover:bg-white/15"
+                  >
+                    Mám zaplaceno, načíst znovu
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="w-full rounded-2xl bg-white text-slate-900 px-4 py-2.5 text-sm font-medium hover:bg-slate-100"
+                  >
+                    Zpět na přihlášení
+                  </button>
+                </div>
+
+                <div className="pt-3 border-t border-white/10 text-xs text-slate-300 space-y-1">
+                  <p>Něco nehraje? Kontaktuj podporu:</p>
+                  <p>
+                    E-mail:{" "}
+                    <a
+                      href="mailto:jakub.rauscher@bohemika.eu"
+                      className="underline underline-offset-2"
+                    >
+                      jakub.rauscher@bohemika.eu
+                    </a>
+                  </p>
+                  <p>
+                    Telefon:{" "}
+                    <a
+                      href="tel:+420602127638"
+                      className="underline underline-offset-2"
+                    >
+                      602 127 638
+                    </a>
+                  </p>
+                </div>
+              </div>
+            ) : (
+              children
+            )}
+          </div>
         </div>
       </div>
     </main>

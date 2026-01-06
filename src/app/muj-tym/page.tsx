@@ -264,6 +264,18 @@ export default function TeamPage() {
     return value != null ? String(value) : "0";
   };
 
+  const performanceInfo = (email: string) => {
+    const stats = contractCounts[email];
+    const month = stats?.month ?? 0;
+    if (month > 0) {
+      return { label: "↑", className: "bg-emerald-500/15 text-emerald-100 border-emerald-300/60" };
+    }
+    if (month < 0) {
+      return { label: "↓", className: "bg-rose-500/15 text-rose-100 border-rose-300/60" };
+    }
+    return { label: "→", className: "bg-white/5 text-slate-300 border-white/15" };
+  };
+
   const canSendTeamMessage = isManagerPosition(userPosition) && members.length > 0;
 
   return (
@@ -319,6 +331,7 @@ export default function TeamPage() {
                 <div className="space-y-2">
                   {filtered.map((m) => {
                     const isSelected = m.email === selectedEmail;
+                    const perf = performanceInfo(m.email);
                     return (
                       <button
                         key={m.email}
@@ -331,8 +344,16 @@ export default function TeamPage() {
                         ].join(" ")}
                       >
                         <div className="text-sm font-semibold">{m.name}</div>
-                        <div className="text-[11px] rounded-full border border-white/10 bg-white/5 px-2 py-1 text-slate-300">
-                          {positionLabel(m.position)}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-[11px] inline-flex items-center justify-center rounded-full border px-2 py-1 ${perf.className}`}
+                            title={`Výkon tento měsíc: ${contractCountLabel(m.email, "month")}`}
+                          >
+                            {perf.label}
+                          </span>
+                          <div className="text-[11px] rounded-full border border-white/10 bg-white/5 px-2 py-1 text-slate-300">
+                            {positionLabel(m.position)}
+                          </div>
                         </div>
                       </button>
                     );
