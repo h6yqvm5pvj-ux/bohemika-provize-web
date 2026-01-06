@@ -445,9 +445,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen((prev) => !prev)}
-                className="rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-slate-100 bg-white/5 hover:bg-white/10"
+                className="flex items-center gap-2 rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-slate-100 bg-white/5 hover:bg-white/10"
               >
-                Menu
+                <span className="text-base leading-none">☰</span>
+                <span>Menu</span>
               </button>
             </div>
           </header>
@@ -459,7 +460,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                 onClick={() => setMobileMenuOpen(false)}
               />
-              <div className="relative h-full w-80 max-w-[82%] border-r border-white/10 bg-slate-950/95 px-4 py-5 shadow-2xl">
+              <div className="relative h-full w-80 max-w-[88%] border-r border-white/10 bg-slate-950/95 px-4 py-5 shadow-2xl overflow-y-auto">
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Image
@@ -524,6 +525,18 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* MOBILE QUICK MENU BUTTON */}
+          {!mobileMenuOpen && (
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="fixed bottom-4 right-4 z-20 flex items-center gap-2 rounded-full bg-emerald-500 text-slate-900 px-4 py-2 shadow-lg shadow-emerald-500/40 hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300 lg:hidden"
+            >
+              <span className="text-lg leading-none">☰</span>
+              <span className="text-sm font-semibold">Menu</span>
+            </button>
           )}
 
           {/* CONTENT / PAYWALL */}
