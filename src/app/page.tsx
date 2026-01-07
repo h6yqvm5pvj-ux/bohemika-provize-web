@@ -1,7 +1,7 @@
 // src/app/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useState, type DragEvent, type ReactElement } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -1324,7 +1324,7 @@ export default function HomePage() {
     setHoverSection(null);
   };
 
-  const renderSection = (id: HomeSection): JSX.Element | null => {
+  const renderSection = (id: HomeSection): ReactElement | null => {
     switch (id) {
       case "gold":
         if (!showGoldWidget) return null;
