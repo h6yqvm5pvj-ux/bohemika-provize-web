@@ -296,7 +296,7 @@ type YearGroup = {
   months: MonthGroup[];
 };
 
-type ProductFilter = "all" | "life" | "auto" | "other";
+type ProductFilter = "all" | "life" | "auto" | "other" | "gold";
 type ScopeFilter = "combined" | "own" | "team";
 
 /* ---------- logika výplat (zjednodušený cashflow generátor) ---------- */
@@ -968,6 +968,9 @@ export default function CashflowPage() {
                 p === "pillowInjury"
               );
             }
+            if (productFilter === "gold") {
+              return p === "comfortcc";
+            }
             return true;
           });
         }
@@ -1129,58 +1132,54 @@ export default function CashflowPage() {
         </header>
 
         {/* Filtry */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.7)] space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
-                  Filtrování smluv
-                </p>
-                <p className="text-sm text-slate-200">Vlastní / tým</p>
+        <section className={`grid grid-cols-1 ${hasTeam ? "md:grid-cols-2" : ""} gap-3`}>
+          {hasTeam && (
+            <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.7)] space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                    Filtrování smluv
+                  </p>
+                  <p className="text-sm text-slate-200">Vlastní / tým</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
+                <button
+                  type="button"
+                  onClick={() => setScopeFilter("combined")}
+                  className={`px-3 py-1.5 rounded-full border transition ${
+                    scopeFilter === "combined"
+                      ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
+                      : "border-white/20 text-slate-200 hover:bg-white/5"
+                  }`}
+                >
+                  Kombinovaný
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScopeFilter("own")}
+                  className={`px-3 py-1.5 rounded-full border transition ${
+                    scopeFilter === "own"
+                      ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
+                      : "border-white/20 text-slate-200 hover:bg-white/5"
+                  }`}
+                >
+                  Vlastní
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScopeFilter("team")}
+                  className={`px-3 py-1.5 rounded-full border transition ${
+                    scopeFilter === "team"
+                      ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
+                      : "border-white/20 text-slate-200 hover:bg-white/5"
+                  }`}
+                >
+                  Týmové
+                </button>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
-              <button
-                type="button"
-                onClick={() => setScopeFilter("combined")}
-                className={`px-3 py-1.5 rounded-full border transition ${
-                  scopeFilter === "combined"
-                    ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
-                    : "border-white/20 text-slate-200 hover:bg-white/5"
-                }`}
-              >
-                Kombinovaný
-              </button>
-              <button
-                type="button"
-                onClick={() => setScopeFilter("own")}
-                className={`px-3 py-1.5 rounded-full border transition ${
-                  scopeFilter === "own"
-                    ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
-                    : "border-white/20 text-slate-200 hover:bg-white/5"
-                }`}
-              >
-                Vlastní
-              </button>
-              <button
-                type="button"
-                disabled={!hasTeam}
-                onClick={() => setScopeFilter("team")}
-                className={`px-3 py-1.5 rounded-full border transition ${
-                  scopeFilter === "team"
-                    ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
-                    : "border-white/20 text-slate-200 hover:bg-white/5"
-                } ${!hasTeam ? "opacity-40 cursor-not-allowed" : ""}`}
-              >
-                Týmové
-              </button>
-            </div>
-            {!hasTeam && (
-              <p className="text-[11px] text-slate-400">
-                Týmové smlouvy jsou dostupné jen pro manažery s podřízenými.
-              </p>
-            )}
-          </div>
+          )}
 
           <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.7)] space-y-2">
             <div className="flex items-center justify-between">
@@ -1196,6 +1195,7 @@ export default function CashflowPage() {
                 ["all", "Všechny"],
                 ["life", "Život"],
                 ["auto", "Auto"],
+                ["gold", "Zlato"],
                 ["other", "Vedlejší produkty"],
               ].map(([val, label]) => (
                 <button

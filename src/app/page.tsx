@@ -964,6 +964,7 @@ export default function HomePage() {
       try {
         const email = user.email!;
         const usersRef = collection(db, "users");
+        const needPersonalHistory = homeWidgets.productionChart;
 
         const now = new Date();
         const currentMonth = now.getMonth();
@@ -991,10 +992,7 @@ export default function HomePage() {
         const managerMode = (myMode as CommissionMode | null) ?? null;
 
         // 2) moje smlouvy
-        const myQ = query(
-          collectionGroup(db, "entries"),
-          where("userEmail", "==", email)
-        );
+        const myQ = query(collectionGroup(db, "entries"), where("userEmail", "==", email));
         const mySnap = await getDocs(myQ);
         const myEntriesList: EntryDoc[] = [];
 
@@ -1003,10 +1001,12 @@ export default function HomePage() {
 
         mySnap.forEach((docSnap) => {
           const data = docSnap.data() as any as EntryDoc;
-          myEntriesList.push({
-            ...data,
-            id: docSnap.id,
-          });
+          if (needPersonalHistory) {
+            myEntriesList.push({
+              ...data,
+              id: docSnap.id,
+            });
+          }
           const signed = entrySignedDate(data);
           if (!signed) return;
           if (
@@ -1029,7 +1029,7 @@ export default function HomePage() {
 
         setMyContractsCount(myCount);
         setMyImmediateSum(myImmediate);
-        setMyEntries(myEntriesList);
+        setMyEntries(needPersonalHistory ? myEntriesList : []);
 
         // 3) tým – jen pokud je manažer
         if (!isManager) {
@@ -1091,6 +1091,7 @@ export default function HomePage() {
         }
 
         setHasTeam(true);
+        const needTeamHistory = homeWidgets.productionChart || homeWidgets.teamLeaderboard;
 
         let teamCount = 0;
         let teamImmediate = 0;
@@ -1114,10 +1115,12 @@ export default function HomePage() {
             const ownerEmail = (data.userEmail ?? "").toLowerCase();
 
             // pro leaderboard ukládáme všechny záznamy
-            teamEntriesAll.push({
-              ...(data as any),
-              id: docSnap.id,
-            } as EntryDoc);
+            if (needTeamHistory) {
+              teamEntriesAll.push({
+                ...(data as any),
+                id: docSnap.id,
+              } as EntryDoc);
+            }
 
             // pro horní "Týmovou produkci" počítáme jen aktuální měsíc
             const signed = entrySignedDate(data);
@@ -1175,7 +1178,7 @@ export default function HomePage() {
 
         setTeamContractsCount(teamCount);
         setTeamImmediateSum(teamImmediate);
-        setTeamEntries(teamEntriesAll);
+        setTeamEntries(needTeamHistory ? teamEntriesAll : []);
       } catch (e) {
         console.error("Chyba při načítání produkce:", e);
       } finally {
