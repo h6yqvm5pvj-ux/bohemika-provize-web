@@ -1,8 +1,9 @@
 // src/app/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 
 import { auth, db } from "./firebase";
@@ -16,6 +17,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  setDoc,
   updateDoc,
   query,
   where,
@@ -379,6 +381,81 @@ type PersonalSeriesPoint = {
 
 type ChartMode = "personal" | "team" | "combined" | "specific";
 
+type HomeWidgets = {
+  productionSummary: boolean;
+  monthlyGoal: boolean;
+  teamLeaderboard: boolean;
+  productionChart: boolean;
+  goldWidget: boolean;
+};
+
+type HomeSection = "gold" | "summary" | "goal" | "leaderboard" | "chart";
+type LayoutScope = "cloud" | "device";
+type PerformanceMode = "default" | "lite";
+
+const HOME_WIDGETS_DEFAULT: HomeWidgets = {
+  productionSummary: true,
+  monthlyGoal: true,
+  teamLeaderboard: true,
+  productionChart: true,
+  goldWidget: false,
+};
+
+const homeWidgetsKey = (email?: string | null) =>
+  email ? `home.widgets:${email.toLowerCase()}` : null;
+const homeLayoutKey = (email?: string | null) =>
+  email ? `home.layout:${email.toLowerCase()}` : null;
+const homeScopeKey = (email?: string | null) =>
+  email ? `home.scope:${email.toLowerCase()}` : null;
+const homePerformanceKey = (email?: string | null) =>
+  email ? `home.performance:${email.toLowerCase()}` : null;
+
+const HOME_LAYOUT_DEFAULT: HomeSection[] = [
+  "gold",
+  "summary",
+  "goal",
+  "leaderboard",
+  "chart",
+];
+const PERFORMANCE_DEFAULT: PerformanceMode = "default";
+
+const readLocalHomeWidgets = (email?: string | null): HomeWidgets | null => {
+  if (typeof window === "undefined") return null;
+  const key = homeWidgetsKey(email ?? null);
+  if (!key) return null;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<HomeWidgets>;
+    return { ...HOME_WIDGETS_DEFAULT, ...parsed };
+  } catch {
+    return null;
+  }
+};
+
+const readLocalHomeLayout = (email?: string | null): HomeSection[] | null => {
+  if (typeof window === "undefined") return null;
+  const key = homeLayoutKey(email ?? null);
+  if (!key) return null;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as HomeSection[];
+    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as HomeSection[]) : null;
+  } catch {
+    return null;
+  }
+};
+
+const readLocalPerformanceMode = (email?: string | null): PerformanceMode | null => {
+  if (typeof window === "undefined") return null;
+  const key = homePerformanceKey(email ?? null);
+  if (!key) return null;
+  const raw = window.localStorage.getItem(key);
+  if (raw === "default" || raw === "lite") return raw;
+  return null;
+};
+
 function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const plotWidth = Math.min(560, Math.max(320, data.length * 42));
@@ -663,6 +740,21 @@ export default function HomePage() {
   const [lbRange, setLbRange] = useState<LeaderboardRange>("month");
   const [chartMode, setChartMode] = useState<ChartMode>("personal");
   const [selectedSubordinate, setSelectedSubordinate] = useState<string | null>(null);
+  const [homeWidgets, setHomeWidgets] = useState<HomeWidgets>(HOME_WIDGETS_DEFAULT);
+  const [widgetPanelOpen, setWidgetPanelOpen] = useState(false);
+  const [homeLayout, setHomeLayout] = useState<HomeSection[]>(HOME_LAYOUT_DEFAULT);
+  const [draggingSection, setDraggingSection] = useState<HomeSection | null>(null);
+  const [hoverSection, setHoverSection] = useState<HomeSection | null>(null);
+  const [layoutScope, setLayoutScope] = useState<LayoutScope>("cloud");
+  const [performanceMode, setPerformanceMode] = useState<PerformanceMode>(PERFORMANCE_DEFAULT);
+  const [goldLoading, setGoldLoading] = useState(false);
+  const [goldError, setGoldError] = useState<string | null>(null);
+  const [goldReloadKey, setGoldReloadKey] = useState(0);
+  const [goldData, setGoldData] = useState<{
+    czkPerOz: number;
+    ts: number;
+    changePct: number | null;
+  } | null>(null);
   const [subPickerOpen, setSubPickerOpen] = useState(false);
   const [subSearch, setSubSearch] = useState("");
   const [editGoalOpen, setEditGoalOpen] = useState(false);
@@ -693,6 +785,174 @@ export default function HomePage() {
 
     return () => unsub();
   }, [router]);
+
+  const persistHomeWidgets = (updater: (prev: HomeWidgets) => HomeWidgets) => {
+    setHomeWidgets((prev) => {
+      const next = updater(prev);
+      const key = homeWidgetsKey(user?.email ?? null);
+      if (typeof window !== "undefined" && key) {
+        window.localStorage.setItem(key, JSON.stringify(next));
+      }
+      if (layoutScope === "cloud") {
+        void pushHomeSettingsToCloud({ homeWidgets: next });
+      }
+      return next;
+    });
+  };
+
+  const persistHomeLayout = (next: HomeSection[]) => {
+    setHomeLayout(next);
+    const key = homeLayoutKey(user?.email ?? null);
+    if (typeof window !== "undefined" && key) {
+      window.localStorage.setItem(key, JSON.stringify(next));
+    }
+    if (layoutScope === "cloud") {
+      void pushHomeSettingsToCloud({ homeLayout: next });
+    }
+  };
+
+  const handleWidgetToggle = (key: keyof HomeWidgets) => {
+    persistHomeWidgets((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const updatePerformanceMode = (mode: PerformanceMode) => {
+    setPerformanceMode(mode);
+    const key = homePerformanceKey(user?.email ?? null);
+    if (typeof window !== "undefined" && key) {
+      window.localStorage.setItem(key, mode);
+    }
+    if (layoutScope === "cloud") {
+      void pushHomeSettingsToCloud({ homePerformanceMode: mode });
+    }
+  };
+
+  const handleScopeToggle = async () => {
+    if (!user?.email) return;
+    const nextScope: LayoutScope = layoutScope === "cloud" ? "device" : "cloud";
+    if (nextScope === "cloud") {
+      await pushHomeSettingsToCloud({ homeLayout, homeWidgets, homePerformanceMode: performanceMode });
+    }
+    setLayoutScope(nextScope);
+    rememberScopePreference(nextScope);
+  };
+
+  const refreshGoldWidget = () => {
+    setGoldReloadKey((k) => k + 1);
+  };
+
+  // nastavení režimu ukládání (cloud vs device)
+  useEffect(() => {
+    if (!user?.email) {
+      setLayoutScope("cloud");
+      return;
+    }
+    if (typeof window === "undefined") return;
+    const scopeKey = homeScopeKey(user.email);
+    if (!scopeKey) return;
+    const stored = window.localStorage.getItem(scopeKey);
+    if (stored === "device" || stored === "cloud") {
+      setLayoutScope(stored);
+    } else {
+      setLayoutScope("cloud");
+    }
+  }, [user]);
+
+  // načtení uživatelského rozložení domova (cloud nebo device)
+  useEffect(() => {
+    if (!user?.email) return;
+    const email = user.email;
+
+    const loadFromDevice = () => {
+      const localLayout = readLocalHomeLayout(email);
+      const localWidgets = readLocalHomeWidgets(email);
+      const localPerf = readLocalPerformanceMode(email);
+      setHomeLayout(localLayout ?? HOME_LAYOUT_DEFAULT);
+      setHomeWidgets(localWidgets ?? HOME_WIDGETS_DEFAULT);
+      setPerformanceMode(localPerf ?? PERFORMANCE_DEFAULT);
+    };
+
+    const load = async () => {
+      if (layoutScope === "device") {
+        loadFromDevice();
+        return;
+      }
+
+      try {
+        const snap = await getDoc(doc(db, "users", email));
+        const data = snap.data() as any | undefined;
+
+        const cloudLayout = (data?.homeLayout as HomeSection[] | undefined) ?? null;
+        const cloudWidgets = (data?.homeWidgets as Partial<HomeWidgets> | undefined) ?? null;
+        const cloudPerf = (data?.homePerformanceMode as PerformanceMode | undefined) ?? null;
+
+        if (cloudLayout && Array.isArray(cloudLayout) && cloudLayout.length > 0) {
+          setHomeLayout(cloudLayout as HomeSection[]);
+          const key = homeLayoutKey(email);
+          if (typeof window !== "undefined" && key) {
+            window.localStorage.setItem(key, JSON.stringify(cloudLayout));
+          }
+        } else {
+          const localLayout = readLocalHomeLayout(email);
+          if (localLayout) {
+            setHomeLayout(localLayout);
+          } else {
+            setHomeLayout(HOME_LAYOUT_DEFAULT);
+          }
+        }
+
+        if (cloudWidgets) {
+          const merged = { ...HOME_WIDGETS_DEFAULT, ...cloudWidgets };
+          setHomeWidgets(merged);
+          const key = homeWidgetsKey(email);
+          if (typeof window !== "undefined" && key) {
+            window.localStorage.setItem(key, JSON.stringify(merged));
+          }
+        } else {
+          const localWidgets = readLocalHomeWidgets(email);
+          setHomeWidgets(localWidgets ?? HOME_WIDGETS_DEFAULT);
+        }
+
+        if (cloudPerf) {
+          setPerformanceMode(cloudPerf);
+          const key = homePerformanceKey(email);
+          if (typeof window !== "undefined" && key) {
+            window.localStorage.setItem(key, cloudPerf);
+          }
+        } else {
+          const localPerf = readLocalPerformanceMode(email);
+          setPerformanceMode(localPerf ?? PERFORMANCE_DEFAULT);
+        }
+      } catch (e) {
+        console.error("Načtení nastavení domova selhalo", e);
+        loadFromDevice();
+      }
+    };
+
+    load();
+  }, [user, layoutScope]);
+
+  const rememberScopePreference = (scope: LayoutScope) => {
+    if (typeof window === "undefined") return;
+    const key = homeScopeKey(user?.email ?? null);
+    if (!key) return;
+    window.localStorage.setItem(key, scope);
+  };
+
+  const pushHomeSettingsToCloud = async (payload: {
+    homeLayout?: HomeSection[];
+    homeWidgets?: HomeWidgets;
+    homePerformanceMode?: PerformanceMode;
+  }) => {
+    if (!user?.email) return;
+    try {
+      await setDoc(doc(db, "users", user.email), payload, { merge: true });
+    } catch (e) {
+      console.error("Uložení nastavení domova selhalo", e);
+    }
+  };
 
   // načtení statistik
   useEffect(() => {
@@ -933,6 +1193,68 @@ export default function HomePage() {
     }
   }, [hasTeam]);
 
+  useEffect(() => {
+    if (!homeWidgets.productionChart) {
+      setSubPickerOpen(false);
+    }
+  }, [homeWidgets.productionChart]);
+
+  useEffect(() => {
+    if (!homeWidgets.goldWidget) return;
+    let cancelled = false;
+    const loadGold = async () => {
+      setGoldLoading(true);
+      setGoldError(null);
+      try {
+        const res = await fetch("/api/gold?range=d1", { cache: "no-store" });
+        if (!res.ok) throw new Error("API vrací chybu");
+        const j = (await res.json()) as any;
+        if (j?.ok !== true) throw new Error(String(j?.message || j?.error || "Nepodařilo se načíst data o zlatu."));
+
+        const czkPerOz = Number(j?.czkPerOz);
+        const ts = Number(j?.ts || Date.now());
+        const changePctRaw = j?.changes?.d1 ?? j?.changesPct?.["1d"];
+        const changePct = Number.isFinite(Number(changePctRaw)) ? Number(changePctRaw) : null;
+
+        if (!Number.isFinite(czkPerOz) || czkPerOz <= 0) {
+          throw new Error("Neplatná cena zlata.");
+        }
+
+        if (cancelled) return;
+        setGoldData({ czkPerOz, ts, changePct });
+      } catch (e) {
+        if (!cancelled) {
+          setGoldError((e as any)?.message || "Nepodařilo se načíst cenu zlata.");
+          setGoldData(null);
+        }
+      } finally {
+        if (!cancelled) setGoldLoading(false);
+      }
+    };
+    void loadGold();
+    return () => {
+      cancelled = true;
+    };
+  }, [homeWidgets.goldWidget, goldReloadKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const key = homeLayoutKey(user?.email ?? null);
+    if (!key) return;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      setHomeLayout(HOME_LAYOUT_DEFAULT);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as HomeSection[];
+      const cleaned = parsed.filter((s) => HOME_LAYOUT_DEFAULT.includes(s));
+      setHomeLayout(cleaned.length ? cleaned : HOME_LAYOUT_DEFAULT);
+    } catch {
+      setHomeLayout(HOME_LAYOUT_DEFAULT);
+    }
+  }, [user]);
+
   const isManager = isManagerPosition(userMeta?.position ?? null);
   const showTeamBox = isManager && hasTeam;
 
@@ -960,6 +1282,612 @@ export default function HomePage() {
   useEffect(() => {
     setGoalInput(monthlyGoal != null && Number.isFinite(monthlyGoal) ? String(monthlyGoal) : "");
   }, [monthlyGoal]);
+
+  const showProductionSummary = homeWidgets.productionSummary;
+  const showMonthlyGoalSection = homeWidgets.monthlyGoal;
+  const showLeaderboardSection = showTeamBox && homeWidgets.teamLeaderboard;
+  const showChartSection = homeWidgets.productionChart;
+  const showGoldWidget = homeWidgets.goldWidget;
+  const goldChangePct = goldData?.changePct ?? null;
+  const isLiteUI = performanceMode === "lite";
+  const goldChangeAbs =
+    goldData?.czkPerOz && goldChangePct != null ? (goldData.czkPerOz * goldChangePct) / 100 : null;
+  const goldDir = goldChangePct == null ? "flat" : goldChangePct > 0 ? "up" : goldChangePct < 0 ? "down" : "flat";
+
+  const handleSectionDragStart = (id: HomeSection) => {
+    setDraggingSection(id);
+    setHoverSection(id);
+  };
+
+  const handleSectionDragOver = (
+    event: DragEvent<HTMLDivElement>,
+    targetId: HomeSection
+  ) => {
+    event.preventDefault();
+    if (!draggingSection || draggingSection === targetId) return;
+
+    setHoverSection(targetId);
+
+    const current = [...homeLayout];
+    const from = current.indexOf(draggingSection);
+    const to = current.indexOf(targetId);
+    if (from === -1 || to === -1) return;
+
+    const reordered = [...current];
+    reordered.splice(from, 1);
+    reordered.splice(to, 0, draggingSection);
+    persistHomeLayout(reordered);
+  };
+
+  const handleSectionDragEnd = () => {
+    setDraggingSection(null);
+    setHoverSection(null);
+  };
+
+  const renderSection = (id: HomeSection): JSX.Element | null => {
+    switch (id) {
+      case "gold":
+        if (!showGoldWidget) return null;
+        const goldCardClass = isLiteUI
+          ? "relative overflow-hidden rounded-3xl border border-amber-300/30 bg-slate-900 px-4 py-3 sm:px-5 sm:py-3 w-full"
+          : "relative overflow-hidden rounded-3xl border border-amber-300/35 bg-gradient-to-r from-amber-500/20 via-slate-950/80 to-emerald-500/15 px-4 py-3 sm:px-5 sm:py-3 shadow-[0_18px_50px_rgba(0,0,0,0.75)] w-full";
+        return (
+          <section className={goldCardClass}>
+            <div className="absolute inset-0 pointer-events-none opacity-60 bg-[radial-gradient(circle_at_18%_18%,rgba(248,250,252,0.14),transparent_42%),radial-gradient(circle_at_82%_28%,rgba(16,185,129,0.2),transparent_45%),radial-gradient(circle_at_58%_82%,rgba(251,191,36,0.22),transparent_45%)]" />
+            <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <Image
+                  src="/icons/gold1.png"
+                  alt="Zlatá cihla"
+                  width={96}
+                  height={96}
+                  className="h-[88px] w-[88px] sm:h-[96px] sm:w-[96px] object-contain drop-shadow-[0_10px_22px_rgba(0,0,0,0.35)]"
+                  priority
+                />
+                <div className="flex flex-col gap-1">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-amber-200/90">
+                    Spot cena zlata / oz
+                  </div>
+                  <div className="text-2xl sm:text-3xl font-semibold text-white drop-shadow-[0_10px_30px_rgba(0,0,0,0.4)]">
+                    {goldLoading ? "Načítám…" : goldData ? formatMoney(goldData.czkPerOz) : "—"}
+                  </div>
+                  <div className="text-[11px] text-slate-300">
+                    {goldData?.ts
+                      ? `Aktualizace ${new Date(goldData.ts).toLocaleTimeString("cs-CZ", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}`
+                      : "Čas zatím neznám"}
+                  </div>
+                  <div
+                    className={`inline-flex self-start items-center gap-3 rounded-full border px-4 py-2 text-sm font-semibold mt-1.5 ${
+                      goldDir === "up"
+                        ? "border-emerald-300/60 bg-emerald-500/20 text-emerald-50"
+                        : goldDir === "down"
+                          ? "border-rose-300/60 bg-rose-500/20 text-rose-50"
+                          : "border-white/20 bg-white/5 text-slate-100"
+                    }`}
+                  >
+                    <span className="text-base">
+                      {goldDir === "up" ? "▲" : goldDir === "down" ? "▼" : "—"}
+                    </span>
+                    <span>
+                      {goldChangePct == null
+                        ? "Bez změny"
+                        : `${goldChangePct > 0 ? "+" : ""}${goldChangePct.toFixed(2)} %`}
+                    </span>
+                    {goldChangeAbs != null ? (
+                      <span className="text-slate-200/90">
+                        ({goldChangeAbs > 0 ? "+" : ""}
+                        {formatMoney(Math.abs(goldChangeAbs))})
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:items-end gap-2 sm:gap-2">
+                <div className="flex items-center gap-2 text-[11px] text-slate-200">
+                  <button
+                    type="button"
+                    onClick={refreshGoldWidget}
+                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1 font-semibold hover:border-white/30 hover:bg-white/10 transition"
+                  >
+                    Obnovit
+                  </button>
+                  {goldError ? <span className="text-rose-200">{goldError}</span> : null}
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      case "summary":
+        if (!showProductionSummary) return null;
+        const summaryCardClass = isLiteUI
+          ? "rounded-3xl border border-white/12 bg-slate-900 px-5 py-5 sm:px-8 sm:py-7"
+          : "rounded-3xl border border-white/12 bg-slate-900/75 backdrop-blur-2xl px-5 py-5 sm:px-8 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)]";
+        return (
+          <section className={summaryCardClass}>
+            <div
+              className={`grid gap-6 ${
+                showTeamBox ? "md:grid-cols-3" : "md:grid-cols-2"
+              }`}
+            >
+              <div className="space-y-3">
+                <h2 className="text-lg sm:text-xl font-semibold text-slate-50">
+                  Vlastní produkce
+                </h2>
+                {loading ? (
+                  <p className="text-xs sm:text-sm text-slate-300">Načítám…</p>
+                ) : (
+                  <dl className="space-y-3">
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-slate-400">
+                        Počet smluv
+                      </dt>
+                      <dd className="text-2xl sm:text-3xl font-semibold text-slate-50 mt-0.5">
+                        <AnimatedNumber value={myContractsCount} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-slate-400">
+                        Provize
+                      </dt>
+                      <dd className="text-2xl sm:text-3xl font-semibold text-slate-50 mt-0.5">
+                        <AnimatedMoney value={myImmediateSum} />
+                      </dd>
+                    </div>
+                  </dl>
+                )}
+              </div>
+
+              {showTeamBox && (
+                <div className="space-y-3">
+                  <h2 className="text-lg sm:text-xl font-semibold text-emerald-200">
+                    Týmová produkce
+                  </h2>
+                  {loading ? (
+                    <p className="text-xs sm:text-sm text-emerald-100/80">Načítám…</p>
+                  ) : (
+                    <dl className="space-y-3">
+                      <div>
+                        <dt className="text-xs uppercase tracking-wide text-emerald-300/80">
+                          Počet smluv
+                        </dt>
+                        <dd className="text-2xl sm:text-3xl font-semibold text-emerald-100 mt-0.5">
+                          <AnimatedNumber value={teamContractsCount} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs uppercase tracking-wide text-emerald-300/80">
+                          Provize
+                        </dt>
+                        <dd className="text-2xl sm:text-3xl font-semibold text-emerald-100 mt-0.5">
+                          <AnimatedMoney value={teamImmediateSum} />
+                        </dd>
+                      </div>
+                    </dl>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <h2 className="text-lg sm:text-xl font-semibold text-cyan-100">
+                  Celková produkce
+                </h2>
+                {loading ? (
+                  <p className="text-xs sm:text-sm text-cyan-100/80">Načítám…</p>
+                ) : (
+                  <dl className="space-y-3">
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-cyan-200/80">
+                        Počet smluv
+                      </dt>
+                      <dd className="text-2xl sm:text-3xl font-semibold text-cyan-50 mt-0.5">
+                        <AnimatedNumber value={totalContractsCount} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-cyan-200/80">
+                        Provize
+                      </dt>
+                      <dd className="text-2xl sm:text-3xl font-semibold text-cyan-50 mt-0.5">
+                        <AnimatedMoney value={totalWithTeam} />
+                      </dd>
+                    </div>
+                  </dl>
+                )}
+              </div>
+            </div>
+          </section>
+        );
+      case "goal":
+        if (!showMonthlyGoalSection) return null;
+        const goalCardClass = isLiteUI
+          ? "relative overflow-hidden rounded-3xl border border-white/15 bg-slate-900 px-4 py-5 sm:px-10 sm:py-7 h-full min-w-0"
+          : "relative overflow-hidden rounded-3xl border border-white/15 bg-slate-900/80 backdrop-blur-2xl px-4 py-5 sm:px-10 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)] h-full min-w-0";
+        return (
+          <section className={goalCardClass}>
+            {editGoalOpen && (
+              <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-slate-900/95 p-5 shadow-[0_24px_60px_rgba(0,0,0,0.65)]">
+                  <h3 className="text-base font-semibold text-white">Upravit měsíční cíl</h3>
+                  <p className="mt-1 text-sm text-slate-300">
+                    Zadej částku provize, kterou chceš tento měsíc dosáhnout.
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    <input
+                      type="number"
+                      value={goalInput}
+                      onChange={(e) => setGoalInput(e.target.value)}
+                      className="w-full rounded-xl border border-white/15 bg-slate-800/80 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400"
+                      placeholder="Např. 50000"
+                      autoFocus
+                      min={0}
+                    />
+                    {goalError ? <div className="text-xs text-rose-300">{goalError}</div> : null}
+                  </div>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGoalError(null);
+                        setEditGoalOpen(false);
+                      }}
+                      className="rounded-xl border border-white/15 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10 transition"
+                      disabled={savingGoal}
+                    >
+                      Zrušit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveMonthlyGoal}
+                      disabled={savingGoal}
+                      className="rounded-xl border border-emerald-300/70 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/30 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {savingGoal ? "Ukládám…" : "Uložit"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(125,211,252,0.25),transparent_60%)]" />
+            <div className="pointer-events-none absolute right-0 bottom-0 h-48 w-48 rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.2),transparent_65%)]" />
+
+            <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
+              <div>
+                <h2 className="text-lg sm:text-xl font-semibold">Měsíční cíl</h2>
+                <p className="mt-1 text-xs text-slate-300">
+                  Aktuálně{" "}
+                  <span className="font-semibold text-slate-50">
+                    <AnimatedMoney value={totalWithTeam} />
+                  </span>
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="text-right text-xs sm:text-sm">
+                  <div className="text-slate-400">Plnění cíle</div>
+                  <div className="text-base sm:text-lg font-semibold">{progress}%</div>
+                  <div className="mt-1 text-[11px] text-slate-400">
+                    Cíl na měsíc:{" "}
+                    <span className="font-medium text-slate-100">
+                      {monthlyGoal ? formatMoney(monthlyGoal) : "—"}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditGoalOpen(true)}
+                  className="rounded-full border border-white/20 px-3 py-1.5 text-[11px] text-white/90 hover:bg-white/10 transition backdrop-blur-sm"
+                >
+                  Upravit cíl
+                </button>
+              </div>
+            </div>
+
+            <div className="relative mt-3 grid gap-3 sm:grid-cols-1 text-xs text-slate-200">
+              <div className="rounded-2xl border border-white/10 bg-slate-900/70 px-3 py-3 shadow-[0_10px_34px_rgba(0,0,0,0.55)] backdrop-blur">
+                <div className="text-[11px] uppercase tracking-wide text-slate-300">
+                  Do cíle zbývá
+                </div>
+                <div className="mt-1 text-lg font-semibold text-white">
+                  {hasGoal
+                    ? remainingToGoal === 0
+                      ? "Splněno"
+                      : formatMoney(remainingToGoal)
+                    : "Nastav cíl"}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  {hasGoal ? `${progress}% hotovo` : "Cíl není nastaven"}
+                </div>
+              </div>
+            </div>
+
+            <div className="relative mt-4 h-3 w-full rounded-full bg-white/10 border border-white/15 backdrop-blur-xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.6)]">
+              <div className="absolute inset-0 bg-gradient-to-r from-white/10 via-white/4 to-transparent" />
+              <div
+                className={`relative h-full rounded-full bg-gradient-to-r ${progressTone} transition-all duration-500 ease-out shadow-[0_0_24px_rgba(255,255,255,0.35)]`}
+                style={{
+                  width: `${progress}%`,
+                  boxShadow:
+                    progress >= 90
+                      ? "0 0 28px rgba(52, 211, 153, 0.45)"
+                      : progress >= 60
+                        ? "0 0 24px rgba(251, 146, 60, 0.4)"
+                        : "0 0 22px rgba(248, 113, 113, 0.45)",
+                }}
+              />
+            </div>
+          </section>
+        );
+      case "leaderboard":
+        if (!showLeaderboardSection) return null;
+        const leaderboardClass = isLiteUI
+          ? "rounded-3xl border border-emerald-400/40 bg-emerald-950/70 px-6 py-6 sm:px-10 sm:py-7 h-full"
+          : "rounded-3xl border border-emerald-400/40 bg-emerald-500/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-7 shadow-[0_30px_90px_rgba(0,0,0,0.9)] h-full";
+        return (
+          <section className={leaderboardClass}>
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
+              <div>
+                <h2 className="text-lg sm:text-xl font-semibold text-emerald-100">
+                  Žebříček týmu
+                </h2>
+              </div>
+
+              <div className="flex flex-col items-start sm:items-end gap-2 text-[11px] sm:text-xs">
+                <div className="inline-flex rounded-full bg-emerald-900/50 border border-emerald-400/50 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setLbProductFilter("life")}
+                    className={`px-3 py-1.5 rounded-full transition ${
+                      lbProductFilter === "life"
+                        ? "bg-white text-slate-900 shadow-md"
+                        : "text-emerald-100 hover:bg-white/5"
+                    }`}
+                  >
+                    Život
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLbProductFilter("other")}
+                    className={`px-3 py-1.5 rounded-full transition ${
+                      lbProductFilter === "other"
+                        ? "bg-white text-slate-900 shadow-md"
+                        : "text-emerald-100 hover:bg-white/5"
+                    }`}
+                  >
+                    Vedlejší produkty
+                  </button>
+                </div>
+
+                <div className="inline-flex rounded-full bg-emerald-900/50 border border-emerald-400/50 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setLbRange("month")}
+                    className={`px-3 py-1.5 rounded-full transition ${
+                      lbRange === "month"
+                        ? "bg-emerald-400 text-slate-900 shadow-md"
+                        : "text-emerald-100 hover:bg-white/5"
+                    }`}
+                  >
+                    Aktuální měsíc
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLbRange("sixMonths")}
+                    className={`px-3 py-1.5 rounded-full transition ${
+                      lbRange === "sixMonths"
+                        ? "bg-emerald-400 text-slate-900 shadow-md"
+                        : "text-emerald-100 hover:bg-white/5"
+                    }`}
+                  >
+                    Posledních 6 měsíců
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLbRange("year")}
+                    className={`px-3 py-1.5 rounded-full transition ${
+                      lbRange === "year"
+                        ? "bg-emerald-400 text-slate-900 shadow-md"
+                        : "text-emerald-100 hover:bg-white/5"
+                    }`}
+                  >
+                    Aktuální rok
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {leaderboardEntries.length === 0 ? (
+              <p className="text-xs sm:text-sm text-emerald-100/80">
+                Pro zvolené období a typ produktu zatím nemá tým žádnou
+                produkci.
+              </p>
+            ) : (
+              <ol className="mt-2 space-y-2">
+                {leaderboardEntries.slice(0, 10).map((row, idx) => (
+                  <li
+                    key={row.email}
+                    className="relative overflow-hidden rounded-2xl border border-emerald-400/30 bg-gradient-to-r from-emerald-500/15 via-slate-950/80 to-slate-950/90 px-4 py-3 sm:px-5 sm:py-4"
+                  >
+                    <div className="absolute inset-0 pointer-events-none opacity-60 bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.35),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.3),transparent_55%)]" />
+
+                    <div className="relative flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
+                            idx === 0
+                              ? "bg-amber-400 text-slate-900"
+                              : idx === 1
+                                ? "bg-slate-300 text-slate-900"
+                                : idx === 2
+                                  ? "bg-amber-700 text-slate-50"
+                                  : "bg-emerald-900/70 text-emerald-200"
+                          }`}
+                        >
+                          {idx + 1}
+                        </div>
+                        <div>
+                          <div className="text-sm sm:text-base font-semibold text-slate-50">
+                            {row.name}
+                          </div>
+                          <div className="text-[11px] text-emerald-200/80">
+                            {leaderboardLabel}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-[10px] uppercase tracking-wide text-emerald-300/90">
+                          Pojistné
+                        </div>
+                        <div className="text-lg sm:text-xl font-semibold text-emerald-100">
+                          <AnimatedMoney value={row.totalPremium} />
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        );
+      case "chart":
+        if (!showChartSection) return null;
+        const chartCardClass = isLiteUI
+          ? "rounded-3xl border border-white/12 bg-slate-900 px-5 py-5 sm:px-7 sm:py-6 overflow-hidden"
+          : "rounded-3xl border border-white/12 bg-slate-900/80 backdrop-blur-2xl px-5 py-5 sm:px-7 sm:py-6 shadow-[0_22px_80px_rgba(0,0,0,0.85)] overflow-hidden";
+        return (
+          <section className={chartCardClass}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
+              <div>
+                <h2 className="text-lg sm:text-xl font-semibold text-white">
+                  Osobní produkce — posledních 12 měsíců
+                </h2>
+                <p className="text-xs text-slate-300">
+                  Život = měsíční pojistné, vedlejší produkty = roční pojistné
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-full bg-slate-900/60 border border-white/10 p-1 backdrop-blur">
+                  <button
+                    type="button"
+                    onClick={() => setChartMode("personal")}
+                    className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
+                      chartMode === "personal"
+                        ? "bg-white text-slate-900 shadow-md"
+                        : "text-slate-200 hover:bg-white/10"
+                    }`}
+                  >
+                    Osobní
+                  </button>
+                  {hasTeam && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setChartMode("team")}
+                        className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
+                          chartMode === "team"
+                            ? "bg-white text-slate-900 shadow-md"
+                            : "text-slate-200 hover:bg-white/10"
+                        }`}
+                      >
+                        Týmová
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setChartMode("combined")}
+                        className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
+                          chartMode === "combined"
+                            ? "bg-white text-slate-900 shadow-md"
+                            : "text-slate-200 hover:bg-white/10"
+                        }`}
+                      >
+                        Souhrnná
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubPickerOpen(true);
+                          setChartMode("specific");
+                        }}
+                        className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
+                          chartMode === "specific"
+                            ? "bg-white text-slate-900 shadow-md"
+                            : "text-slate-200 hover:bg-white/10"
+                        }`}
+                      >
+                        Konkrétní
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 text-[11px] text-slate-200">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-cyan-300" />
+                    Celkem (život měsíčně + vedlejší ročně)
+                    <span className="font-semibold text-white">
+                      {formatMoney(
+                        personalProductionSeries[personalProductionSeries.length - 1]
+                          ?.totalCombined ?? 0
+                      )}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {chartMode === "specific" && hasTeam && (
+              <div className="mb-3 rounded-2xl border border-white/10 bg-slate-900/70 backdrop-blur px-4 py-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-xs text-slate-200">
+                    {selectedSubordinate
+                      ? `Vybraný podřízený: ${
+                          subordinates.find((s) => s.email === selectedSubordinate)?.name ??
+                          selectedSubordinate
+                        }`
+                      : "Vyber podřízeného"}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSubPickerOpen(true)}
+                      className="rounded-full border border-white/20 px-3 py-1 text-xs text-white hover:bg-white/10 transition"
+                    >
+                      Změnit výběr
+                    </button>
+                    {selectedSubordinate && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubordinate(null)}
+                        className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-slate-200 hover:bg-white/5 transition"
+                      >
+                        Vymazat
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <PersonalProductionChart data={personalProductionSeries} />
+          </section>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const sectionSpan: Record<HomeSection, string> = {
+    gold: "md:col-span-1",
+    summary: "md:col-span-2",
+    goal: "md:col-span-1",
+    leaderboard: "md:col-span-1",
+    chart: "md:col-span-2",
+  };
 
   const saveMonthlyGoal = async () => {
     if (!user?.email) return;
@@ -1055,20 +1983,22 @@ export default function HomePage() {
       if (!amount || !Number.isFinite(amount)) continue;
 
       const freq = (entry.frequencyRaw ?? "annual") as PaymentFrequency;
-      const isLife =
-        entry.productKey != null &&
-        lifeProducts.includes(entry.productKey as Product);
+      const product = entry.productKey as Product | undefined;
+
+      const isLife = product ? lifeProducts.includes(product) : false;
 
       if (isLife) {
         months[idx].lifeMonthly += normalizeToMonthly(amount, freq);
       } else {
         months[idx].otherAnnual += normalizeToAnnual(amount, freq);
       }
-      months[idx].totalCombined =
-        months[idx].lifeMonthly + months[idx].otherAnnual;
     }
 
-    return months as PersonalSeriesPoint[];
+    for (const m of months) {
+      m.totalCombined = m.lifeMonthly + m.otherAnnual;
+    }
+
+    return months;
   }, [chartEntries]);
 
   // ---------- žebříček týmu ----------
@@ -1144,498 +2074,211 @@ export default function HomePage() {
       ? "Životní pojištění"
       : "Vedlejší produkty";
 
+  const visibleSections = homeLayout.filter((s) => renderSection(s) !== null);
+  const reorderEnabled = widgetPanelOpen;
+
   if (!authReady || !user) return null;
 
   return (
     <AppLayout active="home">
       {user && <AutoAnniversaryModal userId={user.uid} />}
       <div className="w-full max-w-5xl space-y-6 px-3 sm:px-0 min-w-0">
-        <div className="pt-2">
-          <SplitTextHeading
-            text={`Produkce ${monthLabelCapitalized} ${year}`}
-          />
-        </div>
+        <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <SplitTextHeading text={`Produkce ${monthLabelCapitalized} ${year}`} />
+          <div className="relative self-start">
+            <button
+              type="button"
+              onClick={() => setWidgetPanelOpen((prev) => !prev)}
+              className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/90 hover:border-white/35 hover:bg-white/10 transition"
+            >
+              <svg
+                aria-hidden="true"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="opacity-80"
+              >
+                <path
+                  d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                />
+                <path
+                  d="M12 3.5c.9 0 1.64.62 1.85 1.5l.1.45c.05.23.21.42.44.52l.06.02.43.18c.2.09.43.07.61-.06l.36-.26A2 2 0 0 1 17.87 6l.08.44c.05.27.22.5.46.62l.41.22c.2.1.34.29.37.52l.09.65c.12.85-.39 1.66-1.23 1.93l-.37.12c-.23.07-.39.26-.42.5l-.07.56c-.03.23.05.46.22.62l.21.21c.63.63.63 1.64 0 2.27l-.21.21c-.17.16-.25.39-.22.62l.07.56c.03.24.19.43.42.5l.37.12c.84.27 1.35 1.08 1.23 1.93l-.09.65c-.03.23-.17.42-.37.52l-.41.22a.75.75 0 0 0-.46.62l-.08.44a2 2 0 0 1-1.07 1.45l-.36.26a.73.73 0 0 1-.61.06l-.43-.18c-.22-.09-.48-.03-.62.16l-.13.17c-.12.16-.27.3-.44.41-.17.11-.36.18-.56.21l-.46.07A1.9 1.9 0 0 1 12 20.5c-.9 0-1.64-.62-1.85-1.5l-.1-.45a.75.75 0 0 0-.44-.52l-.06-.02-.43-.18a.73.73 0 0 0-.61.06l-.36.26A2 2 0 0 1 6.13 18l-.08-.44a.75.75 0 0 0-.46-.62l-.41-.22a.75.75 0 0 1-.37-.52l-.09-.65a1.9 1.9 0 0 1 1.23-1.93l.37-.12c.23-.07.39-.26.42-.5l.07-.56c.03-.23-.05-.46-.22-.62l-.21-.21a1.6 1.6 0 0 1 0-2.27l.21-.21c.17-.16.25-.39.22-.62l-.07-.56a.75.75 0 0 0-.42-.5l-.37-.12A1.9 1.9 0 0 1 4.72 8l.09-.65c.03-.23.17-.42.37-.52l.41-.22c.24-.12.41-.35.46-.62l.08-.44A2 2 0 0 1 7.5 4.03l.36-.26c.18-.13.41-.15.61-.06l.43.18c.23.09.48.03.62-.16l.13-.17c.12-.16.27-.3.44-.41.17-.11.36-.18.56-.21l.46-.07c.21-.04.41 0 .6.07.19.07.36.19.51.35.14.15.24.34.29.54l.1.45c.2.88.95 1.5 1.85 1.5Z"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span>Přizpůsobit</span>
+            </button>
 
-        {/* PRODUKCE BOX */}
-        <section className="rounded-3xl border border-white/12 bg-slate-900/75 backdrop-blur-2xl px-5 py-5 sm:px-8 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
-          <div
-            className={`grid gap-6 ${
-              showTeamBox ? "md:grid-cols-3" : "md:grid-cols-2"
-            }`}
-          >
-            {/* VLASTNÍ PRODUKCE */}
-            <div className="space-y-3">
-              <h2 className="text-lg sm:text-xl font-semibold text-slate-50">
-                Vlastní produkce
-              </h2>
-
-              {loading ? (
-                <p className="text-xs sm:text-sm text-slate-300">
-                  Načítám…
-                </p>
-              ) : (
-                <dl className="space-y-3">
-                  <div>
-                    <dt className="text-xs uppercase tracking-wide text-slate-400">
-                      Počet smluv
-                    </dt>
-                    <dd className="text-2xl sm:text-3xl font-semibold text-slate-50 mt-0.5">
-                      <AnimatedNumber value={myContractsCount} />
-                    </dd>
+            {widgetPanelOpen && (
+              <div className="absolute right-0 z-20 mt-2 w-72 rounded-2xl border border-white/15 bg-slate-950/90 backdrop-blur-2xl p-3 shadow-[0_18px_50px_rgba(0,0,0,0.75)]">
+                <div className="flex items-center justify-between gap-2 pb-2">
+                  <div className="text-sm font-semibold text-white">
+                    Přizpůsobení domova
                   </div>
-                  <div>
-                    <dt className="text-xs uppercase tracking-wide text-slate-400">
-                      Provize
-                    </dt>
-                    <dd className="text-2xl sm:text-3xl font-semibold text-slate-50 mt-0.5">
-                      <AnimatedMoney value={myImmediateSum} />
-                    </dd>
-                  </div>
-                </dl>
-              )}
-            </div>
-
-            {/* TÝMOVÁ PRODUKCE – jen manažer S týmem */}
-            {showTeamBox && (
-              <div className="space-y-3">
-                <h2 className="text-lg sm:text-xl font-semibold text-emerald-200">
-                  Týmová produkce
-                </h2>
-
-                {loading ? (
-                  <p className="text-xs sm:text-sm text-emerald-100/80">
-                    Načítám…
-                  </p>
-                ) : (
-                  <dl className="space-y-3">
-                    <div>
-                      <dt className="text-xs uppercase tracking-wide text-emerald-300/80">
-                        Počet smluv
-                      </dt>
-                      <dd className="text-2xl sm:text-3xl font-semibold text-emerald-100 mt-0.5">
-                        <AnimatedNumber value={teamContractsCount} />
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs uppercase tracking-wide text-emerald-300/80">
-                        Provize
-                      </dt>
-                      <dd className="text-2xl sm:text-3xl font-semibold text-emerald-100 mt-0.5">
-                        <AnimatedMoney value={teamImmediateSum} />
-                      </dd>
-                    </div>
-                  </dl>
-                )}
-              </div>
-            )}
-
-            {/* CELKOVÁ PRODUKCE */}
-            <div className="space-y-3">
-              <h2 className="text-lg sm:text-xl font-semibold text-cyan-100">
-                Celková produkce
-              </h2>
-
-              {loading ? (
-                <p className="text-xs sm:text-sm text-cyan-100/80">
-                  Načítám…
-                </p>
-              ) : (
-                <dl className="space-y-3">
-                  <div>
-                    <dt className="text-xs uppercase tracking-wide text-cyan-200/80">
-                      Počet smluv
-                    </dt>
-                    <dd className="text-2xl sm:text-3xl font-semibold text-cyan-50 mt-0.5">
-                      <AnimatedNumber value={totalContractsCount} />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs uppercase tracking-wide text-cyan-200/80">
-                      Provize
-                    </dt>
-                    <dd className="text-2xl sm:text-3xl font-semibold text-cyan-50 mt-0.5">
-                      <AnimatedMoney value={totalWithTeam} />
-                    </dd>
-                  </div>
-                </dl>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <div
-          className={`grid gap-6 ${
-            isManager && hasTeam ? "md:grid-cols-2" : "md:grid-cols-1"
-          }`}
-        >
-          {/* MĚSÍČNÍ CÍL */}
-          <section className="relative overflow-hidden rounded-3xl border border-white/15 bg-slate-900/80 backdrop-blur-2xl px-4 py-5 sm:px-10 sm:py-7 shadow-[0_24px_80px_rgba(0,0,0,0.85)] h-full min-w-0">
-            {editGoalOpen && (
-              <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-slate-900/95 p-5 shadow-[0_24px_60px_rgba(0,0,0,0.65)]">
-                  <h3 className="text-base font-semibold text-white">Upravit měsíční cíl</h3>
-                  <p className="mt-1 text-sm text-slate-300">
-                    Zadej částku provize, kterou chceš tento měsíc dosáhnout.
-                  </p>
-                  <div className="mt-3 space-y-2">
-                    <input
-                      type="number"
-                      value={goalInput}
-                      onChange={(e) => setGoalInput(e.target.value)}
-                      className="w-full rounded-xl border border-white/15 bg-slate-800/80 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400"
-                      placeholder="Např. 50000"
-                      autoFocus
-                      min={0}
-                    />
-                    {goalError ? <div className="text-xs text-rose-300">{goalError}</div> : null}
-                  </div>
-                  <div className="mt-4 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setGoalError(null);
-                        setEditGoalOpen(false);
-                      }}
-                      className="rounded-xl border border-white/15 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10 transition"
-                      disabled={savingGoal}
-                    >
-                      Zrušit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={saveMonthlyGoal}
-                      disabled={savingGoal}
-                      className="rounded-xl border border-emerald-300/70 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/30 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {savingGoal ? "Ukládám…" : "Uložit"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(125,211,252,0.25),transparent_60%)]" />
-            <div className="pointer-events-none absolute right-0 bottom-0 h-48 w-48 rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.2),transparent_65%)]" />
-
-            <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
-              <div>
-                <h2 className="text-lg sm:text-xl font-semibold">
-                  Měsíční cíl
-                </h2>
-                <p className="mt-1 text-xs text-slate-300">
-                  Aktuálně{" "}
-                  <span className="font-semibold text-slate-50">
-                    <AnimatedMoney value={totalWithTeam} />
-                  </span>
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div className="text-right text-xs sm:text-sm">
-                  <div className="text-slate-400">Plnění cíle</div>
-                  <div className="text-base sm:text-lg font-semibold">
-                    {progress}%
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-400">
-                    Cíl na měsíc:{" "}
-                    <span className="font-medium text-slate-100">
-                      {monthlyGoal ? formatMoney(monthlyGoal) : "—"}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditGoalOpen(true)}
-                  className="rounded-full border border-white/20 px-3 py-1.5 text-[11px] text-white/90 hover:bg-white/10 transition backdrop-blur-sm"
-                >
-                  Upravit cíl
-                </button>
-              </div>
-            </div>
-
-            <div className="relative mt-3 grid gap-3 sm:grid-cols-1 text-xs text-slate-200">
-              <div className="rounded-2xl border border-white/10 bg-slate-900/70 px-3 py-3 shadow-[0_10px_34px_rgba(0,0,0,0.55)] backdrop-blur">
-                <div className="text-[11px] uppercase tracking-wide text-slate-300">
-                  Do cíle zbývá
-                </div>
-                <div className="mt-1 text-lg font-semibold text-white">
-                  {hasGoal
-                    ? remainingToGoal === 0
-                      ? "Splněno"
-                      : formatMoney(remainingToGoal)
-                    : "Nastav cíl"}
-                </div>
-                <div className="text-[11px] text-slate-400">
-                  {hasGoal ? `${progress}% hotovo` : "Cíl není nastaven"}
-                </div>
-              </div>
-            </div>
-
-            {/* progress bar */}
-            <div className="relative mt-4 h-3 w-full rounded-full bg-white/10 border border-white/15 backdrop-blur-xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.6)]">
-              <div className="absolute inset-0 bg-gradient-to-r from-white/10 via-white/4 to-transparent" />
-              <div
-                className={`relative h-full rounded-full bg-gradient-to-r ${progressTone} transition-all duration-500 ease-out shadow-[0_0_24px_rgba(255,255,255,0.35)]`}
-                style={{
-                  width: `${progress}%`,
-                  boxShadow:
-                    progress >= 90
-                      ? "0 0 28px rgba(52, 211, 153, 0.45)"
-                      : progress >= 60
-                      ? "0 0 24px rgba(251, 146, 60, 0.4)"
-                      : "0 0 22px rgba(248, 113, 113, 0.45)",
-                }}
-              />
-            </div>
-          </section>
-
-          {/* ŽEBŘÍČEK TÝMU – pouze manažer s podřízenými */}
-          {isManager && hasTeam && (
-            <section className="rounded-3xl border border-emerald-400/40 bg-emerald-500/5 backdrop-blur-2xl px-6 py-6 sm:px-10 sm:py-7 shadow-[0_30px_90px_rgba(0,0,0,0.9)] h-full">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-semibold text-emerald-100">
-                    Žebříček týmu
-                  </h2>
-                </div>
-
-                <div className="flex flex-col items-start sm:items-end gap-2 text-[11px] sm:text-xs">
-                  <div className="inline-flex rounded-full bg-emerald-900/50 border border-emerald-400/50 p-1">
-                    <button
-                      type="button"
-                      onClick={() => setLbProductFilter("life")}
-                      className={`px-3 py-1.5 rounded-full transition ${
-                        lbProductFilter === "life"
-                          ? "bg-white text-slate-900 shadow-md"
-                          : "text-emerald-100 hover:bg-white/5"
-                      }`}
-                    >
-                      Život
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLbProductFilter("other")}
-                      className={`px-3 py-1.5 rounded-full transition ${
-                        lbProductFilter === "other"
-                          ? "bg-white text-slate-900 shadow-md"
-                          : "text-emerald-100 hover:bg-white/5"
-                      }`}
-                    >
-                      Vedlejší produkty
-                    </button>
-                  </div>
-
-                  <div className="inline-flex rounded-full bg-emerald-900/50 border border-emerald-400/50 p-1">
-                    <button
-                      type="button"
-                      onClick={() => setLbRange("month")}
-                      className={`px-3 py-1.5 rounded-full transition ${
-                        lbRange === "month"
-                          ? "bg-emerald-400 text-slate-900 shadow-md"
-                          : "text-emerald-100 hover:bg-white/5"
-                      }`}
-                    >
-                      Aktuální měsíc
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLbRange("sixMonths")}
-                      className={`px-3 py-1.5 rounded-full transition ${
-                        lbRange === "sixMonths"
-                          ? "bg-emerald-400 text-slate-900 shadow-md"
-                          : "text-emerald-100 hover:bg-white/5"
-                      }`}
-                    >
-                      Posledních 6 měsíců
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLbRange("year")}
-                      className={`px-3 py-1.5 rounded-full transition ${
-                        lbRange === "year"
-                          ? "bg-emerald-400 text-slate-900 shadow-md"
-                          : "text-emerald-100 hover:bg-white/5"
-                      }`}
-                    >
-                      Aktuální rok
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {leaderboardEntries.length === 0 ? (
-                <p className="text-xs sm:text-sm text-emerald-100/80">
-                  Pro zvolené období a typ produktu zatím nemá tým žádnou
-                  produkci.
-                </p>
-              ) : (
-                <ol className="mt-2 space-y-2">
-                  {leaderboardEntries.slice(0, 10).map((row, idx) => (
-                    <li
-                      key={row.email}
-                      className="relative overflow-hidden rounded-2xl border border-emerald-400/30 bg-gradient-to-r from-emerald-500/15 via-slate-950/80 to-slate-950/90 px-4 py-3 sm:px-5 sm:py-4"
-                    >
-                      <div className="absolute inset-0 pointer-events-none opacity-60 bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.35),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.3),transparent_55%)]" />
-
-                      <div className="relative flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
-                              idx === 0
-                                ? "bg-amber-400 text-slate-900"
-                                : idx === 1
-                                ? "bg-slate-300 text-slate-900"
-                                : idx === 2
-                                ? "bg-amber-700 text-slate-50"
-                                : "bg-emerald-900/70 text-emerald-200"
-                            }`}
-                          >
-                            {idx + 1}
-                          </div>
-                          <div>
-                            <div className="text-sm sm:text-base font-semibold text-slate-50">
-                              {row.name}
-                            </div>
-                            <div className="text-[11px] text-emerald-200/80">
-                              {leaderboardLabel}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          <div className="text-[10px] uppercase tracking-wide text-emerald-300/90">
-                            Pojistné
-                          </div>
-                          <div className="text-lg sm:text-xl font-semibold text-emerald-100">
-                            <AnimatedMoney value={row.totalPremium} />
-                          </div>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </section>
-          )}
-        </div>
-
-        <section className="rounded-3xl border border-white/12 bg-slate-900/80 backdrop-blur-2xl px-5 py-5 sm:px-7 sm:py-6 shadow-[0_22px_80px_rgba(0,0,0,0.85)] overflow-hidden">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
-            <div>
-              <h2 className="text-lg sm:text-xl font-semibold text-white">
-                Osobní produkce — posledních 12 měsíců
-              </h2>
-              <p className="text-xs text-slate-300">
-                Život = měsíční pojistné, vedlejší produkty = roční pojistné
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-full bg-slate-900/60 border border-white/10 p-1 backdrop-blur">
-                <button
-                  type="button"
-                  onClick={() => setChartMode("personal")}
-                  className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
-                    chartMode === "personal"
-                      ? "bg-white text-slate-900 shadow-md"
-                      : "text-slate-200 hover:bg-white/10"
-                  }`}
-                >
-                  Osobní
-                </button>
-                {hasTeam && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setChartMode("team")}
-                      className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
-                        chartMode === "team"
-                          ? "bg-white text-slate-900 shadow-md"
-                          : "text-slate-200 hover:bg-white/10"
-                      }`}
-                    >
-                      Týmová
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setChartMode("combined")}
-                      className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
-                        chartMode === "combined"
-                          ? "bg-white text-slate-900 shadow-md"
-                          : "text-slate-200 hover:bg-white/10"
-                      }`}
-                    >
-                      Souhrnná
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSubPickerOpen(true);
-                        setChartMode("specific");
-                      }}
-                      className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
-                        chartMode === "specific"
-                          ? "bg-white text-slate-900 shadow-md"
-                          : "text-slate-200 hover:bg-white/10"
-                      }`}
-                    >
-                      Konkrétní
-                    </button>
-                  </>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 text-[11px] text-slate-200">
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-cyan-300" />
-                  Celkem (život měsíčně + vedlejší ročně)
-                  <span className="font-semibold text-white">
-                    {formatMoney(
-                      personalProductionSeries[personalProductionSeries.length - 1]
-                        ?.totalCombined ?? 0
-                    )}
-                  </span>
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {chartMode === "specific" && hasTeam && (
-            <div className="mb-3 rounded-2xl border border-white/10 bg-slate-900/70 backdrop-blur px-4 py-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-xs text-slate-200">
-                  {selectedSubordinate
-                    ? `Vybraný podřízený: ${
-                        subordinates.find((s) => s.email === selectedSubordinate)?.name ??
-                        selectedSubordinate
-                      }`
-                    : "Vyber podřízeného"}
-                </div>
-                <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setSubPickerOpen(true)}
-                    className="rounded-full border border-white/20 px-3 py-1 text-xs text-white hover:bg-white/10 transition"
+                    onClick={() => setWidgetPanelOpen(false)}
+                    className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10 transition"
+                    aria-label="Zavřít"
                   >
-                    Změnit výběr
+                    ×
                   </button>
-                  {selectedSubordinate && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSubordinate(null)}
-                      className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-slate-200 hover:bg-white/5 transition"
-                    >
-                      Vymazat
-                    </button>
+                </div>
+
+                <div className="space-y-2 text-sm text-slate-200">
+                  {[
+                    { key: "productionSummary", label: "Přehled produkce", disabled: false },
+                    { key: "monthlyGoal", label: "Měsíční cíl", disabled: false },
+                    { key: "goldWidget", label: "Cena zlata", disabled: false },
+                    {
+                      key: "teamLeaderboard",
+                      label: "Žebříček týmu",
+                      disabled: !showTeamBox,
+                      note: "Jen pro manažery s týmem",
+                    },
+                    { key: "productionChart", label: "Graf produkce", disabled: false },
+                  ].map((opt) => {
+                    const checked = homeWidgets[opt.key as keyof HomeWidgets];
+                    const disabled = opt.disabled;
+                    return (
+                      <label
+                        key={opt.key}
+                        className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${
+                          disabled
+                            ? "cursor-not-allowed border-white/10 bg-white/5 opacity-50"
+                            : "cursor-pointer border-white/15 bg-white/5 hover:border-white/30"
+                        }`}
+                      >
+                        <div className="flex flex-col">
+                          <span>{opt.label}</span>
+                          {opt.note && disabled ? (
+                            <span className="text-[11px] text-slate-400">
+                              {opt.note}
+                            </span>
+                          ) : null}
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() => handleWidgetToggle(opt.key as keyof HomeWidgets)}
+                          className="h-4 w-4 accent-emerald-400"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 rounded-xl border border-white/12 bg-white/5 p-3 flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold text-white">Režim výkonu</span>
+                    <span className="text-[11px] text-slate-400">
+                      {performanceMode === "lite"
+                        ? "Odlehčené vizuály a menší efekty pro slabší zařízení."
+                        : "Plné vizuály a efekty."}
+                    </span>
+                  </div>
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-100">
+                    <span className="text-[11px] uppercase tracking-[0.14em] text-slate-400">
+                      {performanceMode === "lite" ? "Odlehčený" : "Plný"}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={performanceMode === "lite"}
+                      onChange={() =>
+                        updatePerformanceMode(performanceMode === "lite" ? "default" : "lite")
+                      }
+                      className="h-4 w-4 accent-emerald-400"
+                    />
+                  </label>
+                </div>
+                <div className="mt-3 rounded-xl border border-white/12 bg-white/5 p-3 flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold text-white">Ukládání</span>
+                    <span className="text-[11px] text-slate-400">
+                      {layoutScope === "cloud"
+                        ? "Synchronizuje se s tvým profilem (všechna zařízení)."
+                        : "Uloží se jen do tohoto zařízení/prohlížeče."}
+                    </span>
+                  </div>
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-100">
+                    <span className="text-[11px] uppercase tracking-[0.14em] text-slate-400">
+                      {layoutScope === "cloud" ? "Cloud" : "Jen zařízení"}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={layoutScope === "cloud"}
+                      onChange={handleScopeToggle}
+                      className="h-4 w-4 accent-emerald-400"
+                    />
+                  </label>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-400">
+                  {layoutScope === "cloud"
+                    ? "Nastavení i rozložení se uloží do profilu a funguje na všech zařízeních."
+                    : "Nastavení zůstává jen v tomto prohlížeči (localStorage)."}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+          {visibleSections.map((sec) => {
+            const isDragging = draggingSection === sec;
+            const isHoverTarget = reorderEnabled && hoverSection === sec && !isDragging;
+
+            return (
+              <div key={sec} className={sectionSpan[sec] ?? ""}>
+                <div
+                  draggable={reorderEnabled}
+                  onDragStart={reorderEnabled ? () => handleSectionDragStart(sec) : undefined}
+                  onDragOver={
+                    reorderEnabled
+                      ? (e: DragEvent<HTMLDivElement>) => handleSectionDragOver(e, sec)
+                      : undefined
+                  }
+                  onDragEnd={reorderEnabled ? handleSectionDragEnd : undefined}
+                  onDrop={
+                    reorderEnabled
+                      ? (e: DragEvent<HTMLDivElement>) => {
+                          e.preventDefault();
+                          handleSectionDragEnd();
+                        }
+                      : undefined
+                  }
+                  className={`${reorderEnabled ? "relative cursor-grab active:cursor-grabbing" : ""} ${
+                    isDragging
+                      ? "ring-2 ring-emerald-300 ring-offset-2 ring-offset-slate-900/80 rounded-3xl"
+                      : ""
+                  } ${
+                    isHoverTarget
+                      ? "ring-2 ring-white/30 ring-offset-2 ring-offset-slate-900/80 rounded-3xl bg-white/5"
+                      : ""
+                  }`}
+                >
+                  {reorderEnabled && (
+                    <div className="pointer-events-none absolute right-3 top-3 z-10">
+                      <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/20 px-3 py-1 text-[11px] font-semibold text-emerald-50 shadow-sm">
+                        ⠿ Táhni pro přesun
+                      </span>
+                    </div>
                   )}
+                  {renderSection(sec)}
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })}
+        </div>
 
-          <PersonalProductionChart data={personalProductionSeries} />
-        </section>
 
-        {subPickerOpen && hasTeam && (
+        {showChartSection && subPickerOpen && hasTeam && (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
             <div
               className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"

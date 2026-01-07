@@ -116,6 +116,13 @@ body {
   animation-iteration-count: 1 !important;
   transition-duration: 0.001ms !important;
 }
+:root[data-motion="off"] .animate-split-fade {
+  animation: none !important;
+  animation-delay: 0ms !important;
+  opacity: 1 !important;
+  transform: none !important;
+  filter: none !important;
+}
 
 @media (prefers-reduced-motion: reduce) {
   :root {
@@ -125,6 +132,13 @@ body {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+  }
+  .animate-split-fade {
+    animation: none !important;
+    animation-delay: 0ms !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
   }
 }
 
@@ -236,6 +250,64 @@ body {
   body.simple-bg.simple-bg-white .border-white\/25,
   body.simple-bg.simple-bg-white .border-white\/30 {
     border-color: rgba(15, 23, 42, 0.16) !important;
+  }
+
+  /* Jednoduché černé pozadí – stáhni i panely do neutrální šedi místo modré */
+  body.simple-bg.simple-bg-black {
+    --surface-950-rgb: 6, 6, 8;
+    --surface-900-rgb: 10, 10, 12;
+    --surface-800-rgb: 18, 18, 20;
+  }
+
+  body.simple-bg.simple-bg-black .bg-slate-950\/95 {
+    background-color: rgba(var(--surface-950-rgb), 0.95) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-950\/90 {
+    background-color: rgba(var(--surface-950-rgb), 0.9) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-950\/80 {
+    background-color: rgba(var(--surface-950-rgb), 0.8) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-950\/70 {
+    background-color: rgba(var(--surface-950-rgb), 0.7) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-950\/65 {
+    background-color: rgba(var(--surface-950-rgb), 0.65) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-950\/60 {
+    background-color: rgba(var(--surface-950-rgb), 0.6) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-950\/55 {
+    background-color: rgba(var(--surface-950-rgb), 0.55) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-950\/50 {
+    background-color: rgba(var(--surface-950-rgb), 0.5) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-950\/40 {
+    background-color: rgba(var(--surface-950-rgb), 0.4) !important;
+  }
+
+  body.simple-bg.simple-bg-black .bg-slate-900\/95 {
+    background-color: rgba(var(--surface-900-rgb), 0.95) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-900\/90 {
+    background-color: rgba(var(--surface-900-rgb), 0.9) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-900\/80 {
+    background-color: rgba(var(--surface-900-rgb), 0.8) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-900\/75 {
+    background-color: rgba(var(--surface-900-rgb), 0.75) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-900\/70 {
+    background-color: rgba(var(--surface-900-rgb), 0.7) !important;
+  }
+  body.simple-bg.simple-bg-black .bg-slate-900\/60 {
+    background-color: rgba(var(--surface-900-rgb), 0.6) !important;
+  }
+
+  body.simple-bg.simple-bg-black .bg-slate-800\/80 {
+    background-color: rgba(var(--surface-800-rgb), 0.8) !important;
   }
 
   /* jemná mřížka přes celou stránku */

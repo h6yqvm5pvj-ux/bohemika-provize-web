@@ -13,7 +13,7 @@ import {
   type User as FirebaseUser,
 } from "firebase/auth";
 import type { Timestamp } from "firebase/firestore";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 
 type ActivePage =
   | "home"
@@ -79,11 +79,35 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     return () => unsub();
   }, []);
 
+  // Respektovat vypnutí animací hned po načtení (uloženo v localStorage)
+  useLayoutEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const applyMotionPreference = () => {
+      const stored = window.localStorage.getItem("settings.reduceMotion");
+      if (stored === "1") {
+        document.documentElement.setAttribute("data-motion", "off");
+      } else {
+        document.documentElement.removeAttribute("data-motion");
+      }
+    };
+
+    applyMotionPreference();
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key === "settings.reduceMotion") {
+        applyMotionPreference();
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   // Animated background nastavení z localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
     let mounted = true;
     const updateFromStorage = () => {
+      const isMobile = window.matchMedia?.("(max-width: 768px)").matches ?? false;
       const storedAnimated = window.localStorage.getItem(
         "settings.animatedBackground"
       );
@@ -93,12 +117,22 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       else setAnimatedBg(true);
 
       const storedSimple = window.localStorage.getItem("settings.simpleBackground");
-      setSimpleBg(storedSimple === "1");
+      if (storedSimple === null && isMobile) {
+        setSimpleBg(true);
+      } else {
+        setSimpleBg(storedSimple === "1");
+      }
 
       const storedColor = window.localStorage.getItem(
         "settings.backgroundColor"
       ) as "black" | "blue" | null;
-      setBackgroundColor(storedColor === "black" || storedColor === "blue" ? storedColor : null);
+      if (storedColor === null && isMobile) {
+        setBackgroundColor("black");
+      } else {
+        setBackgroundColor(
+          storedColor === "black" || storedColor === "blue" ? storedColor : null
+        );
+      }
       setBgReady(true);
     };
 
