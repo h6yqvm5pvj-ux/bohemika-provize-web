@@ -1,7 +1,7 @@
 // src/app/smlouvy/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 import { auth, db } from "../firebase";
@@ -17,6 +17,7 @@ import {
   getDoc,
   getDocs,
   orderBy,
+  limit,
   query,
   updateDoc,
   where,
@@ -283,15 +284,42 @@ function productMatchesFilters(
   );
 }
 
+const PAGE_SIZE = 10;
+
+function getContractDate(contract: ContractDoc | (ContractDoc & { adviserEmail?: string | null })): Date | null {
+  return (
+    toDate((contract as any).contractSignedDate) ??
+    toDate((contract as any).createdAt)
+  );
+}
+
+function getOldestContractDate(contracts: ContractDoc[]): Date | null {
+  if (contracts.length === 0) return null;
+  let oldest: Date | null = null;
+  for (const c of contracts) {
+    const d = getContractDate(c);
+    if (!d) continue;
+    if (!oldest || d.getTime() < oldest.getTime()) {
+      oldest = d;
+    }
+  }
+  return oldest;
+}
+
 type ContractsCache = {
   userEmail: string;
   position: Position | null;
   myContracts: ContractDoc[];
   teamContracts: (ContractDoc & { adviserEmail: string | null })[];
   savedAt: number;
+  myHasMore?: boolean;
+  teamHasMore?: boolean;
+  myCursorDate?: number | null;
+  teamCursorDate?: number | null;
+  teamEmails?: string[];
 };
 
-const CONTRACTS_CACHE_KEY = "contracts_cache_v1";
+const CONTRACTS_CACHE_KEY = "contracts_cache_v2";
 
 function readContractsCache(email: string | null | undefined): ContractsCache | null {
   if (!email || typeof window === "undefined") return null;
@@ -320,17 +348,22 @@ export default function ContractsPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [currentUserPosition, setCurrentUserPosition] =
     useState<Position | null>(null);
+  const teamUsersRef = useRef<AppUser[]>([]);
 
   const [myContracts, setMyContracts] = useState<ContractDoc[]>([]);
   const [teamContracts, setTeamContracts] = useState<
     (ContractDoc & { adviserEmail: string | null })[]
   >([]);
+  const [myHasMore, setMyHasMore] = useState(true);
+  const [teamHasMore, setTeamHasMore] = useState(true);
+  const [myCursorDate, setMyCursorDate] = useState<Date | null>(null);
+  const [teamCursorDate, setTeamCursorDate] = useState<Date | null>(null);
 
   const [showTeam, setShowTeam] = useState(false);
   const [filterMode, setFilterMode] = useState<FilterMode>("latest");
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(10);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -339,6 +372,102 @@ export default function ContractsPage() {
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<ProductCategory>>(new Set());
   const [selectedInstitutions, setSelectedInstitutions] = useState<Set<Institution>>(new Set());
+
+  const mergeContracts = <T extends { id: string }>(prev: T[], next: T[]): T[] => {
+    const seen = new Set(prev.map((c) => c.id));
+    const merged = [...prev];
+    for (const item of next) {
+      if (seen.has(item.id)) continue;
+      merged.push(item);
+    }
+    return merged;
+  };
+
+  const fetchMyPage = useCallback(
+    async (email: string, startBefore: Date | null, append: boolean) => {
+      if (!email) return { list: [] as ContractDoc[], oldest: null as Date | null, hasMore: false };
+      const entriesGroup = collectionGroup(db, "entries");
+      const constraints: any[] = [where("userEmail", "==", email), orderBy("contractSignedDate", "desc")];
+      if (startBefore) {
+        constraints.push(where("contractSignedDate", "<", startBefore));
+      }
+      constraints.push(limit(PAGE_SIZE));
+
+      const snap = await getDocs(query(entriesGroup, ...constraints));
+      const list: ContractDoc[] = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as any),
+      }));
+      const oldest = getOldestContractDate(list);
+      const hasMore = snap.size === PAGE_SIZE && oldest != null;
+
+      setMyContracts((prev) => (append ? mergeContracts(prev, list) : list));
+      setMyHasMore(hasMore);
+      setMyCursorDate(oldest);
+
+      return { list, oldest, hasMore };
+    },
+    []
+  );
+
+  const fetchTeamPage = useCallback(
+    async (startBefore: Date | null, append: boolean) => {
+      const teamEmails = teamUsersRef.current.map((u) => u.email).filter(Boolean);
+      if (teamEmails.length === 0) {
+        setTeamContracts([]);
+        setTeamHasMore(false);
+        setTeamCursorDate(null);
+        return { list: [] as (ContractDoc & { adviserEmail: string | null })[], oldest: null as Date | null, hasMore: false };
+      }
+
+      const entriesGroup = collectionGroup(db, "entries");
+      const collected: (ContractDoc & { adviserEmail: string | null })[] = [];
+      const seen = new Set<string>();
+
+      for (let i = 0; i < teamEmails.length && collected.length < PAGE_SIZE; i += 10) {
+        const chunk = teamEmails.slice(i, i + 10);
+        const remaining = PAGE_SIZE - collected.length;
+        if (remaining <= 0) break;
+        const constraints: any[] = [
+          where("userEmail", "in", chunk),
+        ];
+        if (startBefore) {
+          constraints.push(where("contractSignedDate", "<", startBefore));
+        }
+        constraints.push(orderBy("contractSignedDate", "desc"));
+        constraints.push(limit(remaining));
+
+        const snap = await getDocs(query(entriesGroup, ...constraints));
+        snap.docs.forEach((d) => {
+          if (collected.length >= PAGE_SIZE) return;
+          if (seen.has(d.id)) return;
+          seen.add(d.id);
+          const data = d.data() as any;
+          collected.push({
+            id: d.id,
+            ...(data as any),
+            adviserEmail: (data.userEmail as string | null | undefined) ?? null,
+          });
+        });
+      }
+
+      collected.sort((a, b) => {
+        const da = getContractDate(a) ?? new Date(0);
+        const db = getContractDate(b) ?? new Date(0);
+        return db.getTime() - da.getTime();
+      });
+
+      const oldest = getOldestContractDate(collected);
+      const hasMore = collected.length === PAGE_SIZE && oldest != null;
+
+      setTeamContracts((prev) => (append ? mergeContracts(prev, collected) : collected));
+      setTeamHasMore(hasMore);
+      setTeamCursorDate(oldest);
+
+      return { list: collected, oldest, hasMore };
+    },
+    []
+  );
 
   // auth
   useEffect(() => {
@@ -352,10 +481,13 @@ export default function ContractsPage() {
   useEffect(() => {
     const load = async () => {
       const email = (user?.email ?? "").toLowerCase();
-      const uid = user?.uid ?? null;
       if (!email) {
         setMyContracts([]);
         setTeamContracts([]);
+        setMyHasMore(false);
+        setTeamHasMore(false);
+        setMyCursorDate(null);
+        setTeamCursorDate(null);
         setLoading(false);
         return;
       }
@@ -365,6 +497,36 @@ export default function ContractsPage() {
         setMyContracts(cached.myContracts ?? []);
         setTeamContracts(cached.teamContracts ?? []);
         setCurrentUserPosition(cached.position ?? null);
+        setMyHasMore(cached.myHasMore ?? true);
+        setTeamHasMore(cached.teamHasMore ?? true);
+        setMyCursorDate(
+          cached.myCursorDate ? new Date(cached.myCursorDate) : null
+        );
+        setTeamCursorDate(
+          cached.teamCursorDate ? new Date(cached.teamCursorDate) : null
+        );
+        if (cached.teamEmails?.length) {
+          teamUsersRef.current = cached.teamEmails.map((em) => ({
+            id: em,
+            email: em,
+            position: null,
+            managerEmail: null,
+          }));
+        } else if ((cached.teamContracts?.length ?? 0) > 0) {
+          const uniq = Array.from(
+            new Set(
+              cached.teamContracts
+                .map((c) => (c.userEmail ?? c.adviserEmail ?? "").toLowerCase())
+                .filter(Boolean)
+            )
+          );
+          teamUsersRef.current = uniq.map((em) => ({
+            id: em,
+            email: em,
+            position: null,
+            managerEmail: null,
+          }));
+        }
         setLoading(false);
       } else {
         setLoading(true);
@@ -372,7 +534,8 @@ export default function ContractsPage() {
 
       try {
         // 1) info o uživateli (pozice)
-        const uRef = doc(db, "users", email);
+        const usersCol = collection(db, "users");
+        const uRef = doc(usersCol, email);
         const uSnap = await getDoc(uRef);
 
         let pos: Position | null = null;
@@ -382,22 +545,7 @@ export default function ContractsPage() {
         }
         setCurrentUserPosition(pos);
 
-        // 2) Moje smlouvy
-        const entriesGroup = collectionGroup(db, "entries");
-        const myQ = query(
-          entriesGroup,
-          where("userEmail", "==", email),
-          orderBy("createdAt", "desc")
-        );
-        const mySnap = await getDocs(myQ);
-        const myList: ContractDoc[] = mySnap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as any),
-        }));
-        setMyContracts(myList);
-
-        // 3) Podřízení – celý strom pod sebou (manažer může mít manažera pod sebou)
-        const usersCol = collection(db, "users");
+        // 2) Podřízení – celý strom pod sebou (manažer může mít manažera pod sebou)
         const visited = new Set<string>();
         const teamUsers: AppUser[] = [];
         const queue: string[] = [email];
@@ -421,54 +569,25 @@ export default function ContractsPage() {
             queue.push(em);
           });
         }
+        teamUsersRef.current = teamUsers;
 
-        if (teamUsers.length === 0) {
-          setTeamContracts([]);
-          setLoading(false);
-          return;
-        }
+        // 3) Moje smlouvy (první stránka)
+        const myRes = await fetchMyPage(email, null, false);
 
-        const teamEmails = teamUsers.map((u) => u.email).filter(Boolean);
-
-        const teamContractsAll: ContractDoc[] = [];
-
-        // Firestore "in" max 10 hodnot → po blocích
-        const chunkSize = 10;
-        for (let i = 0; i < teamEmails.length; i += chunkSize) {
-          const chunk = teamEmails.slice(i, i + chunkSize);
-          const teamQ = query(
-            entriesGroup,
-            where("userEmail", "in", chunk),
-            orderBy("createdAt", "desc")
-          );
-          const teamSnap = await getDocs(teamQ);
-          teamSnap.docs.forEach((d) => {
-            teamContractsAll.push({
-              id: d.id,
-              ...(d.data() as any),
-            });
-          });
-        }
-
-        // doplníme adviserEmail z users
-        const withEmails = teamContractsAll.map((c) => {
-          const adviser = teamUsers.find(
-            (u) => u.email === c.userEmail
-          );
-          return {
-            ...c,
-            adviserEmail: adviser?.email ?? c.userEmail ?? null,
-          };
-        });
-
-        setTeamContracts(withEmails);
+        // 4) Týmové smlouvy (první stránka)
+        const teamRes = await fetchTeamPage(null, false);
 
         writeContractsCache({
           userEmail: email,
           position: pos,
-          myContracts: myList,
-          teamContracts: withEmails,
+          myContracts: myRes.list,
+          teamContracts: teamRes.list,
           savedAt: Date.now(),
+          myHasMore: myRes.hasMore,
+          teamHasMore: teamRes.hasMore,
+          myCursorDate: myRes.oldest?.getTime() ?? null,
+          teamCursorDate: teamRes.oldest?.getTime() ?? null,
+          teamEmails: teamUsers.map((u) => u.email),
         });
       } catch (e) {
         console.error(e);
@@ -478,7 +597,7 @@ export default function ContractsPage() {
     };
 
     load();
-  }, [user]);
+  }, [user, fetchMyPage, fetchTeamPage]);
 
   const canShowTeamToggle = isManagerPosition(currentUserPosition);
 
@@ -487,14 +606,8 @@ export default function ContractsPage() {
       showTeam && canShowTeamToggle ? teamContracts : myContracts;
 
     return [...base].sort((a, b) => {
-      const da =
-        toDate((a as any).contractSignedDate) ??
-        toDate(a.createdAt) ??
-        new Date(0);
-      const db =
-        toDate((b as any).contractSignedDate) ??
-        toDate(b.createdAt) ??
-        new Date(0);
+      const da = getContractDate(a) ?? new Date(0);
+      const db = getContractDate(b) ?? new Date(0);
       return db.getTime() - da.getTime();
     });
   }, [showTeam, canShowTeamToggle, teamContracts, myContracts]);
@@ -546,11 +659,28 @@ export default function ContractsPage() {
     );
   }, [displayedContracts, searchText, filterMode, selectedCategories, selectedInstitutions]);
 
+  const handleLoadMore = async () => {
+    if (loadingMore) return;
+    const email = (user?.email ?? "").toLowerCase();
+    if (!email) return;
+    setLoadingMore(true);
+    try {
+      if (showTeam && canShowTeamToggle) {
+        if (!teamHasMore) return;
+        await fetchTeamPage(teamCursorDate, true);
+      } else {
+        if (!myHasMore) return;
+        await fetchMyPage(email, myCursorDate, true);
+      }
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   useEffect(() => {
-    setVisibleCount(10);
     setSelectedKeys(new Set());
     setSelectMode(false);
-  }, [filterMode, searchText, showTeam, displayedContracts.length]);
+  }, [filterMode, searchText, showTeam]);
 
   const hasTeamContracts =
     teamContracts.length > 0 && canShowTeamToggle;
@@ -835,7 +965,7 @@ export default function ContractsPage() {
               </div>
             )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {filteredContracts.slice(0, visibleCount).map((c: any) => {
+              {filteredContracts.map((c: any) => {
                 const signed =
                   toDate((c as any).contractSignedDate) ??
                   toDate(c.createdAt);
@@ -988,14 +1118,15 @@ export default function ContractsPage() {
               })}
             </div>
 
-            {filteredContracts.length > visibleCount && (
+            {(showTeam && canShowTeamToggle ? teamHasMore : myHasMore) && !loading && (
               <div className="flex justify-center">
                 <button
                   type="button"
-                  onClick={() => setVisibleCount((c) => c + 10)}
-                  className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm text-slate-50 hover:bg-white/10 transition shadow-[0_10px_30px_rgba(0,0,0,0.6)]"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm text-slate-50 hover:bg-white/10 transition shadow-[0_10px_30px_rgba(0,0,0,0.6)] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Načíst dalších 10
+                  {loadingMore ? "Načítám…" : "Načíst dalších 10"}
                 </button>
               </div>
             )}

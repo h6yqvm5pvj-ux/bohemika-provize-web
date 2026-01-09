@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
@@ -74,6 +74,18 @@ function toDate(value: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+type TeamCachePayload = {
+  members: Member[];
+  lastActive: Record<string, number | null>;
+  contractCounts: Record<string, { total: number; month: number }>;
+  contractsLoaded: boolean;
+  contractsError: boolean;
+  userPosition: Position | null;
+};
+
+const TEAM_CACHE_TTL_MS = 5 * 60 * 1000;
+const teamDataCache: Record<string, { ts: number; payload: TeamCachePayload }> = {};
+
 export default function TeamPage() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -86,6 +98,18 @@ export default function TeamPage() {
   const [contractsLoaded, setContractsLoaded] = useState(false);
   const [contractsError, setContractsError] = useState(false);
   const [userPosition, setUserPosition] = useState<Position | null>(null);
+  const usedCacheRef = useRef(false);
+
+  const cacheKey = useMemo(() => (userEmail ? `team:${userEmail}` : null), [userEmail]);
+
+  const applyCachedTeamState = (payload: TeamCachePayload) => {
+    setMembers(payload.members);
+    setLastActive(payload.lastActive);
+    setContractCounts(payload.contractCounts);
+    setContractsLoaded(payload.contractsLoaded);
+    setContractsError(payload.contractsError);
+    setUserPosition(payload.userPosition);
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -108,13 +132,28 @@ export default function TeamPage() {
         setLoading(false);
         return;
       }
+
+      let pos: Position | null = null;
+      let lastActiveMap: Record<string, number | null> = {};
+      let all: Member[] = [];
+
+      if (cacheKey) {
+        const cached = teamDataCache[cacheKey];
+        if (cached && Date.now() - cached.ts < TEAM_CACHE_TTL_MS) {
+          applyCachedTeamState(cached.payload);
+          setLoading(false);
+          usedCacheRef.current = true;
+          return;
+        }
+      }
+
       setLoading(true);
       try {
         const usersCol = collection(db, "users");
         // načtení vlastní pozice
         try {
           const meSnap = await getDoc(doc(usersCol, userEmail));
-          const pos = meSnap.exists() ? ((meSnap.data() as any).position as Position | undefined) ?? null : null;
+          pos = meSnap.exists() ? ((meSnap.data() as any).position as Position | undefined) ?? null : null;
           setUserPosition(pos);
         } catch (err) {
           console.error("Chyba při načítání pozice uživatele", err);
@@ -122,7 +161,7 @@ export default function TeamPage() {
         }
         const queue = [userEmail];
         const visited = new Set<string>();
-        const all: Member[] = [];
+        all = [];
 
         while (queue.length > 0) {
           const mgr = queue.shift()!;
@@ -172,12 +211,27 @@ export default function TeamPage() {
             }
           })
         );
-        setLastActive(Object.fromEntries(entries));
+        lastActiveMap = Object.fromEntries(entries);
+        setLastActive(lastActiveMap);
       } catch (e) {
         console.error("Chyba při načítání týmu", e);
         setMembers([]);
       } finally {
         setLoading(false);
+
+        if (cacheKey) {
+          teamDataCache[cacheKey] = {
+            ts: Date.now(),
+            payload: {
+              members: all,
+              lastActive: lastActiveMap,
+              contractCounts,
+              contractsLoaded,
+              contractsError,
+              userPosition: pos,
+            },
+          };
+        }
       }
     };
 
@@ -187,6 +241,14 @@ export default function TeamPage() {
 
   useEffect(() => {
     const loadContractCounts = async () => {
+      if (cacheKey) {
+        const cached = teamDataCache[cacheKey];
+        if (cached && Date.now() - cached.ts < TEAM_CACHE_TTL_MS && cached.payload.contractsLoaded) {
+          applyCachedTeamState(cached.payload);
+          return;
+        }
+      }
+
       if (members.length === 0) {
         setContractCounts({});
         setContractsLoaded(true);
@@ -195,12 +257,12 @@ export default function TeamPage() {
       }
       setContractsLoaded(false);
       setContractsError(false);
+      let stats: Record<string, { total: number; month: number }> = {};
       try {
         const emails = Array.from(new Set(members.map((m) => m.email.toLowerCase()))); // dedupe
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
         const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
-        const stats: Record<string, { total: number; month: number }> = {};
         const entries = collectionGroup(db, "entries");
         const chunkSize = 10;
 
@@ -229,11 +291,27 @@ export default function TeamPage() {
         setContractsError(true);
       } finally {
         setContractsLoaded(true);
+
+        if (cacheKey) {
+          teamDataCache[cacheKey] = {
+            ts: Date.now(),
+            payload: {
+              members,
+              lastActive,
+              contractCounts: stats ?? {},
+              contractsLoaded: true,
+              contractsError,
+              userPosition,
+            },
+          };
+        }
       }
     };
 
+    if (usedCacheRef.current && contractsLoaded) return;
+
     void loadContractCounts();
-  }, [members]);
+  }, [members, cacheKey, lastActive, userPosition, contractsLoaded, contractsError]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();

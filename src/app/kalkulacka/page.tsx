@@ -429,6 +429,7 @@ export default function CalculatorPage() {
 
   const [clientName, setClientName] = useState<string>("");
   const [clientSuggestions, setClientSuggestions] = useState<string[]>([]);
+  const [clientSuggestionsOpen, setClientSuggestionsOpen] = useState(false);
   const [contractSignedDate, setContractSignedDate] = useState<string>("");
   const [policyStartDate, setPolicyStartDate] = useState<string>("");
   const [contractNumber, setContractNumber] = useState<string>("");
@@ -441,6 +442,13 @@ export default function CalculatorPage() {
 
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [missingFields, setMissingFields] = useState<string[]>([]);
+  const [duplicateModal, setDuplicateModal] = useState<{
+    contractNumber: string;
+    count: number;
+    entries: { id: string; path: string }[];
+  } | null>(null);
 
   const paymentBasedTotalsMemo = useMemo(() => {
     if ((product !== "domex" && product !== "maxdomov") || items.length === 0) return null;
@@ -685,6 +693,21 @@ export default function CalculatorPage() {
     }
   }, [product]);
 
+  useEffect(() => {
+    // pokud uživatel začal doplňovat chybějící pole, postupně čistíme chyby
+    setMissingFields((prev) =>
+      prev.filter((key) => {
+        if (key === "částku") return parseNumber(amountText) <= 0;
+        if (key === "jméno klienta") return !clientName.trim();
+        if (key === "číslo smlouvy") return !contractNumber.trim();
+        if (key === "datum sjednání") return !contractSignedDate.trim();
+        if (key === "datum počátku") return !policyStartDate.trim();
+        if (key === "pravidelnou platbu") return product === "comfortcc" && comfortGradual && parseNumber(comfortPaymentText) <= 0;
+        return true;
+      })
+    );
+  }, [amountText, clientName, contractNumber, contractSignedDate, policyStartDate, comfortPaymentText, product, comfortGradual]);
+
   const recalc = () => {
     const val = parseNumber(amountText);
     const comfortPayment = parseNumber(comfortPaymentText);
@@ -879,22 +902,70 @@ export default function CalculatorPage() {
     }
   }, [product]);
 
-  const handleSaveContract = async () => {
+  const handleSaveContract = async (skipDuplicateCheck = false) => {
     if (!user) return;
 
     const value = parseNumber(amountText);
     const comfortPayment = parseNumber(comfortPaymentText);
-    if (value <= 0 || items.length === 0) return;
+    const missing: string[] = [];
+    if (value <= 0) missing.push("částku");
+    if (!clientName.trim()) missing.push("jméno klienta");
+    if (!contractNumber.trim()) missing.push("číslo smlouvy");
+    if (!contractSignedDate.trim()) missing.push("datum sjednání");
+    if (!policyStartDate.trim()) missing.push("datum počátku");
+    if (product === "comfortcc" && comfortGradual && comfortPayment <= 0) {
+      missing.push("pravidelnou platbu");
+    }
+
+    if (missing.length > 0 || items.length === 0) {
+      const msg =
+        items.length === 0 && missing.length === 0
+          ? "Doplň částku a produkt, aby šlo uložit."
+          : `Doplň: ${missing.join(", ")}.`;
+      setSaveMessage(msg);
+      setValidationError(msg);
+      setMissingFields(missing);
+      return;
+    }
+
+    const email = (user.email ?? "").toLowerCase();
+    const uid = user.uid ?? null;
+    const userRef = doc(db, "users", email);
+    const entriesRef = collection(userRef, "entries");
+
+    // kontrola duplicitního čísla smlouvy
+    const trimmedContractNumber = contractNumber.trim();
+    if (!skipDuplicateCheck) {
+      try {
+        if (trimmedContractNumber) {
+          const dupSnap = await getDocs(
+            query(entriesRef, where("contractNumber", "==", trimmedContractNumber))
+          );
+          if (!dupSnap.empty) {
+            const entries = dupSnap.docs.map((d) => ({
+              id: d.id,
+              path: d.ref.path,
+            }));
+            setDuplicateModal({
+              contractNumber: trimmedContractNumber,
+              count: dupSnap.size,
+              entries,
+            });
+            setSaving(false);
+            return;
+          }
+        }
+      } catch (dupErr) {
+        console.error("Kontrola duplicitních smluv selhala", dupErr);
+      }
+    }
 
     setSaving(true);
     setSaveMessage(null);
+    setValidationError(null);
+    setMissingFields([]);
 
     try {
-      const email = (user.email ?? "").toLowerCase();
-      const uid = user.uid ?? null;
-      const userRef = doc(db, "users", email);
-      const entriesRef = collection(userRef, "entries");
-
       const signed =
         contractSignedDate.trim().length > 0
           ? new Date(contractSignedDate)
@@ -1002,18 +1073,6 @@ export default function CalculatorPage() {
       overridesForChain = diffs;
 
       setManagerOverridesSnapshot(overridesForChain);
-
-      const trimmedOriginal = originalContractNumber.trim();
-      if (trimmedOriginal) {
-        try {
-          const toDelete = await getDocs(
-            query(entriesRef, where("contractNumber", "==", trimmedOriginal))
-          );
-          await Promise.all(toDelete.docs.map((d) => deleteDoc(d.ref)));
-        } catch (delErr) {
-          console.error("Failed to delete original contract", delErr);
-        }
-      }
 
       await addDoc(entriesRef, {
         productKey: product,
@@ -1175,6 +1234,90 @@ export default function CalculatorPage() {
 
   return (
     <AppLayout active="calc">
+      {validationError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setValidationError(null)}
+          />
+          <div className="relative w-full max-w-sm rounded-2xl border border-emerald-400/40 bg-slate-900/95 shadow-[0_20px_70px_rgba(0,0,0,0.8)] p-5 space-y-4">
+            <div className="text-sm text-emerald-50">
+              {validationError}
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setValidationError(null)}
+                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/30 hover:bg-emerald-400 transition"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {duplicateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setDuplicateModal(null)}
+          />
+          <div className="relative w-full max-w-md rounded-2xl border border-emerald-400/40 bg-slate-900/95 shadow-[0_20px_70px_rgba(0,0,0,0.8)] p-5 space-y-4">
+            <div className="text-sm text-emerald-50 space-y-2">
+              <p>
+                Smlouva s číslem <strong>{duplicateModal.contractNumber}</strong> už existuje ({duplicateModal.count}×).
+              </p>
+              <p>Chceš ji přepsat, nebo uložit jako novou?</p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDuplicateModal(null)}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-100 hover:bg-white/10 transition"
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!user || !duplicateModal) return;
+                  setDuplicateModal(null);
+                  try {
+                    const email = (user.email ?? "").toLowerCase();
+                    const userRef = doc(db, "users", email);
+                    const entriesRef = collection(userRef, "entries");
+                    // smaž existující s tímto číslem
+                    const dupSnap = await getDocs(
+                      query(entriesRef, where("contractNumber", "==", duplicateModal.contractNumber))
+                    );
+                    await Promise.all(dupSnap.docs.map((d) => deleteDoc(d.ref)));
+                    // ulož znovu bez další kontroly duplicit
+                    await handleSaveContract(true);
+                  } catch (err) {
+                    console.error("Přepsání smlouvy selhalo", err);
+                    setSaveMessage("Přepsání smlouvy se nepodařilo. Zkus to znovu.");
+                    setSaving(false);
+                  }
+                }}
+                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/30 hover:bg-emerald-400 transition"
+              >
+                Přepsat
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setDuplicateModal(null);
+                  await handleSaveContract(true);
+                }}
+                className="rounded-full border border-emerald-400/50 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/15 transition"
+              >
+                Uložit novou
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* vnější glassy box je pryč – jen čistý container */}
       <div className="w-full max-w-6xl space-y-6">
         {/* Header */}
@@ -1391,7 +1534,9 @@ export default function CalculatorPage() {
                 </label>
                 <input
                   type="number"
-                  className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  className={`w-full rounded-xl border bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 ${
+                    missingFields.includes("částku") ? "border-rose-400/70" : "border-white/15"
+                  }`}
                   value={amountText}
                   onChange={(e) => setAmountText(e.target.value)}
                   placeholder={
@@ -1429,67 +1574,84 @@ export default function CalculatorPage() {
               <div className="relative">
                 <input
                   type="text"
-                  className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  className={`w-full rounded-xl border bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 ${
+                    missingFields.includes("jméno klienta") ? "border-rose-400/70" : "border-white/15"
+                  }`}
                   value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
+                  onChange={(e) => {
+                    setClientName(e.target.value);
+                    setClientSuggestionsOpen(true);
+                  }}
                   placeholder="Např. Jan Novák"
                   autoComplete="off"
+                  onFocus={() => setClientSuggestionsOpen(true)}
+                  onBlur={() => setTimeout(() => setClientSuggestionsOpen(false), 100)}
                 />
-                {filteredClientSuggestions.length > 0 && (
+                {filteredClientSuggestions.length > 0 && clientSuggestionsOpen && (
                   <div className="absolute z-30 mt-1 w-full rounded-xl border border-white/15 bg-slate-900/95 backdrop-blur-2xl shadow-[0_14px_40px_rgba(0,0,0,0.7)] overflow-hidden">
                     {filteredClientSuggestions.map((name) => (
                       <button
                         key={name}
                         type="button"
-                        onClick={() => setClientName(name)}
+                        onClick={() => {
+                          setClientName(name);
+                          setMissingFields((prev) => prev.filter((k) => k !== "jméno klienta"));
+                          setClientSuggestionsOpen(false);
+                        }}
                         className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-100 hover:bg-white/10"
                       >
                         <span>{name}</span>
                         <span className="text-xs text-slate-400">vložit</span>
                       </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                        ))}
+                      </div>
+                    )}
+                </div>
             </div>
 
                 <div className="space-y-1">
-                  <label className="block text-sm font-medium">
-                    Datum sjednání smlouvy
-                  </label>
-                  <input
-                    type="date"
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 [color-scheme:dark]"
-                    value={contractSignedDate}
-                    onChange={(e) => setContractSignedDate(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium">
-                    Číslo smlouvy
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                    value={contractNumber}
-                    onChange={(e) => setContractNumber(e.target.value)}
-                    placeholder="Např. 7503027088"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium">
-                    Datum počátku smlouvy
-                  </label>
-                  <input
-                    type="date"
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 [color-scheme:dark]"
-                    value={policyStartDate}
-                    onChange={(e) => setPolicyStartDate(e.target.value)}
-                  />
-                </div>
+                <label className="block text-sm font-medium">
+                  Datum sjednání smlouvy
+                </label>
+                <input
+                  type="date"
+                  className={`w-full rounded-xl border bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 [color-scheme:dark] ${
+                    missingFields.includes("datum sjednání") ? "border-rose-400/70" : "border-white/15"
+                  }`}
+                  value={contractSignedDate}
+                  onChange={(e) => setContractSignedDate(e.target.value)}
+                />
               </div>
+
+              <div className="space-y-1">
+                <label className="block text-sm font-medium">
+                  Číslo smlouvy
+                </label>
+                <input
+                  type="text"
+                  className={`w-full rounded-xl border bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 ${
+                    missingFields.includes("číslo smlouvy") ? "border-rose-400/70" : "border-white/15"
+                  }`}
+                  value={contractNumber}
+                  onChange={(e) => setContractNumber(e.target.value)}
+                  placeholder="Např. 7503027088"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-sm font-medium">
+                  Datum počátku smlouvy
+                </label>
+                <input
+                  type="date"
+                  className={`w-full rounded-xl border bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 [color-scheme:dark] ${
+                    missingFields.includes("datum počátku") ? "border-rose-400/70" : "border-white/15"
+                  }`}
+                  value={policyStartDate}
+                  onChange={(e) => setPolicyStartDate(e.target.value)}
+                />
+              </div>
+            </div>
             </section>
 
             {/* Pozice a režim pro tuto smlouvu */}

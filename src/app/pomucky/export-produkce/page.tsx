@@ -70,7 +70,7 @@ type DateRangeOption =
 
 type ScopeOption = "own" | "team" | "selected";
 
-type ProductCategory = "life" | "nonlife" | "auto" | "property";
+type ProductCategory = "life" | "nonlife" | "auto" | "property" | "gold";
 
 type EntryDoc = {
   id: string;
@@ -98,6 +98,8 @@ type AggregatedStats = {
   autoContracts: number;
   propertyAnnual: number;
   propertyContracts: number;
+  goldTotal: number;
+  goldContracts: number;
 };
 
 type PerUserStats = AggregatedStats & {
@@ -138,6 +140,7 @@ function productCategory(p: Product): ProductCategory {
   if (LIFE_PRODUCTS.includes(p)) return "life";
   if (AUTO_PRODUCTS.includes(p)) return "auto";
   if (PROPERTY_PRODUCTS.includes(p)) return "property";
+  if (p === "comfortcc") return "gold";
   return "nonlife";
 }
 
@@ -215,6 +218,8 @@ function emptyStats(): AggregatedStats {
     autoContracts: 0,
     propertyAnnual: 0,
     propertyContracts: 0,
+    goldTotal: 0,
+    goldContracts: 0,
   };
 }
 
@@ -385,7 +390,7 @@ export default function ExportProductionPage() {
     useState<DateRangeOption>("last3");
   const [scopeOption, setScopeOption] = useState<ScopeOption>("own");
   const [categories, setCategories] = useState<Set<ProductCategory>>(
-    () => new Set<ProductCategory>(["life", "nonlife", "auto", "property"])
+    () => new Set<ProductCategory>(["life", "nonlife", "auto", "property", "gold"])
   );
 
   const [currentUserPosition, setCurrentUserPosition] =
@@ -618,8 +623,6 @@ export default function ExportProductionPage() {
 
       const p = entry.productKey;
       if (!p) continue;
-      // Comfort Commodity se do PDF neexportuje
-      if ((p as any) === "comfortcc") continue;
 
       // filtr podle zvolených kategorií
       const cat = productCategory(p);
@@ -634,11 +637,14 @@ export default function ExportProductionPage() {
       const isLife = LIFE_PRODUCTS.includes(p);
       const isAuto = AUTO_PRODUCTS.includes(p);
       const isProperty = PROPERTY_PRODUCTS.includes(p);
-      const isNonLife = !isLife;
+      const isGold = p === "comfortcc";
+      const isNonLife = !isLife && !isGold;
 
-      const annualForProduct = isLife
-        ? amount * 12
-        : toAnnualPremium(amount, entry.frequencyRaw);
+      const annualForProduct = isGold
+        ? amount
+        : isLife
+          ? amount * 12
+          : toAnnualPremium(amount, entry.frequencyRaw);
       const prevProd = perProduct.get(p) ?? { annual: 0, contracts: 0 };
       perProduct.set(p, {
         annual: prevProd.annual + annualForProduct,
@@ -679,6 +685,9 @@ export default function ExportProductionPage() {
       if (isLife) {
         stats.lifeMonthly += amount;
         stats.lifeContracts += 1;
+      } else if (isGold) {
+        stats.goldTotal += amount;
+        stats.goldContracts += 1;
       } else if (isNonLife) {
         const annual = toAnnualPremium(amount, entry.frequencyRaw);
         stats.nonLifeAnnual += annual;
@@ -712,6 +721,8 @@ export default function ExportProductionPage() {
       summary.autoContracts += stats.autoContracts;
       summary.propertyAnnual += stats.propertyAnnual;
       summary.propertyContracts += stats.propertyContracts;
+      summary.goldTotal += stats.goldTotal;
+      summary.goldContracts += stats.goldContracts;
     }
 
     // hezký HTML layout (glassy cards)
@@ -735,6 +746,7 @@ export default function ExportProductionPage() {
     const includeNonLife = cats.has("nonlife");
     const includeAuto = cats.has("auto");
     const includeProperty = cats.has("property");
+    const includeGold = cats.has("gold");
 
     const perUserList = Array.from(perUser.values()).sort((a, b) =>
       a.name.localeCompare(b.name, "cs")
@@ -851,6 +863,22 @@ export default function ExportProductionPage() {
       `);
     }
 
+    if (includeGold && (summary.goldContracts > 0 || summary.goldTotal > 0)) {
+      summarySections.push(`
+        <div class="card">
+          <div class="card-title">Zlato (Comfort Commodity)</div>
+          <div class="card-row">
+            <span>Objem (poplatek)</span>
+            <span>${formatMoney(summary.goldTotal)}</span>
+          </div>
+          <div class="card-row subtle">
+            <span>Počet smluv</span>
+            <span>${summary.goldContracts}</span>
+          </div>
+        </div>
+      `);
+    }
+
     const teamCards: string[] = [];
 
     if (isTeamScope) {
@@ -929,6 +957,22 @@ export default function ExportProductionPage() {
               <div class="card-row subtle">
                 <span>Počet smluv</span>
                 <span>${stats.propertyContracts}</span>
+              </div>
+            </div>
+          `);
+        }
+
+        if (includeGold && (stats.goldContracts > 0 || stats.goldTotal > 0)) {
+          userSections.push(`
+            <div class="card-inner">
+              <div class="card-subtitle">Zlato (Comfort Commodity)</div>
+              <div class="card-row">
+                <span>Objem (poplatek)</span>
+                <span>${formatMoney(stats.goldTotal)}</span>
+              </div>
+              <div class="card-row subtle">
+                <span>Počet smluv</span>
+                <span>${stats.goldContracts}</span>
               </div>
             </div>
           `);
@@ -1677,6 +1721,7 @@ export default function ExportProductionPage() {
                     "nonlife",
                     "auto",
                     "property",
+                    "gold",
                   ])
                 )
               }
@@ -1704,6 +1749,11 @@ export default function ExportProductionPage() {
               label="Majetek"
               active={categories.has("property")}
               onClick={() => handleToggleCategory("property")}
+            />
+            <CheckboxChip
+              label="Zlato"
+              active={categories.has("gold")}
+              onClick={() => handleToggleCategory("gold")}
             />
           </div>
         </section>

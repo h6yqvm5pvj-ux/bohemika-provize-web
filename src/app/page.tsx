@@ -393,6 +393,20 @@ type HomeSection = "gold" | "summary" | "goal" | "leaderboard" | "chart";
 type LayoutScope = "cloud" | "device";
 type PerformanceMode = "default" | "lite";
 
+type HomeCachePayload = {
+  userMeta: UserMeta | null;
+  myEntries: EntryDoc[];
+  teamEntries: EntryDoc[];
+  hasTeam: boolean;
+  myContractsCount: number;
+  myImmediateSum: number;
+  teamContractsCount: number;
+  teamImmediateSum: number;
+};
+
+const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
+const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> = {};
+
 const HOME_WIDGETS_DEFAULT: HomeWidgets = {
   productionSummary: true,
   monthlyGoal: true,
@@ -775,6 +789,17 @@ export default function HomePage() {
     monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
   const year = now.getFullYear();
 
+  const applyCachedHomeState = (payload: HomeCachePayload) => {
+    setUserMeta(payload.userMeta);
+    setMyEntries(payload.myEntries);
+    setTeamEntries(payload.teamEntries);
+    setHasTeam(payload.hasTeam);
+    setMyContractsCount(payload.myContractsCount);
+    setMyImmediateSum(payload.myImmediateSum);
+    setTeamContractsCount(payload.teamContractsCount);
+    setTeamImmediateSum(payload.teamImmediateSum);
+  };
+
   // auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
@@ -963,8 +988,6 @@ export default function HomePage() {
     if (!normalizedEmail) return;
 
     const load = async () => {
-      setLoading(true);
-
       try {
         const email = normalizedEmail;
         const usersRef = collection(db, "users");
@@ -973,6 +996,27 @@ export default function HomePage() {
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
+        const monthStart = new Date(currentYear, currentMonth, 1);
+        const nextMonthStart = new Date(currentYear, currentMonth + 1, 1);
+        const personalRangeStart = needPersonalHistory
+          ? new Date(currentYear, currentMonth - 11, 1)
+          : monthStart;
+        const personalRangeEnd = nextMonthStart;
+        const needTeamHistory = homeWidgets.productionChart || homeWidgets.teamLeaderboard;
+        const teamRangeStart = needTeamHistory
+          ? new Date(currentYear, currentMonth - 11, 1)
+          : monthStart;
+        const teamRangeEnd = nextMonthStart;
+
+        const cacheKey = `${email}|${currentYear}-${currentMonth}|${needPersonalHistory ? "hist" : "nohist"}|${needTeamHistory ? "teamhist" : "noteamhist"}`;
+        const cached = homeDataCache[cacheKey];
+        if (cached && Date.now() - cached.ts < HOME_CACHE_TTL_MS) {
+          applyCachedHomeState(cached.payload);
+          setLoading(false);
+          return;
+        }
+
+        setLoading(true);
 
         // 1) meta o uživateli
         const meSnap = await getDoc(doc(usersRef, email));
@@ -999,10 +1043,7 @@ export default function HomePage() {
         const myEntriesList: EntryDoc[] = [];
         const seenPersonal = new Set<string>();
 
-        const myGroupSnap = await getDocs(
-          query(collectionGroup(db, "entries"), where("userEmail", "==", email))
-        );
-        myGroupSnap.forEach((docSnap) => {
+        const collectPersonalEntry = (docSnap: any) => {
           const key = docSnap.id;
           if (seenPersonal.has(key)) return;
           seenPersonal.add(key);
@@ -1011,20 +1052,50 @@ export default function HomePage() {
             ...data,
             id: docSnap.id,
           });
-        });
+        };
+
+        const personalQueryBase = query(
+          collectionGroup(db, "entries"),
+          where("userEmail", "==", email)
+        );
+
+        const myGroupContractSnap = await getDocs(
+          query(
+            personalQueryBase,
+            where("contractSignedDate", ">=", personalRangeStart),
+            where("contractSignedDate", "<", personalRangeEnd)
+          )
+        );
+        myGroupContractSnap.forEach(collectPersonalEntry);
+
+        const myGroupCreatedSnap = await getDocs(
+          query(
+            personalQueryBase,
+            where("createdAt", ">=", personalRangeStart),
+            where("createdAt", "<", personalRangeEnd)
+          )
+        );
+        myGroupCreatedSnap.forEach(collectPersonalEntry);
 
         // fallback: entries pod cestou /users/<email>/entries (pro starší záznamy bez userEmail)
-        const myPathSnap = await getDocs(collection(db, "users", email, "entries"));
-        myPathSnap.forEach((docSnap) => {
-          const key = docSnap.id;
-          if (seenPersonal.has(key)) return;
-          seenPersonal.add(key);
-          const data = docSnap.data() as any as EntryDoc;
-          myEntriesList.push({
-            ...data,
-            id: docSnap.id,
-          });
-        });
+        const personalEntriesRef = collection(db, "users", email, "entries");
+        const myPathContractSnap = await getDocs(
+          query(
+            personalEntriesRef,
+            where("contractSignedDate", ">=", personalRangeStart),
+            where("contractSignedDate", "<", personalRangeEnd)
+          )
+        );
+        myPathContractSnap.forEach(collectPersonalEntry);
+
+        const myPathCreatedSnap = await getDocs(
+          query(
+            personalEntriesRef,
+            where("createdAt", ">=", personalRangeStart),
+            where("createdAt", "<", personalRangeEnd)
+          )
+        );
+        myPathCreatedSnap.forEach(collectPersonalEntry);
 
         let myCount = 0;
         let myImmediate = 0;
@@ -1108,12 +1179,75 @@ export default function HomePage() {
           return;
         }
 
-        const needTeamHistory = homeWidgets.productionChart || homeWidgets.teamLeaderboard;
-
         let teamCount = 0;
         let teamImmediate = 0;
         const teamEntriesAll: EntryDoc[] = [];
         const seenTeam = new Set<string>();
+
+        const collectTeamEntry = (docSnap: any, ownerEmailRaw: string) => {
+          const data = docSnap.data() as any as EntryDoc;
+          const ownerEmail = (ownerEmailRaw ?? "").toLowerCase();
+          if (!ownerEmail) return;
+          const key = `${ownerEmail}___${docSnap.id}`;
+          if (seenTeam.has(key)) return;
+          seenTeam.add(key);
+
+          const signed = entrySignedDate(data);
+          if (!signed) return;
+          if (signed < teamRangeStart || signed >= teamRangeEnd) return;
+
+          if (needTeamHistory) {
+            teamEntriesAll.push({
+              ...(data as any),
+              id: docSnap.id,
+            } as EntryDoc);
+          }
+
+          const isCurrentMonth =
+            signed >= monthStart && signed < nextMonthStart;
+          if (!isCurrentMonth) return;
+
+          teamCount += 1;
+
+          const items = (data.items ?? []) as CommissionResultItemDTO[];
+          const immediate = items.find((it) =>
+            (it.title ?? "").toLowerCase().includes("okamžitá provize")
+          );
+          const baseImmediate = immediate?.amount ?? 0;
+
+          const mgrPos = position;
+          const subPos =
+            subPositionMap.get(ownerEmail) ??
+            (data.position as Position | undefined) ??
+            null;
+          const ownerManagerEmail = managerOf.get(ownerEmail) ?? null;
+          const ownerManagerPos = ownerManagerEmail
+            ? subPositionMap.get(ownerManagerEmail) ?? null
+            : null;
+          const comparePos = ownerManagerPos ?? subPos;
+          if (mgrPos && subPos) {
+            const mgrImmediate =
+              commissionItemsForPosition(
+                data,
+                mgrPos,
+                managerMode
+              ).find((i) =>
+                (i.title ?? "").toLowerCase().includes("okamžitá")
+              )?.amount ?? baseImmediate;
+            const subImmediate =
+              commissionItemsForPosition(
+                data,
+                comparePos ?? subPos,
+                managerMode
+              ).find((i) =>
+                (i.title ?? "").toLowerCase().includes("okamžitá")
+              )?.amount ?? baseImmediate;
+            const diff = Math.max(0, mgrImmediate - subImmediate);
+            teamImmediate += diff;
+          } else {
+            teamImmediate += baseImmediate;
+          }
+        };
 
         const chunks: string[][] = [];
         for (let i = 0; i < subEmails.length; i += 10) {
@@ -1121,152 +1255,82 @@ export default function HomePage() {
         }
 
         for (const chunk of chunks) {
-          const teamQ = query(
+          const chunkBase = query(
             collectionGroup(db, "entries"),
             where("userEmail", "in", chunk)
           );
 
-          const teamSnap = await getDocs(teamQ);
-
-          teamSnap.forEach((docSnap) => {
+          const teamContractSnap = await getDocs(
+            query(
+              chunkBase,
+              where("contractSignedDate", ">=", teamRangeStart),
+              where("contractSignedDate", "<", teamRangeEnd)
+            )
+          );
+          teamContractSnap.forEach((docSnap) => {
             const data = docSnap.data() as any as EntryDoc;
             const ownerEmail = (data.userEmail ?? "").toLowerCase();
-            const key = `${ownerEmail}___${docSnap.id}`;
-            if (seenTeam.has(key)) return;
-            seenTeam.add(key);
+            collectTeamEntry(docSnap, ownerEmail);
+          });
 
-            // pro leaderboard ukládáme všechny záznamy
-            if (needTeamHistory) {
-              teamEntriesAll.push({
-                ...(data as any),
-                id: docSnap.id,
-              } as EntryDoc);
-            }
-
-            // pro horní "Týmovou produkci" počítáme jen aktuální měsíc
-            const signed = entrySignedDate(data);
-            if (!signed) return;
-            if (
-              signed.getFullYear() !== currentYear ||
-              signed.getMonth() !== currentMonth
-            ) {
-              return;
-            }
-
-            teamCount += 1;
-
-            const items = (data.items ?? []) as CommissionResultItemDTO[];
-            const immediate = items.find((it) =>
-              (it.title ?? "").toLowerCase().includes("okamžitá provize")
-            );
-            const baseImmediate = immediate?.amount ?? 0;
-
-            const mgrPos = position;
-            const subPos =
-              subPositionMap.get(ownerEmail) ??
-              (data.position as Position | undefined) ??
-              null;
-            const ownerManagerEmail = managerOf.get(ownerEmail) ?? null;
-            const ownerManagerPos = ownerManagerEmail
-              ? subPositionMap.get(ownerManagerEmail) ?? null
-              : null;
-            const comparePos = ownerManagerPos ?? subPos;
-            if (mgrPos && subPos) {
-              const mgrImmediate =
-                commissionItemsForPosition(
-                  data,
-                  mgrPos,
-                  managerMode
-                ).find((i) =>
-                  (i.title ?? "").toLowerCase().includes("okamžitá")
-                )?.amount ?? baseImmediate;
-              const subImmediate =
-                commissionItemsForPosition(
-                  data,
-                  comparePos ?? subPos,
-                  managerMode
-                ).find((i) =>
-                  (i.title ?? "").toLowerCase().includes("okamžitá")
-                )?.amount ?? baseImmediate;
-              const diff = Math.max(0, mgrImmediate - subImmediate);
-              teamImmediate += diff;
-            } else {
-              teamImmediate += baseImmediate;
-            }
+          const teamCreatedSnap = await getDocs(
+            query(
+              chunkBase,
+              where("createdAt", ">=", teamRangeStart),
+              where("createdAt", "<", teamRangeEnd)
+            )
+          );
+          teamCreatedSnap.forEach((docSnap) => {
+            const data = docSnap.data() as any as EntryDoc;
+            const ownerEmail = (data.userEmail ?? "").toLowerCase();
+            collectTeamEntry(docSnap, ownerEmail);
           });
         }
 
         // fallback: projít přímo podkolekce podřízených (kdyby chyběl userEmail nebo měl jiný case)
         for (const sub of subEmails) {
-          const snap = await getDocs(collection(db, "users", sub, "entries"));
-          snap.forEach((docSnap) => {
-            const data = docSnap.data() as any as EntryDoc;
-            const ownerEmail = sub.toLowerCase();
-            const key = `${ownerEmail}___${docSnap.id}`;
-            if (seenTeam.has(key)) return;
+          const subEntriesRef = collection(db, "users", sub, "entries");
 
-            const signed = entrySignedDate(data);
-            if (!signed) return;
-            if (
-              signed.getFullYear() !== currentYear ||
-              signed.getMonth() !== currentMonth
-            ) {
-              return;
-            }
+          const snapContract = await getDocs(
+            query(
+              subEntriesRef,
+              where("contractSignedDate", ">=", teamRangeStart),
+              where("contractSignedDate", "<", teamRangeEnd)
+            )
+          );
+          snapContract.forEach((docSnap) => collectTeamEntry(docSnap, sub));
 
-            seenTeam.add(key);
-            teamCount += 1;
-
-            const items = (data.items ?? []) as CommissionResultItemDTO[];
-            const immediate = items.find((it) =>
-              (it.title ?? "").toLowerCase().includes("okamžitá provize")
-            );
-            const baseImmediate = immediate?.amount ?? 0;
-
-            const subPos =
-              subPositionMap.get(ownerEmail) ??
-              (data.position as Position | undefined) ??
-              null;
-            const ownerManagerEmail = managerOf.get(ownerEmail) ?? null;
-            const ownerManagerPos = ownerManagerEmail
-              ? subPositionMap.get(ownerManagerEmail) ?? null
-              : null;
-            const comparePos = ownerManagerPos ?? subPos;
-            if (position && subPos) {
-              const mgrImmediate =
-                commissionItemsForPosition(
-                  data,
-                  position,
-                  managerMode
-                ).find((i) =>
-                  (i.title ?? "").toLowerCase().includes("okamžitá")
-                )?.amount ?? baseImmediate;
-              const subImmediate =
-                commissionItemsForPosition(
-                  data,
-                  comparePos ?? subPos,
-                  managerMode
-                ).find((i) =>
-                  (i.title ?? "").toLowerCase().includes("okamžitá")
-                )?.amount ?? baseImmediate;
-              const diff = Math.max(0, mgrImmediate - subImmediate);
-              teamImmediate += diff;
-            } else {
-              teamImmediate += baseImmediate;
-            }
-
-            if (needTeamHistory) {
-              teamEntriesAll.push({
-                ...(data as any),
-                id: docSnap.id,
-              } as EntryDoc);
-            }
-          });
+          const snapCreated = await getDocs(
+            query(
+              subEntriesRef,
+              where("createdAt", ">=", teamRangeStart),
+              where("createdAt", "<", teamRangeEnd)
+            )
+          );
+          snapCreated.forEach((docSnap) => collectTeamEntry(docSnap, sub));
         }
 
         setTeamContractsCount(teamCount);
         setTeamImmediateSum(teamImmediate);
         setTeamEntries(needTeamHistory ? teamEntriesAll : []);
+
+        homeDataCache[cacheKey] = {
+          ts: Date.now(),
+          payload: {
+            userMeta: {
+              position,
+              commissionMode: myMode,
+              monthlyGoal: monthlyGoal ?? null,
+            },
+            myEntries: needPersonalHistory ? myEntriesList : [],
+            teamEntries: needTeamHistory ? teamEntriesAll : [],
+            hasTeam: subEmails.length > 0,
+            myContractsCount: myCount,
+            myImmediateSum: myImmediate,
+            teamContractsCount: teamCount,
+            teamImmediateSum: teamImmediate,
+          },
+        };
       } catch (e) {
         console.error("Chyba při načítání produkce:", e);
       } finally {
