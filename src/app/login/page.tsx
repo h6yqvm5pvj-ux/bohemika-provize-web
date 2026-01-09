@@ -10,7 +10,6 @@ import {
   sendPasswordResetEmail,
 } from "firebase/auth";
 import { auth, db } from "../firebase";
-import Plasma from "@/components/Plasma";
 import { doc, getDoc } from "firebase/firestore";
 import { Sora } from "next/font/google";
 
@@ -150,18 +149,7 @@ export default function LoginPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden text-slate-50">
-      {/* Černé pozadí + plasma jako všude */}
-      <div className="fixed inset-0 -z-10 bg-black">
-        <Plasma
-          color="#6366f1"
-          speed={0.6}
-          direction="forward"
-          scale={1.2}
-          opacity={0.96}
-          mouseInteractive={false}
-          animated={false}
-        />
-      </div>
+      <div className="fixed inset-0 -z-10 bg-black" />
 
       <div className="flex min-h-screen flex-col items-center justify-center px-4 gap-8">
         <AnimatedHeading

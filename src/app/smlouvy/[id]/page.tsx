@@ -13,7 +13,6 @@ import {
 } from "firebase/auth";
 import { deleteDoc, doc, getDoc, updateDoc } from "firebase/firestore";
 
-import Plasma from "@/components/Plasma";
 import {
   type Product,
   type PaymentFrequency,
@@ -90,6 +89,9 @@ type ContractDoc = {
 
   userEmail?: string | null;
   clientName?: string | null;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  clientAddress?: string | null;
   contractNumber?: string | null;
 
   policyStartDate?: FirestoreTimestamp | Date | string | null;
@@ -535,6 +537,20 @@ function paymentBasedTotals(
 function isManagerPosition(pos?: Position | null): boolean {
   if (!pos) return false;
   return pos.startsWith("manazer");
+}
+
+function normalizeEmail(email?: string | null): string | null {
+  return email ? email.trim().toLowerCase() : null;
+}
+
+function isEmailInChain(
+  email: string | null,
+  chain?: { email: string | null }[] | null
+): boolean {
+  if (!email || !chain) return false;
+  const normalized = normalizeEmail(email);
+  if (!normalized) return false;
+  return chain.some((c) => normalizeEmail(c.email) === normalized);
 }
 
 function toDateInputValue(value: unknown): string {
@@ -1057,22 +1073,33 @@ export default function ContractDetailPage() {
       ? contract.durationYears
       : null;
   const showDurationForNeon = prod === "neon" && durationYears;
+  const normalizedUserEmail = useMemo(
+    () => normalizeEmail(user?.email ?? null),
+    [user?.email]
+  );
+  const normalizedOwnerEmail = useMemo(
+    () => normalizeEmail(contract?.userEmail ?? null),
+    [contract?.userEmail]
+  );
   const isOwnContract = useMemo(() => {
-    if (!user?.email || !contract?.userEmail) return false;
-    return (
-      user.email.trim().toLowerCase() ===
-      contract.userEmail.trim().toLowerCase()
-    );
-  }, [user, contract]);
+    if (!normalizedUserEmail || !normalizedOwnerEmail) return false;
+    return normalizedUserEmail === normalizedOwnerEmail;
+  }, [normalizedOwnerEmail, normalizedUserEmail]);
+
+  const isManagerOnChain = useMemo(() => {
+    if (!contract || !normalizedUserEmail || !normalizedOwnerEmail) return false;
+    if (normalizedUserEmail === normalizedOwnerEmail) return false;
+    if (normalizeEmail(contract.managerEmailSnapshot) === normalizedUserEmail) return true;
+    if (isEmailInChain(normalizedUserEmail, contract.managerChain ?? null)) return true;
+    if (isEmailInChain(normalizedUserEmail, contract.managerOverrides ?? null)) return true;
+    return false;
+  }, [contract, normalizedOwnerEmail, normalizedUserEmail]);
 
   const isManagerViewingSubordinate = useMemo(() => {
-    if (!user?.email || !contract?.userEmail) return false;
     if (!isManagerPosition(managerPosition)) return false;
-
-    const current = user.email.trim().toLowerCase();
-    const owner = contract.userEmail.trim().toLowerCase();
-    return current !== owner;
-  }, [user, contract, managerPosition]);
+    return isManagerOnChain;
+  }, [managerPosition, isManagerOnChain]);
+  const canViewContract = isOwnContract || isManagerOnChain;
 
   const effectiveManagerPosition =
     managerPosition ?? ((contract as any)?.managerPositionSnapshot as Position | null | undefined) ?? null;
@@ -1081,6 +1108,9 @@ export default function ContractDetailPage() {
 
   const [editMode, setEditMode] = useState(false);
   const [editClientName, setEditClientName] = useState("");
+  const [editClientEmail, setEditClientEmail] = useState("");
+  const [editClientPhone, setEditClientPhone] = useState("");
+  const [editClientAddress, setEditClientAddress] = useState("");
   const [editContractNumber, setEditContractNumber] = useState("");
   const [editContractSigned, setEditContractSigned] = useState("");
   const [editPolicyStart, setEditPolicyStart] = useState("");
@@ -1739,6 +1769,9 @@ export default function ContractDetailPage() {
   const resetEditFields = () => {
     if (!contract) return;
     setEditClientName(contract.clientName ?? "");
+    setEditClientEmail(contract.clientEmail ?? "");
+    setEditClientPhone(contract.clientPhone ?? "");
+    setEditClientAddress(contract.clientAddress ?? "");
     setEditContractNumber(contract.contractNumber ?? "");
     setEditContractSigned(toDateInputValue(contract.contractSignedDate ?? contract.createdAt));
     setEditPolicyStart(toDateInputValue(contract.policyStartDate));
@@ -2215,6 +2248,9 @@ export default function ContractDetailPage() {
 
       const ref = doc(db, "users", ownerEmail, "entries", entryId);
       const trimmedName = editClientName.trim();
+      const trimmedEmail = editClientEmail.trim();
+      const trimmedPhone = editClientPhone.trim();
+      const trimmedAddress = editClientAddress.trim();
       const trimmedNumber = editContractNumber.trim();
       const signedDate = editContractSigned ? new Date(editContractSigned) : null;
       const startDate = editPolicyStart ? new Date(editPolicyStart) : null;
@@ -2396,6 +2432,9 @@ export default function ContractDetailPage() {
 
       const updates: Record<string, any> = {
         clientName: trimmedName || null,
+        clientEmail: trimmedEmail || null,
+        clientPhone: trimmedPhone || null,
+        clientAddress: trimmedAddress || null,
         contractNumber: trimmedNumber || null,
         contractSignedDate: signedDate ?? null,
         policyStartDate: startDate ?? null,
@@ -2415,6 +2454,9 @@ export default function ContractDetailPage() {
           ? {
               ...prev,
               clientName: trimmedName || null,
+              clientEmail: trimmedEmail || null,
+              clientPhone: trimmedPhone || null,
+              clientAddress: trimmedAddress || null,
               contractNumber: trimmedNumber || null,
               contractSignedDate: signedDate ?? null,
               policyStartDate: startDate ?? null,
@@ -2893,7 +2935,7 @@ export default function ContractDetailPage() {
   // pokud je načtený kontrakt a uživatel nemá oprávnění, schovej data a přesměruj
   useEffect(() => {
     if (loading || !user || !contract) return;
-    const canView = isOwnContract || isManagerViewingSubordinate;
+    const canView = canViewContract;
     if (!canView && !unauthorized) {
       setUnauthorized(true);
       setContract(null);
@@ -2901,7 +2943,7 @@ export default function ContractDetailPage() {
       setShowDeleteModal(false);
       router.replace("/smlouvy");
     }
-  }, [loading, user, contract, isOwnContract, isManagerViewingSubordinate, unauthorized, router]);
+  }, [loading, user, contract, canViewContract, unauthorized, router]);
 
   const renderLoadingSkeleton = () => (
     <div className="space-y-6">
@@ -2969,18 +3011,7 @@ export default function ContractDetailPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden text-slate-50">
-      {/* Plasma pozadí jako na ostatních stránkách */}
-      <div className="fixed inset-0 -z-10 bg-black">
-        <Plasma
-          color="#4f46e5"
-          speed={0.6}
-          direction="forward"
-          scale={1.1}
-          opacity={0.85}
-          mouseInteractive={false}
-          animated={false}
-        />
-      </div>
+      <div className="fixed inset-0 -z-10 bg-black" />
 
       <Toasts items={toasts} onDismiss={dismissToast} />
 
@@ -3088,16 +3119,41 @@ export default function ContractDetailPage() {
                       Klient
                     </div>
                     {editMode ? (
-                      <input
-                        type="text"
-                        value={editClientName}
-                        onChange={(e) => setEditClientName(e.target.value)}
-                        className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-lg font-semibold text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                        placeholder="Jméno klienta"
-                      />
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={editClientName}
+                          onChange={(e) => setEditClientName(e.target.value)}
+                          className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-lg font-semibold text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          placeholder="Jméno klienta"
+                        />
+                        <input
+                          type="email"
+                          value={editClientEmail}
+                          onChange={(e) => setEditClientEmail(e.target.value)}
+                          className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          placeholder="E-mail klienta"
+                        />
+                        <input
+                          type="tel"
+                          value={editClientPhone}
+                          onChange={(e) => setEditClientPhone(e.target.value)}
+                          className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          placeholder="Telefon"
+                        />
+                        <input
+                          type="text"
+                          value={editClientAddress}
+                          onChange={(e) => setEditClientAddress(e.target.value)}
+                          className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          placeholder="Adresa"
+                        />
+                      </div>
                     ) : (
-                      <div className="text-2xl font-semibold text-slate-50">
-                        {contract?.clientName ?? "—"}
+                    <div className="space-y-2">
+                        <div className="text-2xl font-semibold text-slate-50">
+                          {contract?.clientName ?? "—"}
+                        </div>
                       </div>
                     )}
                   </div>

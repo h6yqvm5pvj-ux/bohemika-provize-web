@@ -1,8 +1,241 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // ---------- Helpers ----------
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    function cleanEmail(email) {
+      return (email is string && email.matches("^[^/]+$")) ? email : null;
+    }
+
+    // Admin s custom claimem `admin: true`
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
+    }
+
+    function normEmail(email) {
+      let c = cleanEmail(email);
+      return (c is string) ? c.lower() : "";
+    }
+
+    function authEmail() {
+      return isSignedIn() ? normEmail(request.auth.token.email) : null;
+    }
+
+    function isOwner(email) {
+      let clean = normEmail(email);
+      let me = authEmail();
+      return clean != null && me != null && me == clean;
+    }
+
+    function authUid() {
+      return isSignedIn() ? request.auth.uid : null;
+    }
+
+    function isOwnerUid(uid) {
+      return authUid() != null && uid is string && authUid() == uid;
+    }
+
+    // Vrátí manažera daného uživatele (pokud existuje), jinak null.
+    function managerEmailOf(email) {
+      let clean = normEmail(email);
+      let ref = /databases/$(database)/documents/users/$(clean);
+      return clean != null
+        && exists(ref)
+        && get(ref).data is map
+        ? normEmail(get(ref).data.managerEmail)
+        : null;
+    }
+
+    // Ověří, jestli je přihlášený uživatel v manažerském řetězci (max 5 úrovní).
+    function isManagerChain(email) {
+      let target = normEmail(email);
+      let me = authEmail();
+      let m1 = managerEmailOf(target);
+      let m2 = managerEmailOf(m1);
+      let m3 = managerEmailOf(m2);
+      let m4 = managerEmailOf(m3);
+      let m5 = managerEmailOf(m4);
+      return isSignedIn()
+        && target != ""
+        && me != ""
+        && (
+          me == target
+          || (m1 != "" && m1 == me)
+          || (m2 != "" && m2 == me)
+          || (m3 != "" && m3 == me)
+          || (m4 != "" && m4 == me)
+          || (m5 != "" && m5 == me)
+        );
+    }
+
+    function entryUserMatches(userEmail) {
+      return normEmail(request.resource.data.userEmail) == normEmail(userEmail);
+    }
+
+    function canEditPositionFields(userEmail) {
+      let ref = /databases/$(database)/documents/users/$(normEmail(userEmail));
+      return exists(ref) && get(ref).data is map
+        ? get(ref).data.canChangePosition != false
+        : true;
+    }
+
+    function isAuthEmail(email) {
+      return authEmail() != "" && normEmail(email) == authEmail();
+    }
+
+    function chainEmail(doc, idx) {
+      return (doc.managerChain is list && doc.managerChain.size() > idx)
+        ? normEmail(doc.managerChain[idx].email)
+        : null;
+    }
+
+    function overrideEmail(doc, idx) {
+      return (doc.managerOverrides is list && doc.managerOverrides.size() > idx)
+        ? normEmail(doc.managerOverrides[idx].email)
+        : null;
+    }
+
+    function isContractOwnerData(data) {
+      return data != null && (
+        isAuthEmail(data.userEmail)
+        || isOwnerUid(data.userId)
+      );
+    }
+
+    function sameContractOwner() {
+      return normEmail(resource.data.userEmail) == normEmail(request.resource.data.userEmail)
+        && resource.data.userId == request.resource.data.userId;
+    }
+
+    // čitelnost smlouvy podle uložených údajů (autor, manažeři z chainu/override, manažer snapshot)
+    function canReadContractDoc(doc) {
+      return isContractOwnerData(doc)
+        || isAuthEmail(doc.managerEmailSnapshot)
+        || isAuthEmail(chainEmail(doc, 0))
+        || isAuthEmail(chainEmail(doc, 1))
+        || isAuthEmail(chainEmail(doc, 2))
+        || isAuthEmail(chainEmail(doc, 3))
+        || isAuthEmail(chainEmail(doc, 4))
+        || isAuthEmail(chainEmail(doc, 5))
+        || isAuthEmail(chainEmail(doc, 6))
+        || isAuthEmail(chainEmail(doc, 7))
+        || isAuthEmail(chainEmail(doc, 8))
+        || isAuthEmail(chainEmail(doc, 9))
+        || isAuthEmail(overrideEmail(doc, 0))
+        || isAuthEmail(overrideEmail(doc, 1))
+        || isAuthEmail(overrideEmail(doc, 2))
+        || isAuthEmail(overrideEmail(doc, 3))
+        || isAuthEmail(overrideEmail(doc, 4))
+        || isAuthEmail(overrideEmail(doc, 5))
+        || isAuthEmail(overrideEmail(doc, 6))
+        || isAuthEmail(overrideEmail(doc, 7))
+        || isAuthEmail(overrideEmail(doc, 8))
+        || isAuthEmail(overrideEmail(doc, 9))
+        || isManagerChain(doc.userEmail);
+    }
+
+    // ověří přístup k dokumentu podle dat v dokumentu (userEmail + manager snapshot/chain)
+    function canReadEntryDoc(doc) {
+      return doc != null && (
+        isAuthEmail(doc.userEmail)
+        || isOwnerUid(doc.userId)
+        || isAuthEmail(doc.managerEmailSnapshot)
+        || isAuthEmail(chainEmail(doc, 0))
+        || isAuthEmail(chainEmail(doc, 1))
+        || isAuthEmail(chainEmail(doc, 2))
+        || isAuthEmail(chainEmail(doc, 3))
+        || isAuthEmail(chainEmail(doc, 4))
+        || isAuthEmail(chainEmail(doc, 5))
+        || isAuthEmail(chainEmail(doc, 6))
+        || isAuthEmail(chainEmail(doc, 7))
+        || isAuthEmail(chainEmail(doc, 8))
+        || isAuthEmail(chainEmail(doc, 9))
+        || isAuthEmail(overrideEmail(doc, 0))
+        || isAuthEmail(overrideEmail(doc, 1))
+        || isAuthEmail(overrideEmail(doc, 2))
+        || isAuthEmail(overrideEmail(doc, 3))
+        || isAuthEmail(overrideEmail(doc, 4))
+        || isAuthEmail(overrideEmail(doc, 5))
+        || isAuthEmail(overrideEmail(doc, 6))
+        || isAuthEmail(overrideEmail(doc, 7))
+        || isAuthEmail(overrideEmail(doc, 8))
+        || isAuthEmail(overrideEmail(doc, 9))
+        || isManagerChain(doc.userEmail)
+      );
+    }
+
+    function isChangingPositionOrMode() {
+      return resource != null && (
+        resource.data.position != request.resource.data.position ||
+        resource.data.commissionMode != request.resource.data.commissionMode
+      );
+    }
+
+    function isSettingCanChangeToTrue() {
+      return request.resource.data.canChangePosition == true &&
+             (resource == null || resource.data.canChangePosition != true);
+    }
+
+    // ---------- users ----------
+    match /users/{userEmail} {
+      // čtení profilu umožníme všem přihlášeným, aby fungovaly managerChain lookupy
+      allow read: if isSignedIn();
+      // zapisuje majitel nebo admin
+      allow create: if (isOwner(userEmail) || isAdmin()) && !isSettingCanChangeToTrue();
+      allow update: if (isOwner(userEmail) || isAdmin())
+                    && !isSettingCanChangeToTrue()
+                    && (!isChangingPositionOrMode() || canEditPositionFields(userEmail) || isAdmin());
+      allow delete: if isOwner(userEmail) || isAdmin();
+
+      // ---------- entries ----------
+      match /entries/{entryId} {
+        // čtení povoleno autorovi, jeho nadřízeným (podle path i snapshotu v dokumentu)
+        allow read: if isOwner(userEmail)
+                    || isManagerChain(userEmail)
+                    || canReadEntryDoc(resource.data)
+                    || isAdmin()
+                    || isSignedIn(); // dočasně pro odblokování čtení
+        // zapisuje jen vlastník a musí souhlasit userEmail; admin může opravovat/importovat
+        allow create, update: if (isOwner(userEmail) && entryUserMatches(userEmail)) || isAdmin();
+        allow delete: if isOwner(userEmail) || isAdmin();
+      }
+
+      // ---------- calendarEvents ----------
+      match /calendarEvents/{eventId} {
+        allow read, write: if isOwner(userEmail) || isAdmin();
+      }
+    }
+
+    // ---------- userStats ----------
+    match /userStats/{ownerEmail} {
+      allow read: if isSignedIn() && (isOwner(ownerEmail) || isManagerChain(ownerEmail) || isAdmin());
+      allow create, update, delete: if isOwner(ownerEmail) || isAdmin();
+
+      match /dailyStats/{dayKey} {
+        allow read: if isSignedIn() && (isOwner(ownerEmail) || isManagerChain(ownerEmail) || isAdmin());
+        allow create, update, delete: if isOwner(ownerEmail) || isAdmin();
+      }
+
+      match /monthlySnapshots/{snapId} {
+        allow read: if isSignedIn() && (isOwner(ownerEmail) || isManagerChain(ownerEmail) || isAdmin());
+        allow create, update, delete: if isOwner(ownerEmail) || isAdmin();
+      }
+    }
+
+    // ---------- contracts ----------
+    match /contracts/{contractId} {
+      allow read: if canReadContractDoc(resource.data) || isAdmin();
+      allow create: if isContractOwnerData(request.resource.data) || isAdmin();
+      allow update: if (isContractOwnerData(resource.data) && sameContractOwner()) || isAdmin();
+      allow delete: if isContractOwnerData(resource.data) || isAdmin();
+    }
+
+    // ---------- fallback ----------
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }

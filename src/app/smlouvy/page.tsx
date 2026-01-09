@@ -48,6 +48,9 @@ type ContractDoc = {
 
   userEmail?: string | null;
   clientName?: string | null;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  clientAddress?: string | null;
   contractNumber?: string | null;
 
   createdAt?: FirestoreTimestamp | Date | string | null;
@@ -292,11 +295,12 @@ const CONTRACTS_CACHE_KEY = "contracts_cache_v1";
 
 function readContractsCache(email: string | null | undefined): ContractsCache | null {
   if (!email || typeof window === "undefined") return null;
+  const normalized = email.toLowerCase();
   try {
     const raw = sessionStorage.getItem(CONTRACTS_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ContractsCache;
-    if (parsed.userEmail !== email) return null;
+    if (parsed.userEmail !== normalized) return null;
     return parsed;
   } catch {
     return null;
@@ -347,14 +351,16 @@ export default function ContractsPage() {
   // load pozice + smlouvy
   useEffect(() => {
     const load = async () => {
-      if (!user?.email) {
+      const email = (user?.email ?? "").toLowerCase();
+      const uid = user?.uid ?? null;
+      if (!email) {
         setMyContracts([]);
         setTeamContracts([]);
         setLoading(false);
         return;
       }
 
-      const cached = readContractsCache(user.email);
+      const cached = readContractsCache(email);
       if (cached) {
         setMyContracts(cached.myContracts ?? []);
         setTeamContracts(cached.teamContracts ?? []);
@@ -366,7 +372,7 @@ export default function ContractsPage() {
 
       try {
         // 1) info o uživateli (pozice)
-        const uRef = doc(db, "users", user.email);
+        const uRef = doc(db, "users", email);
         const uSnap = await getDoc(uRef);
 
         let pos: Position | null = null;
@@ -380,7 +386,7 @@ export default function ContractsPage() {
         const entriesGroup = collectionGroup(db, "entries");
         const myQ = query(
           entriesGroup,
-          where("userEmail", "==", user.email),
+          where("userEmail", "==", email),
           orderBy("createdAt", "desc")
         );
         const mySnap = await getDocs(myQ);
@@ -394,7 +400,7 @@ export default function ContractsPage() {
         const usersCol = collection(db, "users");
         const visited = new Set<string>();
         const teamUsers: AppUser[] = [];
-        const queue: string[] = [user.email.toLowerCase()];
+        const queue: string[] = [email];
 
         while (queue.length > 0) {
           const mgrEmail = queue.shift()!;
@@ -458,7 +464,7 @@ export default function ContractsPage() {
         setTeamContracts(withEmails);
 
         writeContractsCache({
-          userEmail: user.email,
+          userEmail: email,
           position: pos,
           myContracts: myList,
           teamContracts: withEmails,

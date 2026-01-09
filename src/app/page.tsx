@@ -764,6 +764,10 @@ export default function HomePage() {
 
   const [loading, setLoading] = useState(true);
   const [authReady, setAuthReady] = useState(false);
+  const normalizedEmail = useMemo(
+    () => user?.email?.toLowerCase() ?? null,
+    [user?.email]
+  );
 
   const now = new Date();
   const monthLabel = MONTH_LABELS[now.getMonth()];
@@ -789,7 +793,7 @@ export default function HomePage() {
   const persistHomeWidgets = (updater: (prev: HomeWidgets) => HomeWidgets) => {
     setHomeWidgets((prev) => {
       const next = updater(prev);
-      const key = homeWidgetsKey(user?.email ?? null);
+      const key = homeWidgetsKey(normalizedEmail);
       if (typeof window !== "undefined" && key) {
         window.localStorage.setItem(key, JSON.stringify(next));
       }
@@ -802,7 +806,7 @@ export default function HomePage() {
 
   const persistHomeLayout = (next: HomeSection[]) => {
     setHomeLayout(next);
-    const key = homeLayoutKey(user?.email ?? null);
+    const key = homeLayoutKey(normalizedEmail);
     if (typeof window !== "undefined" && key) {
       window.localStorage.setItem(key, JSON.stringify(next));
     }
@@ -845,12 +849,12 @@ export default function HomePage() {
 
   // nastavení režimu ukládání (cloud vs device)
   useEffect(() => {
-    if (!user?.email) {
+    if (!normalizedEmail) {
       setLayoutScope("cloud");
       return;
     }
     if (typeof window === "undefined") return;
-    const scopeKey = homeScopeKey(user.email);
+    const scopeKey = homeScopeKey(normalizedEmail);
     if (!scopeKey) return;
     const stored = window.localStorage.getItem(scopeKey);
     if (stored === "device" || stored === "cloud") {
@@ -858,12 +862,12 @@ export default function HomePage() {
     } else {
       setLayoutScope("cloud");
     }
-  }, [user]);
+  }, [normalizedEmail]);
 
   // načtení uživatelského rozložení domova (cloud nebo device)
   useEffect(() => {
-    if (!user?.email) return;
-    const email = user.email;
+    if (!normalizedEmail) return;
+    const email = normalizedEmail;
 
     const loadFromDevice = () => {
       const localLayout = readLocalHomeLayout(email);
@@ -932,11 +936,11 @@ export default function HomePage() {
     };
 
     load();
-  }, [user, layoutScope]);
+  }, [normalizedEmail, layoutScope]);
 
   const rememberScopePreference = (scope: LayoutScope) => {
     if (typeof window === "undefined") return;
-    const key = homeScopeKey(user?.email ?? null);
+    const key = homeScopeKey(normalizedEmail);
     if (!key) return;
     window.localStorage.setItem(key, scope);
   };
@@ -946,9 +950,9 @@ export default function HomePage() {
     homeWidgets?: HomeWidgets;
     homePerformanceMode?: PerformanceMode;
   }) => {
-    if (!user?.email) return;
+    if (!normalizedEmail) return;
     try {
-      await setDoc(doc(db, "users", user.email), payload, { merge: true });
+      await setDoc(doc(db, "users", normalizedEmail), payload, { merge: true });
     } catch (e) {
       console.error("Uložení nastavení domova selhalo", e);
     }
@@ -956,13 +960,13 @@ export default function HomePage() {
 
   // načtení statistik
   useEffect(() => {
-    if (!user?.email) return;
+    if (!normalizedEmail) return;
 
     const load = async () => {
       setLoading(true);
 
       try {
-        const email = user.email!;
+        const email = normalizedEmail;
         const usersRef = collection(db, "users");
         const needPersonalHistory = homeWidgets.productionChart;
 
@@ -991,22 +995,41 @@ export default function HomePage() {
         const isManager = isManagerPosition(position);
         const managerMode = (myMode as CommissionMode | null) ?? null;
 
-        // 2) moje smlouvy
-        const myQ = query(collectionGroup(db, "entries"), where("userEmail", "==", email));
-        const mySnap = await getDocs(myQ);
+        // 2) moje smlouvy (collectionGroup + fallback na vlastní podkolekci)
         const myEntriesList: EntryDoc[] = [];
+        const seenPersonal = new Set<string>();
+
+        const myGroupSnap = await getDocs(
+          query(collectionGroup(db, "entries"), where("userEmail", "==", email))
+        );
+        myGroupSnap.forEach((docSnap) => {
+          const key = docSnap.id;
+          if (seenPersonal.has(key)) return;
+          seenPersonal.add(key);
+          const data = docSnap.data() as any as EntryDoc;
+          myEntriesList.push({
+            ...data,
+            id: docSnap.id,
+          });
+        });
+
+        // fallback: entries pod cestou /users/<email>/entries (pro starší záznamy bez userEmail)
+        const myPathSnap = await getDocs(collection(db, "users", email, "entries"));
+        myPathSnap.forEach((docSnap) => {
+          const key = docSnap.id;
+          if (seenPersonal.has(key)) return;
+          seenPersonal.add(key);
+          const data = docSnap.data() as any as EntryDoc;
+          myEntriesList.push({
+            ...data,
+            id: docSnap.id,
+          });
+        });
 
         let myCount = 0;
         let myImmediate = 0;
 
-        mySnap.forEach((docSnap) => {
-          const data = docSnap.data() as any as EntryDoc;
-          if (needPersonalHistory) {
-            myEntriesList.push({
-              ...data,
-              id: docSnap.id,
-            });
-          }
+        myEntriesList.forEach((data) => {
           const signed = entrySignedDate(data);
           if (!signed) return;
           if (
@@ -1022,67 +1045,62 @@ export default function HomePage() {
           const immediate = items.find((it) =>
             (it.title ?? "").toLowerCase().includes("okamžitá provize")
           );
-          if (immediate?.amount) {
-            myImmediate += immediate.amount;
-          }
+          const immediateAmount = immediate?.amount ?? 0;
+          myImmediate += immediateAmount;
         });
 
         setMyContractsCount(myCount);
         setMyImmediateSum(myImmediate);
         setMyEntries(needPersonalHistory ? myEntriesList : []);
 
-        // 3) tým – jen pokud je manažer
-        if (!isManager) {
-          setTeamContractsCount(0);
-          setTeamImmediateSum(0);
-          setTeamEntries([]);
-          setHasTeam(false);
-          setLoading(false);
-          return;
+        // Načíst všechny uživatele a postavit strom case-insensitive (managerEmail může být uložen s velkými písmeny)
+        const allUsersSnap = await getDocs(usersRef);
+        type UserNode = { email: string; managerEmail: string | null; position?: Position };
+        const allUsers: UserNode[] = [];
+        allUsersSnap.forEach((d) => {
+          const data = d.data() as any;
+          const em = ((data.email as string | undefined) ?? d.id ?? "").toLowerCase();
+          if (!em) return;
+          const mgr = (data.managerEmail as string | undefined)?.toLowerCase() ?? null;
+          allUsers.push({
+            email: em,
+            managerEmail: mgr,
+            position: (data.position as Position | undefined) ?? undefined,
+          });
+        });
+
+        const childrenByManager = new Map<string, UserNode[]>();
+        for (const u of allUsers) {
+          if (!u.managerEmail) continue;
+          const arr = childrenByManager.get(u.managerEmail) ?? [];
+          arr.push(u);
+          childrenByManager.set(u.managerEmail, arr);
         }
 
-        const subsQ = query(
-          usersRef,
-          where("managerEmail", "==", email)
-        );
-        const subsSnap = await getDocs(subsQ);
-        const directSubs = subsSnap.docs.map((d) => d.data() as any);
-
-        // BFS pro celý strom podřízených (podřízený manažer má své další)
+        // BFS pro celý strom podřízených (ignoruje velikost písmen)
         const visited = new Set<string>();
         const subPositionMap = new Map<string, Position | undefined>();
         const managerOf = new Map<string, string | null>();
         const queue: string[] = [];
-
-        for (const u of directSubs) {
-          const em = (u.email as string | undefined)?.toLowerCase();
-          if (!em) continue;
-          visited.add(em);
-          queue.push(em);
-          subPositionMap.set(em, u.position as Position | undefined);
-          managerOf.set(em, email.toLowerCase());
-        }
+        queue.push(email);
 
         while (queue.length > 0) {
           const currentManager = queue.shift()!;
-          const subSnap = await getDocs(
-            query(usersRef, where("managerEmail", "==", currentManager))
-          );
-          subSnap.forEach((docSnap) => {
-            const d = docSnap.data() as any;
-            const em = (d.email as string | undefined)?.toLowerCase();
-            if (!em || visited.has(em)) return;
-            visited.add(em);
-            queue.push(em);
-            subPositionMap.set(em, d.position as Position | undefined);
-            managerOf.set(em, currentManager);
-          });
+          const children = childrenByManager.get(currentManager) ?? [];
+          for (const child of children) {
+            if (!child.email || visited.has(child.email)) continue;
+            visited.add(child.email);
+            queue.push(child.email);
+            subPositionMap.set(child.email, child.position);
+            managerOf.set(child.email, currentManager);
+          }
         }
 
         const subEmails = Array.from(visited);
 
+        setHasTeam(subEmails.length > 0);
+
         if (subEmails.length === 0) {
-          setHasTeam(false);
           setTeamContractsCount(0);
           setTeamImmediateSum(0);
           setTeamEntries([]);
@@ -1090,12 +1108,12 @@ export default function HomePage() {
           return;
         }
 
-        setHasTeam(true);
         const needTeamHistory = homeWidgets.productionChart || homeWidgets.teamLeaderboard;
 
         let teamCount = 0;
         let teamImmediate = 0;
         const teamEntriesAll: EntryDoc[] = [];
+        const seenTeam = new Set<string>();
 
         const chunks: string[][] = [];
         for (let i = 0; i < subEmails.length; i += 10) {
@@ -1113,6 +1131,9 @@ export default function HomePage() {
           teamSnap.forEach((docSnap) => {
             const data = docSnap.data() as any as EntryDoc;
             const ownerEmail = (data.userEmail ?? "").toLowerCase();
+            const key = `${ownerEmail}___${docSnap.id}`;
+            if (seenTeam.has(key)) return;
+            seenTeam.add(key);
 
             // pro leaderboard ukládáme všechny záznamy
             if (needTeamHistory) {
@@ -1138,40 +1159,107 @@ export default function HomePage() {
             const immediate = items.find((it) =>
               (it.title ?? "").toLowerCase().includes("okamžitá provize")
             );
+            const baseImmediate = immediate?.amount ?? 0;
 
-            if (immediate?.amount) {
-              const mgrPos = position;
-              const subPos =
-                subPositionMap.get(ownerEmail) ??
-                (data.position as Position | undefined) ??
-                null;
-              const ownerManagerEmail = managerOf.get(ownerEmail) ?? null;
-              const ownerManagerPos = ownerManagerEmail
-                ? subPositionMap.get(ownerManagerEmail) ?? null
-                : null;
-              const comparePos = ownerManagerPos ?? subPos;
-              if (mgrPos && subPos) {
-                const mgrImmediate =
-                  commissionItemsForPosition(
-                    data,
-                    mgrPos,
-                    managerMode
-                  ).find((i) =>
-                    (i.title ?? "").toLowerCase().includes("okamžitá")
-                  )?.amount ?? 0;
-                const subImmediate =
-                  commissionItemsForPosition(
-                    data,
-                    comparePos ?? subPos,
-                    managerMode
-                  ).find((i) =>
-                    (i.title ?? "").toLowerCase().includes("okamžitá")
-                  )?.amount ?? 0;
-                const diff = Math.max(0, mgrImmediate - subImmediate);
-                teamImmediate += diff;
-              } else {
-                teamImmediate += immediate.amount;
-              }
+            const mgrPos = position;
+            const subPos =
+              subPositionMap.get(ownerEmail) ??
+              (data.position as Position | undefined) ??
+              null;
+            const ownerManagerEmail = managerOf.get(ownerEmail) ?? null;
+            const ownerManagerPos = ownerManagerEmail
+              ? subPositionMap.get(ownerManagerEmail) ?? null
+              : null;
+            const comparePos = ownerManagerPos ?? subPos;
+            if (mgrPos && subPos) {
+              const mgrImmediate =
+                commissionItemsForPosition(
+                  data,
+                  mgrPos,
+                  managerMode
+                ).find((i) =>
+                  (i.title ?? "").toLowerCase().includes("okamžitá")
+                )?.amount ?? baseImmediate;
+              const subImmediate =
+                commissionItemsForPosition(
+                  data,
+                  comparePos ?? subPos,
+                  managerMode
+                ).find((i) =>
+                  (i.title ?? "").toLowerCase().includes("okamžitá")
+                )?.amount ?? baseImmediate;
+              const diff = Math.max(0, mgrImmediate - subImmediate);
+              teamImmediate += diff;
+            } else {
+              teamImmediate += baseImmediate;
+            }
+          });
+        }
+
+        // fallback: projít přímo podkolekce podřízených (kdyby chyběl userEmail nebo měl jiný case)
+        for (const sub of subEmails) {
+          const snap = await getDocs(collection(db, "users", sub, "entries"));
+          snap.forEach((docSnap) => {
+            const data = docSnap.data() as any as EntryDoc;
+            const ownerEmail = sub.toLowerCase();
+            const key = `${ownerEmail}___${docSnap.id}`;
+            if (seenTeam.has(key)) return;
+
+            const signed = entrySignedDate(data);
+            if (!signed) return;
+            if (
+              signed.getFullYear() !== currentYear ||
+              signed.getMonth() !== currentMonth
+            ) {
+              return;
+            }
+
+            seenTeam.add(key);
+            teamCount += 1;
+
+            const items = (data.items ?? []) as CommissionResultItemDTO[];
+            const immediate = items.find((it) =>
+              (it.title ?? "").toLowerCase().includes("okamžitá provize")
+            );
+            const baseImmediate = immediate?.amount ?? 0;
+
+            const subPos =
+              subPositionMap.get(ownerEmail) ??
+              (data.position as Position | undefined) ??
+              null;
+            const ownerManagerEmail = managerOf.get(ownerEmail) ?? null;
+            const ownerManagerPos = ownerManagerEmail
+              ? subPositionMap.get(ownerManagerEmail) ?? null
+              : null;
+            const comparePos = ownerManagerPos ?? subPos;
+            if (position && subPos) {
+              const mgrImmediate =
+                commissionItemsForPosition(
+                  data,
+                  position,
+                  managerMode
+                ).find((i) =>
+                  (i.title ?? "").toLowerCase().includes("okamžitá")
+                )?.amount ?? baseImmediate;
+              const subImmediate =
+                commissionItemsForPosition(
+                  data,
+                  comparePos ?? subPos,
+                  managerMode
+                ).find((i) =>
+                  (i.title ?? "").toLowerCase().includes("okamžitá")
+                )?.amount ?? baseImmediate;
+              const diff = Math.max(0, mgrImmediate - subImmediate);
+              teamImmediate += diff;
+            } else {
+              teamImmediate += baseImmediate;
+            }
+
+            if (needTeamHistory) {
+              teamEntriesAll.push({
+                ...(data as any),
+                id: docSnap.id,
+              } as EntryDoc);
             }
           });
         }
@@ -1187,7 +1275,7 @@ export default function HomePage() {
     };
 
     load();
-  }, [user]);
+  }, [normalizedEmail, homeWidgets.productionChart, homeWidgets.teamLeaderboard]);
 
   useEffect(() => {
     if (!hasTeam) {
@@ -1258,12 +1346,12 @@ export default function HomePage() {
     }
   }, [user]);
 
-  const isManager = isManagerPosition(userMeta?.position ?? null);
-  const showTeamBox = isManager && hasTeam;
+  const isManager = isManagerPosition(userMeta?.position ?? null) || hasTeam;
+  const showTeamBox = hasTeam;
 
   const baseProduction = myImmediateSum;
   const totalWithTeam =
-    baseProduction + (isManager ? teamImmediateSum : 0);
+    baseProduction + (showTeamBox ? teamImmediateSum : 0);
   const totalContractsCount =
     myContractsCount + (showTeamBox ? teamContractsCount : 0);
 
@@ -1554,73 +1642,45 @@ export default function HomePage() {
                 </div>
               </div>
             )}
-            <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(125,211,252,0.25),transparent_60%)]" />
-            <div className="pointer-events-none absolute right-0 bottom-0 h-48 w-48 rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.2),transparent_65%)]" />
-
-            <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
-              <div>
-                <h2 className="text-lg sm:text-xl font-semibold">Měsíční cíl</h2>
-                <p className="mt-1 text-xs text-slate-300">
-                  Aktuálně{" "}
-                  <span className="font-semibold text-slate-50">
-                    <AnimatedMoney value={totalWithTeam} />
-                  </span>
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div className="text-right text-xs sm:text-sm">
-                  <div className="text-slate-400">Plnění cíle</div>
-                  <div className="text-base sm:text-lg font-semibold">{progress}%</div>
-                  <div className="mt-1 text-[11px] text-slate-400">
-                    Cíl na měsíc:{" "}
-                    <span className="font-medium text-slate-100">
-                      {monthlyGoal ? formatMoney(monthlyGoal) : "—"}
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_10%,rgba(125,211,252,0.18),transparent_45%),radial-gradient(circle_at_88%_8%,rgba(74,222,128,0.12),transparent_55%)]" />
+            <div className="relative flex flex-col gap-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-semibold text-white">Měsíční cíl</h2>
+                  <p className="text-sm text-slate-300">
+                    Cíl na měsíc{" "}
+                    <span className="font-semibold text-white">
+                      {monthlyGoal ? formatMoney(monthlyGoal) : "Není nastaven"}
                     </span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="text-right">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Splněno</div>
+                    <div className="text-3xl font-semibold text-white">{progress}%</div>
                   </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditGoalOpen(true)}
-                  className="rounded-full border border-white/20 px-3 py-1.5 text-[11px] text-white/90 hover:bg-white/10 transition backdrop-blur-sm"
-                >
-                  Upravit cíl
-                </button>
-              </div>
-            </div>
-
-            <div className="relative mt-3 grid gap-3 sm:grid-cols-1 text-xs text-slate-200">
-              <div className="rounded-2xl border border-white/10 bg-slate-900/70 px-3 py-3 shadow-[0_10px_34px_rgba(0,0,0,0.55)] backdrop-blur">
-                <div className="text-[11px] uppercase tracking-wide text-slate-300">
-                  Do cíle zbývá
-                </div>
-                <div className="mt-1 text-lg font-semibold text-white">
-                  {hasGoal
-                    ? remainingToGoal === 0
-                      ? "Splněno"
-                      : formatMoney(remainingToGoal)
-                    : "Nastav cíl"}
-                </div>
-                <div className="text-[11px] text-slate-400">
-                  {hasGoal ? `${progress}% hotovo` : "Cíl není nastaven"}
+                  <button
+                    type="button"
+                    onClick={() => setEditGoalOpen(true)}
+                    className="rounded-full border border-white/25 px-4 py-2 text-xs font-semibold text-white/90 hover:bg-white/10 transition"
+                  >
+                    Upravit cíl
+                  </button>
                 </div>
               </div>
-            </div>
 
-            <div className="relative mt-4 h-3 w-full rounded-full bg-white/10 border border-white/15 backdrop-blur-xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.6)]">
-              <div className="absolute inset-0 bg-gradient-to-r from-white/10 via-white/4 to-transparent" />
-              <div
-                className={`relative h-full rounded-full bg-gradient-to-r ${progressTone} transition-all duration-500 ease-out shadow-[0_0_24px_rgba(255,255,255,0.35)]`}
-                style={{
-                  width: `${progress}%`,
-                  boxShadow:
-                    progress >= 90
-                      ? "0 0 28px rgba(52, 211, 153, 0.45)"
-                      : progress >= 60
-                        ? "0 0 24px rgba(251, 146, 60, 0.4)"
-                        : "0 0 22px rgba(248, 113, 113, 0.45)",
-                }}
-              />
+              <div className="flex flex-col gap-2">
+                <div className="relative h-3.5 w-full rounded-full bg-white/5 border border-white/10 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full bg-gradient-to-r ${progressTone}`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span>0 %</span>
+                  <span>100 %</span>
+                </div>
+              </div>
             </div>
           </section>
         );
@@ -1893,7 +1953,7 @@ export default function HomePage() {
   };
 
   const saveMonthlyGoal = async () => {
-    if (!user?.email) return;
+    if (!normalizedEmail) return;
     const raw = (goalInput ?? "").toString().replace(/\s+/g, "");
     const parsed = Number(raw);
     if (!Number.isFinite(parsed) || parsed < 0) {
@@ -1903,7 +1963,7 @@ export default function HomePage() {
     setGoalError(null);
     setSavingGoal(true);
     try {
-      const ref = doc(db, "users", user.email);
+      const ref = doc(db, "users", normalizedEmail);
       await updateDoc(ref, { monthlyGoal: parsed });
       setUserMeta((prev) => (prev ? { ...prev, monthlyGoal: parsed } : prev));
       setEditGoalOpen(false);

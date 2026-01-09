@@ -761,14 +761,25 @@ export default function CashflowPage() {
         const subordinateEmails = Array.from(visited);
         setHasTeam(subordinateEmails.length > 0);
 
-        const q = collectionGroup(db, "entries");
-        const snap = await getDocs(q);
+        const entriesGroup = collectionGroup(db, "entries");
+        const allowedEmails = [email, ...subordinateEmails];
+        const chunks: string[][] = [];
+        for (let i = 0; i < allowedEmails.length; i += 10) {
+          chunks.push(allowedEmails.slice(i, i + 10));
+        }
 
-        const allEntries: EntryDoc[] = snap.docs
-          .map((d) => ({
-            id: d.id,
-            ...(d.data() as any),
-          }));
+        const allEntries: EntryDoc[] = [];
+        for (const chunk of chunks) {
+          const snap = await getDocs(
+            query(entriesGroup, where("userEmail", "in", chunk))
+          );
+          snap.docs.forEach((d) => {
+            allEntries.push({
+              id: d.id,
+              ...(d.data() as any),
+            });
+          });
+        }
 
         const ownEntries = allEntries
           .filter((e) => (e.userEmail ?? "").toLowerCase() === email)

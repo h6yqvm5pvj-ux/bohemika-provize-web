@@ -1,0 +1,23 @@
+[debug] [2026-01-08T08:22:16.745Z] ----------------------------------------------------------------------
+[debug] [2026-01-08T08:22:16.751Z] Command:       /usr/local/bin/node /usr/local/bin/firebase deploy --only firestore:rules --project demo --debug
+[debug] [2026-01-08T08:22:16.751Z] CLI Version:   14.24.2
+[debug] [2026-01-08T08:22:16.751Z] Platform:      darwin
+[debug] [2026-01-08T08:22:16.751Z] Node Version:  v24.11.0
+[debug] [2026-01-08T08:22:16.751Z] Time:          Thu Jan 08 2026 09:22:16 GMT+0100 (Central European Standard Time)
+[debug] [2026-01-08T08:22:16.751Z] ----------------------------------------------------------------------
+[debug] 
+[error] 
+[error] Error: Not in a Firebase app directory (could not locate firebase.json)
+[debug] [2026-01-08T08:22:17.028Z] Error: EPERM: operation not permitted, open '/Users/jakubrauscher/.config/configstore/firebase-tools.json.903086426'
+    at Object.openSync (node:fs:560:18)
+    at writeFile.writeFileSync [as sync] (/usr/local/lib/node_modules/firebase-tools/node_modules/write-file-atomic/index.js:205:13)
+    at set all (/usr/local/lib/node_modules/firebase-tools/node_modules/configstore/index.js:61:20)
+    at Configstore.delete (/usr/local/lib/node_modules/firebase-tools/node_modules/configstore/index.js:101:12)
+    at process.<anonymous> (/usr/local/lib/node_modules/firebase-tools/lib/bin/cli.js:65:45)
+    at process.emit (node:events:520:35)
+    at process.exit (node:internal/process/per_thread:236:15)
+    at Timeout._onTimeout (/usr/local/lib/node_modules/firebase-tools/lib/errorOut.js:20:17)
+    at listOnTimeout (node:internal/timers:608:17)
+    at process.processTimers (node:internal/timers:543:7)
+[error] 
+[error] Error: An unexpected error has occurred.

@@ -26,7 +26,7 @@ type SubordinateInput = {
   autoAnnual: string;
   propAnnual: string;
 };
-type ManagerPosition = "manazer4" | "manazer5" | "manazer6";
+type ManagerPosition = "manazer4" | "manazer5" | "manazer6" | "manazer7";
 type AdvisorPosition =
   | "poradce1"
   | "poradce2"
@@ -255,6 +255,13 @@ function addDiffPayouts(
   });
 }
 
+function addPayouts(target: Map<number, number>, payouts: Payout[]) {
+  for (const p of payouts) {
+    const key = new Date(p.date.getFullYear(), p.date.getMonth(), 1).getTime();
+    target.set(key, (target.get(key) ?? 0) + p.amount);
+  }
+}
+
 export default function ProjectionPage() {
   const [user, setUser] = useState<User | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
@@ -270,6 +277,9 @@ export default function ProjectionPage() {
     "none"
   );
   const [managerPos, setManagerPos] = useState<ManagerPosition>("manazer4");
+  const [managerLifeMonthly, setManagerLifeMonthly] = useState("0");
+  const [managerAutoAnnual, setManagerAutoAnnual] = useState("0");
+  const [managerPropAnnual, setManagerPropAnnual] = useState("0");
   const [subordinates, setSubordinates] = useState<SubordinateInput[]>([
     {
       id: "sub-1",
@@ -358,6 +368,9 @@ export default function ProjectionPage() {
 
     const posManager: Position = managerPos;
     const mode: CommissionMode = "accelerated";
+    const managerLife = Math.max(0, parseNumber(managerLifeMonthly));
+    const managerAuto = Math.max(0, parseNumber(managerAutoAnnual));
+    const managerProp = Math.max(0, parseNumber(managerPropAnnual));
     const combined = new Map<number, number>();
 
     for (let m = 0; m < MONTHS; m++) {
@@ -366,6 +379,16 @@ export default function ProjectionPage() {
         startDate.getMonth() + m,
         1
       );
+
+      if (managerLife > 0) {
+        addPayouts(combined, projectNeon(managerLife, posManager, mode, base, 0));
+      }
+      if (managerAuto > 0) {
+        addPayouts(combined, projectAuto(managerAuto, posManager, base, 0, 0));
+      }
+      if (managerProp > 0) {
+        addPayouts(combined, projectProperty(managerProp, posManager, base, 0));
+      }
 
       subordinates.forEach((sub) => {
         const life = Math.max(0, parseNumber(sub.lifeMonthly));
@@ -423,7 +446,7 @@ export default function ProjectionPage() {
     }
 
     return { years: arr, monthlyByYear: monthlyTotals };
-  }, [viewMode, managerPos, subordinates, startDate]);
+  }, [viewMode, managerPos, managerLifeMonthly, managerAutoAnnual, managerPropAnnual, subordinates, startDate]);
   const teamYears = teamData.years;
   const teamMonthlyByYear = teamData.monthlyByYear;
   const teamMaxYearValue =
@@ -462,7 +485,7 @@ export default function ProjectionPage() {
     <div className="w-full max-w-4xl mx-auto py-16 text-center space-y-6">
       <div className="space-y-3">
         <div className="flex justify-center">
-          <SplitTitle text="Vizualizuj si výplatu do budoucna" />
+          <SplitTitle text="Vizualizuj si výplatu do budoucna" wrap={false} />
         </div>
         <div className="text-2xl sm:text-3xl font-semibold text-white/90 leading-tight">
           Pravidelná péče o klienta zajistí pravidelný příjem!
@@ -716,21 +739,66 @@ export default function ProjectionPage() {
           </p>
         </header>
 
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
+        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-4">
           <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
             Zvol manažerskou pozici
           </h2>
-          <select
-            className="w-full max-w-xs rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-            value={managerPos}
-            onChange={(e) =>
-              setManagerPos(e.target.value as ManagerPosition)
-            }
-          >
-            <option value="manazer4">Manažer 4</option>
-            <option value="manazer5">Manažer 5</option>
-            <option value="manazer6">Manažer 6</option>
-          </select>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Manažerská pozice</label>
+              <select
+                className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                value={managerPos}
+                onChange={(e) =>
+                  setManagerPos(e.target.value as ManagerPosition)
+                }
+              >
+                <option value="manazer4">Manažer 4</option>
+                <option value="manazer5">Manažer 5</option>
+                <option value="manazer6">Manažer 6</option>
+                <option value="manazer7">Manažer 7</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">
+                Tvůj Život (měsíční pojistné)
+              </label>
+              <input
+                type="number"
+                min={0}
+                className="w-full rounded-2xl bg-slate-900 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                value={managerLifeMonthly}
+                onChange={(e) => setManagerLifeMonthly(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">
+                Tvé Auto (roční pojistné)
+              </label>
+              <input
+                type="number"
+                min={0}
+                className="w-full rounded-2xl bg-slate-900 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                value={managerAutoAnnual}
+                onChange={(e) => setManagerAutoAnnual(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">
+                Tvůj Majetek (roční pojistné)
+              </label>
+              <input
+                type="number"
+                min={0}
+                className="w-full rounded-2xl bg-slate-900 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                value={managerPropAnnual}
+                onChange={(e) => setManagerPropAnnual(e.target.value)}
+              />
+            </div>
+          </div>
         </section>
 
         <section className="space-y-4">

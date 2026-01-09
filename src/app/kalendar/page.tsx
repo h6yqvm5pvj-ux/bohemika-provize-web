@@ -152,14 +152,15 @@ export default function CalendarPage() {
   // load events from Firestore
   useEffect(() => {
     const load = async () => {
-      if (!user?.email) {
+      const email = user?.email?.toLowerCase() ?? null;
+      if (!email) {
         setEvents([]);
         setLoading(false);
         return;
       }
       setLoading(true);
       try {
-        const col = collection(db, "users", user.email, "calendarEvents");
+        const col = collection(db, "users", email, "calendarEvents");
         const q = query(col, orderBy("date", "asc"));
         const snap = await getDocs(q);
         const list: CalendarEvent[] = snap.docs.map((d) => {
@@ -188,12 +189,13 @@ export default function CalendarPage() {
   // load contracts for anniversaries
   useEffect(() => {
     const loadContracts = async () => {
-      if (!user?.email) {
+      const email = user?.email?.toLowerCase() ?? null;
+      if (!email) {
         setContracts([]);
         return;
       }
       try {
-        const col = collection(db, "users", user.email, "entries");
+        const col = collection(db, "users", email, "entries");
         const snap = await getDocs(col);
         const list: ContractEntry[] = snap.docs.map((d) => ({
           id: d.id,

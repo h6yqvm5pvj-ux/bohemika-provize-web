@@ -37,8 +37,6 @@ import {
   SUPPORTED_PRODUCTS,
   getCoefficientSummary,
 } from "../lib/productFormulas";
-
-import Plasma from "@/components/Plasma";
 import {
   addDoc,
   collection,
@@ -883,6 +881,7 @@ export default function CalculatorPage() {
 
     try {
       const email = (user.email ?? "").toLowerCase();
+      const uid = user.uid ?? null;
       const userRef = doc(db, "users", email);
       const entriesRef = collection(userRef, "entries");
 
@@ -1015,6 +1014,7 @@ export default function CalculatorPage() {
         },
 
         clientName: clientName || null,
+        userId: uid,
         contractSignedDate: signed,
         policyStartDate: start,
         durationYears: shouldShowDuration(product) ? durationYears : null,
@@ -1040,18 +1040,8 @@ export default function CalculatorPage() {
 
   if (!user) {
     return (
-      <main className="relative min-h-screen overflow-hidden bg-[#020014] text-slate-50">
-        <div className="fixed inset-0 -z-10 bg-black">
-          <Plasma
-            color="#4f46e5"
-            speed={0.6}
-            direction="forward"
-            scale={1.1}
-            opacity={0.8}
-            mouseInteractive={false}
-            animated={false}
-          />
-        </div>
+      <main className="relative min-h-screen overflow-hidden bg-black text-slate-50">
+        <div className="fixed inset-0 -z-10 bg-black" />
 
         <div className="relative flex min-h-screen items-center justify-center px-4">
           <div className="bg-slate-950/90 border border-white/10 rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.9)] backdrop-blur-2xl p-6 w-full max-w-md space-y-4 text-center">

@@ -4,7 +4,6 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import Plasma from "@/components/Plasma";
 import { auth } from "../app/firebase-auth";
 import { firebaseApp } from "../app/firebase-app";
 import {
@@ -45,10 +44,7 @@ const loadFirestore = () => {
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [animatedBg, setAnimatedBg] = useState<boolean>(true);
-  const [simpleBg, setSimpleBg] = useState<boolean>(true);
-  const [backgroundColor, setBackgroundColor] = useState<"black" | "blue" | null>(null);
-  const [bgReady, setBgReady] = useState(false);
+  const [backgroundColor, setBackgroundColor] = useState<"black" | "blue">("black");
   const pathname = usePathname();
 
   // status zatím nepoužíváme v UI
@@ -107,52 +103,23 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     if (typeof window === "undefined") return;
     let mounted = true;
     const updateFromStorage = () => {
-      const isMobile = window.matchMedia?.("(max-width: 768px)").matches ?? false;
-      const storedAnimated = window.localStorage.getItem(
-        "settings.animatedBackground"
-      );
-      if (!mounted) return;
-      if (storedAnimated === "0") setAnimatedBg(false);
-      else if (storedAnimated === "1") setAnimatedBg(true);
-      else setAnimatedBg(true);
-
-      const storedSimple = window.localStorage.getItem("settings.simpleBackground");
-      if (storedSimple === null && isMobile) {
-        setSimpleBg(true);
-      } else {
-        setSimpleBg(storedSimple === "1");
-      }
-
       const storedColor = window.localStorage.getItem(
         "settings.backgroundColor"
-      ) as "black" | "blue" | null;
-      if (storedColor === null && isMobile) {
-        setBackgroundColor("black");
-      } else {
-        setBackgroundColor(
-          storedColor === "black" || storedColor === "blue" ? storedColor : null
-        );
-      }
-      setBgReady(true);
+      );
+      if (!mounted) return;
+      const parsed = storedColor === "blue" ? "blue" : "black";
+      setBackgroundColor(parsed);
     };
 
     updateFromStorage();
     const handler = () => updateFromStorage();
     const customHandler = (ev: Event) => {
-      const detail = (ev as CustomEvent<{ simpleBg?: boolean; animatedBg?: boolean; backgroundColor?: string }>).detail;
-      if (detail && typeof detail.simpleBg === "boolean") {
-        setSimpleBg(detail.simpleBg);
+      const detail = (ev as CustomEvent<{ backgroundColor?: string }>).detail;
+      if (detail && typeof detail.backgroundColor === "string") {
+        const bg = detail.backgroundColor === "blue" ? "blue" : "black";
+        setBackgroundColor(bg);
       } else {
         updateFromStorage();
-      }
-      if (detail && typeof detail.animatedBg === "boolean") {
-        setAnimatedBg(detail.animatedBg);
-      }
-      if (detail && typeof detail.backgroundColor === "string") {
-        const bg = detail.backgroundColor === "black" || detail.backgroundColor === "blue" ? detail.backgroundColor : null;
-        setBackgroundColor(bg);
-      } else if (detail && detail.simpleBg === false) {
-        setBackgroundColor(null);
       }
     };
     window.addEventListener("storage", handler);
@@ -169,7 +136,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  // Přepínání třídy na body kvůli čistě černému pozadí
+  // Přepínání třídy na body kvůli čistě černému / modrému pozadí
   useEffect(() => {
     if (typeof document === "undefined") return;
     const body = document.body;
@@ -182,12 +149,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       "simple-bg-blue"
     );
 
-    if (simpleBg) {
-      body.classList.add("simple-bg");
-      const color = backgroundColor ?? "black";
-      body.classList.add(`simple-bg-${color}`);
-    }
-  }, [simpleBg, backgroundColor]);
+    body.classList.add("simple-bg");
+    body.classList.add(
+      backgroundColor === "blue" ? "simple-bg-blue" : "simple-bg-black"
+    );
+  }, [backgroundColor]);
 
   const handleLogout = async () => {
     try {
@@ -366,33 +332,15 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
   return (
     <main className="relative min-h-screen overflow-hidden text-slate-50">
-      {/* PLASMA BACKGROUND */}
-      <div className="fixed inset-0 -z-10 bg-black">
-        {bgReady && !simpleBg && (
-          <div className="plasma-layer h-full w-full">
-            <Plasma
-              color="#6366f1"
-              speed={0.6}
-              direction="forward"
-              scale={1.2}
-              opacity={0.98}
-              mouseInteractive={animatedBg}
-              animated={animatedBg}
-            />
-          </div>
-        )}
-        <div
-          className="plain-bg-layer h-full w-full"
-          style={{
-            backgroundColor:
-              (backgroundColor ?? "black") === "blue"
-                ? "#0a1b3a"
-                : "#000",
-            opacity: simpleBg ? 1 : 0,
-            transition: "opacity 150ms ease",
-          }}
-        />
-      </div>
+      <div
+        className="fixed inset-0 -z-10 transition-colors duration-200"
+        style={{
+          backgroundColor:
+            backgroundColor === "blue"
+              ? "#0a1b3a"
+              : "#000",
+        }}
+      />
 
       <div className="relative flex min-h-screen">
         {/* SIDEBAR */}

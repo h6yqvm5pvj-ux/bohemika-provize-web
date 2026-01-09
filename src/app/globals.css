@@ -187,7 +187,7 @@ body {
   --sidebar-ring: oklch(0.556 0 0);
 }
 
-/* Plasma / dark background – GLOBAL na <body> */
+/* Jednoduché tmavé pozadí na <body> */
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -203,17 +203,8 @@ body {
     /* text bude světlý na tmavém */
     color: #e5e7eb;
 
-    /* základ – skoro černá */
-    background-color: #020014;
-
-    /* tmavé fialovo-modré „blob“ vrstvy */
-    background-image:
-      radial-gradient(135% 190% at 10% 0%, rgba(59, 130, 246, 0.45), transparent 60%),
-      radial-gradient(135% 190% at 90% 0%, rgba(88, 28, 135, 0.75), transparent 65%),
-      radial-gradient(150% 210% at 50% 120%, rgba(30, 64, 175, 0.85), transparent 70%);
-    background-size: 160% 160%;
-    background-position: 0% 0%;
-    animation: plasma-shift 22s ease-in-out infinite alternate;
+    /* základ – čistě černá */
+    background-color: #000;
   }
 
   body.simple-bg {
@@ -233,15 +224,6 @@ body {
   }
 
   /* Vypnuto: bílé přebarvení */
-
-  /* schovej plasmu pokud je jednoduché pozadí */
-  body.simple-bg .plasma-layer {
-    display: none !important;
-  }
-
-  body.simple-bg .plain-bg-layer {
-    display: block !important;
-  }
 
   body.simple-bg.simple-bg-white .border-white\/10,
   body.simple-bg.simple-bg-white .border-white\/12,
@@ -310,76 +292,4 @@ body {
     background-color: rgba(var(--surface-800-rgb), 0.8) !important;
   }
 
-  /* jemná mřížka přes celou stránku */
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    background-image: radial-gradient(
-      rgba(148, 163, 184, 0.2) 1px,
-      transparent 0
-    );
-    background-size: 160px 160px;
-    opacity: 0.16;
-    mix-blend-mode: overlay;
-    z-index: -1;
-  }
-
-  /* rozmazané glowy skvrny */
-  body::after {
-    content: "";
-    position: fixed;
-    inset: -30%;
-    pointer-events: none;
-    background-image:
-      radial-gradient(60% 55% at 20% 25%, rgba(129, 140, 248, 0.65), transparent 45%),
-      radial-gradient(60% 55% at 80% 15%, rgba(56, 189, 248, 0.55), transparent 50%),
-      radial-gradient(55% 50% at 60% 80%, rgba(88, 28, 135, 0.8), transparent 55%);
-    filter: blur(95px);
-    mix-blend-mode: screen;
-    opacity: 0.9;
-    animation: plasma-glow 26s ease-in-out infinite alternate;
-    z-index: -1;
-  }
-
-  body.simple-bg::before,
-  body.simple-bg::after {
-    display: none;
-    animation: none;
-  }
-
-  body.simple-bg.simple-bg-white::before,
-  body.simple-bg.simple-bg-white::after {
-    display: none;
-  }
-}
-
-/* pohyb barevných vrstev */
-@keyframes plasma-shift {
-  0% {
-    background-position: 0% 0%;
-  }
-  50% {
-    background-position: -12% -8%;
-  }
-  100% {
-    background-position: 8% 12%;
-  }
-}
-
-/* dýchání glow vrstvy */
-@keyframes plasma-glow {
-  0% {
-    transform: translate3d(0%, 0%, 0) scale(1);
-    filter: blur(95px) brightness(0.95);
-  }
-  50% {
-    transform: translate3d(5%, -6%, 0) scale(1.06);
-    filter: blur(115px) brightness(1.05);
-  }
-  100% {
-    transform: translate3d(-6%, 8%, 0) scale(1.03);
-    filter: blur(100px) brightness(1);
-  }
 }

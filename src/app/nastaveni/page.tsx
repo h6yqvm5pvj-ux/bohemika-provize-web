@@ -78,7 +78,6 @@ const SETTINGS_KEYS = {
   position: "settings.position",
   mode: "settings.mode",
   monthlyGoal: "settings.monthlyGoal",
-  simpleBackground: "settings.simpleBackground",
   backgroundColor: "settings.backgroundColor",
   reduceMotion: "settings.reduceMotion",
 };
@@ -116,7 +115,6 @@ export default function SettingsPage() {
   const [notificationSettings, setNotificationSettings] =
     useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
-  const [simpleBackground, setSimpleBackground] = useState(false);
   const [backgroundColor, setBackgroundColor] = useState<"black" | "blue">("black");
   const [reduceMotion, setReduceMotion] = useState(false);
 
@@ -209,20 +207,6 @@ export default function SettingsPage() {
           if (typeof data.notifyMinutes === "number") {
             setNotifyMinutes(data.notifyMinutes);
           }
-          if (typeof data.simpleBackground === "boolean") {
-            setSimpleBackground(data.simpleBackground);
-            if (typeof window !== "undefined") {
-              window.localStorage.setItem(
-                SETTINGS_KEYS.simpleBackground,
-                data.simpleBackground ? "1" : "0"
-              );
-            }
-          } else if (typeof window !== "undefined") {
-            const stored = window.localStorage.getItem(
-              SETTINGS_KEYS.simpleBackground
-            );
-            if (stored === "1") setSimpleBackground(true);
-          }
           if (typeof data.backgroundColor === "string") {
             const c = data.backgroundColor as "black" | "blue";
             setBackgroundColor(c);
@@ -234,13 +218,8 @@ export default function SettingsPage() {
               SETTINGS_KEYS.backgroundColor
             ) as "black" | "blue" | null;
             if (stored) setBackgroundColor(stored);
-            const storedMotion = window.localStorage.getItem(
-              SETTINGS_KEYS.reduceMotion
-            );
-            if (storedMotion === "1") {
-              setReduceMotion(true);
-              applyMotionPreference(true);
-            }
+          } else {
+            setBackgroundColor("black");
           }
 
           if (typeof data.reduceMotion === "boolean") {
@@ -251,6 +230,14 @@ export default function SettingsPage() {
                 SETTINGS_KEYS.reduceMotion,
                 data.reduceMotion ? "1" : "0"
               );
+            }
+          } else if (typeof window !== "undefined") {
+            const storedMotion = window.localStorage.getItem(
+              SETTINGS_KEYS.reduceMotion
+            );
+            if (storedMotion === "1") {
+              setReduceMotion(true);
+              applyMotionPreference(true);
             }
           }
           if (typeof data.fcmToken === "string" && data.fcmToken.trim().length > 0) {
@@ -282,9 +269,6 @@ export default function SettingsPage() {
             const storedGoal = window.localStorage.getItem(
               SETTINGS_KEYS.monthlyGoal
             );
-            const storedSimple = window.localStorage.getItem(
-              SETTINGS_KEYS.simpleBackground
-            );
             const storedColor = window.localStorage.getItem(
               SETTINGS_KEYS.backgroundColor
             ) as "black" | "blue" | null;
@@ -293,7 +277,6 @@ export default function SettingsPage() {
             if (storedMode) setMode(storedMode);
             const n = storedGoal ? Number(storedGoal) : 0;
             if (Number.isFinite(n)) setMonthlyGoal(n);
-            if (storedSimple === "1") setSimpleBackground(true);
             if (storedColor) setBackgroundColor(storedColor);
             const storedMotion = window.localStorage.getItem(
               SETTINGS_KEYS.reduceMotion
@@ -423,34 +406,22 @@ export default function SettingsPage() {
     }
   };
 
-  const handleBackgroundPreset = async (preset: "plasma" | "black" | "blue") => {
-    const isPlasma = preset === "plasma";
-    const color = isPlasma ? null : (preset as "black" | "blue");
-
-    setSimpleBackground(!isPlasma);
-    setBackgroundColor(color ?? "black");
+  const handleBackgroundPreset = async (preset: "black" | "blue") => {
+    const color = preset;
+    setBackgroundColor(color);
 
     if (typeof window !== "undefined") {
-      if (isPlasma) {
-        window.localStorage.setItem(SETTINGS_KEYS.simpleBackground, "0");
-        window.localStorage.removeItem(SETTINGS_KEYS.backgroundColor);
-      } else {
-        window.localStorage.setItem(SETTINGS_KEYS.simpleBackground, "1");
-        window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, color ?? "black");
-      }
+      window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, color);
+      window.localStorage.removeItem("settings.simpleBackground");
       window.dispatchEvent(
         new CustomEvent("settings:updateBackground", {
-          detail: {
-            simpleBg: !isPlasma,
-            animatedBg: isPlasma,
-            backgroundColor: color,
-          },
+          detail: { backgroundColor: color },
         })
       );
     }
 
     await saveUserFields({
-      simpleBackground: !isPlasma,
+      simpleBackground: true,
       backgroundColor: color,
     });
   };
@@ -753,7 +724,7 @@ export default function SettingsPage() {
                         Pozadí aplikace
                       </h2>
                       <p className="text-xs text-slate-400">
-                        Vyber, zda chceš animovanou plasmu, nebo jednoduchou barvu.
+                        Vyber si jednoduché pozadí – černé nebo tmavě modré.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -783,17 +754,10 @@ export default function SettingsPage() {
 
                   <div className="flex gap-3 h-60">
                     {[
-                      {
-                        id: "plasma" as const,
-                        label: "PLASMA",
-                        bg: "bg-gradient-to-b from-indigo-500 via-purple-500 to-emerald-500",
-                      },
                       { id: "black" as const, label: "ČERNÁ", bg: "bg-black" },
                       { id: "blue" as const, label: "MODRÁ", bg: "bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900" },
                     ].map((opt) => {
-                      const isActive =
-                        (opt.id === "plasma" && !simpleBackground) ||
-                        (opt.id !== "plasma" && simpleBackground && backgroundColor === opt.id);
+                      const isActive = backgroundColor === opt.id;
                       return (
                         <button
                           key={opt.id}

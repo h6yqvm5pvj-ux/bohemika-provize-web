@@ -2,16 +2,20 @@ import React from "react";
 
 export default function SplitTitle({
   text,
+  wrap = true,
   className = "",
 }: {
   text: string;
+  wrap?: boolean;
   className?: string;
 }) {
   const letters = text.split("");
 
   return (
     <div
-      className={`relative inline-flex flex-wrap text-5xl sm:text-6xl font-extrabold tracking-tight text-white ${className}`}
+      className={`relative inline-flex ${
+        wrap ? "flex-wrap" : "flex-nowrap whitespace-nowrap"
+      } text-5xl sm:text-6xl font-extrabold tracking-tight text-white ${className}`}
     >
       {letters.map((ch, idx) => (
         <span
