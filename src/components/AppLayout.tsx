@@ -241,6 +241,27 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     void loadSubscriptionProfileForUser(user);
   }, [user]);
 
+  // Zapsat lastActive do Firestore při přihlášení
+  useEffect(() => {
+    const updateLastActive = async () => {
+      const email = user?.email?.toLowerCase();
+      if (!email) return;
+      try {
+        const { getFirestore, doc, setDoc, serverTimestamp } = await loadFirestore();
+        const db = getFirestore(firebaseApp);
+        await setDoc(
+          doc(db, "users", email),
+          { lastActive: serverTimestamp() },
+          { merge: true }
+        );
+      } catch (err) {
+        console.error("Failed to update lastActive", err);
+      }
+    };
+
+    void updateLastActive();
+  }, [user]);
+
   // Zda má tým
   useEffect(() => {
     const loadTeam = async () => {

@@ -74,6 +74,22 @@ function toDate(value: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+const ONLINE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minut
+const RECENT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 1 den
+
+const formatRelative = (ts: number | null | undefined): string => {
+  if (!ts) return "—";
+  const diff = Date.now() - ts;
+  if (diff < 0) return "právě teď";
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "před chvílí";
+  if (minutes < 60) return `před ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `před ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `před ${days} dny`;
+};
+
 type TeamCachePayload = {
   members: Member[];
   lastActive: Record<string, number | null>;
@@ -190,6 +206,16 @@ export default function TeamPage() {
         // načti poslední aktivitu (uložená statistika) pro každého
         const entries = await Promise.all(
           all.map(async (m) => {
+            try {
+              const userDoc = await getDoc(doc(db, "users", m.email));
+              const lastActiveUser = toDate((userDoc.data() as any)?.lastActive);
+              if (lastActiveUser) {
+                return [m.email, lastActiveUser.getTime()] as const;
+              }
+            } catch {
+              // fallback below
+            }
+
             try {
               const snap = await getDocs(
                 query(
@@ -329,10 +355,43 @@ export default function TeamPage() {
     const ts = lastActive[email];
     if (!ts) return "—";
     try {
-      return new Date(ts).toLocaleDateString("cs-CZ");
+      const d = new Date(ts);
+      return d.toLocaleString("cs-CZ");
     } catch {
       return "—";
     }
+  };
+
+  const lastActiveBadge = (email: string) => {
+    const ts = lastActive[email];
+    const now = Date.now();
+    if (!ts) {
+      return {
+        label: "Neznámé",
+        className: "bg-white/5 text-slate-300 border-white/15",
+        title: "Bez záznamu o aktivitě",
+      };
+    }
+    const diff = now - ts;
+    if (diff <= ONLINE_THRESHOLD_MS) {
+      return {
+        label: "Online",
+        className: "bg-emerald-500/15 text-emerald-100 border-emerald-300/70",
+        title: `Aktivní ${new Date(ts).toLocaleString("cs-CZ")}`,
+      };
+    }
+    if (diff <= RECENT_THRESHOLD_MS) {
+      return {
+        label: formatRelative(ts),
+        className: "bg-amber-500/15 text-amber-100 border-amber-300/60",
+        title: `Naposledy ${new Date(ts).toLocaleString("cs-CZ")}`,
+      };
+    }
+    return {
+      label: formatRelative(ts),
+      className: "bg-white/5 text-slate-300 border-white/15",
+      title: `Naposledy ${new Date(ts).toLocaleString("cs-CZ")}`,
+    };
   };
 
   const contractCountLabel = (email: string, key: "total" | "month") => {
@@ -410,6 +469,7 @@ export default function TeamPage() {
                   {filtered.map((m) => {
                     const isSelected = m.email === selectedEmail;
                     const perf = performanceInfo(m.email);
+                    const last = lastActiveBadge(m.email);
                     return (
                       <button
                         key={m.email}
@@ -428,6 +488,12 @@ export default function TeamPage() {
                             title={`Výkon tento měsíc: ${contractCountLabel(m.email, "month")}`}
                           >
                             {perf.label}
+                          </span>
+                          <span
+                            className={`text-[11px] inline-flex items-center justify-center rounded-full border px-2 py-1 ${last.className}`}
+                            title={last.title}
+                          >
+                            {last.label}
                           </span>
                           <div className="text-[11px] rounded-full border border-white/10 bg-white/5 px-2 py-1 text-slate-300">
                             {positionLabel(m.position)}
@@ -465,7 +531,9 @@ export default function TeamPage() {
                       </div>
                       <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-1">
                         <div className="text-[11px] uppercase tracking-wide text-slate-400">Naposledy aktivní</div>
-                        <div className="text-sm font-semibold text-white">{formatLastActive(selected.email)}</div>
+                        <div className="text-sm font-semibold text-white" title={formatLastActive(selected.email)}>
+                          {formatRelative(lastActive[selected.email])}
+                        </div>
                       </div>
                     </div>
 

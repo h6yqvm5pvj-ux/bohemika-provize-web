@@ -115,6 +115,19 @@ const PRODUCT_OPTIONS: { id: Product; label: string }[] = [
   { id: "comfortcc", label: "Comfort Commodity" },
 ];
 
+const REPLACEMENT_ELIGIBLE_PRODUCTS: Product[] = [
+  "zamex",
+  "domex",
+  "cppPPRbez",
+  "maxdomov",
+  "cppAuto",
+  "allianzAuto",
+  "csobAuto",
+  "uniqaAuto",
+  "pillowAuto",
+  "kooperativaAuto",
+];
+
 const productLabel = (p: Product | null) =>
   PRODUCT_OPTIONS.find((o) => o.id === p)?.label ?? (p ?? "—");
 
@@ -435,6 +448,8 @@ export default function CalculatorPage() {
   const [contractNumber, setContractNumber] = useState<string>("");
   const [refreshOriginalOpen, setRefreshOriginalOpen] = useState(false);
   const [originalContractNumber, setOriginalContractNumber] = useState<string>("");
+  const [replacementOpen, setReplacementOpen] = useState(false);
+  const [replacementContractNumber, setReplacementContractNumber] = useState<string>("");
 
   const [items, setItems] = useState<CommissionResultItemDTO[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -473,6 +488,10 @@ export default function CalculatorPage() {
   const [userCommissionMode, setUserCommissionMode] = useState<CommissionMode | null>(null);
   const [baseUserPosition, setBaseUserPosition] = useState<Position | null>(null);
   const [showCoefModal, setShowCoefModal] = useState(false);
+  const replacementEligible = useMemo(
+    () => REPLACEMENT_ELIGIBLE_PRODUCTS.includes(product),
+    [product]
+  );
 
   const coefList = useMemo(
     () => getCoefficientSummary(product ?? null, position ?? null, mode ?? null),
@@ -692,6 +711,13 @@ export default function CalculatorPage() {
       setDurationYears(20);
     }
   }, [product]);
+
+  useEffect(() => {
+    if (!replacementEligible) {
+      setReplacementOpen(false);
+      setReplacementContractNumber("");
+    }
+  }, [product, replacementEligible]);
 
   useEffect(() => {
     // pokud uživatel začal doplňovat chybějící pole, postupně čistíme chyby
@@ -957,6 +983,22 @@ export default function CalculatorPage() {
         }
       } catch (dupErr) {
         console.error("Kontrola duplicitních smluv selhala", dupErr);
+      }
+    }
+
+    if (replacementEligible) {
+      const trimmedReplacement = replacementContractNumber.trim();
+      if (trimmedReplacement) {
+        try {
+          const toDelete = await getDocs(
+            query(entriesRef, where("contractNumber", "==", trimmedReplacement))
+          );
+          if (!toDelete.empty) {
+            await Promise.all(toDelete.docs.map((d) => deleteDoc(d.ref)));
+          }
+        } catch (delErr) {
+          console.error("Smazání nahrazované smlouvy selhalo", delErr);
+        }
       }
     }
 
@@ -1399,35 +1441,6 @@ export default function CalculatorPage() {
                   </div>
                 )}
               </div>
-              {product === "neon" && (
-                <div className="mt-3 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setRefreshOriginalOpen((v) => !v)}
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-50 shadow-[0_12px_36px_rgba(16,185,129,0.25)] hover:border-emerald-200 hover:bg-emerald-500/25 transition"
-                    >
-                      Refresh smlouvy
-                    </button>
-                    {refreshOriginalOpen && (
-                      <input
-                        type="text"
-                        autoComplete="off"
-                        inputMode="numeric"
-                        placeholder="Číslo původní smlouvy"
-                        value={originalContractNumber}
-                        onChange={(e) => setOriginalContractNumber(e.target.value)}
-                        className="flex-1 min-w-[220px] rounded-full border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-300"
-                      />
-                    )}
-                  </div>
-                  {refreshOriginalOpen && (
-                    <p className="text-[11px] text-emerald-200/80">
-                      Při uložení nahradíme původní smlouvu se stejným číslem (smažeme starý záznam).
-                    </p>
-                  )}
-                </div>
-              )}
             </section>
 
             {/* Doba trvání + frekvence */}
@@ -1559,6 +1572,66 @@ export default function CalculatorPage() {
                     onChange={(e) => setComfortPaymentText(e.target.value)}
                     placeholder="Zadejte pravidelnou platbu"
                   />
+                </div>
+              )}
+
+              {product === "neon" && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRefreshOriginalOpen((v) => !v)}
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-50 shadow-[0_12px_36px_rgba(16,185,129,0.25)] hover:border-emerald-200 hover:bg-emerald-500/25 transition"
+                    >
+                      Refresh smlouvy
+                    </button>
+                    {refreshOriginalOpen && (
+                      <input
+                        type="text"
+                        autoComplete="off"
+                        inputMode="numeric"
+                        placeholder="Číslo původní smlouvy"
+                        value={originalContractNumber}
+                        onChange={(e) => setOriginalContractNumber(e.target.value)}
+                        className="flex-1 min-w-[220px] rounded-full border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-300"
+                      />
+                    )}
+                  </div>
+                  {refreshOriginalOpen && (
+                    <p className="text-[11px] text-emerald-200/80">
+                      Při uložení nahradíme původní smlouvu se stejným číslem (smažeme starý záznam).
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {replacementEligible && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setReplacementOpen((v) => !v)}
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-50 shadow-[0_12px_36px_rgba(16,185,129,0.25)] hover:border-emerald-200 hover:bg-emerald-500/25 transition"
+                    >
+                      Náhrada smlouvy
+                    </button>
+                    {replacementOpen && (
+                      <input
+                        type="text"
+                        autoComplete="off"
+                        inputMode="numeric"
+                        placeholder="Číslo nahrazované smlouvy"
+                        value={replacementContractNumber}
+                        onChange={(e) => setReplacementContractNumber(e.target.value)}
+                        className="flex-1 min-w-[220px] rounded-full border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-300"
+                      />
+                    )}
+                  </div>
+                  {replacementOpen && (
+                    <p className="text-[11px] text-emerald-200/80">
+                      Při uložení smažeme nahrazovanou smlouvu se stejným číslem.
+                    </p>
+                  )}
                 </div>
               )}
             </section>
@@ -1715,7 +1788,7 @@ export default function CalculatorPage() {
 
                 <button
                   type="button"
-                  onClick={handleSaveContract}
+                  onClick={() => handleSaveContract()}
                   disabled={
                     saving || items.length === 0 || parseNumber(amountText) <= 0
                   }
