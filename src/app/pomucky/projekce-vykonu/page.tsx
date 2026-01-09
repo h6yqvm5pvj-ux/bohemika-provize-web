@@ -120,7 +120,7 @@ function positionLabel(pos?: Position | null): string {
   return pos ? map[pos] ?? pos : "neznámá";
 }
 
-function estimatePayoutDate(policyStart: Date, cutoffDay = 28): Date {
+function estimatePayoutDate(policyStart: Date, cutoffDay = 25): Date {
   const year = policyStart.getFullYear();
   const month = policyStart.getMonth();
   const day = policyStart.getDate();

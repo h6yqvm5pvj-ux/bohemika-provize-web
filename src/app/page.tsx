@@ -1952,6 +1952,14 @@ export default function HomePage() {
     chart: "md:col-span-2",
   };
 
+  const sectionRowSpan: Record<HomeSection, string> = {
+    gold: "",
+    summary: "",
+    goal: "",
+    leaderboard: "md:row-span-2",
+    chart: "",
+  };
+
   const saveMonthlyGoal = async () => {
     if (!normalizedEmail) return;
     const raw = (goalInput ?? "").toString().replace(/\s+/g, "");
@@ -2292,13 +2300,16 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 grid-flow-row-dense">
           {visibleSections.map((sec) => {
             const isDragging = draggingSection === sec;
             const isHoverTarget = reorderEnabled && hoverSection === sec && !isDragging;
 
             return (
-              <div key={sec} className={sectionSpan[sec] ?? ""}>
+              <div
+                key={sec}
+                className={[sectionSpan[sec], sectionRowSpan[sec]].filter(Boolean).join(" ")}
+              >
                 <div
                   draggable={reorderEnabled}
                   onDragStart={reorderEnabled ? () => handleSectionDragStart(sec) : undefined}

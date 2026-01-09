@@ -42,6 +42,7 @@ import {
   collection,
   collectionGroup,
   doc,
+  deleteDoc,
   getDoc,
   getDocs,
   limit,
@@ -431,6 +432,8 @@ export default function CalculatorPage() {
   const [contractSignedDate, setContractSignedDate] = useState<string>("");
   const [policyStartDate, setPolicyStartDate] = useState<string>("");
   const [contractNumber, setContractNumber] = useState<string>("");
+  const [refreshOriginalOpen, setRefreshOriginalOpen] = useState(false);
+  const [originalContractNumber, setOriginalContractNumber] = useState<string>("");
 
   const [items, setItems] = useState<CommissionResultItemDTO[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -869,6 +872,13 @@ export default function CalculatorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product, position, mode, frequency, durationYears, amountText, comfortGradual, comfortPaymentText]);
 
+  useEffect(() => {
+    if (product !== "neon") {
+      setRefreshOriginalOpen(false);
+      setOriginalContractNumber("");
+    }
+  }, [product]);
+
   const handleSaveContract = async () => {
     if (!user) return;
 
@@ -993,6 +1003,18 @@ export default function CalculatorPage() {
 
       setManagerOverridesSnapshot(overridesForChain);
 
+      const trimmedOriginal = originalContractNumber.trim();
+      if (trimmedOriginal) {
+        try {
+          const toDelete = await getDocs(
+            query(entriesRef, where("contractNumber", "==", trimmedOriginal))
+          );
+          await Promise.all(toDelete.docs.map((d) => deleteDoc(d.ref)));
+        } catch (delErr) {
+          console.error("Failed to delete original contract", delErr);
+        }
+      }
+
       await addDoc(entriesRef, {
         productKey: product,
         createdAt: serverTimestamp(),
@@ -1028,6 +1050,8 @@ export default function CalculatorPage() {
       });
 
       setSaveMessage("Smlouva byla uložena mezi sepsané.");
+      setOriginalContractNumber("");
+      setRefreshOriginalOpen(false);
     } catch (error) {
       console.error("Chyba při ukládání smlouvy", error);
       setSaveMessage(
@@ -1232,6 +1256,35 @@ export default function CalculatorPage() {
                   </div>
                 )}
               </div>
+              {product === "neon" && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRefreshOriginalOpen((v) => !v)}
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-50 shadow-[0_12px_36px_rgba(16,185,129,0.25)] hover:border-emerald-200 hover:bg-emerald-500/25 transition"
+                    >
+                      Refresh smlouvy
+                    </button>
+                    {refreshOriginalOpen && (
+                      <input
+                        type="text"
+                        autoComplete="off"
+                        inputMode="numeric"
+                        placeholder="Číslo původní smlouvy"
+                        value={originalContractNumber}
+                        onChange={(e) => setOriginalContractNumber(e.target.value)}
+                        className="flex-1 min-w-[220px] rounded-full border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-300"
+                      />
+                    )}
+                  </div>
+                  {refreshOriginalOpen && (
+                    <p className="text-[11px] text-emerald-200/80">
+                      Při uložení nahradíme původní smlouvu se stejným číslem (smažeme starý záznam).
+                    </p>
+                  )}
+                </div>
+              )}
             </section>
 
             {/* Doba trvání + frekvence */}

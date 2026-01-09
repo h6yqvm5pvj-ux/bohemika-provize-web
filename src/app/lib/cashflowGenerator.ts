@@ -46,8 +46,9 @@ function addYears(date: Date, years: number): Date {
  * Pravidlo výplaty první (a obecně základní) provize.
  *
  * - standardně:
- *   - den počátku 1–28 → výplata k 1. dni následujícího měsíce,
- *   - den počátku > 28 → výplata k 1. dni za 2 měsíce.
+ *   - bereme nejpozdější z dne počátku a dne sjednání,
+ *   - pokud je den ≤ 25 → výplata k 1. dni následujícího měsíce,
+ *   - pokud je den > 25 → výplata k 1. dni za 2 měsíce.
  *
  * - výjimka (stejná jako ve Swift verzi):
  *   Pokud:
@@ -59,16 +60,18 @@ function addYears(date: Date, years: number): Date {
 export function estimatePayoutDate(
   policyStart: Date,
   agreementDate?: Date,
-  cutoffDay = 28
+  cutoffDay = 25
 ): Date {
   const year = policyStart.getFullYear();
   const month = policyStart.getMonth(); // 0–11
   const day = policyStart.getDate();
+  let dayForCutoff = day;
 
   // Výjimka: počátek je 1. den v pozdějším měsíci než sjednání
   if (agreementDate) {
     const aYear = agreementDate.getFullYear();
     const aMonth = agreementDate.getMonth();
+    dayForCutoff = Math.max(dayForCutoff, agreementDate.getDate());
 
     const isLaterMonth =
       year > aYear || (year === aYear && month > aMonth);
@@ -79,8 +82,8 @@ export function estimatePayoutDate(
     }
   }
 
-  // Standard: 1–28 → +1 měsíc, >28 → +2 měsíce
-  const monthsToAdd = day > cutoffDay ? 2 : 1;
+  // Standard: 1–25 → +1 měsíc, >25 → +2 měsíce
+  const monthsToAdd = dayForCutoff > cutoffDay ? 2 : 1;
   const firstOfMonth = new Date(year, month, 1);
   return addMonths(firstOfMonth, monthsToAdd);
 }

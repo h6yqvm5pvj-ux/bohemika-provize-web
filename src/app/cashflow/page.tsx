@@ -304,15 +304,17 @@ type ScopeFilter = "combined" | "own" | "team";
 function estimatePayoutDate(
   policyStart: Date,
   agreementDate?: Date | null,
-  cutoffDay = 28
+  cutoffDay = 25
 ): Date {
   const year = policyStart.getFullYear();
   const month = policyStart.getMonth();
   const day = policyStart.getDate();
+  let dayForCutoff = day;
 
   if (agreementDate) {
     const aYear = agreementDate.getFullYear();
     const aMonth = agreementDate.getMonth();
+    dayForCutoff = Math.max(dayForCutoff, agreementDate.getDate());
     const isLaterMonth =
       year > aYear || (year === aYear && month > aMonth);
 
@@ -321,7 +323,7 @@ function estimatePayoutDate(
     }
   }
 
-  const monthsToAdd = day > cutoffDay ? 2 : 1;
+  const monthsToAdd = dayForCutoff > cutoffDay ? 2 : 1;
   return new Date(year, month + monthsToAdd, 1);
 }
 
