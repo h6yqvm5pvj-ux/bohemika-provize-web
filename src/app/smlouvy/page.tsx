@@ -590,7 +590,9 @@ export default function ContractsPage() {
           teamHasMore: teamRes.hasMore,
           myCursorDate: myRes.oldest?.getTime() ?? null,
           teamCursorDate: teamRes.oldest?.getTime() ?? null,
-          teamEmails: teamUsers.map((u) => u.email),
+          teamEmails: teamUsers
+            .map((u) => u.email)
+            .filter((email): email is string => Boolean(email)),
         });
       } catch (e) {
         console.error(e);
