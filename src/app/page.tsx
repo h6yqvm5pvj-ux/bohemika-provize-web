@@ -1559,7 +1559,7 @@ export default function HomePage() {
   };
 
   const handleSectionDragOver = (
-    event: DragEvent<HTMLDivElement>,
+    event: DragEvent<HTMLElement>,
     targetId: HomeSection
   ) => {
     event.preventDefault();
