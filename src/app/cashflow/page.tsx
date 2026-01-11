@@ -30,6 +30,7 @@ import {
   calculateMaxdomov,
   calculateCppAuto,
   calculateCppPPRbez,
+  calculateCppSimplex,
   calculateAllianzAuto,
   calculateCsobAuto,
   calculateUniqaAuto,
@@ -99,6 +100,21 @@ function monthLabelFromDate(d: Date): string {
   return `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+function frequencyText(f?: PaymentFrequency | null): string {
+  switch (f) {
+    case "monthly":
+      return "měsíčně";
+    case "quarterly":
+      return "čtvrtletně";
+    case "semiannual":
+      return "pololetně";
+    case "annual":
+      return "ročně";
+    default:
+      return "—";
+  }
+}
+
 function productLabel(p?: Product | "unknown"): string {
   switch (p) {
     case "neon":
@@ -119,6 +135,8 @@ function productLabel(p?: Product | "unknown"): string {
       return "Maxima MAXDOMOV";
     case "cppAuto":
       return "ČPP Auto";
+    case "cppsimplex":
+      return "ČPP Simplex";
     case "cppPPRs":
       return "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS";
     case "allianzAuto":
@@ -194,6 +212,8 @@ function commissionItemsForPosition(
       return calculateMaxdomov(amount, freq, pos).items;
     case "cppAuto":
       return calculateCppAuto(amount, freq, pos).items;
+    case "cppsimplex":
+      return calculateCppSimplex(amount, freq, pos).items;
     case "allianzAuto":
       return calculateAllianzAuto(amount, freq, pos).items;
     case "csobAuto":
@@ -273,6 +293,7 @@ type CashflowItem = {
   amount: number;
   productKey: Product | "unknown";
   note?: string | null;
+  frequency?: PaymentFrequency | null;
   source?: "own" | "manager";
   contractNumber?: string | null;
   clientName?: string | null;
@@ -296,7 +317,7 @@ type YearGroup = {
   months: MonthGroup[];
 };
 
-type ProductFilter = "all" | "life" | "auto" | "other" | "gold";
+type ProductFilter = "all" | "life" | "auto" | "property" | "other" | "gold";
 type ScopeFilter = "combined" | "own" | "team";
 
 /* ---------- logika výplat (zjednodušený cashflow generátor) ---------- */
@@ -399,6 +420,7 @@ function generateCashflow(
         date,
         amount,
         productKey: product ?? "unknown",
+        frequency: entry.frequencyRaw ?? null,
         note:
           entry.source === "manager"
             ? note
@@ -693,6 +715,7 @@ export default function CashflowPage() {
   const [, setUserPosition] = useState<Position | null>(null);
   const [hasTeam, setHasTeam] = useState(false);
   const [showPastYears, setShowPastYears] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<CashflowItem | null>(null);
 
   // akordeon – roky a měsíce
   const [expandedYears, setExpandedYears] = useState<
@@ -973,6 +996,18 @@ export default function CashflowPage() {
                 p === "kooperativaAuto"
               );
             }
+            if (productFilter === "property") {
+              return (
+                p === "domex" ||
+                p === "maxdomov" ||
+                p === "cppsimplex" ||
+                p === "cppPPRs" ||
+                p === "cppPPRbez" ||
+                p === "cppcestovko" ||
+                p === "axacestovko" ||
+                p === "zamex"
+              );
+            }
             if (productFilter === "other") {
               return !(
                 p === "neon" ||
@@ -1145,7 +1180,7 @@ export default function CashflowPage() {
         </header>
 
         {/* Filtry */}
-        <section className={`grid grid-cols-1 ${hasTeam ? "md:grid-cols-2" : ""} gap-3`}>
+        <section className={`grid grid-cols-1 ${hasTeam ? "md:grid-cols-[1.1fr_1fr]" : ""} gap-3`}>
           {hasTeam && (
             <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.7)] space-y-2">
               <div className="flex items-center justify-between">
@@ -1203,11 +1238,12 @@ export default function CashflowPage() {
                 <p className="text-sm text-slate-200">Výběr kategorií</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
+            <div className="flex flex-nowrap gap-2 text-xs sm:text-sm overflow-x-auto whitespace-nowrap px-1 pb-1">
               {[
                 ["all", "Všechny"],
                 ["life", "Život"],
                 ["auto", "Auto"],
+                ["property", "Majetek"],
                 ["gold", "Zlato"],
                 ["other", "Vedlejší produkty"],
               ].map(([val, label]) => (
@@ -1407,18 +1443,24 @@ export default function CashflowPage() {
                                     </>
                                   );
 
-                                  return href ? (
-                                    <Link
+                                  return (
+                                    <button
                                       key={item.id}
-                                      href={href}
-                                      className={containerClasses}
+                                      type="button"
+                                      onClick={() => setSelectedItem(item)}
+                                      className={`${containerClasses} text-left w-full`}
                                     >
                                       {content}
-                                    </Link>
-                                  ) : (
-                                    <div key={item.id} className={containerClasses}>
-                                      {content}
-                                    </div>
+                                      {href && (
+                                        <Link
+                                          href={href}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="ml-2 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-slate-200 hover:border-emerald-300/40 hover:text-emerald-100"
+                                        >
+                                          Otevřít smlouvu
+                                        </Link>
+                                      )}
+                                    </button>
                                   );
                                 })}
                               </div>
@@ -1434,6 +1476,87 @@ export default function CashflowPage() {
           </div>
         )}
       </div>
+
+      {selectedItem && (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 px-4 py-6"
+          onClick={() => setSelectedItem(null)}
+        >
+          <div
+            className="w-[min(520px,92vw)] rounded-2xl bg-slate-900 border border-white/10 shadow-2xl p-5 space-y-4 text-slate-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                  Výplata
+                </p>
+                <h3 className="text-xl font-semibold">
+                  {productLabel(selectedItem.productKey)}
+                </h3>
+                <p className="text-sm text-slate-300">
+                  {selectedItem.date.toLocaleDateString("cs-CZ")}
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                  Částka
+                </div>
+                <div className="text-xl font-bold text-emerald-300">
+                  {formatMoney(selectedItem.amount)}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
+                <div className="text-[11px] uppercase tracking-wide text-slate-400">
+                  Klient
+                </div>
+                <div className="font-medium">
+                  {selectedItem.clientName?.trim() || "—"}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Číslo smlouvy: {selectedItem.contractNumber?.trim() || "—"}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
+                <div className="text-[11px] uppercase tracking-wide text-slate-400">
+                  Frekvence / Zdroj
+                </div>
+                <div className="font-medium">
+                  {frequencyText(selectedItem.frequency)}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  {selectedItem.source === "manager" || selectedItem.isManagerOverride
+                    ? "Manažerská provize"
+                    : "Vlastní provize"}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1 text-sm">
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">
+                Poznámka
+              </div>
+              <div className="text-slate-100">
+                {selectedItem.note?.trim() || "Bez poznámky"}
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedItem(null)}
+                className="rounded-xl bg-white text-slate-900 px-4 py-2 text-sm font-semibold hover:bg-slate-100"
+              >
+                Zavřít
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

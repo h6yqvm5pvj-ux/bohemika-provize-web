@@ -29,23 +29,8 @@ export default function LoginPage() {
 
   // pomocná funkce: vyhodnotí, jestli má user aktivní předplatné
   function evaluateSubscription(data: any): boolean {
-    const statusRaw = data?.subscriptionStatus as string | undefined;
-    const paidUntilTS = (data as any)?.paidUntil;
-
-    if (statusRaw !== "active") {
-      return false;
-    }
-
-    // active + bez paidUntil = neomezený přístup
-    if (!paidUntilTS || typeof paidUntilTS.toDate !== "function") {
-      return true;
-    }
-
-    const paidUntil: Date = paidUntilTS.toDate();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return paidUntil >= today;
+    const statusRaw = (data?.subscriptionStatus as string | undefined)?.trim().toLowerCase();
+    return statusRaw !== "expired"; // povolíme vše kromě explicitně expirovaného
   }
 
   // pokud už je přihlášený, zkusíme ověřit předplatné a podle toho pustíme dál
@@ -63,8 +48,11 @@ export default function LoginPage() {
       const normalizedEmail = rawEmail.trim().toLowerCase();
 
       try {
-        const ref = doc(db, "users", normalizedEmail);
-        const snap = await getDoc(ref);
+        let snap = await getDoc(doc(db, "users", normalizedEmail));
+
+        if (!snap.exists() && rawEmail !== normalizedEmail) {
+          snap = await getDoc(doc(db, "users", rawEmail));
+        }
 
         if (!snap.exists()) {
           // nemáme user dok → bereme jako bez předplatného

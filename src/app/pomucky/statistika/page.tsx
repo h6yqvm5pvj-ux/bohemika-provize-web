@@ -35,6 +35,7 @@ import {
   calculateNeon,
   calculatePillowAuto,
   calculatePillowInjury,
+  calculateCppSimplex,
   calculateUniqaAuto,
   calculateZamex,
 } from "@/app/lib/productFormulas";
@@ -46,6 +47,8 @@ type ContractEntry = {
   product: Product;
   premium: string;
   commission: number;
+  comfortGradual?: boolean;
+  comfortPayment?: string;
 };
 
 type DayEntry = {
@@ -69,6 +72,7 @@ const PRODUCT_OPTIONS: { value: Product; label: string }[] = [
   { value: "pillowInjury", label: "Pillow Úraz / Nemoc" },
   { value: "domex", label: "ČPP DOMEX" },
   { value: "maxdomov", label: "Maxima MAXDOMOV" },
+  { value: "cppsimplex", label: "ČPP Simplex" },
   { value: "zamex", label: "ČPP ZAMEX" },
   { value: "cppPPRbez", label: "ČPP Pojištění majetku a odpovědnosti podnikatelů" },
   { value: "cppPPRs", label: "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS" },
@@ -122,6 +126,7 @@ function formatMoney(value: number): string {
 
 function premiumLabel(product: Product): string {
   if (TRAVEL_PRODUCTS.includes(product)) return "Jednorázové pojistné";
+  if (product === "comfortcc") return "Poplatek v 1. platbě";
   return LIFE_PRODUCTS.includes(product) ? "Měsíční pojistné" : "Roční pojistné";
 }
 
@@ -163,11 +168,18 @@ function toInputValue(v: any): string {
   return String(n);
 }
 
-function calculateCommission(product: Product, premiumRaw: string, position: Position, mode: CommissionMode): number {
-  const premium = parseNumberSafe(premiumRaw);
+function calculateCommission(
+  contract: ContractEntry,
+  position: Position,
+  mode: CommissionMode
+): number {
+  const premium = parseNumberSafe(contract.premium);
+  const comfortPayment = parseNumberSafe(contract.comfortPayment ?? "");
+  const isComfortGradual = !!contract.comfortGradual;
   if (!Number.isFinite(premium) || premium <= 0) return 0;
   const pos = position ?? DEFAULT_POSITION;
   const m = mode ?? DEFAULT_MODE;
+  const product = contract.product;
 
   switch (product) {
     case "neon":
@@ -184,6 +196,8 @@ function calculateCommission(product: Product, premiumRaw: string, position: Pos
       return immediateCommission(calculateMaxdomov(premium, "annual", pos));
     case "cppAuto":
       return immediateCommission(calculateCppAuto(premium, "annual", pos));
+    case "cppsimplex":
+      return immediateCommission(calculateCppSimplex(premium, "annual", pos));
     case "allianzAuto":
       return immediateCommission(calculateAllianzAuto(premium, "annual", pos));
     case "csobAuto":
@@ -208,6 +222,9 @@ function calculateCommission(product: Product, premiumRaw: string, position: Pos
       return immediateCommission(
         calculateComfortCC({
           fee: premium,
+          payment: isComfortGradual ? comfortPayment : 0,
+          isSavings: isComfortGradual,
+          isGradualFee: isComfortGradual,
           position: pos,
         })
       );
@@ -369,7 +386,7 @@ function StatistikaPageInner() {
         ...day,
         contracts: day.contracts.map((c) => ({
           ...c,
-          commission: calculateCommission(c.product, c.premium, positionForCalc, modeForCalc),
+          commission: calculateCommission(c, positionForCalc, modeForCalc),
         })),
       }))
     );
@@ -397,11 +414,29 @@ function StatistikaPageInner() {
               typeof (c as any)?.premium === "string"
                 ? ((c as any)?.premium as string)
                 : toInputValue((c as any)?.premium);
+            const comfortGradual = Boolean((c as any)?.comfortGradual);
+            const comfortPaymentStr =
+              typeof (c as any)?.comfortPayment === "string"
+                ? ((c as any)?.comfortPayment as string)
+                : toInputValue((c as any)?.comfortPayment);
             return {
               id: makeId(),
               product,
               premium: premiumStr,
-              commission: calculateCommission(product, premiumStr, positionForCalc, modeForCalc),
+              comfortGradual,
+              comfortPayment: comfortPaymentStr,
+              commission: calculateCommission(
+                {
+                  id: "",
+                  product,
+                  premium: premiumStr,
+                  comfortGradual,
+                  comfortPayment: comfortPaymentStr,
+                  commission: 0,
+                },
+                positionForCalc,
+                modeForCalc
+              ),
             };
           });
 
@@ -490,6 +525,8 @@ function StatistikaPageInner() {
         product: DEFAULT_PRODUCT,
         premium: "",
         commission: 0,
+        comfortGradual: false,
+        comfortPayment: "",
       };
       next[idx] = { ...prev[idx], contracts: [...prev[idx].contracts, newEntry] };
       return next;
@@ -503,7 +540,7 @@ function StatistikaPageInner() {
       const updatedContracts = day.contracts.map((c) => {
         if (c.id !== contractId) return c;
         const updated: ContractEntry = { ...c, ...updates };
-        const commission = calculateCommission(updated.product, updated.premium, positionForCalc, modeForCalc);
+        const commission = calculateCommission(updated, positionForCalc, modeForCalc);
         return { ...updated, commission };
       });
 
@@ -589,6 +626,8 @@ function StatistikaPageInner() {
         contracts: day.contracts.map((c) => ({
           product: c.product,
           premium: parseNumberSafe(c.premium),
+          comfortGradual: !!c.comfortGradual,
+          comfortPayment: parseNumberSafe(c.comfortPayment ?? ""),
         })),
         updatedAt: Date.now(),
       };
@@ -1017,7 +1056,7 @@ function StatistikaPageInner() {
                       </select>
                     </label>
 
-                    <label className="space-y-1">
+                    <div className="space-y-1">
                       <span className="text-xs text-slate-300">{premiumLabel(contract.product)}</span>
                       <input
                         type="number"
@@ -1031,14 +1070,80 @@ function StatistikaPageInner() {
                         disabled={!canEdit}
                         className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
                       />
-                    </label>
-
-                    <div className="space-y-1">
-                      <span className="text-xs text-slate-300">Provize (odhad)</span>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-emerald-200">
-                        {formatMoney(contract.commission)}
-                      </div>
                     </div>
+
+                    {contract.product === "comfortcc" ? (
+                      <div className="space-y-2">
+                        <div className="inline-flex rounded-full border border-white/12 bg-white/5 p-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleContractChange(safeSelectedIdx, contract.id, {
+                                comfortGradual: false,
+                              })
+                            }
+                            disabled={!canEdit}
+                            className={`px-3 py-1.5 text-xs rounded-full transition ${
+                              contract.comfortGradual
+                                ? "text-slate-200"
+                                : "bg-white text-slate-900 shadow"
+                            }`}
+                          >
+                            Jednorázový poplatek
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleContractChange(safeSelectedIdx, contract.id, {
+                                comfortGradual: true,
+                              })
+                            }
+                            disabled={!canEdit}
+                            className={`px-3 py-1.5 text-xs rounded-full transition ${
+                              contract.comfortGradual
+                                ? "bg-white text-slate-900 shadow"
+                                : "text-slate-200"
+                            }`}
+                          >
+                            Postupný poplatek
+                          </button>
+                        </div>
+
+                        {contract.comfortGradual ? (
+                          <label className="space-y-1 block">
+                            <span className="text-xs text-slate-300">Pravidelná platba</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={contract.comfortPayment ?? ""}
+                              onChange={(e) =>
+                                handleContractChange(safeSelectedIdx, contract.id, {
+                                  comfortPayment: e.target.value,
+                                })
+                              }
+                              disabled={!canEdit}
+                              className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                            />
+                          </label>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <span className="text-xs text-slate-300">Provize (odhad)</span>
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-emerald-200">
+                          {formatMoney(contract.commission)}
+                        </div>
+                      </div>
+                    )}
+
+                    {contract.product === "comfortcc" ? (
+                      <div className="space-y-1">
+                        <span className="text-xs text-slate-300">Provize (odhad)</span>
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-emerald-200">
+                          {formatMoney(contract.commission)}
+                        </div>
+                      </div>
+                    ) : null}
 
                       <div className="flex items-end justify-end">
                         <button

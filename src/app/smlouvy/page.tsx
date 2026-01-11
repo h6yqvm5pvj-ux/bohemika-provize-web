@@ -87,7 +87,7 @@ type Institution =
 const PRODUCT_CATEGORY_MAP: Record<ProductCategory, Product[]> = {
   life: ["neon", "flexi", "pillowInjury", "maximaMaxEfekt"],
   auto: ["cppAuto", "allianzAuto", "csobAuto", "uniqaAuto", "pillowAuto", "kooperativaAuto"],
-  property: ["cppPPRs", "cppPPRbez", "domex", "maxdomov"],
+  property: ["cppPPRs", "cppPPRbez", "domex", "maxdomov", "cppsimplex"],
   travel: ["cppcestovko", "axacestovko"],
   comfort: ["comfortcc"],
   liability: ["zamex", "domex", "cppPPRs", "cppPPRbez"],
@@ -110,6 +110,7 @@ const PRODUCT_INSTITUTION_MAP: Record<Product, Institution> = {
   zamex: "cpp",
   domex: "cpp",
   maxdomov: "maxima",
+  cppsimplex: "cpp",
   cppAuto: "cpp",
   allianzAuto: "allianz",
   csobAuto: "csob",
@@ -184,6 +185,8 @@ function productLabel(p?: Product): string {
       return "ČPP ZAMEX";
     case "domex":
       return "ČPP DOMEX";
+    case "cppsimplex":
+      return "ČPP Simplex";
     case "cppPPRbez":
       return "ČPP Pojištění majetku a odpovědnosti podnikatelů";
     case "maxdomov":

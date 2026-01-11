@@ -130,6 +130,7 @@ const PROPERTY_PRODUCTS: Product[] = [
   "domex",
   "cppPPRbez",
   "maxdomov",
+  "cppsimplex",
   "zamex",
   "cppPPRs",
   "cppcestovko",
@@ -178,6 +179,8 @@ function productLabel(p: Product): string {
       return "ČPP ZAMEX";
     case "domex":
       return "ČPP DOMEX";
+    case "cppsimplex":
+      return "ČPP Simplex";
     case "cppPPRbez":
       return "ČPP Pojištění majetku a odpovědnosti podnikatelů";
     case "maxdomov":

@@ -352,7 +352,8 @@ export const CashflowGenerator = {
         case "cppAuto":
         case "cppPPRs":
         case "csobAuto":
-        case "kooperativaAuto": {
+        case "kooperativaAuto":
+        case "cppsimplex": {
           if (!immediate) break;
           const amount = immediate.amount;
           const stepMonths = monthsBetweenPayments(entry.frequencyRaw);

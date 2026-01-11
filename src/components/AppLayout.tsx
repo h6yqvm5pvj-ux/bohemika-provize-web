@@ -11,7 +11,6 @@ import {
   signOut,
   type User as FirebaseUser,
 } from "firebase/auth";
-import type { Timestamp } from "firebase/firestore";
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 
 type ActivePage =
@@ -48,11 +47,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const pathname = usePathname();
 
   // status zatím nepoužíváme v UI
-  const [, setSubscriptionStatus] =
+  const [subscriptionStatus, setSubscriptionStatus] =
     useState<SubscriptionStatusWeb>("none");
   const [hasActiveSubscription, setHasActiveSubscription] =
-    useState<boolean | null>(null);
-  const [loadingProfile, setLoadingProfile] = useState(false);
+    useState<boolean | null>(true);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [hasTeam, setHasTeam] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     const cached = window.sessionStorage.getItem("app.hasTeam");
@@ -70,6 +69,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         setSubscriptionStatus("none");
         setLoadingProfile(false);
         setHasTeam(false);
+      } else {
+        setLoadingProfile(true);
       }
     });
     return () => unsub();
@@ -182,8 +183,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
     setLoadingProfile(true);
     try {
-      const ref = doc(db, "users", email);
-      const snap = await getDoc(ref);
+      let snap = await getDoc(doc(db, "users", email));
+
+      // fallback: pokud existuje dokument s původním e-mailem (např. s velkými písmeny), zkus ho
+      if (!snap.exists() && emailRaw && emailRaw !== email) {
+        snap = await getDoc(doc(db, "users", emailRaw));
+      }
 
       if (!snap.exists()) {
         setSubscriptionStatus("none");
@@ -192,36 +197,19 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       }
 
       const data = snap.data() as any;
-      const statusRaw = data.subscriptionStatus as string | undefined;
-      const paidUntilTS = data.paidUntil as Timestamp | undefined;
-
+      const statusRaw = (data.subscriptionStatus as string | undefined)?.trim().toLowerCase();
       let status: SubscriptionStatusWeb = "none";
-      let hasActive = false;
+      let hasActive = true;
 
       if (statusRaw === "active") {
         status = "active";
-
-        if (paidUntilTS) {
-          const paidUntil = paidUntilTS.toDate();
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-
-          if (paidUntil >= today) {
-            hasActive = true;
-          } else {
-            status = "expired";
-            hasActive = false;
-          }
-        } else {
-          // bez paidUntil = neomezený přístup (stejně jako v appce)
-          hasActive = true;
-        }
+        hasActive = true;
       } else if (statusRaw === "expired") {
         status = "expired";
         hasActive = false;
       } else {
         status = "none";
-        hasActive = false;
+        hasActive = true; // default allow pokud není explicitní expired
       }
 
       setSubscriptionStatus(status);
@@ -229,7 +217,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     } catch (e) {
       console.error("Chyba při načítání subscription profilu:", e);
       setSubscriptionStatus("none");
-      setHasActiveSubscription(false);
+      setHasActiveSubscription(null);
     } finally {
       setLoadingProfile(false);
     }
@@ -348,7 +336,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
   const showPaywall =
     !!user &&
-    hasActiveSubscription === false &&
+    subscriptionStatus === "expired" &&
     !loadingProfile;
 
   return (

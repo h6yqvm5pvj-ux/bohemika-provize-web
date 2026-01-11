@@ -8,6 +8,7 @@ export type Product =
   | "zamex"
   | "domex"
   | "maxdomov"
+  | "cppsimplex"
   | "cppAuto"
   | "allianzAuto"
   | "csobAuto"

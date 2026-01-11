@@ -40,6 +40,7 @@ const PRODUCT_LABEL: Record<Product, string> = {
   zamex: "ČPP ZAMEX",
   domex: "ČPP DOMEX",
   maxdomov: "Maxima MAXDOMOV",
+  cppsimplex: "ČPP Simplex",
   cppAuto: "ČPP Auto",
   allianzAuto: "Allianz Auto",
   csobAuto: "ČSOB Auto",

@@ -1,7 +1,7 @@
 // src/app/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState, type DragEvent, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -42,6 +42,7 @@ import {
   calculateCppAuto,
   calculateAllianzAuto,
   calculateCsobAuto,
+  calculateCppSimplex,
   calculateUniqaAuto,
   calculatePillowAuto,
   calculateKooperativaAuto,
@@ -166,6 +167,8 @@ function commissionItemsForPosition(
       return calculateMaxdomov(amount, freq, pos).items;
     case "cppAuto":
       return calculateCppAuto(amount, freq, pos).items;
+    case "cppsimplex":
+      return calculateCppSimplex(amount, freq, pos).items;
     case "allianzAuto":
       return calculateAllianzAuto(amount, freq, pos).items;
     case "csobAuto":
@@ -387,9 +390,10 @@ type HomeWidgets = {
   teamLeaderboard: boolean;
   productionChart: boolean;
   goldWidget: boolean;
+  quickActions: boolean;
 };
 
-type HomeSection = "gold" | "summary" | "goal" | "leaderboard" | "chart";
+type HomeSection = "gold" | "summary" | "goal" | "leaderboard" | "chart" | "quickActions";
 type LayoutScope = "cloud" | "device";
 type PerformanceMode = "default" | "lite";
 
@@ -413,6 +417,7 @@ const HOME_WIDGETS_DEFAULT: HomeWidgets = {
   teamLeaderboard: true,
   productionChart: true,
   goldWidget: false,
+  quickActions: true,
 };
 
 const homeWidgetsKey = (email?: string | null) =>
@@ -423,15 +428,36 @@ const homeScopeKey = (email?: string | null) =>
   email ? `home.scope:${email.toLowerCase()}` : null;
 const homePerformanceKey = (email?: string | null) =>
   email ? `home.performance:${email.toLowerCase()}` : null;
+const quickActionsKey = (email?: string | null) =>
+  email ? `home.quickActions:${email.toLowerCase()}` : null;
 
 const HOME_LAYOUT_DEFAULT: HomeSection[] = [
   "gold",
   "summary",
   "goal",
   "leaderboard",
+  "quickActions",
   "chart",
 ];
 const PERFORMANCE_DEFAULT: PerformanceMode = "default";
+const QUICK_ACTIONS_DEFAULT: QuickAction[] = [];
+
+type QuickAction = { key: string; title: string; href: string; category?: string; description?: string };
+
+const QUICK_ACTION_OPTIONS: QuickAction[] = [
+  { key: "argumenty", title: "Argumenty", href: "/pomucky/argumenty", category: "Obecné" },
+  { key: "zaznam", title: "Záznam z jednání", href: "/pomucky/zaznam", category: "Obecné" },
+  { key: "investicni-kalkulacka", title: "Investiční kalkulačka", href: "/pomucky/investicni-kalkulacka", category: "Investice" },
+  { key: "statistika", title: "Statistika", href: "/pomucky/statistika", category: "Finance" },
+  { key: "export-produkce", title: "Export produkce", href: "/pomucky/export-produkce", category: "Finance" },
+  { key: "plan-produkce", title: "Plán produkce", href: "/pomucky/plan-produkce", category: "Finance" },
+  { key: "zlato", title: "Zlato", href: "/pomucky/zlato", category: "Investice" },
+  { key: "katastr", title: "Katastr nemovitostí", href: "/cuzk", category: "Pojištění majetku" },
+  { key: "data-o-vozidle", title: "Data o vozidle", href: "/pomucky/data-o-vozidle", category: "Pojištění vozidel" },
+  { key: "projekce-vykonu", title: "Projekce výkonu", href: "/pomucky/projekce-vykonu", category: "Finance" },
+  { key: "pracovni-neschopenka", title: "Pracovní neschopnost", href: "/pomucky/pracovni-neschopenka", category: "Životní pojištění" },
+  { key: "invalidita", title: "Invalidita", href: "/pomucky/invalidita", category: "Životní pojištění" },
+];
 
 const readLocalHomeWidgets = (email?: string | null): HomeWidgets | null => {
   if (typeof window === "undefined") return null;
@@ -468,6 +494,44 @@ const readLocalPerformanceMode = (email?: string | null): PerformanceMode | null
   const raw = window.localStorage.getItem(key);
   if (raw === "default" || raw === "lite") return raw;
   return null;
+};
+
+const readLocalQuickActions = (email?: string | null): QuickAction[] | null => {
+  if (typeof window === "undefined") return null;
+  const key = quickActionsKey(email ?? null);
+  if (!key) return null;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as QuickAction[];
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+// doplní chybějící sekce (např. nový widget) a odstraní duplicitní / neznámé
+const normalizeHomeLayout = (layout: HomeSection[] | null | undefined): HomeSection[] => {
+  const known = new Set<HomeSection>();
+  const normalized: HomeSection[] = [];
+  const source = Array.isArray(layout) && layout.length > 0 ? layout : HOME_LAYOUT_DEFAULT;
+
+  source.forEach((item) => {
+    if (HOME_LAYOUT_DEFAULT.includes(item) && !known.has(item)) {
+      normalized.push(item);
+      known.add(item);
+    }
+  });
+
+  // přidej případně chybějící defaultní sekce (např. po přidání quickActions)
+  HOME_LAYOUT_DEFAULT.forEach((item) => {
+    if (!known.has(item)) {
+      normalized.push(item);
+      known.add(item);
+    }
+  });
+
+  return normalized;
 };
 
 function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
@@ -756,6 +820,9 @@ export default function HomePage() {
   const [selectedSubordinate, setSelectedSubordinate] = useState<string | null>(null);
   const [homeWidgets, setHomeWidgets] = useState<HomeWidgets>(HOME_WIDGETS_DEFAULT);
   const [widgetPanelOpen, setWidgetPanelOpen] = useState(false);
+  const [quickActions, setQuickActions] = useState<QuickAction[]>([]);
+  const [qaPickerOpen, setQaPickerOpen] = useState(false);
+  const qaButtonRef = useRef<HTMLButtonElement | null>(null);
   const [homeLayout, setHomeLayout] = useState<HomeSection[]>(HOME_LAYOUT_DEFAULT);
   const [draggingSection, setDraggingSection] = useState<HomeSection | null>(null);
   const [hoverSection, setHoverSection] = useState<HomeSection | null>(null);
@@ -829,6 +896,20 @@ export default function HomePage() {
     });
   };
 
+  const persistQuickActions = (updater: (prev: QuickAction[]) => QuickAction[]) => {
+    setQuickActions((prev) => {
+      const next = updater(prev);
+      const key = quickActionsKey(normalizedEmail);
+      if (typeof window !== "undefined" && key) {
+        window.localStorage.setItem(key, JSON.stringify(next));
+      }
+      if (layoutScope === "cloud") {
+        void pushHomeSettingsToCloud({ homeQuickActions: next });
+      }
+      return next;
+    });
+  };
+
   const persistHomeLayout = (next: HomeSection[]) => {
     setHomeLayout(next);
     const key = homeLayoutKey(normalizedEmail);
@@ -862,7 +943,12 @@ export default function HomePage() {
     if (!user?.email) return;
     const nextScope: LayoutScope = layoutScope === "cloud" ? "device" : "cloud";
     if (nextScope === "cloud") {
-      await pushHomeSettingsToCloud({ homeLayout, homeWidgets, homePerformanceMode: performanceMode });
+      await pushHomeSettingsToCloud({
+        homeLayout,
+        homeWidgets,
+        homePerformanceMode: performanceMode,
+        homeQuickActions: quickActions,
+      });
     }
     setLayoutScope(nextScope);
     rememberScopePreference(nextScope);
@@ -894,13 +980,15 @@ export default function HomePage() {
     if (!normalizedEmail) return;
     const email = normalizedEmail;
 
-    const loadFromDevice = () => {
+  const loadFromDevice = () => {
       const localLayout = readLocalHomeLayout(email);
       const localWidgets = readLocalHomeWidgets(email);
       const localPerf = readLocalPerformanceMode(email);
-      setHomeLayout(localLayout ?? HOME_LAYOUT_DEFAULT);
+      const localQA = readLocalQuickActions(email);
+      setHomeLayout(normalizeHomeLayout(localLayout));
       setHomeWidgets(localWidgets ?? HOME_WIDGETS_DEFAULT);
       setPerformanceMode(localPerf ?? PERFORMANCE_DEFAULT);
+      setQuickActions(localQA ?? QUICK_ACTIONS_DEFAULT);
     };
 
     const load = async () => {
@@ -916,17 +1004,19 @@ export default function HomePage() {
         const cloudLayout = (data?.homeLayout as HomeSection[] | undefined) ?? null;
         const cloudWidgets = (data?.homeWidgets as Partial<HomeWidgets> | undefined) ?? null;
         const cloudPerf = (data?.homePerformanceMode as PerformanceMode | undefined) ?? null;
+        const cloudQA = (data?.homeQuickActions as QuickAction[] | undefined) ?? null;
 
         if (cloudLayout && Array.isArray(cloudLayout) && cloudLayout.length > 0) {
-          setHomeLayout(cloudLayout as HomeSection[]);
+          const normalized = normalizeHomeLayout(cloudLayout as HomeSection[]);
+          setHomeLayout(normalized);
           const key = homeLayoutKey(email);
           if (typeof window !== "undefined" && key) {
-            window.localStorage.setItem(key, JSON.stringify(cloudLayout));
+            window.localStorage.setItem(key, JSON.stringify(normalized));
           }
         } else {
           const localLayout = readLocalHomeLayout(email);
           if (localLayout) {
-            setHomeLayout(localLayout);
+            setHomeLayout(normalizeHomeLayout(localLayout));
           } else {
             setHomeLayout(HOME_LAYOUT_DEFAULT);
           }
@@ -942,6 +1032,17 @@ export default function HomePage() {
         } else {
           const localWidgets = readLocalHomeWidgets(email);
           setHomeWidgets(localWidgets ?? HOME_WIDGETS_DEFAULT);
+        }
+
+        if (cloudQA && Array.isArray(cloudQA)) {
+          setQuickActions(cloudQA);
+          const key = quickActionsKey(email);
+          if (typeof window !== "undefined" && key) {
+            window.localStorage.setItem(key, JSON.stringify(cloudQA));
+          }
+        } else {
+          const localQA = readLocalQuickActions(email);
+          setQuickActions(localQA ?? QUICK_ACTIONS_DEFAULT);
         }
 
         if (cloudPerf) {
@@ -974,6 +1075,7 @@ export default function HomePage() {
     homeLayout?: HomeSection[];
     homeWidgets?: HomeWidgets;
     homePerformanceMode?: PerformanceMode;
+    homeQuickActions?: QuickAction[];
   }) => {
     if (!normalizedEmail) return;
     try {
@@ -1443,6 +1545,8 @@ export default function HomePage() {
   const showLeaderboardSection = showTeamBox && homeWidgets.teamLeaderboard;
   const showChartSection = homeWidgets.productionChart;
   const showGoldWidget = homeWidgets.goldWidget;
+  const showQuickActions = homeWidgets.quickActions;
+  const reorderEnabled = widgetPanelOpen;
   const goldChangePct = goldData?.changePct ?? null;
   const isLiteUI = performanceMode === "lite";
   const goldChangeAbs =
@@ -1880,6 +1984,110 @@ export default function HomePage() {
             )}
           </section>
         );
+      case "quickActions":
+        if (!showQuickActions) return null;
+        const availableQA = QUICK_ACTION_OPTIONS.filter(
+          (opt) => !quickActions.some((q) => q.key === opt.key)
+        );
+        return (
+          <section
+            className={`relative z-30 rounded-3xl border border-white/12 bg-slate-900/80 px-5 py-5 sm:px-8 sm:py-7 backdrop-blur-2xl shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3 ${
+              reorderEnabled && draggingSection === id ? "opacity-50" : ""
+            } ${reorderEnabled ? "cursor-move" : ""}`}
+            draggable={reorderEnabled}
+            onDragStart={() => handleSectionDragStart(id)}
+            onDragOver={(e) => handleSectionDragOver(e, id)}
+            onDragEnd={handleSectionDragEnd}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                  Rychlé akce
+                </p>
+                <h2 className="text-lg sm:text-xl font-semibold text-slate-50">
+                  Pomůcky po ruce
+                </h2>
+              </div>
+              <div className="relative z-30">
+                <button
+                  type="button"
+                  ref={qaButtonRef}
+                  onClick={() => setQaPickerOpen((v) => !v)}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/90 hover:border-emerald-300/60 hover:bg-white/10 transition"
+                >
+                  + Přidat
+                </button>
+                {qaPickerOpen && (
+                  <div
+                    className="absolute right-0 top-full mt-2 w-72 max-h-[320px] overflow-auto rounded-2xl border border-white/15 bg-slate-950/95 backdrop-blur-2xl p-3 shadow-[0_18px_50px_rgba(0,0,0,0.75)] z-50 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                        Pomůcky
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setQaPickerOpen(false)}
+                        className="text-[12px] text-slate-400 hover:text-slate-200"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    {availableQA.length === 0 ? (
+                      <p className="text-xs text-slate-300">Vše už máš přidané.</p>
+                    ) : (
+                      availableQA.map((opt) => (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => {
+                            persistQuickActions((prev) => [...prev, opt]);
+                            setQaPickerOpen(false);
+                          }}
+                          className="w-full text-left rounded-xl border border-white/12 bg-white/5 px-3 py-2 text-sm text-slate-100 hover:border-emerald-300/50 hover:bg-white/10 transition"
+                        >
+                          <div className="font-semibold">{opt.title}</div>
+                          <div className="text-[11px] text-slate-400">
+                            {opt.category ?? "Pomůcky"}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {quickActions.length === 0 ? (
+              <p className="text-sm text-slate-300">
+                Přidej si sem nejčastěji používané pomůcky a měj je na jedno kliknutí.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {quickActions.map((qa) => (
+                  <div
+                    key={qa.key}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-3 py-1.5 text-sm text-slate-100"
+                  >
+                    <Link href={qa.href} className="hover:text-emerald-200">
+                      {qa.title}
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        persistQuickActions((prev) => prev.filter((item) => item.key !== qa.key))
+                      }
+                      className="text-[12px] text-slate-400 hover:text-rose-200"
+                      aria-label={`Odebrat ${qa.title}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        );
       case "chart":
         if (!showChartSection) return null;
         const chartCardClass = isLiteUI
@@ -2210,7 +2418,6 @@ export default function HomePage() {
       : "Vedlejší produkty";
 
   const visibleSections = homeLayout.filter((s) => renderSection(s) !== null);
-  const reorderEnabled = widgetPanelOpen;
 
   if (!authReady || !user) return null;
 
@@ -2268,18 +2475,19 @@ export default function HomePage() {
                 </div>
 
                 <div className="space-y-2 text-sm text-slate-200">
-                  {[
-                    { key: "productionSummary", label: "Přehled produkce", disabled: false },
-                    { key: "monthlyGoal", label: "Měsíční cíl", disabled: false },
-                    { key: "goldWidget", label: "Cena zlata", disabled: false },
-                    {
-                      key: "teamLeaderboard",
-                      label: "Žebříček týmu",
-                      disabled: !showTeamBox,
-                      note: "Jen pro manažery s týmem",
-                    },
-                    { key: "productionChart", label: "Graf produkce", disabled: false },
-                  ].map((opt) => {
+                    {[
+                      { key: "productionSummary", label: "Přehled produkce", disabled: false },
+                      { key: "monthlyGoal", label: "Měsíční cíl", disabled: false },
+                      { key: "goldWidget", label: "Cena zlata", disabled: false },
+                      {
+                        key: "teamLeaderboard",
+                        label: "Žebříček týmu",
+                        disabled: !showTeamBox,
+                        note: "Jen pro manažery s týmem",
+                      },
+                      { key: "quickActions", label: "Rychlé akce (pomůcky)", disabled: false },
+                      { key: "productionChart", label: "Graf produkce", disabled: false },
+                    ].map((opt) => {
                     const checked = homeWidgets[opt.key as keyof HomeWidgets];
                     const disabled = opt.disabled;
                     return (

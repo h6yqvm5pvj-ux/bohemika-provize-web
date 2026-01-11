@@ -8,7 +8,7 @@ import { collection, collectionGroup, doc, getDoc, getDocs, limit as fbLimit, or
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
-import { type Position } from "@/app/types/domain";
+import { type Position, type Product } from "@/app/types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
 type Member = {
@@ -77,6 +77,24 @@ function toDate(value: unknown): Date | null {
 const ONLINE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minut
 const RECENT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 1 den
 
+type Category = "life" | "auto" | "property" | "travel" | "comfort" | "other";
+const CATEGORY_LABELS: Record<Category, string> = {
+  life: "Životní",
+  auto: "Auto",
+  property: "Majetek",
+  travel: "Cestovko",
+  comfort: "Comfort",
+  other: "Ostatní",
+};
+const CATEGORY_COLORS: Record<Category, string> = {
+  life: "#60a5fa", // modrá
+  auto: "#f59e0b", // zlatá
+  property: "#22c55e", // zelená
+  travel: "#38bdf8", // světle modrá
+  comfort: "#c084fc", // fialová
+  other: "#e5e7eb", // šedá
+};
+
 const formatRelative = (ts: number | null | undefined): string => {
   if (!ts) return "—";
   const diff = Date.now() - ts;
@@ -93,7 +111,10 @@ const formatRelative = (ts: number | null | undefined): string => {
 type TeamCachePayload = {
   members: Member[];
   lastActive: Record<string, number | null>;
-  contractCounts: Record<string, { total: number; month: number }>;
+  contractCounts: Record<
+    string,
+    { total: number; month: number; categories: Record<Category, number> }
+  >;
   contractsLoaded: boolean;
   contractsError: boolean;
   userPosition: Position | null;
@@ -110,8 +131,11 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(true);
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [lastActive, setLastActive] = useState<Record<string, number | null>>({});
-  const [contractCounts, setContractCounts] = useState<Record<string, { total: number; month: number }>>({});
+  const [contractCounts, setContractCounts] = useState<
+    Record<string, { total: number; month: number; categories: Record<Category, number> }>
+  >({});
   const [contractsLoaded, setContractsLoaded] = useState(false);
+  const [, setContractsRefreshing] = useState(false);
   const [contractsError, setContractsError] = useState(false);
   const [userPosition, setUserPosition] = useState<Position | null>(null);
   const usedCacheRef = useRef(false);
@@ -267,11 +291,11 @@ export default function TeamPage() {
 
   useEffect(() => {
     const loadContractCounts = async () => {
+      // použij cache jen jako skeleton, ale vždy načti čerstvá data
       if (cacheKey) {
         const cached = teamDataCache[cacheKey];
         if (cached && Date.now() - cached.ts < TEAM_CACHE_TTL_MS && cached.payload.contractsLoaded) {
           applyCachedTeamState(cached.payload);
-          return;
         }
       }
 
@@ -281,9 +305,12 @@ export default function TeamPage() {
         setContractsError(false);
         return;
       }
-      setContractsLoaded(false);
+      if (Object.keys(contractCounts).length === 0) {
+        setContractsLoaded(false);
+      }
+      setContractsRefreshing(true);
       setContractsError(false);
-      let stats: Record<string, { total: number; month: number }> = {};
+      let stats: Record<string, { total: number; month: number; categories: Record<Category, number> }> = {};
       try {
         const emails = Array.from(new Set(members.map((m) => m.email.toLowerCase()))); // dedupe
         const now = new Date();
@@ -291,6 +318,44 @@ export default function TeamPage() {
         const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
         const entries = collectionGroup(db, "entries");
         const chunkSize = 10;
+        const emptyCategories = (): Record<Category, number> => ({
+          life: 0,
+          auto: 0,
+          property: 0,
+          travel: 0,
+          comfort: 0,
+          other: 0,
+        });
+        const categorizeProduct = (p?: Product | null): Category => {
+          switch (p) {
+            case "neon":
+            case "flexi":
+            case "maximaMaxEfekt":
+            case "pillowInjury":
+              return "life";
+            case "cppAuto":
+            case "allianzAuto":
+            case "csobAuto":
+            case "uniqaAuto":
+            case "pillowAuto":
+            case "kooperativaAuto":
+              return "auto";
+            case "domex":
+            case "maxdomov":
+            case "cppPPRbez":
+            case "cppPPRs":
+            case "zamex":
+            case "cppsimplex":
+              return "property";
+            case "cppcestovko":
+            case "axacestovko":
+              return "travel";
+            case "comfortcc":
+              return "comfort";
+            default:
+              return "other";
+          }
+        };
 
         for (let i = 0; i < emails.length; i += chunkSize) {
           const chunk = emails.slice(i, i + chunkSize);
@@ -299,8 +364,15 @@ export default function TeamPage() {
             const data = docSnap.data() as any;
             const email = (data.userEmail as string | undefined)?.toLowerCase();
             if (!email) return;
-            const current = stats[email] ?? { total: 0, month: 0 };
+            const current =
+              stats[email] ?? {
+                total: 0,
+                month: 0,
+                categories: emptyCategories(),
+              };
             current.total += 1;
+            const category = categorizeProduct(data.productKey as Product | undefined);
+            current.categories[category] = (current.categories[category] ?? 0) + 1;
             const date = toDate((data as any).contractSignedDate ?? data.createdAt);
             const ts = date?.getTime();
             if (ts != null && ts >= monthStart && ts < nextMonthStart) {
@@ -317,6 +389,7 @@ export default function TeamPage() {
         setContractsError(true);
       } finally {
         setContractsLoaded(true);
+        setContractsRefreshing(false);
 
         if (cacheKey) {
           teamDataCache[cacheKey] = {
@@ -395,10 +468,103 @@ export default function TeamPage() {
   };
 
   const contractCountLabel = (email: string, key: "total" | "month") => {
-    if (!contractsLoaded || contractsError) return "—";
+    if (contractsError) return "—";
+    if (!contractsLoaded && Object.keys(contractCounts).length === 0) return "—";
     const stats = contractCounts[email];
     const value = key === "total" ? stats?.total : stats?.month;
     return value != null ? String(value) : "0";
+  };
+
+  const categoryLegend = (email: string) => {
+    const stats = contractCounts[email];
+    const total = stats?.total ?? 0;
+    if (!stats || total === 0) {
+      return <div className="text-sm text-slate-400">Žádné smlouvy.</div>;
+    }
+    const entries = (Object.keys(CATEGORY_LABELS) as Category[])
+      .map((cat) => ({ cat, count: stats.categories?.[cat] ?? 0 }))
+      .filter((c) => c.count > 0);
+    if (entries.length === 0) {
+      return <div className="text-sm text-slate-400">Žádné smlouvy.</div>;
+    }
+    return (
+      <div className="space-y-1">
+        {entries.map(({ cat, count }) => {
+          const pct = Math.round((count / total) * 100);
+          return (
+            <div key={cat} className="flex items-center gap-2 text-[12px] text-slate-100">
+              <span
+                className="h-3 w-3 rounded-full border border-white/10 shadow-sm"
+                style={{ backgroundColor: CATEGORY_COLORS[cat] }}
+              />
+              <span className="font-semibold">{CATEGORY_LABELS[cat]}</span>
+              <span className="text-slate-400">{count} · {pct}%</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderCategoryPie = (email: string) => {
+    const stats = contractCounts[email];
+    const total = stats?.total ?? 0;
+    if (!stats || total === 0) {
+      return <div className="text-sm text-slate-400">Žádné smlouvy.</div>;
+    }
+    const entries = (Object.keys(CATEGORY_LABELS) as Category[])
+      .map((cat) => ({ cat, count: stats.categories?.[cat] ?? 0 }))
+      .filter((c) => c.count > 0);
+    if (entries.length === 0) return <div className="text-sm text-slate-400">Žádné smlouvy.</div>;
+
+    const size = 140;
+    const r = 60;
+    const cx = size / 2;
+    const cy = size / 2;
+    const TAU = Math.PI * 2;
+
+    const arcPath = (start: number, end: number) => {
+      const startX = cx + r * Math.cos(start);
+      const startY = cy + r * Math.sin(start);
+      const endX = cx + r * Math.cos(end);
+      const endY = cy + r * Math.sin(end);
+      const largeArc = end - start > Math.PI ? 1 : 0;
+      return `M ${cx} ${cy} L ${startX} ${startY} A ${r} ${r} 0 ${largeArc} 1 ${endX} ${endY} Z`;
+    };
+
+    // Pokud je jen jedna kategorie, vykresli plný kruh
+    if (entries.length === 1) {
+      return (
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="drop-shadow-[0_6px_20px_rgba(0,0,0,0.3)]">
+          <circle cx={cx} cy={cy} r={r} fill={CATEGORY_COLORS[entries[0].cat]} />
+        </svg>
+      );
+    }
+
+    let angle = -Math.PI / 2; // začneme nahoře
+    const slices = entries.map(({ cat, count }) => {
+      const delta = (count / total) * TAU;
+      const start = angle;
+      const end = angle + delta;
+      angle = end;
+      return { cat, start, end };
+    });
+
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="drop-shadow-[0_6px_20px_rgba(0,0,0,0.35)]">
+        {slices.map((s) => (
+          <path key={s.cat} d={arcPath(s.start, s.end)} fill={CATEGORY_COLORS[s.cat]} stroke="#0f172a" strokeWidth="1" />
+        ))}
+        {/* vyříznutý střed pro donut */}
+        <circle cx={cx} cy={cy} r={r * 0.42} fill="#0f172a" stroke="#1e293b" strokeWidth="1" />
+        <text x={cx} y={cy - 4} textAnchor="middle" className="fill-white" style={{ fontSize: "13px", fontWeight: 700 }}>
+          {total}
+        </text>
+        <text x={cx} y={cy + 12} textAnchor="middle" className="fill-slate-400" style={{ fontSize: "11px" }}>
+          smluv
+        </text>
+      </svg>
+    );
   };
 
   const performanceInfo = (email: string) => {
@@ -545,6 +711,17 @@ export default function TeamPage() {
                       <div>
                         <div className="text-[11px] uppercase tracking-wide text-slate-400">Smluv tento měsíc</div>
                         <div className="text-lg font-bold text-white">{contractCountLabel(selected.email, "month")}</div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] uppercase tracking-wide text-slate-400">Podíl kategorií</div>
+                        <div className="text-[11px] text-slate-500">(podle počtu smluv)</div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-[150px_1fr] items-center gap-3">
+                        <div className="flex justify-center">{renderCategoryPie(selected.email)}</div>
+                        <div>{categoryLegend(selected.email)}</div>
                       </div>
                     </div>
 

@@ -25,6 +25,7 @@ import {
   calculateCppAuto,
   calculateCppPPRbez,
   calculateCppPPRs,
+  calculateCppSimplex,
   calculateAllianzAuto,
   calculateCsobAuto,
   calculateUniqaAuto,
@@ -96,6 +97,7 @@ const PRODUCT_OPTIONS: { id: Product; label: string }[] = [
   { id: "zamex", label: "ČPP ZAMEX" },
   { id: "domex", label: "ČPP DOMEX" },
   { id: "maxdomov", label: "Maxima MAXDOMOV" },
+  { id: "cppsimplex", label: "ČPP Simplex" },
   { id: "cppAuto", label: "ČPP Auto" },
   {
     id: "cppPPRs",
@@ -120,6 +122,7 @@ const REPLACEMENT_ELIGIBLE_PRODUCTS: Product[] = [
   "domex",
   "cppPPRbez",
   "maxdomov",
+  "cppsimplex",
   "cppAuto",
   "allianzAuto",
   "csobAuto",
@@ -245,7 +248,7 @@ function productIcon(product: Product): string {
     return "/icons/icon_zamex.png";
   }
 
-  if (product === "domex" || product === "maxdomov" || product === "cppPPRbez") {
+  if (product === "domex" || product === "maxdomov" || product === "cppPPRbez" || product === "cppsimplex") {
     return "/icons/icon_domex.png";
   }
   if (product === "cppPPRs") {
@@ -296,6 +299,7 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "csobAuto":
     case "uniqaAuto":
     case "zamex":
+    case "cppsimplex":
     case "cppPPRbez":
     case "cppPPRs":
       return ["quarterly", "semiannual", "annual"];
@@ -515,6 +519,7 @@ export default function CalculatorPage() {
       case "maxdomov":
         return `Výpočet: platba (${payLabel}) × koeficient (získatelská i následná). Roční částka = × počet plateb (${payPerYear}).`;
       case "cppAuto":
+      case "cppsimplex":
       case "allianzAuto":
       case "csobAuto":
       case "uniqaAuto":
@@ -807,6 +812,14 @@ export default function CalculatorPage() {
 
     if (product === "cppAuto") {
       const dto = calculateCppAuto(val, frequency, position);
+      setItems(dto.items);
+      setTotal(dto.total);
+      setUnsupported(false);
+      return;
+    }
+
+    if (product === "cppsimplex") {
+      const dto = calculateCppSimplex(val, frequency, position);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);

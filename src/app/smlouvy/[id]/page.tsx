@@ -268,6 +268,9 @@ function preloadFormulaModule(product?: Product | null) {
     case "maxdomov":
       import("../../lib/productFormulas/maxdomov");
       break;
+    case "cppsimplex":
+      import("../../lib/productFormulas/cppsimplex");
+      break;
     case "cppAuto":
       import("../../lib/productFormulas/cppAuto");
       break;
@@ -383,6 +386,8 @@ function productLabel(p?: Product): string {
       return "ČPP ZAMEX";
     case "domex":
       return "ČPP DOMEX";
+    case "cppsimplex":
+      return "ČPP Simplex";
     case "cppPPRbez":
       return "ČPP Pojištění majetku a odpovědnosti podnikatelů";
     case "maxdomov":
@@ -448,7 +453,7 @@ function productIcon(p?: Product): string {
     return "/icons/icon_zamex.png";
   }
 
-  if (p === "domex" || p === "maxdomov" || p === "cppPPRs" || p === "cppPPRbez") {
+  if (p === "domex" || p === "maxdomov" || p === "cppPPRs" || p === "cppPPRbez" || p === "cppsimplex") {
     return "/icons/icon_domex.png";
   }
 
@@ -735,6 +740,12 @@ async function calculateResultForPosition(
         "../../lib/productFormulas/maxdomov"
       );
       return calculateMaxdomov(amount, freq, position);
+    }
+    case "cppsimplex": {
+      const { calculateCppSimplex } = await import(
+        "../../lib/productFormulas/cppsimplex"
+      );
+      return calculateCppSimplex(amount, freq, position);
     }
     case "cppAuto": {
       const { calculateCppAuto } = await import("../../lib/productFormulas/cppAuto");

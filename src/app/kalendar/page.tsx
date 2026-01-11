@@ -95,6 +95,8 @@ function productLabel(p?: string | null): string {
       return "ČPP Pojištění majetku a odpovědnosti podnikatelů";
     case "maxdomov":
       return "Maxima MAXDOMOV";
+    case "cppsimplex":
+      return "ČPP Simplex";
     case "cppAuto":
       return "ČPP Auto";
     case "cppPPRs":
