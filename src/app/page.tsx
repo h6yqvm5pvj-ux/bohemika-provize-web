@@ -2221,6 +2221,7 @@ export default function HomePage() {
     summary: "md:col-span-2",
     goal: "md:col-span-1",
     leaderboard: "md:col-span-1",
+    quickActions: "md:col-span-1",
     chart: "md:col-span-2",
   };
 
@@ -2229,6 +2230,7 @@ export default function HomePage() {
     summary: "",
     goal: "",
     leaderboard: "md:row-span-2",
+    quickActions: "",
     chart: "",
   };
 
