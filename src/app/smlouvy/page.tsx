@@ -56,6 +56,7 @@ type ContractDoc = {
 
   createdAt?: FirestoreTimestamp | Date | string | null;
   contractSignedDate?: FirestoreTimestamp | Date | string | null;
+  policyStartDate?: FirestoreTimestamp | Date | string | null;
 };
 
 type AppUser = {
@@ -239,17 +240,31 @@ function nextAnniversaryDate(start: Date, now: Date): Date {
   return candidate;
 }
 
-function isAnniversarySoon(date: Date | null): { soon: boolean; next?: Date } {
+function addYears(date: Date, years: number) {
+  const copy = new Date(date.getTime());
+  copy.setFullYear(copy.getFullYear() + years);
+  return copy;
+}
+
+function isAnniversarySoon(
+  date: Date | null
+): { soon: boolean; next?: Date; daysLeft?: number } {
   if (!date) return { soon: false };
   const now = new Date();
-  const next = nextAnniversaryDate(date, now);
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const next = nextAnniversaryDate(start, now);
   const diffDays = (next.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  // nové smlouvy (první rok) nechceme označovat jako "blížící se"
-  const oneYearMs = 365 * 24 * 60 * 60 * 1000;
-  const firstAnniversary = new Date(date.getTime() + oneYearMs);
-  const isBeforeFirstAnniv = now < firstAnniversary;
-  const soon = diffDays <= 60 && diffDays >= 0 && !isBeforeFirstAnniv;
-  return { soon, next };
+  const daysLeft = Math.ceil(diffDays);
+  const firstAnniversary = addYears(start, 1);
+  const isRealAnniversary = next.getTime() >= firstAnniversary.getTime();
+  const soon = diffDays <= 60 && diffDays >= 0 && isRealAnniversary;
+  return { soon, next, daysLeft };
+}
+
+function formatDaysLeft(days: number): string {
+  if (days === 1) return "1 den";
+  if (days >= 2 && days <= 4) return `${days} dny`;
+  return `${days} dnů`;
 }
 
 function productMatchesCategory(
@@ -294,6 +309,12 @@ function getContractDate(contract: ContractDoc | (ContractDoc & { adviserEmail?:
     toDate((contract as any).contractSignedDate) ??
     toDate((contract as any).createdAt)
   );
+}
+
+function getAnniversaryStartDate(
+  contract: ContractDoc | (ContractDoc & { adviserEmail?: string | null })
+): Date | null {
+  return toDate(contract.policyStartDate) ?? getContractDate(contract);
 }
 
 function getOldestContractDate(contracts: ContractDoc[]): Date | null {
@@ -632,7 +653,7 @@ export default function ContractsPage() {
     if (filterMode === "anniversary") {
       const enriched = base
         .map((c) => {
-          const start = toDate((c as any).policyStartDate);
+          const start = getAnniversaryStartDate(c);
           const info = isAnniversarySoon(start);
           return { contract: c, next: info.next, soon: info.soon };
         })
@@ -681,6 +702,17 @@ export default function ContractsPage() {
       setLoadingMore(false);
     }
   };
+
+  const hasMoreContracts =
+    showTeam && canShowTeamToggle ? teamHasMore : myHasMore;
+
+  useEffect(() => {
+    if (filterMode !== "anniversary") return;
+    if (!user?.email) return;
+    if (loading || loadingMore) return;
+    if (!hasMoreContracts) return;
+    handleLoadMore();
+  }, [filterMode, user?.email, loading, loadingMore, hasMoreContracts, handleLoadMore]);
 
   useEffect(() => {
     setSelectedKeys(new Set());
@@ -931,8 +963,8 @@ export default function ContractsPage() {
               <>
                 <p className="font-medium">Žádná blížící se výročí</p>
                 <p className="text-slate-300 text-xs">
-                  V okně 60 dní od dneška není žádné výročí (počítáno z data
-                  počátku smlouvy).
+                  V okně 60 dní a méně od dneška není žádné výročí (počítáno z data
+                  počátku smlouvy, případně podpisu).
                 </p>
               </>
             ) : searchText.trim() !== "" ? (
@@ -976,26 +1008,26 @@ export default function ContractsPage() {
                   toDate(c.createdAt);
                 const signedStr = signed
                   ? signed.toLocaleDateString("cs-CZ")
-                : "—";
-              const policyStart = toDate((c as any).policyStartDate);
-              const anniversaryInfo = isAnniversarySoon(policyStart);
+                  : "—";
+                const policyStart = getAnniversaryStartDate(c);
+                const anniversaryInfo = isAnniversarySoon(policyStart);
 
-              const ownerEmailRaw =
-                (showTeam && c.adviserEmail) ||
-                c.userEmail ||
-                "";
-              const ownerEmail = ownerEmailRaw.toLowerCase();
+                const ownerEmailRaw =
+                  (showTeam && c.adviserEmail) ||
+                  c.userEmail ||
+                  "";
+                const ownerEmail = ownerEmailRaw.toLowerCase();
 
-              const slug = `${ownerEmail}___${c.id}`;
-              const selectionKey = `${ownerEmail}___${c.id}`;
-              const isSelected = selectedKeys.has(selectionKey);
+                const slug = `${ownerEmail}___${c.id}`;
+                const selectionKey = `${ownerEmail}___${c.id}`;
+                const isSelected = selectedKeys.has(selectionKey);
 
-              const adviserName =
-                showTeam && ownerEmail
-                  ? adviserNameFromEmail(ownerEmail)
-                  : "";
+                const adviserName =
+                  showTeam && ownerEmail
+                    ? adviserNameFromEmail(ownerEmail)
+                    : "";
 
-              const CardContent = (
+                const CardContent = (
                   <article
                     className={`relative flex h-full flex-col sm:flex-row sm:items-center gap-4 rounded-2xl border border-white/15 bg-white/[0.04] backdrop-blur-2xl px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.8)] hover:border-sky-400/70 hover:bg-white/[0.08] transition ${
                       isSelected ? "border-emerald-400/80 ring-2 ring-emerald-300/50" : ""
@@ -1038,7 +1070,9 @@ export default function ContractsPage() {
                         }
                       >
                         <span className="text-xs">⏳</span>
-                        Blížící se výročí
+                        {anniversaryInfo.daysLeft != null
+                          ? `${formatDaysLeft(anniversaryInfo.daysLeft)} do výročí`
+                          : "Blížící se výročí"}
                       </span>
                     )}
 
@@ -1123,7 +1157,7 @@ export default function ContractsPage() {
               })}
             </div>
 
-            {(showTeam && canShowTeamToggle ? teamHasMore : myHasMore) && !loading && (
+            {hasMoreContracts && !loading && (
               <div className="flex justify-center">
                 <button
                   type="button"
