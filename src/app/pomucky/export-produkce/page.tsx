@@ -19,7 +19,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { type Position } from "../../types/domain";
+import { type Position, type Product } from "../../types/domain";
 import SplitTitle from "../plan-produkce/SplitTitle";
 
 /* -------------------- lazy import html2pdf.js (kvůli Next/SSR) -------------------- */
@@ -39,27 +39,6 @@ async function getHtml2Pdf() {
 }
 
 /* --------------------------------- typy --------------------------------- */
-
-// Lokální definice typu Product – stačí to, co tahle stránka používá
-type Product =
-  | "neon"
-  | "flexi"
-  | "maximaMaxEfekt"
-  | "pillowInjury"
-  | "zamex"
-  | "domex"
-  | "cppPPRbez"
-  | "maxdomov"
-  | "cppAuto"
-  | "cppPPRs"
-  | "allianzAuto"
-  | "csobAuto"
-  | "uniqaAuto"
-  | "pillowAuto"
-  | "kooperativaAuto"
-  | "cppcestovko"
-  | "axacestovko"
-  | "comfortcc";
 
 type DateRangeOption =
   | "currentMonth"
