@@ -4,7 +4,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, collectionGroup, doc, getDoc, getDocs, limit as fbLimit, orderBy, query, where } from "firebase/firestore";
+import {
+  collection,
+  collectionGroup,
+  doc,
+  getDoc,
+  getDocFromServer,
+  getDocs,
+  limit as fbLimit,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
@@ -64,6 +75,10 @@ function isManagerPosition(pos?: Position | null): boolean {
 function toDate(value: unknown): Date | null {
   if (!value) return null;
   if (value instanceof Date) return value;
+  if (typeof value === "object" && value !== null && "toDate" in value && typeof (value as any).toDate === "function") {
+    const d = (value as any).toDate();
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
   if (typeof value === "object" && value !== null && "seconds" in value && typeof (value as any).seconds === "number") {
     const v = value as FirestoreTimestamp;
     const ms = v.seconds * 1000 + Math.floor((v.nanoseconds ?? 0) / 1_000_000);
@@ -230,14 +245,27 @@ export default function TeamPage() {
         // načti poslední aktivitu (uložená statistika) pro každého
         const entries = await Promise.all(
           all.map(async (m) => {
+            const userRef = doc(db, "users", m.email);
             try {
-              const userDoc = await getDoc(doc(db, "users", m.email));
-              const lastActiveUser = toDate((userDoc.data() as any)?.lastActive);
+              let userDoc = await getDoc(userRef);
+              let lastActiveUser = toDate((userDoc.data() as any)?.lastActive);
+              if (!lastActiveUser) {
+                try {
+                  userDoc = await getDocFromServer(userRef);
+                  lastActiveUser = toDate((userDoc.data() as any)?.lastActive);
+                } catch (err) {
+                  if (process.env.NODE_ENV !== "production") {
+                    console.info("[lastActive] server read failed", { email: m.email, err });
+                  }
+                }
+              }
               if (lastActiveUser) {
                 return [m.email, lastActiveUser.getTime()] as const;
               }
-            } catch {
-              // fallback below
+            } catch (err) {
+              if (process.env.NODE_ENV !== "production") {
+                console.info("[lastActive] read failed", { email: m.email, err });
+              }
             }
 
             try {
