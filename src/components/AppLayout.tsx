@@ -11,7 +11,7 @@ import {
   signOut,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 type ActivePage =
   | "home"
@@ -45,6 +45,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [backgroundColor, setBackgroundColor] = useState<"black" | "blue">("black");
   const pathname = usePathname();
+  const lastActiveUpdateRef = useRef(0);
 
   // status zatím nepoužíváme v UI
   const [subscriptionStatus, setSubscriptionStatus] =
@@ -229,11 +230,21 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     void loadSubscriptionProfileForUser(user);
   }, [user]);
 
-  // Zapsat lastActive do Firestore při přihlášení
+  // Zapsat lastActive do Firestore při přihlášení + periodické obnovení
   useEffect(() => {
-    const updateLastActive = async () => {
-      const email = user?.email?.toLowerCase();
-      if (!email) return;
+    const email = user?.email?.toLowerCase();
+    if (!email) return;
+    let cancelled = false;
+    const LAST_ACTIVE_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
+    const LAST_ACTIVE_THROTTLE_MS = 60 * 1000;
+    const shouldLog = process.env.NODE_ENV !== "production";
+
+    const updateLastActive = async (reason: string) => {
+      if (cancelled) return;
+      const now = Date.now();
+      if (now - lastActiveUpdateRef.current < LAST_ACTIVE_THROTTLE_MS) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      lastActiveUpdateRef.current = now;
       try {
         const { getFirestore, doc, setDoc, serverTimestamp } = await loadFirestore();
         const db = getFirestore(firebaseApp);
@@ -242,12 +253,38 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           { lastActive: serverTimestamp() },
           { merge: true }
         );
+        if (shouldLog) {
+          console.info("[lastActive] updated", { email, reason });
+        }
       } catch (err) {
         console.error("Failed to update lastActive", err);
       }
     };
 
-    void updateLastActive();
+    void updateLastActive("login");
+
+    const intervalId = window.setInterval(() => {
+      void updateLastActive("interval");
+    }, LAST_ACTIVE_UPDATE_INTERVAL_MS);
+
+    const onFocus = () => {
+      void updateLastActive("focus");
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void updateLastActive("visibility");
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [user]);
 
   // Zda má tým

@@ -120,7 +120,7 @@ type TeamCachePayload = {
   userPosition: Position | null;
 };
 
-const TEAM_CACHE_TTL_MS = 5 * 60 * 1000;
+const TEAM_CACHE_TTL_MS = 60 * 1000;
 const teamDataCache: Record<string, { ts: number; payload: TeamCachePayload }> = {};
 
 export default function TeamPage() {
