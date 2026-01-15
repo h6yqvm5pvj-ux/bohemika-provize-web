@@ -82,6 +82,9 @@ const SETTINGS_KEYS = {
   reduceMotion: "settings.reduceMotion",
 };
 
+const normalizeEmail = (email?: string | null) =>
+  (email ?? "").trim().toLowerCase();
+
 function formatMoney(value: number): string {
   if (!value || Number.isNaN(value)) return "Nezvolen";
   return (
@@ -146,14 +149,28 @@ export default function SettingsPage() {
     const loadMeta = async () => {
       if (!user) return;
 
-      const email = user.email;
+      const emailRaw = user.email;
+      const email = normalizeEmail(emailRaw);
       if (!email) return; // email může být teoreticky null
 
       setLoadingMeta(true);
 
       try {
         const ref = doc(db, "users", email);
-        const snap = await getDoc(ref);
+        let snap = await getDoc(ref);
+
+        if (!snap.exists() && emailRaw && emailRaw !== email) {
+          const rawRef = doc(db, "users", emailRaw);
+          const rawSnap = await getDoc(rawRef);
+          if (rawSnap.exists()) {
+            snap = rawSnap;
+            try {
+              await setDoc(ref, rawSnap.data(), { merge: true });
+            } catch (e) {
+              console.warn("Chyba při migraci uživatele na lowercase ID:", e);
+            }
+          }
+        }
 
         if (snap.exists()) {
           const data = snap.data() as any;
@@ -302,7 +319,7 @@ export default function SettingsPage() {
   }, [reduceMotion]);
 
   async function saveUserFields(partial: Record<string, any>) {
-    const email = user?.email;
+    const email = normalizeEmail(user?.email);
     if (!email) return;
 
     try {

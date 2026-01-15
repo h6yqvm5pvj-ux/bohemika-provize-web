@@ -49,26 +49,26 @@ service cloud.firestore {
         : null;
     }
 
-    // Ověří, jestli je přihlášený uživatel v manažerském řetězci (max 5 úrovní).
-    function isManagerChain(email) {
-      let target = normEmail(email);
+    // Ověří, jestli je přihlášený uživatel v manažerském řetězci - používá pre-computed managerChain z dokumentu
+    function isManagerInChain(doc) {
       let me = authEmail();
-      let m1 = managerEmailOf(target);
-      let m2 = managerEmailOf(m1);
-      let m3 = managerEmailOf(m2);
-      let m4 = managerEmailOf(m3);
-      let m5 = managerEmailOf(m4);
-      return isSignedIn()
-        && target != ""
-        && me != ""
-        && (
-          me == target
-          || (m1 != "" && m1 == me)
-          || (m2 != "" && m2 == me)
-          || (m3 != "" && m3 == me)
-          || (m4 != "" && m4 == me)
-          || (m5 != "" && m5 == me)
-        );
+      return isSignedIn() && doc is map && (
+        // Pokud existuje managerChain pole
+        (doc.managerChain is list && (
+          (doc.managerChain.size() > 0 && normEmail(doc.managerChain[0].email) == me) ||
+          (doc.managerChain.size() > 1 && normEmail(doc.managerChain[1].email) == me) ||
+          (doc.managerChain.size() > 2 && normEmail(doc.managerChain[2].email) == me) ||
+          (doc.managerChain.size() > 3 && normEmail(doc.managerChain[3].email) == me) ||
+          (doc.managerChain.size() > 4 && normEmail(doc.managerChain[4].email) == me) ||
+          (doc.managerChain.size() > 5 && normEmail(doc.managerChain[5].email) == me) ||
+          (doc.managerChain.size() > 6 && normEmail(doc.managerChain[6].email) == me) ||
+          (doc.managerChain.size() > 7 && normEmail(doc.managerChain[7].email) == me) ||
+          (doc.managerChain.size() > 8 && normEmail(doc.managerChain[8].email) == me) ||
+          (doc.managerChain.size() > 9 && normEmail(doc.managerChain[9].email) == me)
+        ))
+        // Fallback: kontroluj managerEmailSnapshot
+        || normEmail(doc.managerEmailSnapshot) == me
+      );
     }
 
     function entryUserMatches(userEmail) {
@@ -134,7 +134,7 @@ service cloud.firestore {
         || isAuthEmail(overrideEmail(doc, 7))
         || isAuthEmail(overrideEmail(doc, 8))
         || isAuthEmail(overrideEmail(doc, 9))
-        || isManagerChain(doc.userEmail);
+        || isManagerInChain(doc);
     }
 
     // ověří přístup k dokumentu podle dat v dokumentu (userEmail + manager snapshot/chain)
@@ -163,7 +163,7 @@ service cloud.firestore {
         || isAuthEmail(overrideEmail(doc, 7))
         || isAuthEmail(overrideEmail(doc, 8))
         || isAuthEmail(overrideEmail(doc, 9))
-        || isManagerChain(doc.userEmail)
+        || isManagerInChain(doc)
       );
     }
 
@@ -179,6 +179,12 @@ service cloud.firestore {
              (resource == null || resource.data.canChangePosition != true);
     }
 
+    // ---------- entries (collectionGroup fallback) ----------
+    match /{path=**}/entries/{entryId} {
+      allow read: if canReadEntryDoc(resource.data) || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
     // ---------- users ----------
     match /users/{userEmail} {
       // čtení profilu umožníme všem přihlášeným, aby fungovaly managerChain lookupy
@@ -192,12 +198,10 @@ service cloud.firestore {
 
       // ---------- entries ----------
       match /entries/{entryId} {
-        // čtení povoleno autorovi, jeho nadřízeným (podle path i snapshotu v dokumentu)
+        // čtení povoleno autorovi, jeho nadřízeným (podle snapshotu v dokumentu) a adminu
         allow read: if isOwner(userEmail)
-                    || isManagerChain(userEmail)
                     || canReadEntryDoc(resource.data)
-                    || isAdmin()
-                    || isSignedIn(); // dočasně pro odblokování čtení
+                    || isAdmin();
         // zapisuje jen vlastník a musí souhlasit userEmail; admin může opravovat/importovat
         allow create, update: if (isOwner(userEmail) && entryUserMatches(userEmail)) || isAdmin();
         allow delete: if isOwner(userEmail) || isAdmin();
@@ -211,16 +215,16 @@ service cloud.firestore {
 
     // ---------- userStats ----------
     match /userStats/{ownerEmail} {
-      allow read: if isSignedIn() && (isOwner(ownerEmail) || isManagerChain(ownerEmail) || isAdmin());
+      allow read: if isSignedIn() && (isOwner(ownerEmail) || isAdmin());
       allow create, update, delete: if isOwner(ownerEmail) || isAdmin();
 
       match /dailyStats/{dayKey} {
-        allow read: if isSignedIn() && (isOwner(ownerEmail) || isManagerChain(ownerEmail) || isAdmin());
+        allow read: if isSignedIn() && (isOwner(ownerEmail) || isAdmin());
         allow create, update, delete: if isOwner(ownerEmail) || isAdmin();
       }
 
       match /monthlySnapshots/{snapId} {
-        allow read: if isSignedIn() && (isOwner(ownerEmail) || isManagerChain(ownerEmail) || isAdmin());
+        allow read: if isSignedIn() && (isOwner(ownerEmail) || isAdmin());
         allow create, update, delete: if isOwner(ownerEmail) || isAdmin();
       }
     }

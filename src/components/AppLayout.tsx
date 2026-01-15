@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { auth } from "../app/firebase-auth";
 import { firebaseApp } from "../app/firebase-app";
 import {
@@ -45,6 +45,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [backgroundColor, setBackgroundColor] = useState<"black" | "blue">("black");
   const pathname = usePathname();
+  const router = useRouter();
   const lastActiveUpdateRef = useRef(0);
 
   // status zatím nepoužíváme v UI
@@ -53,6 +54,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [hasActiveSubscription, setHasActiveSubscription] =
     useState<boolean | null>(true);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
   const [hasTeam, setHasTeam] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     const cached = window.sessionStorage.getItem("app.hasTeam");
@@ -73,9 +75,18 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       } else {
         setLoadingProfile(true);
       }
+      setAuthReady(true);
     });
     return () => unsub();
   }, []);
+
+  // Redirect guests to login (all pages using AppLayout should be protected)
+  useEffect(() => {
+    if (!authReady) return;
+    if (!user) {
+      router.replace("/login");
+    }
+  }, [authReady, user, router]);
 
   // Respektovat vypnutí animací hned po načtení (uloženo v localStorage)
   useLayoutEffect(() => {
@@ -375,6 +386,20 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     !!user &&
     subscriptionStatus === "expired" &&
     !loadingProfile;
+
+  // Pokud auth není připravené, nerenderuj obsah (zamezení blikání nechráněného UI)
+  if (!authReady) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-black text-slate-100">
+        <div className="text-sm text-slate-200">Načítám přihlášení…</div>
+      </main>
+    );
+  }
+
+  // user je null a redirect se provede v efektu výše
+  if (authReady && !user) {
+    return null;
+  }
 
   return (
     <main className="relative min-h-screen overflow-hidden text-slate-50">

@@ -923,6 +923,7 @@ export default function ContractDetailPage() {
   const [ownerPosition, setOwnerPosition] = useState<Position | null>(null);
   const [ownerManagerEmail, setOwnerManagerEmail] = useState<string | null>(null);
   const [ownerManagerPosition, setOwnerManagerPosition] = useState<Position | null>(null);
+  const [currentChainEmails, setCurrentChainEmails] = useState<string[]>([]);
   const [noteDraft, setNoteDraft] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
@@ -980,11 +981,20 @@ export default function ContractDetailPage() {
   // metadata přihlášeného usera
   useEffect(() => {
     const loadUserMeta = async () => {
-      if (!user?.email) return;
+      const emailRaw = user?.email ?? null;
+      const email = normalizeEmail(emailRaw);
+      if (!email) return;
 
       try {
-        const ref = doc(db, "users", user.email);
-        const snap = await getDoc(ref);
+        const ref = doc(db, "users", email);
+        let snap = await getDoc(ref);
+        if (!snap.exists() && emailRaw && emailRaw !== email) {
+          const rawRef = doc(db, "users", emailRaw);
+          const rawSnap = await getDoc(rawRef);
+          if (rawSnap.exists()) {
+            snap = rawSnap;
+          }
+        }
         if (snap.exists()) {
           const data = snap.data() as any;
           if (data.position) {
@@ -1001,6 +1011,42 @@ export default function ContractDetailPage() {
 
     loadUserMeta();
   }, [user]);
+
+  useEffect(() => {
+    const loadCurrentChain = async () => {
+      const start = normalizeEmail(ownerEmail);
+      if (!start) {
+        setCurrentChainEmails([]);
+        return;
+      }
+
+      try {
+        const chain: string[] = [];
+        const visited = new Set<string>();
+        let current = start;
+        let depth = 0;
+
+        while (current && depth < 9) {
+          const snap = await getDoc(doc(db, "users", current));
+          if (!snap.exists()) break;
+          const data = snap.data() as any;
+          const mgr = normalizeEmail(data?.managerEmail ?? null);
+          if (!mgr || visited.has(mgr)) break;
+          chain.push(mgr);
+          visited.add(mgr);
+          current = mgr;
+          depth += 1;
+        }
+
+        setCurrentChainEmails(chain);
+      } catch (e) {
+        console.error("Chyba při načítání aktuálního manager chainu:", e);
+        setCurrentChainEmails([]);
+      }
+    };
+
+    void loadCurrentChain();
+  }, [ownerEmail]);
 
   useEffect(() => {
     preloadFormulaModule(contract?.productKey ?? null);
@@ -1106,11 +1152,17 @@ export default function ContractDetailPage() {
     return false;
   }, [contract, normalizedOwnerEmail, normalizedUserEmail]);
 
+  const isManagerOnCurrentChain = useMemo(() => {
+    if (!normalizedUserEmail || !currentChainEmails.length) return false;
+    if (normalizedOwnerEmail && normalizedUserEmail === normalizedOwnerEmail) return false;
+    return currentChainEmails.includes(normalizedUserEmail);
+  }, [currentChainEmails, normalizedOwnerEmail, normalizedUserEmail]);
+
   const isManagerViewingSubordinate = useMemo(() => {
     if (!isManagerPosition(managerPosition)) return false;
-    return isManagerOnChain;
-  }, [managerPosition, isManagerOnChain]);
-  const canViewContract = isOwnContract || isManagerOnChain;
+    return isManagerOnChain || isManagerOnCurrentChain;
+  }, [managerPosition, isManagerOnChain, isManagerOnCurrentChain]);
+  const canViewContract = isOwnContract || isManagerOnChain || isManagerOnCurrentChain;
 
   const effectiveManagerPosition =
     managerPosition ?? ((contract as any)?.managerPositionSnapshot as Position | null | undefined) ?? null;
@@ -2917,7 +2969,7 @@ export default function ContractDetailPage() {
     isManagerViewingSubordinate &&
     childOverrideLabel;
 
-  const canDelete = isOwnContract || isManagerViewingSubordinate;
+  const canDelete = isOwnContract;
 
   const adviserSum = adviserItems.reduce((sum, it) => sum + (it.amount ?? 0), 0);
   const managerSum = managerItems.reduce((sum, it) => sum + (it.amount ?? 0), 0);

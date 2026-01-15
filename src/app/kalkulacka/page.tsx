@@ -648,12 +648,12 @@ export default function CalculatorPage() {
                 commissionMode: mgrMode ?? null,
               });
 
-              // projít hierarchii výš (max 5 úrovní, proti cyklům)
+              // projít hierarchii výš (max 9 úrovní, proti cyklům)
               let currentEmail = (mgrData.managerEmail as string | undefined)?.toLowerCase() ?? null;
               let depth = 0;
               const visited = new Set<string>();
               visited.add(mgrEmail);
-              while (currentEmail && depth < 5 && !visited.has(currentEmail)) {
+              while (currentEmail && depth < 9 && !visited.has(currentEmail)) {
                 visited.add(currentEmail);
                 const upperSnap = await getDoc(doc(db, "users", currentEmail));
                 if (!upperSnap.exists()) break;
@@ -1129,6 +1129,21 @@ export default function CalculatorPage() {
 
       setManagerOverridesSnapshot(overridesForChain);
 
+      const allowedEmails = (() => {
+        const s = new Set<string>();
+        const push = (val: string | null | undefined) => {
+          const v = (val ?? "").trim().toLowerCase();
+          if (v) s.add(v);
+        };
+
+        push(email);
+        push(mgrEmail);
+        managerChainSnapshot.forEach((mgr) => push(mgr.email));
+        overridesForChain.forEach((ov) => push(ov.email as string | null | undefined));
+
+        return Array.from(s);
+      })();
+
       await addDoc(entriesRef, {
         productKey: product,
         createdAt: serverTimestamp(),
@@ -1161,6 +1176,7 @@ export default function CalculatorPage() {
         managerModeSnapshot: mgrMode ?? null,
         managerChain: managerChainSnapshot,
         managerOverrides: overridesForChain,
+        allowedEmails,
       });
 
       setSaveMessage("Smlouva byla uložena mezi sepsané.");

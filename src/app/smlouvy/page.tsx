@@ -570,28 +570,48 @@ export default function ContractsPage() {
         setCurrentUserPosition(pos);
 
         // 2) Podřízení – celý strom pod sebou (manažer může mít manažera pod sebou)
+        //    -> case-insensitive, protože managerEmail může být uložen s velkými písmeny
+        const allUsersSnap = await getDocs(usersCol);
+        type UserNode = { email: string; managerEmail: string | null; position: Position | null };
+        const allUsers: UserNode[] = [];
+        allUsersSnap.forEach((d) => {
+          const data = d.data() as any;
+          const em = ((data.email as string | undefined) ?? d.id ?? "").toLowerCase();
+          if (!em) return;
+          const mgr = (data.managerEmail as string | undefined)?.toLowerCase() ?? null;
+          allUsers.push({
+            email: em,
+            managerEmail: mgr,
+            position: (data.position as Position | null | undefined) ?? null,
+          });
+        });
+
+        const childrenByManager = new Map<string, UserNode[]>();
+        for (const u of allUsers) {
+          if (!u.managerEmail) continue;
+          const arr = childrenByManager.get(u.managerEmail) ?? [];
+          arr.push(u);
+          childrenByManager.set(u.managerEmail, arr);
+        }
+
         const visited = new Set<string>();
         const teamUsers: AppUser[] = [];
         const queue: string[] = [email];
 
         while (queue.length > 0) {
           const mgrEmail = queue.shift()!;
-          const snap = await getDocs(
-            query(usersCol, where("managerEmail", "==", mgrEmail))
-          );
-          snap.docs.forEach((d) => {
-            const data = d.data() as any;
-            const em = ((data.email as string | undefined) ?? d.id).toLowerCase();
-            if (!em || visited.has(em)) return;
-            visited.add(em);
+          const children = childrenByManager.get(mgrEmail) ?? [];
+          for (const child of children) {
+            if (!child.email || visited.has(child.email)) continue;
+            visited.add(child.email);
+            queue.push(child.email);
             teamUsers.push({
-              id: d.id,
-              email: em,
-              position: (data.position ?? null) as Position | null,
-              managerEmail: (data.managerEmail ?? null) as string | null,
+              id: child.email,
+              email: child.email,
+              position: child.position,
+              managerEmail: child.managerEmail,
             });
-            queue.push(em);
-          });
+          }
         }
         teamUsersRef.current = teamUsers;
 
@@ -685,7 +705,7 @@ export default function ContractsPage() {
     );
   }, [displayedContracts, searchText, filterMode, selectedCategories, selectedInstitutions]);
 
-  const handleLoadMore = async () => {
+  const handleLoadMore = useCallback(async () => {
     if (loadingMore) return;
     const email = (user?.email ?? "").toLowerCase();
     if (!email) return;
@@ -701,18 +721,43 @@ export default function ContractsPage() {
     } finally {
       setLoadingMore(false);
     }
-  };
+  }, [
+    loadingMore,
+    user?.email,
+    showTeam,
+    canShowTeamToggle,
+    teamHasMore,
+    fetchTeamPage,
+    teamCursorDate,
+    myHasMore,
+    fetchMyPage,
+    myCursorDate,
+  ]);
 
   const hasMoreContracts =
     showTeam && canShowTeamToggle ? teamHasMore : myHasMore;
 
+  const wantsFullScan =
+    filterMode === "anniversary" || searchText.trim() !== "";
+  const hasMoreActive =
+    showTeam && canShowTeamToggle ? teamHasMore : myHasMore;
+
   useEffect(() => {
-    if (filterMode !== "anniversary") return;
+    if (!wantsFullScan) return;
     if (!user?.email) return;
     if (loading || loadingMore) return;
-    if (!hasMoreContracts) return;
-    handleLoadMore();
-  }, [filterMode, user?.email, loading, loadingMore, hasMoreContracts, handleLoadMore]);
+    if (!hasMoreActive) return;
+    void handleLoadMore(); // při vyhledávání/anniversary postupně načti vše, ne jen první stránku
+  }, [
+    wantsFullScan,
+    user?.email,
+    loading,
+    loadingMore,
+    hasMoreActive,
+    showTeam,
+    canShowTeamToggle,
+    handleLoadMore,
+  ]);
 
   useEffect(() => {
     setSelectedKeys(new Set());

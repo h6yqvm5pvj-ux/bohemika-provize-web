@@ -319,12 +319,13 @@ export default function CalendarPage() {
     .slice(0, 6);
 
   const addEvent = async () => {
-    if (!user?.email) return;
+    const email = user?.email?.trim().toLowerCase();
+    if (!email) return;
     if (!title.trim() || !date) return;
 
     setSaving(true);
     try {
-      const col = collection(db, "users", user.email, "calendarEvents");
+      const col = collection(db, "users", email, "calendarEvents");
 
       // default čas, pokud není zadán
       const effectiveTime = time || "09:00";
@@ -367,9 +368,10 @@ export default function CalendarPage() {
   };
 
   const deleteEvent = async (id: string) => {
-    if (!user?.email) return;
+    const email = user?.email?.trim().toLowerCase();
+    if (!email) return;
     try {
-      const ref = doc(db, "users", user.email, "calendarEvents", id);
+      const ref = doc(db, "users", email, "calendarEvents", id);
       await deleteDoc(ref);
       setEvents((prev) => prev.filter((e) => e.id !== id));
     } catch (e) {
