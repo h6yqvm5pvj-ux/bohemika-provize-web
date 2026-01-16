@@ -4,24 +4,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
-import { auth, db } from "../firebase";
+import { auth } from "../firebase";
 import {
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
-import {
-  collection,
-  collectionGroup,
-  doc,
-  deleteDoc,
-  getDoc,
-  getDocs,
-  orderBy,
-  limit,
-  query,
-  updateDoc,
-  where,
-} from "firebase/firestore";
 
 import {
   type Product,
@@ -302,8 +289,6 @@ function productMatchesFilters(
   );
 }
 
-const PAGE_SIZE = 10;
-
 function getContractDate(contract: ContractDoc | (ContractDoc & { adviserEmail?: string | null })): Date | null {
   return (
     toDate((contract as any).contractSignedDate) ??
@@ -341,6 +326,19 @@ type ContractsCache = {
   myCursorDate?: number | null;
   teamCursorDate?: number | null;
   teamEmails?: string[];
+};
+
+type ContractsApiResponse = {
+  ok: boolean;
+  error?: string;
+  position?: Position | null;
+  teamEmails?: string[];
+  contracts?: (ContractDoc & { adviserEmail: string | null })[];
+  hasMore?: boolean;
+  nextCursor?: number | null;
+  teamContracts?: (ContractDoc & { adviserEmail: string | null })[];
+  teamHasMore?: boolean;
+  teamNextCursor?: number | null;
 };
 
 const CONTRACTS_CACHE_KEY = "contracts_cache_v2";
@@ -407,31 +405,53 @@ export default function ContractsPage() {
     return merged;
   };
 
-  const fetchMyPage = useCallback(
-    async (email: string, startBefore: Date | null, append: boolean) => {
-      if (!email) return { list: [] as ContractDoc[], oldest: null as Date | null, hasMore: false };
-      const entriesGroup = collectionGroup(db, "entries");
-      const constraints: any[] = [where("userEmail", "==", email), orderBy("contractSignedDate", "desc")];
-      if (startBefore) {
-        constraints.push(where("contractSignedDate", "<", startBefore));
+  const apiFetchContracts = useCallback(
+    async ({
+      scope,
+      cursor,
+      includeTeam,
+    }: {
+      scope: "my" | "team";
+      cursor?: Date | null;
+      includeTeam?: boolean;
+    }) => {
+      if (!user) {
+        throw new Error("Nejsi přihlášený.");
       }
-      constraints.push(limit(PAGE_SIZE));
+      const token = await user.getIdToken();
+      const params = new URLSearchParams({ scope });
+      if (cursor) params.set("cursor", String(cursor.getTime()));
+      if (includeTeam) params.set("includeTeam", "1");
 
-      const snap = await getDocs(query(entriesGroup, ...constraints));
-      const list: ContractDoc[] = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as any),
-      }));
+      const res = await fetch(`/api/contracts?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = (await res.json()) as ContractsApiResponse;
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || "Nepodařilo se načíst smlouvy.");
+      }
+      return data;
+    },
+    [user]
+  );
+
+  const fetchMyPage = useCallback(
+    async (startBefore: Date | null, append: boolean) => {
+      if (!user?.email) {
+        return { list: [] as ContractDoc[], oldest: null as Date | null, hasMore: false };
+      }
+      const data = await apiFetchContracts({ scope: "my", cursor: startBefore });
+      const list = (data.contracts as ContractDoc[]) ?? [];
       const oldest = getOldestContractDate(list);
-      const hasMore = snap.size === PAGE_SIZE && oldest != null;
+      const hasMore = Boolean(data.hasMore);
 
       setMyContracts((prev) => (append ? mergeContracts(prev, list) : list));
       setMyHasMore(hasMore);
-      setMyCursorDate(oldest);
+      setMyCursorDate(data.nextCursor ? new Date(data.nextCursor) : null);
 
       return { list, oldest, hasMore };
     },
-    []
+    [apiFetchContracts, user?.email]
   );
 
   const fetchTeamPage = useCallback(
@@ -444,53 +464,18 @@ export default function ContractsPage() {
         return { list: [] as (ContractDoc & { adviserEmail: string | null })[], oldest: null as Date | null, hasMore: false };
       }
 
-      const entriesGroup = collectionGroup(db, "entries");
-      const collected: (ContractDoc & { adviserEmail: string | null })[] = [];
-      const seen = new Set<string>();
+      const data = await apiFetchContracts({ scope: "team", cursor: startBefore });
+      const list = (data.contracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
+      const oldest = getOldestContractDate(list);
+      const hasMore = Boolean(data.hasMore);
 
-      for (let i = 0; i < teamEmails.length && collected.length < PAGE_SIZE; i += 10) {
-        const chunk = teamEmails.slice(i, i + 10);
-        const remaining = PAGE_SIZE - collected.length;
-        if (remaining <= 0) break;
-        const constraints: any[] = [
-          where("userEmail", "in", chunk),
-        ];
-        if (startBefore) {
-          constraints.push(where("contractSignedDate", "<", startBefore));
-        }
-        constraints.push(orderBy("contractSignedDate", "desc"));
-        constraints.push(limit(remaining));
-
-        const snap = await getDocs(query(entriesGroup, ...constraints));
-        snap.docs.forEach((d) => {
-          if (collected.length >= PAGE_SIZE) return;
-          if (seen.has(d.id)) return;
-          seen.add(d.id);
-          const data = d.data() as any;
-          collected.push({
-            id: d.id,
-            ...(data as any),
-            adviserEmail: (data.userEmail as string | null | undefined) ?? null,
-          });
-        });
-      }
-
-      collected.sort((a, b) => {
-        const da = getContractDate(a) ?? new Date(0);
-        const db = getContractDate(b) ?? new Date(0);
-        return db.getTime() - da.getTime();
-      });
-
-      const oldest = getOldestContractDate(collected);
-      const hasMore = collected.length === PAGE_SIZE && oldest != null;
-
-      setTeamContracts((prev) => (append ? mergeContracts(prev, collected) : collected));
+      setTeamContracts((prev) => (append ? mergeContracts(prev, list) : list));
       setTeamHasMore(hasMore);
-      setTeamCursorDate(oldest);
+      setTeamCursorDate(data.nextCursor ? new Date(data.nextCursor) : null);
 
-      return { list: collected, oldest, hasMore };
+      return { list, oldest, hasMore };
     },
-    []
+    [apiFetchContracts]
   );
 
   // auth
@@ -508,6 +493,7 @@ export default function ContractsPage() {
       if (!email) {
         setMyContracts([]);
         setTeamContracts([]);
+        setCurrentUserPosition(null);
         setMyHasMore(false);
         setTeamHasMore(false);
         setMyCursorDate(null);
@@ -557,95 +543,51 @@ export default function ContractsPage() {
       }
 
       try {
-        // 1) info o uživateli (pozice)
-        const usersCol = collection(db, "users");
-        const uRef = doc(usersCol, email);
-        const uSnap = await getDoc(uRef);
+        const data = await apiFetchContracts({ scope: "my", includeTeam: true });
+        const myList = (data.contracts as ContractDoc[]) ?? [];
+        const teamList =
+          (data.teamContracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
 
-        let pos: Position | null = null;
-        if (uSnap.exists()) {
-          const d = uSnap.data() as any;
-          pos = (d.position ?? null) as Position | null;
-        }
-        setCurrentUserPosition(pos);
+        setCurrentUserPosition(data.position ?? null);
+        setMyContracts(myList);
+        setTeamContracts(teamList);
+        setMyHasMore(Boolean(data.hasMore));
+        setTeamHasMore(Boolean(data.teamHasMore));
+        setMyCursorDate(data.nextCursor ? new Date(data.nextCursor) : null);
+        setTeamCursorDate(data.teamNextCursor ? new Date(data.teamNextCursor) : null);
 
-        // 2) Podřízení – celý strom pod sebou (manažer může mít manažera pod sebou)
-        //    -> case-insensitive, protože managerEmail může být uložen s velkými písmeny
-        const allUsersSnap = await getDocs(usersCol);
-        type UserNode = { email: string; managerEmail: string | null; position: Position | null };
-        const allUsers: UserNode[] = [];
-        allUsersSnap.forEach((d) => {
-          const data = d.data() as any;
-          const em = ((data.email as string | undefined) ?? d.id ?? "").toLowerCase();
-          if (!em) return;
-          const mgr = (data.managerEmail as string | undefined)?.toLowerCase() ?? null;
-          allUsers.push({
-            email: em,
-            managerEmail: mgr,
-            position: (data.position as Position | null | undefined) ?? null,
-          });
-        });
-
-        const childrenByManager = new Map<string, UserNode[]>();
-        for (const u of allUsers) {
-          if (!u.managerEmail) continue;
-          const arr = childrenByManager.get(u.managerEmail) ?? [];
-          arr.push(u);
-          childrenByManager.set(u.managerEmail, arr);
-        }
-
-        const visited = new Set<string>();
-        const teamUsers: AppUser[] = [];
-        const queue: string[] = [email];
-
-        while (queue.length > 0) {
-          const mgrEmail = queue.shift()!;
-          const children = childrenByManager.get(mgrEmail) ?? [];
-          for (const child of children) {
-            if (!child.email || visited.has(child.email)) continue;
-            visited.add(child.email);
-            queue.push(child.email);
-            teamUsers.push({
-              id: child.email,
-              email: child.email,
-              position: child.position,
-              managerEmail: child.managerEmail,
-            });
-          }
-        }
-        teamUsersRef.current = teamUsers;
-
-        // 3) Moje smlouvy (první stránka)
-        const myRes = await fetchMyPage(email, null, false);
-
-        // 4) Týmové smlouvy (první stránka)
-        const teamRes = await fetchTeamPage(null, false);
+        const teamEmails = (data.teamEmails ?? []).map((em) => em.toLowerCase());
+        teamUsersRef.current = teamEmails.map((em) => ({
+          id: em,
+          email: em,
+          position: null,
+          managerEmail: null,
+        }));
 
         writeContractsCache({
           userEmail: email,
-          position: pos,
-          myContracts: myRes.list,
-          teamContracts: teamRes.list,
+          position: data.position ?? null,
+          myContracts: myList,
+          teamContracts: teamList,
           savedAt: Date.now(),
-          myHasMore: myRes.hasMore,
-          teamHasMore: teamRes.hasMore,
-          myCursorDate: myRes.oldest?.getTime() ?? null,
-          teamCursorDate: teamRes.oldest?.getTime() ?? null,
-          teamEmails: teamUsers
-            .map((u) => u.email)
-            .filter((email): email is string => Boolean(email)),
+          myHasMore: Boolean(data.hasMore),
+          teamHasMore: Boolean(data.teamHasMore),
+          myCursorDate: data.nextCursor ?? null,
+          teamCursorDate: data.teamNextCursor ?? null,
+          teamEmails,
         });
       } catch (e) {
-        console.error(e);
+        console.error("Chyba při načítání smluv:", e);
       } finally {
         setLoading(false);
       }
     };
 
     load();
-  }, [user, fetchMyPage, fetchTeamPage]);
+  }, [user, apiFetchContracts]);
 
-  const canShowTeamToggle = isManagerPosition(currentUserPosition);
+  const canShowTeamToggle =
+    isManagerPosition(currentUserPosition) || teamUsersRef.current.length > 0;
 
   const displayedContracts = useMemo(() => {
     const base =
@@ -707,8 +649,7 @@ export default function ContractsPage() {
 
   const handleLoadMore = useCallback(async () => {
     if (loadingMore) return;
-    const email = (user?.email ?? "").toLowerCase();
-    if (!email) return;
+    if (!user?.email) return;
     setLoadingMore(true);
     try {
       if (showTeam && canShowTeamToggle) {
@@ -716,7 +657,7 @@ export default function ContractsPage() {
         await fetchTeamPage(teamCursorDate, true);
       } else {
         if (!myHasMore) return;
-        await fetchMyPage(email, myCursorDate, true);
+        await fetchMyPage(myCursorDate, true);
       }
     } finally {
       setLoadingMore(false);
@@ -786,6 +727,7 @@ export default function ContractsPage() {
 
   const handleBulkDelete = async () => {
     if (selectedKeys.size === 0) return;
+    if (!user) return;
     const confirmed = window.confirm(
       "Opravdu chceš smazat vybrané smlouvy? Tuto akci nelze vrátit."
     );
@@ -795,17 +737,33 @@ export default function ContractsPage() {
     setBulkError(null);
 
     try {
-      for (const key of Array.from(selectedKeys)) {
-        const [ownerEmail, entryId] = key.split("___");
-        if (!ownerEmail || !entryId) continue;
-        await deleteDoc(doc(db, "users", ownerEmail, "entries", entryId));
+      const entries = Array.from(selectedKeys)
+        .map((key) => {
+          const [ownerEmail, entryId] = key.split("___");
+          return { ownerEmail, entryId };
+        })
+        .filter((e) => e.ownerEmail && e.entryId);
+
+      const token = await user.getIdToken();
+      const res = await fetch("/api/contracts", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ entries }),
+      });
+
+      if (!res.ok) {
+        const data = (await res.json()) as any;
+        throw new Error(data?.error || "Chyba při mazání.");
       }
 
       setMyContracts((prev) =>
         prev.filter(
           (c) =>
             !selectedKeys.has(
-              `${(c.userEmail ?? "").toLowerCase()}___${c.id}`
+              `${(c.userEmail ?? (c as any).adviserEmail ?? "").toLowerCase()}___${c.id}`
             )
         )
       );
@@ -813,7 +771,7 @@ export default function ContractsPage() {
         prev.filter(
           (c) =>
             !selectedKeys.has(
-              `${(c.userEmail ?? "").toLowerCase()}___${c.id}`
+              `${(c.userEmail ?? (c as any).adviserEmail ?? "").toLowerCase()}___${c.id}`
             )
         )
       );
@@ -822,27 +780,43 @@ export default function ContractsPage() {
     } catch (e) {
       console.error("Chyba při hromadném mazání", e);
       setBulkError("Nepodařilo se smazat všechny smlouvy. Zkus to prosím znovu.");
+    } finally {
       setBulkDeleting(false);
     }
   };
 
   const handleBulkMarkPaid = async () => {
     if (selectedKeys.size === 0) return;
+    if (!user) return;
     setBulkMarking(true);
     setBulkError(null);
 
     try {
-      for (const key of Array.from(selectedKeys)) {
-        const [ownerEmail, entryId] = key.split("___");
-        if (!ownerEmail || !entryId) continue;
-        await updateDoc(doc(db, "users", ownerEmail, "entries", entryId), {
-          paid: true,
-        });
+      const entries = Array.from(selectedKeys)
+        .map((key) => {
+          const [ownerEmail, entryId] = key.split("___");
+          return { ownerEmail, entryId };
+        })
+        .filter((e) => e.ownerEmail && e.entryId);
+
+      const token = await user.getIdToken();
+      const res = await fetch("/api/contracts", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ entries, paid: true }),
+      });
+
+      if (!res.ok) {
+        const data = (await res.json()) as any;
+        throw new Error(data?.error || "Chyba při ukládání.");
       }
 
       setMyContracts((prev) =>
         prev.map((c) => {
-          const k = `${(c.userEmail ?? "").toLowerCase()}___${c.id}`;
+          const k = `${(c.userEmail ?? (c as any).adviserEmail ?? "").toLowerCase()}___${c.id}`;
           if (selectedKeys.has(k)) {
             return { ...c, paid: true };
           }
@@ -851,7 +825,7 @@ export default function ContractsPage() {
       );
       setTeamContracts((prev) =>
         prev.map((c) => {
-          const k = `${(c.userEmail ?? "").toLowerCase()}___${c.id}`;
+          const k = `${(c.userEmail ?? (c as any).adviserEmail ?? "").toLowerCase()}___${c.id}`;
           if (selectedKeys.has(k)) {
             return { ...c, paid: true };
           }
@@ -862,6 +836,7 @@ export default function ContractsPage() {
     } catch (e) {
       console.error("Chyba při hromadném označení zaplaceno", e);
       setBulkError("Nepodařilo se označit vybrané smlouvy jako zaplacené. Zkus to prosím znovu.");
+    } finally {
       setBulkMarking(false);
     }
   };

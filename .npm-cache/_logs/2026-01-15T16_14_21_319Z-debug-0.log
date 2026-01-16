@@ -1,0 +1,42 @@
+0 verbose cli /usr/local/bin/node /usr/local/bin/npm
+1 info using npm@11.6.1
+2 info using node@v24.11.0
+3 silly config load:file:/usr/local/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/jakubrauscher/bohemika-provize-web/.npmrc
+5 silly config load:file:/Users/jakubrauscher/.npmrc
+6 silly config load:file:/usr/local/etc/npmrc
+7 verbose title npm install opentelemetry/api
+8 verbose argv "install" "opentelemetry/api"
+9 verbose logfile logs-max:10 dir:/Users/jakubrauscher/bohemika-provize-web/.npm-cache/_logs/2026-01-15T16_14_21_319Z-
+10 verbose logfile /Users/jakubrauscher/bohemika-provize-web/.npm-cache/_logs/2026-01-15T16_14_21_319Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+13 verbose stack Error: An unknown git error occurred
+13 verbose stack     at makeError (/usr/local/lib/node_modules/npm/node_modules/@npmcli/git/lib/make-error.js:28:13)
+13 verbose stack     at /usr/local/lib/node_modules/npm/node_modules/@npmcli/git/lib/spawn.js:37:26
+13 verbose stack     at async module.exports (/usr/local/lib/node_modules/npm/node_modules/@npmcli/git/lib/revs.js:18:22)
+13 verbose stack     at async /usr/local/lib/node_modules/npm/node_modules/pacote/lib/git.js:258:19
+13 verbose stack     at async withTempDir (/usr/local/lib/node_modules/npm/node_modules/@npmcli/fs/lib/with-temp-dir.js:21:14)
+13 verbose stack     at async /usr/local/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js:526:22
+13 verbose stack     at async Promise.all (index 0)
+13 verbose stack     at async #add (/usr/local/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js:515:5)
+13 verbose stack     at async #applyUserRequestsToNode (/usr/local/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js:484:7)
+13 verbose stack     at async #applyUserRequests (/usr/local/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js:420:7)
+14 error code 128
+15 error An unknown git error occurred
+16 error command git --no-replace-objects ls-remote ssh://git@github.com/opentelemetry/api.git
+17 error ERROR: Repository not found.
+17 error fatal: Could not read from remote repository.
+17 error
+17 error Please make sure you have the correct access rights
+17 error and the repository exists.
+18 silly unfinished npm timer reify 1768493661392
+19 silly unfinished npm timer reify:loadTrees 1768493661393
+20 silly unfinished npm timer idealTree:userRequests 1768493661464
+21 verbose cwd /Users/jakubrauscher/bohemika-provize-web
+22 verbose os Darwin 24.6.0
+23 verbose node v24.11.0
+24 verbose npm  v11.6.1
+25 verbose exit 128
+26 verbose code 128
+27 error A complete log of this run can be found in: /Users/jakubrauscher/bohemika-provize-web/.npm-cache/_logs/2026-01-15T16_14_21_319Z-debug-0.log
