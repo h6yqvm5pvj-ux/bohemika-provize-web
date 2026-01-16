@@ -370,7 +370,7 @@ export async function PATCH(req: NextRequest) {
     if (!allowedOwners.has(owner)) continue;
 
     await adminDb
-      .collection("users")
+      ?.collection("users")
       .doc(owner)
       .collection("entries")
       .doc(entryId)
@@ -410,7 +410,7 @@ export async function DELETE(req: NextRequest) {
     if (!allowedOwners.has(owner)) continue;
 
     await adminDb
-      .collection("users")
+      ?.collection("users")
       .doc(owner)
       .collection("entries")
       .doc(entryId)
