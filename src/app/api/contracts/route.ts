@@ -31,9 +31,9 @@ type ContractDoc = {
   clientAddress?: string | null;
   contractNumber?: string | null;
 
-  createdAt?: FirestoreTimestamp | Date | string | null;
-  contractSignedDate?: FirestoreTimestamp | Date | string | null;
-  policyStartDate?: FirestoreTimestamp | Date | string | null;
+  createdAt?: FirestoreTimestamp | Date | string | number | null;
+  contractSignedDate?: FirestoreTimestamp | Date | string | number | null;
+  policyStartDate?: FirestoreTimestamp | Date | string | number | null;
 };
 
 type ContractResponseItem = ContractDoc & { adviserEmail: string | null };
