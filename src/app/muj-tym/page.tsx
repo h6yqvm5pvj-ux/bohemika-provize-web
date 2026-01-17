@@ -154,6 +154,15 @@ export default function TeamPage() {
   const [contractsError, setContractsError] = useState(false);
   const [userPosition, setUserPosition] = useState<Position | null>(null);
   const usedCacheRef = useRef(false);
+  const cacheStateRef = useRef<{
+    contractCounts: Record<string, { total: number; month: number; categories: Record<Category, number> }>;
+    contractsLoaded: boolean;
+    contractsError: boolean;
+  }>({
+    contractCounts: {},
+    contractsLoaded: false,
+    contractsError: false,
+  });
 
   const cacheKey = useMemo(() => (userEmail ? `team:${userEmail}` : null), [userEmail]);
 
@@ -165,6 +174,14 @@ export default function TeamPage() {
     setContractsError(payload.contractsError);
     setUserPosition(payload.userPosition);
   };
+
+  useEffect(() => {
+    cacheStateRef.current = {
+      contractCounts,
+      contractsLoaded,
+      contractsError,
+    };
+  }, [contractCounts, contractsLoaded, contractsError]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -238,8 +255,8 @@ export default function TeamPage() {
         }
 
         setMembers(all);
-        if (all.length && !selectedEmail) {
-          setSelectedEmail(all[0].email);
+        if (all.length) {
+          setSelectedEmail((prev) => prev ?? all[0]?.email ?? null);
         }
 
         // načti poslední aktivitu (uložená statistika) pro každého
@@ -303,9 +320,9 @@ export default function TeamPage() {
             payload: {
               members: all,
               lastActive: lastActiveMap,
-              contractCounts,
-              contractsLoaded,
-              contractsError,
+              contractCounts: cacheStateRef.current.contractCounts,
+              contractsLoaded: cacheStateRef.current.contractsLoaded,
+              contractsError: cacheStateRef.current.contractsError,
               userPosition: pos,
             },
           };
@@ -315,7 +332,7 @@ export default function TeamPage() {
 
     loadTeam();
     // only depends on signed-in user; selection should not retrigger fetch
-  }, [userEmail]);
+  }, [userEmail, cacheKey]);
 
   useEffect(() => {
     const loadContractCounts = async () => {
@@ -333,12 +350,12 @@ export default function TeamPage() {
         setContractsError(false);
         return;
       }
-      if (Object.keys(contractCounts).length === 0) {
+      if (Object.keys(cacheStateRef.current.contractCounts).length === 0) {
         setContractsLoaded(false);
       }
       setContractsRefreshing(true);
       setContractsError(false);
-      let stats: Record<string, { total: number; month: number; categories: Record<Category, number> }> = {};
+      const stats: Record<string, { total: number; month: number; categories: Record<Category, number> }> = {};
       try {
         const emails = Array.from(new Set(members.map((m) => m.email.toLowerCase()))); // dedupe
         const now = new Date();

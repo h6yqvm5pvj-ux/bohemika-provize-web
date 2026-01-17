@@ -1,6 +1,7 @@
 // src/app/pomucky/export-produkce/page.tsx
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -1567,10 +1568,13 @@ export default function ExportProductionPage() {
           </div>
 
           <div className="hidden sm:block">
-            <img
+            <Image
               src="/icons/export-produkce.png"
               alt="Export produkce"
+              width={320}
+              height={320}
               className="h-80 w-auto object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.35)] absolute right-8 top-0"
+              priority
             />
           </div>
         </header>

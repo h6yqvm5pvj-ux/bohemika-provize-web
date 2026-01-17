@@ -304,7 +304,7 @@ function GoldChart({ points }: { points: Point[] }) {
     });
 
     return { pts, lineD, areaD, baseY, yTicks, xTicks, fmtDate, minV, maxV, minT, maxT, xOfT, yOfV };
-  }, [points]);
+  }, [points, pad.b, pad.l, pad.r, pad.t, w, h]);
 
   const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!prepared) return;
@@ -578,23 +578,6 @@ export default function GoldToolPage() {
     return downsamplePoints(scaled, 1400);
   }, [history, series, selected.grams]);
 
-  const loadInitial = async (days: number) => {
-    const snap = await fetchGold({ days, range });
-
-    setUsdCzk(snap.usdCzk);
-    setUsdPerOz(snap.usdPerOz);
-    setCzkPerOz(snap.czkPerOz);
-    setLastUpdated(new Date(snap.ts));
-
-    if (snap.history?.length) setHistory(snap.history);
-    else setHistory([]);
-
-    setChanges(snap.changes ?? null);
-
-    // fallback (jen aby UI neumřelo, když historie není)
-    setSeries([{ t: snap.ts, v: snap.czkPerOz }]);
-  };
-
   const loadTick = async () => {
     const snap = await fetchGold({ days: 0 });
 
@@ -618,7 +601,21 @@ export default function GoldToolPage() {
         setLoading(true);
         setErr(null);
         setLoadingRange(true);
-        await loadInitial(RANGES[range].days);
+        const snap = await fetchGold({ days: RANGES[range].days, range });
+        if (cancelled) return;
+
+        setUsdCzk(snap.usdCzk);
+        setUsdPerOz(snap.usdPerOz);
+        setCzkPerOz(snap.czkPerOz);
+        setLastUpdated(new Date(snap.ts));
+
+        if (snap.history?.length) setHistory(snap.history);
+        else setHistory([]);
+
+        setChanges(snap.changes ?? null);
+
+        // fallback (jen aby UI neumřelo, když historie není)
+        setSeries([{ t: snap.ts, v: snap.czkPerOz }]);
         if (cancelled) return;
       } catch (e: any) {
         if (cancelled) return;

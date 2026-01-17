@@ -887,11 +887,6 @@ export default function CashflowPage() {
               (effectiveMgrMode as CommissionMode | null) ?? "standard";
 
             const baselinePos = childSnap?.position ?? subPos;
-            const baselineMode =
-              (childSnap?.commissionMode as CommissionMode | null | undefined) ??
-              (entry.commissionMode as CommissionMode | null | undefined) ??
-              (entry.mode as CommissionMode | null | undefined) ??
-              null;
 
             const mgrItems = stripTotalRows(
               commissionItemsForPosition(

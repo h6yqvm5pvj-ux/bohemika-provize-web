@@ -357,21 +357,6 @@ function formatMoney(value: number | undefined | null): string {
   );
 }
 
-function formatDateInputValue(d: Date): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function todayInputValue(): string {
-  return formatDateInputValue(new Date());
-}
-
-function isLifeProduct(p?: Product | null): boolean {
-  return p === "neon" || p === "flexi" || p === "maximaMaxEfekt" || p === "pillowInjury";
-}
-
 function productLabel(p?: Product): string {
   switch (p) {
     case "neon":
@@ -1829,7 +1814,7 @@ export default function ContractDetailPage() {
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [detailsSaved, setDetailsSaved] = useState(false);
 
-  const resetEditFields = () => {
+  const resetEditFields = useCallback(() => {
     if (!contract) return;
     setEditClientName(contract.clientName ?? "");
     setEditClientEmail(contract.clientEmail ?? "");
@@ -2286,14 +2271,14 @@ export default function ContractDetailPage() {
     setEditDomexLiabilityLandlord(!!contract.domexDetail?.liabilityLandlord);
     setEditDomexAssistancePlus(!!contract.domexDetail?.assistancePlus);
     setEditDomexNote(contract.domexDetail?.note ?? "");
-  };
+  }, [contract]);
 
   useEffect(() => {
     if (!contract) return;
     resetEditFields();
     setDetailsSaved(false);
     setDetailsError(null);
-  }, [contract]);
+  }, [contract, resetEditFields]);
 
   const handleSaveDetails = async () => {
     if (!isOwnContract || !ownerEmail || !entryId) return;

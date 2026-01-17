@@ -43,11 +43,6 @@ const COMMISSION_MODES: { id: CommissionMode; label: string }[] = [
   { id: "standard", label: "Běžný" },
 ];
 
-const GOAL_STEPS: number[] = Array.from(
-  { length: (300_000 - 5_000) / 5_000 + 1 },
-  (_, i) => 5_000 + i * 5_000
-);
-
 type NotificationSettings = {
   types: {
     newContract: boolean;
@@ -85,15 +80,6 @@ const SETTINGS_KEYS = {
 const normalizeEmail = (email?: string | null) =>
   (email ?? "").trim().toLowerCase();
 
-function formatMoney(value: number): string {
-  if (!value || Number.isNaN(value)) return "Nezvolen";
-  return (
-    value.toLocaleString("cs-CZ", {
-      maximumFractionDigits: 0,
-    }) + " Kč"
-  );
-}
-
 export default function SettingsPage() {
   const router = useRouter();
 
@@ -102,7 +88,7 @@ export default function SettingsPage() {
 
   const [position, setPosition] = useState<Position>("manazer7");
   const [mode, setMode] = useState<CommissionMode>("accelerated");
-  const [monthlyGoal, setMonthlyGoal] = useState<number>(0);
+  const [, setMonthlyGoal] = useState<number>(0);
 
   const [canChangePosition, setCanChangePosition] = useState(true);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -344,17 +330,6 @@ export default function SettingsPage() {
       window.localStorage.setItem(SETTINGS_KEYS.mode, value);
     }
     await saveUserFields({ commissionMode: value });
-  };
-
-  const handleMonthlyGoalChange = async (value: number) => {
-    setMonthlyGoal(value);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        SETTINGS_KEYS.monthlyGoal,
-        String(value || 0)
-      );
-    }
-    await saveUserFields({ monthlyGoal: value || 0 });
   };
 
   const handleNotifyMinutesChange = async (value: number) => {

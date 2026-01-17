@@ -239,6 +239,9 @@ type EntryDoc = {
   createdAt?: any;
   contractSignedDate?: any;
   items?: CommissionResultItemDTO[];
+  managerOverrides?: ManagerOverrideSnapshot[];
+  managerChain?: { email?: string | null; position?: Position | null; commissionMode?: CommissionMode | null }[];
+  managerModeSnapshot?: CommissionMode | null;
 
   productKey?: Product;
   inputAmount?: number | null;
@@ -255,6 +258,14 @@ type UserMeta = {
   commissionMode?: CommissionMode | null;
   monthlyGoal?: number | null;
   managerEmail?: string | null;
+};
+
+type ManagerOverrideSnapshot = {
+  email?: string | null;
+  position?: Position | null;
+  commissionMode?: CommissionMode | null;
+  items?: CommissionResultItemDTO[];
+  total?: number | null;
 };
 
 type LeaderboardProductFilter = "life" | "other";
@@ -507,6 +518,35 @@ const readLocalQuickActions = (email?: string | null): QuickAction[] | null => {
     return Array.isArray(parsed) ? parsed : null;
   } catch {
     return null;
+  }
+};
+
+const HOME_CACHE_STORAGE_PREFIX = "home.cache:";
+
+const readPersistedHomeCache = (
+  cacheKey: string
+): { ts: number; payload: HomeCachePayload } | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(`${HOME_CACHE_STORAGE_PREFIX}${cacheKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { ts?: number; payload?: HomeCachePayload };
+    if (typeof parsed.ts !== "number" || !parsed.payload) return null;
+    return { ts: parsed.ts, payload: parsed.payload };
+  } catch {
+    return null;
+  }
+};
+
+const writePersistedHomeCache = (cacheKey: string, payload: HomeCachePayload) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      `${HOME_CACHE_STORAGE_PREFIX}${cacheKey}`,
+      JSON.stringify({ ts: Date.now(), payload })
+    );
+  } catch {
+    // ignore storage errors
   }
 };
 
@@ -826,6 +866,8 @@ export default function HomePage() {
   const [homeLayout, setHomeLayout] = useState<HomeSection[]>(HOME_LAYOUT_DEFAULT);
   const [draggingSection, setDraggingSection] = useState<HomeSection | null>(null);
   const [hoverSection, setHoverSection] = useState<HomeSection | null>(null);
+  const homeLayoutRef = useRef<HomeSection[]>(HOME_LAYOUT_DEFAULT);
+  const layoutDirtyRef = useRef(false);
   const [layoutScope, setLayoutScope] = useState<LayoutScope>("cloud");
   const [performanceMode, setPerformanceMode] = useState<PerformanceMode>(PERFORMANCE_DEFAULT);
   const [goldLoading, setGoldLoading] = useState(false);
@@ -1071,6 +1113,10 @@ export default function HomePage() {
     window.localStorage.setItem(key, scope);
   };
 
+  useEffect(() => {
+    homeLayoutRef.current = homeLayout;
+  }, [homeLayout]);
+
   const pushHomeSettingsToCloud = async (payload: {
     homeLayout?: HomeSection[];
     homeWidgets?: HomeWidgets;
@@ -1118,7 +1164,16 @@ export default function HomePage() {
           return;
         }
 
-        setLoading(true);
+        const persisted = readPersistedHomeCache(cacheKey);
+        const seededFromPersist = !!persisted && Date.now() - persisted.ts < HOME_CACHE_TTL_MS;
+        if (seededFromPersist && persisted) {
+          homeDataCache[cacheKey] = persisted;
+          applyCachedHomeState(persisted.payload);
+        }
+
+        if (!seededFromPersist) {
+          setLoading(true);
+        }
 
         // 1) meta o uživateli
         const meSnap = await getDoc(doc(usersRef, email));
@@ -1138,7 +1193,6 @@ export default function HomePage() {
           monthlyGoal: monthlyGoal ?? null,
         });
 
-        const isManager = isManagerPosition(position);
         const managerMode = (myMode as CommissionMode | null) ?? null;
 
         // 2) moje smlouvy (collectionGroup + fallback na vlastní podkolekci)
@@ -1317,6 +1371,22 @@ export default function HomePage() {
           );
           const baseImmediate = immediate?.amount ?? 0;
 
+          // pokud je uložená meziprovize pro aktuálního manažera, použij ji
+          const override = (data.managerOverrides as ManagerOverrideSnapshot[] | undefined)?.find(
+            (o) => (o.email ?? "").toLowerCase() === email
+          );
+          if (override) {
+            const overrideItems = (override.items ?? []) as CommissionResultItemDTO[];
+            const overrideImmediate =
+              overrideItems.find((it) =>
+                (it.title ?? "").toLowerCase().includes("okamžitá")
+              )?.amount ?? (Number.isFinite(override.total) ? (override.total as number) : null);
+            if (overrideImmediate != null) {
+              teamImmediate += overrideImmediate;
+              return;
+            }
+          }
+
           const mgrPos = position;
           const subPos =
             subPositionMap.get(ownerEmail) ??
@@ -1416,23 +1486,26 @@ export default function HomePage() {
         setTeamImmediateSum(teamImmediate);
         setTeamEntries(needTeamHistory ? teamEntriesAll : []);
 
+        const payload: HomeCachePayload = {
+          userMeta: {
+            position,
+            commissionMode: myMode,
+            monthlyGoal: monthlyGoal ?? null,
+          },
+          myEntries: needPersonalHistory ? myEntriesList : [],
+          teamEntries: needTeamHistory ? teamEntriesAll : [],
+          hasTeam: subEmails.length > 0,
+          myContractsCount: myCount,
+          myImmediateSum: myImmediate,
+          teamContractsCount: teamCount,
+          teamImmediateSum: teamImmediate,
+        };
+
         homeDataCache[cacheKey] = {
           ts: Date.now(),
-          payload: {
-            userMeta: {
-              position,
-              commissionMode: myMode,
-              monthlyGoal: monthlyGoal ?? null,
-            },
-            myEntries: needPersonalHistory ? myEntriesList : [],
-            teamEntries: needTeamHistory ? teamEntriesAll : [],
-            hasTeam: subEmails.length > 0,
-            myContractsCount: myCount,
-            myImmediateSum: myImmediate,
-            teamContractsCount: teamCount,
-            teamImmediateSum: teamImmediate,
-          },
+          payload,
         };
+        writePersistedHomeCache(cacheKey, payload);
       } catch (e) {
         console.error("Chyba při načítání produkce:", e);
       } finally {
@@ -1526,9 +1599,6 @@ export default function HomePage() {
   const progress = hasGoal
     ? Math.min(100, Math.round((totalWithTeam / monthlyGoal) * 100))
     : 0;
-  const remainingToGoal = hasGoal
-    ? Math.max(0, monthlyGoal - totalWithTeam)
-    : 0;
   const progressTone =
     progress >= 90
       ? "from-emerald-400 via-lime-300 to-emerald-200"
@@ -1556,6 +1626,7 @@ export default function HomePage() {
   const handleSectionDragStart = (id: HomeSection) => {
     setDraggingSection(id);
     setHoverSection(id);
+    layoutDirtyRef.current = false;
   };
 
   const handleSectionDragOver = (
@@ -1567,20 +1638,29 @@ export default function HomePage() {
 
     setHoverSection(targetId);
 
-    const current = [...homeLayout];
-    const from = current.indexOf(draggingSection);
-    const to = current.indexOf(targetId);
-    if (from === -1 || to === -1) return;
+    setHomeLayout((current) => {
+      const from = current.indexOf(draggingSection);
+      const to = current.indexOf(targetId);
+      if (from === -1 || to === -1 || from === to) return current;
 
-    const reordered = [...current];
-    reordered.splice(from, 1);
-    reordered.splice(to, 0, draggingSection);
-    persistHomeLayout(reordered);
+      const reordered = [...current];
+      reordered.splice(from, 1);
+      reordered.splice(to, 0, draggingSection);
+      layoutDirtyRef.current = true;
+      return reordered;
+    });
   };
 
   const handleSectionDragEnd = () => {
     setDraggingSection(null);
     setHoverSection(null);
+    if (layoutDirtyRef.current) {
+      const latestLayout = homeLayoutRef.current;
+      if (latestLayout) {
+        persistHomeLayout(latestLayout);
+      }
+      layoutDirtyRef.current = false;
+    }
   };
 
   const renderSection = (id: HomeSection): ReactElement | null => {
@@ -1605,7 +1685,7 @@ export default function HomePage() {
                 />
                 <div className="flex flex-col gap-1">
                   <div className="text-[11px] uppercase tracking-[0.18em] text-amber-200/90">
-                    Spot cena zlata / oz
+                    Aktuální cena zlata / 1 oz
                   </div>
                   <div className="text-2xl sm:text-3xl font-semibold text-white drop-shadow-[0_10px_30px_rgba(0,0,0,0.4)]">
                     {goldLoading ? "Načítám…" : goldData ? formatMoney(goldData.czkPerOz) : "—"}

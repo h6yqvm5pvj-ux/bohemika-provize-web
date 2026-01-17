@@ -51,8 +51,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   // status zatím nepoužíváme v UI
   const [subscriptionStatus, setSubscriptionStatus] =
     useState<SubscriptionStatusWeb>("none");
-  const [hasActiveSubscription, setHasActiveSubscription] =
-    useState<boolean | null>(true);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [authReady, setAuthReady] = useState(false);
   const [hasTeam, setHasTeam] = useState<boolean>(() => {
@@ -68,7 +66,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       if (!u) {
-        setHasActiveSubscription(null);
         setSubscriptionStatus("none");
         setLoadingProfile(false);
         setHasTeam(false);
@@ -183,7 +180,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   ) => {
     const emailRaw = currentUser?.email;
     if (!emailRaw) {
-      setHasActiveSubscription(null);
       setSubscriptionStatus("none");
       setLoadingProfile(false);
       return;
@@ -204,32 +200,25 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
       if (!snap.exists()) {
         setSubscriptionStatus("none");
-        setHasActiveSubscription(false);
         return;
       }
 
       const data = snap.data() as any;
       const statusRaw = (data.subscriptionStatus as string | undefined)?.trim().toLowerCase();
       let status: SubscriptionStatusWeb = "none";
-      let hasActive = true;
 
       if (statusRaw === "active") {
         status = "active";
-        hasActive = true;
       } else if (statusRaw === "expired") {
         status = "expired";
-        hasActive = false;
       } else {
         status = "none";
-        hasActive = true; // default allow pokud není explicitní expired
       }
 
       setSubscriptionStatus(status);
-      setHasActiveSubscription(hasActive);
     } catch (e) {
       console.error("Chyba při načítání subscription profilu:", e);
       setSubscriptionStatus("none");
-      setHasActiveSubscription(null);
     } finally {
       setLoadingProfile(false);
     }

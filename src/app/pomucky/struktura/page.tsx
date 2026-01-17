@@ -11,8 +11,6 @@ import {
   getDocs,
   doc,
   getDoc,
-  query,
-  where,
 } from "firebase/firestore";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import type { Position } from "../../types/domain";
@@ -236,7 +234,7 @@ export default function StructurePage() {
       return positioned;
     };
 
-    const rootPos = dfs(treeRoot, 0);
+    dfs(treeRoot, 0);
     const maxX = Math.max(...placed.map((p) => p.x));
 
     const edges: { from: PositionedNode; to: PositionedNode }[] = [];
@@ -257,7 +255,7 @@ export default function StructurePage() {
       stepY: V_STEP,
       edges,
     };
-  }, [treeRoot, user]);
+  }, [treeRoot]);
 
   if (!user) return null;
 

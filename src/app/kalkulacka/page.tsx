@@ -468,26 +468,30 @@ export default function CalculatorPage() {
     count: number;
     entries: { id: string; path: string }[];
   } | null>(null);
+  const [saveSuccessFlash, setSaveSuccessFlash] = useState<{
+    contractNumber: string | null;
+    clientName: string | null;
+  } | null>(null);
 
   const paymentBasedTotalsMemo = useMemo(() => {
     if ((product !== "domex" && product !== "maxdomov") || items.length === 0) return null;
     const multiplier = paymentsPerYear(frequency);
     return paymentBasedTotals(items, multiplier);
   }, [product, items, frequency]);
+
+  type ManagerOverrideSnapshot = {
+    email: string | null;
+    position: Position | null;
+    commissionMode: CommissionMode | null;
+    items: CommissionResultItemDTO[];
+    total: number;
+  };
+
   const [managerEmailSnapshot, setManagerEmailSnapshot] = useState<string | null>(null);
   const [managerPositionSnapshot, setManagerPositionSnapshot] = useState<Position | null>(null);
   const [managerModeSnapshot, setManagerModeSnapshot] = useState<CommissionMode | null>(null);
   const [managerChainSnapshot, setManagerChainSnapshot] = useState<
     { email: string | null; position: Position | null; commissionMode: CommissionMode | null }[]
-  >([]);
-  const [managerOverridesSnapshot, setManagerOverridesSnapshot] = useState<
-    {
-      email: string | null;
-      position: Position | null;
-      commissionMode: CommissionMode | null;
-      items: CommissionResultItemDTO[];
-      total: number;
-    }[]
   >([]);
   const [userCommissionMode, setUserCommissionMode] = useState<CommissionMode | null>(null);
   const [baseUserPosition, setBaseUserPosition] = useState<Position | null>(null);
@@ -1032,7 +1036,7 @@ export default function CalculatorPage() {
       let mgrEmail = managerEmailSnapshot;
       let mgrPos = managerPositionSnapshot;
       let mgrMode = managerModeSnapshot;
-      let overridesForChain: typeof managerOverridesSnapshot = [];
+      let overridesForChain: ManagerOverrideSnapshot[] = [];
       try {
         const userSnap = await getDoc(userRef);
         const data = userSnap.data() as any;
@@ -1056,7 +1060,7 @@ export default function CalculatorPage() {
       }
 
       // předpočítej meziprovize pro celý chain (od poradce výš)
-      const diffs: typeof managerOverridesSnapshot = [];
+      const diffs: ManagerOverrideSnapshot[] = [];
       let childPositionForBaseline: Position | null = position;
 
       managerChainSnapshot.forEach((mgr) => {
@@ -1127,8 +1131,6 @@ export default function CalculatorPage() {
 
       overridesForChain = diffs;
 
-      setManagerOverridesSnapshot(overridesForChain);
-
       const allowedEmails = (() => {
         const s = new Set<string>();
         const push = (val: string | null | undefined) => {
@@ -1180,6 +1182,10 @@ export default function CalculatorPage() {
       });
 
       setSaveMessage("Smlouva byla uložena mezi sepsané.");
+      setSaveSuccessFlash({
+        contractNumber: contractNumber.trim() || null,
+        clientName: clientName.trim() || null,
+      });
       setOriginalContractNumber("");
       setRefreshOriginalOpen(false);
     } catch (error) {
@@ -1191,6 +1197,12 @@ export default function CalculatorPage() {
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!saveSuccessFlash) return;
+    const t = window.setTimeout(() => setSaveSuccessFlash(null), 3200);
+    return () => window.clearTimeout(t);
+  }, [saveSuccessFlash]);
 
   if (!user) {
     return (
@@ -1305,6 +1317,36 @@ export default function CalculatorPage() {
 
   return (
     <AppLayout active="calc">
+      {saveSuccessFlash && (
+        <div
+          aria-live="polite"
+          className="fixed bottom-6 right-6 z-50 pointer-events-none"
+        >
+          <div className="relative flex items-center gap-3 rounded-2xl border border-emerald-300/40 bg-gradient-to-r from-emerald-500/25 via-emerald-500/10 to-emerald-500/25 px-4 py-3 shadow-[0_20px_60px_rgba(16,185,129,0.35)] backdrop-blur-md">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-slate-950 shadow-inner shadow-emerald-200/60">
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                className="h-5 w-5"
+              >
+                <path
+                  fill="currentColor"
+                  d="M9.5 15.6 6.4 12.5a1 1 0 0 0-1.4 1.4l3.8 3.8a1 1 0 0 0 1.45-.05l8-9a1 1 0 1 0-1.5-1.3l-7.25 8.2Z"
+                />
+              </svg>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-sm font-semibold text-emerald-50">Sepsáno!</p>
+              <p className="text-[11px] text-emerald-50/80">
+                {saveSuccessFlash.clientName || "Uloženo mezi sepsané"}
+                {saveSuccessFlash.contractNumber
+                  ? ` • č. ${saveSuccessFlash.contractNumber}`
+                  : ""}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       {validationError && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <div
@@ -1797,7 +1839,7 @@ export default function CalculatorPage() {
           </div>
 
           {/* Výsledky + tlačítko Sepsáno */}
-          <section className="rounded-3xl border border-emerald-400/40 bg-emerald-950/60 px-5 py-4 space-y-3 backdrop-blur-2xl shadow-[0_18px_60px_rgba(0,0,0,0.9)] h-full">
+          <section className="rounded-3xl border border-emerald-400/40 bg-emerald-950/60 px-5 py-4 space-y-3 backdrop-blur-2xl shadow-[0_18px_60px_rgba(0,0,0,0.9)] h-full overflow-hidden">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-semibold text-emerald-50">
                 Výsledky

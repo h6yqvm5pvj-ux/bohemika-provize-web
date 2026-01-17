@@ -147,17 +147,6 @@ function modeLabel(mode: CommissionMode | null): string {
   return "Zrychlený";
 }
 
-function hasContent(day: DayEntry): boolean {
-  const outreach = Number(day.outreach) || 0;
-  const agreed = Number(day.agreed) || 0;
-  const meetings = Number(day.meetings) || 0;
-  const hours = parseNumberSafe(day.workedHours);
-  const hasContracts = day.contracts.some(
-    (c) => parseNumberSafe(c.premium) > 0 || (c.product as string)
-  );
-  return outreach > 0 || agreed > 0 || meetings > 0 || hours > 0 || hasContracts;
-}
-
 function normalizeProduct(product: any): Product {
   return PRODUCT_SET.has(product) ? (product as Product) : DEFAULT_PRODUCT;
 }
