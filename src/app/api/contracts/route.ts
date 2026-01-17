@@ -257,8 +257,10 @@ async function getAuthContext(req: NextRequest) {
   let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
   try {
     decoded = await adminAuth.verifyIdToken(token);
-  } catch {
-    return { error: "Invalid or expired token", status: 401 } as const;
+  } catch (err: any) {
+    const msg = err?.message || "Invalid or expired token";
+    const code = err?.code || "auth/invalid-token";
+    return { error: `Invalid or expired token (${code}): ${msg}`, status: 401 } as const;
   }
 
   const email = normalizeEmail(decoded.email);
