@@ -418,7 +418,7 @@ export default function ContractsPage() {
       if (!user) {
         throw new Error("Nejsi přihlášený.");
       }
-      const token = await user.getIdToken();
+      const token = await user.getIdToken(true); // force refresh to avoid expired/invalid token
       const params = new URLSearchParams({ scope });
       if (cursor) params.set("cursor", String(cursor.getTime()));
       if (includeTeam) params.set("includeTeam", "1");
