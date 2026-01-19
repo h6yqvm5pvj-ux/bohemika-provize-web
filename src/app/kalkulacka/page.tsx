@@ -1,7 +1,7 @@
 // src/app/kalkulacka/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { auth, db } from "../firebase";
@@ -38,6 +38,8 @@ import {
   SUPPORTED_PRODUCTS,
   getCoefficientSummary,
 } from "../lib/productFormulas";
+import { parseCppAutoPdf } from "../lib/parseCppAutoPdf";
+import { parseNeonPdf } from "../lib/parseNeonPdf";
 import {
   addDoc,
   collection,
@@ -454,6 +456,10 @@ export default function CalculatorPage() {
   const [originalContractNumber, setOriginalContractNumber] = useState<string>("");
   const [replacementOpen, setReplacementOpen] = useState(false);
   const [replacementContractNumber, setReplacementContractNumber] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [pdfImporting, setPdfImporting] = useState(false);
+  const [pdfImportStatus, setPdfImportStatus] = useState<string | null>(null);
+  const [pdfImportError, setPdfImportError] = useState<string | null>(null);
 
   const [items, setItems] = useState<CommissionResultItemDTO[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -742,6 +748,83 @@ export default function CalculatorPage() {
       })
     );
   }, [amountText, clientName, contractNumber, contractSignedDate, policyStartDate, comfortPaymentText, product, comfortGradual]);
+
+  const handlePdfImport = async (file: File | null) => {
+    if (!file) return;
+    setPdfImporting(true);
+    setPdfImportError(null);
+    setPdfImportStatus("Načítám PDF…");
+    try {
+      let parsed:
+        | Awaited<ReturnType<typeof parseCppAutoPdf>>
+        | Awaited<ReturnType<typeof parseNeonPdf>>
+        | null = null;
+
+      if (product === "cppAuto") {
+        parsed = await parseCppAutoPdf(file);
+      } else if (product === "neon") {
+        parsed = await parseNeonPdf(file);
+      } else {
+        setPdfImportError("Načítání z PDF je teď dostupné jen pro ČPP Auto a ČPP ŽP NEON.");
+        setPdfImportStatus(null);
+        return;
+      }
+
+      if (!parsed) {
+        setPdfImportStatus("PDF se nepodařilo přečíst.");
+        return;
+      }
+      let applied = 0;
+
+      if (parsed.contractNumber) {
+        setContractNumber(parsed.contractNumber);
+        applied += 1;
+      }
+      if (parsed.clientName) {
+        setClientName(parsed.clientName);
+        applied += 1;
+      }
+      if (parsed.policyStartDate) {
+        setPolicyStartDate(parsed.policyStartDate);
+        applied += 1;
+      }
+      if (parsed.contractSignedDate) {
+        setContractSignedDate(parsed.contractSignedDate);
+        applied += 1;
+      }
+      if (typeof parsed.amount === "number") {
+        setAmountText(String(parsed.amount));
+        applied += 1;
+      }
+      if (parsed.frequency) {
+        const allowedForProduct = allowedFrequencies(product);
+        if (allowedForProduct.includes(parsed.frequency)) {
+          setFrequency(parsed.frequency);
+        }
+      }
+      if ("durationYears" in parsed && typeof parsed.durationYears === "number") {
+        const [min, max] = durationRange(product);
+        const yrs = Math.min(max, Math.max(min, parsed.durationYears));
+        setDurationYears(yrs);
+        applied += 1;
+      }
+
+      setPdfImportStatus(
+        applied > 0
+          ? `Načteno z PDF (${applied} polí). Zkontroluj prosím.`
+          : "V PDF se nenašla čitelná data, doplň ručně."
+      );
+    } catch (err) {
+      console.error("PDF import selhal", err);
+      setPdfImportError("PDF se nepodařilo přečíst. Zkus prosím zadat ručně.");
+      setPdfImportStatus(null);
+    } finally {
+      setPdfImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   const recalc = () => {
     const val = parseNumber(amountText);
@@ -1706,6 +1789,46 @@ export default function CalculatorPage() {
                 </div>
               )}
             </section>
+
+            {(product === "cppAuto" || product === "neon") && (
+              <section className="space-y-2 rounded-2xl border border-emerald-400/40 bg-emerald-500/10 px-3 py-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="text-sm font-semibold text-emerald-50">
+                    Načíst údaje ze smlouvy (PDF)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={pdfImporting}
+                    className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/20 px-3 py-1.5 text-sm font-semibold text-emerald-50 shadow-[0_12px_30px_rgba(16,185,129,0.25)] hover:bg-emerald-500/30 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                  >
+                    {pdfImporting ? "Načítám…" : "Vybrat PDF"}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    className="hidden"
+                    onChange={(e) => handlePdfImport(e.target.files?.[0] ?? null)}
+                  />
+                </div>
+                {product === "cppAuto" ? (
+                  <p className="text-[12px] text-emerald-100">
+                    Vyplní číslo smlouvy, jméno klienta, počátek pojištění, datum sjednání a částku z PDF ČPP Auto. Data zůstávají jen v prohlížeči.
+                  </p>
+                ) : (
+                  <p className="text-[12px] text-emerald-100">
+                    Vyplní číslo smlouvy, jméno klienta, počátek, datum uzavření, měsíční pojistné a dobu trvání z PDF ČPP ŽP NEON. Data zůstávají jen v prohlížeči.
+                  </p>
+                )}
+                {pdfImportStatus && (
+                  <p className="text-[12px] text-emerald-50">{pdfImportStatus}</p>
+                )}
+                {pdfImportError && (
+                  <p className="text-[12px] text-rose-200">{pdfImportError}</p>
+                )}
+              </section>
+            )}
 
             {/* Detaily smlouvy */}
             <section className="space-y-3">
