@@ -40,6 +40,7 @@ import {
 } from "../lib/productFormulas";
 import { parseCppAutoPdf } from "../lib/parseCppAutoPdf";
 import { parseNeonPdf } from "../lib/parseNeonPdf";
+import { parseFlexiPdf } from "../lib/parseFlexiPdf";
 import {
   addDoc,
   collection,
@@ -758,14 +759,17 @@ export default function CalculatorPage() {
       let parsed:
         | Awaited<ReturnType<typeof parseCppAutoPdf>>
         | Awaited<ReturnType<typeof parseNeonPdf>>
+        | Awaited<ReturnType<typeof parseFlexiPdf>>
         | null = null;
 
       if (product === "cppAuto") {
         parsed = await parseCppAutoPdf(file);
       } else if (product === "neon") {
         parsed = await parseNeonPdf(file);
+      } else if (product === "flexi") {
+        parsed = await parseFlexiPdf(file);
       } else {
-        setPdfImportError("Načítání z PDF je teď dostupné jen pro ČPP Auto a ČPP ŽP NEON.");
+        setPdfImportError("Načítání z PDF je teď dostupné jen pro ČPP Auto, ČPP ŽP NEON a Kooperativa ŽP FLEXI.");
         setPdfImportStatus(null);
         return;
       }
@@ -1790,7 +1794,7 @@ export default function CalculatorPage() {
               )}
             </section>
 
-            {(product === "cppAuto" || product === "neon") && (
+            {(product === "cppAuto" || product === "neon" || product === "flexi") && (
               <section className="space-y-2 rounded-2xl border border-emerald-400/40 bg-emerald-500/10 px-3 py-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="text-sm font-semibold text-emerald-50">
@@ -1812,13 +1816,19 @@ export default function CalculatorPage() {
                     onChange={(e) => handlePdfImport(e.target.files?.[0] ?? null)}
                   />
                 </div>
-                {product === "cppAuto" ? (
+                {product === "cppAuto" && (
                   <p className="text-[12px] text-emerald-100">
                     Vyplní číslo smlouvy, jméno klienta, počátek pojištění, datum sjednání a částku z PDF ČPP Auto. Data zůstávají jen v prohlížeči.
                   </p>
-                ) : (
+                )}
+                {product === "neon" && (
                   <p className="text-[12px] text-emerald-100">
                     Vyplní číslo smlouvy, jméno klienta, počátek, datum uzavření, měsíční pojistné a dobu trvání z PDF ČPP ŽP NEON. Data zůstávají jen v prohlížeči.
+                  </p>
+                )}
+                {product === "flexi" && (
+                  <p className="text-[12px] text-emerald-100">
+                    Vyplní číslo smlouvy, jméno klienta, počátek, datum uzavření a částku k úhradě z PDF Kooperativa ŽP FLEXI. Data zůstávají jen v prohlížeči.
                   </p>
                 )}
                 {pdfImportStatus && (

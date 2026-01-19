@@ -159,6 +159,8 @@ async function fetchContractsForOwners(
   cursor: Date | null,
   pageSize: number
 ): Promise<{ list: ContractResponseItem[]; hasMore: boolean; nextCursor: number | null }> {
+  // Fetch one extra record to detect if more pages exist (so the UI can show the load-more button)
+  const pageLimit = pageSize + 1;
   if (!adminDb) {
     throw new Error("Firebase Admin credentials are not configured.");
   }
@@ -175,7 +177,7 @@ async function fetchContractsForOwners(
     if (cursor) {
       q = q.where("contractSignedDate", "<", cursor);
     }
-    const snap = await q.limit(pageSize).get();
+    const snap = await q.limit(pageLimit).get();
     snap.docs.forEach((doc) => {
       const data = doc.data() as any as ContractDoc;
       const ownerEmail = normalizeEmail((data.userEmail as string | undefined) ?? chunk[0]);
@@ -204,7 +206,7 @@ async function fetchContractsForOwners(
     if (cursor) {
       q = q.where("contractSignedDate", "<", cursor);
     }
-    const snap = await q.limit(pageSize).get();
+    const snap = await q.limit(pageLimit).get();
     snap.docs.forEach((doc) => {
       const data = doc.data() as any as ContractDoc;
       const key = `${owner}___${doc.id}`;
