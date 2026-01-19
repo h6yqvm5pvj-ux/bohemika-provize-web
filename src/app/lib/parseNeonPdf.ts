@@ -62,7 +62,11 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
-    pagesText.push(content.items.map((item) => item.str).join("\n"));
+    const text = content.items
+      .map((item: any) => (typeof item?.str === "string" ? item.str : ""))
+      .filter(Boolean)
+      .join("\n");
+    pagesText.push(text);
   }
 
   const fullText = pagesText.join("\n");
