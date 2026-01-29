@@ -8,7 +8,8 @@ import { type Product, type PaymentFrequency } from "../types/domain";
  */
 export interface CommissionEntryForCashflow {
   productKey: Product | string;
-  createdAt: Date;                      // datum výpočtu / sjednání
+  createdAt: Date;                      // datum výpočtu (kalendář ho pro cutoff neřeší)
+  contractSignedDate?: Date | string | null;
   policyStartDate?: Date | null;        // počátek smlouvy (pokud není, bere se createdAt)
   durationYears?: number | null;        // pro životky
   frequencyRaw?: PaymentFrequency | null;
@@ -42,20 +43,24 @@ function addYears(date: Date, years: number): Date {
   return d;
 }
 
+function parseCzDate(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const m = trimmed.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+  if (!m) return null;
+  const day = Number(m[1]);
+  const month = Number(m[2]);
+  const year = Number(m[3]);
+  const d = new Date(year, month - 1, day);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 /**
  * Pravidlo výplaty první (a obecně základní) provize.
  *
- * - standardně:
- *   - bereme nejpozdější z dne počátku a dne sjednání,
- *   - pokud je den ≤ 25 → výplata k 1. dni následujícího měsíce,
- *   - pokud je den > 25 → výplata k 1. dni za 2 měsíce.
- *
- * - výjimka (stejná jako ve Swift verzi):
- *   Pokud:
- *   - máme agreementDate,
- *   - měsíc počátku je > měsíce sjednání (nebo pozdější rok),
- *   - den počátku je 1,
- *   → výplata jde do měsíce počátku (1. den).
+ * - vezme se den počátku a sjednání, použije se vyšší z nich,
+ * - den ≤ 25 → výplata k 1. dni následujícího měsíce,
+ * - den > 25 → výplata k 1. dni za 2 měsíce.
  */
 export function estimatePayoutDate(
   policyStart: Date,
@@ -69,17 +74,7 @@ export function estimatePayoutDate(
 
   // Výjimka: počátek je 1. den v pozdějším měsíci než sjednání
   if (agreementDate) {
-    const aYear = agreementDate.getFullYear();
-    const aMonth = agreementDate.getMonth();
     dayForCutoff = Math.max(dayForCutoff, agreementDate.getDate());
-
-    const isLaterMonth =
-      year > aYear || (year === aYear && month > aMonth);
-
-    if (day === 1 && isLaterMonth) {
-      // výplata v měsíci počátku (např. 1.11., 1.1. atd.)
-      return new Date(year, month, 1);
-    }
   }
 
   // Standard: 1–25 → +1 měsíc, >25 → +2 měsíce
@@ -123,8 +118,22 @@ export const CashflowGenerator = {
     };
 
     for (const entry of entries) {
-      const agreement = entry.createdAt;
-      const start = entry.policyStartDate ?? agreement;
+      const parsedStart = parseCzDate(entry.policyStartDate);
+      const parsedAgreement = parseCzDate(entry.createdAt);
+      const parsedSigned = parseCzDate(entry.contractSignedDate);
+
+      const start =
+        parsedStart ??
+        (entry.policyStartDate as Date | null | undefined) ??
+        parsedSigned ??
+        (entry.contractSignedDate as Date | null | undefined) ??
+        new Date();
+      const agreement =
+        parsedSigned ??
+        (entry.contractSignedDate as Date | null | undefined) ??
+        parsedStart ??
+        (entry.policyStartDate as Date | null | undefined) ??
+        start;
       const product = entry.productKey as Product | string;
 
       // Rozparsuj řádky výsledku

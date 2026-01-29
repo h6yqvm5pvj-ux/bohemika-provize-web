@@ -55,6 +55,18 @@ function toDate(value: unknown): Date | null {
   if (!value) return null;
   if (value instanceof Date) return value;
 
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const cz = trimmed.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+    if (cz) {
+      const day = Number(cz[1]);
+      const month = Number(cz[2]);
+      const year = Number(cz[3]);
+      const d = new Date(year, month - 1, day);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+  }
+
   if (
     typeof value === "object" &&
     value !== null &&
@@ -257,6 +269,7 @@ type EntryDoc = {
   items?: CommissionResultItemDTO[];
 
   userEmail?: string | null;
+  contractSignedDate?: any;
   position?: Position | null;
   mode?: CommissionMode | null;
   commissionMode?: CommissionMode | null;
@@ -333,15 +346,7 @@ function estimatePayoutDate(
   let dayForCutoff = day;
 
   if (agreementDate) {
-    const aYear = agreementDate.getFullYear();
-    const aMonth = agreementDate.getMonth();
     dayForCutoff = Math.max(dayForCutoff, agreementDate.getDate());
-    const isLaterMonth =
-      year > aYear || (year === aYear && month > aMonth);
-
-    if (day === 1 && isLaterMonth) {
-      return new Date(year, month, 1);
-    }
   }
 
   const monthsToAdd = dayForCutoff > cutoffDay ? 2 : 1;
@@ -376,8 +381,14 @@ function generateCashflow(
       ? ownerEmail.toLowerCase()
       : null;
 
-    const agreement = toDate(entry.createdAt) ?? new Date();
-    const start = toDate(entry.policyStartDate) ?? agreement;
+    const start =
+      toDate(entry.policyStartDate) ??
+      toDate(entry.contractSignedDate) ??
+      new Date();
+    const agreement =
+      toDate(entry.contractSignedDate) ??
+      toDate(entry.policyStartDate) ??
+      start;
     const product = entry.productKey;
 
     // Rozšíříme horizont o +1 měsíc, aby se vešla výplata po posunu na 1. den

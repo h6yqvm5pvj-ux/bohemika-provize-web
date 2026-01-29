@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import type { Product } from "@/app/types/domain";
+import { parseNeonPdf } from "@/app/lib/parseNeonPdf";
 
 export type NeonFields = {
   version: string;
@@ -27,10 +28,14 @@ export type NeonFields = {
   deathAccidentAmount: string;
   injuryPermanentAmount: string;
   hospitalizationAmount: string;
+  hospitalizationIllnessAmount: string;
+  hospitalizationInjuryAmount: string;
   accidentDailyBenefit: string;
   workIncapacityStart: string;
   workIncapacityBackpay: string;
   workIncapacityAmount: string;
+  workIncapacityInjury: boolean;
+  workIncapacityIllness: boolean;
   careDependencyAmount: string;
   specialAidAmount: string;
   caregivingAmount: string;
@@ -67,10 +72,14 @@ export type NeonDetail = {
   deathAccidentAmount?: number | null;
   injuryPermanentAmount?: number | null;
   hospitalizationAmount?: number | null;
+  hospitalizationIllnessAmount?: number | null;
+  hospitalizationInjuryAmount?: number | null;
   accidentDailyBenefit?: number | null;
   workIncapacityStart?: string | null;
   workIncapacityBackpay?: string | null;
   workIncapacityAmount?: number | null;
+  workIncapacityInjury?: boolean | null;
+  workIncapacityIllness?: boolean | null;
   careDependencyAmount?: number | null;
   specialAidAmount?: number | null;
   caregivingAmount?: number | null;
@@ -235,7 +244,94 @@ const renderAmountRow = ({
 );
 
 export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: Props) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
   if (prod !== "neon") return null;
+
+  const applyField = (key: keyof NeonFields, value: string | boolean | number | null | undefined) => {
+    if (value == null) return 0;
+    if (typeof value === "string" && value.trim() === "") return 0;
+    onChange(key, typeof value === "number" ? String(value) : value);
+    return 1;
+  };
+
+  const handleImportPdf = async (file: File | null) => {
+    if (!file) return;
+    setImporting(true);
+    setImportError(null);
+    setImportStatus("Načítám PDF…");
+    try {
+      const parsed = await parseNeonPdf(file);
+      const risks = parsed.riskFields;
+      let applied = 0;
+      if (risks) {
+        applied += applyField("version", risks.version ?? "neon_life");
+        applied += applyField("deathType", risks.deathType);
+        applied += applyField("deathAmount", risks.deathAmount);
+        applied += applyField("death2Type", risks.death2Type);
+        applied += applyField("death2Amount", risks.death2Amount);
+        applied += applyField("deathTerminalAmount", risks.deathTerminalAmount);
+        applied += applyField("waiverInvalidity", risks.waiverInvalidity);
+        applied += applyField("waiverUnemployment", risks.waiverUnemployment);
+        applied += applyField("invalidityAType", risks.invalidityAType);
+        applied += applyField("invalidityA1", risks.invalidityA1);
+        applied += applyField("invalidityA2", risks.invalidityA2);
+        applied += applyField("invalidityA3", risks.invalidityA3);
+        applied += applyField("invalidityBType", risks.invalidityBType);
+        applied += applyField("invalidityB1", risks.invalidityB1);
+        applied += applyField("invalidityB2", risks.invalidityB2);
+        applied += applyField("invalidityB3", risks.invalidityB3);
+        applied += applyField("invalidityPension", risks.invalidityPension);
+        applied += applyField("criticalType", risks.criticalType);
+        applied += applyField("criticalAmount", risks.criticalAmount);
+        applied += applyField("childSurgeryAmount", risks.childSurgeryAmount);
+        applied += applyField("vaccinationCompAmount", risks.vaccinationCompAmount);
+        applied += applyField("diabetesAmount", risks.diabetesAmount);
+        applied += applyField("deathAccidentAmount", risks.deathAccidentAmount);
+        applied += applyField("injuryPermanentAmount", risks.injuryPermanentAmount);
+        applied += applyField("hospitalizationAmount", risks.hospitalizationAmount);
+        applied += applyField("hospitalizationIllnessAmount", risks.hospitalizationIllnessAmount);
+        applied += applyField("hospitalizationInjuryAmount", risks.hospitalizationInjuryAmount);
+        applied += applyField("accidentDailyBenefit", risks.accidentDailyBenefit);
+        applied += applyField("workIncapacityStart", risks.workIncapacityStart);
+        applied += applyField("workIncapacityBackpay", risks.workIncapacityBackpay);
+        applied += applyField("workIncapacityAmount", risks.workIncapacityAmount);
+        applied += applyField("workIncapacityInjury", risks.workIncapacityInjury);
+        applied += applyField("workIncapacityIllness", risks.workIncapacityIllness);
+        applied += applyField("careDependencyAmount", risks.careDependencyAmount);
+        applied += applyField("specialAidAmount", risks.specialAidAmount);
+        applied += applyField("caregivingAmount", risks.caregivingAmount);
+        applied += applyField("reproductionCostAmount", risks.reproductionCostAmount);
+        applied += applyField("cppHelp", risks.cppHelp);
+        applied += applyField("liabilityCitizenLimit", risks.liabilityCitizenLimit);
+        applied += applyField("liabilityEmployeeLimit", risks.liabilityEmployeeLimit);
+        applied += applyField("travelInsurance", risks.travelInsurance);
+
+        // pokud hospitalizace v PDF nebyla, vyčisti hodnotu
+        if (risks.hospitalizationAmount === undefined) {
+          onChange("hospitalizationAmount", "");
+        }
+      }
+
+      setImportStatus(
+        (parsed.risks?.length ?? 0) > 0
+          ? `Načteno ${parsed.risks?.length ?? 0} rizik z PDF.`
+          : applied > 0
+          ? `Načteno ${applied} polí z PDF. Zkontroluj prosím údaje.`
+          : "V PDF se nepodařilo najít rizika k doplnění."
+      );
+    } catch (err) {
+      console.error("Import NEON rizik z PDF selhal", err);
+      setImportError("PDF se nepodařilo přečíst. Zkus prosím jiný soubor nebo doplň ručně.");
+      setImportStatus(null);
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const hasDeath1 = editMode || contract?.deathAmount != null || fields.deathAmount.trim() !== "";
   const hasDeath2 = editMode || contract?.death2Amount != null || fields.death2Amount.trim() !== "";
@@ -271,8 +367,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
   const hasDiabetes = editMode || contract?.diabetesAmount != null || fields.diabetesAmount.trim() !== "";
   const hasDeathAccident = editMode || contract?.deathAccidentAmount != null || fields.deathAccidentAmount.trim() !== "";
   const hasInjuryPermanent = editMode || contract?.injuryPermanentAmount != null || fields.injuryPermanentAmount.trim() !== "";
-  const hasHospitalization =
-    editMode || contract?.hospitalizationAmount != null || fields.hospitalizationAmount.trim() !== "";
+  const hasHospitalizationIllness =
+    editMode || contract?.hospitalizationIllnessAmount != null || fields.hospitalizationIllnessAmount.trim() !== "";
+  const hasHospitalizationInjury =
+    editMode || contract?.hospitalizationInjuryAmount != null || fields.hospitalizationInjuryAmount.trim() !== "";
   const hasAccidentDaily =
     editMode || contract?.accidentDailyBenefit != null || fields.accidentDailyBenefit.trim() !== "";
   const hasWorkIncapacity =
@@ -280,7 +378,11 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
     contract?.workIncapacityAmount != null ||
     fields.workIncapacityAmount.trim() !== "" ||
     (contract?.workIncapacityStart ?? fields.workIncapacityStart)?.trim?.() ||
-    (contract?.workIncapacityBackpay ?? fields.workIncapacityBackpay)?.trim?.();
+    (contract?.workIncapacityBackpay ?? fields.workIncapacityBackpay)?.trim?.() ||
+    contract?.workIncapacityInjury ||
+    contract?.workIncapacityIllness ||
+    fields.workIncapacityInjury ||
+    fields.workIncapacityIllness;
   const hasCareDependency =
     editMode || contract?.careDependencyAmount != null || fields.careDependencyAmount.trim() !== "";
   const hasSpecialAid =
@@ -298,6 +400,36 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
 
   return (
     <div className="space-y-3">
+      {editMode && (
+        <div className="rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-sm font-semibold text-emerald-50">
+              Načíst rizika z PDF (ČPP ŽP NEON)
+            </div>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/25 px-3 py-1.5 text-xs font-semibold text-emerald-50 shadow-[0_12px_30px_rgba(16,185,129,0.25)] hover:bg-emerald-500/35 disabled:opacity-60 disabled:cursor-not-allowed transition"
+            >
+              {importing ? "Načítám…" : "Vybrat PDF"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={(e) => handleImportPdf(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          <p className="text-[12px] text-emerald-100">
+            Pokusí se načíst hlavní rizika (smrt, invalidity, závažná onemocnění, úrazy, PN) přímo z PDF smlouvy. Data zůstávají jen v prohlížeči.
+          </p>
+          {importStatus && <p className="text-[12px] text-emerald-50">{importStatus}</p>}
+          {importError && <p className="text-[12px] text-rose-200">{importError}</p>}
+        </div>
+      )}
+
       <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
         <div className="text-xs uppercase tracking-wide text-emerald-200">Verze</div>
         <div className="text-sm text-slate-100">
@@ -630,22 +762,46 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
         </div>
       )}
 
-      {(editMode || hasHospitalization) && (
+      {(editMode || hasHospitalizationIllness) && (
         <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Hospitalizace (Nemoc/Úraz)</div>
+          <div className="text-xs uppercase tracking-wide text-emerald-200">Hospitalizace (Nemoc)</div>
           <div className="flex justify-between gap-2">
             <span className="text-slate-300">Denní částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
                   type="number"
-                  value={fields.hospitalizationAmount}
-                  onChange={(e) => onChange("hospitalizationAmount", e.target.value)}
+                  value={fields.hospitalizationIllnessAmount}
+                  onChange={(e) => onChange("hospitalizationIllnessAmount", e.target.value)}
                   className={`${inputClass} w-32`}
                   placeholder="částka"
                 />
-              ) : contract?.hospitalizationAmount != null ? (
-                formatMoney(contract.hospitalizationAmount)
+              ) : contract?.hospitalizationIllnessAmount != null ? (
+                formatMoney(contract.hospitalizationIllnessAmount)
+              ) : (
+                "—"
+              )}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {(editMode || hasHospitalizationInjury) && (
+        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
+          <div className="text-xs uppercase tracking-wide text-emerald-200">Hospitalizace (Úraz)</div>
+          <div className="flex justify-between gap-2">
+            <span className="text-slate-300">Denní částka</span>
+            <span className="font-semibold text-right">
+              {editMode ? (
+                <input
+                  type="number"
+                  value={fields.hospitalizationInjuryAmount}
+                  onChange={(e) => onChange("hospitalizationInjuryAmount", e.target.value)}
+                  className={`${inputClass} w-32`}
+                  placeholder="částka"
+                />
+              ) : contract?.hospitalizationInjuryAmount != null ? (
+                formatMoney(contract.hospitalizationInjuryAmount)
               ) : (
                 "—"
               )}
@@ -682,6 +838,20 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
         <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
           <div className="text-xs uppercase tracking-wide text-emerald-200">Pracovní neschopnost</div>
           <div className="space-y-2 text-sm text-slate-100">
+            <div className="flex flex-wrap gap-2">
+              <ToggleRow
+                label="Nemoc"
+                checked={fields.workIncapacityIllness}
+                onChange={(val) => onChange("workIncapacityIllness", val)}
+                disabled={!editMode}
+              />
+              <ToggleRow
+                label="Úraz"
+                checked={fields.workIncapacityInjury}
+                onChange={(val) => onChange("workIncapacityInjury", val)}
+                disabled={!editMode}
+              />
+            </div>
             <div className="flex justify-between gap-2">
               <span className="text-slate-300">Plnění od</span>
               <span className="font-semibold text-right">

@@ -132,6 +132,13 @@ export default function ToolsPage() {
         description: "Kalkulačka na stanovení pojistné částky pro Invaliditu 1., 2. a 3. stupně dle poklesu příjmu.",
         href: "/pomucky/invalidita",
       },
+      {
+        key: "srovnavac-trvalych-nasledku",
+        category: "Životní pojištění",
+        title: "Srovnavač Trvalých následků",
+        description: "Otevři srovnavač pro trvalé následky úrazu.",
+        href: "/pomucky/srovnavac-trvalych-nasledku",
+      },
     ],
     []
   );
