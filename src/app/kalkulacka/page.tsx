@@ -508,6 +508,10 @@ export default function CalculatorPage() {
     () => REPLACEMENT_ELIGIBLE_PRODUCTS.includes(product),
     [product]
   );
+  const canImportFromPdf = useMemo(
+    () => product === "cppAuto" || product === "neon" || product === "flexi" || product === "domex",
+    [product]
+  );
 
   const coefList = useMemo(
     () => getCoefficientSummary(product ?? null, position ?? null, mode ?? null),
@@ -1531,78 +1535,111 @@ export default function CalculatorPage() {
 
         <div className="grid gap-6 items-start lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-6 w-full lg:max-w-3xl">
-            {/* Produkt */}
-            <section className="space-y-1">
-              <label className="block text-sm font-medium mb-1">
-                Produkt
-              </label>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setProductOpen((v) => !v)}
-                  className="flex w-full items-center justify-between rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                >
-                  <span className="flex items-center gap-3">
-                    <div className="relative h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
-                      <Image
-                        src={productIcon(product)}
-                        alt=""
-                        fill
-                        className="object-contain"
-                      />
-                    </div>
-                    <span className="font-medium">{currentProduct.label}</span>
-                  </span>
-                  <span className="ml-3 text-xs text-slate-400">
-                    {productOpen ? "▲" : "▼"}
-                  </span>
-                </button>
+            {/* Produkt + PDF import */}
+            <section className={`w-full space-y-3 ${canImportFromPdf ? "md:max-w-xl" : ""}`}>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium mb-1">
+                  Produkt
+                </label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setProductOpen((v) => !v)}
+                    className="flex w-full items-center justify-between rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  >
+                    <span className="flex items-center gap-3">
+                      <div className="relative h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
+                        <Image
+                          src={productIcon(product)}
+                          alt=""
+                          fill
+                          className="object-contain"
+                        />
+                      </div>
+                      <span className="font-medium">{currentProduct.label}</span>
+                    </span>
+                    <span className="ml-3 text-xs text-slate-400">
+                      {productOpen ? "▲" : "▼"}
+                    </span>
+                  </button>
 
-                {productOpen && (
-                  <div className="absolute z-30 mt-2 w-full rounded-2xl border border-white/15 bg-slate-950/95 backdrop-blur-2xl shadow-[0_20px_80px_rgba(0,0,0,0.9)] max-h-80 overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {PRODUCT_OPTIONS.map((p) => {
-                      const isActive = p.id === product;
-                      const iconSrc = productIcon(p.id);
-                      const unsupportedText = SUPPORTED_PRODUCTS.includes(p.id)
-                        ? null
-                        : "zatím bez výpočtu";
+                  {productOpen && (
+                    <div className="absolute z-30 mt-2 w-full rounded-2xl border border-white/15 bg-slate-950/95 backdrop-blur-2xl shadow-[0_20px_80px_rgba(0,0,0,0.9)] max-h-80 overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {PRODUCT_OPTIONS.map((p) => {
+                        const isActive = p.id === product;
+                        const iconSrc = productIcon(p.id);
+                        const unsupportedText = SUPPORTED_PRODUCTS.includes(p.id)
+                          ? null
+                          : "zatím bez výpočtu";
 
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => {
-                            setProduct(p.id);
-                            setProductOpen(false);
-                          }}
-                          className={`flex h-full w-full items-center justify-between gap-3 rounded-xl border border-white/10 px-3 py-2.5 text-left text-sm transition ${
-                            isActive
-                              ? "bg-white/10 text-slate-50 shadow-inner shadow-emerald-400/30"
-                              : "text-slate-100 hover:bg-white/5"
-                          }`}
-                        >
-                          <span className="flex items-center gap-3">
-                            <div className="relative h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
-                              <Image
-                                src={iconSrc}
-                                alt=""
-                                fill
-                                className="object-contain"
-                              />
-                            </div>
-                            <span>{p.label}</span>
-                          </span>
-                          {unsupportedText && (
-                            <span className="ml-2 rounded-full border border-amber-400/60 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-200">
-                              {unsupportedText}
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setProduct(p.id);
+                              setProductOpen(false);
+                            }}
+                            className={`flex h-full w-full items-center justify-between gap-3 rounded-xl border border-white/10 px-3 py-2.5 text-left text-sm transition ${
+                              isActive
+                                ? "bg-white/10 text-slate-50 shadow-inner shadow-emerald-400/30"
+                                : "text-slate-100 hover:bg-white/5"
+                            }`}
+                          >
+                            <span className="flex items-center gap-3">
+                              <div className="relative h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
+                                <Image
+                                  src={iconSrc}
+                                  alt=""
+                                  fill
+                                  className="object-contain"
+                                />
+                              </div>
+                              <span>{p.label}</span>
                             </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                            {unsupportedText && (
+                              <span className="ml-2 rounded-full border border-amber-400/60 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-200">
+                                {unsupportedText}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {canImportFromPdf && (
+                <div className="space-y-2">
+                  <div className="flex h-full items-center justify-between gap-3 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-3 py-2.5">
+                    <div className="text-sm font-semibold text-emerald-50">
+                      Nahraj smlouvu PDF pro načtení údajů.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={pdfImporting}
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/20 px-3 py-1.5 text-sm font-semibold text-emerald-50 shadow-[0_12px_30px_rgba(16,185,129,0.25)] hover:bg-emerald-500/30 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                    >
+                      {pdfImporting ? "Načítám…" : "Nahrát PDF"}
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={(e) => handlePdfImport(e.target.files?.[0] ?? null)}
+                    />
+                  </div>
+                  {pdfImportStatus && (
+                    <p className="text-[12px] text-emerald-50">{pdfImportStatus}</p>
+                  )}
+                  {pdfImportError && (
+                    <p className="text-[12px] text-rose-200">{pdfImportError}</p>
+                  )}
+                </div>
+              )}
             </section>
 
             {/* Doba trvání + frekvence */}
@@ -1797,57 +1834,6 @@ export default function CalculatorPage() {
                 </div>
               )}
             </section>
-
-            {(product === "cppAuto" || product === "neon" || product === "flexi" || product === "domex") && (
-              <section className="space-y-2 rounded-2xl border border-emerald-400/40 bg-emerald-500/10 px-3 py-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="text-sm font-semibold text-emerald-50">
-                    Načíst údaje ze smlouvy (PDF)
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={pdfImporting}
-                    className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/20 px-3 py-1.5 text-sm font-semibold text-emerald-50 shadow-[0_12px_30px_rgba(16,185,129,0.25)] hover:bg-emerald-500/30 disabled:opacity-60 disabled:cursor-not-allowed transition"
-                  >
-                    {pdfImporting ? "Načítám…" : "Vybrat PDF"}
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="application/pdf"
-                    className="hidden"
-                    onChange={(e) => handlePdfImport(e.target.files?.[0] ?? null)}
-                  />
-                </div>
-                {product === "cppAuto" && (
-                  <p className="text-[12px] text-emerald-100">
-                    Vyplní číslo smlouvy, jméno klienta, počátek pojištění, datum sjednání a částku z PDF ČPP Auto. Data zůstávají jen v prohlížeči.
-                  </p>
-                )}
-                {product === "neon" && (
-                  <p className="text-[12px] text-emerald-100">
-                    Vyplní číslo smlouvy, jméno klienta, počátek, datum uzavření, měsíční pojistné a dobu trvání z PDF ČPP ŽP NEON. Data zůstávají jen v prohlížeči.
-                  </p>
-                )}
-                {product === "flexi" && (
-                  <p className="text-[12px] text-emerald-100">
-                    Vyplní číslo smlouvy, jméno klienta, počátek, datum uzavření a částku k úhradě z PDF Kooperativa ŽP FLEXI. Data zůstávají jen v prohlížeči.
-                  </p>
-                )}
-                {product === "domex" && (
-                  <p className="text-[12px] text-emerald-100">
-                    Vyplní číslo smlouvy, jméno klienta, počátek pojištění, datum vytvoření nabídky, frekvenci a výši platby z PDF ČPP DOMEX. Data zůstávají jen v prohlížeči.
-                  </p>
-                )}
-                {pdfImportStatus && (
-                  <p className="text-[12px] text-emerald-50">{pdfImportStatus}</p>
-                )}
-                {pdfImportError && (
-                  <p className="text-[12px] text-rose-200">{pdfImportError}</p>
-                )}
-              </section>
-            )}
 
             {/* Detaily smlouvy */}
             <section className="space-y-3">
