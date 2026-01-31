@@ -16,6 +16,7 @@ import {
   calculateMaxEfekt,
   calculateMaxdomov,
   calculateNeon,
+  calculateCsobAuto,
   calculatePillowAuto,
   calculatePillowInjury,
   calculateUniqaAuto,
