@@ -19,14 +19,22 @@ const SCENARIO_STYLE: Record<
   (typeof SCENARIOS)[number]["id"],
   { panel: string; badge: string }
 > = {
-  veryLow:
-    "from-black/70 via-black/65 to-black/60|border-emerald-300/60 text-emerald-100 bg-black/60",
-  low:
-    "from-black/70 via-black/65 to-black/60|border-emerald-300/60 text-emerald-100 bg-black/60",
-  medium:
-    "from-black/70 via-black/65 to-black/60|border-emerald-300/60 text-emerald-100 bg-black/60",
-  high:
-    "from-black/70 via-black/65 to-black/60|border-emerald-300/60 text-emerald-100 bg-black/60",
+  veryLow: {
+    panel: "from-black/70 via-black/65 to-black/60",
+    badge: "border-emerald-300/60 text-emerald-100 bg-black/60",
+  },
+  low: {
+    panel: "from-black/70 via-black/65 to-black/60",
+    badge: "border-emerald-300/60 text-emerald-100 bg-black/60",
+  },
+  medium: {
+    panel: "from-black/70 via-black/65 to-black/60",
+    badge: "border-emerald-300/60 text-emerald-100 bg-black/60",
+  },
+  high: {
+    panel: "from-black/70 via-black/65 to-black/60",
+    badge: "border-emerald-300/60 text-emerald-100 bg-black/60",
+  },
 };
 
 function formatMoney(value: number): string {
@@ -209,53 +217,56 @@ export default function InvaliditaPage() {
             </div>
           ) : (
             <div className="grid gap-3 lg:gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {results.map((scenario) => (
-                <div
-                  key={scenario.id}
-                  className="relative overflow-hidden rounded-xl border border-white/15 bg-gradient-to-br from-black/70 via-black/65 to-black/60 px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-3xl transition hover:border-emerald-300/40"
-                >
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent" />
-                  <div className="pointer-events-none absolute -left-12 -top-14 h-28 w-40 rotate-12 bg-white/18 blur-3xl opacity-70" />
-                  <div className="pointer-events-none absolute -right-10 bottom-[-16px] h-20 w-32 rotate-6 bg-emerald-200/12 blur-2xl" />
-                  <div className="relative z-10 mb-3 flex items-center justify-between">
-                    <div className="text-sm font-semibold text-white">{scenario.label}</div>
-                    <div className="text-[11px] text-slate-400">
-                      Pokrytí: {scenario.ratios.map((r) => `${Math.round(r * 100)}%`).join(" / ")}
+              {results.map((scenario) => {
+                const style = SCENARIO_STYLE[scenario.id];
+                return (
+                  <div
+                    key={scenario.id}
+                    className={`relative overflow-hidden rounded-xl border border-white/15 bg-gradient-to-br ${style.panel} px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-3xl transition hover:border-emerald-300/40`}
+                  >
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent" />
+                    <div className="pointer-events-none absolute -left-12 -top-14 h-28 w-40 rotate-12 bg-white/18 blur-3xl opacity-70" />
+                    <div className="pointer-events-none absolute -right-10 bottom-[-16px] h-20 w-32 rotate-6 bg-emerald-200/12 blur-2xl" />
+                    <div className="relative z-10 mb-3 flex items-center justify-between">
+                      <div className="text-sm font-semibold text-white">{scenario.label}</div>
+                      <div className="text-[11px] text-slate-400">
+                        Pokrytí: {scenario.ratios.map((r) => `${Math.round(r * 100)}%`).join(" / ")}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="relative z-10 space-y-3">
-                    {scenario.monthly.map((m, idx) => (
-                      <div
-                        key={`${scenario.id}-${idx}`}
-                        className="relative overflow-hidden flex items-start justify-between rounded-lg border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl"
-                      >
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/12 via-white/4 to-transparent" />
-                        <div className="pointer-events-none absolute -left-6 -top-8 h-16 w-20 rotate-12 bg-white/22 blur-2xl opacity-60" />
-                        <div className="relative z-10 flex items-start justify-between w-full gap-3">
-                          <div className="text-sm text-slate-200">
-                            <div className="text-xs uppercase tracking-[0.14em] text-slate-400">
-                              {DEGREE_LABELS[idx]}
+                    <div className="relative z-10 space-y-3">
+                      {scenario.monthly.map((m, idx) => (
+                        <div
+                          key={`${scenario.id}-${idx}`}
+                          className="relative overflow-hidden flex items-start justify-between rounded-lg border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl"
+                        >
+                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/12 via-white/4 to-transparent" />
+                          <div className="pointer-events-none absolute -left-6 -top-8 h-16 w-20 rotate-12 bg-white/22 blur-2xl opacity-60" />
+                          <div className="relative z-10 flex items-start justify-between w-full gap-3">
+                            <div className="text-sm text-slate-200">
+                              <div className="text-xs uppercase tracking-[0.14em] text-slate-400">
+                                {DEGREE_LABELS[idx]}
+                              </div>
+                              <div className="mt-1 text-base font-semibold text-emerald-200 leading-tight">
+                                {formatMoney(m)} / měsíc
+                              </div>
+                              <div className="text-[11px] text-slate-400">
+                                {Math.round(scenario.ratios[idx] * 100)} % příjmu
+                              </div>
                             </div>
-                            <div className="mt-1 text-base font-semibold text-emerald-200 leading-tight">
-                              {formatMoney(m)} / měsíc
-                            </div>
-                            <div className="text-[11px] text-slate-400">
-                              {Math.round(scenario.ratios[idx] * 100)} % příjmu
-                            </div>
-                          </div>
-                          <div className="text-right text-sm text-white leading-tight">
-                            <div className="text-[11px] text-slate-400">Celkem</div>
-                            <div className="text-[12px] font-semibold text-emerald-200/90 whitespace-nowrap">
-                              {formatMoney(scenario.lump[idx])}
+                            <div className="text-right text-sm text-white leading-tight">
+                              <div className="text-[11px] text-slate-400">Celkem</div>
+                              <div className="text-[12px] font-semibold text-emerald-200/90 whitespace-nowrap">
+                                {formatMoney(scenario.lump[idx])}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
@@ -282,11 +293,11 @@ export default function InvaliditaPage() {
 
             <div className="grid gap-3 lg:gap-4 md:grid-cols-2 xl:grid-cols-4">
               {results.map((scenario) => {
-                const [panel, badge] = SCENARIO_STYLE[scenario.id].split("|");
+                const style = SCENARIO_STYLE[scenario.id];
                 return (
                   <div
                     key={`investika-${scenario.id}`}
-                    className={`relative overflow-hidden rounded-xl border border-white/20 bg-gradient-to-br ${panel} px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-3xl transition hover:border-emerald-300/40`}
+                    className={`relative overflow-hidden rounded-xl border border-white/20 bg-gradient-to-br ${style.panel} px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-3xl transition hover:border-emerald-300/40`}
                   >
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent" />
                     <div className="pointer-events-none absolute -left-16 -top-16 h-32 w-48 rotate-12 bg-white/18 blur-3xl opacity-70" />
@@ -301,7 +312,7 @@ export default function InvaliditaPage() {
                         </div>
                       </div>
                       <span
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] ${badge}`}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] ${style.badge}`}
                       >
                         5,5–6 % p.a.
                       </span>
