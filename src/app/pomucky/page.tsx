@@ -40,6 +40,13 @@ export default function ToolsPage() {
         href: "/pomucky/argumenty",
       },
       {
+        key: "skolici-materialy",
+        category: "Obecné",
+        title: "Školící materiály",
+        description: "Rozcestník pro onboarding i produktová školení na jednom místě.",
+        href: "/pomucky/skolici-materialy",
+      },
+      {
         key: "zaznam",
         category: "Obecné",
         title: "Záznam z jednání",

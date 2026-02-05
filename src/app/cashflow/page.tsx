@@ -42,6 +42,7 @@ import {
   calculateAxaCestovko,
   calculateComfortCC,
 } from "../lib/productFormulas";
+import { totalWithMultipliers } from "../lib/commissionTotals";
 import { doc, getDoc, collection, query, where } from "firebase/firestore";
 
 /* ---------- helpers ---------- */
@@ -851,12 +852,14 @@ export default function CashflowPage() {
               ) ?? null;
 
             if (storedOverride) {
+              const storedOverrideItems = stripTotalRows(storedOverride.items ?? []);
+              const storedOverrideTotal = totalWithMultipliers(storedOverrideItems);
               overrides.push({
                 ...entry,
                 originalEntryId: entry.id,
                 id: `${entry.id}-override`,
-                items: storedOverride.items ?? [],
-                total: storedOverride.total ?? 0,
+                items: storedOverrideItems,
+                total: storedOverrideTotal,
                 source: "manager",
                 position: storedOverride.position ?? myPos,
                 managerPositionSnapshot: storedOverride.position ?? myPos,
@@ -928,7 +931,6 @@ export default function CashflowPage() {
             });
 
             const diffItems: CommissionResultItemDTO[] = [];
-            let diffTotal = 0;
 
             baselineItems.forEach((it) => {
               const key = normalizeTitleKey(it.title ?? "");
@@ -941,7 +943,6 @@ export default function CashflowPage() {
                   title: mgr?.title ?? it.title,
                   amount: remaining,
                 });
-                diffTotal += remaining;
               }
               mgrMap.delete(key);
             });
@@ -949,18 +950,18 @@ export default function CashflowPage() {
             mgrMap.forEach((val) => {
               if (val.amount > 0) {
                 diffItems.push({ title: val.title, amount: val.amount });
-                diffTotal += val.amount;
               }
             });
 
-            if (diffItems.length === 0 || diffTotal <= 0) continue;
+            const diffTotalWithMultipliers = totalWithMultipliers(diffItems);
+            if (diffItems.length === 0 || diffTotalWithMultipliers <= 0) continue;
 
             overrides.push({
               ...entry,
               originalEntryId: entry.id,
               id: `${entry.id}-override`,
               items: diffItems,
-              total: diffTotal,
+              total: diffTotalWithMultipliers,
               source: "manager",
               position: effectiveMgrPos,
               managerPositionSnapshot: effectiveMgrPos,

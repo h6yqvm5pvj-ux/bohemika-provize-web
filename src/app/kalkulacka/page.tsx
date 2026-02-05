@@ -38,6 +38,7 @@ import {
   SUPPORTED_PRODUCTS,
   getCoefficientSummary,
 } from "../lib/productFormulas";
+import { totalWithMultipliers } from "../lib/commissionTotals";
 import { parseCppAutoPdf } from "../lib/parseCppAutoPdf";
 import { parseNeonPdf } from "../lib/parseNeonPdf";
 import { parseFlexiPdf } from "../lib/parseFlexiPdf";
@@ -1188,7 +1189,6 @@ export default function CalculatorPage() {
         });
 
         const diffItems: CommissionResultItemDTO[] = [];
-        let diffTotal = 0;
 
         baselineItems.forEach((it) => {
           const key = normalizeTitleKey(it.title ?? "");
@@ -1198,7 +1198,6 @@ export default function CalculatorPage() {
           const rem = mgrAmt - subAmt;
           if (rem > 0) {
             diffItems.push({ title: mgrVal?.title ?? it.title, amount: rem });
-            diffTotal += rem;
           }
           mgrMap.delete(key);
         });
@@ -1206,9 +1205,10 @@ export default function CalculatorPage() {
         mgrMap.forEach((val) => {
           if (val.amount > 0) {
             diffItems.push({ title: val.title, amount: val.amount });
-            diffTotal += val.amount;
           }
         });
+
+        const diffTotal = totalWithMultipliers(diffItems);
 
         if (diffItems.length > 0 && diffTotal > 0) {
           diffs.push({

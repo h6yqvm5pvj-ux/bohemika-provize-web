@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import {
   PRODUCT_CAPABILITIES,
@@ -354,6 +354,17 @@ export default function RecordResultsPage() {
   const [productRecs, setProductRecs] = useState<
     { label: string; text: string | null }[]
   >([]);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  const handleCopy = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedText(text);
+      window.setTimeout(() => setCopiedText(null), 1500);
+    } catch (err) {
+      console.error("Copy failed", err);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -420,6 +431,13 @@ export default function RecordResultsPage() {
         },
       ];
 
+      recs.push(
+        "Negativním dopadem může být nevyužití dalších doporučených připojištění a vyšších pojistných částek."
+      );
+      recs.push(
+        "Klient byl poučen o povinnosti uvádět pravdivé a úplné informace ve zdravotním dotazníku a o možných důsledcích nepravdivých údajů (krácení/odmítnutí plnění)."
+      );
+
       setLines(recs);
       setAdditional(extras);
       setProductRecs(productTexts);
@@ -448,10 +466,24 @@ export default function RecordResultsPage() {
           <div className="text-lg font-semibold text-slate-50">
             Další požadavky, potřeby a cíle zákazníka
           </div>
-          <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)] space-y-3">
-            <div className="flex items-start gap-2 text-sm text-slate-50 leading-relaxed">
+          <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)] space-y-3 text-sm text-slate-50">
+            <div className="flex items-start gap-3 leading-relaxed">
+              <button
+                type="button"
+                onClick={() =>
+                  handleCopy(
+                    "Klient vyžadoval vysvětlení pojmů, které jsou uvedeny v pojistných podmínkách k požadovanému typu pojištění."
+                  )
+                }
+                className="mt-[1px] inline-flex items-center rounded-full border border-white/25 bg-white/10 px-2 py-[3px] text-[11px] font-medium text-slate-100 transition hover:border-emerald-300/60 hover:text-emerald-200"
+              >
+                {copiedText ===
+                "Klient vyžadoval vysvětlení pojmů, které jsou uvedeny v pojistných podmínkách k požadovanému typu pojištění."
+                  ? "Zkopírováno"
+                  : "Kopírovat"}
+              </button>
               <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
-              <span>
+              <span className="flex-1">
                 Klient vyžadoval vysvětlení pojmů, které jsou uvedeny v
                 pojistných podmínkách k požadovanému typu pojištění.
               </span>
@@ -463,10 +495,17 @@ export default function RecordResultsPage() {
                 {additional.map((line, idx) => (
                   <div
                     key={idx}
-                    className="flex items-start gap-2 leading-relaxed"
+                    className="flex items-start gap-3 leading-relaxed"
                   >
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(line)}
+                      className="mt-[1px] inline-flex items-center rounded-full border border-white/25 bg-white/10 px-2 py-[3px] text-[11px] font-medium text-slate-100 transition hover:border-emerald-300/60 hover:text-emerald-200"
+                    >
+                      {copiedText === line ? "Zkopírováno" : "Kopírovat"}
+                    </button>
                     <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
-                    <span>{line}</span>
+                    <span className="flex-1">{line}</span>
                   </div>
                 ))}
               </div>
@@ -492,10 +531,17 @@ export default function RecordResultsPage() {
                 {lines.map((line, idx) => (
                   <li
                     key={idx}
-                    className="flex items-start gap-2 leading-relaxed"
+                    className="flex items-start gap-3 leading-relaxed"
                   >
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(line)}
+                      className="mt-[1px] inline-flex items-center rounded-full border border-white/25 bg-white/10 px-2 py-[3px] text-[11px] font-medium text-slate-100 transition hover:border-emerald-300/60 hover:text-emerald-200"
+                    >
+                      {copiedText === line ? "Zkopírováno" : "Kopírovat"}
+                    </button>
                     <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
-                    <span>{line}</span>
+                    <span className="flex-1">{line}</span>
                   </li>
                 ))}
               </ul>
@@ -535,20 +581,33 @@ export default function RecordResultsPage() {
             {productRecs.map(({ label, text }) => (
               <section
                 key={label}
-                className="rounded-3xl border border-white/15 bg-white/6 backdrop-blur-2xl px-4 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.8)]"
+                className="flex h-full flex-col rounded-3xl border border-white/15 bg-white/6 backdrop-blur-2xl px-4 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.8)]"
               >
                 <div className="text-base font-semibold text-slate-50">
                   {label}
                 </div>
-                <div className="mt-2 text-sm text-slate-200 leading-relaxed">
-                  {text ? (
-                    text
-                  ) : (
+                {text ? (
+                  <>
+                    <div className="mt-2 text-sm text-slate-200 leading-relaxed flex-1">
+                      {text}
+                    </div>
+                    <div className="mt-4 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(text)}
+                        className="inline-flex items-center rounded-full border border-white/25 bg-white/10 px-3 py-[6px] text-[11px] font-medium text-slate-100 transition hover:border-emerald-300/60 hover:text-emerald-200"
+                      >
+                        {copiedText === text ? "Zkopírováno" : "Kopírovat"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-2 text-sm text-slate-200 leading-relaxed flex-1">
                     <span className="text-slate-400">
                       Doplníme po zadání parametrů této pojišťovny.
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
               </section>
             ))}
           </div>
