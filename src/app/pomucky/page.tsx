@@ -175,10 +175,10 @@ export default function ToolsPage() {
               <button
                 key={filter}
                 onClick={() => setActiveFilter(filter)}
-                className={`px-4 py-2 rounded-full text-sm font-medium border transition ${
+                className={`px-4 py-2 rounded-full text-sm font-medium border transition backdrop-blur-xl ${
                   active
-                    ? "bg-white/15 border-sky-400/70 text-white shadow-[0_12px_40px_rgba(59,130,246,0.25)]"
-                    : "bg-white/5 border-white/15 text-slate-200 hover:border-sky-300/60 hover:text-white"
+                    ? "bg-black/60 border-emerald-300/70 text-white shadow-[0_12px_36px_rgba(52,211,153,0.18)]"
+                    : "bg-black/40 border-white/15 text-slate-200 hover:border-emerald-300/60 hover:text-white hover:bg-black/55"
                 }`}
               >
                 {filter}
@@ -202,10 +202,15 @@ export default function ToolsPage() {
               <CardWrapper
                 key={tool.key}
                 {...wrapperProps}
-                className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)] hover:bg-white/10 hover:border-sky-400/70 transition cursor-pointer"
+                className="relative overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br from-black/70 via-black/65 to-black/60 px-5 py-6 shadow-[0_18px_50px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl transition cursor-pointer hover:border-emerald-300/60"
               >
-                <h2 className="text-lg font-semibold mb-2">{tool.title}</h2>
-                <p className="text-sm text-slate-300">{tool.description}</p>
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent" />
+                <div className="pointer-events-none absolute -left-10 -top-14 h-24 w-36 rotate-12 bg-white/18 blur-3xl opacity-70" />
+                <div className="pointer-events-none absolute -right-10 bottom-[-18px] h-20 w-28 rotate-6 bg-emerald-200/12 blur-2xl" />
+                <div className="relative z-10 space-y-2">
+                  <h2 className="text-lg font-semibold text-white">{tool.title}</h2>
+                  <p className="text-sm text-slate-300">{tool.description}</p>
+                </div>
               </CardWrapper>
             );
           })}

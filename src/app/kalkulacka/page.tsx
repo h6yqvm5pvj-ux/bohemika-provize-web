@@ -1276,6 +1276,16 @@ export default function CalculatorPage() {
         allowedEmails,
       });
 
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.removeItem("contracts_cache_v2");
+          localStorage.setItem("contracts_last_updated", String(Date.now()));
+          window.dispatchEvent(new Event("contracts:updated"));
+        } catch {
+          // best effort cache invalidation
+        }
+      }
+
       setSaveMessage("Smlouva byla uložena mezi sepsané.");
       setSaveSuccessFlash({
         contractNumber: contractNumber.trim() || null,

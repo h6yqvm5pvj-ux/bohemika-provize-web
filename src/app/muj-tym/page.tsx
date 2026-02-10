@@ -640,7 +640,7 @@ export default function TeamPage() {
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 w-full max-w-sm shadow-[0_8px_24px_rgba(0,0,0,0.2)]">
+              <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-gradient-to-r from-black/70 via-black/65 to-black/60 px-3 py-2 w-full max-w-sm shadow-[0_14px_40px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
                 <span className="text-slate-500 text-sm">🔍</span>
                 <input
                   type="text"
@@ -669,14 +669,15 @@ export default function TeamPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-[0.8fr_1.2fr] gap-4 items-start">
-              <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/70 via-slate-900/60 to-slate-950/80 p-4 shadow-[0_20px_80px_rgba(0,0,0,0.45)] space-y-3">
-                <div className="flex items-center justify-between">
+              <div className="relative overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br from-black/70 via-black/65 to-black/60 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.5)] backdrop-blur-2xl space-y-3">
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent rounded-3xl" />
+                <div className="relative z-10 flex items-center justify-between">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Podřízení</div>
-                  <span className="text-[11px] rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-slate-300">
+                  <span className="text-[11px] rounded-full border border-white/15 bg-white/8 px-2 py-0.5 text-slate-200">
                     {filtered.length} osob
                   </span>
                 </div>
-                <div className="space-y-2">
+                <div className="relative z-10 space-y-2">
                   {filtered.map((m) => {
                     const isSelected = m.email === selectedEmail;
                     const perf = performanceInfo(m.email);
@@ -686,10 +687,10 @@ export default function TeamPage() {
                         key={m.email}
                         onClick={() => setSelectedEmail(m.email)}
                         className={[
-                          "w-full text-left px-3 py-3 rounded-2xl border transition flex items-center justify-between gap-3",
+                          "w-full text-left px-4 py-3 rounded-2xl border transition flex items-center justify-between gap-3 backdrop-blur-xl",
                           isSelected
-                            ? "border-sky-300/70 bg-sky-500/15 text-white shadow-[0_10px_40px_rgba(56,189,248,0.2)]"
-                            : "border-white/8 bg-white/5 text-slate-100 hover:border-white/20 hover:bg-white/8",
+                            ? "border-emerald-300/70 bg-white/8 text-white shadow-[0_12px_36px_rgba(52,211,153,0.15)]"
+                            : "border-white/12 bg-white/5 text-slate-100 hover:border-white/25 hover:bg-white/8",
                         ].join(" ")}
                       >
                         <div className="text-sm font-semibold">{m.name}</div>
@@ -716,10 +717,11 @@ export default function TeamPage() {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/70 via-slate-900/60 to-slate-950/80 p-5 shadow-[0_20px_80px_rgba(0,0,0,0.45)] space-y-4">
+              <div className="relative overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br from-black/70 via-black/65 to-black/60 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.5)] backdrop-blur-2xl space-y-4">
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent rounded-3xl" />
                 {selected ? (
                   <>
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="relative z-10 flex items-start justify-between gap-3">
                       <div>
                         <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-1">Detail</div>
                         <div className="text-2xl font-bold text-white leading-tight">{selected.name}</div>
@@ -735,12 +737,12 @@ export default function TeamPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-1">
+                    <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="rounded-2xl border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 p-3 space-y-1 backdrop-blur-xl shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)]">
                         <div className="text-[11px] uppercase tracking-wide text-slate-400">Pozice</div>
                         <div className="text-sm font-semibold text-white">{positionLabel(selected.position)}</div>
                       </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-1">
+                      <div className="rounded-2xl border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 p-3 space-y-1 backdrop-blur-xl shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)]">
                         <div className="text-[11px] uppercase tracking-wide text-slate-400">Naposledy aktivní</div>
                         <div className="text-sm font-semibold text-white" title={formatLastActive(selected.email)}>
                           {formatRelative(lastActive[selected.email])}
@@ -748,7 +750,7 @@ export default function TeamPage() {
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="relative z-10 rounded-2xl border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 p-3 grid grid-cols-1 sm:grid-cols-2 gap-3 backdrop-blur-xl shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)]">
                       <div>
                         <div className="text-[11px] uppercase tracking-wide text-slate-400">Celkem smluv</div>
                         <div className="text-lg font-bold text-white">{contractCountLabel(selected.email, "total")}</div>
@@ -759,12 +761,13 @@ export default function TeamPage() {
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-2">
-                      <div className="flex items-center justify-between">
+                    <div className="relative rounded-2xl border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 p-3 space-y-2 backdrop-blur-xl shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] overflow-hidden">
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/12 via-white/4 to-transparent" />
+                      <div className="relative z-10 flex items-center justify-between">
                         <div className="text-[11px] uppercase tracking-wide text-slate-400">Podíl kategorií</div>
                         <div className="text-[11px] text-slate-500">(podle počtu smluv)</div>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-[150px_1fr] items-center gap-3">
+                      <div className="relative z-10 grid grid-cols-1 sm:grid-cols-[150px_1fr] items-center gap-3">
                         <div className="flex justify-center">{renderCategoryPie(selected.email)}</div>
                         <div>{categoryLegend(selected.email)}</div>
                       </div>
@@ -786,7 +789,7 @@ export default function TeamPage() {
                           {subordinatesOfSelected.map((sub) => (
                             <div
                               key={sub.email}
-                              className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 space-y-1"
+                              className="rounded-2xl border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 px-3 py-2 space-y-1 backdrop-blur-xl shadow-[0_10px_24px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.08)]"
                             >
                               <div className="text-sm font-semibold text-white">{sub.name}</div>
                               <div className="text-xs text-slate-400">{sub.email}</div>

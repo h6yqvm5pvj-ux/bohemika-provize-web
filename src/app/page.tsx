@@ -997,8 +997,13 @@ export default function HomePage() {
       const email = entry.userEmail ?? "";
       if (!email) continue;
 
-      const premium = entry.inputAmount ?? 0;
-      if (!premium || !Number.isFinite(premium)) continue;
+      const rawPremium = entry.inputAmount ?? 0;
+      if (!rawPremium || !Number.isFinite(rawPremium)) continue;
+
+      const freq = (entry.frequencyRaw ?? "annual") as PaymentFrequency;
+      const premium = isLife
+        ? rawPremium
+        : normalizeToAnnual(rawPremium, freq);
 
       const prev = sums.get(email) ?? 0;
       sums.set(email, prev + premium);

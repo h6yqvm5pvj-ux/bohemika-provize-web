@@ -342,6 +342,7 @@ type ContractsApiResponse = {
 };
 
 const CONTRACTS_CACHE_KEY = "contracts_cache_v2";
+const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 
 function readContractsCache(email: string | null | undefined): ContractsCache | null {
   if (!email || typeof window === "undefined") return null;
@@ -351,6 +352,11 @@ function readContractsCache(email: string | null | undefined): ContractsCache | 
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ContractsCache;
     if (parsed.userEmail !== normalized) return null;
+    const updatedRaw = localStorage.getItem(CONTRACTS_UPDATED_KEY);
+    const updatedAt = Number(updatedRaw);
+    if (Number.isFinite(updatedAt) && (parsed.savedAt ?? 0) < updatedAt) {
+      return null;
+    }
     return parsed;
   } catch {
     return null;
@@ -385,6 +391,7 @@ export default function ContractsPage() {
   const [filterMode, setFilterMode] = useState<FilterMode>("latest");
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -478,6 +485,63 @@ export default function ContractsPage() {
     [apiFetchContracts]
   );
 
+  const applyContractsPayload = useCallback(
+    (email: string, data: ContractsApiResponse) => {
+      const myList = (data.contracts as ContractDoc[]) ?? [];
+      const teamList =
+        (data.teamContracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
+
+      setCurrentUserPosition(data.position ?? null);
+      setMyContracts(myList);
+      setTeamContracts(teamList);
+      setMyHasMore(Boolean(data.hasMore));
+      setTeamHasMore(Boolean(data.teamHasMore));
+      setMyCursorDate(data.nextCursor ? new Date(data.nextCursor) : null);
+      setTeamCursorDate(data.teamNextCursor ? new Date(data.teamNextCursor) : null);
+
+      const teamEmails = (data.teamEmails ?? []).map((em) => em.toLowerCase());
+      teamUsersRef.current = teamEmails.map((em) => ({
+        id: em,
+        email: em,
+        position: null,
+        managerEmail: null,
+      }));
+
+      writeContractsCache({
+        userEmail: email,
+        position: data.position ?? null,
+        myContracts: myList,
+        teamContracts: teamList,
+        savedAt: Date.now(),
+        myHasMore: Boolean(data.hasMore),
+        teamHasMore: Boolean(data.teamHasMore),
+        myCursorDate: data.nextCursor ?? null,
+        teamCursorDate: data.teamNextCursor ?? null,
+        teamEmails,
+      });
+    },
+    []
+  );
+
+  const refreshContracts = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      const email = (user?.email ?? "").toLowerCase();
+      if (!email) return;
+      if (!silent) setLoading(true);
+      setLoadError(null);
+      try {
+        const data = await apiFetchContracts({ scope: "my", includeTeam: true });
+        applyContractsPayload(email, data);
+      } catch (e) {
+        console.error("Chyba při načítání smluv:", e);
+        setLoadError("Nepodařilo se načíst nejnovější smlouvy.");
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [user?.email, apiFetchContracts, applyContractsPayload]
+  );
+
   // auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
@@ -488,6 +552,8 @@ export default function ContractsPage() {
 
   // load pozice + smlouvy
   useEffect(() => {
+    let cancelled = false;
+
     const load = async () => {
       const email = (user?.email ?? "").toLowerCase();
       if (!email) {
@@ -498,6 +564,7 @@ export default function ContractsPage() {
         setTeamHasMore(false);
         setMyCursorDate(null);
         setTeamCursorDate(null);
+        setLoadError(null);
         setLoading(false);
         return;
       }
@@ -509,12 +576,8 @@ export default function ContractsPage() {
         setCurrentUserPosition(cached.position ?? null);
         setMyHasMore(cached.myHasMore ?? true);
         setTeamHasMore(cached.teamHasMore ?? true);
-        setMyCursorDate(
-          cached.myCursorDate ? new Date(cached.myCursorDate) : null
-        );
-        setTeamCursorDate(
-          cached.teamCursorDate ? new Date(cached.teamCursorDate) : null
-        );
+        setMyCursorDate(cached.myCursorDate ? new Date(cached.myCursorDate) : null);
+        setTeamCursorDate(cached.teamCursorDate ? new Date(cached.teamCursorDate) : null);
         if (cached.teamEmails?.length) {
           teamUsersRef.current = cached.teamEmails.map((em) => ({
             id: em,
@@ -542,49 +605,51 @@ export default function ContractsPage() {
         setLoading(true);
       }
 
-      try {
-        const data = await apiFetchContracts({ scope: "my", includeTeam: true });
-        const myList = (data.contracts as ContractDoc[]) ?? [];
-        const teamList =
-          (data.teamContracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
-
-        setCurrentUserPosition(data.position ?? null);
-        setMyContracts(myList);
-        setTeamContracts(teamList);
-        setMyHasMore(Boolean(data.hasMore));
-        setTeamHasMore(Boolean(data.teamHasMore));
-        setMyCursorDate(data.nextCursor ? new Date(data.nextCursor) : null);
-        setTeamCursorDate(data.teamNextCursor ? new Date(data.teamNextCursor) : null);
-
-        const teamEmails = (data.teamEmails ?? []).map((em) => em.toLowerCase());
-        teamUsersRef.current = teamEmails.map((em) => ({
-          id: em,
-          email: em,
-          position: null,
-          managerEmail: null,
-        }));
-
-        writeContractsCache({
-          userEmail: email,
-          position: data.position ?? null,
-          myContracts: myList,
-          teamContracts: teamList,
-          savedAt: Date.now(),
-          myHasMore: Boolean(data.hasMore),
-          teamHasMore: Boolean(data.teamHasMore),
-          myCursorDate: data.nextCursor ?? null,
-          teamCursorDate: data.teamNextCursor ?? null,
-          teamEmails,
-        });
-      } catch (e) {
-        console.error("Chyba při načítání smluv:", e);
-      } finally {
+      await refreshContracts({ silent: Boolean(cached) });
+      if (!cancelled && cached) {
         setLoading(false);
       }
     };
 
-    load();
-  }, [user, apiFetchContracts]);
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.email, refreshContracts]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !user?.email) return;
+
+    const triggerRefresh = () => {
+      void refreshContracts({ silent: true });
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        triggerRefresh();
+      }
+    };
+
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key === CONTRACTS_UPDATED_KEY) {
+        triggerRefresh();
+      }
+    };
+
+    window.addEventListener("focus", triggerRefresh);
+    window.addEventListener("pageshow", triggerRefresh);
+    window.addEventListener("contracts:updated", triggerRefresh as EventListener);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("focus", triggerRefresh);
+      window.removeEventListener("pageshow", triggerRefresh);
+      window.removeEventListener("contracts:updated", triggerRefresh as EventListener);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [user?.email, refreshContracts]);
 
   const canShowTeamToggle =
     isManagerPosition(currentUserPosition) || teamUsersRef.current.length > 0;
@@ -973,6 +1038,11 @@ export default function ContractsPage() {
         </div>
 
         {/* LIST SMLOUV */}
+        {loadError && (
+          <div className="rounded-2xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+            {loadError}
+          </div>
+        )}
         {loading ? (
           <p className="text-sm text-slate-300 mt-4">
             Načítám smlouvy…

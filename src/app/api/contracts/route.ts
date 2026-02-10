@@ -166,62 +166,78 @@ async function fetchContractsForOwners(
   }
   const collected: ContractResponseItem[] = [];
   const seen = new Set<string>();
+  let collectionGroupFailed = false;
 
   // collectionGroup queries (userEmail stored)
   for (let i = 0; i < owners.length; i += 10) {
     const chunk = owners.slice(i, i + 10);
-    let q = adminDb
-      .collectionGroup("entries")
-      .where("userEmail", "in", chunk)
-      .orderBy("contractSignedDate", "desc");
-    if (cursor) {
-      q = q.where("contractSignedDate", "<", cursor);
-    }
-    const snap = await q.limit(pageLimit).get();
-    snap.docs.forEach((doc) => {
-      const data = doc.data() as any as ContractDoc;
-      const ownerEmail = normalizeEmail((data.userEmail as string | undefined) ?? chunk[0]);
-      const key = `${ownerEmail}___${doc.id}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      collected.push({
-        ...data,
-        contractSignedDate: toMillis(data.contractSignedDate),
-        createdAt: toMillis(data.createdAt),
-        policyStartDate: toMillis((data as any).policyStartDate),
-        id: doc.id,
-        adviserEmail: ownerEmail,
-        userEmail: data.userEmail ?? ownerEmail,
+    try {
+      let q = adminDb
+        .collectionGroup("entries")
+        .where("userEmail", "in", chunk)
+        .orderBy("contractSignedDate", "desc");
+      if (cursor) {
+        q = q.where("contractSignedDate", "<", cursor);
+      }
+      const snap = await q.limit(pageLimit).get();
+      snap.docs.forEach((doc) => {
+        const data = doc.data() as any as ContractDoc;
+        const ownerEmail = normalizeEmail((data.userEmail as string | undefined) ?? chunk[0]);
+        const key = `${ownerEmail}___${doc.id}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        collected.push({
+          ...data,
+          contractSignedDate: toMillis(data.contractSignedDate),
+          createdAt: toMillis(data.createdAt),
+          policyStartDate: toMillis((data as any).policyStartDate),
+          id: doc.id,
+          adviserEmail: ownerEmail,
+          userEmail: data.userEmail ?? ownerEmail,
+        });
       });
-    });
+    } catch {
+      // Keep the endpoint functional even when collectionGroup index is missing/misconfigured.
+      collectionGroupFailed = true;
+      break;
+    }
+  }
+
+  if (collectionGroupFailed) {
+    collected.length = 0;
+    seen.clear();
   }
 
   // fallback: per-user path (covers records without userEmail)
   for (const owner of owners) {
-    let q = adminDb
-      .collection("users")
-      .doc(owner)
-      .collection("entries")
-      .orderBy("contractSignedDate", "desc");
-    if (cursor) {
-      q = q.where("contractSignedDate", "<", cursor);
-    }
-    const snap = await q.limit(pageLimit).get();
-    snap.docs.forEach((doc) => {
-      const data = doc.data() as any as ContractDoc;
-      const key = `${owner}___${doc.id}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      collected.push({
-        ...data,
-        contractSignedDate: toMillis(data.contractSignedDate),
-        createdAt: toMillis(data.createdAt),
-        policyStartDate: toMillis((data as any).policyStartDate),
-        id: doc.id,
-        adviserEmail: owner,
-        userEmail: data.userEmail ?? owner,
+    try {
+      let q = adminDb
+        .collection("users")
+        .doc(owner)
+        .collection("entries")
+        .orderBy("contractSignedDate", "desc");
+      if (cursor) {
+        q = q.where("contractSignedDate", "<", cursor);
+      }
+      const snap = await q.limit(pageLimit).get();
+      snap.docs.forEach((doc) => {
+        const data = doc.data() as any as ContractDoc;
+        const key = `${owner}___${doc.id}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        collected.push({
+          ...data,
+          contractSignedDate: toMillis(data.contractSignedDate),
+          createdAt: toMillis(data.createdAt),
+          policyStartDate: toMillis((data as any).policyStartDate),
+          id: doc.id,
+          adviserEmail: owner,
+          userEmail: data.userEmail ?? owner,
+        });
       });
-    });
+    } catch {
+      // Ignore one broken owner branch instead of failing the whole response.
+    }
   }
 
   collected.sort((a, b) => {
