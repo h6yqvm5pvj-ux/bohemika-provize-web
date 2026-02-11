@@ -1985,9 +1985,25 @@ export function calculateComfortCCSimple(
 
 export function calculateComfortCCOneOff(
   fee: number,
+  payment: number,
   position: Position
 ): CommissionResultDTO {
-  return calculateComfortCCSimple(fee, position);
+  const kImmediate = comfortCCImmediateCoefficient(position);
+  const kSubsequent = comfortCCSubsequentCoefficient(position);
+
+  const immediate = fee * kImmediate;
+  const subsequent = payment > 0 ? payment * kSubsequent : 0;
+  const total = immediate + subsequent;
+
+  const items: CommissionResultItemDTO[] = [
+    { title: "💸 Okamžitá provize", amount: immediate },
+  ];
+
+  if (subsequent > 0) {
+    items.push({ title: "🔁 Následná provize", amount: subsequent });
+  }
+
+  return { items, total };
 }
 
 export function calculateComfortCCGradual(
@@ -2032,7 +2048,7 @@ export function calculateComfortCC({
 
   // Jednorázový nákup nebo spoření s jednorázovým poplatkem
   if (!isSavings || (isSavings && !isGradualFee)) {
-    return calculateComfortCCOneOff(fee, position);
+    return calculateComfortCCOneOff(fee, payment, position);
   }
 
   // Spoření s postupným poplatkem

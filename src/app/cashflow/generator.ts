@@ -40,6 +40,13 @@ export function generateCashflow(
   horizonYears = 10
 ): CashflowItem[] {
   const out: CashflowItem[] = [];
+  let globalItemSequence = 0;
+  const now = new Date();
+  const horizonEnd = new Date(
+    now.getFullYear() + horizonYears,
+    now.getMonth(),
+    now.getDate()
+  );
 
   for (const entry of entries) {
     const baseEntryId = entry.originalEntryId ?? entry.id;
@@ -57,12 +64,6 @@ export function generateCashflow(
       toDate(entry.policyStartDate) ??
       start;
     const product = entry.productKey;
-
-    const horizonEnd = new Date(
-      start.getFullYear() + horizonYears,
-      start.getMonth() + 1,
-      start.getDate()
-    );
 
     const items = (entry.items ?? []).map((it) => ({
       title: (it.title ?? "").toLowerCase(),
@@ -83,6 +84,9 @@ export function generateCashflow(
     const naslOd6 = items.find((item) =>
       item.title.includes("následná provize (od 6. roku)")
     );
+    const naslOd5 = items.find((item) =>
+      item.title.includes("následná provize (od 5. roku)")
+    );
     const naslMaxdomov = items.find((item) =>
       item.title.includes("následná provize (z platby)")
     );
@@ -92,7 +96,7 @@ export function generateCashflow(
       if (date > horizonEnd) return;
 
       out.push({
-        id: `${entry.id}-${date.getTime()}-${note ?? ""}`,
+        id: `${entry.id}-${date.getTime()}-${note ?? ""}-${globalItemSequence++}`,
         date,
         amount,
         productKey: product ?? "unknown",
@@ -125,7 +129,7 @@ export function generateCashflow(
 
     switch (product) {
       case "neon":
-      case "maximaMaxEfekt": {
+      {
         if (immediate) {
           pushItem(
             immediate.amount,
@@ -144,6 +148,27 @@ export function generateCashflow(
         if (nasl510) {
           for (let year = 5; year <= 10 && year <= maxYears; year++) {
             pushItem(nasl510.amount, annPlusYears(year), "ročně");
+          }
+        }
+        break;
+      }
+
+      case "maximaMaxEfekt": {
+        if (immediate) {
+          pushItem(
+            immediate.amount,
+            estimatePayoutDate(start, agreement)
+          );
+        }
+        if (po3) pushItem(po3.amount, annPlusYears(3));
+        if (po4) pushItem(po4.amount, annPlusYears(4));
+
+        const maxYears = Math.max(1, entry.durationYears ?? 15);
+        if (naslOd5) {
+          for (let year = 5; year <= maxYears; year++) {
+            const date = annPlusYears(year);
+            if (date > horizonEnd) break;
+            pushItem(naslOd5.amount, date, "ročně");
           }
         }
         break;
@@ -301,6 +326,7 @@ export function generateCashflow(
       }
 
       case "cppAuto":
+      case "cppsimplex":
       case "cppPPRs":
       case "csobAuto":
       case "kooperativaAuto": {
@@ -339,8 +365,20 @@ export function generateCashflow(
           );
         }
 
-        if (subsequentComfort) {
-          let payout = first;
+        if (subsequentComfort && first <= horizonEnd) {
+          // 1. výplatní měsíc: následná jde zároveň s okamžitou
+          pushItem(
+            subsequentComfort.amount,
+            first,
+            "Comfort Commodity – následná (měsíčně)"
+          );
+
+          // další měsíce: už jen následná
+          let payout = new Date(
+            first.getFullYear(),
+            first.getMonth() + 1,
+            first.getDate()
+          );
           while (payout <= horizonEnd) {
             pushItem(
               subsequentComfort.amount,

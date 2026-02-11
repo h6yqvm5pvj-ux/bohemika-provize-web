@@ -551,7 +551,7 @@ export default function CalculatorPage() {
       case "axacestovko":
         return "Výpočet: pojistné × koeficient (jednorázově).";
       case "comfortcc":
-        return "Výpočet: jednorázový poplatek × koeficient (okamžitá). U postupného poplatku se přičítá pravidelná platba × koeficient × počet plateb.";
+        return "Výpočet: okamžitá provize = poplatek × koeficient. Následná provize = pravidelná platba × koeficient.";
       default:
         return "";
     }
@@ -1013,7 +1013,7 @@ export default function CalculatorPage() {
     if (product === "comfortcc") {
       const dto = calculateComfortCC({
         fee: val,
-        payment: comfortGradual ? comfortPayment : 0,
+        payment: comfortPayment,
         isSavings: comfortGradual,
         isGradualFee: comfortGradual,
         position,
@@ -1247,7 +1247,8 @@ export default function CalculatorPage() {
         position,
         commissionMode: mode,
         inputAmount: product === "comfortcc" ? value : value,
-        comfortPayment: product === "comfortcc" && comfortGradual ? comfortPayment : null,
+        comfortPayment:
+          product === "comfortcc" && comfortPayment > 0 ? comfortPayment : null,
         comfortGradual: product === "comfortcc" ? comfortGradual : null,
         frequencyRaw: frequency,
 
@@ -1410,7 +1411,7 @@ export default function CalculatorPage() {
       case "comfortcc":
         return calculateComfortCC({
           fee: val,
-          payment: comfortGradual ? parseNumber(comfortPaymentText) : 0,
+          payment: parseNumber(comfortPaymentText),
           isSavings: comfortGradual,
           isGradualFee: comfortGradual,
           position: pos,
@@ -1769,7 +1770,7 @@ export default function CalculatorPage() {
                 />
               </div>
 
-              {product === "comfortcc" && comfortGradual && (
+              {product === "comfortcc" && (
                 <div className="space-y-1">
                   <label className="block text-sm font-medium">
                     Pravidelná platba

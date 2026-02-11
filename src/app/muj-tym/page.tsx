@@ -98,7 +98,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
   auto: "Auto",
   property: "Majetek",
   travel: "Cestovko",
-  comfort: "Comfort",
+  comfort: "Zlato",
   other: "Ostatní",
 };
 const CATEGORY_COLORS: Record<Category, string> = {

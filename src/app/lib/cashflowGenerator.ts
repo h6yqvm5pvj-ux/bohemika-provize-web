@@ -394,8 +394,16 @@ export const CashflowGenerator = {
             );
           }
 
-          if (subsequentComfort) {
-            let payout = firstPayout;
+          if (subsequentComfort && firstPayout <= horizonEnd) {
+            // 1. výplatní měsíc: následná jde zároveň s okamžitou
+            addItem(
+              subsequentComfort.amount,
+              firstPayout,
+              "Comfort Commodity – následná provize (měsíčně)"
+            );
+
+            // další měsíce: už jen následná
+            let payout = addMonths(firstPayout, 1);
             while (payout <= horizonEnd) {
               addItem(
                 subsequentComfort.amount,
