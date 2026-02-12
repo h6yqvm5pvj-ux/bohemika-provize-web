@@ -1,8 +1,14 @@
 // src/app/lib/parseComfortPdf.ts
 
+import { type PaymentFrequency } from "../types/domain";
+
 export type ComfortPdfResult = {
   contractNumber?: string | null;
   clientName?: string | null;
+  policyStartDate?: string | null;
+  contractSignedDate?: string | null;
+  frequency?: PaymentFrequency | null;
+  durationYears?: number | null;
   amount?: number | null;
   comfortPayment?: number | null;
 };
