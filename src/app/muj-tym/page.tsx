@@ -386,6 +386,7 @@ export default function TeamPage() {
             case "kooperativaAuto":
               return "auto";
             case "domex":
+            case "koopmajetekobcan":
             case "maxdomov":
             case "cppPPRbez":
             case "cppPPRs":

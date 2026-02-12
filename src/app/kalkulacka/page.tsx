@@ -21,6 +21,7 @@ import {
   calculateMaxEfekt,
   calculatePillowInjury,
   calculateDomex,
+  calculateKoopMajetekObcan,
   calculateMaxdomov,
   calculateCppAuto,
   calculateCppPPRbez,
@@ -43,6 +44,7 @@ import { parseCppAutoPdf } from "../lib/parseCppAutoPdf";
 import { parseNeonPdf } from "../lib/parseNeonPdf";
 import { parseFlexiPdf } from "../lib/parseFlexiPdf";
 import { parseDomexPdf } from "../lib/parseDomexPdf";
+import { parseComfortPdf } from "../lib/parseComfortPdf";
 import {
   addDoc,
   collection,
@@ -101,6 +103,10 @@ const PRODUCT_OPTIONS: { id: Product; label: string }[] = [
   { id: "pillowInjury", label: "Pillow Úraz / Nemoc" },
   { id: "zamex", label: "ČPP ZAMEX" },
   { id: "domex", label: "ČPP DOMEX" },
+  {
+    id: "koopmajetekobcan",
+    label: "Kooperativa Pojištění majetku a odpovědnosti občanů a právní ochrany",
+  },
   { id: "maxdomov", label: "Maxima MAXDOMOV" },
   { id: "cppsimplex", label: "ČPP Simplex" },
   { id: "cppAuto", label: "ČPP Auto" },
@@ -125,6 +131,7 @@ const PRODUCT_OPTIONS: { id: Product; label: string }[] = [
 const REPLACEMENT_ELIGIBLE_PRODUCTS: Product[] = [
   "zamex",
   "domex",
+  "koopmajetekobcan",
   "cppPPRbez",
   "maxdomov",
   "cppsimplex",
@@ -253,7 +260,13 @@ function productIcon(product: Product): string {
     return "/icons/icon_zamex.png";
   }
 
-  if (product === "domex" || product === "maxdomov" || product === "cppPPRbez" || product === "cppsimplex") {
+  if (
+    product === "domex" ||
+    product === "koopmajetekobcan" ||
+    product === "maxdomov" ||
+    product === "cppPPRbez" ||
+    product === "cppsimplex"
+  ) {
     return "/icons/icon_domex.png";
   }
   if (product === "cppPPRs") {
@@ -294,6 +307,7 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "maximaMaxEfekt":
       return ["monthly"];
     case "domex":
+    case "koopmajetekobcan":
       return ["quarterly", "semiannual", "annual"];
     case "pillowAuto":
     case "maxdomov":
@@ -483,7 +497,14 @@ export default function CalculatorPage() {
   } | null>(null);
 
   const paymentBasedTotalsMemo = useMemo(() => {
-    if ((product !== "domex" && product !== "maxdomov") || items.length === 0) return null;
+    if (
+      (product !== "domex" &&
+        product !== "koopmajetekobcan" &&
+        product !== "maxdomov") ||
+      items.length === 0
+    ) {
+      return null;
+    }
     const multiplier = paymentsPerYear(frequency);
     return paymentBasedTotals(items, multiplier);
   }, [product, items, frequency]);
@@ -510,7 +531,12 @@ export default function CalculatorPage() {
     [product]
   );
   const canImportFromPdf = useMemo(
-    () => product === "cppAuto" || product === "neon" || product === "flexi" || product === "domex",
+    () =>
+      product === "cppAuto" ||
+      product === "neon" ||
+      product === "flexi" ||
+      product === "domex" ||
+      product === "comfortcc",
     [product]
   );
 
@@ -532,6 +558,7 @@ export default function CalculatorPage() {
       case "pillowInjury":
         return "Výpočet: roční pojistné (měsíční × 12) × koeficient/100 pro jednotlivé položky.";
       case "domex":
+      case "koopmajetekobcan":
         return `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}).`;
       case "maxdomov":
         return `Výpočet: platba (${payLabel}) × koeficient (získatelská i následná). Roční částka = × počet plateb (${payPerYear}).`;
@@ -767,6 +794,7 @@ export default function CalculatorPage() {
         | Awaited<ReturnType<typeof parseNeonPdf>>
         | Awaited<ReturnType<typeof parseFlexiPdf>>
         | Awaited<ReturnType<typeof parseDomexPdf>>
+        | Awaited<ReturnType<typeof parseComfortPdf>>
         | null = null;
 
       if (product === "cppAuto") {
@@ -777,8 +805,12 @@ export default function CalculatorPage() {
         parsed = await parseFlexiPdf(file);
       } else if (product === "domex") {
         parsed = await parseDomexPdf(file);
+      } else if (product === "comfortcc") {
+        parsed = await parseComfortPdf(file);
       } else {
-        setPdfImportError("Načítání z PDF je teď dostupné jen pro ČPP Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI a ČPP DOMEX.");
+        setPdfImportError(
+          "Načítání z PDF je teď dostupné jen pro ČPP Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX a Comfort Commodity."
+        );
         setPdfImportStatus(null);
         return;
       }
@@ -807,6 +839,10 @@ export default function CalculatorPage() {
       }
       if (typeof parsed.amount === "number") {
         setAmountText(String(parsed.amount));
+        applied += 1;
+      }
+      if ("comfortPayment" in parsed && typeof parsed.comfortPayment === "number") {
+        setComfortPaymentText(String(parsed.comfortPayment));
         applied += 1;
       }
       if (parsed.frequency) {
@@ -886,8 +922,11 @@ export default function CalculatorPage() {
       return;
     }
 
-    if (product === "domex") {
-      const dto = calculateDomex(val, frequency, position);
+    if (product === "domex" || product === "koopmajetekobcan") {
+      const dto =
+        product === "domex"
+          ? calculateDomex(val, frequency, position)
+          : calculateKoopMajetekObcan(val, frequency, position);
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
       );
@@ -1364,8 +1403,12 @@ export default function CalculatorPage() {
       }
       case "pillowInjury":
         return calculatePillowInjury(val, pos, usedMode);
-      case "domex": {
-        const dto = calculateDomex(val, freq, pos);
+      case "domex":
+      case "koopmajetekobcan": {
+        const dto =
+          product === "domex"
+            ? calculateDomex(val, freq, pos)
+            : calculateKoopMajetekObcan(val, freq, pos);
         const filtered = dto.items.filter((i) =>
           (i.title ?? "").toLowerCase().includes("(z platby)")
         );
@@ -2066,7 +2109,10 @@ export default function CalculatorPage() {
                   })}
 
                   <div className="pt-2 flex items-center justify-between">
-                    {(product === "domex" || product === "maxdomov") && paymentBasedTotalsMemo ? (
+                    {(product === "domex" ||
+                      product === "koopmajetekobcan" ||
+                      product === "maxdomov") &&
+                    paymentBasedTotalsMemo ? (
                       <div className="w-full space-y-1 text-emerald-50">
                         <div className="flex items-center justify-between">
                           <span className="font-semibold">Celkem v 1. roce</span>

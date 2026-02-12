@@ -12,6 +12,7 @@ import {
   calculateCppSimplex,
   calculateDomex,
   calculateFlexi,
+  calculateKoopMajetekObcan,
   calculateKooperativaAuto,
   calculateMaxEfekt,
   calculateMaxdomov,
@@ -187,6 +188,8 @@ function commissionItemsForPosition(
       return calculatePillowInjury(amount, pos, mode).items;
     case "domex":
       return calculateDomex(amount, freq, pos).items;
+    case "koopmajetekobcan":
+      return calculateKoopMajetekObcan(amount, freq, pos).items;
     case "maxdomov":
       return calculateMaxdomov(amount, freq, pos).items;
     case "cppAuto":

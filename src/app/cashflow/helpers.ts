@@ -101,6 +101,8 @@ export function productLabel(p?: Product | "unknown"): string {
       return "ČPP ZAMEX";
     case "domex":
       return "ČPP DOMEX";
+    case "koopmajetekobcan":
+      return "Kooperativa Pojištění majetku a odpovědnosti občanů a právní ochrany";
     case "cppPPRbez":
       return "ČPP Pojištění majetku a odpovědnosti podnikatelů";
     case "maxdomov":
@@ -181,6 +183,7 @@ export function matchesProductFilter(
   if (productFilter === "property") {
     return (
       product === "domex" ||
+      product === "koopmajetekobcan" ||
       product === "maxdomov" ||
       product === "cppsimplex" ||
       product === "cppPPRs" ||

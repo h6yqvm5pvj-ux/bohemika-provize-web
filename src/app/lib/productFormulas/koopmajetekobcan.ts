@@ -1,0 +1,1 @@
+export { calculateKoopMajetekObcan } from "../productFormulas";

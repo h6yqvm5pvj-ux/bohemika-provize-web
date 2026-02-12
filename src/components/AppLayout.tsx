@@ -17,10 +17,8 @@ type ActivePage =
   | "home"
   | "calc"
   | "contracts"
-  | "calendar"
   | "cashflow"
   | "team"
-  | "info"
   | "tools"
   | "settings";
 
@@ -347,10 +345,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     { key: "team", href: "/muj-tym", label: "Můj tým", requiresTeam: true },
     { key: "calc", href: "/kalkulacka", label: "Kalkulačka" },
     { key: "contracts", href: "/smlouvy", label: "Smlouvy" },
-    { key: "calendar", href: "/kalendar", label: "Kalendář" },
     { key: "cashflow", href: "/cashflow", label: "Provizní kalendář" },
     { key: "tools", href: "/pomucky", label: "Pomůcky" },
-    { key: "info", href: "/info", label: "Info" },
     { key: "settings", href: "/nastaveni", label: "Nastavení" },
   ];
 

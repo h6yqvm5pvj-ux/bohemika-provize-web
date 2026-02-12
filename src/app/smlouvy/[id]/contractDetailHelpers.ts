@@ -36,6 +36,9 @@ export function preloadFormulaModule(product?: Product | null) {
     case "domex":
       import("../../lib/productFormulas/domex");
       break;
+    case "koopmajetekobcan":
+      import("../../lib/productFormulas/koopmajetekobcan");
+      break;
     case "cppPPRbez":
       import("../../lib/productFormulas/cppPPRbez");
       break;
@@ -142,6 +145,8 @@ export function productLabel(p?: Product): string {
       return "ČPP ZAMEX";
     case "domex":
       return "ČPP DOMEX";
+    case "koopmajetekobcan":
+      return "Kooperativa Pojištění majetku a odpovědnosti občanů a právní ochrany";
     case "cppsimplex":
       return "ČPP Simplex";
     case "cppPPRbez":
@@ -211,6 +216,7 @@ export function productIcon(p?: Product): string {
 
   if (
     p === "domex" ||
+    p === "koopmajetekobcan" ||
     p === "maxdomov" ||
     p === "cppPPRs" ||
     p === "cppPPRbez" ||
@@ -490,6 +496,12 @@ export async function calculateResultForPosition(
     case "domex": {
       const { calculateDomex } = await import("../../lib/productFormulas/domex");
       return calculateDomex(amount, freq, position);
+    }
+    case "koopmajetekobcan": {
+      const { calculateKoopMajetekObcan } = await import(
+        "../../lib/productFormulas/koopmajetekobcan"
+      );
+      return calculateKoopMajetekObcan(amount, freq, position);
     }
     case "cppPPRbez": {
       const { calculateCppPPRbez } = await import(

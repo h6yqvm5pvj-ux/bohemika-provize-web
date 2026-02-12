@@ -7,6 +7,7 @@ export type Product =
   | "pillowInjury"
   | "zamex"
   | "domex"
+  | "koopmajetekobcan"
   | "maxdomov"
   | "cppsimplex"
   | "cppAuto"

@@ -30,6 +30,7 @@ import {
   calculateCsobAuto,
   calculateDomex,
   calculateFlexi,
+  calculateKoopMajetekObcan,
   calculateKooperativaAuto,
   calculateMaxEfekt,
   calculateMaxdomov,
@@ -97,6 +98,8 @@ function commissionItemsForPosition(
       return calculatePillowInjury(amount, position, mode).items;
     case "domex":
       return calculateDomex(amount, frequency, position).items;
+    case "koopmajetekobcan":
+      return calculateKoopMajetekObcan(amount, frequency, position).items;
     case "cppPPRbez":
       return calculateCppPPRbez(amount, frequency, position).items;
     case "maxdomov":
@@ -403,6 +406,7 @@ export function useCashflowData({
             if (productFilter === "property") {
               return (
                 product === "domex" ||
+                product === "koopmajetekobcan" ||
                 product === "maxdomov" ||
                 product === "cppsimplex" ||
                 product === "cppPPRs" ||

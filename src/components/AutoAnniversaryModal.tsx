@@ -39,6 +39,7 @@ const PRODUCT_LABEL: Record<Product, string> = {
   pillowInjury: "Pillow Úraz / Nemoc",
   zamex: "ČPP ZAMEX",
   domex: "ČPP DOMEX",
+  koopmajetekobcan: "Kooperativa Pojištění majetku a odpovědnosti občanů a právní ochrany",
   maxdomov: "Maxima MAXDOMOV",
   cppsimplex: "ČPP Simplex",
   cppAuto: "ČPP Auto",

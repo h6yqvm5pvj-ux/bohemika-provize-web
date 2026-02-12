@@ -285,7 +285,8 @@ export default function ContractDetailPage() {
   const contractTotal = contract?.total ?? 0;
   const freq = (contract?.frequencyRaw as PaymentFrequency | null | undefined) ?? null;
   const prod = contract?.productKey as Product | undefined;
-  const isPaymentBasedProduct = prod === "domex" || prod === "maxdomov";
+  const isPaymentBasedProduct =
+    prod === "domex" || prod === "koopmajetekobcan" || prod === "maxdomov";
   const paymentMultiplier = isPaymentBasedProduct ? paymentsPerYear(freq) : 1;
   const durationYears =
     typeof contract?.durationYears === "number" && !Number.isNaN(contract.durationYears)
@@ -2111,7 +2112,7 @@ export default function ContractDetailPage() {
 
   // vyfiltrované položky bez řádku "Celkem" a bez ročních součtů u produktů placených dle platby
   const filterPaymentBasedItems = (arr: CommissionResultItemDTO[]) => {
-    if (prod === "domex") {
+    if (prod === "domex" || prod === "koopmajetekobcan") {
       return arr.filter((it) =>
         (it.title ?? "").toLowerCase().includes("(z platby)")
       );

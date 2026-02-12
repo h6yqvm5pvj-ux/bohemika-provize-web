@@ -314,8 +314,9 @@ export const CashflowGenerator = {
           break;
         }
 
-        // ============= DOMEX / ČPP PPR bez ÚPIS – dle frekvence, po 1. výročí následná =============
+        // ============= DOMEX / Kooperativa majetek občanů / ČPP PPR bez ÚPIS – dle frekvence, po 1. výročí následná =============
         case "domex":
+        case "koopmajetekobcan":
         case "cppPPRbez": {
           const immediateDomex =
             items.find((i) =>

@@ -29,6 +29,7 @@ import {
   calculateCsobAuto,
   calculateDomex,
   calculateFlexi,
+  calculateKoopMajetekObcan,
   calculateKooperativaAuto,
   calculateMaxEfekt,
   calculateMaxdomov,
@@ -71,6 +72,10 @@ const PRODUCT_OPTIONS: { value: Product; label: string }[] = [
   { value: "maximaMaxEfekt", label: "MAXIMA ŽP MaxEfekt" },
   { value: "pillowInjury", label: "Pillow Úraz / Nemoc" },
   { value: "domex", label: "ČPP DOMEX" },
+  {
+    value: "koopmajetekobcan",
+    label: "Kooperativa Pojištění majetku a odpovědnosti občanů a právní ochrany",
+  },
   { value: "maxdomov", label: "Maxima MAXDOMOV" },
   { value: "cppsimplex", label: "ČPP Simplex" },
   { value: "zamex", label: "ČPP ZAMEX" },
@@ -181,6 +186,8 @@ function calculateCommission(
       return immediateCommission(calculatePillowInjury(premium, pos, m));
     case "domex":
       return immediateCommission(calculateDomex(premium, "annual", pos));
+    case "koopmajetekobcan":
+      return immediateCommission(calculateKoopMajetekObcan(premium, "annual", pos));
     case "maxdomov":
       return immediateCommission(calculateMaxdomov(premium, "annual", pos));
     case "cppAuto":
