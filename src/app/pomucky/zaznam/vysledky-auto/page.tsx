@@ -50,26 +50,34 @@ const INSURER_OPTIONS: { id: Insurer; label: string }[] = [
 const MANDATORY_AUTO_RECOMMENDATION =
   "Klient byl seznámen s pojistnými podmínkami, zejména s výlukami, limity a rozsahem pojistného plnění, spoluúčastí a postupem při hlášení a likvidaci pojistné události.";
 
+type RecommendationItem = {
+  text: string;
+  reason?: string;
+};
+
 function buildRecommendations(
   data: CarResultsInput | null,
   currentInsurer: Insurer | null
-): string[] {
+): RecommendationItem[] {
   if (!data) return [];
 
-  const recs: string[] = [MANDATORY_AUTO_RECOMMENDATION];
+  const recs: RecommendationItem[] = [{ text: MANDATORY_AUTO_RECOMMENDATION }];
 
-  const requiresPhotoNotice =
-    !!data.hasCasco ||
-    !!data.collisionAnimal ||
-    !!data.glass ||
-    !!data.animalDamage ||
-    !!data.naturalHazard ||
-    !!data.vandalism ||
-    !!data.ownDamage;
+  const photoTriggers: string[] = [];
+  if (data.glass) photoTriggers.push("Skla");
+  if (data.collisionAnimal) photoTriggers.push("Střet se zvěří");
+  if (data.animalDamage) photoTriggers.push("Poškození zvířetem");
+  if (data.naturalHazard) photoTriggers.push("Živel");
+  if (data.vandalism) photoTriggers.push("Vandalismus");
+  if (data.ownDamage) photoTriggers.push("Poškození vlastního vozidla");
+  if (data.hasCasco) photoTriggers.push("Havarijní");
 
-  if (requiresPhotoNotice) {
+  if (photoTriggers.length > 0) {
     recs.push(
-      "Klient byl informován o nutnosti nafocení vozidla a bere na vědomí, že do nafocení může být uplatněna vyšší spoluúčast dle podmínek pojišťovny."
+      {
+        text: "Klient byl informován o nutnosti nafocení vozidla a bere na vědomí, že do nafocení může být uplatněna vyšší spoluúčast dle podmínek pojišťovny.",
+        reason: photoTriggers.join(" + "),
+      }
     );
   }
 
@@ -79,33 +87,38 @@ function buildRecommendations(
     if (match) {
       const first = parseInt(match[1], 10);
       if (first < 100) {
-        recs.push(
-          "Klient byl upozorněn že jím zvolené limity na POV mohou být nízké a to zejména v zahraničí."
-        );
+        recs.push({
+          text: "Klient byl upozorněn že jím zvolené limity na POV mohou být nízké a to zejména v zahraničí.",
+          reason: "POV limit pod 100/100",
+        });
       }
     }
   }
 
   // 2) Asistence – základní
   if (data.assistance && data.assistanceLevel === "Základní") {
-    recs.push(
-      "Klient byl upozorněn že zvolil pouze základní asistenci a byla mu doporučena vyšší."
-    );
+    recs.push({
+      text: "Klient byl upozorněn že zvolil pouze základní asistenci a byla mu doporučena vyšší.",
+      reason: "Asistence: Základní",
+    });
   }
 
   // 3) Nevybraná doplňková krytí
+  const missingCovers: string[] = [];
+  if (!data.glass) missingCovers.push("Skla");
+  if (!data.collisionAnimal) missingCovers.push("Střet se zvěří");
+  if (!data.naturalHazard) missingCovers.push("Živel");
+  if (!data.vandalism) missingCovers.push("Vandalismus");
+  if (!data.animalDamage) missingCovers.push("Poškození zvířetem");
+  if (!data.theft) missingCovers.push("Odcizení");
   const someCoverMissing =
-    !data.glass ||
-    !data.collisionAnimal ||
-    !data.naturalHazard ||
-    !data.vandalism ||
-    !data.animalDamage ||
-    !data.theft;
+    missingCovers.length > 0;
 
   if (someCoverMissing) {
-    recs.push(
-      "Klientovi byly doporučeny doplňková připojištění přesto je nepožaduje."
-    );
+    recs.push({
+      text: "Klientovi byly doporučeny doplňková připojištění přesto je nepožaduje.",
+      reason: `Chybí krytí: ${missingCovers.join(", ")}`,
+    });
   }
 
   // 4) Roční nájezd – jen Allianz & Pillow
@@ -113,21 +126,26 @@ function buildRecommendations(
     data.annualMileage &&
     (currentInsurer === "allianz" || currentInsurer === "pillow")
   ) {
-    recs.push(
-      `Klient si zvolil roční nájezd ${data.annualMileage} a byl upozorněn, že musí vyfotit tachometr a v případě překročení mu bude pojistné dopočítáno dle tabulky ve smlouvě.`
-    );
+    recs.push({
+      text: `Klient si zvolil roční nájezd ${data.annualMileage} a byl upozorněn, že musí vyfotit tachometr a v případě překročení mu bude pojistné dopočítáno dle tabulky ve smlouvě.`,
+      reason: `${currentInsurer === "allianz" ? "Allianz" : "Pillow"} + nájezd ${data.annualMileage}`,
+    });
   }
 
   // 5) Extrabenefit Profi – POUZE pokud nahoře zvolena ČPP
   if (data.discountCppProfi && currentInsurer === "cpp") {
-    recs.push(
-      "Klient byl upozorněn, že pokud dojde v následujícím tříletém období k pojistné události, pojistník se zavazuje pojistiteli vrátit slevu za poskytnutý EBP na pojistném za všechna pojistná období, v nichž byla sleva od počátku pojištění poskytnuta."
-    );
+    recs.push({
+      text: "Klient byl upozorněn, že pokud dojde v následujícím tříletém období k pojistné události, pojistník se zavazuje pojistiteli vrátit slevu za poskytnutý EBP na pojistném za všechna pojistná období, v nichž byla sleva od počátku pojištění poskytnuta.",
+      reason: "ČPP + Extrabenefit Profi",
+    });
   }
 
   // 6) Sleva za neoriginální sklo
   if (data.discountUniqaNonOemGlass) {
-    recs.push("Klient si přeje využít slevu na neoriginální sklo.");
+    recs.push({
+      text: "Klient si přeje využít slevu na neoriginální sklo.",
+      reason: "Sleva: neoriginální sklo",
+    });
   }
 
   return recs;
@@ -398,20 +416,27 @@ export default function CarResultsPage() {
                 záznamu z jednání:
               </p>
               <ul className="space-y-2 text-sm text-slate-100">
-                {recs.map((text, idx) => (
+                {recs.map((rec, idx) => (
                   <li
                     key={idx}
                     className="flex items-start gap-3 leading-relaxed"
                   >
                     <button
                       type="button"
-                      onClick={() => handleCopy(text)}
+                      onClick={() => handleCopy(rec.text)}
                       className="mt-[1px] inline-flex items-center rounded-full border border-white/25 bg-white/10 px-2 py-[3px] text-[11px] font-medium text-slate-100 transition hover:border-emerald-300/60 hover:text-emerald-200"
                     >
-                      {copiedText === text ? "Zkopírováno" : "Kopírovat"}
+                      {copiedText === rec.text ? "Zkopírováno" : "Kopírovat"}
                     </button>
                     <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
-                    <span className="flex-1">{text}</span>
+                    <div className="flex-1 space-y-1">
+                      {rec.reason && (
+                        <span className="inline-flex rounded-full border border-emerald-300/45 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-200">
+                          {rec.reason}
+                        </span>
+                      )}
+                      <span className="block">{rec.text}</span>
+                    </div>
                   </li>
                 ))}
               </ul>
