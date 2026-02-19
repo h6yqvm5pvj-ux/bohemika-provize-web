@@ -1,7 +1,7 @@
 // src/app/pomucky/zaznam/vysledky-auto/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AppLayout } from "@/components/AppLayout";
 
@@ -20,6 +20,7 @@ interface CarResultsInput {
 
   hasCasco?: boolean;
   cascoDeductible?: string | null;
+  ownDamage?: boolean;
 
   assistance: boolean;
   assistanceLevel: string | null;
@@ -46,13 +47,31 @@ const INSURER_OPTIONS: { id: Insurer; label: string }[] = [
   { id: "uniqa", label: "UNIQA" },
 ];
 
+const MANDATORY_AUTO_RECOMMENDATION =
+  "Klient byl seznámen s pojistnými podmínkami, zejména s výlukami, limity a rozsahem pojistného plnění, spoluúčastí a postupem při hlášení a likvidaci pojistné události.";
+
 function buildRecommendations(
   data: CarResultsInput | null,
   currentInsurer: Insurer | null
 ): string[] {
   if (!data) return [];
 
-  const recs: string[] = [];
+  const recs: string[] = [MANDATORY_AUTO_RECOMMENDATION];
+
+  const requiresPhotoNotice =
+    !!data.hasCasco ||
+    !!data.collisionAnimal ||
+    !!data.glass ||
+    !!data.animalDamage ||
+    !!data.naturalHazard ||
+    !!data.vandalism ||
+    !!data.ownDamage;
+
+  if (requiresPhotoNotice) {
+    recs.push(
+      "Klient byl informován o nutnosti nafocení vozidla a bere na vědomí, že do nafocení může být uplatněna vyšší spoluúčast dle podmínek pojišťovny."
+    );
+  }
 
   // 1) Limity POV < 100/100
   if (data.hasLiability && data.liabilityLimit) {
@@ -260,10 +279,21 @@ function buildProductRecommendations(
 export default function CarResultsPage() {
   const [data, setData] = useState<CarResultsInput | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
 
   const [currentInsurer, setCurrentInsurer] = useState<Insurer | null>(null);
   const [recommendedInsurer, setRecommendedInsurer] =
     useState<Insurer | null>(null);
+
+  const handleCopy = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedText(text);
+      window.setTimeout(() => setCopiedText(null), 1500);
+    } catch (err) {
+      console.error("Copy failed", err);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -367,9 +397,22 @@ export default function CarResultsPage() {
                 Níže máš hotové věty, které můžeš použít v dopadech nebo v
                 záznamu z jednání:
               </p>
-              <ul className="list-disc pl-5 space-y-2 text-sm text-slate-100">
+              <ul className="space-y-2 text-sm text-slate-100">
                 {recs.map((text, idx) => (
-                  <li key={idx}>{text}</li>
+                  <li
+                    key={idx}
+                    className="flex items-start gap-3 leading-relaxed"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(text)}
+                      className="mt-[1px] inline-flex items-center rounded-full border border-white/25 bg-white/10 px-2 py-[3px] text-[11px] font-medium text-slate-100 transition hover:border-emerald-300/60 hover:text-emerald-200"
+                    >
+                      {copiedText === text ? "Zkopírováno" : "Kopírovat"}
+                    </button>
+                    <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
+                    <span className="flex-1">{text}</span>
+                  </li>
                 ))}
               </ul>
             </div>

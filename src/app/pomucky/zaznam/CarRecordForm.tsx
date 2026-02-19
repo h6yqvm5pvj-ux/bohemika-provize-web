@@ -194,6 +194,8 @@ export function CarRecordForm() {
       const payload = {
         hasLiability,
         liabilityLimit,
+        hasCasco,
+        cascoDeductible,
         assistance,
         assistanceLevel,
         annualMileage,
@@ -203,6 +205,7 @@ export function CarRecordForm() {
         vandalism,
         animalDamage,
         theft,
+        ownDamage,
         discountCppProfi,
         discountUniqaNonOemGlass,
       };

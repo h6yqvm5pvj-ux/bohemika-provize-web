@@ -347,6 +347,12 @@ function buildRecommendation(
   return `Pojišťovna umožňuje pojistit rizika: ${texts.join(", ")}.`;
 }
 
+const MANDATORY_IMPACT_TEXTS: string[] = [
+  "Klient byl upozorněn na vliv inflace a doporučena pravidelná aktualizace smlouvy.",
+  "Vyplnění zdravotního dotazníku proběhlo společně s klientem, klient prohlašuje, že uvedl veškeré pravdivé a úplné informace bez zamlčení či zkreslení, a byl upozorněn, že případné zamlčení nebo nepravdivé údaje mohou mít za následek krácení nebo odmítnutí pojistného plnění, případně změnu podmínek či zánik pojištění dle pojistných podmínek pojišťovny.",
+  "Klient byl seznámen s rozsahem krytí, výší pojistných částek a pojistného, s hlavními výlukami/čekacími dobami a principem likvidace pojistné události dle pojistných podmínek, doporučení pravidelné aktualizace smlouvy a nutnosti hlásit změny jako například změna povolání.",
+];
+
 export default function RecordResultsPage() {
   const [lines, setLines] = useState<string[] | null>(null);
   const [additional, setAdditional] = useState<string[] | null>(null);
@@ -371,13 +377,13 @@ export default function RecordResultsPage() {
 
     const raw = window.localStorage.getItem("lifeRecordResultInput");
     if (!raw) {
-      setLines([]);
+      setLines([...MANDATORY_IMPACT_TEXTS]);
       return;
     }
 
     try {
       const data: LifeResultInput = JSON.parse(raw);
-      const recs: string[] = [];
+      const recs: string[] = [...MANDATORY_IMPACT_TEXTS];
       const extras: string[] = [];
 
       // 1) Invalidita
@@ -443,7 +449,7 @@ export default function RecordResultsPage() {
       setProductRecs(productTexts);
     } catch (err) {
       console.error(err);
-      setLines([]);
+      setLines([...MANDATORY_IMPACT_TEXTS]);
       setAdditional([]);
       setProductRecs([]);
     }
