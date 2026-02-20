@@ -400,6 +400,23 @@ export function computeTotalWithMultipliers(
   }, 0);
 }
 
+function aggregateByNormalizedTitle(
+  items: CommissionResultItemDTO[]
+): Map<string, { title: string; amount: number }> {
+  const map = new Map<string, { title: string; amount: number }>();
+
+  items.forEach((it) => {
+    const key = normalizeTitleForCompare(it.title);
+    const prev = map.get(key);
+    map.set(key, {
+      title: it.title ?? prev?.title ?? key,
+      amount: (prev?.amount ?? 0) + (it.amount ?? 0),
+    });
+  });
+
+  return map;
+}
+
 export function diffItemsByTitle(
   upper: CommissionResultItemDTO[] | null | undefined,
   lower: CommissionResultItemDTO[] | null | undefined
@@ -407,25 +424,17 @@ export function diffItemsByTitle(
   const upperClean = stripTotalRows(upper);
   const lowerClean = stripTotalRows(lower);
 
-  const upperMap = new Map<string, { title: string; amount: number }>();
-  upperClean.forEach((it) => {
-    const key = normalizeTitleForCompare(it.title);
-    const prev = upperMap.get(key);
-    upperMap.set(key, {
-      title: it.title ?? prev?.title ?? key,
-      amount: (prev?.amount ?? 0) + (it.amount ?? 0),
-    });
-  });
+  const upperMap = aggregateByNormalizedTitle(upperClean);
+  const lowerMap = aggregateByNormalizedTitle(lowerClean);
 
   const diffs: CommissionResultItemDTO[] = [];
 
   let runningTotal = 0;
-  lowerClean.forEach((it) => {
-    const key = normalizeTitleForCompare(it.title);
+  lowerMap.forEach((low, key) => {
     const up = upperMap.get(key);
-    const diff = (up?.amount ?? 0) - (it.amount ?? 0);
+    const diff = (up?.amount ?? 0) - low.amount;
     if (diff > 0) {
-      const titleVal = up?.title ?? it.title;
+      const titleVal = up?.title ?? low.title;
       diffs.push({ title: titleVal, amount: diff });
       runningTotal += diff * itemMultiplier(titleVal);
     }

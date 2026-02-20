@@ -10,7 +10,7 @@ import {
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 import { AppLayout } from "@/components/AppLayout";
 import { AutoAnniversaryModal } from "@/components/AutoAnniversaryModal";
@@ -585,6 +585,7 @@ export default function HomePage() {
   const progress = hasGoal
     ? Math.min(100, Math.round((totalWithTeam / monthlyGoal) * 100))
     : 0;
+  const remainingToGoal = hasGoal ? Math.max(0, monthlyGoal - totalWithTeam) : 0;
   const progressTone =
     progress >= 90
       ? "from-emerald-400 via-lime-300 to-emerald-200"
@@ -684,6 +685,9 @@ export default function HomePage() {
             progress={progress}
             progressTone={progressTone}
             isLiteUI={isLiteUI}
+            remainingToGoal={remainingToGoal}
+            position={userMeta?.position ?? null}
+            commissionMode={userMeta?.commissionMode ?? null}
             onSaveGoal={saveMonthlyGoal}
           />
         );
