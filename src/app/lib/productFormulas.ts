@@ -945,19 +945,19 @@ function domexSubsequentCoefficient(position: Position): number {
       return 0.064;
     // Manažeři 4–10
     case "manazer4":
-      return 0.2016;
+      return 0.0504;
     case "manazer5":
-      return 0.2252;
+      return 0.0563;
     case "manazer6":
-      return 0.2471;
+      return 0.0618;
     case "manazer7":
-      return 0.2688;
+      return 0.0672;
     case "manazer8":
-      return 0.2924;
+      return 0.0731;
     case "manazer9":
-      return 0.3124;
+      return 0.0781;
     case "manazer10":
-      return 0.336;
+      return 0.084;
   }
 }
 
