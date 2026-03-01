@@ -75,6 +75,7 @@ const SETTINGS_KEYS = {
   monthlyGoal: "settings.monthlyGoal",
   backgroundColor: "settings.backgroundColor",
   reduceMotion: "settings.reduceMotion",
+  tipsterMode: "settings.tipsterMode",
 };
 
 const normalizeEmail = (email?: string | null) =>
@@ -106,6 +107,7 @@ export default function SettingsPage() {
   const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
   const [backgroundColor, setBackgroundColor] = useState<"black" | "blue">("black");
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [tipsterMode, setTipsterMode] = useState(false);
 
   const applyMotionPreference = (off: boolean) => {
     if (typeof document === "undefined") return;
@@ -243,6 +245,24 @@ export default function SettingsPage() {
               applyMotionPreference(true);
             }
           }
+
+          if (typeof data.tipsterCollaborationMode === "boolean") {
+            setTipsterMode(data.tipsterCollaborationMode);
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(
+                SETTINGS_KEYS.tipsterMode,
+                data.tipsterCollaborationMode ? "1" : "0"
+              );
+            }
+          } else if (typeof window !== "undefined") {
+            const storedTipsterMode = window.localStorage.getItem(
+              SETTINGS_KEYS.tipsterMode
+            );
+            if (storedTipsterMode === "1" || storedTipsterMode === "0") {
+              setTipsterMode(storedTipsterMode === "1");
+            }
+          }
+
           if (typeof data.fcmToken === "string" && data.fcmToken.trim().length > 0) {
             setFcmActive(true);
           } else {
@@ -288,6 +308,12 @@ export default function SettingsPage() {
               setReduceMotion(true);
               applyMotionPreference(true);
             }
+            const storedTipsterMode = window.localStorage.getItem(
+              SETTINGS_KEYS.tipsterMode
+            );
+            if (storedTipsterMode === "1" || storedTipsterMode === "0") {
+              setTipsterMode(storedTipsterMode === "1");
+            }
           }
         }
       } catch (e) {
@@ -330,6 +356,14 @@ export default function SettingsPage() {
       window.localStorage.setItem(SETTINGS_KEYS.mode, value);
     }
     await saveUserFields({ commissionMode: value });
+  };
+
+  const handleTipsterModeChange = async (value: boolean) => {
+    setTipsterMode(value);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SETTINGS_KEYS.tipsterMode, value ? "1" : "0");
+    }
+    await saveUserFields({ tipsterCollaborationMode: value });
   };
 
   const handleNotifyMinutesChange = async (value: number) => {
@@ -578,6 +612,41 @@ export default function SettingsPage() {
                       Zrychlený / běžný režim se používá u životního pojištění.
                     </p>
                   </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/12 bg-slate-950/40 px-4 py-4 space-y-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-300">
+                        Režim tipařské spolupráce
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        V kalkulačce se zobrazí jen okamžitá provize v nastaveném procentu.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTipsterModeChange(!tipsterMode)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                        tipsterMode
+                          ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
+                          : "border-white/20 bg-white/5 text-slate-100 hover:border-white/35"
+                      }`}
+                      aria-pressed={tipsterMode}
+                    >
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full ${
+                          tipsterMode ? "bg-emerald-300" : "bg-slate-300"
+                        }`}
+                        aria-hidden="true"
+                      />
+                      {tipsterMode ? "ON" : "OFF"}
+                    </button>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400">
+                    Procento provize nastavíš přímo v kalkulačce tlačítkem %.
+                  </p>
                 </div>
               </section>
             )}

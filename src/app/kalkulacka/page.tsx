@@ -57,6 +57,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   where,
 } from "firebase/firestore";
 import { AppLayout } from "@/components/AppLayout";
@@ -65,6 +66,13 @@ import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 // ---------- Pomocné ----------
 
 const LIFE_PRODUCTS: Product[] = ["neon", "flexi", "pillowInjury", "maximaMaxEfekt"];
+const SETTINGS_KEYS = {
+  position: "settings.position",
+  mode: "settings.mode",
+  tipsterMode: "settings.tipsterMode",
+  tipsterPercent: "settings.tipsterPercent",
+};
+const TIPSTER_PERCENT_PRESETS = [10, 20, 30, 40, 50, 75, 100];
 
 function formatMoney(value: number): string {
   if (Number.isNaN(value)) return "0 Kč";
@@ -399,6 +407,11 @@ function parseNumber(text: string): number {
   return Number.isNaN(value) ? 0 : value;
 }
 
+function clampTipsterPercent(value: number): number {
+  if (!Number.isFinite(value)) return 100;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
 const SUPPORTED_LABEL =
   "Tento produkt zatím není na webu dopočítaný – aktuálně počítáme všechny produkty kromě Comfort Commodity.";
 
@@ -448,6 +461,11 @@ function resultIconForTitle(title: string): string | null {
   return null;
 }
 
+function isImmediateCommissionTitle(title: string): boolean {
+  const t = cleanResultTitle(title).toLowerCase();
+  return t.includes("okamžitá provize") || t.includes("získatelská provize");
+}
+
 // ---------- Kalkulačka ----------
 
 export default function CalculatorPage() {
@@ -460,6 +478,9 @@ export default function CalculatorPage() {
   const [frequency, setFrequency] = useState<PaymentFrequency>("monthly");
   const [durationYears, setDurationYears] = useState<number>(15);
   const [amountText, setAmountText] = useState<string>("");
+  const [tipsterModeEnabled, setTipsterModeEnabled] = useState(false);
+  const [tipsterPercent, setTipsterPercent] = useState(100);
+  const [tipsterPercentPanelOpen, setTipsterPercentPanelOpen] = useState(false);
   const [comfortGradual, setComfortGradual] = useState<boolean>(false);
   const [comfortPaymentText, setComfortPaymentText] = useState<string>("");
 
@@ -509,6 +530,19 @@ export default function CalculatorPage() {
     return paymentBasedTotals(items, multiplier);
   }, [product, items, frequency]);
 
+  const immediateCommissionTotal = useMemo(
+    () =>
+      items.reduce((sum, item) => {
+        if (!isImmediateCommissionTitle(item.title)) return sum;
+        return sum + (item.amount ?? 0);
+      }, 0),
+    [items]
+  );
+  const tipsterImmediateCommission = useMemo(
+    () => immediateCommissionTotal * (tipsterPercent / 100),
+    [immediateCommissionTotal, tipsterPercent]
+  );
+
   type ManagerOverrideSnapshot = {
     email: string | null;
     position: Position | null;
@@ -532,12 +566,13 @@ export default function CalculatorPage() {
   );
   const canImportFromPdf = useMemo(
     () =>
-      product === "cppAuto" ||
-      product === "neon" ||
-      product === "flexi" ||
-      product === "domex" ||
-      product === "comfortcc",
-    [product]
+      !tipsterModeEnabled &&
+      (product === "cppAuto" ||
+        product === "neon" ||
+        product === "flexi" ||
+        product === "domex" ||
+        product === "comfortcc"),
+    [product, tipsterModeEnabled]
   );
 
   const coefList = useMemo(
@@ -632,7 +667,7 @@ export default function CalculatorPage() {
     if (typeof window === "undefined") return;
 
     const storedPosition = window.localStorage.getItem(
-      "settings.position"
+      SETTINGS_KEYS.position
     ) as Position | null;
     if (storedPosition) {
       setPosition(storedPosition);
@@ -640,10 +675,23 @@ export default function CalculatorPage() {
     }
 
     const storedMode = window.localStorage.getItem(
-      "settings.mode"
+      SETTINGS_KEYS.mode
     ) as CommissionMode | null;
     if (storedMode) {
       setMode(storedMode);
+    }
+
+    const storedTipsterMode = window.localStorage.getItem(SETTINGS_KEYS.tipsterMode);
+    if (storedTipsterMode === "1" || storedTipsterMode === "0") {
+      setTipsterModeEnabled(storedTipsterMode === "1");
+    }
+
+    const storedTipsterPercent = window.localStorage.getItem(SETTINGS_KEYS.tipsterPercent);
+    const tipsterPercentValue = storedTipsterPercent
+      ? Number(storedTipsterPercent)
+      : 100;
+    if (Number.isFinite(tipsterPercentValue)) {
+      setTipsterPercent(clampTipsterPercent(tipsterPercentValue));
     }
   }, []);
 
@@ -659,7 +707,7 @@ export default function CalculatorPage() {
           setPosition(pos);
           setBaseUserPosition(pos);
           if (typeof window !== "undefined") {
-            window.localStorage.setItem("settings.position", pos);
+            window.localStorage.setItem(SETTINGS_KEYS.position, pos);
           }
         }
 
@@ -670,7 +718,35 @@ export default function CalculatorPage() {
           setUserCommissionMode(userMode);
           setMode(userMode);
           if (typeof window !== "undefined") {
-            window.localStorage.setItem("settings.mode", userMode);
+            window.localStorage.setItem(SETTINGS_KEYS.mode, userMode);
+          }
+        }
+
+        const tipsterModeValue =
+          typeof data?.tipsterCollaborationMode === "boolean"
+            ? data.tipsterCollaborationMode
+            : null;
+        if (tipsterModeValue !== null) {
+          setTipsterModeEnabled(tipsterModeValue);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(
+              SETTINGS_KEYS.tipsterMode,
+              tipsterModeValue ? "1" : "0"
+            );
+          }
+        }
+
+        const tipsterPercentValue =
+          typeof data?.tipsterCommissionPercent === "number"
+            ? clampTipsterPercent(data.tipsterCommissionPercent)
+            : null;
+        if (tipsterPercentValue !== null) {
+          setTipsterPercent(tipsterPercentValue);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(
+              SETTINGS_KEYS.tipsterPercent,
+              String(tipsterPercentValue)
+            );
           }
         }
 
@@ -782,6 +858,38 @@ export default function CalculatorPage() {
       })
     );
   }, [amountText, clientName, contractNumber, contractSignedDate, policyStartDate, comfortPaymentText, product, comfortGradual]);
+
+  useEffect(() => {
+    if (!tipsterModeEnabled) {
+      setTipsterPercentPanelOpen(false);
+    }
+  }, [tipsterModeEnabled]);
+
+  const setTipsterPercentDraft = (value: number): number => {
+    const next = clampTipsterPercent(value);
+    setTipsterPercent(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SETTINGS_KEYS.tipsterPercent, String(next));
+    }
+    return next;
+  };
+
+  const persistTipsterPercent = async (value: number) => {
+    const next = setTipsterPercentDraft(value);
+
+    const email = (user?.email ?? "").trim().toLowerCase();
+    if (!email) return;
+
+    try {
+      await setDoc(
+        doc(db, "users", email),
+        { tipsterCommissionPercent: next },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error("Failed to persist tipster percent", err);
+    }
+  };
 
   const handlePdfImport = async (file: File | null) => {
     if (!file) return;
@@ -1082,6 +1190,10 @@ export default function CalculatorPage() {
 
   const handleSaveContract = async (skipDuplicateCheck = false) => {
     if (!user) return;
+    if (tipsterModeEnabled) {
+      setSaveMessage("V režimu TIPAŘSKÉ spolupráce se smlouvy neukládají.");
+      return;
+    }
 
     const value = parseNumber(amountText);
     const comfortPayment = parseNumber(comfortPaymentText);
@@ -1584,7 +1696,7 @@ export default function CalculatorPage() {
       <div className="w-full max-w-6xl space-y-6">
         {/* Header */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <SplitTitle text="Kalkulačka provizí" />
+          <SplitTitle text={tipsterModeEnabled ? "Kalkulačka - TIPAŘ" : "Kalkulačka provizí"} />
         </header>
 
         <div className="grid gap-6 items-start lg:grid-cols-[1.05fr_0.95fr]">
@@ -1828,7 +1940,7 @@ export default function CalculatorPage() {
                 </div>
               )}
 
-              {product === "neon" && (
+              {!tipsterModeEnabled && product === "neon" && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -1858,7 +1970,7 @@ export default function CalculatorPage() {
                 </div>
               )}
 
-              {replacementEligible && (
+              {!tipsterModeEnabled && replacementEligible && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -1890,6 +2002,7 @@ export default function CalculatorPage() {
             </section>
 
             {/* Detaily smlouvy */}
+            {!tipsterModeEnabled && (
             <section className="space-y-3">
               <h2 className="text-sm font-semibold">Detaily smlouvy</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1979,45 +2092,48 @@ export default function CalculatorPage() {
               </div>
             </div>
             </section>
+            )}
 
             {/* Pozice a režim pro tuto smlouvu */}
-            <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="block text-sm font-medium">
-                  Sjednána jako (pozice)
-                </label>
-                <select
-                  className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  value={position}
-                  onChange={(e) => setPosition(e.target.value as Position)}
-                >
-                  {allowedPositionsForUser(baseUserPosition ?? position).map((p) => (
-                    <option key={p} value={p}>
-                      {positionLabel(p)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {canChooseMode && (
+            {!tipsterModeEnabled && (
+              <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="block text-sm font-medium">
-                    Režim provize
+                    Sjednána jako (pozice)
                   </label>
                   <select
                     className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                    value={mode}
-                    onChange={(e) => setMode(e.target.value as CommissionMode)}
+                    value={position}
+                    onChange={(e) => setPosition(e.target.value as Position)}
                   >
-                    <option value="accelerated">Zrychlený</option>
-                    <option value="standard">Běžný</option>
+                    {allowedPositionsForUser(baseUserPosition ?? position).map((p) => (
+                      <option key={p} value={p}>
+                        {positionLabel(p)}
+                      </option>
+                    ))}
                   </select>
-                  <p className="text-[11px] text-slate-400">
-                    Předvyplněno tvým režimem, ale můžeš přepnout pro tuto konkrétní smlouvu.
-                  </p>
                 </div>
-              )}
-            </section>
+
+                {canChooseMode && (
+                  <div className="space-y-1">
+                    <label className="block text-sm font-medium">
+                      Režim provize
+                    </label>
+                    <select
+                      className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                      value={mode}
+                      onChange={(e) => setMode(e.target.value as CommissionMode)}
+                    >
+                      <option value="accelerated">Zrychlený</option>
+                      <option value="standard">Běžný</option>
+                    </select>
+                    <p className="text-[11px] text-slate-400">
+                      Předvyplněno tvým režimem, ale můžeš přepnout pro tuto konkrétní smlouvu.
+                    </p>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
 
           {/* Výsledky + tlačítko Sepsáno */}
@@ -2039,18 +2155,122 @@ export default function CalculatorPage() {
                   Zobrazit koeficienty
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleSaveContract()}
-                  disabled={
-                    saving || items.length === 0 || parseNumber(amountText) <= 0
-                  }
-                  className="inline-flex items-center rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-emerald-500/40 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {saving ? "Ukládám…" : "Sepsáno"}
-                </button>
+                {tipsterModeEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => setTipsterPercentPanelOpen((prev) => !prev)}
+                    className="inline-flex items-center rounded-xl border border-emerald-300/70 bg-emerald-500/25 px-3 py-2 text-sm font-semibold text-emerald-50 hover:bg-emerald-500/35 transition"
+                    aria-pressed={tipsterPercentPanelOpen}
+                    aria-label="Nastavit procenta pro tipaře"
+                  >
+                    %
+                  </button>
+                )}
+
+                {!tipsterModeEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => handleSaveContract()}
+                    disabled={
+                      saving || items.length === 0 || parseNumber(amountText) <= 0
+                    }
+                    className="inline-flex items-center rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-emerald-500/40 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {saving ? "Ukládám…" : "Sepsáno"}
+                  </button>
+                )}
               </div>
             </div>
+
+            {tipsterModeEnabled && tipsterPercentPanelOpen && (
+              <div className="rounded-xl border border-emerald-300/35 bg-emerald-900/35 px-3 py-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="block text-xs uppercase tracking-wide text-emerald-100">
+                    Zobrazované procento provize
+                  </label>
+                  <span className="rounded-full border border-emerald-300/50 bg-emerald-500/15 px-2.5 py-1 text-sm font-bold text-emerald-100">
+                    {tipsterPercent} %
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void persistTipsterPercent(tipsterPercent - 5)}
+                    className="rounded-lg border border-emerald-300/45 bg-black/25 px-2.5 py-1.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20 transition"
+                    aria-label="Snížit o 5 procentních bodů"
+                  >
+                    −5
+                  </button>
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={tipsterPercent}
+                    onChange={(e) =>
+                      setTipsterPercentDraft(Number(e.target.value) || 0)
+                    }
+                    onPointerUp={(e) =>
+                      void persistTipsterPercent(Number(e.currentTarget.value) || 0)
+                    }
+                    onKeyUp={(e) => {
+                      if (e.key.startsWith("Arrow") || e.key === "Home" || e.key === "End") {
+                        void persistTipsterPercent(Number((e.currentTarget as HTMLInputElement).value) || 0);
+                      }
+                    }}
+                    className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-emerald-200/20 accent-emerald-400"
+                    aria-label="Nastavit procento tipařské provize"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => void persistTipsterPercent(tipsterPercent + 5)}
+                    className="rounded-lg border border-emerald-300/45 bg-black/25 px-2.5 py-1.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20 transition"
+                    aria-label="Zvýšit o 5 procentních bodů"
+                  >
+                    +5
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {TIPSTER_PERCENT_PRESETS.map((preset) => {
+                    const active = preset === tipsterPercent;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => void persistTipsterPercent(preset)}
+                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
+                          active
+                            ? "border-emerald-300/70 bg-emerald-500/25 text-emerald-50"
+                            : "border-white/20 bg-white/5 text-slate-100 hover:border-emerald-300/50 hover:bg-emerald-500/15"
+                        }`}
+                      >
+                        {preset} %
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[11px] text-emerald-100/80">Rozsah 0–100 %</p>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={tipsterPercent}
+                    onChange={(e) =>
+                      setTipsterPercentDraft(Number(e.target.value) || 0)
+                    }
+                    onBlur={() => void persistTipsterPercent(tipsterPercent)}
+                    className="w-20 rounded-lg border border-emerald-300/40 bg-black/25 px-2.5 py-1.5 text-sm text-emerald-50 outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-300"
+                  />
+                </div>
+              </div>
+            )}
 
             {saveMessage && (
               <p className="text-xs text-emerald-50/80">{saveMessage}</p>
@@ -2069,6 +2289,36 @@ export default function CalculatorPage() {
             )}
 
             {items.length > 0 && !unsupported && (() => {
+              if (tipsterModeEnabled) {
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-baseline justify-between gap-3 border-b border-emerald-300/15 py-1.5">
+                      <span className="flex items-center gap-3 text-sm text-emerald-50">
+                        <span className="relative h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0">
+                          <Image
+                            src="/icons/penize2.png"
+                            alt=""
+                            fill
+                            className="object-contain"
+                          />
+                        </span>
+                        <span>Okamžitá provize ({tipsterPercent} %)</span>
+                      </span>
+                      <span className="text-base sm:text-lg font-semibold text-emerald-200">
+                        {formatMoney(tipsterImmediateCommission)}
+                      </span>
+                    </div>
+
+                    <div className="pt-2 flex items-center justify-between">
+                      <span className="font-semibold text-emerald-50">Celkem</span>
+                      <span className="text-xl sm:text-2xl font-bold text-emerald-200">
+                        {formatMoney(tipsterImmediateCommission)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
+
               const displayItems = items.filter((item) => {
                 const t = cleanResultTitle(item.title).toLowerCase();
                 return !(
