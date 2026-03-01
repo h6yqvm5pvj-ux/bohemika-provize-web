@@ -54,6 +54,13 @@ export default function ToolsPage() {
         href: "/pomucky/zaznam",
       },
       {
+        key: "tvorba",
+        category: "Obecné",
+        title: "Tvorba",
+        description: "Interaktivní A4 editor dokumentu s pevnou hlavičkou, patičkou a stažením do PDF.",
+        href: "/pomucky/tvorba",
+      },
+      {
         key: "investicni-kalkulacka",
         category: "Investice",
         title: "Investiční kalkulačka",
