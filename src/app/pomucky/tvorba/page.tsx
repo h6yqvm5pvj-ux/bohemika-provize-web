@@ -8,7 +8,6 @@ import {
   useState,
   type ChangeEvent,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
 } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
@@ -19,6 +18,7 @@ import {
   AlignRight,
   Briefcase,
   Download,
+  Hash,
   ImagePlus,
   Mail,
   MapPin,
@@ -179,24 +179,10 @@ function ToolbarButton({
   );
 }
 
-function FooterLine({
-  icon,
-  text,
-}: {
-  icon: ReactNode;
-  text: string;
-}) {
-  return (
-    <div className="flex items-center gap-2 text-[12px] leading-[1.35] text-slate-700">
-      <span className="inline-flex w-4 items-center justify-center text-slate-500">{icon}</span>
-      <span className="whitespace-nowrap">{text || "—"}</span>
-    </div>
-  );
-}
-
 type FooterProfile = {
   fullName: string;
   jobTitle: string;
+  companyId: string;
   phone: string;
   email: string;
   officeAddress: string;
@@ -318,6 +304,7 @@ const TEXT_COLOR_PALETTE = [
 const EMPTY_FOOTER_PROFILE: FooterProfile = {
   fullName: "",
   jobTitle: "",
+  companyId: "",
   phone: "",
   email: "",
   officeAddress: "",
@@ -373,6 +360,7 @@ function readLocalFooterProfile(email?: string | null): FooterProfile | null {
     return {
       fullName: data.fullName ?? "",
       jobTitle: data.jobTitle ?? "",
+      companyId: data.companyId ?? "",
       phone: data.phone ?? "",
       email: data.email ?? "",
       officeAddress: data.officeAddress ?? "",
@@ -404,6 +392,7 @@ export default function TvorbaPage() {
 
   const [fullName, setFullName] = useState("");
   const [jobTitle, setJobTitle] = useState("");
+  const [companyId, setCompanyId] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [officeAddress, setOfficeAddress] = useState("");
@@ -411,7 +400,7 @@ export default function TvorbaPage() {
   const [fontSizePx, setFontSizePx] = useState(15);
   const [fontFamilyKey, setFontFamilyKey] = useState(DEFAULT_FONT_KEY);
   const [textColor, setTextColor] = useState("#1f2937");
-  const [headerDocTitle, setHeaderDocTitle] = useState("Interní dokument");
+  const [headerDocTitle, setHeaderDocTitle] = useState("Podpisem to pro nás nekončí");
   const [placedImages, setPlacedImages] = useState<PlacedImage[]>([]);
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
 
@@ -435,6 +424,7 @@ export default function TvorbaPage() {
   const collectFooterProfile = (): FooterProfile => ({
     fullName: fullName.trim(),
     jobTitle: jobTitle.trim(),
+    companyId: companyId.trim(),
     phone: phone.trim(),
     email: email.trim(),
     officeAddress: officeAddress.trim(),
@@ -443,6 +433,7 @@ export default function TvorbaPage() {
   const applyFooterProfile = (profile: Partial<FooterProfile>, fallbackEmail?: string) => {
     setFullName(profile.fullName ?? "");
     setJobTitle(profile.jobTitle ?? "");
+    setCompanyId(profile.companyId ?? "");
     setPhone(profile.phone ?? "");
     setEmail(profile.email ?? fallbackEmail ?? "");
     setOfficeAddress(profile.officeAddress ?? "");
@@ -521,7 +512,8 @@ export default function TvorbaPage() {
     let cancelled = false;
     const unsub = onAuthStateChanged(auth, (user) => {
       const loadUserProfile = async () => {
-        if (!user?.email) {
+        const authEmail = user?.email ?? "";
+        if (!authEmail) {
           if (!cancelled) {
             setUserEmail(null);
             const localProfile = readLocalFooterProfile(null);
@@ -532,24 +524,24 @@ export default function TvorbaPage() {
           return;
         }
 
-        const normalized = normalizeEmail(user.email);
+        const normalized = normalizeEmail(authEmail);
         if (!normalized) return;
 
         if (!cancelled) {
           setUserEmail(normalized);
-          setEmail((prev) => prev || user.email || "");
-          setFullName((prev) => prev || nameFromEmail(user.email));
+          setEmail((prev) => prev || authEmail);
+          setFullName((prev) => prev || nameFromEmail(authEmail));
           const localProfile = readLocalFooterProfile(normalized);
           if (localProfile) {
-            applyFooterProfile(localProfile, user.email);
+            applyFooterProfile(localProfile, authEmail);
           }
         }
 
         try {
           const ref = doc(db, "users", normalized);
           let snap = await getDoc(ref);
-          if (!snap.exists() && user.email !== normalized) {
-            const rawRef = doc(db, "users", user.email);
+          if (!snap.exists() && authEmail !== normalized) {
+            const rawRef = doc(db, "users", authEmail);
             const rawSnap = await getDoc(rawRef);
             if (rawSnap.exists()) {
               snap = rawSnap;
@@ -567,13 +559,14 @@ export default function TvorbaPage() {
           if (!profile) return;
 
           const merged: FooterProfile = {
-            fullName: profile.fullName ?? nameFromEmail(user.email),
+            fullName: profile.fullName ?? nameFromEmail(authEmail),
             jobTitle: profile.jobTitle ?? "",
+            companyId: profile.companyId ?? "",
             phone: profile.phone ?? "",
-            email: profile.email ?? user.email,
+            email: profile.email ?? authEmail,
             officeAddress: profile.officeAddress ?? "",
           };
-          applyFooterProfile(merged, user.email);
+          applyFooterProfile(merged, authEmail);
           writeLocalFooterProfile(normalized, merged);
         } catch (error) {
           console.error("Nepodařilo se načíst uloženou patičku:", error);
@@ -1539,6 +1532,13 @@ export default function TvorbaPage() {
                       className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/60"
                     />
                     <input
+                      value={companyId}
+                      onChange={(e) => setCompanyId(e.target.value)}
+                      onBlur={() => void persistFooterDraft(true)}
+                      placeholder="IČ"
+                      className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/60"
+                    />
+                    <input
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       onBlur={() => void persistFooterDraft(true)}
@@ -1603,7 +1603,9 @@ export default function TvorbaPage() {
                     priority
                   />
                   <div data-header-title-wrap="1" className="absolute right-[14mm] top-[8mm] text-right">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Bohemika</p>
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                      Bohemika a.s.
+                    </p>
                     <div
                       ref={headerTitleRef}
                       data-header-title="1"
@@ -1703,13 +1705,52 @@ export default function TvorbaPage() {
                 </main>
 
                 <footer className="absolute inset-x-0 bottom-0 h-[38mm] border-t border-slate-200 bg-slate-50/95 px-[12mm] py-[6mm]">
-                  <div className="flex h-full items-end justify-start">
-                    <div className="space-y-1 text-left leading-[1.3]">
-                      <FooterLine icon={<User className="h-3.5 w-3.5" />} text={fullName} />
-                      <FooterLine icon={<Briefcase className="h-3.5 w-3.5" />} text={jobTitle} />
-                      <FooterLine icon={<Phone className="h-3.5 w-3.5" />} text={phone} />
-                      <FooterLine icon={<Mail className="h-3.5 w-3.5" />} text={email} />
-                      <FooterLine icon={<MapPin className="h-3.5 w-3.5" />} text={officeAddress} />
+                  <div className="flex h-full items-center justify-center">
+                    <div className="grid grid-cols-3 gap-x-8 text-left text-[11.5px] leading-[1.35] text-slate-700">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex w-4 items-center justify-center text-slate-500">
+                            <User className="h-3.5 w-3.5" />
+                          </span>
+                          <span>{fullName || "—"}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex w-4 items-center justify-center text-slate-500">
+                            <Briefcase className="h-3.5 w-3.5" />
+                          </span>
+                          <span>{jobTitle || "—"}</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex w-4 items-center justify-center text-slate-500">
+                            <Phone className="h-3.5 w-3.5" />
+                          </span>
+                          <span>{phone || "—"}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex w-4 items-center justify-center text-slate-500">
+                            <Mail className="h-3.5 w-3.5" />
+                          </span>
+                          <span>{email || "—"}</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex w-4 items-center justify-center text-slate-500">
+                            <Hash className="h-3.5 w-3.5" />
+                          </span>
+                          <span>{companyId ? `IČ: ${companyId}` : "IČ: —"}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex w-4 items-center justify-center text-slate-500">
+                            <MapPin className="h-3.5 w-3.5" />
+                          </span>
+                          <span>{officeAddress || "—"}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </footer>
