@@ -20,9 +20,12 @@ import {
   Download,
   Hash,
   ImagePlus,
+  Loader2,
+  Lock,
   Mail,
   MapPin,
   Phone,
+  Sparkles,
   Trash2,
   Type,
   User,
@@ -179,6 +182,58 @@ function ToolbarButton({
   );
 }
 
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function plainTextToEditorHtml(input: string): string {
+  const normalized = input.replace(/\r\n/g, "\n").trim();
+  if (!normalized) return "<p></p>";
+  return normalized
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function stripFooterDuplicateContactLines(input: string): string {
+  const normalized = input.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const cleaned = lines.filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return true;
+
+    const hasEmail = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(trimmed);
+    const hasPhone = /(?:\+?\d[\d\s-]{7,}\d)/.test(trimmed);
+    const hasContactLabel = /^kontakt\s*:/i.test(trimmed);
+    const looksLikeContactSummary =
+      trimmed.includes("|") && (hasEmail || hasPhone || /e-?mail|mobil|telefon/i.test(trimmed));
+
+    if (hasContactLabel) return false;
+    if (looksLikeContactSummary) return false;
+    return true;
+  });
+
+  return cleaned.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function ensureClosingSignature(input: string, signatureName: string): string {
+  const normalized = stripFooterDuplicateContactLines(input);
+  const safeName = signatureName.trim() || "Jméno poradce";
+  const closing = `S přáním hezkého dne,\n${safeName}\nBohemika a.s.`;
+  const hasGreeting = /s přáním hezkého dne[,!]?/i.test(normalized);
+  const hasCompany = /bohemika\s*a\.s\./i.test(normalized);
+
+  if (hasGreeting && hasCompany) {
+    return normalized;
+  }
+  return normalized ? `${normalized}\n\n${closing}` : closing;
+}
+
 type FooterProfile = {
   fullName: string;
   jobTitle: string;
@@ -235,6 +290,11 @@ type WindowWithEyeDropper = Window & {
   EyeDropper?: new () => EyeDropperLike;
 };
 
+type AiDocType = "dopis" | "email" | "shrnutí";
+type AiTone = "formální" | "přátelský" | "obchodní";
+type AiLength = "krátký" | "střední" | "dlouhý";
+type AiAddressing = "vykání" | "tykání";
+
 const FONT_OPTIONS: FontOption[] = [
   {
     key: "arial",
@@ -281,6 +341,10 @@ const FONT_OPTIONS: FontOption[] = [
 ];
 
 const DEFAULT_FONT_KEY = FONT_OPTIONS[0]?.key ?? "arial";
+const AI_ASSISTANT_ENDPOINT =
+  "https://europe-central2-bohemikasmlouvy.cloudfunctions.net/aiAssistant";
+const PDF_EXPORT_RENDER_SCALE = 2.5;
+const PDF_EXPORT_IMAGE_QUALITY = 0.82;
 
 const TEXT_COLOR_PALETTE = [
   "#111827",
@@ -409,6 +473,24 @@ export default function TvorbaPage() {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [footerSettingsOpen, setFooterSettingsOpen] = useState(false);
+  const [pdfSettingsOpen, setPdfSettingsOpen] = useState(false);
+  const [pdfPasswordEnabled, setPdfPasswordEnabled] = useState(false);
+  const [pdfPassword, setPdfPassword] = useState("");
+  const [pdfSaveStatus, setPdfSaveStatus] = useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiDocType, setAiDocType] = useState<AiDocType>("dopis");
+  const [aiTone, setAiTone] = useState<AiTone>("formální");
+  const [aiLength, setAiLength] = useState<AiLength>("střední");
+  const [aiAddressing, setAiAddressing] = useState<AiAddressing>("vykání");
+  const [aiClientName, setAiClientName] = useState("");
+  const [aiContractNumber, setAiContractNumber] = useState("");
+  const [aiProductName, setAiProductName] = useState("");
+  const [aiGoal, setAiGoal] = useState("");
+  const [aiUseCurrentContext, setAiUseCurrentContext] = useState(true);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiResult, setAiResult] = useState("");
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [textPaletteOpen, setTextPaletteOpen] = useState(false);
   const [fontMenuOpen, setFontMenuOpen] = useState(false);
   const [textAlignMode, setTextAlignMode] = useState<TextAlignMode>("left");
@@ -460,6 +542,163 @@ export default function TvorbaPage() {
     }
   };
 
+  const handleSavePdfSettings = () => {
+    setPdfSaveStatus(null);
+    const normalizedPdfPassword = pdfPassword.trim();
+
+    try {
+      if (pdfPasswordEnabled && !normalizedPdfPassword) {
+        setErrorText("Nejdřív zadej heslo pro zaheslování PDF.");
+        setPdfSaveStatus(null);
+        return;
+      }
+      if (pdfPasswordEnabled) {
+        setPdfSaveStatus("Heslo je připravené pro jeden export PDF.");
+      } else {
+        setPdfSaveStatus("Jednorázové heslo je vypnuté.");
+      }
+      setErrorText(null);
+    } catch (error) {
+      console.error("Nepodařilo se uložit nastavení PDF:", error);
+      setPdfSaveStatus(null);
+      setErrorText("Nastavení PDF se nepodařilo potvrdit.");
+    } finally {
+      window.setTimeout(() => setPdfSaveStatus(null), 2400);
+    }
+  };
+
+  const buildAiPrompt = () => {
+    const lengthHint =
+      aiLength === "krátký"
+        ? "max 120 slov"
+        : aiLength === "střední"
+          ? "cca 150-220 slov"
+          : "cca 250-400 slov";
+
+    const clientName = aiClientName.trim();
+    const contractNumber = aiContractNumber.trim();
+    const productName = aiProductName.trim();
+    const goal = aiGoal.trim();
+    const signatureIdentity = fullName.trim();
+
+    const editorContextRaw = editorRef.current?.innerText ?? "";
+    const editorContext = editorContextRaw.replace(/\s+/g, " ").trim().slice(0, 1200);
+    const signatureName = fullName.trim() || "Jméno poradce";
+
+    const personalization: string[] = [
+      `Oslovení klienta: ${aiAddressing}.`,
+      clientName
+        ? `Jméno klienta: ${clientName}.`
+        : "Jméno klienta není zadané, použij obecné oslovení.",
+      contractNumber ? `Číslo smlouvy: ${contractNumber}.` : "",
+      productName ? `Produkt: ${productName}.` : "",
+      goal ? `Cíl textu: ${goal}.` : "",
+      signatureIdentity
+        ? `Podpisové jméno autora: ${signatureIdentity}.`
+        : "",
+      aiUseCurrentContext && editorContext
+        ? `Kontext z aktuálního rozpracovaného dokumentu: ${editorContext}`
+        : "",
+    ].filter(Boolean);
+
+    return [
+      "Vytvoř text dokumentu v češtině pro interní firemní použití.",
+      `Typ výstupu: ${aiDocType}.`,
+      `Tón: ${aiTone}.`,
+      `Délka: ${lengthHint}.`,
+      "Piš bez markdownu, bez uvozovek, v hotových odstavcích přímo použitelných do dokumentu.",
+      "Nepiš technické poznámky ani vysvětlování.",
+      "NEPIŠ do těla textu kontakt (telefon, e-mail, řádek Kontakt:, ani kontaktní podpis). Kontakty jsou v patičce dokumentu.",
+      `Závěr napiš ve formátu: "S přáním hezkého dne," + nový řádek + "${signatureName}" + nový řádek + "Bohemika a.s."`,
+      "",
+      "Personalizace:",
+      ...personalization,
+      "",
+      "Zadání uživatele:",
+      aiPrompt.trim(),
+    ].join("\n");
+  };
+
+  const handleGenerateAiText = async () => {
+    const trimmedPrompt = aiPrompt.trim();
+    if (!trimmedPrompt) {
+      setAiError("Napiš zadání pro AI asistenta.");
+      return;
+    }
+
+    setAiLoading(true);
+    setAiError(null);
+
+    try {
+      const response = await fetch(AI_ASSISTANT_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: buildAiPrompt(),
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        reply?: string;
+        error?: string;
+      };
+
+      const reply = String(payload.reply ?? "").trim();
+      if (!response.ok) {
+        throw new Error(reply || payload.error || "AI asistent neodpověděl.");
+      }
+      if (!reply) {
+        throw new Error("AI asistent nevrátil text.");
+      }
+
+      const signatureName = fullName.trim() || "Jméno poradce";
+      setAiResult(ensureClosingSignature(reply, signatureName));
+    } catch (error) {
+      const isNetworkError =
+        error instanceof TypeError &&
+        /failed to fetch|networkerror|network error/i.test(error.message);
+      if (isNetworkError) {
+        setAiError(
+          "Nepodařilo se spojit s AI službou. Zkontroluj připojení nebo dostupnost endpointu."
+        );
+      } else {
+        console.error("Chyba AI asistenta:", error);
+        setAiError(
+          error instanceof Error ? error.message : "AI asistent není teď dostupný."
+        );
+      }
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const insertAiResultIntoEditor = () => {
+    if (!aiResult.trim()) return;
+    focusEditor();
+    const selection = ensureSelectionInEditor();
+    if (!selection) return;
+    const html = plainTextToEditorHtml(aiResult);
+    const inserted = document.execCommand("insertHTML", false, html);
+
+    if (!inserted && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const fragment = range.createContextualFragment(html);
+      range.deleteContents();
+      range.insertNode(fragment);
+      selection.removeAllRanges();
+    }
+    syncFormattingState();
+  };
+
+  const replaceEditorWithAiResult = () => {
+    if (!aiResult.trim()) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.innerHTML = plainTextToEditorHtml(aiResult);
+    focusEditor();
+    syncFormattingState();
+  };
+
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -507,6 +746,17 @@ export default function TvorbaPage() {
     window.addEventListener("mousedown", handleOutsideClick);
     return () => window.removeEventListener("mousedown", handleOutsideClick);
   }, [fontMenuOpen]);
+
+  useEffect(() => {
+    if (!pdfSettingsOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPdfSettingsOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [pdfSettingsOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1020,6 +1270,12 @@ export default function TvorbaPage() {
 
   const handleDownloadPdf = async () => {
     if (!pageRef.current) return;
+    const normalizedPdfPassword = pdfPassword.trim();
+    if (pdfPasswordEnabled && !normalizedPdfPassword) {
+      setErrorText("Pro zaheslování PDF zadej heslo v Nastavení PDF.");
+      setPdfSettingsOpen(true);
+      return;
+    }
     setDownloading(true);
     setErrorText(null);
     let cleanup: (() => void) | null = null;
@@ -1093,6 +1349,22 @@ export default function TvorbaPage() {
         exportHeaderTitle.style.setProperty("padding-bottom", "1mm", "important");
         exportHeaderTitle.style.setProperty("width", "58mm", "important");
       }
+      const exportFooterGrid = exportNode.querySelector<HTMLElement>("[data-footer-grid='1']");
+      if (exportFooterGrid) {
+        exportFooterGrid.style.setProperty(
+          "grid-template-columns",
+          "56mm 56mm 62mm",
+          "important"
+        );
+        exportFooterGrid.style.setProperty("column-gap", "4mm", "important");
+        exportFooterGrid.style.setProperty("font-size", "10.5px", "important");
+        exportFooterGrid.style.setProperty("line-height", "1.2", "important");
+      }
+      exportNode.querySelectorAll<HTMLElement>("[data-footer-value='1']").forEach((el) => {
+        el.style.setProperty("white-space", "nowrap", "important");
+        el.style.setProperty("overflow-wrap", "normal", "important");
+        el.style.setProperty("word-break", "keep-all", "important");
+      });
       exportNode.querySelectorAll<HTMLElement>("*").forEach((el) => {
         const styleText = el.getAttribute("style") ?? "";
         if (!/dashed/i.test(styleText)) return;
@@ -1114,9 +1386,9 @@ export default function TvorbaPage() {
       cleanup = () => wrapper.remove();
 
       const opt: any = {
-        image: { type: "png", quality: 1 },
+        image: { type: "jpeg", quality: PDF_EXPORT_IMAGE_QUALITY },
         html2canvas: {
-          scale: 5,
+          scale: PDF_EXPORT_RENDER_SCALE,
           backgroundColor: "#ffffff",
           useCORS: true,
           width: Math.ceil(rect.width),
@@ -1144,16 +1416,30 @@ export default function TvorbaPage() {
       const canvas = (await worker.get("canvas")) as HTMLCanvasElement;
       const jspdfMod = await import("jspdf");
       const PdfCtor = (jspdfMod as { jsPDF?: any }).jsPDF;
-      const pdf = new PdfCtor({
+      const pdfOptions: Record<string, unknown> = {
         unit: "mm",
         format: "a4",
         orientation: "portrait",
-        compress: false,
-        precision: 16,
-      });
-      const image = canvas.toDataURL("image/png", 1);
-      pdf.addImage(image, "PNG", 0, 0, 210, 297, undefined, "NONE");
+        compress: true,
+        precision: 10,
+      };
+      if (pdfPasswordEnabled && normalizedPdfPassword) {
+        pdfOptions.encryption = {
+          userPassword: normalizedPdfPassword,
+          ownerPassword: normalizedPdfPassword,
+          userPermissions: ["print", "modify", "copy", "annot-forms"],
+        };
+      }
+      const pdf = new PdfCtor(pdfOptions);
+      const image = canvas.toDataURL("image/jpeg", PDF_EXPORT_IMAGE_QUALITY);
+      pdf.addImage(image, "JPEG", 0, 0, 210, 297, undefined, "MEDIUM");
       pdf.save(filename);
+      if (pdfPasswordEnabled) {
+        setPdfPassword("");
+        setPdfPasswordEnabled(false);
+        setPdfSaveStatus("Jednorázové heslo bylo použito a smazáno.");
+        window.setTimeout(() => setPdfSaveStatus(null), 2600);
+      }
       cleanup();
       cleanup = null;
     } catch (error) {
@@ -1504,72 +1790,225 @@ export default function TvorbaPage() {
               />
             </section>
 
-            <section className="space-y-3">
+            <section className="space-y-2">
               <button
                 type="button"
-                onClick={() => setFooterSettingsOpen((prev) => !prev)}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:border-blue-300/70 hover:text-white"
+                role="switch"
+                aria-checked={aiPanelOpen}
+                onClick={() => {
+                  setAiPanelOpen((prev) => !prev);
+                  setTextPaletteOpen(false);
+                  setFontMenuOpen(false);
+                }}
+                className="inline-flex w-full items-center justify-between rounded-xl border border-blue-400/35 bg-slate-900/55 px-4 py-2.5 text-sm font-semibold text-blue-100 transition hover:border-blue-300/65 hover:bg-slate-900/70"
               >
-                {footerSettingsOpen ? "Nastavení patičky (skrýt)" : "Nastavení patičky"}
+                <span className="inline-flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-blue-300" />
+                  AI asistent
+                </span>
+                <span
+                  className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition ${
+                    aiPanelOpen
+                      ? "border-blue-300/70 bg-blue-500/75 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
+                      : "border-white/25 bg-slate-700/80"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                      aiPanelOpen ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </span>
               </button>
 
-              {footerSettingsOpen && (
-                <div className="space-y-3 rounded-2xl border border-blue-500/20 bg-slate-900/45 p-3">
-                  <h2 className="text-sm font-semibold text-white">Patička dokumentu</h2>
-                  <div className="space-y-2">
+              {aiPanelOpen && (
+                <div className="space-y-3 rounded-2xl border border-blue-500/20 bg-slate-950/50 p-3">
+                  <textarea
+                    value={aiPrompt}
+                    onChange={(e) => {
+                      setAiPrompt(e.target.value);
+                      setAiError(null);
+                    }}
+                    placeholder="Co chceš napsat? Např. klientský dopis o doplnění podkladů."
+                    rows={4}
+                    className="w-full resize-y rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                  />
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <select
+                      value={aiDocType}
+                      onChange={(e) => setAiDocType(e.target.value as AiDocType)}
+                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2 py-1.5 text-xs font-semibold text-slate-100 outline-none focus:border-blue-300/70"
+                    >
+                      <option value="dopis" className="text-slate-900">
+                        Dopis
+                      </option>
+                      <option value="email" className="text-slate-900">
+                        E-mail
+                      </option>
+                      <option value="shrnutí" className="text-slate-900">
+                        Shrnutí
+                      </option>
+                    </select>
+
+                    <select
+                      value={aiTone}
+                      onChange={(e) => setAiTone(e.target.value as AiTone)}
+                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2 py-1.5 text-xs font-semibold text-slate-100 outline-none focus:border-blue-300/70"
+                    >
+                      <option value="formální" className="text-slate-900">
+                        Formální
+                      </option>
+                      <option value="obchodní" className="text-slate-900">
+                        Obchodní
+                      </option>
+                      <option value="přátelský" className="text-slate-900">
+                        Přátelský
+                      </option>
+                    </select>
+
+                    <select
+                      value={aiLength}
+                      onChange={(e) => setAiLength(e.target.value as AiLength)}
+                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2 py-1.5 text-xs font-semibold text-slate-100 outline-none focus:border-blue-300/70"
+                    >
+                      <option value="krátký" className="text-slate-900">
+                        Krátký
+                      </option>
+                      <option value="střední" className="text-slate-900">
+                        Střední
+                      </option>
+                      <option value="dlouhý" className="text-slate-900">
+                        Dlouhý
+                      </option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
                     <input
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      onBlur={() => void persistFooterDraft(true)}
-                      placeholder="Jméno a příjmení"
-                      className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/60"
+                      value={aiClientName}
+                      onChange={(e) => setAiClientName(e.target.value)}
+                      placeholder="Jméno klienta"
+                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-300/70"
                     />
                     <input
-                      value={jobTitle}
-                      onChange={(e) => setJobTitle(e.target.value)}
-                      onBlur={() => void persistFooterDraft(true)}
-                      placeholder="Pozice"
-                      className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/60"
+                      value={aiContractNumber}
+                      onChange={(e) => setAiContractNumber(e.target.value)}
+                      placeholder="Číslo smlouvy"
+                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-300/70"
                     />
                     <input
-                      value={companyId}
-                      onChange={(e) => setCompanyId(e.target.value)}
-                      onBlur={() => void persistFooterDraft(true)}
-                      placeholder="IČ"
-                      className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/60"
+                      value={aiProductName}
+                      onChange={(e) => setAiProductName(e.target.value)}
+                      placeholder="Produkt"
+                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-300/70"
                     />
                     <input
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      onBlur={() => void persistFooterDraft(true)}
-                      placeholder="Mobil"
-                      className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/60"
-                    />
-                    <input
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      onBlur={() => void persistFooterDraft(true)}
-                      placeholder="E-mail"
-                      className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/60"
-                    />
-                    <input
-                      value={officeAddress}
-                      onChange={(e) => setOfficeAddress(e.target.value)}
-                      onBlur={() => void persistFooterDraft(true)}
-                      placeholder="Adresa kanceláře"
-                      className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/60"
+                      value={aiGoal}
+                      onChange={(e) => setAiGoal(e.target.value)}
+                      placeholder="Cíl textu"
+                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-300/70"
                     />
                   </div>
+
+                  <div className="space-y-2 rounded-xl border border-blue-500/25 bg-slate-950/65 p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-[11px] font-semibold text-slate-300">Oslovení</label>
+                      <select
+                        value={aiAddressing}
+                        onChange={(e) => setAiAddressing(e.target.value as AiAddressing)}
+                        className="w-[120px] rounded-lg border border-white/20 bg-slate-900/80 px-2 py-1 text-xs font-semibold text-slate-100 outline-none focus:border-blue-300/70"
+                      >
+                        <option value="vykání" className="text-slate-900">
+                          Vykání
+                        </option>
+                        <option value="tykání" className="text-slate-900">
+                          Tykání
+                        </option>
+                      </select>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 text-[11px] text-slate-200">
+                      <span>Zahrnout aktuální text z editoru jako kontext</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={aiUseCurrentContext}
+                        onClick={() => setAiUseCurrentContext((prev) => !prev)}
+                        className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition ${
+                          aiUseCurrentContext
+                            ? "border-blue-300/70 bg-blue-500/75 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
+                            : "border-white/25 bg-slate-700/80"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                            aiUseCurrentContext ? "translate-x-6" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={() => void handleSaveFooterProfile()}
-                    disabled={savingFooter}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:border-blue-300/70 hover:text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                    onClick={() => void handleGenerateAiText()}
+                    disabled={aiLoading}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-300/60 bg-blue-500/25 px-4 py-2 text-sm font-semibold text-blue-50 transition hover:bg-blue-500/35 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {savingFooter ? "Ukládám…" : "Uložit údaje patičky"}
+                    {aiLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    {aiLoading ? "AI generuje…" : "Generovat text"}
                   </button>
-                  {saveStatus && <p className="text-xs text-blue-300">{saveStatus}</p>}
+
+                  {aiError && <p className="text-xs text-rose-300">{aiError}</p>}
+
+                  {aiResult && (
+                    <div className="space-y-2 rounded-xl border border-blue-500/20 bg-slate-900/65 p-2.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-blue-200/85">
+                        Návrh AI
+                      </p>
+                      <div className="max-h-36 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-slate-100 whitespace-pre-wrap">
+                        {aiResult}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={insertAiResultIntoEditor}
+                          className="rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-blue-300/70 hover:text-white"
+                        >
+                          Vložit do kurzoru
+                        </button>
+                        <button
+                          type="button"
+                          onClick={replaceEditorWithAiResult}
+                          className="rounded-lg border border-blue-300/60 bg-blue-500/20 px-2.5 py-1.5 text-xs font-semibold text-blue-50 transition hover:bg-blue-500/30"
+                        >
+                          Nahradit celý text
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
+            </section>
+
+            <section className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPdfSettingsOpen(true);
+                  setTextPaletteOpen(false);
+                  setFontMenuOpen(false);
+                }}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:border-blue-300/70 hover:text-white"
+              >
+                Nastavení PDF
+              </button>
+              {pdfPasswordEnabled && (
+                <p className="text-xs text-blue-300">PDF bude zaheslované.</p>
               )}
             </section>
 
@@ -1704,51 +2143,66 @@ export default function TvorbaPage() {
                   </div>
                 </main>
 
-                <footer className="absolute inset-x-0 bottom-0 h-[38mm] border-t border-slate-200 bg-slate-50/95 px-[12mm] py-[6mm]">
+                <footer className="absolute inset-x-0 bottom-0 h-[26mm] border-t border-slate-200 bg-slate-50/95 px-[12mm] py-[4mm]">
                   <div className="flex h-full items-center justify-center">
-                    <div className="grid grid-cols-3 gap-x-8 text-left text-[11.5px] leading-[1.35] text-slate-700">
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
+                    <div
+                      data-footer-grid="1"
+                      className="grid grid-cols-[56mm_56mm_62mm] gap-x-[4mm] text-left text-[10.5px] leading-[1.2] text-slate-700"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
                           <span className="inline-flex w-4 items-center justify-center text-slate-500">
                             <User className="h-3.5 w-3.5" />
                           </span>
-                          <span>{fullName || "—"}</span>
+                          <span data-footer-value="1" className="whitespace-nowrap">
+                            {fullName || "—"}
+                          </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 items-center gap-1.5">
                           <span className="inline-flex w-4 items-center justify-center text-slate-500">
                             <Briefcase className="h-3.5 w-3.5" />
                           </span>
-                          <span>{jobTitle || "—"}</span>
+                          <span data-footer-value="1" className="whitespace-nowrap">
+                            {jobTitle || "—"}
+                          </span>
                         </div>
                       </div>
 
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
+                      <div className="space-y-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
                           <span className="inline-flex w-4 items-center justify-center text-slate-500">
                             <Phone className="h-3.5 w-3.5" />
                           </span>
-                          <span>{phone || "—"}</span>
+                          <span data-footer-value="1" className="whitespace-nowrap">
+                            {phone || "—"}
+                          </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 items-center gap-1.5">
                           <span className="inline-flex w-4 items-center justify-center text-slate-500">
                             <Mail className="h-3.5 w-3.5" />
                           </span>
-                          <span>{email || "—"}</span>
+                          <span data-footer-value="1" className="whitespace-nowrap">
+                            {email || "—"}
+                          </span>
                         </div>
                       </div>
 
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
+                      <div className="space-y-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
                           <span className="inline-flex w-4 items-center justify-center text-slate-500">
                             <Hash className="h-3.5 w-3.5" />
                           </span>
-                          <span>{companyId ? `IČ: ${companyId}` : "IČ: —"}</span>
+                          <span data-footer-value="1" className="whitespace-nowrap">
+                            {companyId ? `IČ: ${companyId}` : "IČ: —"}
+                          </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 items-center gap-1.5">
                           <span className="inline-flex w-4 items-center justify-center text-slate-500">
                             <MapPin className="h-3.5 w-3.5" />
                           </span>
-                          <span>{officeAddress || "—"}</span>
+                          <span data-footer-value="1" className="whitespace-nowrap">
+                            {officeAddress || "—"}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1758,6 +2212,173 @@ export default function TvorbaPage() {
             </div>
           </section>
         </div>
+
+        {pdfSettingsOpen && (
+          <div
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.2),rgba(2,6,23,0.9)_55%)] p-4 backdrop-blur-md"
+            onMouseDown={() => setPdfSettingsOpen(false)}
+          >
+            <div
+              className="w-full max-w-[560px] max-h-[92vh] overflow-y-auto rounded-2xl border border-blue-400/35 bg-gradient-to-br from-slate-950/96 via-[#050c24]/95 to-slate-950/96 p-4 shadow-[0_26px_76px_rgba(0,0,0,0.7)] ring-1 ring-blue-300/15"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="mb-4 flex items-start justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-white">Nastavení PDF</h2>
+                  <p className="mt-1 text-xs text-slate-300/90">
+                    Bezpečnost exportu a správa údajů v patičce.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPdfSettingsOpen(false)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-slate-200 transition hover:border-blue-300/70 hover:bg-blue-500/20 hover:text-white"
+                  aria-label="Zavřít nastavení PDF"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-xl border border-blue-400/25 bg-gradient-to-br from-slate-900/86 to-slate-950/80 p-3 shadow-[inset_0_1px_0_rgba(148,163,184,0.2)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-blue-300/35 bg-blue-500/20 text-blue-100">
+                        <Lock className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-100">Zaheslovat PDF</p>
+                        <p className="text-xs text-slate-300/90">
+                          Jednorázové heslo pro příští export PDF.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={pdfPasswordEnabled}
+                      onClick={() => {
+                        setPdfSaveStatus(null);
+                        setPdfPasswordEnabled((prev) => {
+                          const next = !prev;
+                          if (!next) setPdfPassword("");
+                          return next;
+                        });
+                      }}
+                      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition ${
+                        pdfPasswordEnabled
+                          ? "border-blue-300/70 bg-blue-500/75 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
+                          : "border-white/25 bg-slate-700/80"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                          pdfPasswordEnabled ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  {pdfPasswordEnabled && (
+                    <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+                      <input
+                        type="password"
+                        value={pdfPassword}
+                        onChange={(event) => {
+                          setPdfPassword(event.target.value);
+                          setPdfSaveStatus(null);
+                        }}
+                        placeholder="Zadej heslo pro otevření PDF"
+                        className="w-full rounded-xl border border-blue-300/35 bg-slate-900/75 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/75"
+                      />
+                      <p className="text-xs text-slate-300/95">
+                        Heslo se použije jen jednou a po stažení PDF se automaticky smaže.
+                      </p>
+                    </div>
+                  )}
+                  <div className="mt-3 flex items-center gap-3 border-t border-white/10 pt-3">
+                    <button
+                      type="button"
+                      onClick={handleSavePdfSettings}
+                      className="inline-flex items-center justify-center rounded-xl border border-blue-300/60 bg-blue-500/25 px-3 py-1.5 text-xs font-semibold text-blue-50 transition hover:bg-blue-500/35"
+                    >
+                      {pdfPasswordEnabled ? "Potvrdit heslo pro 1 export" : "Potvrdit nastavení"}
+                    </button>
+                    {pdfSaveStatus && (
+                      <p className="text-xs font-medium text-blue-200">{pdfSaveStatus}</p>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setFooterSettingsOpen((prev) => !prev)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-gradient-to-r from-slate-800/75 to-slate-700/65 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:border-blue-300/70 hover:text-white"
+                >
+                  {footerSettingsOpen ? "Nastavení patičky (skrýt)" : "Nastavení patičky"}
+                </button>
+
+                {footerSettingsOpen && (
+                  <div className="space-y-3 rounded-2xl border border-blue-500/25 bg-slate-900/60 p-3 shadow-[inset_0_1px_0_rgba(148,163,184,0.2)]">
+                    <h3 className="text-sm font-semibold text-white">Patička dokumentu</h3>
+                    <div className="space-y-2">
+                      <input
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        onBlur={() => void persistFooterDraft(true)}
+                        placeholder="Jméno a příjmení"
+                        className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                      />
+                      <input
+                        value={jobTitle}
+                        onChange={(e) => setJobTitle(e.target.value)}
+                        onBlur={() => void persistFooterDraft(true)}
+                        placeholder="Pozice"
+                        className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                      />
+                      <input
+                        value={companyId}
+                        onChange={(e) => setCompanyId(e.target.value)}
+                        onBlur={() => void persistFooterDraft(true)}
+                        placeholder="IČ"
+                        className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                      />
+                      <input
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        onBlur={() => void persistFooterDraft(true)}
+                        placeholder="Mobil"
+                        className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                      />
+                      <input
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        onBlur={() => void persistFooterDraft(true)}
+                        placeholder="E-mail"
+                        className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                      />
+                      <input
+                        value={officeAddress}
+                        onChange={(e) => setOfficeAddress(e.target.value)}
+                        onBlur={() => void persistFooterDraft(true)}
+                        placeholder="Adresa kanceláře"
+                        className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveFooterProfile()}
+                      disabled={savingFooter}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-300/55 bg-blue-500/22 px-4 py-2.5 text-sm font-semibold text-blue-50 transition hover:bg-blue-500/32 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {savingFooter ? "Ukládám…" : "Uložit údaje patičky"}
+                    </button>
+                    {saveStatus && <p className="text-xs text-blue-300">{saveStatus}</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AppLayout>
   );

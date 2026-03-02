@@ -483,6 +483,7 @@ export default function CalculatorPage() {
   const [tipsterPercentPanelOpen, setTipsterPercentPanelOpen] = useState(false);
   const [comfortGradual, setComfortGradual] = useState<boolean>(false);
   const [comfortPaymentText, setComfortPaymentText] = useState<string>("");
+  const [comfortTargetAmountText, setComfortTargetAmountText] = useState<string>("");
 
   const [clientName, setClientName] = useState<string>("");
   const [clientSuggestions, setClientSuggestions] = useState<string[]>([]);
@@ -542,6 +543,13 @@ export default function CalculatorPage() {
     () => immediateCommissionTotal * (tipsterPercent / 100),
     [immediateCommissionTotal, tipsterPercent]
   );
+  const comfortPayoutCount = useMemo(() => {
+    if (product !== "comfortcc" || !comfortGradual) return null;
+    const payment = parseNumber(comfortPaymentText);
+    const targetAmount = parseNumber(comfortTargetAmountText);
+    if (payment <= 0 || targetAmount <= 0) return null;
+    return Math.max(1, Math.ceil(targetAmount / payment));
+  }, [product, comfortGradual, comfortPaymentText, comfortTargetAmountText]);
 
   type ManagerOverrideSnapshot = {
     email: string | null;
@@ -613,7 +621,7 @@ export default function CalculatorPage() {
       case "axacestovko":
         return "Výpočet: pojistné × koeficient (jednorázově).";
       case "comfortcc":
-        return "Výpočet: okamžitá provize = poplatek × koeficient. Následná provize = pravidelná platba × koeficient.";
+        return "Výpočet: následná provize z platby = pravidelná platba × koeficient. U postupného poplatku je tato částka započtená i do okamžité provize. Pokud zadáš cílovou částku, Celkem dopočítá celý součet za všechny výplaty následné.";
       default:
         return "";
     }
@@ -814,6 +822,7 @@ export default function CalculatorPage() {
     if (product !== "comfortcc") {
       setComfortGradual(false);
       setComfortPaymentText("");
+      setComfortTargetAmountText("");
     }
 
     const [min, max] = durationRange(product);
@@ -986,6 +995,7 @@ export default function CalculatorPage() {
   const recalc = () => {
     const val = parseNumber(amountText);
     const comfortPayment = parseNumber(comfortPaymentText);
+    const comfortTargetAmount = parseNumber(comfortTargetAmountText);
 
     if (val <= 0) {
       setItems([]);
@@ -1161,6 +1171,7 @@ export default function CalculatorPage() {
       const dto = calculateComfortCC({
         fee: val,
         payment: comfortPayment,
+        targetAmount: comfortGradual ? comfortTargetAmount : 0,
         isSavings: comfortGradual,
         isGradualFee: comfortGradual,
         position,
@@ -1179,7 +1190,7 @@ export default function CalculatorPage() {
   useEffect(() => {
     recalc();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product, position, mode, frequency, durationYears, amountText, comfortGradual, comfortPaymentText]);
+  }, [product, position, mode, frequency, durationYears, amountText, comfortGradual, comfortPaymentText, comfortTargetAmountText]);
 
   useEffect(() => {
     if (product !== "neon") {
@@ -1197,6 +1208,7 @@ export default function CalculatorPage() {
 
     const value = parseNumber(amountText);
     const comfortPayment = parseNumber(comfortPaymentText);
+    const comfortTargetAmount = parseNumber(comfortTargetAmountText);
     const missing: string[] = [];
     if (value <= 0) missing.push("částku");
     if (!clientName.trim()) missing.push("jméno klienta");
@@ -1401,6 +1413,10 @@ export default function CalculatorPage() {
         comfortPayment:
           product === "comfortcc" && comfortPayment > 0 ? comfortPayment : null,
         comfortGradual: product === "comfortcc" ? comfortGradual : null,
+        comfortTargetAmount:
+          product === "comfortcc" && comfortGradual && comfortTargetAmount > 0
+            ? comfortTargetAmount
+            : null,
         frequencyRaw: frequency,
 
         // 🔹 Hlavní data výsledku – stejně jako v mobilní appce
@@ -1567,6 +1583,7 @@ export default function CalculatorPage() {
         return calculateComfortCC({
           fee: val,
           payment: parseNumber(comfortPaymentText),
+          targetAmount: comfortGradual ? parseNumber(comfortTargetAmountText) : 0,
           isSavings: comfortGradual,
           isGradualFee: comfortGradual,
           position: pos,
@@ -1907,7 +1924,9 @@ export default function CalculatorPage() {
               <div className="space-y-1">
                 <label className="block text-sm font-medium">
                   {product === "comfortcc"
-                    ? "Poplatek (zde se určuje provize z poplatku klienta)"
+                    ? comfortGradual
+                      ? "1% z Poplatku v 1. platbě"
+                      : "Poplatek (zde se určuje provize z poplatku klienta)"
                     : "Částka"}
                 </label>
                 <input
@@ -1926,17 +1945,39 @@ export default function CalculatorPage() {
               </div>
 
               {product === "comfortcc" && (
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium">
-                    Pravidelná platba
-                  </label>
-                  <input
-                    type="number"
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                    value={comfortPaymentText}
-                    onChange={(e) => setComfortPaymentText(e.target.value)}
-                    placeholder="Zadejte pravidelnou platbu"
-                  />
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="block text-sm font-medium">
+                      Pravidelná platba
+                    </label>
+                    <input
+                      type="number"
+                      className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                      value={comfortPaymentText}
+                      onChange={(e) => setComfortPaymentText(e.target.value)}
+                      placeholder="Zadejte pravidelnou platbu"
+                    />
+                  </div>
+
+                  {comfortGradual && (
+                    <div className="space-y-1">
+                      <label className="block text-sm font-medium">
+                        Cílová částka (volitelné)
+                      </label>
+                      <input
+                        type="number"
+                        className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                        value={comfortTargetAmountText}
+                        onChange={(e) => setComfortTargetAmountText(e.target.value)}
+                        placeholder="Např. 200000"
+                      />
+                      {comfortPayoutCount && (
+                        <p className="text-xs text-slate-300">
+                          Následná provize z platby bude vyplacena celkem {comfortPayoutCount}x.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

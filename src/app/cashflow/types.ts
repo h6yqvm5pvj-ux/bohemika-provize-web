@@ -45,6 +45,7 @@ export type EntryDoc = {
   clientName?: string | null;
   comfortPayment?: number | null;
   comfortGradual?: boolean | null;
+  comfortTargetAmount?: number | null;
 
   policyStartDate?: unknown;
   createdAt?: unknown;

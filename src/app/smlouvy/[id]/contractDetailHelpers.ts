@@ -472,6 +472,7 @@ export async function calculateResultForPosition(
   const amount = c.inputAmount ?? 0;
   const freq = (c.frequencyRaw ?? "annual") as PaymentFrequency;
   const comfortPayment = c.comfortPayment ?? 0;
+  const comfortTargetAmount = c.comfortTargetAmount ?? 0;
   const comfortGradual = !!c.comfortGradual;
 
   const years =
@@ -589,6 +590,7 @@ export async function calculateResultForPosition(
       return calculateComfortCC({
         fee: amount,
         payment: comfortGradual ? comfortPayment : 0,
+        targetAmount: comfortGradual ? comfortTargetAmount : 0,
         isSavings: comfortGradual,
         isGradualFee: comfortGradual,
         position,

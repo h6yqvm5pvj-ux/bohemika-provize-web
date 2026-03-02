@@ -61,6 +61,7 @@ export type EntryDoc = {
   position?: Position | null;
   comfortPayment?: number | null;
   comfortGradual?: boolean | null;
+  comfortTargetAmount?: number | null;
 };
 
 export type UserMeta = {
@@ -220,6 +221,7 @@ function commissionItemsForPosition(
       return calculateComfortCC({
         fee: amount,
         payment: entry.comfortPayment ?? 0,
+        targetAmount: !!entry.comfortGradual ? entry.comfortTargetAmount ?? 0 : 0,
         isSavings: !!entry.comfortGradual,
         isGradualFee: !!entry.comfortGradual,
         position: pos,

@@ -130,6 +130,7 @@ function commissionItemsForPosition(
       return calculateComfortCC({
         fee: amount,
         payment: entry.comfortPayment ?? 0,
+        targetAmount: !!entry.comfortGradual ? entry.comfortTargetAmount ?? 0 : 0,
         isSavings: !!entry.comfortGradual,
         isGradualFee: !!entry.comfortGradual,
         position,

@@ -2135,18 +2135,29 @@ export function calculateComfortCCOneOff(
 export function calculateComfortCCGradual(
   initialFee: number,
   payment: number,
-  position: Position
+  position: Position,
+  targetAmount = 0
 ): CommissionResultDTO {
   const kImmediate = comfortCCImmediateCoefficient(position);
   const kSubsequent = comfortCCSubsequentCoefficient(position);
 
-  const immediate = initialFee * kImmediate;
-  const subsequent = payment * kSubsequent;
-  const total = immediate + subsequent;
+  const baseImmediate = initialFee * kImmediate;
+  const baseSubsequent = payment * kSubsequent;
+  const immediate = baseImmediate + baseSubsequent;
+  const subsequent = baseSubsequent;
+  const payoutCount =
+    targetAmount > 0 && payment > 0
+      ? Math.max(1, Math.ceil(targetAmount / payment))
+      : 1;
+  const total = immediate + subsequent * Math.max(0, payoutCount - 1);
+  const subsequentTitle =
+    targetAmount > 0 && payment > 0
+      ? `🔁 Následná provize z platby (x${payoutCount})`
+      : "🔁 Následná provize z platby";
 
   const items: CommissionResultItemDTO[] = [
     { title: "💸 Okamžitá provize", amount: immediate },
-    { title: "🔁 Následná provize", amount: subsequent },
+    { title: subsequentTitle, amount: subsequent },
   ];
 
   return { items, total };
@@ -2155,6 +2166,7 @@ export function calculateComfortCCGradual(
 type ComfortCCInput = {
   fee: number;
   payment?: number;
+  targetAmount?: number;
   isSavings?: boolean;
   isGradualFee?: boolean;
   position: Position;
@@ -2163,6 +2175,7 @@ type ComfortCCInput = {
 export function calculateComfortCC({
   fee,
   payment = 0,
+  targetAmount = 0,
   isSavings = false,
   isGradualFee = false,
   position,
@@ -2178,7 +2191,7 @@ export function calculateComfortCC({
   }
 
   // Spoření s postupným poplatkem
-  return calculateComfortCCGradual(fee, payment, position);
+  return calculateComfortCCGradual(fee, payment, position, targetAmount);
 }
 
 // ---------- Seznam podporovaných produktů na webu ----------

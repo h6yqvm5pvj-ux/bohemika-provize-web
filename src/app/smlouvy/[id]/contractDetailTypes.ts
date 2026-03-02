@@ -37,6 +37,7 @@ export type ContractDoc = {
   frequencyRaw?: PaymentFrequency | null;
   comfortPayment?: number | null;
   comfortGradual?: boolean | null;
+  comfortTargetAmount?: number | null;
   total?: number;
   items?: CommissionResultItemDTO[];
 
