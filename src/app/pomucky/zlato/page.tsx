@@ -17,6 +17,8 @@ type GoldApiResponse = {
   usdCzk?: number;
   czkPerOz?: number;
   ts?: number;
+  stale?: boolean;
+  asOfDate?: string;
 
   // historická data (preferované)
   history?: Point[];
@@ -104,6 +106,8 @@ async function fetchGold(input?: { days?: number; range?: RangeKey }): Promise<{
   usdCzk: number;
   czkPerOz: number;
   ts: number;
+  stale: boolean;
+  asOfDate: string | null;
   history?: Point[];
   changes?: GoldApiResponse["changes"];
 }> {
@@ -118,13 +122,15 @@ async function fetchGold(input?: { days?: number; range?: RangeKey }): Promise<{
   const url = qs.toString() ? `/api/gold?${qs.toString()}` : "/api/gold";
 
   const r = await fetch(url, { cache: "no-store" });
+  const j = (await r.json().catch(() => null)) as GoldApiResponse | null;
+
   if (!r.ok) {
-    throw new Error("Nepodařilo se načíst data o zlatě (API).");
+    throw new Error(
+      String(j?.message || j?.error || "Nepodařilo se načíst data o zlatě (API).")
+    );
   }
 
-  const j = (await r.json()) as GoldApiResponse;
-
-  if (j?.ok !== true) {
+  if (!j || j?.ok !== true) {
     throw new Error(String(j?.message || j?.error || "Nepodařilo se načíst data o zlatě."));
   }
 
@@ -224,7 +230,16 @@ async function fetchGold(input?: { days?: number; range?: RangeKey }): Promise<{
         }
       : undefined);
 
-  return { usdPerOz, usdCzk, czkPerOz, ts, history, changes };
+  return {
+    usdPerOz,
+    usdCzk,
+    czkPerOz,
+    ts,
+    stale: Boolean((j as GoldApiResponse).stale),
+    asOfDate: typeof (j as GoldApiResponse).asOfDate === "string" ? (j as GoldApiResponse).asOfDate! : null,
+    history,
+    changes,
+  };
 }
 
 function GoldChart({ points }: { points: Point[] }) {
@@ -481,6 +496,11 @@ export default function GoldToolPage() {
   const [czkPerOz, setCzkPerOz] = useState<number | null>(null);
 
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isStale, setIsStale] = useState(false);
+  const [asOfDate, setAsOfDate] = useState<string | null>(null);
+  const [secondsToRefresh, setSecondsToRefresh] = useState(60);
+  const [refreshingNow, setRefreshingNow] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // historie – CZK / oz
   const [history, setHistory] = useState<Point[]>([]);
@@ -490,6 +510,8 @@ export default function GoldToolPage() {
   const [changes, setChanges] = useState<GoldApiResponse["changes"] | null>(null);
 
   const timerRef = useRef<number | null>(null);
+  const secondRef = useRef<number | null>(null);
+  const copiedTimerRef = useRef<number | null>(null);
 
   const selected = UNITS[unit];
 
@@ -585,6 +607,9 @@ export default function GoldToolPage() {
     setUsdPerOz(snap.usdPerOz);
     setCzkPerOz(snap.czkPerOz);
     setLastUpdated(new Date(snap.ts));
+    setIsStale(Boolean(snap.stale));
+    setAsOfDate(snap.asOfDate ?? null);
+    setSecondsToRefresh(60);
 
     // nezahlcujeme – držíme max 120 bodů
     setSeries((prev) => {
@@ -608,6 +633,9 @@ export default function GoldToolPage() {
         setUsdPerOz(snap.usdPerOz);
         setCzkPerOz(snap.czkPerOz);
         setLastUpdated(new Date(snap.ts));
+        setIsStale(Boolean(snap.stale));
+        setAsOfDate(snap.asOfDate ?? null);
+        setSecondsToRefresh(60);
 
         if (snap.history?.length) setHistory(snap.history);
         else setHistory([]);
@@ -641,6 +669,54 @@ export default function GoldToolPage() {
       if (timerRef.current) window.clearInterval(timerRef.current);
     };
   }, [range]);
+
+  useEffect(() => {
+    if (secondRef.current) window.clearInterval(secondRef.current);
+    secondRef.current = window.setInterval(() => {
+      setSecondsToRefresh((prev) => (prev <= 1 ? 60 : prev - 1));
+    }, 1000);
+    return () => {
+      if (secondRef.current) window.clearInterval(secondRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
+
+  const manualRefresh = async () => {
+    try {
+      setRefreshingNow(true);
+      setErr(null);
+      await loadTick();
+    } catch (e: any) {
+      setErr(String(e?.message || "Nepodařilo se obnovit data."));
+    } finally {
+      setRefreshingNow(false);
+    }
+  };
+
+  const copyCurrentPrice = async () => {
+    if (!Number.isFinite(czkForSelectedUnit ?? NaN)) return;
+    const payload = `${formatCzk(czkForSelectedUnit)} (${selected.label})`;
+    try {
+      await navigator.clipboard.writeText(payload);
+      setCopied(true);
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // clipboard může být blokovaný; zůstaneme bez toastu
+    }
+  };
+
+  const formattedAsOfDate = useMemo(() => {
+    if (!asOfDate) return null;
+    const d = Date.parse(`${asOfDate}T00:00:00Z`);
+    if (!Number.isFinite(d)) return asOfDate;
+    return new Date(d).toLocaleDateString("cs-CZ");
+  }, [asOfDate]);
 
   return (
     <AppLayout active="tools">
@@ -692,7 +768,8 @@ export default function GoldToolPage() {
           ) : null}
 
           <div className="space-y-4">
-            <div className="rounded-3xl border border-white/10 bg-slate-950/50 px-5 py-5 space-y-4">
+            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-950/50 px-5 py-5 space-y-4">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-r from-emerald-400/12 via-cyan-300/6 to-transparent" />
               <div className="grid gap-4 md:grid-cols-[1fr_360px] md:items-start">
                 <div>
                   <div className="text-[11px] uppercase tracking-wider text-slate-400">Cena ({selected.label})</div>
@@ -701,6 +778,44 @@ export default function GoldToolPage() {
                   </div>
                   <div className="text-xs text-slate-400">
                     {lastUpdated ? `Aktualizováno: ${lastUpdated.toLocaleString("cs-CZ")}` : ""}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span
+                      className={[
+                        "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                        isStale
+                          ? "border-amber-400/35 bg-amber-500/15 text-amber-100"
+                          : "border-emerald-300/35 bg-emerald-500/15 text-emerald-100",
+                      ].join(" ")}
+                    >
+                      {isStale ? "Stale snapshot" : "Live data"}
+                    </span>
+                    <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-slate-200">
+                      Další auto-refresh za {secondsToRefresh}s
+                    </span>
+                    {formattedAsOfDate ? (
+                      <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-slate-200">
+                        Historie k {formattedAsOfDate}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={manualRefresh}
+                      disabled={loading || loadingRange || refreshingNow}
+                      className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {refreshingNow ? "Obnovuji…" : "Obnovit teď"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={copyCurrentPrice}
+                      disabled={loading || czkForSelectedUnit == null}
+                      className="rounded-full border border-emerald-300/35 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {copied ? "Zkopírováno" : "Kopírovat cenu"}
+                    </button>
                   </div>
                 </div>
 

@@ -38,9 +38,9 @@ async function fetchJson(url: string) {
 }
 
 function toYmd(d: Date) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
 
@@ -235,11 +235,11 @@ async function computeGoldCzkSeriesAndChanges(): Promise<
   now3m.setUTCMonth(now3m.getUTCMonth() - 3);
   const t3m = toYmd(now3m);
 
-  const t1 = toYmd(new Date(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate()));
-  const t2 = toYmd(new Date(now.getUTCFullYear() - 2, now.getUTCMonth(), now.getUTCDate()));
-  const t3 = toYmd(new Date(now.getUTCFullYear() - 3, now.getUTCMonth(), now.getUTCDate()));
-  const t5 = toYmd(new Date(now.getUTCFullYear() - 5, now.getUTCMonth(), now.getUTCDate()));
-  const t10 = toYmd(new Date(now.getUTCFullYear() - 10, now.getUTCMonth(), now.getUTCDate()));
+  const t1 = toYmd(new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate())));
+  const t2 = toYmd(new Date(Date.UTC(now.getUTCFullYear() - 2, now.getUTCMonth(), now.getUTCDate())));
+  const t3 = toYmd(new Date(Date.UTC(now.getUTCFullYear() - 3, now.getUTCMonth(), now.getUTCDate())));
+  const t5 = toYmd(new Date(Date.UTC(now.getUTCFullYear() - 5, now.getUTCMonth(), now.getUTCDate())));
+  const t10 = toYmd(new Date(Date.UTC(now.getUTCFullYear() - 10, now.getUTCMonth(), now.getUTCDate())));
 
   const p3m = findClosestOnOrBefore(czkSeries, t3m);
   const p1 = findClosestOnOrBefore(czkSeries, t1);
@@ -281,6 +281,15 @@ async function fetchGoldUsdPerOz(): Promise<number> {
     // ignore and try fallbacks
   }
 
+  // Fallback: gold-api.com (vrací např. { price: 1234.56, symbol: "XAU" })
+  try {
+    const j: any = await fetchJson("https://api.gold-api.com/price/XAU");
+    const p = Number(j?.price ?? j?.xauPrice ?? j?.data?.price);
+    if (Number.isFinite(p) && p > 0) return p;
+  } catch {
+    // ignore and continue
+  }
+
   // Fallback: metals.live (někdy padá na TLS / dočasně nedostupné)
   const tryUrls = [
     "https://api.metals.live/v1/spot/gold",
@@ -318,16 +327,51 @@ async function fetchGoldUsdPerOz(): Promise<number> {
     }
   }
 
+  // Poslední fallback: denní close ze Stooq (může být zpožděné, ale drží UI živé).
+  try {
+    const xauusd = await fetchStooqDaily("xauusd");
+    const last = xauusd[xauusd.length - 1];
+    const p = Number(last?.close);
+    if (Number.isFinite(p) && p > 0) return p;
+  } catch {
+    // ignore and fail below
+  }
+
   throw new Error("Nepodařilo se načíst spot cenu zlata (USD/oz). Zkus to prosím později.");
 }
 
 async function fetchUsdCzk(): Promise<number> {
-  const url =
-    "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json";
-  const j: any = await fetchJson(url);
-  const rate = Number(j?.usd?.czk);
-  if (!Number.isFinite(rate) || rate <= 0) throw new Error("Kurz USD/CZK je neplatný.");
-  return rate;
+  // Primární zdroj
+  try {
+    const url =
+      "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json";
+    const j: any = await fetchJson(url);
+    const rate = Number(j?.usd?.czk);
+    if (Number.isFinite(rate) && rate > 0) return rate;
+  } catch {
+    // ignore and try fallbacks
+  }
+
+  // Fallback: Frankfurter
+  try {
+    const j: any = await fetchJson("https://api.frankfurter.app/latest?from=USD&to=CZK");
+    const rate = Number(j?.rates?.CZK);
+    if (Number.isFinite(rate) && rate > 0) return rate;
+  } catch {
+    // ignore and continue
+  }
+
+  // Poslední fallback: denní close ze Stooq
+  try {
+    const usdczk = await fetchStooqDaily("usdczk");
+    const last = usdczk[usdczk.length - 1];
+    const rate = Number(last?.close);
+    if (Number.isFinite(rate) && rate > 0) return rate;
+  } catch {
+    // ignore and fail below
+  }
+
+  throw new Error("Kurz USD/CZK je neplatný nebo dočasně nedostupný.");
 }
 
 export async function GET(req: Request) {
@@ -379,10 +423,18 @@ export async function GET(req: Request) {
 
       const fallbackMax =
         isMaxRange(fallbackRange) || (Number.isFinite(fallbackDaysFromParam) && fallbackDaysFromParam >= 3652 * 2);
+      const fallbackDaysFromRange = fallbackMax ? null : rangeToDays(fallbackRange);
+      const fallbackDays = fallbackMax
+        ? null
+        : clamp(
+            Number.isFinite(fallbackDaysFromParam) ? fallbackDaysFromParam : fallbackDaysFromRange ?? 1095,
+            7,
+            3652
+          );
 
       const histAll = await computeGoldCzkSeriesAndChanges().catch(() => null);
       const history = histAll?.czkSeries
-        ? buildHistoryPointsFromCzkSeries(histAll.czkSeries, fallbackMax ? null : 1095)
+        ? buildHistoryPointsFromCzkSeries(histAll.czkSeries, fallbackDays)
         : [];
 
       return NextResponse.json({
@@ -391,7 +443,7 @@ export async function GET(req: Request) {
         stale: true,
         ...(histAll ? { changesPct: histAll.changesPct, asOfDate: histAll.asOfDate } : {}),
         history,
-        historyDays: fallbackMax ? null : 1095,
+        historyDays: fallbackDays ?? null,
         historyMax: fallbackMax,
       });
     }

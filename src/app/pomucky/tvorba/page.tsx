@@ -3,6 +3,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
+  Bebas_Neue,
+  DM_Sans,
+  Manrope,
+  Montserrat,
+  Outfit,
+  Playfair_Display,
+  Plus_Jakarta_Sans,
+  Poppins,
+  Space_Grotesk,
+} from "next/font/google";
+import {
   useEffect,
   useRef,
   useState,
@@ -35,6 +46,60 @@ import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import { auth } from "@/app/firebase-auth";
 import { db } from "@/app/firebase";
+
+const modernSans = Manrope({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500", "600", "700", "800"],
+  display: "swap",
+});
+
+const modernDisplay = Space_Grotesk({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const modernSerif = Playfair_Display({
+  subsets: ["latin", "latin-ext"],
+  weight: ["500", "600", "700"],
+  display: "swap",
+});
+
+const modernPoster = Bebas_Neue({
+  subsets: ["latin"],
+  weight: "400",
+  display: "swap",
+});
+
+const modernPoppins = Poppins({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const modernOutfit = Outfit({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const modernMontserrat = Montserrat({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const modernJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const modernDmSans = DM_Sans({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500", "700"],
+  display: "swap",
+});
 
 let html2pdfPromise: Promise<any> | null = null;
 
@@ -294,13 +359,62 @@ type AiDocType = "dopis" | "email" | "shrnutí";
 type AiTone = "formální" | "přátelský" | "obchodní";
 type AiLength = "krátký" | "střední" | "dlouhý";
 type AiAddressing = "vykání" | "tykání";
+type PdfQualityPreset = "high" | "medium" | "low";
 
 const FONT_OPTIONS: FontOption[] = [
   {
-    key: "arial",
-    label: "Arial",
-    css: "Arial, Helvetica, sans-serif",
-    commandValue: "Arial",
+    key: "manrope",
+    label: "Manrope",
+    css: `${modernSans.style.fontFamily}, Arial, Helvetica, sans-serif`,
+    commandValue: modernSans.style.fontFamily,
+  },
+  {
+    key: "space",
+    label: "Space Grotesk",
+    css: `${modernDisplay.style.fontFamily}, Arial, Helvetica, sans-serif`,
+    commandValue: modernDisplay.style.fontFamily,
+  },
+  {
+    key: "playfair",
+    label: "Playfair Display",
+    css: `${modernSerif.style.fontFamily}, Georgia, serif`,
+    commandValue: modernSerif.style.fontFamily,
+  },
+  {
+    key: "bebas",
+    label: "Bebas Neue",
+    css: `${modernPoster.style.fontFamily}, 'Arial Narrow', sans-serif`,
+    commandValue: modernPoster.style.fontFamily,
+  },
+  {
+    key: "poppins",
+    label: "Poppins",
+    css: `${modernPoppins.style.fontFamily}, Arial, Helvetica, sans-serif`,
+    commandValue: modernPoppins.style.fontFamily,
+  },
+  {
+    key: "outfit",
+    label: "Outfit",
+    css: `${modernOutfit.style.fontFamily}, Arial, Helvetica, sans-serif`,
+    commandValue: modernOutfit.style.fontFamily,
+  },
+  {
+    key: "montserrat",
+    label: "Montserrat",
+    css: `${modernMontserrat.style.fontFamily}, Arial, Helvetica, sans-serif`,
+    commandValue: modernMontserrat.style.fontFamily,
+  },
+  {
+    key: "jakarta",
+    label: "Plus Jakarta Sans",
+    css: `${modernJakarta.style.fontFamily}, Arial, Helvetica, sans-serif`,
+    commandValue: modernJakarta.style.fontFamily,
+  },
+  {
+    key: "dm-sans",
+    label: "DM Sans",
+    css: `${modernDmSans.style.fontFamily}, Arial, Helvetica, sans-serif`,
+    commandValue: modernDmSans.style.fontFamily,
   },
   {
     key: "inter",
@@ -315,6 +429,12 @@ const FONT_OPTIONS: FontOption[] = [
     commandValue: "Georgia",
   },
   {
+    key: "arial",
+    label: "Arial",
+    css: "Arial, Helvetica, sans-serif",
+    commandValue: "Arial",
+  },
+  {
     key: "times",
     label: "Times New Roman",
     css: "'Times New Roman', Times, serif",
@@ -327,10 +447,34 @@ const FONT_OPTIONS: FontOption[] = [
     commandValue: "Verdana",
   },
   {
+    key: "tahoma",
+    label: "Tahoma",
+    css: "Tahoma, Geneva, sans-serif",
+    commandValue: "Tahoma",
+  },
+  {
     key: "trebuchet",
     label: "Trebuchet MS",
     css: "'Trebuchet MS', Arial, sans-serif",
     commandValue: "Trebuchet MS",
+  },
+  {
+    key: "garamond",
+    label: "Garamond",
+    css: "Garamond, 'Times New Roman', serif",
+    commandValue: "Garamond",
+  },
+  {
+    key: "palatino",
+    label: "Palatino Linotype",
+    css: "'Palatino Linotype', 'Book Antiqua', Palatino, serif",
+    commandValue: "Palatino Linotype",
+  },
+  {
+    key: "book-antiqua",
+    label: "Book Antiqua",
+    css: "'Book Antiqua', Palatino, serif",
+    commandValue: "Book Antiqua",
   },
   {
     key: "courier",
@@ -338,13 +482,51 @@ const FONT_OPTIONS: FontOption[] = [
     css: "'Courier New', Courier, monospace",
     commandValue: "Courier New",
   },
+  {
+    key: "lucida",
+    label: "Lucida Console",
+    css: "'Lucida Console', Monaco, monospace",
+    commandValue: "Lucida Console",
+  },
 ];
 
-const DEFAULT_FONT_KEY = FONT_OPTIONS[0]?.key ?? "arial";
+const DEFAULT_FONT_KEY = FONT_OPTIONS[0]?.key ?? "manrope";
 const AI_ASSISTANT_ENDPOINT =
   "https://europe-central2-bohemikasmlouvy.cloudfunctions.net/aiAssistant";
-const PDF_EXPORT_RENDER_SCALE = 2.5;
-const PDF_EXPORT_IMAGE_QUALITY = 0.82;
+const PDF_QUALITY_PRESETS: Record<
+  PdfQualityPreset,
+  {
+    label: string;
+    helperText: string;
+    renderScale: number;
+    imageQuality: number;
+    imageCompression: "FAST" | "MEDIUM" | "SLOW";
+  }
+> = {
+  high: {
+    label: "Vysoká",
+    helperText: "Nejostřejší výstup, větší velikost souboru.",
+    renderScale: 3.2,
+    imageQuality: 0.92,
+    imageCompression: "SLOW",
+  },
+  medium: {
+    label: "Střední",
+    helperText: "Doporučeno: dobrý poměr kvalita/velikost.",
+    renderScale: 2.5,
+    imageQuality: 0.82,
+    imageCompression: "MEDIUM",
+  },
+  low: {
+    label: "Nízká",
+    helperText: "Nejmenší soubor, nižší ostrost detailů.",
+    renderScale: 1.8,
+    imageQuality: 0.68,
+    imageCompression: "FAST",
+  },
+};
+const PDF_QUALITY_ORDER: PdfQualityPreset[] = ["high", "medium", "low"];
+const DEFAULT_PDF_QUALITY_PRESET: PdfQualityPreset = "medium";
 
 const TEXT_COLOR_PALETTE = [
   "#111827",
@@ -446,6 +628,7 @@ function writeLocalFooterProfile(email: string | null, profile: FooterProfile) {
 export default function TvorbaPage() {
   const pageRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
+  const savedEditorRangeRef = useRef<Range | null>(null);
   const editorStageRef = useRef<HTMLDivElement | null>(null);
   const headerTitleRef = useRef<HTMLDivElement | null>(null);
   const imageUploadRef = useRef<HTMLInputElement | null>(null);
@@ -476,6 +659,8 @@ export default function TvorbaPage() {
   const [pdfSettingsOpen, setPdfSettingsOpen] = useState(false);
   const [pdfPasswordEnabled, setPdfPasswordEnabled] = useState(false);
   const [pdfPassword, setPdfPassword] = useState("");
+  const [pdfQualityPreset, setPdfQualityPreset] =
+    useState<PdfQualityPreset>(DEFAULT_PDF_QUALITY_PRESET);
   const [pdfSaveStatus, setPdfSaveStatus] = useState<string | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiDocType, setAiDocType] = useState<AiDocType>("dopis");
@@ -502,6 +687,7 @@ export default function TvorbaPage() {
   });
   const selectedFontOption =
     FONT_OPTIONS.find((option) => option.key === fontFamilyKey) ?? FONT_OPTIONS[0];
+  const selectedPdfQuality = PDF_QUALITY_PRESETS[pdfQualityPreset];
 
   const collectFooterProfile = (): FooterProfile => ({
     fullName: fullName.trim(),
@@ -545,6 +731,7 @@ export default function TvorbaPage() {
   const handleSavePdfSettings = () => {
     setPdfSaveStatus(null);
     const normalizedPdfPassword = pdfPassword.trim();
+    const qualityLabel = PDF_QUALITY_PRESETS[pdfQualityPreset].label;
 
     try {
       if (pdfPasswordEnabled && !normalizedPdfPassword) {
@@ -553,9 +740,9 @@ export default function TvorbaPage() {
         return;
       }
       if (pdfPasswordEnabled) {
-        setPdfSaveStatus("Heslo je připravené pro jeden export PDF.");
+        setPdfSaveStatus(`Heslo je připravené pro jeden export. Kvalita: ${qualityLabel}.`);
       } else {
-        setPdfSaveStatus("Jednorázové heslo je vypnuté.");
+        setPdfSaveStatus(`Nastavená kvalita PDF: ${qualityLabel}.`);
       }
       setErrorText(null);
     } catch (error) {
@@ -917,6 +1104,30 @@ export default function TvorbaPage() {
     editor.focus();
   };
 
+  const storeEditorSelection = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+    savedEditorRangeRef.current = range.cloneRange();
+  };
+
+  const restoreStoredEditorSelection = (): Selection | null => {
+    const editor = editorRef.current;
+    if (!editor) return null;
+    const selection = window.getSelection();
+    if (!selection) return null;
+    const storedRange = savedEditorRangeRef.current;
+    if (!storedRange) return null;
+    if (!storedRange.commonAncestorContainer.isConnected) return null;
+    if (!editor.contains(storedRange.commonAncestorContainer)) return null;
+    selection.removeAllRanges();
+    selection.addRange(storedRange.cloneRange());
+    return selection;
+  };
+
   const ensureSelectionInEditor = (): Selection | null => {
     const editor = editorRef.current;
     if (!editor) return null;
@@ -925,14 +1136,20 @@ export default function TvorbaPage() {
     if (selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
       if (editor.contains(range.commonAncestorContainer)) {
+        savedEditorRangeRef.current = range.cloneRange();
         return selection;
       }
+    }
+    const restoredSelection = restoreStoredEditorSelection();
+    if (restoredSelection && restoredSelection.rangeCount > 0) {
+      return restoredSelection;
     }
     const fallbackRange = document.createRange();
     fallbackRange.selectNodeContents(editor);
     fallbackRange.collapse(false);
     selection.removeAllRanges();
     selection.addRange(fallbackRange);
+    savedEditorRangeRef.current = fallbackRange.cloneRange();
     return selection;
   };
 
@@ -995,17 +1212,46 @@ export default function TvorbaPage() {
     });
   };
 
+  const wrapSelectedTextWithStyles = (styles: Record<string, string>) => {
+    const selection = ensureSelectionInEditor();
+    if (!selection || selection.rangeCount === 0) return false;
+    const range = selection.getRangeAt(0);
+    if (range.collapsed) return false;
+
+    const span = document.createElement("span");
+    Object.entries(styles).forEach(([property, value]) => {
+      span.style.setProperty(property, value);
+    });
+
+    const fragment = range.extractContents();
+    span.appendChild(fragment);
+    range.insertNode(span);
+
+    const nextRange = document.createRange();
+    nextRange.selectNodeContents(span);
+    selection.removeAllRanges();
+    selection.addRange(nextRange);
+    savedEditorRangeRef.current = nextRange.cloneRange();
+    return true;
+  };
+
   const applyFontFamily = (option: FontOption) => {
     focusEditor();
     const selection = ensureSelectionInEditor();
     if (!selection) return;
     const hasSelection = selection.rangeCount > 0 && !selection.getRangeAt(0).collapsed;
-    document.execCommand("styleWithCSS", false, "true");
-    document.execCommand("fontName", false, option.commandValue);
-    normalizeExecCommandFontFamilies();
+    if (hasSelection) {
+      wrapSelectedTextWithStyles({ "font-family": option.css });
+    } else {
+      document.execCommand("styleWithCSS", false, "true");
+      document.execCommand("fontName", false, option.commandValue);
+      normalizeExecCommandFontFamilies();
+    }
     if (!hasSelection && editorRef.current) {
       editorRef.current.style.fontFamily = option.css;
     }
+    setErrorText(null);
+    syncFormattingState();
   };
 
   const handleSelectFont = (option: FontOption) => {
@@ -1171,6 +1417,7 @@ export default function TvorbaPage() {
   };
 
   const syncFormattingState = () => {
+    storeEditorSelection();
     syncTextAlignMode();
     syncInlineStyleState();
   };
@@ -1290,6 +1537,7 @@ export default function TvorbaPage() {
       const html2pdf = await getHtml2Pdf();
       const now = new Date();
       const filename = `tvorba_${now.toISOString().slice(0, 10)}.pdf`;
+      const qualityConfig = PDF_QUALITY_PRESETS[pdfQualityPreset];
       const source = pageRef.current;
       const rect = source.getBoundingClientRect();
 
@@ -1386,9 +1634,9 @@ export default function TvorbaPage() {
       cleanup = () => wrapper.remove();
 
       const opt: any = {
-        image: { type: "jpeg", quality: PDF_EXPORT_IMAGE_QUALITY },
+        image: { type: "jpeg", quality: qualityConfig.imageQuality },
         html2canvas: {
-          scale: PDF_EXPORT_RENDER_SCALE,
+          scale: qualityConfig.renderScale,
           backgroundColor: "#ffffff",
           useCORS: true,
           width: Math.ceil(rect.width),
@@ -1431,8 +1679,34 @@ export default function TvorbaPage() {
         };
       }
       const pdf = new PdfCtor(pdfOptions);
-      const image = canvas.toDataURL("image/jpeg", PDF_EXPORT_IMAGE_QUALITY);
-      pdf.addImage(image, "JPEG", 0, 0, 210, 297, undefined, "MEDIUM");
+      const image = canvas.toDataURL("image/jpeg", qualityConfig.imageQuality);
+      const pageWidthMm = 210;
+      const pageHeightMm = 297;
+      const canvasWidth = Math.max(1, canvas.width);
+      const canvasHeight = Math.max(1, canvas.height);
+      const canvasAspect = canvasWidth / canvasHeight;
+      const pageAspect = pageWidthMm / pageHeightMm;
+
+      let renderWidthMm = pageWidthMm;
+      let renderHeightMm = pageHeightMm;
+      if (canvasAspect > pageAspect) {
+        renderHeightMm = pageWidthMm / canvasAspect;
+      } else {
+        renderWidthMm = pageHeightMm * canvasAspect;
+      }
+
+      const offsetX = (pageWidthMm - renderWidthMm) / 2;
+      const offsetY = (pageHeightMm - renderHeightMm) / 2;
+      pdf.addImage(
+        image,
+        "JPEG",
+        offsetX,
+        offsetY,
+        renderWidthMm,
+        renderHeightMm,
+        undefined,
+        qualityConfig.imageCompression
+      );
       pdf.save(filename);
       if (pdfPasswordEnabled) {
         setPdfPassword("");
@@ -2007,6 +2281,7 @@ export default function TvorbaPage() {
               >
                 Nastavení PDF
               </button>
+              <p className="text-xs text-slate-300">Kvalita: {selectedPdfQuality.label}</p>
               {pdfPasswordEnabled && (
                 <p className="text-xs text-blue-300">PDF bude zaheslované.</p>
               )}
@@ -2295,6 +2570,33 @@ export default function TvorbaPage() {
                       </p>
                     </div>
                   )}
+                  <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+                    <p className="text-sm font-semibold text-slate-100">Kvalita exportu PDF</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {PDF_QUALITY_ORDER.map((quality) => {
+                        const cfg = PDF_QUALITY_PRESETS[quality];
+                        const isSelected = pdfQualityPreset === quality;
+                        return (
+                          <button
+                            key={quality}
+                            type="button"
+                            onClick={() => {
+                              setPdfQualityPreset(quality);
+                              setPdfSaveStatus(null);
+                            }}
+                            className={`rounded-lg border px-2 py-1.5 text-xs font-semibold transition ${
+                              isSelected
+                                ? "border-blue-300/80 bg-blue-500/30 text-white"
+                                : "border-white/20 bg-white/10 text-slate-200 hover:border-blue-300/60"
+                            }`}
+                          >
+                            {cfg.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-slate-300/95">{selectedPdfQuality.helperText}</p>
+                  </div>
                   <div className="mt-3 flex items-center gap-3 border-t border-white/10 pt-3">
                     <button
                       type="button"
