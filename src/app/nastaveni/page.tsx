@@ -613,43 +613,45 @@ export default function SettingsPage() {
                     </p>
                   </div>
                 </div>
-
-                <div className="rounded-2xl border border-white/12 bg-slate-950/40 px-4 py-4 space-y-3">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-1">
-                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-300">
-                        Režim tipařské spolupráce
-                      </div>
-                      <p className="text-xs text-slate-400">
-                        V kalkulačce se zobrazí jen okamžitá provize v nastaveném procentu.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleTipsterModeChange(!tipsterMode)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                        tipsterMode
-                          ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
-                          : "border-white/20 bg-white/5 text-slate-100 hover:border-white/35"
-                      }`}
-                      aria-pressed={tipsterMode}
-                    >
-                      <span
-                        className={`h-2.5 w-2.5 rounded-full ${
-                          tipsterMode ? "bg-emerald-300" : "bg-slate-300"
-                        }`}
-                        aria-hidden="true"
-                      />
-                      {tipsterMode ? "ON" : "OFF"}
-                    </button>
-                  </div>
-
-                  <p className="text-[11px] text-slate-400">
-                    Procento provize nastavíš přímo v kalkulačce tlačítkem %.
-                  </p>
-                </div>
               </section>
             )}
+
+            <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
+              <div className="rounded-2xl border border-white/12 bg-slate-950/40 px-4 py-4 space-y-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-300">
+                      Režim tipařské spolupráce
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      V kalkulačce se zobrazí jen okamžitá provize v nastaveném procentu.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleTipsterModeChange(!tipsterMode)}
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                      tipsterMode
+                        ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
+                        : "border-white/20 bg-white/5 text-slate-100 hover:border-white/35"
+                    }`}
+                    aria-pressed={tipsterMode}
+                  >
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${
+                        tipsterMode ? "bg-emerald-300" : "bg-slate-300"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    {tipsterMode ? "ON" : "OFF"}
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-slate-400">
+                  Procento provize nastavíš přímo v kalkulačce tlačítkem %.
+                </p>
+              </div>
+            </section>
 
             <div className="grid gap-3 md:grid-cols-2">
               {/* Notifikace */}
