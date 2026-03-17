@@ -994,11 +994,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const [rangePercentInput, setRangePercentInput] = useState("50");
   const [showOnly10x, setShowOnly10x] = useState(false);
   const [compactList, setCompactList] = useState(false);
-
-  const handleNumber = (val: string, fallback: number) => {
-    const num = Number(val.replace(",", "."));
-    return Number.isFinite(num) ? num : fallback;
-  };
+  const [selectedInsurers, setSelectedInsurers] = useState<string[]>([]);
 
   const sumInsuredValue = (() => {
     const parsed = parseNumber(sumInsuredInput);
@@ -1168,9 +1164,16 @@ export default function SrovnavacTrvalychNasledkuPage() {
     },
   ];
 
-  const visibleCards = showOnly10x
-    ? cards.filter((card) => card.badges.some((b) => b.includes("10× progrese")))
-    : cards;
+  const insurerOptions = Array.from(new Set(cards.map((card) => card.insurer)));
+
+  const visibleCards = cards.filter((card) => {
+    const matchesProgression =
+      !showOnly10x || card.badges.some((badge) => badge.includes("10× progrese"));
+    const matchesInsurer =
+      selectedInsurers.length === 0 || selectedInsurers.includes(card.insurer);
+
+    return matchesProgression && matchesInsurer;
+  });
 
   const sortedCards = [...visibleCards].sort((a, b) => b.payout - a.payout);
 
@@ -1293,6 +1296,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 Zobrazuji jen varianty s 10× progresí.
               </span>
             )}
+            {selectedInsurers.length > 0 && (
+              <span className="text-[11px] text-slate-400">
+                Vybráno pojišťoven: {selectedInsurers.length}
+              </span>
+            )}
             <div className="ml-auto flex items-center gap-2">
               <span className="text-[11px] text-slate-400">Zobrazení:</span>
               <button
@@ -1307,6 +1315,46 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 {compactList ? "Kompaktní (1/řádek)" : "Karty (3/řádek)"}
               </button>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-[11px] text-slate-400">Pojišťovny:</div>
+            <button
+              type="button"
+              onClick={() => setSelectedInsurers([])}
+              className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                selectedInsurers.length === 0
+                  ? "border-emerald-300/70 bg-emerald-500/20 text-white shadow-[0_0_18px_rgba(16,185,129,0.35)]"
+                  : "border-white/15 bg-white/5 text-slate-200 hover:border-sky-300/60 hover:text-white"
+              }`}
+            >
+              Všechny
+            </button>
+            {insurerOptions.map((insurer) => {
+              const active = selectedInsurers.includes(insurer);
+
+              return (
+                <button
+                  key={insurer}
+                  type="button"
+                  onClick={() =>
+                    setSelectedInsurers((current) =>
+                      current.includes(insurer)
+                        ? current.filter((item) => item !== insurer)
+                        : [...current, insurer]
+                    )
+                  }
+                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                    active
+                      ? "border-sky-400/70 bg-sky-500/20 text-white shadow-[0_0_18px_rgba(56,189,248,0.4)]"
+                      : "border-white/15 bg-white/5 text-slate-200 hover:border-sky-300/60 hover:text-white"
+                  }`}
+                  aria-pressed={active}
+                >
+                  {insurer}
+                </button>
+              );
+            })}
           </div>
 
           <div
