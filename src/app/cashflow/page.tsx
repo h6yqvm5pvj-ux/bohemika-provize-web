@@ -85,37 +85,49 @@ export default function CashflowPage() {
 
   return (
     <AppLayout active="cashflow">
-      <div className="w-full max-w-5xl space-y-6">
-        <CashflowHeader
-          totalCashflow={totalCashflow}
-          showPastYears={showPastYears}
-          onTogglePastYears={() => setShowPastYears((value) => !value)}
+      <div className="relative w-full max-w-5xl">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-20 -left-16 h-64 w-64 rounded-full bg-cyan-400/20 blur-3xl"
         />
-
-        <CashflowFilters
-          hasTeam={hasTeam}
-          scopeFilter={scopeFilter}
-          productFilter={productFilter}
-          onScopeChange={setScopeFilter}
-          onProductChange={setProductFilter}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute top-12 right-0 h-72 w-72 rounded-full bg-emerald-400/20 blur-3xl"
         />
-
-        {loading ? (
-          <p className="text-sm text-slate-300">Načítám data…</p>
-        ) : yearGroups.length === 0 ? (
-          <p className="text-sm text-slate-300">
-            Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat.
-          </p>
-        ) : (
-          <CashflowAccordion
-            yearGroups={yearGroups}
-            expandedYears={expandedYears}
-            expandedMonths={expandedMonths}
-            onToggleYear={toggleYear}
-            onToggleMonth={toggleMonth}
-            onSelectItem={setSelectedItem}
+        <div className="relative space-y-6">
+          <CashflowHeader
+            totalCashflow={totalCashflow}
+            showPastYears={showPastYears}
+            onTogglePastYears={() => setShowPastYears((value) => !value)}
           />
-        )}
+
+          <CashflowFilters
+            hasTeam={hasTeam}
+            scopeFilter={scopeFilter}
+            productFilter={productFilter}
+            onScopeChange={setScopeFilter}
+            onProductChange={setProductFilter}
+          />
+
+          {loading ? (
+            <p className="rounded-2xl border border-white/15 bg-white/6 px-4 py-3 text-sm text-slate-200 backdrop-blur-xl">
+              Načítám data…
+            </p>
+          ) : yearGroups.length === 0 ? (
+            <p className="rounded-2xl border border-white/15 bg-white/6 px-4 py-3 text-sm text-slate-200 backdrop-blur-xl">
+              Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat.
+            </p>
+          ) : (
+            <CashflowAccordion
+              yearGroups={yearGroups}
+              expandedYears={expandedYears}
+              expandedMonths={expandedMonths}
+              onToggleYear={toggleYear}
+              onToggleMonth={toggleMonth}
+              onSelectItem={setSelectedItem}
+            />
+          )}
+        </div>
       </div>
 
       <CashflowItemModal

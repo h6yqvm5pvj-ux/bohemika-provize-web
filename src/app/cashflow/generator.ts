@@ -209,11 +209,9 @@ export function generateCashflow(
 
         const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
         const firstPayout = estimatePayoutDate(start, agreement);
-        const subsequentStart = new Date(
-          start.getFullYear() + 1,
-          start.getMonth(),
-          start.getDate()
-        );
+        // Přechod na následnou provizi musí být navázaný na výplatní kalendář
+        // (stejné cutoff pravidlo jako u první výplaty), ne na holé výročí.
+        const subsequentStart = annPlusYears(1);
 
         let payout = firstPayout;
         while (payout <= horizonEnd) {

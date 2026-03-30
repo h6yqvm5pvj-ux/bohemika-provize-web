@@ -24,6 +24,9 @@ export function CashflowFilters({
   onScopeChange,
   onProductChange,
 }: CashflowFiltersProps) {
+  const baseChip =
+    "rounded-full border px-3 py-1.5 transition text-xs sm:text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]";
+
   return (
     <section
       className={`grid grid-cols-1 ${
@@ -31,23 +34,22 @@ export function CashflowFilters({
       } gap-3`}
     >
       {hasTeam && (
-        <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.7)] space-y-2">
+        <div className="px-1 py-1">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-300/80">
                 Filtrování smluv
               </p>
-              <p className="text-sm text-slate-200">Vlastní / tým</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
+          <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => onScopeChange("combined")}
-              className={`px-3 py-1.5 rounded-full border transition ${
+              className={`${baseChip} ${
                 scopeFilter === "combined"
-                  ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
-                  : "border-white/20 text-slate-200 hover:bg-white/5"
+                  ? "border-emerald-300/70 bg-gradient-to-br from-emerald-300/55 to-teal-300/35 text-slate-950 shadow-[0_10px_24px_rgba(52,211,153,0.35)]"
+                  : "border-white/25 bg-white/6 text-slate-100 hover:bg-white/12"
               }`}
             >
               Kombinovaný
@@ -55,10 +57,10 @@ export function CashflowFilters({
             <button
               type="button"
               onClick={() => onScopeChange("own")}
-              className={`px-3 py-1.5 rounded-full border transition ${
+              className={`${baseChip} ${
                 scopeFilter === "own"
-                  ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
-                  : "border-white/20 text-slate-200 hover:bg-white/5"
+                  ? "border-emerald-300/70 bg-gradient-to-br from-emerald-300/55 to-teal-300/35 text-slate-950 shadow-[0_10px_24px_rgba(52,211,153,0.35)]"
+                  : "border-white/25 bg-white/6 text-slate-100 hover:bg-white/12"
               }`}
             >
               Vlastní
@@ -66,10 +68,10 @@ export function CashflowFilters({
             <button
               type="button"
               onClick={() => onScopeChange("team")}
-              className={`px-3 py-1.5 rounded-full border transition ${
+              className={`${baseChip} ${
                 scopeFilter === "team"
-                  ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
-                  : "border-white/20 text-slate-200 hover:bg-white/5"
+                  ? "border-emerald-300/70 bg-gradient-to-br from-emerald-300/55 to-teal-300/35 text-slate-950 shadow-[0_10px_24px_rgba(52,211,153,0.35)]"
+                  : "border-white/25 bg-white/6 text-slate-100 hover:bg-white/12"
               }`}
             >
               Týmové
@@ -78,25 +80,24 @@ export function CashflowFilters({
         </div>
       )}
 
-      <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.7)] space-y-2">
+      <div className="px-1 py-1">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-300/80">
               Filtrování produktů
             </p>
-            <p className="text-sm text-slate-200">Výběr kategorií</p>
           </div>
         </div>
-        <div className="flex flex-nowrap gap-2 text-xs sm:text-sm overflow-x-auto whitespace-nowrap px-1 pb-1">
+        <div className="mt-2 flex flex-nowrap gap-2 overflow-x-auto whitespace-nowrap px-1 pb-1">
           {PRODUCT_FILTER_OPTIONS.map((option) => (
             <button
               key={option.value}
               type="button"
               onClick={() => onProductChange(option.value)}
-              className={`px-3 py-1.5 rounded-full border transition ${
+              className={`${baseChip} ${
                 productFilter === option.value
-                  ? "bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/40"
-                  : "border-white/20 text-slate-200 hover:bg-white/5"
+                  ? "border-cyan-300/70 bg-gradient-to-br from-cyan-300/55 to-sky-300/35 text-slate-950 shadow-[0_10px_24px_rgba(56,189,248,0.35)]"
+                  : "border-white/25 bg-white/6 text-slate-100 hover:bg-white/12"
               }`}
             >
               {option.label}

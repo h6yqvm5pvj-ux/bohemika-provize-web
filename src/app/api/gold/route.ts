@@ -8,10 +8,20 @@ export const runtime = "nodejs";
 let lastOk: { usdPerOz: number; usdCzk: number; czkPerOz: number; ts: number } | null = null;
 
 // jednoduchá in-memory cache pro historické výpočty (šetří stooq)
+type ChangesPct = {
+  "1d": number | null;
+  "3m": number | null;
+  "1y": number | null;
+  "2y": number | null;
+  "3y": number | null;
+  "5y": number | null;
+  "10y": number | null;
+};
+
 let lastHistory:
   | {
       czkSeries: DailyPoint[]; // CZK / unce (denní body)
-      changesPct: { "1d": number; "3m": number; "1y": number; "2y": number; "3y": number; "5y": number; "10y": number };
+      changesPct: ChangesPct;
       asOfDate: string;
       ts: number;
     }
@@ -64,42 +74,274 @@ async function fetchText(url: string) {
   }
 }
 
-async function fetchStooqDaily(symbol: string): Promise<DailyPoint[]> {
-  // Stooq CSV: Date,Open,High,Low,Close,Volume
-  // Příklad: https://stooq.com/q/d/l/?s=xauusd&i=d
-  const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol.toLowerCase())}&i=d`;
-  const txt = await fetchText(url);
+function parseLooseNumber(value: string): number {
+  const raw = String(value ?? "")
+    .trim()
+    .replace(/["']/g, "")
+    .replace(/\s+/g, "");
+  if (!raw || /^n\/?a$/i.test(raw) || raw === "-") return NaN;
 
-  const lines = txt
+  const hasComma = raw.includes(",");
+  const hasDot = raw.includes(".");
+
+  if (hasComma && hasDot) {
+    const lastComma = raw.lastIndexOf(",");
+    const lastDot = raw.lastIndexOf(".");
+    const normalized =
+      lastComma > lastDot ? raw.replace(/\./g, "").replace(",", ".") : raw.replace(/,/g, "");
+    return Number(normalized);
+  }
+
+  if (hasComma) {
+    // pokud to vypadá jako desetinná čárka, převeď ji na tečku
+    const normalized = /,\d{1,4}$/.test(raw) ? raw.replace(",", ".") : raw.replace(/,/g, "");
+    return Number(normalized);
+  }
+
+  return Number(raw);
+}
+
+function normalizeYmd(value: string): string | null {
+  const raw = String(value ?? "").trim().replace(/["']/g, "");
+  if (!raw) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(raw)) return raw.replaceAll("/", "-");
+
+  const dmy = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return null;
+  return toYmd(new Date(parsed));
+}
+
+function dedupeAndSortDaily(points: DailyPoint[]): DailyPoint[] {
+  if (!points.length) return [];
+
+  const map = new Map<string, number>();
+  for (const p of points) {
+    if (!p?.date || !Number.isFinite(p?.close) || p.close <= 0) continue;
+    map.set(p.date, p.close);
+  }
+
+  return [...map.entries()]
+    .map(([date, close]) => ({ date, close }))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+function parseDailyCsv(text: string): DailyPoint[] {
+  const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
-
-  // header + data
   if (lines.length < 2) return [];
 
+  const header = lines[0].toLowerCase();
+  if (
+    !header.includes("date") &&
+    !header.includes("data") &&
+    !header.includes("close") &&
+    !header.includes("zamkniecie")
+  ) {
+    return [];
+  }
+
+  const delimiter = header.includes(";") ? ";" : ",";
   const out: DailyPoint[] = [];
+
   for (let i = 1; i < lines.length; i++) {
-    const parts = lines[i].split(",");
+    const parts = lines[i].split(delimiter).map((p) => p.trim());
     if (parts.length < 5) continue;
 
-    const date = parts[0];
-    const close = Number(parts[4]);
-
-    // Stooq někdy vrací `N/A`
+    const date = normalizeYmd(parts[0]);
+    const close = parseLooseNumber(parts[4]);
     if (!date || !Number.isFinite(close) || close <= 0) continue;
 
     out.push({ date, close });
   }
 
-  // jistota seřazení podle data
-  out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  return out;
+  return dedupeAndSortDaily(out);
+}
+
+async function fetchStooqDaily(symbol: string): Promise<DailyPoint[]> {
+  const s = encodeURIComponent(symbol.toLowerCase());
+  const urls = [
+    `https://stooq.com/q/d/l/?s=${s}&i=d`,
+    `https://stooq.pl/q/d/l/?s=${s}&i=d`,
+  ];
+
+  for (const url of urls) {
+    try {
+      const txt = await fetchText(url);
+      const parsed = parseDailyCsv(txt);
+      if (parsed.length >= 2) return parsed;
+    } catch {
+      // zkusíme další variantu URL
+    }
+  }
+
+  return [];
 }
 
 type DailyPoint = { date: string; close: number };
 
 type HistoryPoint = { t: number; v: number }; // t=unix seconds (UTC), v=CZK/oz
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function seriesSpanDays(series: DailyPoint[]): number {
+  if (series.length < 2) return 0;
+  const first = Date.parse(`${series[0].date}T00:00:00Z`);
+  const last = Date.parse(`${series[series.length - 1].date}T00:00:00Z`);
+  if (!Number.isFinite(first) || !Number.isFinite(last) || last <= first) return 0;
+  return (last - first) / DAY_MS;
+}
+
+function pointsPerMonth(series: DailyPoint[]): number {
+  if (!series.length) return 0;
+  const spanDays = seriesSpanDays(series);
+  if (spanDays <= 0) return series.length;
+  return series.length / Math.max(1, spanDays / 30);
+}
+
+function isSeriesTooSparse(series: DailyPoint[]): boolean {
+  if (series.length < 3) return true;
+  return pointsPerMonth(series) < 3;
+}
+
+function pairScore(xauusd: DailyPoint[], usdczk: DailyPoint[]): number {
+  if (xauusd.length < 2 || usdczk.length < 2) return -1;
+  return Math.min(xauusd.length, usdczk.length) + (pointsPerMonth(xauusd) + pointsPerMonth(usdczk)) * 50;
+}
+
+function pickBestPair(
+  pairs: Array<{ xauusd: DailyPoint[]; usdczk: DailyPoint[] }>
+): { xauusd: DailyPoint[]; usdczk: DailyPoint[] } | null {
+  let best: { xauusd: DailyPoint[]; usdczk: DailyPoint[] } | null = null;
+  let bestScore = -1;
+
+  for (const pair of pairs) {
+    const score = pairScore(pair.xauusd, pair.usdczk);
+    if (score > bestScore) {
+      best = pair;
+      bestScore = score;
+    }
+  }
+
+  return bestScore > 0 ? best : null;
+}
+
+async function fetchYahooDaily(symbol: string): Promise<DailyPoint[]> {
+  const url =
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}` +
+    "?range=10y&interval=1d&events=history&includeAdjustedClose=true";
+
+  const j: any = await fetchJson(url);
+  const result = j?.chart?.result?.[0];
+  const timestamps: any[] = Array.isArray(result?.timestamp) ? result.timestamp : [];
+  const closes: any[] = Array.isArray(result?.indicators?.quote?.[0]?.close)
+    ? result.indicators.quote[0].close
+    : [];
+
+  if (!timestamps.length || !closes.length) return [];
+
+  const out: DailyPoint[] = [];
+  const n = Math.min(timestamps.length, closes.length);
+  for (let i = 0; i < n; i++) {
+    const ts = Number(timestamps[i]);
+    const close = Number(closes[i]);
+    if (!Number.isFinite(ts) || ts <= 0) continue;
+    if (!Number.isFinite(close) || close <= 0) continue;
+
+    out.push({ date: toYmd(new Date(ts * 1000)), close });
+  }
+
+  return dedupeAndSortDaily(out);
+}
+
+async function fetchLbmaGoldUsdDaily(): Promise<DailyPoint[]> {
+  const j: any = await fetchJson("https://prices.lbma.org.uk/json/gold_am.json");
+  if (!Array.isArray(j)) return [];
+
+  const out: DailyPoint[] = [];
+  for (const row of j) {
+    const date = normalizeYmd(String(row?.d ?? ""));
+    const vals = Array.isArray(row?.v) ? row.v : [];
+    const close =
+      vals
+        .map((v: any) => Number(v))
+        .find((v: number) => Number.isFinite(v) && v > 0) ?? NaN;
+
+    if (!date || !Number.isFinite(close) || close <= 0) continue;
+    out.push({ date, close });
+  }
+
+  return dedupeAndSortDaily(out);
+}
+
+async function fetchFrankfurterUsdCzkDaily(): Promise<DailyPoint[]> {
+  const end = toYmd(new Date());
+  const start = toYmd(new Date(Date.now() - 3652 * DAY_MS)); // cca 10 let
+  const url = `https://api.frankfurter.app/${start}..${end}?from=USD&to=CZK`;
+  const j: any = await fetchJson(url);
+  const rates = j?.rates;
+  if (!rates || typeof rates !== "object") return [];
+
+  const out: DailyPoint[] = [];
+  for (const [dateRaw, payload] of Object.entries(rates as Record<string, any>)) {
+    const date = normalizeYmd(dateRaw);
+    const close = Number((payload as any)?.CZK);
+    if (!date || !Number.isFinite(close) || close <= 0) continue;
+    out.push({ date, close });
+  }
+
+  return dedupeAndSortDaily(out);
+}
+
+function pickSeries(primary: DailyPoint[], fallback: DailyPoint[]): DailyPoint[] {
+  if (primary.length >= 20) return primary;
+  if (fallback.length >= 2) return fallback;
+  return primary.length ? primary : fallback;
+}
+
+async function fetchHistoricalInputs(): Promise<{ xauusd: DailyPoint[]; usdczk: DailyPoint[] } | null> {
+  const [stooqGold, stooqFx] = await Promise.all([fetchStooqDaily("xauusd"), fetchStooqDaily("usdczk")]);
+  if (stooqGold.length >= 20 && stooqFx.length >= 20 && !isSeriesTooSparse(stooqGold)) {
+    return { xauusd: stooqGold, usdczk: stooqFx };
+  }
+
+  const [lbmaGold, frankfurterFx] = await Promise.all([
+    fetchLbmaGoldUsdDaily().catch(() => []),
+    fetchFrankfurterUsdCzkDaily().catch(() => []),
+  ]);
+
+  const densePair = pickBestPair([
+    { xauusd: lbmaGold, usdczk: frankfurterFx },
+    { xauusd: lbmaGold, usdczk: stooqFx },
+    { xauusd: stooqGold, usdczk: frankfurterFx },
+    { xauusd: stooqGold, usdczk: stooqFx },
+  ]);
+  if (densePair && !isSeriesTooSparse(densePair.xauusd)) return densePair;
+
+  const [yahooGold, yahooUsdCzk, yahooCzkUsd] = await Promise.all([
+    fetchYahooDaily("GC=F").catch(() => []),
+    fetchYahooDaily("USDCZK=X").catch(() => []),
+    fetchYahooDaily("CZK=X").catch(() => []),
+  ]);
+
+  const invertedCzkUsd = yahooCzkUsd
+    .map((p) => (p.close > 0 ? { date: p.date, close: 1 / p.close } : null))
+    .filter((p): p is DailyPoint => Boolean(p && Number.isFinite(p.close) && p.close > 0));
+
+  const fxYahoo = yahooUsdCzk.length >= 2 ? yahooUsdCzk : invertedCzkUsd;
+
+  const xauusd = pickSeries(densePair?.xauusd ?? stooqGold, yahooGold);
+  const usdczk = pickSeries(densePair?.usdczk ?? stooqFx, fxYahoo);
+
+  if (!xauusd.length || !usdczk.length) return null;
+  return { xauusd, usdczk };
+}
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -114,13 +356,13 @@ function isMaxRange(range: string | null): boolean {
 function rangeToDays(range: string | null): number | null {
   if (!range) return null;
   const r = range.toLowerCase();
-  if (r === "1w" || r === "7d" || r === "week") return 7;
-  if (r === "3m" || r === "90d" || r === "3mo") return 92;
-  if (r === "1y" || r === "1r" || r === "rok") return 365;
-  if (r === "2y") return 730;
-  if (r === "3y") return 1095;
-  if (r === "5y") return 1826;
-  if (r === "10y") return 3652;
+  if (r === "w1" || r === "1w" || r === "7d" || r === "week") return 7;
+  if (r === "m3" || r === "3m" || r === "90d" || r === "3mo") return 92;
+  if (r === "y1" || r === "1y" || r === "1r" || r === "rok") return 365;
+  if (r === "y2" || r === "2y") return 730;
+  if (r === "y3" || r === "3y") return 1095;
+  if (r === "y5" || r === "5y") return 1826;
+  if (r === "y10" || r === "10y") return 3652;
   return null;
 }
 
@@ -185,13 +427,18 @@ function pctChange(latest: number, past: number) {
 async function computeGoldCzkSeriesAndChanges(): Promise<
   | {
       czkSeries: DailyPoint[];
-      changesPct: { "1d": number; "3m": number; "1y": number; "2y": number; "3y": number; "5y": number; "10y": number };
+      changesPct: ChangesPct;
       asOfDate: string;
     }
   | null
 > {
   // Cache: refetch max jednou za 6 hodin
-  if (lastHistory && Date.now() - lastHistory.ts < 6 * 60 * 60 * 1000) {
+  // Pokud je cache příliš řídká (typicky měsíční body), radši ji ignorujeme.
+  if (
+    lastHistory &&
+    Date.now() - lastHistory.ts < 6 * 60 * 60 * 1000 &&
+    !isSeriesTooSparse(lastHistory.czkSeries)
+  ) {
     return {
       czkSeries: lastHistory.czkSeries,
       changesPct: lastHistory.changesPct,
@@ -199,9 +446,9 @@ async function computeGoldCzkSeriesAndChanges(): Promise<
     };
   }
 
-  // Stooq symboly: xauusd (USD/oz), usdczk (FX)
-  const [xauusd, usdczk] = await Promise.all([fetchStooqDaily("xauusd"), fetchStooqDaily("usdczk")]);
-  if (!xauusd.length || !usdczk.length) return null;
+  const inputs = await fetchHistoricalInputs();
+  if (!inputs) return null;
+  const { xauusd, usdczk } = inputs;
 
   // CZK/oz = XAUUSD (USD/oz) * USDCZK (CZK/USD)
   // FX u víkendů typicky chybí → použijeme poslední známý kurz před daným dnem.
@@ -251,16 +498,19 @@ async function computeGoldCzkSeriesAndChanges(): Promise<
   // 1d = změna proti předchozímu dostupnému dni (typicky včerejšek; o víkendu pátek)
   const prevDay = czkSeries.length >= 2 ? czkSeries[czkSeries.length - 2] : null;
 
-  if (!p3m || !p1 || !p2 || !p3 || !p5 || !p10 || !prevDay) return null;
+  const safePct = (past: DailyPoint | null) => {
+    if (!past || !Number.isFinite(past.close) || past.close <= 0) return null;
+    return pctChange(latest.close, past.close);
+  };
 
   const changesPct = {
-    "1d": pctChange(latest.close, prevDay.close),
-    "3m": pctChange(latest.close, p3m.close),
-    "1y": pctChange(latest.close, p1.close),
-    "2y": pctChange(latest.close, p2.close),
-    "3y": pctChange(latest.close, p3.close),
-    "5y": pctChange(latest.close, p5.close),
-    "10y": pctChange(latest.close, p10.close),
+    "1d": safePct(prevDay),
+    "3m": safePct(p3m),
+    "1y": safePct(p1),
+    "2y": safePct(p2),
+    "3y": safePct(p3),
+    "5y": safePct(p5),
+    "10y": safePct(p10),
   };
 
   lastHistory = { czkSeries, changesPct, asOfDate: latest.date, ts: Date.now() };

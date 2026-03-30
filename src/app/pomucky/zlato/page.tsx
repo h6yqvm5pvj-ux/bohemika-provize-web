@@ -216,17 +216,23 @@ async function fetchGold(input?: { days?: number; range?: RangeKey }): Promise<{
 
   // Backend může vracet buď `changes` (y1/y2/...) nebo `changesPct` ("1y"/"2y"/...)
   const fromPct = (j as GoldApiResponse).changesPct;
+  const toFinite = (value: unknown): number | undefined => {
+    if (value == null || value === "") return undefined;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
   const changes =
     j.changes ??
     (fromPct
       ? {
-          d1: Number.isFinite(Number(fromPct["1d"])) ? Number(fromPct["1d"]) : undefined,
-          m3: Number.isFinite(Number(fromPct["3m"])) ? Number(fromPct["3m"]) : undefined,
-          y1: Number.isFinite(Number(fromPct["1y"])) ? Number(fromPct["1y"]) : undefined,
-          y2: Number.isFinite(Number(fromPct["2y"])) ? Number(fromPct["2y"]) : undefined,
-          y3: Number.isFinite(Number(fromPct["3y"])) ? Number(fromPct["3y"]) : undefined,
-          y5: Number.isFinite(Number(fromPct["5y"])) ? Number(fromPct["5y"]) : undefined,
-          y10: Number.isFinite(Number(fromPct["10y"])) ? Number(fromPct["10y"]) : undefined,
+          d1: toFinite(fromPct["1d"]),
+          m3: toFinite(fromPct["3m"]),
+          y1: toFinite(fromPct["1y"]),
+          y2: toFinite(fromPct["2y"]),
+          y3: toFinite(fromPct["3y"]),
+          y5: toFinite(fromPct["5y"]),
+          y10: toFinite(fromPct["10y"]),
         }
       : undefined);
 
@@ -308,17 +314,54 @@ function GoldChart({ points }: { points: Point[] }) {
         year: "numeric",
       });
 
-    const yTicks = [0, 0.5, 1].map((k) => {
-      const v = minV + (1 - k) * spanV;
-      return { y: pad.t + k * innerH, v };
-    });
+    const spanDays = spanT / (1000 * 60 * 60 * 24);
+    const fmtTickDate = (ms: number) =>
+      new Date(ms).toLocaleDateString("cs-CZ", {
+        day: spanDays <= 120 ? "2-digit" : undefined,
+        month: spanDays <= 730 ? "2-digit" : "short",
+        year: spanDays > 365 ? "numeric" : undefined,
+      });
 
-    const xTicks = [0, 0.5, 1].map((k) => {
-      const t = minT + k * spanT;
-      return { x: pad.l + k * innerW, t };
-    });
+    const buildTicks = (min: number, max: number, count: number) => {
+      if (count <= 1) return [min];
+      return Array.from({ length: count }, (_, i) => min + ((max - min) * i) / (count - 1));
+    };
 
-    return { pts, lineD, areaD, baseY, yTicks, xTicks, fmtDate, minV, maxV, minT, maxT, xOfT, yOfV };
+    const yTicks = buildTicks(minV, maxV, 5).map((v) => ({ y: yOfV(v), v }));
+
+    const xTickCount = spanDays > 3650 ? 8 : spanDays > 1825 ? 7 : spanDays > 730 ? 6 : spanDays > 120 ? 5 : 4;
+    const xTicks = buildTicks(minT, maxT, xTickCount).map((t) => ({ x: xOfT(t), t }));
+
+    const minPoint = pts.reduce((best, p) => (p.v < best.v ? p : best), pts[0]);
+    const maxPoint = pts.reduce((best, p) => (p.v > best.v ? p : best), pts[0]);
+    const startPoint = pts[0];
+    const endPoint = pts[pts.length - 1];
+    const totalChangePct = startPoint.v > 0 ? ((endPoint.v / startPoint.v) - 1) * 100 : null;
+    const showPointMarkers = pts.length <= 180;
+
+    return {
+      pts,
+      lineD,
+      areaD,
+      baseY,
+      yTicks,
+      xTicks,
+      fmtDate,
+      fmtTickDate,
+      minV,
+      maxV,
+      minT,
+      maxT,
+      xOfT,
+      yOfV,
+      spanDays,
+      minPoint,
+      maxPoint,
+      startPoint,
+      endPoint,
+      totalChangePct,
+      showPointMarkers,
+    };
   }, [points, pad.b, pad.l, pad.r, pad.t, w, h]);
 
   const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -352,9 +395,23 @@ function GoldChart({ points }: { points: Point[] }) {
   }
 
   const hp = hover ? prepared.pts[hover.idx] : null;
+  const prevHp = hp && hover && hover.idx > 0 ? prepared.pts[hover.idx - 1] : null;
+  const pointDeltaPct = hp && prevHp && prevHp.v > 0 ? ((hp.v / prevHp.v) - 1) * 100 : null;
 
   return (
     <div className="relative rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-4">
+      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-300/90">
+        <span>Bodů: {prepared.pts.length}</span>
+        <span>Min: {formatCzk(prepared.minPoint.v)}</span>
+        <span>Max: {formatCzk(prepared.maxPoint.v)}</span>
+        <span>
+          Změna:{" "}
+          {prepared.totalChangePct == null
+            ? "—"
+            : `${prepared.totalChangePct >= 0 ? "+" : ""}${formatNum(prepared.totalChangePct, 2)} %`}
+        </span>
+      </div>
+
       <svg
         viewBox={`0 0 ${w} ${h}`}
         className="w-full h-[220px] select-none"
@@ -391,7 +448,7 @@ function GoldChart({ points }: { points: Point[] }) {
         {/* y labels */}
         <g className="fill-slate-300" fontSize="11">
           {prepared.yTicks.map((t, i) => (
-            <text key={`yl-${i}`} x={10} y={t.y + 4} opacity={0.9}>
+            <text key={`yl-${i}`} x={8} y={t.y + 4} opacity={0.9}>
               {formatCzk(t.v)}
             </text>
           ))}
@@ -404,12 +461,18 @@ function GoldChart({ points }: { points: Point[] }) {
               key={`xl-${i}`}
               x={t.x}
               y={h - 10}
-              textAnchor={i === 0 ? "start" : i === 1 ? "middle" : "end"}
+              textAnchor={i === 0 ? "start" : i === prepared.xTicks.length - 1 ? "end" : "middle"}
               opacity={0.9}
             >
-              {prepared.fmtDate(t.t)}
+              {prepared.fmtTickDate(t.t)}
             </text>
           ))}
+        </g>
+
+        {/* min/max vodítka */}
+        <g stroke="rgba(148,163,184,0.28)" strokeDasharray="4 4" strokeWidth="1">
+          <line x1={pad.l} y1={prepared.minPoint.y} x2={w - pad.r} y2={prepared.minPoint.y} />
+          <line x1={pad.l} y1={prepared.maxPoint.y} x2={w - pad.r} y2={prepared.maxPoint.y} />
         </g>
 
         {/* area + line */}
@@ -426,10 +489,28 @@ function GoldChart({ points }: { points: Point[] }) {
           />
         </g>
 
+        {/* markery datových bodů */}
+        {prepared.showPointMarkers ? (
+          <g>
+            {prepared.pts.map((p, i) => (
+              <circle
+                key={`pt-${i}-${p.t}`}
+                cx={p.x}
+                cy={p.y}
+                r={1.4}
+                fill="rgba(167,243,208,0.65)"
+                stroke="rgba(16,185,129,0.35)"
+                strokeWidth="0.8"
+              />
+            ))}
+          </g>
+        ) : null}
+
         {/* hover */}
         {hp ? (
           <g>
             <line x1={hp.x} y1={pad.t} x2={hp.x} y2={h - pad.b} stroke="rgba(255,255,255,0.18)" strokeWidth="1" />
+            <line x1={pad.l} y1={hp.y} x2={w - pad.r} y2={hp.y} stroke="rgba(255,255,255,0.14)" strokeWidth="1" />
             <circle cx={hp.x} cy={hp.y} r={4} fill="rgba(167,243,208,0.95)" stroke="rgba(16,185,129,0.65)" />
           </g>
         ) : null}
@@ -439,13 +520,22 @@ function GoldChart({ points }: { points: Point[] }) {
         <div
           className="pointer-events-none absolute rounded-2xl border border-white/15 bg-slate-950/55 backdrop-blur-xl px-3 py-2 text-xs text-slate-100 shadow-[0_18px_60px_rgba(0,0,0,0.65)]"
           style={{
-            left: Math.min(Math.max(hover!.x / w, 0), 1) * 100 + "%",
+            left: Math.min(Math.max((hover?.x ?? 0) / w, 0.1), 0.9) * 100 + "%",
             top: 12,
             transform: "translateX(-50%)",
           }}
         >
           <div className="text-slate-300">{prepared.fmtDate(hp.t)}</div>
           <div className="mt-0.5 font-semibold">{formatCzk(hp.v)}</div>
+          {pointDeltaPct != null && (
+            <div className="mt-0.5 text-slate-300">
+              proti předchozímu bodu:{" "}
+              <span className={pointDeltaPct >= 0 ? "text-emerald-200" : "text-rose-200"}>
+                {pointDeltaPct >= 0 ? "+" : ""}
+                {formatNum(pointDeltaPct, 2)} %
+              </span>
+            </div>
+          )}
         </div>
       ) : null}
     </div>

@@ -132,6 +132,17 @@ const INSTITUTION_DEFS: { id: Institution; label: string }[] = [
   { id: "comfort", label: "Comfort Commodity" },
 ];
 
+const LIFE_PRODUCTS = new Set<Product>(PRODUCT_CATEGORY_MAP.life);
+const GOLD_PRODUCT: Product = "comfortcc";
+const AUTO_PRODUCTS = new Set<Product>(PRODUCT_CATEGORY_MAP.auto);
+const PROPERTY_PRODUCTS = new Set<Product>(PRODUCT_CATEGORY_MAP.property);
+const TRAVEL_PRODUCTS = new Set<Product>(PRODUCT_CATEGORY_MAP.travel);
+const COMFORT_PRODUCTS = new Set<Product>(PRODUCT_CATEGORY_MAP.comfort);
+const LIABILITY_PRODUCTS = new Set<Product>(PRODUCT_CATEGORY_MAP.liability);
+const INSTITUTION_LABEL_BY_ID = Object.fromEntries(
+  INSTITUTION_DEFS.map((inst) => [inst.id, inst.label])
+) as Record<Institution, string>;
+
 function formatMoney(value: number | undefined | null): string {
   if (value == null || !Number.isFinite(value)) return "0 Kč";
   return (
@@ -139,6 +150,64 @@ function formatMoney(value: number | undefined | null): string {
       maximumFractionDigits: 0,
     }) + " Kč"
   );
+}
+
+function paymentsPerYear(freq?: PaymentFrequency | null): number {
+  switch (freq) {
+    case "monthly":
+      return 12;
+    case "quarterly":
+      return 4;
+    case "semiannual":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function premiumDisplayForContract(c: ContractDoc): {
+  amount: number;
+  cadenceLabel: "MĚSÍČNĚ" | "ROČNĚ" | null;
+} {
+  const product = c.productKey;
+  const base = Number(c.inputAmount ?? 0);
+  const amount = Number.isFinite(base) ? base : 0;
+
+  if (product && LIFE_PRODUCTS.has(product)) {
+    return { amount, cadenceLabel: "MĚSÍČNĚ" };
+  }
+
+  if (product === GOLD_PRODUCT) {
+    return { amount, cadenceLabel: null };
+  }
+
+  return {
+    amount: amount * paymentsPerYear(c.frequencyRaw),
+    cadenceLabel: "ROČNĚ",
+  };
+}
+
+function categoryForProduct(product?: Product | null): ProductCategory | null {
+  if (!product) return null;
+  if (LIFE_PRODUCTS.has(product)) return "life";
+  if (AUTO_PRODUCTS.has(product)) return "auto";
+  if (PROPERTY_PRODUCTS.has(product)) return "property";
+  if (TRAVEL_PRODUCTS.has(product)) return "travel";
+  if (COMFORT_PRODUCTS.has(product)) return "comfort";
+  if (LIABILITY_PRODUCTS.has(product)) return "liability";
+  return null;
+}
+
+function categoryLabelForProduct(product?: Product | null): string | null {
+  const category = categoryForProduct(product);
+  if (!category) return null;
+  return CATEGORY_DEFS.find((it) => it.id === category)?.label ?? null;
+}
+
+function institutionLabelForProduct(product?: Product | null): string | null {
+  if (!product) return null;
+  const institution = PRODUCT_INSTITUTION_MAP[product];
+  return institution ? INSTITUTION_LABEL_BY_ID[institution] ?? null : null;
 }
 
 function toDate(value: unknown): Date | null {
@@ -1126,18 +1195,18 @@ export default function ContractsPage() {
                   showTeam && ownerEmail
                     ? adviserNameFromEmail(ownerEmail)
                     : "";
+                const premiumDisplay = premiumDisplayForContract(c as ContractDoc);
+                const categoryLabel = categoryLabelForProduct(c.productKey as Product | undefined);
+                const institutionLabel = institutionLabelForProduct(c.productKey as Product | undefined);
 
                 const CardContent = (
                   <article
-                    className={`relative flex h-full flex-col sm:flex-row sm:items-center gap-4 rounded-2xl border border-white/15 bg-white/[0.04] backdrop-blur-2xl px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.8)] hover:border-sky-400/70 hover:bg-white/[0.08] transition ${
+                    className={`relative rounded-2xl border border-white/15 bg-white/[0.03] px-4 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.45)] transition hover:border-white/30 hover:bg-white/[0.05] ${
                       isSelected ? "border-emerald-400/80 ring-2 ring-emerald-300/50" : ""
                     }`}
                   >
-                  {/* levý barevný pruh */}
-                  <div className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-gradient-to-b from-sky-400 via-indigo-400 to-emerald-400" />
-
                   {selectMode && (
-                    <div className="absolute right-3 top-3">
+                    <div className="absolute right-3 top-3 z-10">
                       <span
                         className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${
                           isSelected
@@ -1150,88 +1219,85 @@ export default function ContractsPage() {
                     </div>
                   )}
 
-                  {/* TEXTOVÁ ČÁST */}
-                  <div className="pl-3 flex-1 space-y-1">
-                    {/* Název produktu */}
-                    <div className="text-sm sm:text-base font-semibold text-slate-50">
-                      {productLabel(c.productKey)}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_190px] sm:gap-4">
+                    <div className="min-w-0">
+                      <div className="text-2xl leading-tight font-semibold text-slate-50">
+                        {productLabel(c.productKey)}
+                      </div>
+
+                      {(categoryLabel || institutionLabel) && (
+                        <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-400">
+                          {[categoryLabel, institutionLabel].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
+
+                      {anniversaryInfo.soon && (
+                        <div
+                          className="mt-2 text-xs text-amber-200"
+                          title={
+                            anniversaryInfo.next
+                              ? `Výročí: ${anniversaryInfo.next.toLocaleDateString(
+                                  "cs-CZ"
+                                )}`
+                              : undefined
+                          }
+                        >
+                          {anniversaryInfo.daysLeft != null
+                            ? `${formatDaysLeft(anniversaryInfo.daysLeft)} do výročí`
+                            : "Blížící se výročí"}
+                        </div>
+                      )}
+
+                      <div className="mt-3 grid grid-cols-1 gap-1 text-sm text-slate-300">
+                        <p>
+                          <span className="text-slate-400">Číslo smlouvy:</span>{" "}
+                          <span>{c.contractNumber ?? "—"}</span>
+                        </p>
+                        {c.clientName && (
+                          <p>
+                            <span className="text-slate-400">Klient:</span>{" "}
+                            <span>{c.clientName}</span>
+                          </p>
+                        )}
+                        <p>
+                          <span className="text-slate-400">Datum sjednání:</span>{" "}
+                          <span>{signedStr}</span>
+                        </p>
+                        {adviserName && (
+                          <p>
+                            <span className="text-slate-400">Sjednal:</span>{" "}
+                            <span>{adviserName}</span>
+                          </p>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Blížící se výročí */}
-                    {anniversaryInfo.soon && (
-                      <span
-                        className="inline-flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-100"
-                        title={
-                          anniversaryInfo.next
-                            ? `Výročí: ${anniversaryInfo.next.toLocaleDateString(
-                                "cs-CZ"
-                              )}`
-                            : undefined
-                        }
-                      >
-                        <span className="text-xs">⏳</span>
-                        {anniversaryInfo.daysLeft != null
-                          ? `${formatDaysLeft(anniversaryInfo.daysLeft)} do výročí`
-                          : "Blížící se výročí"}
-                      </span>
-                    )}
-
-                    {/* Číslo smlouvy */}
-                    <p className="text-[11px] sm:text-xs text-slate-300">
-                      <span className="font-medium text-slate-200">
-                        Číslo smlouvy:{" "}
-                      </span>
-                      <span>{c.contractNumber ?? "—"}</span>
-                    </p>
-
-                    {/* Klient */}
-                    {c.clientName && (
-                      <p className="text-[11px] sm:text-xs text-slate-300">
-                        <span className="font-medium text-slate-200">
-                          Klient:{" "}
+                    <div className="border-t border-white/10 pt-3 sm:border-t-0 sm:border-l sm:border-white/10 sm:pt-0 sm:pl-5">
+                      <div className="flex items-end justify-between gap-3 sm:h-full sm:flex-col sm:items-end sm:justify-between">
+                        <div className="text-right">
+                          <span className="text-[11px] uppercase tracking-[0.12em] text-slate-400">
+                            Pojistné
+                          </span>
+                          <div className="mt-1 whitespace-nowrap text-4xl leading-none font-semibold tracking-tight text-slate-100">
+                            {formatMoney(premiumDisplay.amount)}
+                          </div>
+                          {premiumDisplay.cadenceLabel && (
+                            <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-300">
+                              {premiumDisplay.cadenceLabel}
+                            </div>
+                          )}
+                        </div>
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${
+                            c.paid
+                              ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
+                              : "border-rose-400/40 bg-rose-500/10 text-rose-200"
+                          }`}
+                        >
+                          {c.paid ? "Zaplaceno" : "Nezaplaceno"}
                         </span>
-                        <span>{c.clientName}</span>
-                      </p>
-                    )}
-
-                    {/* Sjednal (jen u týmových smluv) */}
-                    {adviserName && (
-                      <p className="text-[11px] sm:text-xs text-slate-300">
-                        <span className="font-medium text-slate-200">
-                          Sjednal:{" "}
-                        </span>
-                        <span>{adviserName}</span>
-                      </p>
-                    )}
-
-                    {/* Datum sjednání */}
-                    <p className="text-[11px] sm:text-xs text-slate-300">
-                      <span className="font-medium text-slate-200">
-                        Datum sjednání:{" "}
-                      </span>
-                      <span>{signedStr}</span>
-                    </p>
-                  </div>
-
-                  {/* POJISTNÉ VPRAVO */}
-                  <div className="flex flex-row sm:flex-col items-end sm:items-end gap-2 min-w-[140px]">
-                    <div className="flex flex-row sm:flex-col items-end sm:items-end gap-1">
-                      <span className="text-[11px] sm:text-xs uppercase tracking-wide text-slate-300">
-                        Pojistné
-                      </span>
-                      <span className="text-base sm:text-lg font-semibold text-slate-50">
-                        {formatMoney(c.inputAmount ?? 0)}
-                      </span>
+                      </div>
                     </div>
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold border ${
-                        c.paid
-                          ? "bg-emerald-500/15 border-emerald-400/50 text-emerald-100"
-                          : "bg-rose-500/15 border-rose-400/50 text-rose-100"
-                      }`}
-                    >
-                      {c.paid ? "Zaplaceno" : "Nezaplaceno"}
-                    </span>
                   </div>
                 </article>
               );
