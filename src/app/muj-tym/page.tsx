@@ -11,8 +11,6 @@ import {
   getDoc,
   getDocFromServer,
   getDocs,
-  limit as fbLimit,
-  orderBy,
   query,
   where,
 } from "firebase/firestore";
@@ -27,6 +25,7 @@ type Member = {
   name: string;
   position?: Position | null;
   managerEmail?: string | null;
+  docId?: string;
 };
 
 type FirestoreTimestamp = {
@@ -138,6 +137,23 @@ type TeamCachePayload = {
 const TEAM_CACHE_TTL_MS = 60 * 1000;
 const teamDataCache: Record<string, { ts: number; payload: TeamCachePayload }> = {};
 
+type ActivityFilter = "all" | "online" | "recent" | "unknown";
+type SortKey = "activity" | "month" | "total" | "name";
+
+const ACTIVITY_FILTERS: { key: ActivityFilter; label: string }[] = [
+  { key: "all", label: "Všichni" },
+  { key: "online", label: "Online" },
+  { key: "recent", label: "Aktivní 24h" },
+  { key: "unknown", label: "Bez aktivity" },
+];
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "activity", label: "Nejaktivnější" },
+  { key: "month", label: "Smlouvy tento měsíc" },
+  { key: "total", label: "Celkem smluv" },
+  { key: "name", label: "Jméno A-Z" },
+];
+
 export default function TeamPage() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -153,6 +169,10 @@ export default function TeamPage() {
   const [, setContractsRefreshing] = useState(false);
   const [contractsError, setContractsError] = useState(false);
   const [userPosition, setUserPosition] = useState<Position | null>(null);
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
+  const [sortBy, setSortBy] = useState<SortKey>("activity");
+  const [copiedEmail, setCopiedEmail] = useState(false);
+  const copyEmailTimerRef = useRef<number | null>(null);
   const usedCacheRef = useRef(false);
   const cacheStateRef = useRef<{
     contractCounts: Record<string, { total: number; month: number; categories: Record<Category, number> }>;
@@ -234,21 +254,27 @@ export default function TeamPage() {
         const queue = [userEmail];
         const visited = new Set<string>();
         all = [];
+        const seededLastActive: Record<string, number | null> = {};
 
         while (queue.length > 0) {
           const mgr = queue.shift()!;
           const snap = await getDocs(query(usersCol, where("managerEmail", "==", mgr)));
           for (const docSnap of snap.docs) {
             const data = docSnap.data() as any;
-            const em = (data.email as string | undefined)?.toLowerCase() ?? "";
+            const docId = docSnap.id;
+            const rawEmail = (data.email as string | undefined)?.trim() || docId;
+            const em = rawEmail.toLowerCase();
             if (!em || visited.has(em)) continue;
             visited.add(em);
             const pos = (data.position as Position | undefined) ?? null;
+            const rawLastActive = toDate(data.lastActive)?.getTime();
+            seededLastActive[em] = Number.isFinite(rawLastActive) ? Number(rawLastActive) : null;
             all.push({
               email: em,
               name: nameFromEmail(em),
               position: pos,
-              managerEmail: mgr,
+              managerEmail: ((data.managerEmail as string | undefined)?.toLowerCase() ?? mgr),
+              docId,
             });
             queue.push(em);
           }
@@ -262,48 +288,38 @@ export default function TeamPage() {
         // načti poslední aktivitu (uložená statistika) pro každého
         const entries = await Promise.all(
           all.map(async (m) => {
-            const userRef = doc(db, "users", m.email);
-            try {
-              let userDoc = await getDoc(userRef);
-              let lastActiveUser = toDate((userDoc.data() as any)?.lastActive);
-              if (!lastActiveUser) {
-                try {
-                  userDoc = await getDocFromServer(userRef);
-                  lastActiveUser = toDate((userDoc.data() as any)?.lastActive);
-                } catch (err) {
-                  if (process.env.NODE_ENV !== "production") {
-                    console.info("[lastActive] server read failed", { email: m.email, err });
+            const seeded = seededLastActive[m.email];
+            if (typeof seeded === "number" && Number.isFinite(seeded)) {
+              return [m.email, seeded] as const;
+            }
+
+            const candidateIds = Array.from(new Set([m.docId, m.email].filter(Boolean))) as string[];
+            for (const id of candidateIds) {
+              const userRef = doc(db, "users", id);
+              try {
+                let userDoc = await getDoc(userRef);
+                let lastActiveUser = toDate((userDoc.data() as any)?.lastActive);
+                if (!lastActiveUser) {
+                  try {
+                    userDoc = await getDocFromServer(userRef);
+                    lastActiveUser = toDate((userDoc.data() as any)?.lastActive);
+                  } catch (err) {
+                    if (process.env.NODE_ENV !== "production") {
+                      console.info("[lastActive] server read failed", { email: m.email, id, err });
+                    }
                   }
                 }
-              }
-              if (lastActiveUser) {
-                return [m.email, lastActiveUser.getTime()] as const;
-              }
-            } catch (err) {
-              if (process.env.NODE_ENV !== "production") {
-                console.info("[lastActive] read failed", { email: m.email, err });
+                if (lastActiveUser) {
+                  return [m.email, lastActiveUser.getTime()] as const;
+                }
+              } catch (err) {
+                if (process.env.NODE_ENV !== "production") {
+                  console.info("[lastActive] read failed", { email: m.email, id, err });
+                }
               }
             }
 
-            try {
-              const snap = await getDocs(
-                query(
-                  collection(db, "userStats", m.email, "monthlySnapshots"),
-                  orderBy("savedAt", "desc"),
-                  fbLimit(1)
-                )
-              );
-              const raw = snap.docs[0]?.data()?.savedAt;
-              let d = toDate(raw);
-              if (!d && typeof raw === "number") {
-                const isSeconds = raw < 10_000_000_000; // heuristic
-                d = new Date(isSeconds ? raw * 1000 : raw);
-              }
-              const ts = d?.getTime();
-              return [m.email, Number.isFinite(ts) ? Number(ts) : null] as const;
-            } catch {
-              return [m.email, null] as const;
-            }
+            return [m.email, null] as const;
           })
         );
         lastActiveMap = Object.fromEntries(entries);
@@ -458,17 +474,82 @@ export default function TeamPage() {
     void loadContractCounts();
   }, [members, cacheKey, lastActive, userPosition, contractsLoaded, contractsError]);
 
-  const filtered = useMemo(() => {
+  const filteredMembers = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return members;
-    return members.filter((m) => m.name.toLowerCase().includes(term) || m.email.toLowerCase().includes(term));
-  }, [members, search]);
+
+    const base = members.filter((m) => {
+      const searchOk = !term || m.name.toLowerCase().includes(term) || m.email.toLowerCase().includes(term);
+      if (!searchOk) return false;
+      if (activityFilter === "all") return true;
+      const ts = lastActive[m.email];
+      if (!ts) return activityFilter === "unknown";
+      const diff = Date.now() - ts;
+      if (activityFilter === "online") return diff <= ONLINE_THRESHOLD_MS;
+      if (activityFilter === "recent") return diff <= RECENT_THRESHOLD_MS;
+      return false;
+    });
+
+    const toActivityRank = (email: string) => {
+      const ts = lastActive[email];
+      if (!ts) return Number.NEGATIVE_INFINITY;
+      return ts;
+    };
+
+    return base.sort((a, b) => {
+      if (sortBy === "name") return a.name.localeCompare(b.name, "cs");
+      if (sortBy === "month") {
+        const aVal = contractCounts[a.email]?.month ?? 0;
+        const bVal = contractCounts[b.email]?.month ?? 0;
+        if (aVal !== bVal) return bVal - aVal;
+      }
+      if (sortBy === "total") {
+        const aVal = contractCounts[a.email]?.total ?? 0;
+        const bVal = contractCounts[b.email]?.total ?? 0;
+        if (aVal !== bVal) return bVal - aVal;
+      }
+      // default i fallback: nejaktivnější první
+      const actDiff = toActivityRank(b.email) - toActivityRank(a.email);
+      if (actDiff !== 0) return actDiff;
+      return a.name.localeCompare(b.name, "cs");
+    });
+  }, [members, search, activityFilter, sortBy, lastActive, contractCounts]);
+
+  useEffect(() => {
+    if (!filteredMembers.length) {
+      setSelectedEmail(null);
+      return;
+    }
+    setSelectedEmail((prev) => (prev && filteredMembers.some((m) => m.email === prev) ? prev : filteredMembers[0].email));
+  }, [filteredMembers]);
+
+  useEffect(() => {
+    return () => {
+      if (copyEmailTimerRef.current) window.clearTimeout(copyEmailTimerRef.current);
+    };
+  }, []);
 
   const selected = members.find((m) => m.email === selectedEmail) ?? null;
+  const selectedStats = selected ? contractCounts[selected.email] : null;
+  const selectedMonthShare =
+    selectedStats && selectedStats.total > 0
+      ? Math.round((selectedStats.month / selectedStats.total) * 100)
+      : 0;
   const subordinatesOfSelected = useMemo(
     () => (selected ? members.filter((m) => (m.managerEmail ?? "").toLowerCase() === selected.email) : []),
     [selected, members]
   );
+
+  const handleCopySelectedEmail = async () => {
+    if (!selected?.email) return;
+    try {
+      await navigator.clipboard.writeText(selected.email);
+      setCopiedEmail(true);
+      if (copyEmailTimerRef.current) window.clearTimeout(copyEmailTimerRef.current);
+      copyEmailTimerRef.current = window.setTimeout(() => setCopiedEmail(false), 1500);
+    } catch {
+      // clipboard může být blokovaný browserem
+    }
+  };
 
   const formatLastActive = (email: string): string => {
     const ts = lastActive[email];
@@ -487,7 +568,7 @@ export default function TeamPage() {
     if (!ts) {
       return {
         label: "Neznámé",
-        className: "bg-white/5 text-slate-300 border-white/15",
+        className: "bg-white text-slate-600 border-slate-300",
         title: "Bez záznamu o aktivitě",
       };
     }
@@ -495,20 +576,20 @@ export default function TeamPage() {
     if (diff <= ONLINE_THRESHOLD_MS) {
       return {
         label: "Online",
-        className: "bg-emerald-500/15 text-emerald-100 border-emerald-300/70",
+        className: "bg-emerald-50 text-emerald-700 border-emerald-600",
         title: `Aktivní ${new Date(ts).toLocaleString("cs-CZ")}`,
       };
     }
     if (diff <= RECENT_THRESHOLD_MS) {
       return {
         label: formatRelative(ts),
-        className: "bg-amber-500/15 text-amber-100 border-amber-300/60",
+        className: "bg-amber-50 text-amber-700 border-amber-600",
         title: `Naposledy ${new Date(ts).toLocaleString("cs-CZ")}`,
       };
     }
     return {
       label: formatRelative(ts),
-      className: "bg-white/5 text-slate-300 border-white/15",
+      className: "bg-white text-slate-600 border-slate-300",
       title: `Naposledy ${new Date(ts).toLocaleString("cs-CZ")}`,
     };
   };
@@ -525,26 +606,26 @@ export default function TeamPage() {
     const stats = contractCounts[email];
     const total = stats?.total ?? 0;
     if (!stats || total === 0) {
-      return <div className="text-sm text-slate-400">Žádné smlouvy.</div>;
+      return <div className="text-sm text-slate-500">Žádné smlouvy.</div>;
     }
     const entries = (Object.keys(CATEGORY_LABELS) as Category[])
       .map((cat) => ({ cat, count: stats.categories?.[cat] ?? 0 }))
       .filter((c) => c.count > 0);
     if (entries.length === 0) {
-      return <div className="text-sm text-slate-400">Žádné smlouvy.</div>;
+      return <div className="text-sm text-slate-500">Žádné smlouvy.</div>;
     }
     return (
       <div className="space-y-1">
         {entries.map(({ cat, count }) => {
           const pct = Math.round((count / total) * 100);
           return (
-            <div key={cat} className="flex items-center gap-2 text-[12px] text-slate-100">
+            <div key={cat} className="flex items-center gap-2 text-[12px] text-slate-900">
               <span
-                className="h-3 w-3 rounded-full border border-white/10 shadow-sm"
+                className="h-3 w-3 rounded-full border border-slate-300 shadow-sm"
                 style={{ backgroundColor: CATEGORY_COLORS[cat] }}
               />
               <span className="font-semibold">{CATEGORY_LABELS[cat]}</span>
-              <span className="text-slate-400">{count} · {pct}%</span>
+              <span className="text-slate-500">{count} · {pct}%</span>
             </div>
           );
         })}
@@ -556,12 +637,12 @@ export default function TeamPage() {
     const stats = contractCounts[email];
     const total = stats?.total ?? 0;
     if (!stats || total === 0) {
-      return <div className="text-sm text-slate-400">Žádné smlouvy.</div>;
+      return <div className="text-sm text-slate-500">Žádné smlouvy.</div>;
     }
     const entries = (Object.keys(CATEGORY_LABELS) as Category[])
       .map((cat) => ({ cat, count: stats.categories?.[cat] ?? 0 }))
       .filter((c) => c.count > 0);
-    if (entries.length === 0) return <div className="text-sm text-slate-400">Žádné smlouvy.</div>;
+    if (entries.length === 0) return <div className="text-sm text-slate-500">Žádné smlouvy.</div>;
 
     const size = 140;
     const r = 60;
@@ -613,104 +694,123 @@ export default function TeamPage() {
     );
   };
 
-  const performanceInfo = (email: string) => {
-    const stats = contractCounts[email];
-    const month = stats?.month ?? 0;
-    if (month > 0) {
-      return { label: "↑", className: "bg-emerald-500/15 text-emerald-100 border-emerald-300/60" };
-    }
-    if (month < 0) {
-      return { label: "↓", className: "bg-rose-500/15 text-rose-100 border-rose-300/60" };
-    }
-    return { label: "→", className: "bg-white/5 text-slate-300 border-white/15" };
-  };
-
   const canSendTeamMessage = isManagerPosition(userPosition) && members.length > 0;
 
   return (
     <AppLayout active="team">
-      <div className="w-full max-w-5xl space-y-6">
+      <div className="w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
         <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <SplitTitle text="Můj tým" />
+          <SplitTitle text="Můj tým" className="!text-slate-900" />
         </header>
 
         {loading ? (
-          <p className="text-sm text-slate-300">Načítám tým…</p>
+          <p className="text-sm text-slate-600">Načítám tým…</p>
         ) : members.length === 0 ? (
-          <p className="text-sm text-slate-300">Nemáš nastavené žádné podřízené.</p>
+          <p className="text-sm text-slate-600">Nemáš nastavené žádné podřízené.</p>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-gradient-to-r from-black/70 via-black/65 to-black/60 px-3 py-2 w-full max-w-sm shadow-[0_14px_40px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
-                <span className="text-slate-500 text-sm">🔍</span>
-                <input
-                  type="text"
-                  placeholder="Jméno nebo e-mail"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
-                />
-              </div>
-              <div className="flex items-center gap-2">
+            <div className="space-y-3 rounded-3xl border border-slate-900 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border border-slate-900 bg-white px-3 py-2">
+                  <span className="text-slate-500 text-sm">🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Jméno nebo e-mail"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500"
+                  />
+                </div>
+
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortKey)}
+                  className="rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none hover:bg-slate-50"
+                >
+                  {SORT_OPTIONS.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
                 <Link
                   href="/pomucky/struktura"
-                  className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/25 transition"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-black"
                 >
                   Struktura
                 </Link>
                 {canSendTeamMessage ? (
                   <Link
                     href="/pomucky/zprava-tymu"
-                    className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/25 transition"
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-black"
                   >
                     Zpráva týmu
                   </Link>
                 ) : null}
               </div>
+
+              <div className="flex flex-wrap gap-2">
+                {ACTIVITY_FILTERS.map((option) => {
+                  const active = activityFilter === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => setActivityFilter(option.key)}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                        active
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-900 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-[0.8fr_1.2fr] gap-4 items-start">
-              <div className="relative overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br from-black/70 via-black/65 to-black/60 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.5)] backdrop-blur-2xl space-y-3">
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent rounded-3xl" />
+              <div className="relative overflow-hidden rounded-3xl border border-slate-900 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.14)] space-y-3">
                 <div className="relative z-10 flex items-center justify-between">
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Podřízení</div>
-                  <span className="text-[11px] rounded-full border border-white/15 bg-white/8 px-2 py-0.5 text-slate-200">
-                    {filtered.length} osob
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
+                  <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+                    {filteredMembers.length} osob
                   </span>
                 </div>
                 <div className="relative z-10 space-y-2">
-                  {filtered.map((m) => {
+                  {filteredMembers.length === 0 && (
+                    <div className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                      Pro zadaný filtr nejsou žádní členové.
+                    </div>
+                  )}
+                  {filteredMembers.map((m) => {
                     const isSelected = m.email === selectedEmail;
-                    const perf = performanceInfo(m.email);
                     const last = lastActiveBadge(m.email);
                     return (
                       <button
                         key={m.email}
                         onClick={() => setSelectedEmail(m.email)}
                         className={[
-                          "w-full text-left px-4 py-3 rounded-2xl border transition flex items-center justify-between gap-3 backdrop-blur-xl",
+                          "w-full text-left px-3 py-2.5 rounded-2xl border transition flex items-center justify-between gap-3",
                           isSelected
-                            ? "border-emerald-300/70 bg-white/8 text-white shadow-[0_12px_36px_rgba(52,211,153,0.15)]"
-                            : "border-white/12 bg-white/5 text-slate-100 hover:border-white/25 hover:bg-white/8",
+                            ? "border-slate-900 bg-slate-100 text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.1)]"
+                            : "border-slate-300 bg-white text-slate-900 hover:border-slate-900 hover:bg-slate-50",
                         ].join(" ")}
                       >
-                        <div className="text-sm font-semibold">{m.name}</div>
-                        <div className="flex items-center gap-2">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold truncate">{m.name}</div>
+                          <div className="text-[11px] text-slate-500 truncate">{m.email}</div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">{positionLabel(m.position)}</div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
                           <span
-                            className={`text-[11px] inline-flex items-center justify-center rounded-full border px-2 py-1 ${perf.className}`}
-                            title={`Výkon tento měsíc: ${contractCountLabel(m.email, "month")}`}
-                          >
-                            {perf.label}
-                          </span>
-                          <span
-                            className={`text-[11px] inline-flex items-center justify-center rounded-full border px-2 py-1 ${last.className}`}
+                            className={`text-[11px] inline-flex items-center justify-center rounded-full border px-2 py-0.5 ${last.className}`}
                             title={last.title}
                           >
                             {last.label}
                           </span>
-                          <div className="text-[11px] rounded-full border border-white/10 bg-white/5 px-2 py-1 text-slate-300">
-                            {positionLabel(m.position)}
-                          </div>
                         </div>
                       </button>
                     );
@@ -718,20 +818,32 @@ export default function TeamPage() {
                 </div>
               </div>
 
-              <div className="relative overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br from-black/70 via-black/65 to-black/60 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.5)] backdrop-blur-2xl space-y-4">
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent rounded-3xl" />
+              <div className="relative overflow-hidden rounded-3xl border border-slate-900 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.14)] space-y-4">
                 {selected ? (
                   <>
                     <div className="relative z-10 flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-1">Detail</div>
-                        <div className="text-2xl font-bold text-white leading-tight">{selected.name}</div>
-                        <p className="text-sm text-slate-300 mt-1">{selected.email}</p>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1">Detail</div>
+                        <div className="text-2xl font-bold text-slate-900 leading-tight">{selected.name}</div>
+                        <p className="text-sm text-slate-500 mt-1">{selected.email}</p>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap justify-end">
+                        <button
+                          type="button"
+                          onClick={handleCopySelectedEmail}
+                          className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+                        >
+                          {copiedEmail ? "Zkopírováno" : "Kopírovat e-mail"}
+                        </button>
+                        <a
+                          href={`mailto:${selected.email}`}
+                          className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+                        >
+                          Napsat e-mail
+                        </a>
                         <Link
                           href={`/pomucky/statistika?user=${encodeURIComponent(selected.email)}`}
-                          className="rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/25 transition"
+                          className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
                         >
                           Statistiky
                         </Link>
@@ -739,33 +851,38 @@ export default function TeamPage() {
                     </div>
 
                     <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="rounded-2xl border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 p-3 space-y-1 backdrop-blur-xl shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)]">
-                        <div className="text-[11px] uppercase tracking-wide text-slate-400">Pozice</div>
-                        <div className="text-sm font-semibold text-white">{positionLabel(selected.position)}</div>
+                      <div className="rounded-2xl border border-slate-300 bg-slate-50 p-3 space-y-1">
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Pozice</div>
+                        <div className="text-sm font-semibold text-slate-900">{positionLabel(selected.position)}</div>
                       </div>
-                      <div className="rounded-2xl border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 p-3 space-y-1 backdrop-blur-xl shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)]">
-                        <div className="text-[11px] uppercase tracking-wide text-slate-400">Naposledy aktivní</div>
-                        <div className="text-sm font-semibold text-white" title={formatLastActive(selected.email)}>
+                      <div className="rounded-2xl border border-slate-300 bg-slate-50 p-3 space-y-1">
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Naposledy aktivní</div>
+                        <div className="text-sm font-semibold text-slate-900" title={formatLastActive(selected.email)}>
                           {formatRelative(lastActive[selected.email])}
                         </div>
                       </div>
                     </div>
 
-                    <div className="relative z-10 rounded-2xl border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 p-3 grid grid-cols-1 sm:grid-cols-2 gap-3 backdrop-blur-xl shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)]">
+                    <div className="relative z-10 rounded-2xl border border-slate-300 bg-slate-50 p-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <div className="text-[11px] uppercase tracking-wide text-slate-400">Celkem smluv</div>
-                        <div className="text-lg font-bold text-white">{contractCountLabel(selected.email, "total")}</div>
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Celkem smluv</div>
+                        <div className="text-lg font-bold text-slate-900">{contractCountLabel(selected.email, "total")}</div>
                       </div>
                       <div>
-                        <div className="text-[11px] uppercase tracking-wide text-slate-400">Smluv tento měsíc</div>
-                        <div className="text-lg font-bold text-white">{contractCountLabel(selected.email, "month")}</div>
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Smluv tento měsíc</div>
+                        <div className="text-lg font-bold text-slate-900">{contractCountLabel(selected.email, "month")}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Podíl měsíce</div>
+                        <div className="text-lg font-bold text-slate-900">
+                          {selectedStats?.total ? `${selectedMonthShare} %` : "—"}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="relative rounded-2xl border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 p-3 space-y-2 backdrop-blur-xl shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] overflow-hidden">
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/12 via-white/4 to-transparent" />
+                    <div className="relative rounded-2xl border border-slate-300 bg-slate-50 p-3 space-y-2 overflow-hidden">
                       <div className="relative z-10 flex items-center justify-between">
-                        <div className="text-[11px] uppercase tracking-wide text-slate-400">Podíl kategorií</div>
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Podíl kategorií</div>
                         <div className="text-[11px] text-slate-500">(podle počtu smluv)</div>
                       </div>
                       <div className="relative z-10 grid grid-cols-1 sm:grid-cols-[150px_1fr] items-center gap-3">
@@ -776,13 +893,13 @@ export default function TeamPage() {
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Podřízení</div>
-                        <span className="text-[11px] text-slate-400">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
+                        <span className="text-[11px] text-slate-500">
                           {subordinatesOfSelected.length} {subordinatesOfSelected.length === 1 ? "osoba" : "osob"}
                         </span>
                       </div>
                       {subordinatesOfSelected.length === 0 ? (
-                        <div className="text-sm text-slate-400 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                        <div className="text-sm text-slate-500 rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2">
                           Nemá podřízené.
                         </div>
                       ) : (
@@ -790,11 +907,11 @@ export default function TeamPage() {
                           {subordinatesOfSelected.map((sub) => (
                             <div
                               key={sub.email}
-                              className="rounded-2xl border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 px-3 py-2 space-y-1 backdrop-blur-xl shadow-[0_10px_24px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.08)]"
+                              className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 space-y-1"
                             >
-                              <div className="text-sm font-semibold text-white">{sub.name}</div>
-                              <div className="text-xs text-slate-400">{sub.email}</div>
-                              <div className="text-xs text-slate-400">
+                              <div className="text-sm font-semibold text-slate-900">{sub.name}</div>
+                              <div className="text-xs text-slate-500">{sub.email}</div>
+                              <div className="text-xs text-slate-500">
                                 {positionLabel(sub.position)} · Celkem: {contractCountLabel(sub.email, "total")} · Tento měsíc:{" "}
                                 {contractCountLabel(sub.email, "month")}
                               </div>
@@ -805,7 +922,7 @@ export default function TeamPage() {
                     </div>
                   </>
                 ) : (
-                  <div className="text-sm text-slate-400">Vyber podřízeného vlevo.</div>
+                  <div className="text-sm text-slate-500">Vyber podřízeného vlevo.</div>
                 )}
               </div>
             </div>

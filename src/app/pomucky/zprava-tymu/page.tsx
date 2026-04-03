@@ -178,10 +178,10 @@ export default function TeamMessagePage() {
       <div className="w-full max-w-3xl space-y-6">
         {/* Header */}
         <header>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-50">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
             Zpráva týmu
           </h1>
-          <p className="mt-1 text-sm text-slate-300 max-w-2xl">
+          <p className="mt-1 text-sm text-slate-600 max-w-2xl">
             Odešli krátkou motivační nebo informační zprávu podřízeným
             přes push notifikaci v mobilní aplikaci.
           </p>
@@ -189,13 +189,13 @@ export default function TeamMessagePage() {
 
         {/* Info pro uživatele bez práv / bez podřízených */}
         {!user && (
-          <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-4 text-sm text-slate-200 shadow-[0_18px_60px_rgba(0,0,0,0.85)]">
+          <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-4 text-sm text-slate-800 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
             Musíš být přihlášený, aby bylo možné odeslat zprávu týmu.
           </section>
         )}
 
         {user && noSubordinates && (
-          <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-4 text-sm text-slate-200 shadow-[0_18px_60px_rgba(0,0,0,0.85)]">
+          <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-4 text-sm text-slate-800 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
             Nemám u tebe v databázi žádné podřízené. Zkontroluj, že mají
             v kolekci <code className="text-xs">users</code> nastavený{" "}
             <code className="text-xs">managerEmail</code> na tvůj e-mail.
@@ -203,38 +203,38 @@ export default function TeamMessagePage() {
         )}
 
         {/* 1) Úvodní karta */}
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-2">
+        <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-2">
           <div className="flex items-center gap-2">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-sky-500/20 border border-sky-400/70 text-sky-200 text-lg">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-sky-500/20 border border-sky-400/70 text-sky-800 text-lg">
               👥
             </span>
-            <h2 className="text-base sm:text-lg font-semibold text-slate-50">
+            <h2 className="text-base sm:text-lg font-semibold text-slate-900">
               Broadcast zpráva týmu
             </h2>
           </div>
-          <p className="text-xs sm:text-sm text-slate-300">
+          <p className="text-xs sm:text-sm text-slate-600">
             Odešli krátkou motivační nebo informační zprávu podřízeným přes
             push notifikaci v jejich mobilní aplikaci.
           </p>
           {errorText && (
-            <p className="text-xs text-rose-300 mt-1">{errorText}</p>
+            <p className="text-xs text-rose-700 mt-1">{errorText}</p>
           )}
         </section>
 
         {/* 2) Komu poslat */}
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
-          <h2 className="text-sm sm:text-base font-semibold text-slate-50">
+        <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
+          <h2 className="text-sm sm:text-base font-semibold text-slate-900">
             Komu zprávu poslat?
           </h2>
 
-          <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+          <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
             <button
               type="button"
               onClick={() => setTargetMode("all")}
               className={`px-3 py-1.5 rounded-full transition ${
                 targetMode === "all"
                   ? "bg-white text-slate-900"
-                  : "text-slate-200"
+                  : "text-slate-800"
               }`}
             >
               Všichni podřízení
@@ -245,7 +245,7 @@ export default function TeamMessagePage() {
               className={`px-3 py-1.5 rounded-full transition ${
                 targetMode === "selected"
                   ? "bg-white text-slate-900"
-                  : "text-slate-200"
+                  : "text-slate-800"
               }`}
             >
               Vybraní poradci
@@ -253,7 +253,7 @@ export default function TeamMessagePage() {
           </div>
 
           {targetMode === "all" && (
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-slate-600">
               Zpráva bude odeslána všem aktuálně evidovaným podřízeným.
             </p>
           )}
@@ -261,15 +261,15 @@ export default function TeamMessagePage() {
 
         {/* 3) Výběr podřízených – jen pokud režim "vybraní" */}
         {targetMode === "selected" && (
-          <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
-            <h2 className="text-sm sm:text-base font-semibold text-slate-50">
+          <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
+            <h2 className="text-sm sm:text-base font-semibold text-slate-900">
               Vyber konkrétní podřízené
             </h2>
 
             {loadingSubs ? (
-              <p className="text-xs text-slate-300">Načítám podřízené…</p>
+              <p className="text-xs text-slate-600">Načítám podřízené…</p>
             ) : subordinates.length === 0 ? (
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-slate-600">
                 Nemám v databázi žádné podřízené. Zkontroluj, že mají v
                 dokumentu <code className="text-xs">users</code> nastavený{" "}
                 <code className="text-xs">managerEmail</code>.
@@ -286,20 +286,20 @@ export default function TeamMessagePage() {
                         onClick={() => toggleEmail(sub.email)}
                         className="w-full text-left"
                       >
-                        <div className="flex items-center justify-between gap-3 rounded-2xl bg-white/5 border border-white/10 px-3 py-2 hover:bg-white/10 transition">
+                        <div className="flex items-center justify-between gap-3 rounded-2xl bg-white border border-slate-300 px-3 py-2 hover:bg-slate-100 transition">
                           <div>
-                            <div className="text-sm font-semibold text-slate-50">
+                            <div className="text-sm font-semibold text-slate-900">
                               {sub.name}
                             </div>
-                            <div className="text-[11px] text-slate-300">
+                            <div className="text-[11px] text-slate-600">
                               {sub.email}
                             </div>
                           </div>
                           <div
                             className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs ${
                               active
-                                ? "border-emerald-400 bg-emerald-500/20 text-emerald-200"
-                                : "border-white/40 bg-black/30 text-slate-300"
+                                ? "border-emerald-400 bg-emerald-500/20 text-emerald-800"
+                                : "border-slate-400 bg-white text-slate-600"
                             }`}
                           >
                             {active ? "✓" : ""}
@@ -310,7 +310,7 @@ export default function TeamMessagePage() {
                   })}
                 </div>
 
-                <p className="text-xs text-slate-300 mt-2">
+                <p className="text-xs text-slate-600 mt-2">
                   Vybráno:{" "}
                   <span className="font-semibold">
                     {selectedEmails.length}
@@ -323,14 +323,14 @@ export default function TeamMessagePage() {
         )}
 
         {/* 4) Text zprávy */}
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
-          <h2 className="text-sm sm:text-base font-semibold text-slate-50">
+        <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
+          <h2 className="text-sm sm:text-base font-semibold text-slate-900">
             Text zprávy
           </h2>
 
           <div className="relative">
             <textarea
-              className="w-full min-h-[140px] rounded-2xl border border-white/20 bg-black/30 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/80 focus:border-sky-500/80 resize-vertical"
+              className="w-full min-h-[140px] rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/80 focus:border-sky-500/80 resize-vertical"
               value={messageText}
               onChange={(e) => setMessageText(e.target.value)}
               maxLength={240}
@@ -340,8 +340,8 @@ export default function TeamMessagePage() {
               <span
                 className={`text-[11px] ${
                   messageText.length > 200
-                    ? "text-rose-300"
-                    : "text-slate-400"
+                    ? "text-rose-700"
+                    : "text-slate-500"
                 }`}
               >
                 {messageText.length}/200
@@ -356,14 +356,14 @@ export default function TeamMessagePage() {
             type="button"
             onClick={handleSend}
             disabled={!canSend}
-            className="inline-flex items-center gap-2 rounded-full border border-emerald-400/70 bg-emerald-500/20 px-7 py-2.5 text-sm sm:text-base font-semibold text-emerald-50 shadow-[0_0_25px_rgba(16,185,129,0.55)] hover:bg-emerald-500/30 hover:border-emerald-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-full border border-emerald-400/70 bg-emerald-500/20 px-7 py-2.5 text-sm sm:text-base font-semibold text-emerald-800 shadow-[0_0_25px_rgba(16,185,129,0.55)] hover:bg-emerald-500/30 hover:border-emerald-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {sending ? "Odesílám…" : "Odeslat notifikaci"}
           </button>
         </div>
 
         {sendSuccess && (
-          <p className="text-center text-xs text-emerald-200">
+          <p className="text-center text-xs text-emerald-800">
             Notifikace byla úspěšně odeslána ✅
           </p>
         )}

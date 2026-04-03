@@ -1203,20 +1203,20 @@ export default function SrovnavacTrvalychNasledkuPage() {
           </div>
           <Link
             href="/pomucky"
-            className="inline-flex items-center text-xs text-slate-300 hover:text-white transition"
+            className="inline-flex items-center text-xs text-slate-600 hover:text-slate-900 transition"
           >
             ← Zpět na pomůcky
           </Link>
         </header>
 
-        <section className="w-full md:w-1/2 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.7)] space-y-4">
+        <section className="w-full md:w-1/2 rounded-3xl border border-slate-300 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.7)] space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <h2 className="text-lg font-semibold text-white">Vstupní parametry</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Vstupní parametry</h2>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="space-y-1 text-sm text-slate-200">
-              <span className="block text-xs uppercase tracking-wide text-slate-300">
+            <label className="space-y-1 text-sm text-slate-800">
+              <span className="block text-xs uppercase tracking-wide text-slate-600">
                 Pojistná částka (Kč)
               </span>
               <input
@@ -1233,12 +1233,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     setSumInsuredInput(formatKcInput(parsed));
                   }
                 }}
-                className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               />
             </label>
 
-            <label className="space-y-1 text-sm text-slate-200">
-              <span className="block text-xs uppercase tracking-wide text-slate-300">
+            <label className="space-y-1 text-sm text-slate-800">
+              <span className="block text-xs uppercase tracking-wide text-slate-600">
                 Rozsah trvalých následků (%)
               </span>
               <input
@@ -1252,10 +1252,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   const limited = Math.min(100, Math.max(0, parsed));
                   setRangePercentInput(formatKcInput(limited));
                 }}
-                className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               />
               {Number.isFinite(rangePercentRaw) && rangePercentRaw > 100 && (
-                <p className="text-[11px] text-amber-200">
+                <p className="text-[11px] text-amber-800">
                   Max 100 %. Počítám s {rangePercentValue}%.
                 </p>
               )}
@@ -1266,50 +1266,50 @@ export default function SrovnavacTrvalychNasledkuPage() {
         <section className="space-y-3">
           <div className="flex flex-wrap items-center gap-3 justify-between">
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold text-white">Srovnání plnění</h2>
-              <span className="text-[11px] text-slate-400">Výsledek podle zadaných parametrů.</span>
+              <h2 className="text-lg font-semibold text-slate-900">Srovnání plnění</h2>
+              <span className="text-[11px] text-slate-500">Výsledek podle zadaných parametrů.</span>
             </div>
             <button
               type="button"
               onClick={() => window.print()}
-              className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-100 shadow-[0_10px_30px_rgba(0,0,0,0.4)] transition hover:border-sky-300/70 hover:bg-sky-500/20 hover:text-white"
+              className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-4 py-2 text-xs font-semibold text-slate-900 shadow-[0_10px_30px_rgba(0,0,0,0.4)] transition hover:border-sky-300/70 hover:bg-sky-500/20 hover:text-slate-900"
             >
               Export PDF
             </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="text-[11px] text-slate-400">Filtr:</div>
+            <div className="text-[11px] text-slate-500">Filtr:</div>
             <button
               type="button"
               onClick={() => setShowOnly10x((v) => !v)}
               className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
                 showOnly10x
-                  ? "border-sky-400/70 bg-sky-500/20 text-white shadow-[0_0_18px_rgba(56,189,248,0.4)]"
-                  : "border-white/15 bg-white/5 text-slate-200 hover:border-sky-300/60 hover:text-white"
+                  ? "border-sky-400/70 bg-sky-100 text-slate-900 shadow-[0_0_18px_rgba(56,189,248,0.4)]"
+                  : "border-slate-900 bg-white text-slate-800 hover:border-sky-300/60 hover:text-slate-900"
               }`}
             >
               Pouze 10× progrese
             </button>
             {showOnly10x && (
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-slate-500">
                 Zobrazuji jen varianty s 10× progresí.
               </span>
             )}
             {selectedInsurers.length > 0 && (
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-slate-500">
                 Vybráno pojišťoven: {selectedInsurers.length}
               </span>
             )}
             <div className="ml-auto flex items-center gap-2">
-              <span className="text-[11px] text-slate-400">Zobrazení:</span>
+              <span className="text-[11px] text-slate-500">Zobrazení:</span>
               <button
                 type="button"
                 onClick={() => setCompactList((v) => !v)}
                 className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
                   compactList
-                    ? "border-emerald-300/70 bg-emerald-500/20 text-white shadow-[0_0_18px_rgba(16,185,129,0.35)]"
-                    : "border-white/15 bg-white/5 text-slate-200 hover:border-sky-300/60 hover:text-white"
+                    ? "border-emerald-300/70 bg-emerald-100 text-slate-900 shadow-[0_0_18px_rgba(16,185,129,0.35)]"
+                    : "border-slate-900 bg-white text-slate-800 hover:border-sky-300/60 hover:text-slate-900"
                 }`}
               >
                 {compactList ? "Kompaktní (1/řádek)" : "Karty (3/řádek)"}
@@ -1318,14 +1318,14 @@ export default function SrovnavacTrvalychNasledkuPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="text-[11px] text-slate-400">Pojišťovny:</div>
+            <div className="text-[11px] text-slate-500">Pojišťovny:</div>
             <button
               type="button"
               onClick={() => setSelectedInsurers([])}
               className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
                 selectedInsurers.length === 0
-                  ? "border-emerald-300/70 bg-emerald-500/20 text-white shadow-[0_0_18px_rgba(16,185,129,0.35)]"
-                  : "border-white/15 bg-white/5 text-slate-200 hover:border-sky-300/60 hover:text-white"
+                  ? "border-emerald-300/70 bg-emerald-100 text-slate-900 shadow-[0_0_18px_rgba(16,185,129,0.35)]"
+                  : "border-slate-900 bg-white text-slate-800 hover:border-sky-300/60 hover:text-slate-900"
               }`}
             >
               Všechny
@@ -1346,8 +1346,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   }
                   className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
                     active
-                      ? "border-sky-400/70 bg-sky-500/20 text-white shadow-[0_0_18px_rgba(56,189,248,0.4)]"
-                      : "border-white/15 bg-white/5 text-slate-200 hover:border-sky-300/60 hover:text-white"
+                      ? "border-sky-400/70 bg-sky-100 text-slate-900 shadow-[0_0_18px_rgba(56,189,248,0.4)]"
+                      : "border-slate-900 bg-white text-slate-800 hover:border-sky-300/60 hover:text-slate-900"
                   }`}
                   aria-pressed={active}
                 >
@@ -1368,12 +1368,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
               const podium = podiumStyles[idx];
               const borderClass = podium
                 ? `${podium.border} border`
-                : "border border-white/12";
+                : "border border-slate-300";
 
               return (
                 <div
                   key={card.key}
-                  className={`relative print-card rounded-3xl bg-gradient-to-br from-white/6 via-slate-900/28 to-slate-950/35 ${compactList ? "px-4 py-4" : "px-5 py-5"} shadow-[0_16px_60px_rgba(0,0,0,0.7)] backdrop-blur ${borderClass} ${
+                  className={`relative print-card rounded-3xl bg-gradient-to-br from-white/6 via-slate-900/28 to-slate-950/35 ${compactList ? "px-4 py-4" : "px-5 py-5"} shadow-[0_16px_60px_rgba(0,0,0,0.7)]  ${borderClass} ${
                     compactList ? "md:flex md:items-center md:gap-4" : ""
                   }`}
                 >
@@ -1382,7 +1382,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       <span className={`rounded-full px-2 py-0.5 ${podium.badgeBg}`}>
                         {podium.badgeText}
                       </span>
-                      <span className="text-slate-100">{podium.title}</span>
+                      <span className="text-slate-900">{podium.title}</span>
                     </div>
                   )}
 
@@ -1392,10 +1392,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     }`}
                   >
                     <div>
-                      <div className="text-xs uppercase tracking-wide text-slate-300">
+                      <div className="text-xs uppercase tracking-wide text-slate-600">
                         Pojišťovna
                       </div>
-                      <div className="text-xl font-semibold text-white">{card.insurer}</div>
+                      <div className="text-xl font-semibold text-slate-900">{card.insurer}</div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
                     {card.badges.map((badge) => (
@@ -1412,9 +1412,9 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   <div
                     className={`mt-4 space-y-2 ${compactList ? "md:mt-0 md:w-1/3" : ""}`}
                   >
-                    <div className="text-sm text-slate-300">Plnění</div>
+                    <div className="text-sm text-slate-600">Plnění</div>
                     <div
-                      className={`font-bold text-emerald-200 ${
+                      className={`font-bold text-emerald-800 ${
                         compactList ? "text-2xl" : "text-3xl"
                       }`}
                     >
@@ -1428,7 +1428,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   <button
                     type="button"
                     onClick={() => setInfoOpen(infoOpen === card.key ? null : card.key)}
-                    className="relative bottom-0 right-0 mt-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10 text-xs font-semibold text-slate-100 transition hover:border-sky-300/70 hover:bg-sky-500/20 hover:text-white"
+                    className="relative bottom-0 right-0 mt-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-900 bg-slate-100 text-xs font-semibold text-slate-900 transition hover:border-sky-300/70 hover:bg-sky-500/20 hover:text-slate-900"
                     aria-label={`Zobrazit výpočet pro ${card.insurer}`}
                   >
                     i
@@ -1437,23 +1437,23 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
                 {infoOpen === card.key && (
                   <div
-                    className="absolute bottom-16 right-4 z-10 w-56 rounded-2xl border border-white/15 bg-slate-950/90 px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur"
+                    className="absolute bottom-16 right-4 z-10 w-56 rounded-2xl border border-slate-900 bg-white px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.6)] "
                     style={compactList ? { bottom: "auto", top: "100%", marginTop: "8px" } : {}}
                   >
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-[11px] uppercase tracking-wide text-slate-400">
+                      <span className="text-[11px] uppercase tracking-wide text-slate-500">
                         Výpočet
                       </span>
                       <button
                         type="button"
                         onClick={() => setInfoOpen(null)}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/15 bg-white/10 text-[11px] text-slate-100 hover:border-sky-300/70 hover:bg-sky-500/20 hover:text-white"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-900 bg-slate-100 text-[11px] text-slate-900 hover:border-sky-300/70 hover:bg-sky-500/20 hover:text-slate-900"
                         aria-label="Zavřít detail výpočtu"
                       >
                         ×
                       </button>
                     </div>
-                    <p className="text-[12px] leading-snug text-slate-200">{card.info}</p>
+                    <p className="text-[12px] leading-snug text-slate-800">{card.info}</p>
                   </div>
                 )}
               </div>
@@ -1483,7 +1483,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
           .print-card * {
             color: #e5e7eb !important;
           }
-          .print-card .text-emerald-200 {
+          .print-card .text-emerald-800 {
             color: #34d399 !important;
           }
           .print-card .text-sky-100,

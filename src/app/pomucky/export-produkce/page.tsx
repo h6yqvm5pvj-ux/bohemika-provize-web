@@ -1551,7 +1551,7 @@ export default function ExportProductionPage() {
     return (
       <AppLayout active="tools">
         <div className="w-full max-w-3xl mx-auto">
-          <p className="text-sm text-slate-200">
+          <p className="text-sm text-slate-800">
             Pro použití exportu produkce se nejprve přihlas.
           </p>
         </div>
@@ -1585,7 +1585,7 @@ export default function ExportProductionPage() {
         {/* Nastavení exportu */}
         <section className="space-y-3">
           {/* Rozsah */}
-          <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.85)] inline-flex flex-col gap-2 w-fit">
+          <div className="rounded-3xl border border-slate-900 bg-white  px-5 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)] inline-flex flex-col gap-2 w-fit">
             <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
               <button
                 type="button"
@@ -1593,7 +1593,7 @@ export default function ExportProductionPage() {
                 className={`px-3 py-1.5 rounded-full border transition ${
                   scopeOption === "own"
                     ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
-                    : "border-white/20 text-slate-200 hover:bg-white/5"
+                    : "border-slate-300 text-slate-800 hover:bg-white"
                 }`}
               >
                 Vlastní produkce
@@ -1606,7 +1606,7 @@ export default function ExportProductionPage() {
                 className={`px-3 py-1.5 rounded-full border transition ${
                   scopeOption === "team"
                     ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
-                    : "border-white/20 text-slate-200 hover:bg-white/5"
+                    : "border-slate-300 text-slate-800 hover:bg-white"
                 } ${!hasTeam ? "opacity-40 cursor-not-allowed" : ""}`}
               >
                 Týmová produkce
@@ -1619,7 +1619,7 @@ export default function ExportProductionPage() {
                 className={`px-3 py-1.5 rounded-full border transition ${
                   scopeOption === "selected"
                     ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
-                    : "border-white/20 text-slate-200 hover:bg-white/5"
+                    : "border-slate-300 text-slate-800 hover:bg-white"
                 } ${!hasTeam ? "opacity-40 cursor-not-allowed" : ""}`}
               >
                 Vybraní podřízení
@@ -1627,11 +1627,11 @@ export default function ExportProductionPage() {
             </div>
 
             {loadingSubs && (
-              <p className="text-xs text-slate-300">Načítám podřízené…</p>
+              <p className="text-xs text-slate-600">Načítám podřízené…</p>
             )}
 
             {!loadingSubs && !hasTeam && (
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-slate-600">
                 Nemáš v databázi nastavené podřízené (pole{" "}
                 <code>managerEmail</code>), proto je dostupná pouze vlastní
                 produkce.
@@ -1640,11 +1640,11 @@ export default function ExportProductionPage() {
 
             {scopeOption === "selected" && hasTeam && (
               <div className="space-y-2">
-                <p className="text-xs text-slate-300">
+                <p className="text-xs text-slate-600">
                   Vyber konkrétní podřízené, pro které chceš produkci
                   zahrnout do PDF.
                 </p>
-                <div className="max-h-40 overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2 space-y-1 text-xs">
+                <div className="max-h-40 overflow-y-auto rounded-2xl border border-slate-300 bg-white px-3 py-2 space-y-1 text-xs">
                   {subordinates.map((sub) => {
                     const active = selectedSubs.has(sub.email);
                     return (
@@ -1654,19 +1654,19 @@ export default function ExportProductionPage() {
                         onClick={() => handleToggleSubordinate(sub.email)}
                         className={`w-full flex items-center justify_between py-1.5 text-left rounded-xl px-2 transition ${
                           active
-                            ? "bg-emerald-500/20 text-emerald-100"
-                            : "text-slate-200 hover:bg-white/5"
+                            ? "bg-emerald-500/20 text-emerald-800"
+                            : "text-slate-800 hover:bg-white"
                         }`}
                       >
                         <span>{sub.name}</span>
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[10px] text-slate-500">
                           {sub.email}
                         </span>
                       </button>
                     );
                   })}
                 </div>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-slate-500">
                   Vybráno:{" "}
                   <span className="font-semibold">
                     {selectedSubs.size} poradců
@@ -1677,7 +1677,7 @@ export default function ExportProductionPage() {
           </div>
 
           {/* Volba období */}
-          <div className="inline-flex flex-wrap gap-2 text-xs sm:text-sm rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.85)] w-fit">
+          <div className="inline-flex flex-wrap gap-2 text-xs sm:text-sm rounded-3xl border border-slate-900 bg-white  px-5 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)] w-fit">
             {([
               ["currentMonth", "Aktuální měsíc"],
               ["last3", "Poslední 3 měsíce"],
@@ -1691,7 +1691,7 @@ export default function ExportProductionPage() {
                 className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm transition ${
                   dateRangeOption === value
                     ? "bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/40"
-                    : "border-white/20 text-slate-200 hover:bg-white/5"
+                    : "border-slate-300 text-slate-800 hover:bg-white"
                 }`}
               >
                 {label}
@@ -1700,7 +1700,7 @@ export default function ExportProductionPage() {
           </div>
 
           {/* Volba produktů */}
-          <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.85)] inline-flex flex-wrap gap-2 text-xs sm:text-sm w-fit">
+          <div className="rounded-3xl border border-slate-900 bg-white  px-5 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)] inline-flex flex-wrap gap-2 text-xs sm:text-sm w-fit">
             <button
               type="button"
               onClick={() =>
@@ -1714,7 +1714,7 @@ export default function ExportProductionPage() {
                   ])
                 )
               }
-              className="px-3 py-1.5 rounded-full border border-white/25 text-slate-100 hover:bg-white/10 transition"
+              className="px-3 py-1.5 rounded-full border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
             >
               Všechny
             </button>
@@ -1768,7 +1768,7 @@ export default function ExportProductionPage() {
             type="button"
             onClick={handleGeneratePdf}
             disabled={generating}
-            className="inline-flex items-center gap-2 rounded-full border border-emerald-400/70 bg-emerald-500/30 px-8 py-2.5 text-sm sm:text-base font-semibold text-emerald-50 shadow-[0_0_25px_rgba(16,185,129,0.55)] hover:bg-emerald-500/40 hover:border-emerald-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-full border border-emerald-400/70 bg-emerald-500/30 px-8 py-2.5 text-sm sm:text-base font-semibold text-emerald-800 shadow-[0_0_25px_rgba(16,185,129,0.55)] hover:bg-emerald-500/40 hover:border-emerald-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {generating ? "Generuji PDF…" : "Vygenerovat PDF"}
           </button>
@@ -1780,50 +1780,50 @@ export default function ExportProductionPage() {
               setSendStatus(null);
             }}
             disabled={generating || sending}
-            className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-7 py-2.5 text-sm sm:text-base font-semibold text-white shadow-[0_0_22px_rgba(255,255,255,0.25)] hover:bg-white/15 transition disabled:opacity-60 disabled:cursor-not-allowed backdrop-blur"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-7 py-2.5 text-sm sm:text-base font-semibold text-slate-900 shadow-[0_0_22px_rgba(255,255,255,0.25)] hover:bg-slate-100 transition disabled:opacity-60 disabled:cursor-not-allowed "
           >
             {sending ? "Odesílám…" : showEmailForm ? "Skrýt odeslání" : "Odeslat e‑mailem"}
           </button>
         </div>
 
         {showEmailForm && (
-          <div className="mx-auto mt-2 w-full max-w-4xl rounded-2xl border border-white/10 bg-white/5 backdrop-blur px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.55)]">
+          <div className="mx-auto mt-2 w-full max-w-4xl rounded-2xl border border-slate-300 bg-white  px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
             <div className="grid gap-3 sm:grid-cols-[1.3fr_1.1fr_1fr] items-end">
-              <label className="space-y-1 text-sm text-slate-200">
-                <span className="block text-[11px] uppercase tracking-wide text-slate-400">
+              <label className="space-y-1 text-sm text-slate-800">
+                <span className="block text-[11px] uppercase tracking-wide text-slate-500">
                   E-mail příjemce
                 </span>
                 <input
                   type="email"
                   value={recipient}
                   onChange={(e) => setRecipient(e.target.value)}
-                  className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                   placeholder="klient@example.com"
                 />
               </label>
 
-              <label className="space-y-1 text-sm text-slate-200">
-                <span className="block text-[11px] uppercase tracking-wide text-slate-400">
+              <label className="space-y-1 text-sm text-slate-800">
+                <span className="block text-[11px] uppercase tracking-wide text-slate-500">
                   Zadej firemní e-mail
                 </span>
                 <input
                   type="email"
                   value={smtpUser}
                   onChange={(e) => setSmtpUser(e.target.value)}
-                  className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                   placeholder="tvoje@domena.cz"
                 />
               </label>
 
-              <label className="space-y-1 text-sm text-slate-200">
-                <span className="block text-[11px] uppercase tracking-wide text-slate-400">
+              <label className="space-y-1 text-sm text-slate-800">
+                <span className="block text-[11px] uppercase tracking-wide text-slate-500">
                   Zadej heslo k e-mailu
                 </span>
                 <input
                   type="password"
                   value={smtpPass}
                   onChange={(e) => setSmtpPass(e.target.value)}
-                  className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                   placeholder="••••••••"
                 />
               </label>
@@ -1831,7 +1831,7 @@ export default function ExportProductionPage() {
             {sendStatus && (
               <p
                 className={`mt-2 text-xs ${
-                  sendStatus.type === "ok" ? "text-emerald-200" : "text-rose-200"
+                  sendStatus.type === "ok" ? "text-emerald-800" : "text-rose-200"
                 }`}
               >
                 {sendStatus.msg}
@@ -1842,7 +1842,7 @@ export default function ExportProductionPage() {
                 type="button"
                 onClick={handleSendEmail}
                 disabled={generating || sending}
-                className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white shadow-[0_0_18px_rgba(255,255,255,0.25)] hover:bg-white/15 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-900 shadow-[0_0_18px_rgba(255,255,255,0.25)] hover:bg-slate-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {sending ? "Odesílám…" : "Odeslat e‑mailem"}
               </button>
@@ -1852,15 +1852,15 @@ export default function ExportProductionPage() {
 
         {/* Náhled PDF na stránce */}
         {previewHtml && (
-          <section className="mt-4 rounded-3xl border border-white/15 bg-slate-950/70 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.9)] space-y-3">
-            <h2 className="text-sm font-semibold text-slate-50">
+          <section className="mt-4 rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
+            <h2 className="text-sm font-semibold text-slate-900">
               Náhled PDF
             </h2>
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-slate-600">
               Náhled odpovídá tomu, co se stáhne jako PDF. V prohlížeči se
               může lehce lišit od výsledného PDF (kvůli renderingu fontů).
             </p>
-            <div className="mt-2 h-[640px] rounded-2xl border border-white/10 overflow-hidden bg-slate-900/60">
+            <div className="mt-2 h-[640px] rounded-2xl border border-slate-300 overflow-hidden bg-white">
               <iframe
                 srcDoc={previewHtml}
                 title="Náhled PDF produkce"
@@ -1892,7 +1892,7 @@ function CheckboxChip({
       className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm transition flex items-center gap-1 ${
         active
           ? "bg-sky-500 text-white border-sky-400 shadow-sm shadow-sky-500/40"
-          : "border-white/20 text-slate-200 hover:bg-white/5"
+          : "border-slate-300 text-slate-800 hover:bg-white"
       }`}
     >
       <span

@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { auth, db } from "../../firebase";
 import {
@@ -61,8 +61,11 @@ import { useToasts } from "./useToasts";
 
 export default function ContractDetailPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const params = useParams<{ id: string }>();
   const rawId = params?.id;
+  const backToContractsHref =
+    searchParams?.get("from") === "list" ? "/smlouvy?restore=1" : "/smlouvy";
 
   // slug: email___entryId
   let ownerEmail: string | null = null;
@@ -2206,18 +2209,56 @@ export default function ContractDetailPage() {
       setContract(null);
       setError("Nemáš oprávnění tuto smlouvu zobrazit.");
       setShowDeleteModal(false);
-      router.replace("/smlouvy");
+      router.replace(backToContractsHref);
     }
-  }, [loading, user, contract, canViewContract, unauthorized, router]);
+  }, [loading, user, contract, canViewContract, unauthorized, router, backToContractsHref]);
+
+  const shellCardClass = "flex-1 space-y-8 px-2 py-2 font-mono";
+  const surfaceCardClass =
+    "rounded-2xl border border-slate-300 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)]";
+  const surfaceSoftClass =
+    "rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4";
+  const successPanelClass =
+    "rounded-2xl border border-slate-300 bg-white px-5 py-4 shadow-[0_8px_20px_rgba(15,23,42,0.08)]";
+  const commissionPanelClass =
+    "rounded-[22px] border border-slate-300 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_100%)] px-5 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]";
+  const commissionRowClass =
+    "flex items-baseline justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3";
+  const commissionTotalClass =
+    "mt-4 rounded-xl border border-slate-300 bg-slate-100 px-4 py-3";
+  const noteCardClass =
+    "rounded-[22px] border border-slate-300 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_100%)] px-5 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]";
+  const monoHeadingClass = "font-mono tracking-tight text-slate-900";
+  const monoChipClass =
+    "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-4 py-2 text-base font-mono tracking-tight text-slate-900";
+  const monoChipDarkClass =
+    "inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-base font-mono tracking-tight text-white";
+  const ghostButtonClass =
+    "rounded-xl border border-slate-900 bg-slate-900 px-5 py-3 text-base sm:text-lg font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
+  const saveButtonClass =
+    "inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-5 py-3 text-base sm:text-lg font-semibold font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
+  const inputClass =
+    "w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg font-mono text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300";
+  const inputCompactClass =
+    "rounded-lg border border-slate-300 bg-white px-3 py-2 text-base font-mono text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300";
+  const metaLabelClass = "text-sm uppercase tracking-[0.2em] text-slate-600";
+  const keyValueLabelClass = "text-lg text-slate-600";
+  const keyValueValueClass = "text-lg font-semibold text-right text-slate-900";
+  const statusErrorClass = "px-1 text-base text-slate-700";
+  const statusSuccessClass = "px-1 text-base text-slate-900";
+  const sectionPanelClass = "space-y-4 px-1 py-1";
+  const destructiveButtonClass =
+    "inline-flex items-center rounded-xl border border-rose-700 bg-rose-700 px-6 py-3 text-base sm:text-lg font-medium font-mono text-white shadow-[0_8px_20px_rgba(190,24,93,0.28)] transition hover:bg-rose-800 disabled:opacity-60 disabled:cursor-not-allowed";
+  const productPanelClass = "w-[400px] space-y-4 p-2 font-mono";
 
   const renderLoadingSkeleton = () => (
     <div className="space-y-6">
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
+        <div className={surfaceCardClass}>
           <Skeleton className="h-3 w-20 mb-2" />
           <Skeleton className="h-7 w-40" />
         </div>
-        <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
+        <div className={surfaceCardClass}>
           <Skeleton className="h-3 w-20 mb-2" />
           <div className="flex items-center gap-3">
             <Skeleton className="h-12 w-12 rounded-2xl" />
@@ -2227,7 +2268,7 @@ export default function ContractDetailPage() {
       </section>
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl">
+        <div className={surfaceSoftClass}>
           <Skeleton className="h-4 w-28 mb-4" />
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
@@ -2238,7 +2279,7 @@ export default function ContractDetailPage() {
             ))}
           </div>
         </div>
-        <div className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl">
+        <div className={surfaceSoftClass}>
           <Skeleton className="h-4 w-28 mb-4" />
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
@@ -2251,9 +2292,9 @@ export default function ContractDetailPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3">
+      <section className={successPanelClass}>
         <Skeleton className="h-4 w-32 mb-4" />
-        <div className="divide-y divide-white/10">
+        <div className="divide-y divide-slate-200">
           {[1, 2, 3].map((i) => (
             <div key={`s-provize-${i}`} className="flex items-center justify-between gap-3 py-3">
               <Skeleton className="h-3 w-40" />
@@ -2267,7 +2308,7 @@ export default function ContractDetailPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
+      <section className={surfaceCardClass}>
         <Skeleton className="h-4 w-32 mb-4" />
         <Skeleton className="h-24 w-full" />
       </section>
@@ -2275,36 +2316,45 @@ export default function ContractDetailPage() {
   );
 
   return (
-    <main className="relative min-h-screen overflow-hidden text-slate-50">
-      <div className="fixed inset-0 -z-10 bg-black" />
+    <main className="relative min-h-screen overflow-hidden font-mono text-slate-900">
+      <div className="fixed inset-0 -z-10 bg-white" />
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(1200px_520px_at_18%_-10%,rgba(15,23,42,0.06),transparent_60%),radial-gradient(950px_520px_at_100%_0%,rgba(15,23,42,0.04),transparent_55%)]" />
 
       <Toasts items={toasts} onDismiss={dismissToast} />
 
-      <div className="relative flex min-h-screen items-center justify-center px-4 py-10">
+      <div className="relative flex min-h-screen items-center justify-center px-5 py-12">
         <div className="w-full max-w-6xl">
-          <div className="flex items-stretch gap-3">
-            <div className="flex-1 rounded-3xl bg-white/5 border border-white/15 shadow-[0_24px_80px_rgba(0,0,0,0.85)] backdrop-blur-2xl p-6 sm:p-8 space-y-6 transition-all duration-300">
+          <div className="flex items-stretch gap-4">
+            <div className={shellCardClass}>
             {/* HEADER */}
-            <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400 mb-1">
+                <p className="mb-1 text-base uppercase tracking-[0.18em] text-slate-600">
                   Detail smlouvy
+                </p>
+                <h1 className="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
+                  {contract ? productLabel(prod) : "Načítám detail…"}
+                </h1>
+                <p className="mt-1 text-base text-slate-600">
+                  {contract?.contractNumber
+                    ? `Číslo smlouvy: ${contract.contractNumber}`
+                    : "Číslo smlouvy není uvedené"}
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-2 items-center">
+              <div className="flex flex-wrap items-center gap-3">
                 {isOwnContract && (
                   <button
                     type="button"
                     onClick={handleTogglePaid}
                     disabled={updatingPaid}
-                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs sm:text-sm font-semibold border transition ${
+                    className={`inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-base font-semibold tracking-tight transition sm:text-lg ${
                       contract?.paid
-                        ? "bg-emerald-500/80 border-emerald-400 text-emerald-900"
-                        : "bg-rose-500/20 border-rose-400/70 text-rose-100"
+                        ? "border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700"
+                        : "border-rose-700 bg-rose-600 text-white hover:bg-rose-700"
                     } ${updatingPaid ? "opacity-60" : ""}`}
                   >
-                    {updatingPaid && <Spinner className="h-3 w-3 border-2 border-emerald-100/70 border-t-white/90" />}
+                    {updatingPaid && <Spinner className="h-4 w-4 border-2 border-white/70 border-t-slate-500" />}
                     <span>{contract?.paid ? "Zaplaceno" : "Nezaplaceno"}</span>
                   </button>
                 )}
@@ -2316,7 +2366,7 @@ export default function ContractDetailPage() {
                       setDetailsSaved(false);
                       setEditMode(true);
                     }}
-                    className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs sm:text-sm text-slate-50 hover:bg-white/15"
+                    className={ghostButtonClass}
                   >
                     Upravit údaje
                   </button>
@@ -2328,10 +2378,10 @@ export default function ContractDetailPage() {
                       type="button"
                       onClick={handleSaveDetails}
                       disabled={savingDetails}
-                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/50 bg-emerald-500/70 px-3 py-2 text-xs sm:text-sm font-semibold text-emerald-950 hover:bg-emerald-400 transition disabled:opacity-60"
+                      className={saveButtonClass}
                     >
                       {savingDetails && (
-                        <Spinner className="h-3.5 w-3.5 border-emerald-100/90 border-t-emerald-900" />
+                        <Spinner className="h-3.5 w-3.5 border-black/35 border-t-black" />
                       )}
                       <span>{savingDetails ? "Ukládám…" : "Uložit změny"}</span>
                     </button>
@@ -2342,7 +2392,7 @@ export default function ContractDetailPage() {
                         setEditMode(false);
                       }}
                       disabled={savingDetails}
-                      className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-xs sm:text-sm text-slate-50 hover:bg-white/10 disabled:opacity-60"
+                      className={ghostButtonClass}
                     >
                       Zrušit
                     </button>
@@ -2350,8 +2400,8 @@ export default function ContractDetailPage() {
                 )}
 
                 <Link
-                  href="/smlouvy"
-                  className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-xs sm:text-sm text-slate-50 hover:bg-white/10"
+                  href={backToContractsHref}
+                  className={ghostButtonClass}
                 >
                   ← Zpět na smlouvy
                 </Link>
@@ -2359,12 +2409,12 @@ export default function ContractDetailPage() {
             </header>
 
             {detailsError && (
-              <div className="rounded-xl border border-rose-400/60 bg-rose-500/15 px-4 py-2 text-sm text-rose-100">
+              <div className={statusErrorClass}>
                 {detailsError}
               </div>
             )}
             {detailsSaved && (
-              <div className="rounded-xl border border-emerald-400/50 bg-emerald-500/15 px-4 py-2 text-sm text-emerald-100">
+              <div className={statusSuccessClass}>
                 Změny byly uloženy.
               </div>
             )}
@@ -2372,71 +2422,69 @@ export default function ContractDetailPage() {
             {loading ? (
               renderLoadingSkeleton()
             ) : error ? (
-              <div className="rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              <div className={statusErrorClass}>
                 {error}
               </div>
             ) : contract ? (
               <>
                 {/* Klient / Produkt boxy */}
-                <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-1.5">
-                      Klient
-                    </div>
+                <section className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <div className={sectionPanelClass}>
+                    <div className={metaLabelClass}>Klient</div>
                     {editMode ? (
                       <div className="space-y-2">
                         <input
                           type="text"
                           value={editClientName}
                           onChange={(e) => setEditClientName(e.target.value)}
-                          className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-lg font-semibold text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          className={`${inputClass} text-2xl font-semibold`}
                           placeholder="Jméno klienta"
                         />
                         <input
                           type="email"
                           value={editClientEmail}
                           onChange={(e) => setEditClientEmail(e.target.value)}
-                          className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          className={inputClass}
                           placeholder="E-mail klienta"
                         />
                         <input
                           type="tel"
                           value={editClientPhone}
                           onChange={(e) => setEditClientPhone(e.target.value)}
-                          className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          className={inputClass}
                           placeholder="Telefon"
                         />
                         <input
                           type="text"
                           value={editClientAddress}
                           onChange={(e) => setEditClientAddress(e.target.value)}
-                          className="w-full rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          className={inputClass}
                           placeholder="Adresa"
                         />
                       </div>
                     ) : (
-                    <div className="space-y-2">
-                        <div className="text-2xl font-semibold text-slate-50">
+                      <div className="space-y-2">
+                        <div className="text-4xl font-semibold tracking-tight leading-none text-slate-900">
                           {contract?.clientName ?? "—"}
                         </div>
                       </div>
                     )}
                   </div>
 
-                  <div className="rounded-2xl bg-white/5 border border-white/12 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-1.5">
-                      Produkt
-                    </div>
-                    <div className="text-lg font-semibold text-slate-50">
+                  <div className={sectionPanelClass}>
+                    <div className={metaLabelClass}>Produkt</div>
+                    <div>
                       <div className="flex items-center gap-3">
+                        <span className="text-4xl font-semibold tracking-tight leading-none text-slate-900">
+                          {productLabel(prod)}
+                        </span>
                         <Image
                           src={productIcon(prod)}
                           alt="Produkt"
                           width={56}
                           height={56}
-                          className="h-12 w-auto"
+                          className="h-11 w-auto flex-shrink-0"
                         />
-                        <span>{productLabel(prod)}</span>
                       </div>
                     </div>
                   </div>
@@ -2444,20 +2492,20 @@ export default function ContractDetailPage() {
 
                 {/* Info o poradci – zobraz pouze manažerovi na podřízené smlouvě */}
                 {contract && isManagerViewingSubordinate && (
-                  <section className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)]">
-                    <h3 className="text-sm font-semibold text-slate-100 mb-2">
-                      Poradce
+                  <section className={sectionPanelClass}>
+                    <h3 className={`mb-2 flex items-center gap-2 text-lg font-semibold ${monoHeadingClass}`}>
+                      <span className={monoChipClass}>Poradce</span>
                     </h3>
-                    <dl className="space-y-1 text-sm text-slate-200">
+                    <dl className="space-y-2 text-lg text-slate-800">
                       <div className="flex justify-between gap-2">
-                        <dt className="text-slate-300">Sjednal</dt>
-                        <dd className="font-semibold text-right">
+                        <dt className={keyValueLabelClass}>Sjednal</dt>
+                        <dd className={keyValueValueClass}>
                           {nameFromEmail(contract.userEmail)}
                         </dd>
                       </div>
                       <div className="flex justify-between gap-2">
-                        <dt className="text-slate-300">Pozice</dt>
-                        <dd className="font-semibold text-right">
+                        <dt className={keyValueLabelClass}>Pozice</dt>
+                        <dd className={keyValueValueClass}>
                           {positionLabel(
                             ownerPosition ?? (contract.position as Position | null)
                           )}
@@ -2465,11 +2513,11 @@ export default function ContractDetailPage() {
                       </div>
                       {ownerManagerEmail && (
                         <div className="flex justify-between gap-2">
-                          <dt className="text-slate-300">Nadřízený</dt>
-                          <dd className="font-semibold text-right">
+                          <dt className={keyValueLabelClass}>Nadřízený</dt>
+                          <dd className={keyValueValueClass}>
                             {nameFromEmail(ownerManagerEmail)}
                             {ownerManagerPosition && (
-                              <span className="text-[11px] text-slate-400 block">
+                              <span className="block text-sm text-slate-600">
                                 {positionLabel(ownerManagerPosition)}
                               </span>
                             )}
@@ -2481,36 +2529,36 @@ export default function ContractDetailPage() {
                 )}
 
                 {paidError && (
-                  <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+                  <div className={statusErrorClass}>
                     {paidError}
                   </div>
                 )}
 
-                <div className="space-y-6">
+                <div className="space-y-7">
                 {/* ZÁKLADNÍ INFO */}
-                <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl">
-                    <h3 className="text-base font-semibold text-slate-100 mb-3">
-                      Základní údaje
+                <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div className={sectionPanelClass}>
+                    <h3 className={`mb-3 flex items-center gap-2 text-xl font-semibold ${monoHeadingClass}`}>
+                      <span className={monoChipDarkClass}>Základní údaje</span>
                     </h3>
-                    <dl className="space-y-2 text-sm text-slate-200">
+                    <dl className="space-y-3 text-lg text-slate-800">
                       <div className="flex justify-between gap-2">
-                        <dt className="text-slate-300">Sjednána jako</dt>
-                        <dd className="font-semibold text-right">
+                        <dt className={keyValueLabelClass}>Sjednána jako</dt>
+                        <dd className={keyValueValueClass}>
                           {positionLabel(contract.position)}
                         </dd>
                       </div>
                       <div className="flex justify-between gap-2">
-                        <dt className="text-slate-300">Pojistné</dt>
-                        <dd className="font-semibold text-right">
+                        <dt className={keyValueLabelClass}>Pojistné</dt>
+                        <dd className={keyValueValueClass}>
                           {formatMoney(premium)}
                         </dd>
                       </div>
                       <div className="flex justify-between gap-2">
-                        <dt className="text-slate-300">
+                        <dt className={keyValueLabelClass}>
                           Frekvence platby
                         </dt>
-                        <dd className="font-semibold text-right">
+                        <dd className={keyValueValueClass}>
                           {frequencyText(freq)}
                         </dd>
                       </div>
@@ -2518,20 +2566,20 @@ export default function ContractDetailPage() {
                   </div>
 
                   {/* DATA SMLOUVY */}
-                  <div className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl">
-                    <h3 className="text-base font-semibold text-slate-100 mb-3">
-                      Data smlouvy
+                  <div className={sectionPanelClass}>
+                    <h3 className={`mb-3 flex items-center gap-2 text-xl font-semibold ${monoHeadingClass}`}>
+                      <span className={monoChipDarkClass}>Data smlouvy</span>
                     </h3>
-                    <dl className="space-y-2 text-sm text-slate-200">
+                    <dl className="space-y-3 text-lg text-slate-800">
                       <div className="flex justify-between gap-2">
-                        <dt className="text-slate-300">Datum sjednání</dt>
-                        <dd className="font-semibold text-right">
+                        <dt className={keyValueLabelClass}>Datum sjednání</dt>
+                        <dd className={keyValueValueClass}>
                           {editMode ? (
                             <input
                               type="date"
                               value={editContractSigned}
                               onChange={(e) => setEditContractSigned(e.target.value)}
-                              className="rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                              className={inputCompactClass}
                             />
                           ) : (
                             formatDate(contract.contractSignedDate ?? contract.createdAt)
@@ -2539,16 +2587,16 @@ export default function ContractDetailPage() {
                         </dd>
                       </div>
                       <div className="flex justify-between gap-2">
-                        <dt className="text-slate-300">
+                        <dt className={keyValueLabelClass}>
                           Počátek smlouvy
                         </dt>
-                        <dd className="font-semibold text-right">
+                        <dd className={keyValueValueClass}>
                           {editMode ? (
                             <input
                               type="date"
                               value={editPolicyStart}
                               onChange={(e) => setEditPolicyStart(e.target.value)}
-                              className="rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                              className={inputCompactClass}
                             />
                           ) : (
                             formatDate(contract.policyStartDate)
@@ -2557,8 +2605,8 @@ export default function ContractDetailPage() {
                       </div>
                       {showDurationForNeon && (
                         <div className="flex justify-between gap-2">
-                          <dt className="text-slate-300">Doba trvání (provize)</dt>
-                          <dd className="font-semibold text-right">
+                          <dt className={keyValueLabelClass}>Doba trvání (provize)</dt>
+                          <dd className={keyValueValueClass}>
                             {editMode ? (
                               <input
                                 type="number"
@@ -2568,7 +2616,7 @@ export default function ContractDetailPage() {
                                 onChange={(e) =>
                                   setEditDuration(e.target.value ? Number(e.target.value) : null)
                                 }
-                                className="w-20 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                                className={`w-20 ${inputCompactClass}`}
                               />
                             ) : (
                               `${durationYears} ${durationYears === 1 ? "rok" : "let"}`
@@ -2578,13 +2626,13 @@ export default function ContractDetailPage() {
                       )}
                       {editMode ? (
                         <div className="flex justify-between gap-2">
-                          <dt className="text-slate-300">Číslo smlouvy</dt>
-                          <dd className="font-semibold text-right w-40">
+                          <dt className={keyValueLabelClass}>Číslo smlouvy</dt>
+                          <dd className={`${keyValueValueClass} w-40`}>
                             <input
                               type="text"
                               value={editContractNumber}
                               onChange={(e) => setEditContractNumber(e.target.value)}
-                              className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                              className={`w-full ${inputCompactClass}`}
                               placeholder="Číslo smlouvy"
                             />
                           </dd>
@@ -2592,10 +2640,10 @@ export default function ContractDetailPage() {
                       ) : (
                         contract.contractNumber && (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-slate-300">
+                            <dt className={keyValueLabelClass}>
                               Číslo smlouvy
                             </dt>
-                            <dd className="font-semibold text-right">
+                            <dd className={keyValueValueClass}>
                           {contract.contractNumber}
                         </dd>
                       </div>
@@ -2605,69 +2653,73 @@ export default function ContractDetailPage() {
               </div>
             </section>
 
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+              <div className="space-y-5">
             {/* MEZIPROVIZE – jen když manažer kouká na podřízeného */}
             {showMeziprovision && (
-              <section className="space-y-4">
+              <section className="space-y-5">
                 <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-emerald-200">
-            Meziprovize pro{" "}
-            {nameFromEmail(user?.email)}
+          <h3 className={`text-xl font-semibold ${monoHeadingClass} flex flex-wrap items-center gap-2`}>
+            <span className={monoChipClass}>Meziprovize</span>
+            <span>pro {nameFromEmail(user?.email)}</span>
             {effectiveManagerPosition && (
-              <span className="text-xs text-slate-400 ml-2">
+              <span className="text-base text-slate-700">
                 {positionLabel(effectiveManagerPosition)}
               </span>
             )}
           </h3>
-          <div className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
-            {managerItems.map((item) => {
-              const icon = resultIconForTitle(item.title);
-              return (
-                <div
-                  key={item.title}
-                  className="flex items-baseline justify-between gap-3 py-2"
-                >
-                  <span className="flex items-center gap-3 text-sm text-slate-200">
-                    {icon && (
-                      <span className="relative h-5 w-5 flex-shrink-0">
-                        <Image
-                          src={icon}
-                          alt=""
-                          fill
-                          className="object-contain"
-                        />
-                      </span>
-                    )}
-                    <span>{cleanResultTitle(item.title)}</span>
-                  </span>
-                  <span className="text-sm font-semibold text-emerald-300">
-                    {formatMoney(item.amount)}
-                  </span>
-                </div>
-              );
-            })}
+          <div className={commissionPanelClass}>
+            <div className="space-y-1">
+              {managerItems.map((item) => {
+                const icon = resultIconForTitle(item.title);
+                return (
+                  <div
+                    key={item.title}
+                    className={commissionRowClass}
+                  >
+                    <span className="flex items-center gap-3 text-lg text-slate-900 font-medium">
+                      {icon && (
+                        <span className="relative h-5 w-5 flex-shrink-0">
+                          <Image
+                            src={icon}
+                            alt=""
+                            fill
+                            className="object-contain"
+                          />
+                        </span>
+                      )}
+                      <span>{cleanResultTitle(item.title)}</span>
+                    </span>
+                    <span className="text-lg font-semibold text-slate-900">
+                      {formatMoney(item.amount)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
 
-                        <div className="flex items-center justify-between pt-3">
+                        <div className={commissionTotalClass}>
                           {isPaymentBasedProduct && paymentBasedManagerTotals ? (
-                            <div className="w-full space-y-1 text-sm">
+                            <div className="w-full space-y-2 text-lg">
                               <div className="flex items-center justify-between">
                                 <span className="font-semibold">Celkem v 1. roce</span>
-                                <span className="text-base font-bold text-emerald-300">
+                                <span className="text-2xl font-bold text-slate-900">
                                   {formatMoney(paymentBasedManagerTotals.immediate)}
                                 </span>
                               </div>
                               <div className="flex items-center justify-between">
                                 <span className="font-semibold">Celkem ročně následně</span>
-                                <span className="text-base font-bold text-emerald-300">
+                                <span className="text-2xl font-bold text-slate-900">
                                   {formatMoney(paymentBasedManagerTotals.subsequent)}
                                 </span>
                               </div>
                             </div>
                           ) : (
                             <>
-                              <span className="text-sm font-semibold">
+                              <span className="text-lg font-semibold">
                                 Celkem meziprovize
                               </span>
-                              <span className="text-base font-bold text-emerald-300">
+                              <span className="text-2xl font-bold text-slate-900">
                                 {formatMoney(managerTotalDisplay)}
                               </span>
                             </>
@@ -2677,66 +2729,69 @@ export default function ContractDetailPage() {
                     </div>
 
                     {showChildMeziprovision && (
-                      <div className="space-y-2">
-                        <h4 className="text-xs font-semibold text-emerald-200">
+                      <div className="space-y-3">
+                        <h4 className={`text-lg font-semibold ${monoHeadingClass} flex flex-wrap items-center gap-2`}>
+                          <span className={monoChipClass}>Meziprovize</span>
                           Meziprovize pro podřízeného manažera{" "}
                           {childOverrideName ?? ""}
                           {childOverridePosition && (
-                            <span className="text-[11px] text-slate-400 ml-1">
+                            <span className="ml-1 text-sm text-slate-700">
                               ({positionLabel(childOverridePosition)})
                             </span>
                           )}
                         </h4>
-                        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/20 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
-                          {childManagerItems.map((item) => {
-                            const icon = resultIconForTitle(item.title);
-                            return (
-                              <div
-                                key={item.title}
-                                className="flex items-baseline justify-between gap-3 py-2"
-                              >
-                                <span className="flex items-center gap-3 text-sm text-slate-200">
-                                  {icon && (
-                                    <span className="relative h-5 w-5 flex-shrink-0">
-                                      <Image
-                                        src={icon}
-                                        alt=""
-                                        fill
-                                        className="object-contain"
-                                      />
-                                    </span>
-                                  )}
-                                  <span>{cleanResultTitle(item.title)}</span>
-                                </span>
-                                <span className="text-sm font-medium text-slate-50">
-                                  {formatMoney(item.amount)}
-                                </span>
-                              </div>
-                            );
-                          })}
+                        <div className={commissionPanelClass}>
+                          <div className="space-y-1">
+                            {childManagerItems.map((item) => {
+                              const icon = resultIconForTitle(item.title);
+                              return (
+                                <div
+                                  key={item.title}
+                                  className={commissionRowClass}
+                                >
+                                  <span className="flex items-center gap-3 text-lg text-slate-900 font-medium">
+                                    {icon && (
+                                      <span className="relative h-5 w-5 flex-shrink-0">
+                                        <Image
+                                          src={icon}
+                                          alt=""
+                                          fill
+                                          className="object-contain"
+                                        />
+                                      </span>
+                                    )}
+                                    <span>{cleanResultTitle(item.title)}</span>
+                                  </span>
+                                  <span className="text-lg font-semibold text-slate-900">
+                                    {formatMoney(item.amount)}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
 
-                          <div className="flex items-center justify-between pt-3">
+                          <div className={commissionTotalClass}>
                             {isPaymentBasedProduct && paymentBasedChildManagerTotals ? (
-                              <div className="w-full space-y-1 text-sm">
+                              <div className="w-full space-y-2 text-lg">
                                 <div className="flex items-center justify-between">
                                   <span className="font-semibold">Celkem v 1. roce</span>
-                                  <span className="text-base font-bold text-emerald-300">
+                                  <span className="text-2xl font-bold text-slate-900">
                                     {formatMoney(paymentBasedChildManagerTotals.immediate)}
                                   </span>
                                 </div>
                                 <div className="flex items-center justify-between">
                                   <span className="font-semibold">Celkem ročně následně</span>
-                                  <span className="text-base font-bold text-emerald-300">
+                                  <span className="text-2xl font-bold text-slate-900">
                                     {formatMoney(paymentBasedChildManagerTotals.subsequent)}
                                   </span>
                                 </div>
                               </div>
                             ) : (
                               <>
-                                <span className="text-sm font-semibold">
+                                <span className="text-lg font-semibold">
                                   Celkem meziprovize
                                 </span>
-                                <span className="text-base font-bold text-emerald-300">
+                                <span className="text-2xl font-bold text-slate-900">
                                   {formatMoney(childManagerTotalDisplay)}
                                 </span>
                               </>
@@ -2751,97 +2806,21 @@ export default function ContractDetailPage() {
                 {/* PROVIZE PORADCE */}
                 {isOwnContract ? (
                   // VLASTNÍ SMLOUVA – vždy viditelné
-                  <section className="space-y-3">
-                    <h3 className="text-sm font-semibold text-slate-100">
+                  <section className="space-y-4">
+                    <h3 className={`text-xl font-semibold ${monoHeadingClass} flex items-center gap-2`}>
+                      <span className={monoChipDarkClass}>Provize</span>
                       Výpočet provizí
                     </h3>
-                    <div className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
-                      {adviserItems.map((item) => {
-                        const icon = resultIconForTitle(item.title);
-                        return (
-                          <div
-                            key={item.title}
-                            className="flex items-baseline justify-between gap-3 py-2"
-                          >
-                            <span className="flex items-center gap-3 text-sm text-slate-200">
-                              {icon && (
-                                <span className="relative h-5 w-5 flex-shrink-0">
-                                  <Image
-                                    src={icon}
-                                    alt=""
-                                    fill
-                                    className="object-contain"
-                                  />
-                                </span>
-                              )}
-                              <span>{cleanResultTitle(item.title)}</span>
-                            </span>
-                            <span className="text-sm font-medium text-slate-50">
-                              {formatMoney(item.amount)}
-                            </span>
-                          </div>
-                        );
-                      })}
-
-                      <div className="flex items-center justify-between pt-3">
-                        {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
-                          <div className="w-full space-y-1 text-sm">
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold">Celkem v 1. roce</span>
-                              <span className="text-base font-bold">
-                                {formatMoney(paymentBasedAdviserTotals.immediate)}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold">Celkem ročně následně</span>
-                              <span className="text-base font-bold">
-                                {formatMoney(paymentBasedAdviserTotals.subsequent)}
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <span className="text-sm font-semibold">
-                              Celkem
-                            </span>
-                            <span className="text-base font-bold">
-                              {formatMoney(adviserTotalDisplay)}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </section>
-                ) : (
-                  // MANAŽER NA SMLOUVĚ PODŘÍZENÉHO – collapsible
-                  <section className="space-y-3">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowAdvisorDetails((v) => !v)
-                      }
-                      className="inline-flex items-center gap-2 text-sm font-semibold text-slate-100 hover:text-emerald-300 transition"
-                    >
-                      <span>
-                        {showAdvisorDetails
-                          ? "Skrýt provizi poradce"
-                          : "Zobrazit provizi poradce"}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        {showAdvisorDetails ? "▲" : "▼"}
-                      </span>
-                    </button>
-
-                        {showAdvisorDetails && (
-                      <div className="rounded-2xl border border-emerald-400/40 bg-emerald-950/25 backdrop-blur-xl px-4 py-3 divide-y divide-white/10">
+                    <div className={commissionPanelClass}>
+                      <div className="space-y-1">
                         {adviserItems.map((item) => {
                           const icon = resultIconForTitle(item.title);
                           return (
                             <div
                               key={item.title}
-                              className="flex items-baseline justify-between gap-3 py-2"
+                              className={commissionRowClass}
                             >
-                              <span className="flex items-center gap-3 text-sm text-slate-200">
+                              <span className="flex items-center gap-3 text-lg text-slate-900 font-medium">
                                 {icon && (
                                   <span className="relative h-5 w-5 flex-shrink-0">
                                     <Image
@@ -2854,35 +2833,116 @@ export default function ContractDetailPage() {
                                 )}
                                 <span>{cleanResultTitle(item.title)}</span>
                               </span>
-                              <span className="text-sm font-medium text-slate-50">
+                              <span className="text-lg font-semibold text-slate-900">
                                 {formatMoney(item.amount)}
                               </span>
                             </div>
                           );
                         })}
+                      </div>
 
-                        <div className="flex items-center justify-between pt-3">
+                      <div className={commissionTotalClass}>
+                        {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
+                          <div className="w-full space-y-2 text-lg">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold">Celkem v 1. roce</span>
+                              <span className="text-2xl font-bold">
+                                {formatMoney(paymentBasedAdviserTotals.immediate)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold">Celkem ročně následně</span>
+                              <span className="text-2xl font-bold">
+                                {formatMoney(paymentBasedAdviserTotals.subsequent)}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="text-lg font-semibold">
+                              Celkem
+                            </span>
+                            <span className="text-2xl font-bold text-slate-900">
+                              {formatMoney(adviserTotalDisplay)}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+                ) : (
+                  // MANAŽER NA SMLOUVĚ PODŘÍZENÉHO – collapsible
+                  <section className="space-y-4">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowAdvisorDetails((v) => !v)
+                      }
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-5 py-2.5 text-lg font-semibold font-mono tracking-tight text-white transition hover:bg-black"
+                    >
+                      <span>
+                        {showAdvisorDetails
+                          ? "Skrýt provizi poradce"
+                          : "Zobrazit provizi poradce"}
+                      </span>
+                      <span className="text-base text-slate-300">
+                        {showAdvisorDetails ? "▲" : "▼"}
+                      </span>
+                    </button>
+
+                        {showAdvisorDetails && (
+                      <div className={commissionPanelClass}>
+                        <div className="space-y-1">
+                          {adviserItems.map((item) => {
+                            const icon = resultIconForTitle(item.title);
+                            return (
+                              <div
+                                key={item.title}
+                                className={commissionRowClass}
+                              >
+                                <span className="flex items-center gap-3 text-lg text-slate-900 font-medium">
+                                  {icon && (
+                                    <span className="relative h-5 w-5 flex-shrink-0">
+                                      <Image
+                                        src={icon}
+                                        alt=""
+                                        fill
+                                        className="object-contain"
+                                      />
+                                    </span>
+                                  )}
+                                  <span>{cleanResultTitle(item.title)}</span>
+                                </span>
+                                <span className="text-lg font-semibold text-slate-900">
+                                  {formatMoney(item.amount)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className={commissionTotalClass}>
                           {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
-                            <div className="w-full space-y-1 text-sm">
+                            <div className="w-full space-y-2 text-lg">
                               <div className="flex items-center justify-between">
                                 <span className="font-semibold">Celkem v 1. roce</span>
-                                <span className="text-base font-bold">
+                                <span className="text-2xl font-bold">
                                   {formatMoney(paymentBasedAdviserTotals.immediate)}
                                 </span>
                               </div>
                               <div className="flex items-center justify-between">
                                 <span className="font-semibold">Celkem ročně následně</span>
-                                <span className="text-base font-bold">
+                                <span className="text-2xl font-bold">
                                   {formatMoney(paymentBasedAdviserTotals.subsequent)}
                                 </span>
                               </div>
                             </div>
                           ) : (
                             <>
-                              <span className="text-sm font-semibold">
+                              <span className="text-lg font-semibold">
                                 Celkem
                               </span>
-                              <span className="text-base font-bold">
+                              <span className="text-2xl font-bold text-slate-900">
                                 {formatMoney(adviserTotalDisplay)}
                               </span>
                             </>
@@ -2893,21 +2953,24 @@ export default function ContractDetailPage() {
                   </section>
                 )}
 
+              </div>
+
                 {/* POZNÁMKA */}
-                <section className="rounded-2xl bg-white/5 border border-white/15 px-4 py-3 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.45)] space-y-3">
+                <section className={`${noteCardClass} space-y-4 lg:h-fit lg:mt-10`}>
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-base font-semibold text-slate-100">
+                    <h3 className={`text-xl font-semibold ${monoHeadingClass} flex items-center gap-2`}>
+                      <span className={monoChipDarkClass}>Poznámka</span>
                       Poznámka ke smlouvě
                     </h3>
                     {noteSaved && (
-                      <span className="text-[11px] text-emerald-300">
+                      <span className="text-sm text-slate-700 font-mono">
                         Uloženo
                       </span>
                     )}
                   </div>
 
                   {noteError && (
-                    <p className="text-xs text-amber-200 bg-amber-900/40 border border-amber-500/60 rounded-lg px-3 py-2">
+                    <p className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-base text-slate-800">
                       {noteError}
                     </p>
                   )}
@@ -2920,8 +2983,8 @@ export default function ContractDetailPage() {
                           setNoteDraft(e.target.value);
                           setNoteSaved(false);
                         }}
-                        rows={4}
-                        className="w-full rounded-2xl border border-white/15 bg-slate-950/50 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 resize-none"
+                        rows={6}
+                        className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300"
                         placeholder="Sem si můžeš napsat poznámku jen pro sebe…"
                       />
                       <div className="flex justify-end">
@@ -2929,29 +2992,30 @@ export default function ContractDetailPage() {
                           type="button"
                           onClick={handleSaveNote}
                           disabled={savingNote}
-                          className="inline-flex items-center rounded-xl border border-emerald-400/70 bg-emerald-500/25 px-4 py-2 text-xs sm:text-sm font-semibold text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.4)] hover:bg-emerald-500/35 hover:border-emerald-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="inline-flex items-center rounded-xl border border-slate-900 bg-slate-900 px-6 py-3 text-base sm:text-lg font-semibold font-mono tracking-tight text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {savingNote && (
-                            <Spinner className="h-3.5 w-3.5 border-emerald-100/90 border-t-emerald-900" />
+                            <Spinner className="h-4 w-4 border-slate-400 border-t-slate-900" />
                           )}
                           <span>{savingNote ? "Ukládám…" : "Uložit poznámku"}</span>
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
+                    <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg text-slate-900">
                       {contract.note?.trim()
                         ? contract.note.trim()
                         : "Autor smlouvy zatím žádnou poznámku nepřidal."}
                     </div>
                   )}
                 </section>
+            </div>
 
                 {/* SMAZAT SMLOUVU */}
                 {canDelete && (
                   <section className="pt-2">
                     {deleteError && (
-                      <p className="mb-2 text-xs text-red-300">
+                      <p className="mb-2 text-base text-slate-700">
                         {deleteError}
                       </p>
                     )}
@@ -2963,10 +3027,10 @@ export default function ContractDetailPage() {
                           setShowDeleteModal(true);
                         }}
                         disabled={deleting}
-                        className="inline-flex items-center rounded-xl border border-red-500/70 bg-red-600/80 px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-lg shadow-red-500/40 hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                        className={destructiveButtonClass}
                       >
                         {deleting && (
-                          <Spinner className="h-4 w-4 border-white/80 border-t-red-900" />
+                          <Spinner className="h-5 w-5 border-slate-400 border-t-slate-900" />
                         )}
                         <span>{deleting ? "Mažu…" : "Smazat smlouvu"}</span>
                       </button>
@@ -2982,11 +3046,11 @@ export default function ContractDetailPage() {
               <button
                 type="button"
                 onClick={() => setShowProductPanel((v) => !v)}
-                className={`h-full min-h-[160px] w-10 rounded-2xl border transition ${
+                className={`h-full min-h-[210px] w-14 rounded-2xl border transition ${
                   showProductPanel
-                    ? "bg-emerald-500/90 border-emerald-300 text-emerald-950"
-                    : "bg-emerald-500/60 border-emerald-300/60 text-emerald-50 hover:bg-emerald-500/80"
-                } flex items-center justify-center font-semibold text-xs tracking-wide`}
+                    ? "border-slate-900 bg-slate-900 text-white shadow-[0_12px_30px_rgba(15,23,42,0.25)]"
+                    : "border-slate-900 bg-slate-900 text-white hover:bg-black"
+                } flex items-center justify-center text-base font-semibold tracking-[0.2em]`}
                 style={{ writingMode: "vertical-rl" }}
               >
                 DETAIL
@@ -2994,12 +3058,12 @@ export default function ContractDetailPage() {
             </div>
 
             {showProductPanel && (
-              <div className="w-[360px] rounded-3xl bg-white/5 border border-white/15 shadow-[0_24px_80px_rgba(0,0,0,0.7)] backdrop-blur-2xl p-4 space-y-3">
+              <div className={productPanelClass}>
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-100">
+                  <h3 className={`text-lg font-semibold ${monoHeadingClass}`}>
                     Detail produktu
                   </h3>
-                  <span className="text-xs text-slate-400">{productLabel(prod)}</span>
+                  <span className="text-base text-slate-600">{productLabel(prod)}</span>
                 </div>
                 {isAutoProduct(prod) && (
                   <AutoDetailPanel
@@ -3055,21 +3119,21 @@ export default function ContractDetailPage() {
             role="dialog"
             aria-modal="true"
             aria-label="Potvrzení smazání smlouvy"
-            className="relative z-10 w-full max-w-md rounded-2xl border border-red-400/60 bg-slate-950/95 p-6 shadow-2xl shadow-red-900/40"
+            className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-300 bg-white p-7 shadow-2xl shadow-slate-300/40"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-slate-50">
+                <h3 className="text-xl font-semibold tracking-tight text-slate-900">
                   Opravdu smazat smlouvu?
                 </h3>
-                <p className="mt-1 text-sm text-slate-300">
+                <p className="mt-1 text-base text-slate-700">
                   Akce je nevratná. Potvrď prosím kliknutím na tlačítko Smazat.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowDeleteModal(false)}
-                className="rounded-full px-2 text-slate-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-red-300"
+                className="rounded-full px-2 text-slate-700 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
                 aria-label="Zavřít"
               >
                 ×
@@ -3077,7 +3141,7 @@ export default function ContractDetailPage() {
             </div>
 
             {deleteError && (
-              <p className="mt-3 text-xs text-rose-200 bg-rose-900/40 border border-rose-500/50 rounded-lg px-3 py-2">
+              <p className="mt-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800">
                 {deleteError}
               </p>
             )}
@@ -3086,7 +3150,7 @@ export default function ContractDetailPage() {
               <button
                 type="button"
                 onClick={() => setShowDeleteModal(false)}
-                className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-xs sm:text-sm text-slate-50 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                className={ghostButtonClass}
               >
                 Zrušit
               </button>
@@ -3094,10 +3158,10 @@ export default function ContractDetailPage() {
                 type="button"
                 onClick={handleDelete}
                 disabled={deleting}
-                className="inline-flex items-center gap-2 rounded-xl border border-red-400/70 bg-red-600/80 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-lg shadow-red-500/40 hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 rounded-xl border border-rose-700 bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(190,24,93,0.28)] transition hover:bg-rose-800 focus:outline-none focus:ring-2 focus:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-60 sm:text-base"
               >
                 {deleting && (
-                  <Spinner className="h-4 w-4 border-white/80 border-t-red-900" />
+                  <Spinner className="h-5 w-5 border-rose-200/70 border-t-white" />
                 )}
                 <span>{deleting ? "Mažu…" : "Smazat"}</span>
               </button>

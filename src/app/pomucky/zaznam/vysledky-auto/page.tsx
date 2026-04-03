@@ -340,8 +340,8 @@ export default function CarResultsPage() {
     <AppLayout active="tools">
       <div className="w-full max-w-4xl space-y-6">
         {/* Přepínač pojišťovny – nahoře */}
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-4 sm:px-8 sm:py-5 shadow-[0_18px_60px_rgba(0,0,0,0.8)] space-y-3">
-          <h2 className="text-sm font-semibold text-slate-50">
+        <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-4 sm:px-8 sm:py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
+          <h2 className="text-sm font-semibold text-slate-900">
             Jakou pojišťovnu sjednáváš?
           </h2>
           <div className="flex flex-wrap gap-2">
@@ -358,8 +358,8 @@ export default function CarResultsPage() {
                   }
                   className={`px-3.5 py-1.5 rounded-2xl text-xs sm:text-sm border transition ${
                     active
-                      ? "bg-emerald-500/20 border-emerald-400 text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
-                      : "bg-white/5 border-white/20 text-slate-100 hover:bg-white/10"
+                      ? "bg-emerald-500/20 border-emerald-400 text-emerald-800 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+                      : "bg-white border-slate-300 text-slate-900 hover:bg-slate-100"
                   }`}
                 >
                   {opt.label}
@@ -371,21 +371,21 @@ export default function CarResultsPage() {
 
         {/* Header */}
         <header className="space-y-2">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-50">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
             Doporučení do dopadů – Vozidla
           </h1>
-          <p className="text-sm text-slate-300 max-w-2xl">
+          <p className="text-sm text-slate-600 max-w-2xl">
             Texty, které můžeš zapsat do dopadů / záznamu z jednání podle toho,
             jak má klient nastavené pojištění vozidla.
           </p>
         </header>
 
         {/* Výsledky – hlavní doporučení */}
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
+        <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
           {!loaded ? (
-            <p className="text-sm text-slate-200">Načítám výsledky…</p>
+            <p className="text-sm text-slate-800">Načítám výsledky…</p>
           ) : !data ? (
-            <div className="space-y-2 text-sm text-slate-200">
+            <div className="space-y-2 text-sm text-slate-800">
               <p>
                 Nenašel jsem žádná data k pojištění vozidel. Pravděpodobně jsi
                 ještě nevyplnil formulář nebo jsi jej neuložil pomocí tlačítka{" "}
@@ -399,23 +399,23 @@ export default function CarResultsPage() {
               </Link>
             </div>
           ) : recs.length === 0 ? (
-            <div className="space-y-2 text-sm text-slate-200">
+            <div className="space-y-2 text-sm text-slate-800">
               <p>
                 Z aktuálně zadaných údajů nevyplývají žádná speciální upozornění
                 pro dopady.
               </p>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500">
                 Pokud očekáváš nějaké doporučení, zkontroluj prosím nastavení
                 limitů, asistencí a doplňkových krytí v sekci Pojištění vozidel.
               </p>
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm text-slate-200">
+              <p className="text-sm text-slate-800">
                 Níže máš hotové věty, které můžeš použít v dopadech nebo v
                 záznamu z jednání:
               </p>
-              <ul className="space-y-2 text-sm text-slate-100">
+              <ul className="space-y-2 text-sm text-slate-900">
                 {recs.map((rec, idx) => (
                   <li
                     key={idx}
@@ -424,14 +424,14 @@ export default function CarResultsPage() {
                     <button
                       type="button"
                       onClick={() => handleCopy(rec.text)}
-                      className="mt-[1px] inline-flex items-center rounded-full border border-white/25 bg-white/10 px-2 py-[3px] text-[11px] font-medium text-slate-100 transition hover:border-emerald-300/60 hover:text-emerald-200"
+                      className="mt-[1px] inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-900 transition hover:border-emerald-300/60 hover:text-emerald-800"
                     >
                       {copiedText === rec.text ? "Zkopírováno" : "Kopírovat"}
                     </button>
                     <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
                     <div className="flex-1 space-y-1">
                       {rec.reason && (
-                        <span className="inline-flex rounded-full border border-emerald-300/45 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-200">
+                        <span className="inline-flex rounded-full border border-emerald-300/45 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-800">
                           {rec.reason}
                         </span>
                       )}
@@ -445,14 +445,14 @@ export default function CarResultsPage() {
         </section>
 
         {/* Doporučení produktu */}
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)] space-y-4">
+        <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-50">
+            <h2 className="text-sm font-semibold text-slate-900">
               Doporučení produktu
             </h2>
           </div>
 
-          <p className="text-xs sm:text-sm text-slate-300">
+          <p className="text-xs sm:text-sm text-slate-600">
             Měl by jsi vždy doporučit klientovi alespoň 2 pojišťovny.
           </p>
 
@@ -470,8 +470,8 @@ export default function CarResultsPage() {
                   }
                   className={`px-3.5 py-1.5 rounded-2xl text-xs sm:text-sm border transition ${
                     active
-                      ? "bg-emerald-500/20 border-emerald-400 text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
-                      : "bg-white/5 border-white/20 text-slate-100 hover:bg-white/10"
+                      ? "bg-emerald-500/20 border-emerald-400 text-emerald-800 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+                      : "bg-white border-slate-300 text-slate-900 hover:bg-slate-100"
                   }`}
                 >
                   {opt.label}
@@ -482,10 +482,10 @@ export default function CarResultsPage() {
 
           {productRecs.length > 0 && (
             <div className="mt-3 space-y-2">
-              <p className="text-sm text-slate-200">
+              <p className="text-sm text-slate-800">
                 Shrnutí výhod / poznámek pro zvolenou pojišťovnu:
               </p>
-              <ul className="list-disc pl-5 space-y-1.5 text-sm text-slate-100">
+              <ul className="list-disc pl-5 space-y-1.5 text-sm text-slate-900">
                 {productRecs.map((text, idx) => (
                   <li key={idx}>{text}</li>
                 ))}
@@ -498,7 +498,7 @@ export default function CarResultsPage() {
         <div className="flex justify-end">
           <Link
             href="/pomucky/zaznam"
-            className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-slate-100 hover:bg-white/10"
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-xs sm:text-sm font-medium text-slate-900 hover:bg-slate-100"
           >
             Zpět na záznam z jednání
           </Link>

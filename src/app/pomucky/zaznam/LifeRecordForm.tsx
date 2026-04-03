@@ -251,7 +251,7 @@ export function LifeRecordForm() {
   ) => (
     <input
       {...moneyInputProps}
-      className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/80 focus:border-sky-500/80"
+      className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/80 focus:border-sky-500/80"
       value={value}
       onChange={(e) => onChange(normalizeAmountInput(e.target.value, opts))}
       placeholder={placeholder}
@@ -265,7 +265,7 @@ export function LifeRecordForm() {
     opts?: { min?: number; max?: number }
   ) => (
     <div className="space-y-1">
-      <p className="text-[11px] sm:text-xs text-slate-400">{label}</p>
+      <p className="text-[11px] sm:text-xs text-slate-900">{label}</p>
       {renderAmountInput(value, onChange, label, opts)}
     </div>
   );
@@ -293,13 +293,13 @@ export function LifeRecordForm() {
       onToggle={onToggle}
     >
       {enabled && (
-        <div className="mt-3 space-y-4 text-xs sm:text-sm text-slate-200">
+        <div className="mt-3 space-y-4 text-xs sm:text-sm text-slate-800">
           {/* Rozsah stupňů */}
           <div className="space-y-1">
-            <p className="text-[11px] sm:text-xs text-slate-400">
+            <p className="text-[11px] sm:text-xs text-slate-900">
               Rozsah stupňů invalidity:
             </p>
-            <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
               <ChipButton
                 active={degrees === "all"}
                 onClick={() => setDegrees("all")}
@@ -323,10 +323,10 @@ export function LifeRecordForm() {
 
           {/* Typ plnění */}
           <div className="space-y-1">
-            <p className="text-[11px] sm:text-xs text-slate-400">
+            <p className="text-[11px] sm:text-xs text-slate-900">
               Typ plnění:
             </p>
-            <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
               <ChipButton
                 active={type === "constant"}
                 onClick={() => setType("constant")}
@@ -418,7 +418,7 @@ export function LifeRecordForm() {
       onToggle={onToggle}
     >
       {enabled && (
-        <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+        <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
           {renderAmountInput(
             amount,
             setAmount,
@@ -426,10 +426,10 @@ export function LifeRecordForm() {
           )}
 
           <div className="space-y-1">
-            <p className="text-[11px] sm:text-xs text-slate-400">
+            <p className="text-[11px] sm:text-xs text-slate-900">
               Typ plnění:
             </p>
-            <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
               <ChipButton
                 active={type === "constant"}
                 onClick={() => setType("constant")}
@@ -478,14 +478,14 @@ export function LifeRecordForm() {
       onToggle={onToggle}
     >
       {enabled && (
-        <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+        <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
           {renderAmountInput(amount, setAmount, "Pojistná částka (Kč)")}
 
           <div className="space-y-1">
-            <p className="text-[11px] sm:text-xs text-slate-400">
+            <p className="text-[11px] sm:text-xs text-slate-900">
               Progrese:
             </p>
-            <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
               <ChipButton
                 active={progress === "none"}
                 onClick={() => setProgress("none")}
@@ -514,10 +514,10 @@ export function LifeRecordForm() {
           </div>
 
           <div className="space-y-1">
-            <p className="text-[11px] sm:text-xs text-slate-400">
+            <p className="text-[11px] sm:text-xs text-slate-900">
               Plnění od:
             </p>
-            <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
               <ChipButton
                 active={from === "from0"}
                 onClick={() => setFrom("from0")}
@@ -570,14 +570,14 @@ export function LifeRecordForm() {
       onToggle={onToggle}
     >
       {enabled && (
-        <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+        <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
           {renderAmountInput(amount, setAmount, "Denní dávka (Kč)")}
 
           <div className="space-y-1">
-            <p className="text-[11px] sm:text-xs text-slate-400">
+            <p className="text-[11px] sm:text-xs text-slate-900">
               Plnění od:
             </p>
-            <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
               <ChipButton
                 active={from === "day15"}
                 onClick={() => setFrom("day15")}
@@ -600,10 +600,10 @@ export function LifeRecordForm() {
           </div>
 
           <div className="space-y-1">
-            <p className="text-[11px] sm:text-xs text-slate-400">
+            <p className="text-[11px] sm:text-xs text-slate-900">
               Varianta plnění:
             </p>
-            <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
               <ChipButton
                 active={variant === "retroFrom1"}
                 onClick={() => setVariant("retroFrom1")}
@@ -620,7 +620,7 @@ export function LifeRecordForm() {
           </div>
 
           <div className="space-y-1">
-            <p className="text-[11px] sm:text-xs text-slate-400">Plnění:</p>
+            <p className="text-[11px] sm:text-xs text-slate-900">Plnění:</p>
             <div className="flex flex-wrap gap-2">
               <ChipButton
                 active={accident}
@@ -983,10 +983,10 @@ export function LifeRecordForm() {
     <div className="space-y-4">
       {/* Header sekce */}
       <div className="mb-1">
-        <h2 className="text-base sm:text-lg font-semibold text-slate-50">
+        <h2 className="text-base sm:text-lg font-semibold text-slate-900">
           Životní pojištění – přehled sjednávaných krytí
         </h2>
-        <p className="text-xs sm:text-sm text-slate-300 mt-1">
+        <p className="text-xs sm:text-sm text-slate-600 mt-1">
           Zaklikni rizika, která s klientem řešíš, a doplň jejich částky.
           Slouží jako tahák k vyplnění Záznamu z jednání.
         </p>
@@ -1094,7 +1094,7 @@ export function LifeRecordForm() {
           onToggle={() => setWaiverOn((v) => !v)}
         >
           {waiverOn && (
-            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
               <ToggleRow
                 label="Přiznání invalidity"
                 checked={waiverInvalidityOn}
@@ -1103,10 +1103,10 @@ export function LifeRecordForm() {
 
               {waiverInvalidityOn && (
                 <div className="ml-1 space-y-1">
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-slate-900">
                     Rozsah invalidity:
                   </p>
-                  <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+                  <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
                     <ChipButton
                       active={waiverInvalidityScope === "twoAndThree"}
                       onClick={() =>
@@ -1260,7 +1260,7 @@ export function LifeRecordForm() {
           onToggle={() => setDeathAccOn((v) => !v)}
         >
           {deathAccOn && (
-            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
               {renderAmountInput(
                 deathAccAmount,
                 setDeathAccAmount,
@@ -1306,7 +1306,7 @@ export function LifeRecordForm() {
           onToggle={() => setDailyOn((v) => !v)}
         >
           {dailyOn && (
-            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
               {renderAmountInput(
                 dailyAmount,
                 setDailyAmount,
@@ -1314,10 +1314,10 @@ export function LifeRecordForm() {
               )}
 
               <div className="space-y-1">
-                <p className="text-[11px] sm:text-xs text-slate-400">
+                <p className="text-[11px] sm:text-xs text-slate-900">
                   Plnění od:
                 </p>
-                <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+                <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
                   <ChipButton
                     active={dailyFrom === "from1"}
                     onClick={() => setDailyFrom("from1")}
@@ -1334,10 +1334,10 @@ export function LifeRecordForm() {
               </div>
 
               <div className="space-y-1">
-                <p className="text-[11px] sm:text-xs text-slate-400">
+                <p className="text-[11px] sm:text-xs text-slate-900">
                   Progrese:
                 </p>
-                <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+                <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
                   <ChipButton
                     active={dailyProgress === "none"}
                     onClick={() => setDailyProgress("none")}
@@ -1363,7 +1363,7 @@ export function LifeRecordForm() {
           onToggle={() => setBodilyOn((v) => !v)}
         >
           {bodilyOn && (
-            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
               {renderAmountInput(
                 bodilyAmount,
                 setBodilyAmount,
@@ -1371,10 +1371,10 @@ export function LifeRecordForm() {
               )}
 
               <div className="space-y-1">
-                <p className="text-[11px] sm:text-xs text-slate-400">
+                <p className="text-[11px] sm:text-xs text-slate-900">
                   Plnění od:
                 </p>
-                <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+                <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
                   <ChipButton
                     active={bodilyFrom === "from0"}
                     onClick={() => setBodilyFrom("from0")}
@@ -1432,7 +1432,7 @@ export function LifeRecordForm() {
           onToggle={() => setHospitalOn((v) => !v)}
         >
           {hospitalOn && (
-            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
               <div className="space-y-2">
                 <ToggleRow
                   label="Plnění při úrazu"
@@ -1491,7 +1491,7 @@ export function LifeRecordForm() {
           onToggle={() => setChildrenAccidentOn((v) => !v)}
         >
           {childrenAccidentOn && (
-            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-200">
+            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
               {renderAmountInput(
                 childrenAccidentAmount,
                 setChildrenAccidentAmount,
@@ -1499,10 +1499,10 @@ export function LifeRecordForm() {
               )}
 
               <div className="space-y-1">
-                <p className="text-[11px] sm:text-xs text-slate-400">
+                <p className="text-[11px] sm:text-xs text-slate-900">
                   Typ plnění:
                 </p>
-                <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+                <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
                   <ChipButton
                     active={childrenAccidentType === "same"}
                     onClick={() => setChildrenAccidentType("same")}
@@ -1588,12 +1588,12 @@ export function LifeRecordForm() {
           onToggle={() => setHealthSocialOn((v) => !v)}
         />
 
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.8)] space-y-3">
-          <div className="text-sm sm:text-base font-semibold text-white">
+        <section className="rounded-3xl border border-slate-900 bg-white  px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
+          <div className="text-sm sm:text-base font-semibold text-slate-900">
             Zákazník má již uzavřenou pojistnou smlouvu týkající se stejného
             pojistného zájmu
           </div>
-          <div className="inline-flex rounded-full bg-white/5 border border-white/15 p-0.5 text-[11px] sm:text-xs">
+          <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
             <ChipButton
               active={hasExistingContract === "yes"}
               onClick={() => setHasExistingContract("yes")}
@@ -1615,7 +1615,7 @@ export function LifeRecordForm() {
         <button
           type="button"
           onClick={handleResultsClick}
-          className="inline-flex items-center gap-2 rounded-full border border-emerald-400/70 bg-emerald-500/20 px-8 py-2.5 text-sm sm:text-base font-semibold text-emerald-50 shadow-[0_0_25px_rgba(16,185,129,0.55)] hover:bg-emerald-500/30 hover:border-emerald-200 transition"
+          className="inline-flex items-center gap-2 rounded-full border border-emerald-400/70 bg-emerald-500/20 px-8 py-2.5 text-sm sm:text-base font-semibold text-emerald-800 shadow-[0_0_25px_rgba(16,185,129,0.55)] hover:bg-emerald-500/30 hover:border-emerald-200 transition"
         >
           <span>📄</span>
           <span>Výsledky</span>
@@ -1645,7 +1645,7 @@ function BenefitCard({
   children,
 }: BenefitCardProps) {
   return (
-    <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 sm:px-5 sm:py-5 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
+    <section className="rounded-3xl border border-slate-900 bg-white  px-4 py-4 sm:px-5 sm:py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
       <button
         type="button"
         onClick={onToggle}
@@ -1654,18 +1654,18 @@ function BenefitCard({
         <div
           className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs transition ${
             enabled
-              ? "border-emerald-400 bg-emerald-500/20 text-emerald-300"
-              : "border-white/40 bg-white/5 text-slate-300"
+              ? "border-emerald-600 bg-emerald-500 text-white"
+              : "border-slate-400 bg-white text-transparent"
           }`}
         >
           {enabled ? "✓" : ""}
         </div>
         <div className="flex-1">
-          <h3 className="text-sm sm:text-base font-semibold text-slate-50">
+          <h3 className="text-sm sm:text-base font-semibold text-slate-900">
             {title}
           </h3>
           {subtitle && (
-            <p className="text-[11px] sm:text-xs text-slate-300 mt-0.5">
+            <p className="text-[11px] sm:text-xs text-slate-600 mt-0.5">
               {subtitle}
             </p>
           )}
@@ -1673,7 +1673,7 @@ function BenefitCard({
       </button>
 
       {enabled && children && (
-        <div className="mt-3 border-t border-white/10 pt-3">{children}</div>
+        <div className="mt-3 border-t border-slate-300 pt-3">{children}</div>
       )}
     </section>
   );
@@ -1688,18 +1688,18 @@ type ToggleRowProps = {
 function ToggleRow({ label, checked, onChange }: ToggleRowProps) {
   return (
     <label className="flex items-center justify-between gap-3">
-      <span className="text-xs sm:text-sm text-slate-200">{label}</span>
+      <span className="text-xs sm:text-sm text-slate-800">{label}</span>
       <button
         type="button"
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-5 w-9 items-center rounded-full border transition ${
           checked
-            ? "bg-emerald-500/80 border-emerald-300"
-            : "bg-slate-600/70 border-slate-300/70"
+            ? "bg-emerald-500 border-emerald-600"
+            : "bg-white border-slate-400"
         }`}
       >
         <span
-          className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+          className={`inline-block h-4 w-4 rounded-full bg-slate-900 transition-transform ${
             checked ? "translate-x-4" : "translate-x-1"
           }`}
         />
@@ -1720,7 +1720,7 @@ function ChipButton({ active, children, onClick }: ChipButtonProps) {
       type="button"
       onClick={onClick}
       className={`px-3 py-1 rounded-full whitespace-nowrap ${
-        active ? "bg-white text-slate-900" : "text-slate-200"
+        active ? "bg-slate-900 text-white" : "text-slate-800 hover:bg-slate-100"
       }`}
     >
       {children}

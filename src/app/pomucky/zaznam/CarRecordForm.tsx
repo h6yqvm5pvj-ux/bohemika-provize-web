@@ -80,15 +80,15 @@ function GlassSwitch({ label, checked, onChange }: GlassSwitchProps) {
       onClick={() => onChange(!checked)}
       className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
         checked
-          ? "border-emerald-400/70 bg-emerald-500/15 text-emerald-100"
-          : "border-white/20 bg-white/5 text-slate-200 hover:bg-white/10"
+          ? "border-emerald-600 bg-emerald-500 text-white"
+          : "border-slate-900 bg-white text-slate-900 hover:bg-slate-100"
       }`}
     >
       <span
         className={`h-4 w-4 rounded-full border flex items-center justify-center text-[10px] ${
           checked
-            ? "border-emerald-300 bg-emerald-400/80 text-slate-900"
-            : "border-white/40"
+            ? "border-emerald-700 bg-white text-emerald-700"
+            : "border-slate-400"
         }`}
       >
         {checked ? "✓" : ""}
@@ -116,8 +116,8 @@ function PillPicker({ value, options, onChange }: PillPickerProps) {
             onClick={() => onChange(opt)}
             className={`rounded-full border px-3 py-1.5 text-xs sm:text-sm transition ${
               active
-                ? "border-sky-400/80 bg-sky-500/20 text-sky-50"
-                : "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10"
+                ? "border-slate-900 bg-slate-900 text-white"
+                : "border-slate-900 bg-white text-slate-800 hover:bg-slate-100"
             }`}
           >
             {opt}
@@ -220,25 +220,25 @@ export function CarRecordForm() {
   return (
     <div className="space-y-6">
       {/* Hlavní header + přepínač SROVNÁVAČ / PORTÁL */}
-      <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
+      <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-600">
               Výběr, jaký typ pojištění sjednáváš…
             </p>
-            <h2 className="text-lg sm:text-xl font-semibold text-slate-50">
+            <h2 className="text-lg sm:text-xl font-semibold text-slate-900">
               Pojištění vozidel – nastavení sjednávaného krytí
             </h2>
           </div>
 
-          <div className="inline-flex rounded-full bg-slate-950/60 border border-white/15 p-1">
+          <div className="inline-flex rounded-full bg-white border border-slate-900 p-1">
             <button
               type="button"
               onClick={() => setMode("srovnavac")}
               className={`px-4 py-1.5 text-xs sm:text-sm rounded-full transition ${
                 mode === "srovnavac"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-200"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "text-slate-700 hover:bg-slate-100"
               }`}
             >
               SROVNÁVAČ
@@ -248,8 +248,8 @@ export function CarRecordForm() {
               onClick={() => setMode("portal")}
               className={`px-4 py-1.5 text-xs sm:text-sm rounded-full transition ${
                 mode === "portal"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-200"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "text-slate-700 hover:bg-slate-100"
               }`}
             >
               PORTÁL POJIŠŤOVNY
@@ -258,7 +258,7 @@ export function CarRecordForm() {
         </div>
 
         {mode === "portal" && (
-          <p className="mt-3 text-xs sm:text-sm text-slate-300">
+          <p className="mt-3 text-xs sm:text-sm text-slate-600">
             Pro portály pojišťoven připravujeme samostatné šablony. Zatím
             používej srovnávačovou část níže jako tahák k vyplnění Záznamu
             z jednání.
@@ -269,13 +269,13 @@ export function CarRecordForm() {
       {/* Povinné ručení + Havarijní */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Povinné ručení */}
-        <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-4 sm:px-6 sm:py-5 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
+        <div className="rounded-3xl border border-slate-900 bg-white  px-5 py-4 sm:px-6 sm:py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-300">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-600">
                 Povinné ručení
               </p>
-              <p className="text-sm text-slate-300">
+              <p className="text-sm text-slate-600">
                 Zvol sjednávaný limit plnění.
               </p>
             </div>
@@ -288,7 +288,7 @@ export function CarRecordForm() {
 
           {hasLiability && (
             <div className="space-y-2">
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                 Limit plnění (škody na zdraví / majetku)
               </label>
               <PillPicker
@@ -301,13 +301,13 @@ export function CarRecordForm() {
         </div>
 
         {/* Havarijní */}
-        <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-4 sm:px-6 sm:py-5 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
+        <div className="rounded-3xl border border-slate-900 bg-white  px-5 py-4 sm:px-6 sm:py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-300">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-600">
                 Havarijní pojištění
               </p>
-              <p className="text-sm text-slate-300">
+              <p className="text-sm text-slate-600">
                 Pojistná částka, DPH a spoluúčast.
               </p>
             </div>
@@ -321,7 +321,7 @@ export function CarRecordForm() {
           {hasCasco && (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                   Pojistná částka
                 </label>
                 <div className="flex gap-2">
@@ -329,28 +329,28 @@ export function CarRecordForm() {
                     type="text"
                     inputMode="decimal"
                     placeholder="např. 350 000"
-                    className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                     value={cascoAmount}
                     onChange={(e) => setCascoAmount(e.target.value)}
                   />
-                  <div className="flex items-center px-3 text-sm text-slate-200">
+                  <div className="flex items-center px-3 text-sm text-slate-800">
                     Kč
                   </div>
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                   S DPH / bez DPH
                 </label>
-                <div className="inline-flex rounded-full bg-slate-950/60 border border-white/15 p-1">
+                <div className="inline-flex rounded-full bg-white border border-slate-900 p-1">
                   <button
                     type="button"
                     onClick={() => setCascoWithVat("sDPH")}
                     className={`px-3 py-1.5 text-xs rounded-full transition ${
                       cascoWithVat === "sDPH"
-                        ? "bg-white text-slate-900"
-                        : "text-slate-200"
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-700 hover:bg-slate-100"
                     }`}
                   >
                     S DPH
@@ -360,8 +360,8 @@ export function CarRecordForm() {
                     onClick={() => setCascoWithVat("bezDPH")}
                     className={`px-3 py-1.5 text-xs rounded-full transition ${
                       cascoWithVat === "bezDPH"
-                        ? "bg-white text-slate-900"
-                        : "text-slate-200"
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-700 hover:bg-slate-100"
                     }`}
                   >
                     Bez DPH
@@ -370,7 +370,7 @@ export function CarRecordForm() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                   Spoluúčast
                 </label>
                 <PillPicker
@@ -385,19 +385,19 @@ export function CarRecordForm() {
       </section>
 
       {/* Roční nájezd */}
-      <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-3 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
+      <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 space-y-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
-            <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-600">
               Předpokládaný roční nájezd km
             </h3>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-900">
               Zohledňuje pouze Allianz a Pillow.
             </p>
           </div>
-          <div className="text-xs text-slate-400">
+          <div className="text-xs text-slate-900">
             Aktuálně:{" "}
-            <span className="font-medium text-slate-100">
+            <span className="font-medium text-slate-900">
               {annualMileage ?? "Nezvolen"}
             </span>
           </div>
@@ -411,8 +411,8 @@ export function CarRecordForm() {
       </section>
 
       {/* Doplňková krytí */}
-      <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
-        <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+      <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+        <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-600">
           Doplňková krytí
         </h3>
 
@@ -427,7 +427,7 @@ export function CarRecordForm() {
             {collisionAnimal && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Limit v Kč"
                 value={collisionAnimalLimit}
                 onChange={(e) =>
@@ -447,7 +447,7 @@ export function CarRecordForm() {
             {animalDamage && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Limit v Kč"
                 value={animalDamageLimit}
                 onChange={(e) =>
@@ -467,7 +467,7 @@ export function CarRecordForm() {
             {naturalHazard && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Limit v Kč"
                 value={naturalHazardLimit}
                 onChange={(e) =>
@@ -487,7 +487,7 @@ export function CarRecordForm() {
             {glass && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Limit v Kč"
                 value={glassLimit}
                 onChange={(e) => setGlassLimit(e.target.value)}
@@ -505,7 +505,7 @@ export function CarRecordForm() {
             {theft && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Limit v Kč"
                 value={theftLimit}
                 onChange={(e) => setTheftLimit(e.target.value)}
@@ -523,7 +523,7 @@ export function CarRecordForm() {
             {vandalism && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Limit v Kč"
                 value={vandalismLimit}
                 onChange={(e) =>
@@ -568,7 +568,7 @@ export function CarRecordForm() {
             {luggage && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Limit v Kč"
                 value={luggageLimit}
                 onChange={(e) => setLuggageLimit(e.target.value)}
@@ -595,14 +595,14 @@ export function CarRecordForm() {
       </section>
 
       {/* Slevy */}
-      <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
-        <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+      <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+        <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-600">
           Uplatnil jsi některou z uvedených slev?
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
           <div className="space-y-1.5">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               ČPP
             </p>
             <GlassSwitch
@@ -613,7 +613,7 @@ export function CarRecordForm() {
           </div>
 
           <div className="space-y-1.5">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               Kooperativa
             </p>
             <GlassSwitch
@@ -624,7 +624,7 @@ export function CarRecordForm() {
           </div>
 
           <div className="space-y-1.5">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               ČPP &amp; Kooperativa
             </p>
             <GlassSwitch
@@ -635,7 +635,7 @@ export function CarRecordForm() {
           </div>
 
           <div className="space-y-1.5">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               ČSOB
             </p>
             <GlassSwitch
@@ -646,7 +646,7 @@ export function CarRecordForm() {
           </div>
 
           <div className="space-y-1.5">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               Slavia
             </p>
             <GlassSwitch
@@ -657,7 +657,7 @@ export function CarRecordForm() {
           </div>
 
           <div className="space-y-1.5">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               Pillow
             </p>
             <GlassSwitch
@@ -668,7 +668,7 @@ export function CarRecordForm() {
           </div>
 
           <div className="space-y-1.5">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               UNIQA
             </p>
             <GlassSwitch
@@ -679,7 +679,7 @@ export function CarRecordForm() {
           </div>
 
           <div className="space-y-1.5">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               UNIQA
             </p>
             <GlassSwitch
@@ -690,7 +690,7 @@ export function CarRecordForm() {
           </div>
 
           <div className="space-y-1.5">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               UNIQA
             </p>
             <GlassSwitch
@@ -701,7 +701,7 @@ export function CarRecordForm() {
           </div>
 
           <div className="space-y-1.5">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               UNIQA
             </p>
             <GlassSwitch
@@ -718,7 +718,7 @@ export function CarRecordForm() {
         <button
           type="button"
           onClick={handleGoToResults}
-          className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500/90 px-5 py-2.5 text-sm font-semibold text-slate-900 shadow-[0_18px_40px_rgba(16,185,129,0.45)] hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+          className="inline-flex items-center gap-2 rounded-2xl border border-emerald-700 bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(16,185,129,0.35)] hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-300"
         >
           Výsledky
         </button>

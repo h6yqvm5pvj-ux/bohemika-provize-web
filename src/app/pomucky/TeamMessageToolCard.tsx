@@ -70,10 +70,10 @@ export function TeamMessageToolCard() {
   return (
     <Link
       href="/pomucky/zprava-tymu"
-      className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)] hover:bg-white/10 hover:border-emerald-400/70 transition cursor-pointer"
+      className="rounded-3xl border border-slate-300 bg-white  px-5 py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)] hover:bg-white hover:border-emerald-400/70 transition cursor-pointer"
     >
       <h2 className="text-lg font-semibold mb-2">Zpráva týmu</h2>
-      <p className="text-sm text-slate-300">
+      <p className="text-sm text-slate-600">
         Odešli týmu krátkou motivační nebo informační zprávu jako push
         notifikaci do mobilní aplikace.
       </p>

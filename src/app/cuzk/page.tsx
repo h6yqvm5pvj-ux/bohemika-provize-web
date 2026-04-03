@@ -6,7 +6,6 @@ import Image from "next/image";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 
 import { AppLayout } from "@/components/AppLayout";
-import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import { auth } from "../firebase";
 import {
   cuzkLookupByAdresniMisto,
@@ -270,13 +269,13 @@ function Field({
   right?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+    <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
-          <div className="text-[11px] uppercase tracking-wider text-slate-400">{label}</div>
-          <div className="text-sm text-slate-100">{value}</div>
+          <div className="text-[11px] uppercase tracking-wider text-slate-500">{label}</div>
+          <div className="text-sm text-slate-900">{value}</div>
         </div>
-        {right ? <div className="text-[11px] text-slate-400">{right}</div> : null}
+        {right ? <div className="text-[11px] text-slate-500">{right}</div> : null}
       </div>
     </div>
   );
@@ -538,40 +537,41 @@ export default function CuzkPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-5xl space-y-6">
-        <header className="pt-6 pb-6 sm:pb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="space-y-2">
-            <div className="flex items-center gap-4">
-              <SplitTitle text="Katastr nemovitostí" className="translate-y-28 sm:translate-y-32" />
-              <Image
-                src="/icons/icon_domex.png"
-                alt="Domex"
-                width={800}
-                height={520}
-                className="h-64 w-auto translate-x-8 sm:translate-x-14 translate-y-16 sm:translate-y-24"
-                priority
-              />
+      <div className="w-full max-w-6xl space-y-6">
+        <header className="pt-6 pb-2 sm:pb-4">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-2">
+              <h1 className="text-5xl sm:text-6xl font-semibold leading-[0.95] tracking-tight text-slate-900">
+                Katastr nemovitostí
+              </h1>
+              <Link
+                href="/pomucky"
+                className="inline-flex items-center text-xs text-slate-600 hover:text-slate-900 transition"
+              >
+                ← Zpět na pomůcky
+              </Link>
             </div>
-            <Link
-              href="/pomucky"
-              className="inline-flex items-center text-xs text-slate-300 hover:text-white transition"
-            >
-              ← Zpět na pomůcky
-            </Link>
+            <Image
+              src="/icons/icon_domex.png"
+              alt="Domex"
+              width={800}
+              height={520}
+              className="h-44 w-auto self-start lg:h-56 lg:self-end"
+              priority
+            />
           </div>
         </header>
 
         {/* ✅ vždy NAD výsledkem (kvůli dropdownu) */}
         <div className="grid gap-5 lg:grid-cols-[1.35fr_0.85fr] items-start">
           {/* Levý box: dotaz */}
-          <section className="relative z-30 isolate overflow-visible rounded-3xl border border-white/15 bg-gradient-to-br from-white/8 via-slate-900/40 to-slate-950/60 backdrop-blur-2xl px-6 py-6 shadow-[0_18px_70px_rgba(0,0,0,0.85)] space-y-5">
-            <div className="absolute inset-0 pointer-events-none opacity-60 bg-[radial-gradient(circle_at_20%_20%,rgba(56,189,248,0.25),transparent_35%),radial-gradient(circle_at_85%_15%,rgba(94,234,212,0.25),transparent_32%)]" />
+          <section className="relative z-30 isolate overflow-visible rounded-3xl border border-slate-900 bg-white px-6 py-6 space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-white">Vyhledávání v katastru ČÚZK</h2>
+                <h2 className="text-lg font-semibold text-slate-900">Vyhledávání v katastru ČÚZK</h2>
               </div>
               {!user && (
-                <span className="text-[11px] text-amber-200 bg-amber-900/40 border border-amber-500/50 rounded-full px-3 py-1">
+                <span className="text-[11px] text-amber-800 bg-amber-50 border border-amber-500/50 rounded-full px-3 py-1">
                   Přihlaš se, aby šlo volat ČÚZK.
                 </span>
               )}
@@ -579,8 +579,8 @@ export default function CuzkPage() {
 
             <div className="space-y-4">
               {/* Adresa + našeptávač (full width) */}
-              <div className="space-y-2 text-sm text-slate-200" ref={suggestWrapRef}>
-                <span className="block text-xs uppercase tracking-wide text-slate-300">Adresa</span>
+              <div className="space-y-2 text-sm text-slate-800" ref={suggestWrapRef}>
+                <span className="block text-xs uppercase tracking-wide text-slate-600">Adresa</span>
 
                 <div className="relative">
                   <input
@@ -612,13 +612,13 @@ export default function CuzkPage() {
                         setActiveIdx(-1);
                       }
                     }}
-                    className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                     placeholder='např. "Tyršova 133, Kadaň"'
                   />
 
                   {user && suggestOpen && (suggestLoading || suggestions.length > 0) && (
-                    <div className="absolute z-[999] mt-2 w-full overflow-hidden rounded-2xl border border-white/12 bg-slate-950/80 backdrop-blur-2xl shadow-[0_18px_60px_rgba(0,0,0,0.9)]">
-                      {suggestLoading && <div className="px-3 py-2 text-xs text-slate-300">Našeptávám…</div>}
+                    <div className="absolute z-[999] mt-2 w-full overflow-hidden rounded-2xl border border-slate-300 bg-white">
+                      {suggestLoading && <div className="px-3 py-2 text-xs text-slate-600">Našeptávám…</div>}
                       {!suggestLoading && suggestions.length > 0 && (
                         <div className="max-h-72 overflow-auto">
                           {suggestions.map((m, idx) => {
@@ -631,17 +631,17 @@ export default function CuzkPage() {
                                 onMouseEnter={() => setActiveIdx(idx)}
                                 className={[
                                   "w-full text-left px-3 py-2 transition",
-                                  "border-b border-white/5 last:border-b-0",
-                                  active ? "bg-white/10" : "bg-transparent hover:bg-white/5",
+                                  "border-b border-slate-200 last:border-b-0",
+                                  active ? "bg-slate-100" : "bg-transparent hover:bg-slate-100",
                                 ].join(" ")}
                               >
-                                <div className="text-sm text-slate-100">{m.adresa}</div>
-                                <div className="text-[11px] text-slate-400">
-                                  RÚIAN: <span className="text-slate-200">{m.kod ? m.kod : "—"}</span>
+                                <div className="text-sm text-slate-900">{m.adresa}</div>
+                                <div className="text-[11px] text-slate-500">
+                                  RÚIAN: <span className="text-slate-800">{m.kod ? m.kod : "—"}</span>
                                   {m.psc ? (
                                     <>
                                       {" "}
-                                      • PSČ: <span className="text-slate-200">{m.psc}</span>
+                                      • PSČ: <span className="text-slate-800">{m.psc}</span>
                                     </>
                                   ) : null}
                                 </div>
@@ -663,10 +663,10 @@ export default function CuzkPage() {
                   onClick={() => setIncludeUnits((v) => !v)}
                   aria-pressed={includeUnits}
                   className={[
-                    "w-full inline-flex items-center justify-between gap-3 rounded-full px-4 py-2 text-sm font-semibold transition shadow-[0_8px_28px_rgba(0,0,0,0.35)]",
+                    "w-full inline-flex items-center justify-between gap-3 rounded-full px-4 py-2 text-sm font-semibold transition",
                     includeUnits
-                      ? "border border-emerald-300/70 bg-emerald-500/20 text-emerald-50 hover:bg-emerald-500/30 hover:border-emerald-100"
-                      : "border border-white/15 bg-white/5 text-white hover:bg-white/10 hover:border-white/30",
+                      ? "border border-emerald-600 bg-emerald-100 text-emerald-900 hover:bg-emerald-100 hover:border-emerald-100"
+                      : "border border-slate-900 bg-white text-slate-900 hover:bg-slate-100 hover:border-slate-900",
                   ].join(" ")}
                 >
                   <span className="inline-flex items-center gap-2">
@@ -675,7 +675,7 @@ export default function CuzkPage() {
                         "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold",
                         includeUnits
                           ? "bg-emerald-500 text-slate-950 border border-emerald-200"
-                          : "bg-slate-900/60 text-slate-300 border border-white/20",
+                          : "bg-white text-slate-500 border border-slate-400",
                       ].join(" ")}
                       aria-hidden="true"
                     >
@@ -689,7 +689,7 @@ export default function CuzkPage() {
                   type="button"
                   onClick={handleSearchAddress}
                   disabled={loading || !canSearch}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-full border border-sky-300/70 bg-sky-500/25 px-4 py-2 text-sm font-semibold text-sky-50 shadow-[0_0_22px_rgba(56,189,248,0.55)] hover:bg-sky-500/35 hover:border-sky-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-full border border-slate-900 bg-sky-100 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-sky-100 hover:border-sky-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {loading ? "Hledám…" : "Vyhledat"}
                 </button>
@@ -698,7 +698,7 @@ export default function CuzkPage() {
                   type="button"
                   onClick={clearAll}
                   disabled={loading || (result === null && matches.length === 0 && !error)}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-slate-50 hover:bg-white/15 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   Vyčistit
                 </button>
@@ -706,27 +706,27 @@ export default function CuzkPage() {
 
               <div className="min-h-[18px]">
                 {error ? (
-                  <p className="text-[11px] text-amber-200 bg-amber-900/40 border border-amber-500/60 rounded-xl px-3 py-2">
+                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-500/60 rounded-xl px-3 py-2">
                     {error}
                   </p>
                 ) : result !== null ? (
-                  <span className="text-[11px] text-emerald-200">Výsledek načten {new Date().toLocaleTimeString("cs-CZ")}.</span>
+                  <span className="text-[11px] text-emerald-700">Výsledek načten {new Date().toLocaleTimeString("cs-CZ")}.</span>
                 ) : null}
               </div>
             </div>
 
             {matches.length > 0 && (
-              <div className="rounded-2xl border border-white/12 bg-white/5 px-4 py-3 space-y-3">
+              <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm text-white font-semibold">Nalezeno více adres — vyber správnou:</p>
-                  <span className="text-[11px] text-slate-400">{matches.length} možností</span>
+                  <p className="text-sm text-slate-900 font-semibold">Nalezeno více adres — vyber správnou:</p>
+                  <span className="text-[11px] text-slate-500">{matches.length} možností</span>
                 </div>
 
                 <div className="space-y-2">
                   {matches.map((m) => (
                     <label
                       key={m.kod}
-                      className="flex items-start gap-3 rounded-xl border border-white/10 bg-slate-900/40 px-3 py-2 hover:bg-slate-900/55 transition cursor-pointer"
+                      className="flex items-start gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-100 transition cursor-pointer"
                     >
                       <input
                         type="radio"
@@ -736,13 +736,13 @@ export default function CuzkPage() {
                         className="mt-1 h-4 w-4"
                       />
                       <div className="space-y-0.5">
-                        <div className="text-sm text-slate-100">{m.adresa}</div>
-                        <div className="text-[11px] text-slate-400">
-                          RÚIAN kód: <span className="text-slate-200">{m.kod}</span>
+                        <div className="text-sm text-slate-900">{m.adresa}</div>
+                        <div className="text-[11px] text-slate-500">
+                          RÚIAN kód: <span className="text-slate-800">{m.kod}</span>
                           {m.psc ? (
                             <>
                               {" "}
-                              • PSČ: <span className="text-slate-200">{m.psc}</span>
+                              • PSČ: <span className="text-slate-800">{m.psc}</span>
                             </>
                           ) : null}
                         </div>
@@ -756,7 +756,7 @@ export default function CuzkPage() {
                     type="button"
                     onClick={handleLoadSelected}
                     disabled={loading || !user}
-                    className="inline-flex items-center gap-2 rounded-full border border-emerald-300/70 bg-emerald-500/20 px-6 py-2 text-sm font-semibold text-emerald-50 shadow-[0_0_22px_rgba(16,185,129,0.35)] hover:bg-emerald-500/30 hover:border-emerald-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-2 rounded-full border border-emerald-600 bg-emerald-100 px-6 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-100 hover:border-emerald-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {loading ? "Načítám…" : "Načíst vybranou adresu"}
                   </button>
@@ -767,14 +767,14 @@ export default function CuzkPage() {
           </section>
 
           {/* Pravý panel: rychlé odkazy */}
-          <aside className="rounded-3xl border border-white/15 bg-gradient-to-br from-white/8 via-slate-900/45 to-slate-950/70 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_70px_rgba(0,0,0,0.65)] space-y-4">
+          <aside className="rounded-3xl border border-slate-900 bg-white px-5 py-5 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-slate-300">Rychlé odkazy</div>
-                <p className="text-[11px] text-slate-400">Otevři detail v dalších mapových podkladech.</p>
+                <div className="text-[11px] uppercase tracking-wider text-slate-600">Rychlé odkazy</div>
+                <p className="text-[11px] text-slate-500">Otevři detail v dalších mapových podkladech.</p>
               </div>
               {vdpUrl && (
-                <span className="text-[11px] rounded-full border border-emerald-300/50 bg-emerald-500/15 px-2.5 py-0.5 text-emerald-100">
+                <span className="text-[11px] rounded-full border border-emerald-600 bg-emerald-100 px-2.5 py-0.5 text-emerald-900">
                   Aktivní
                 </span>
               )}
@@ -788,7 +788,7 @@ export default function CuzkPage() {
                   window.open(gmapsUrl, "_blank", "noopener,noreferrer");
                 }}
                 disabled={!gmapsUrl}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-slate-50 hover:bg-white/15 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Google Mapy
               </button>
@@ -800,7 +800,7 @@ export default function CuzkPage() {
                   window.open(marushkaUrl, "_blank", "noopener,noreferrer");
                 }}
                 disabled={!marushkaUrl}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-slate-50 hover:bg-white/15 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Katastrální Mapy
               </button>
@@ -812,7 +812,7 @@ export default function CuzkPage() {
                   window.open(vdpUrl, "_blank", "noopener,noreferrer");
                 }}
                 disabled={!vdpUrl}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-slate-50 hover:bg-white/15 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Katastr
               </button>
@@ -822,15 +822,15 @@ export default function CuzkPage() {
         </div>
 
         {/* Výsledek */}
-        <section className="relative z-0 rounded-3xl border border-white/15 bg-slate-950/70 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.9)] space-y-4">
+        <section className="relative z-0 rounded-3xl border border-slate-900 bg-white px-5 py-5 space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-white">Výsledek</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Výsledek</h2>
             <div className="flex items-center gap-2">
               {result !== null && (
                 <button
                   type="button"
                   onClick={() => setShowJson((s) => !s)}
-                  className="text-[11px] rounded-full border border-white/15 bg-white/5 px-3 py-1 text-slate-200 hover:bg-white/10 transition"
+                  className="text-[11px] rounded-full border border-slate-900 bg-white px-3 py-1 text-slate-800 hover:bg-slate-100 transition"
                 >
                   {showJson ? "Skrýt JSON" : "Zobrazit JSON"}
                 </button>
@@ -839,9 +839,9 @@ export default function CuzkPage() {
           </div>
 
           {loading ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">Načítám data…</div>
+            <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800">Načítám data…</div>
           ) : !hasAnyResult ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+            <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
               Zatím nic nezobrazuji. Zadej adresu a klikni na „Vyhledat adresu“.
             </div>
           ) : (
@@ -852,27 +852,27 @@ export default function CuzkPage() {
               </div>
 
               {showJson ? (
-                <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-[11px] text-slate-200 space-y-1">
+                <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-[11px] text-slate-800 space-y-1">
                   <div>
-                    <span className="text-slate-400">gmapsEmbedUrl:</span> {gmapsEmbedUrl ? gmapsEmbedUrl : "—"}
+                    <span className="text-slate-500">gmapsEmbedUrl:</span> {gmapsEmbedUrl ? gmapsEmbedUrl : "—"}
                   </div>
                   <div>
-                    <span className="text-slate-400">obj.links.mapPreview:</span> {obj?.links?.mapPreview ? String(obj.links.mapPreview) : "—"}
+                    <span className="text-slate-500">obj.links.mapPreview:</span> {obj?.links?.mapPreview ? String(obj.links.mapPreview) : "—"}
                   </div>
                   <div>
-                    <span className="text-slate-400">marushkaUrl:</span> {marushkaUrl ? marushkaUrl : "—"}
+                    <span className="text-slate-500">marushkaUrl:</span> {marushkaUrl ? marushkaUrl : "—"}
                   </div>
                 </div>
               ) : null}
 
               {gmapsEmbedUrl ? (
-                <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-4 space-y-3">
+                <div className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-white">Náhled mapy</div>
-                    <div className="text-[11px] text-slate-400">Google Maps</div>
+                    <div className="text-sm font-semibold text-slate-900">Náhled mapy</div>
+                    <div className="text-[11px] text-slate-500">Google Maps</div>
                   </div>
 
-                  <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/40">
+                  <div className="overflow-hidden rounded-2xl border border-slate-300 bg-white">
                     <iframe
                       key={gmapsEmbedUrl}
                       title="Náhled mapy"
@@ -891,13 +891,13 @@ export default function CuzkPage() {
                   </div>
 
                   {gmapsEmbedError ? (
-                    <div className="text-[11px] text-amber-200 bg-amber-900/40 border border-amber-500/60 rounded-xl px-3 py-2">
+                    <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-500/60 rounded-xl px-3 py-2">
                       {gmapsEmbedError}
                     </div>
                   ) : null}
 
-                  <div className="text-[11px] text-slate-400">
-                    Tip: Klikni na tlačítko <span className="text-slate-200">Google Mapy</span> vpravo pro otevření v novém okně.
+                  <div className="text-[11px] text-slate-500">
+                    Tip: Klikni na tlačítko <span className="text-slate-800">Google Mapy</span> vpravo pro otevření v novém okně.
                   </div>
                 </div>
               ) : null}
@@ -905,10 +905,10 @@ export default function CuzkPage() {
 
 
 
-              <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-4 space-y-3">
+              <div className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-white">Stavba</div>
-                  <div className="text-[11px] text-slate-400">ID: {safeStr(stavba?.id)}</div>
+                  <div className="text-sm font-semibold text-slate-900">Stavba</div>
+                  <div className="text-[11px] text-slate-500">ID: {safeStr(stavba?.id)}</div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -945,10 +945,10 @@ export default function CuzkPage() {
               </div>
 
               {ruianStavebniObjekt ? (
-                <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-4 space-y-3">
+                <div className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-white">Stavební objekt (RÚIAN) – technicko‑ekonomické atributy</div>
-                    <div className="text-[11px] text-slate-400">Kód: {safeStr(ruianStavebniObjekt?.kod)}</div>
+                    <div className="text-sm font-semibold text-slate-900">Stavební objekt (RÚIAN) – technicko‑ekonomické atributy</div>
+                    <div className="text-[11px] text-slate-500">Kód: {safeStr(ruianStavebniObjekt?.kod)}</div>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -1017,10 +1017,10 @@ export default function CuzkPage() {
                 </div>
               ) : null}
 
-              <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-4 space-y-3">
+              <div className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-white">Parcely / pozemky</div>
-                  <div className="text-[11px] text-slate-400">{parcels.length ? `${parcels.length} položek` : "—"}</div>
+                  <div className="text-sm font-semibold text-slate-900">Parcely / pozemky</div>
+                  <div className="text-[11px] text-slate-500">{parcels.length ? `${parcels.length} položek` : "—"}</div>
                 </div>
 
                 {parcels.length ? (
@@ -1028,23 +1028,23 @@ export default function CuzkPage() {
                     {parcels.map((p, idx) => (
                       <div
                         key={`${p.id ?? p.parcela ?? "p"}-${idx}`}
-                        className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3"
+                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-sm text-slate-100">
+                          <div className="text-sm text-slate-900">
                             <span className="font-semibold">Parcela:</span> {p.parcela ? p.parcela : "—"}
-                            {p.typParcely ? <span className="text-slate-400"> ({p.typParcely})</span> : null}
+                            {p.typParcely ? <span className="text-slate-500"> ({p.typParcely})</span> : null}
                           </div>
-                          <div className="text-[11px] text-slate-400">
+                          <div className="text-[11px] text-slate-500">
                             {p.katUzemi ? `KÚ: ${p.katUzemi}` : ""}
                             {p.lv != null ? ` • LV: ${p.lv}` : ""}
                           </div>
                         </div>
 
-                        <div className="mt-1 text-[12px] text-slate-300">
+                        <div className="mt-1 text-[12px] text-slate-600">
                           {p.druh ? (
                             <>
-                              Druh: <span className="text-slate-200">{p.druh}</span>
+                              Druh: <span className="text-slate-800">{p.druh}</span>
                             </>
                           ) : (
                             <>Druh: —</>
@@ -1052,7 +1052,7 @@ export default function CuzkPage() {
                           {"  "}•{" "}
                           {p.vymeraM2 != null ? (
                             <>
-                              Výměra: <span className="text-slate-200">{p.vymeraM2} m²</span>
+                              Výměra: <span className="text-slate-800">{p.vymeraM2} m²</span>
                             </>
                           ) : (
                             <>Výměra: —</>
@@ -1060,7 +1060,7 @@ export default function CuzkPage() {
                         </div>
 
                         {p.vymeraM2 == null ? (
-                          <div className="mt-2 text-[11px] text-slate-400">
+                          <div className="mt-2 text-[11px] text-slate-500">
                             Pozn.: stavba vrací jen základ parcely (ParcelaDef). Pro výměru je potřeba dotáhnout detail parcely/pozemku v backendu.
                           </div>
                         ) : null}
@@ -1068,16 +1068,16 @@ export default function CuzkPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm text-slate-300">
+                  <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
                     Parcely/výměra se v téhle odpovědi nenašly.
                   </div>
                 )}
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-4 space-y-3">
+              <div className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-white">Adresní místa</div>
-                  <div className="text-[11px] text-slate-400">{adresniMista.length ? `${adresniMista.length} položek` : "—"}</div>
+                  <div className="text-sm font-semibold text-slate-900">Adresní místa</div>
+                  <div className="text-[11px] text-slate-500">{adresniMista.length ? `${adresniMista.length} položek` : "—"}</div>
                 </div>
 
                 {adresniMista.length ? (
@@ -1085,26 +1085,26 @@ export default function CuzkPage() {
                     {adresniMista.map((a, idx) => (
                       <div
                         key={`${a.adresa}-${a.ruian ?? "x"}-${idx}`}
-                        className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3"
+                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3"
                       >
-                        <div className="text-sm text-slate-100">{a.adresa}</div>
-                        <div className="text-[11px] text-slate-400">
-                          RÚIAN: <span className="text-slate-200">{a.ruian != null ? a.ruian : "—"}</span>
+                        <div className="text-sm text-slate-900">{a.adresa}</div>
+                        <div className="text-[11px] text-slate-500">
+                          RÚIAN: <span className="text-slate-800">{a.ruian != null ? a.ruian : "—"}</span>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm text-slate-300">
+                  <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
                     Žádné adresní místo v odpovědi.
                   </div>
                 )}
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-4 space-y-3">
+              <div className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-white">Jednotky</div>
-                  <div className="text-[11px] text-slate-400">{jednotky.length ? `${jednotky.length} ks` : "0 ks"}</div>
+                  <div className="text-sm font-semibold text-slate-900">Jednotky</div>
+                  <div className="text-[11px] text-slate-500">{jednotky.length ? `${jednotky.length} ks` : "0 ks"}</div>
                 </div>
 
                 {jednotky.length ? (
@@ -1112,25 +1112,25 @@ export default function CuzkPage() {
                     {jednotky.slice(0, 8).map((j: any, idx: number) => (
                       <div
                         key={`${j?.id ?? "j"}-${idx}`}
-                        className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3"
+                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3"
                       >
-                        <div className="text-sm text-slate-100">Jednotka ID: {safeStr(j?.id)}</div>
-                        <div className="text-[12px] text-slate-300">
+                        <div className="text-sm text-slate-900">Jednotka ID: {safeStr(j?.id)}</div>
+                        <div className="text-[12px] text-slate-600">
                           {j?.typJednotky?.nazev ? `Typ: ${j.typJednotky.nazev}` : "Typ: —"}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm text-slate-300">
+                  <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
                     Žádné jednotky nejsou k dispozici.
                   </div>
                 )}
               </div>
 
               {showJson && (
-                <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 overflow-x-auto">
-                  <pre className="whitespace-pre-wrap break-all font-mono text-xs text-slate-100">
+                <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 overflow-x-auto">
+                  <pre className="whitespace-pre-wrap break-all font-mono text-xs text-slate-900">
                     {JSON.stringify(result, null, 2)}
                   </pre>
                 </div>

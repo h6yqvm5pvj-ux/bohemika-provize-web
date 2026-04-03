@@ -169,7 +169,7 @@ function ToggleButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-2 rounded-full border border-sky-200/45 bg-gradient-to-r from-sky-300/22 via-blue-300/16 to-cyan-300/16 px-3.5 py-1.5 text-sm text-sky-50 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] transition hover:from-sky-300/30 hover:to-cyan-300/24"
+      className="inline-flex items-center gap-2 rounded-full border border-sky-200/45 bg-gradient-to-r from-sky-300/22 via-blue-300/16 to-cyan-300/16 px-3.5 py-1.5 text-sm text-sky-50  shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] transition hover:from-sky-300/30 hover:to-cyan-300/24"
     >
       <span className="text-sky-100">{icon}</span>
       <span>{open ? openLabel : closedLabel}</span>
@@ -218,10 +218,10 @@ export default function ClientCardPage() {
 
         <header className="space-y-0.5">
           <SplitTitle text="Karta klienta" />
-          <p className="text-sm text-slate-300">Rychlý náhled klientských údajů.</p>
+          <p className="text-sm text-slate-600">Rychlý náhled klientských údajů.</p>
         </header>
 
-        <section className="relative overflow-hidden rounded-3xl border border-sky-200/35 bg-gradient-to-br from-sky-400/22 via-blue-400/16 to-slate-900/25 p-4 backdrop-blur-3xl shadow-[0_20px_55px_rgba(3,24,68,0.48)]">
+        <section className="relative overflow-hidden rounded-3xl border border-sky-200/35 bg-gradient-to-br from-sky-400/22 via-blue-400/16 to-slate-900/25 p-4 -3xl shadow-[0_20px_55px_rgba(3,24,68,0.48)]">
           <div
             aria-hidden
             className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-sky-100/80 to-transparent"
@@ -235,21 +235,21 @@ export default function ClientCardPage() {
               <UserRound className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-2xl font-semibold text-white">{CLIENT.fullName}</h2>
+              <h2 className="text-2xl font-semibold text-slate-900">{CLIENT.fullName}</h2>
               <p className="mt-0.5 text-sm text-sky-100/85">Detail klienta</p>
             </div>
           </div>
 
           <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <article className="rounded-2xl border border-sky-100/35 bg-white/[0.08] p-3 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]">
+            <article className="rounded-2xl border border-sky-100/35 bg-white p-3  shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]">
               <p className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-sky-100/85">
                 <IdCard className="h-3.5 w-3.5" />
                 Rodné číslo
               </p>
-              <p className="mt-1 text-base text-slate-50">{CLIENT.birthNumber}</p>
+              <p className="mt-1 text-base text-slate-900">{CLIENT.birthNumber}</p>
             </article>
 
-            <article className="rounded-2xl border border-sky-100/35 bg-white/[0.08] p-3 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]">
+            <article className="rounded-2xl border border-sky-100/35 bg-white p-3  shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]">
               <p className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-sky-100/85">
                 <Phone className="h-3.5 w-3.5" />
                 Kontakt
@@ -257,14 +257,14 @@ export default function ClientCardPage() {
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                 <a
                   href={`tel:${CLIENT.mobile}`}
-                  className="inline-flex items-center gap-2 text-slate-50 hover:text-sky-100"
+                  className="inline-flex items-center gap-2 text-slate-900 hover:text-sky-100"
                 >
                   <Phone className="h-3.5 w-3.5 text-sky-100/80" />
                   Mobil: {CLIENT.mobile}
                 </a>
                 <a
                   href={`mailto:${CLIENT.email}`}
-                  className="inline-flex items-center gap-2 text-slate-50 hover:text-sky-100"
+                  className="inline-flex items-center gap-2 text-slate-900 hover:text-sky-100"
                 >
                   <Mail className="h-3.5 w-3.5 text-sky-100/80" />
                   E-mail: {CLIENT.email}
@@ -272,12 +272,12 @@ export default function ClientCardPage() {
               </div>
             </article>
 
-            <article className="rounded-2xl border border-sky-100/35 bg-white/[0.08] p-3 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]">
+            <article className="rounded-2xl border border-sky-100/35 bg-white p-3  shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]">
               <p className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-sky-100/85">
                 <MapPin className="h-3.5 w-3.5" />
                 Adresa trvalá
               </p>
-              <p className="mt-1 text-sm text-slate-50">{CLIENT.permanentAddress}</p>
+              <p className="mt-1 text-sm text-slate-900">{CLIENT.permanentAddress}</p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 <a
                   href={permanentAddressLinks.googleMaps}
@@ -300,12 +300,12 @@ export default function ClientCardPage() {
               </div>
             </article>
 
-            <article className="rounded-2xl border border-sky-100/35 bg-white/[0.08] p-3 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]">
+            <article className="rounded-2xl border border-sky-100/35 bg-white p-3  shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]">
               <p className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-sky-100/85">
                 <MapPin className="h-3.5 w-3.5" />
                 Adresa korespondenční
               </p>
-              <p className="mt-1 text-sm text-slate-50">{CLIENT.correspondenceAddress}</p>
+              <p className="mt-1 text-sm text-slate-900">{CLIENT.correspondenceAddress}</p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 <a
                   href={correspondenceAddressLinks.googleMaps}
@@ -359,36 +359,36 @@ export default function ClientCardPage() {
 
         {showDocuments && (
           <section className="space-y-2">
-            <div className="rounded-2xl border border-sky-200/35 bg-gradient-to-br from-sky-400/16 to-blue-400/10 p-3 backdrop-blur-3xl">
-              <ul className="grid grid-cols-1 gap-2 text-sm text-slate-100 md:grid-cols-2">
+            <div className="rounded-2xl border border-sky-200/35 bg-gradient-to-br from-sky-400/16 to-blue-400/10 p-3 -3xl">
+              <ul className="grid grid-cols-1 gap-2 text-sm text-slate-900 md:grid-cols-2">
                 {CLIENT_DOCUMENTS.map((document) => (
                   <li
                     key={document.id}
-                    className="rounded-xl border border-sky-100/30 bg-white/[0.08] px-3 py-2.5 backdrop-blur-2xl"
+                    className="rounded-xl border border-sky-100/30 bg-white px-3 py-2.5 "
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="inline-flex items-center gap-2">
                         <FileBadge2 className="h-4 w-4 text-sky-100/80" />
                         {document.label}
                       </span>
-                      <span className="text-xs text-slate-200/80">
+                      <span className="text-xs text-slate-800/80">
                         {document.type} · nahráno {new Date(document.uploadedAt).toLocaleDateString("cs-CZ")}
                       </span>
                     </div>
 
-                    <div className="mt-2 grid grid-cols-1 gap-1.5 text-xs text-slate-100 sm:grid-cols-3">
+                    <div className="mt-2 grid grid-cols-1 gap-1.5 text-xs text-slate-900 sm:grid-cols-3">
                       <div className="rounded-lg border border-sky-100/25 bg-sky-100/12 px-2 py-1">
-                        <p className="text-slate-300/85">Číslo dokladu</p>
+                        <p className="text-slate-600/85">Číslo dokladu</p>
                         <p className="mt-0.5 font-medium">{document.documentNumber}</p>
                       </div>
                       <div className="rounded-lg border border-sky-100/25 bg-sky-100/12 px-2 py-1">
-                        <p className="text-slate-300/85">Platnost od</p>
+                        <p className="text-slate-600/85">Platnost od</p>
                         <p className="mt-0.5 font-medium">
                           {new Date(document.validFrom).toLocaleDateString("cs-CZ")}
                         </p>
                       </div>
                       <div className="rounded-lg border border-sky-100/25 bg-sky-100/12 px-2 py-1">
-                        <p className="text-slate-300/85">Platnost do</p>
+                        <p className="text-slate-600/85">Platnost do</p>
                         <p className="mt-0.5 font-medium">
                           {new Date(document.validTo).toLocaleDateString("cs-CZ")}
                         </p>
@@ -403,14 +403,14 @@ export default function ClientCardPage() {
 
         {showNotes && (
           <section className="space-y-2">
-            <div className="rounded-2xl border border-sky-200/35 bg-gradient-to-br from-sky-400/16 to-blue-400/10 p-3 backdrop-blur-3xl">
+            <div className="rounded-2xl border border-sky-200/35 bg-gradient-to-br from-sky-400/16 to-blue-400/10 p-3 -3xl">
               <ul className="space-y-1.5 text-sm">
                 {CLIENT_NOTES.map((note) => (
                   <li
                     key={note.id}
-                    className="rounded-xl border border-sky-100/30 bg-white/[0.08] px-3 py-2 text-slate-100 backdrop-blur-2xl"
+                    className="rounded-xl border border-sky-100/30 bg-white px-3 py-2 text-slate-900 "
                   >
-                    <p className="inline-flex items-center gap-1 text-xs text-slate-200/80">
+                    <p className="inline-flex items-center gap-1 text-xs text-slate-800/80">
                       <BookOpenText className="h-3.5 w-3.5" />
                       {new Date(note.date).toLocaleDateString("cs-CZ")}
                     </p>
@@ -424,14 +424,14 @@ export default function ClientCardPage() {
 
         {showContracts && (
           <section className="space-y-2">
-            <div className="rounded-2xl border border-sky-200/35 bg-gradient-to-br from-sky-400/16 to-blue-400/10 p-3 backdrop-blur-3xl">
+            <div className="rounded-2xl border border-sky-200/35 bg-gradient-to-br from-sky-400/16 to-blue-400/10 p-3 -3xl">
               <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
                 {CLIENT_CONTRACTS.map((contract) => {
                   const isOpen = activeContractId === contract.id;
                   return (
                     <article
                       key={contract.id}
-                      className="rounded-2xl border border-sky-100/30 bg-white/[0.08] p-2.5 backdrop-blur-2xl"
+                      className="rounded-2xl border border-sky-100/30 bg-white p-2.5 "
                     >
                       <button
                         type="button"
@@ -439,11 +439,11 @@ export default function ClientCardPage() {
                         className="flex w-full items-center justify-between gap-3 text-left"
                       >
                         <div>
-                          <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-100">
+                          <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
                             <FileText className="h-4 w-4 text-sky-100/80" />
                             {contract.contractNumber}
                           </p>
-                          <p className="text-sm text-slate-200/85">{contract.productName}</p>
+                          <p className="text-sm text-slate-800/85">{contract.productName}</p>
                         </div>
                         <span
                           className={`inline-flex h-6 w-6 items-center justify-center rounded-full border border-sky-100/45 bg-sky-100/20 text-xs transition-transform ${
@@ -457,19 +457,19 @@ export default function ClientCardPage() {
                       {isOpen && (
                         <div className="mt-2.5 space-y-2 border-t border-sky-100/25 pt-2.5">
                           <div className="grid gap-1.5 text-sm">
-                            <p className="text-slate-100">
-                              <span className="inline-flex items-center gap-1 text-slate-300/80">
+                            <p className="text-slate-900">
+                              <span className="inline-flex items-center gap-1 text-slate-600/80">
                                 <UserRound className="h-3.5 w-3.5" />
                                 Správce smlouvy:
                               </span>{" "}
                               {contract.managerName}
                             </p>
-                            <p className="text-slate-100">
-                              <span className="text-slate-300/80">Datum sjednání:</span>{" "}
+                            <p className="text-slate-900">
+                              <span className="text-slate-600/80">Datum sjednání:</span>{" "}
                               {new Date(contract.signedDate).toLocaleDateString("cs-CZ")}
                             </p>
-                            <p className="text-slate-100">
-                              <span className="text-slate-300/80">Datum počátku:</span>{" "}
+                            <p className="text-slate-900">
+                              <span className="text-slate-600/80">Datum počátku:</span>{" "}
                               {new Date(contract.policyStartDate).toLocaleDateString("cs-CZ")}
                             </p>
                           </div>
@@ -478,7 +478,7 @@ export default function ClientCardPage() {
                             {contract.documents.map((document) => (
                               <div
                                 key={document.id}
-                                className="rounded-xl border border-sky-100/30 bg-sky-100/12 px-2.5 py-1.5 text-xs text-slate-100"
+                                className="rounded-xl border border-sky-100/30 bg-sky-100/12 px-2.5 py-1.5 text-xs text-slate-900"
                               >
                                 <p className="mb-1 inline-flex items-center gap-1.5">
                                   <FileText className="h-3.5 w-3.5 text-sky-100/80" />
@@ -518,7 +518,7 @@ export default function ClientCardPage() {
                                 Skenovat dokumenty
                               </Link>
                             ) : (
-                              <span className="text-xs text-slate-400">
+                              <span className="text-xs text-slate-500">
                                 Skenování dokumentů není zatím dostupné.
                               </span>
                             )}

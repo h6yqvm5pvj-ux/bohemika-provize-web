@@ -69,16 +69,16 @@ const ToggleRow = ({
       onClick={() => onChange(!checked)}
       className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm transition ${
         checked
-          ? "border-emerald-300/70 bg-emerald-500/15 text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.25)]"
-          : "border-white/10 bg-white/5 text-slate-100 hover:border-emerald-200/40 hover:text-emerald-50"
+          ? "border-slate-900 bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.18)]"
+          : "border-slate-300 bg-white text-slate-900 hover:border-slate-900"
       } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
     >
       <span className="text-left">{label}</span>
       <span
         className={`flex h-6 w-6 items-center justify-center rounded-full border text-sm font-semibold ${
           checked
-            ? "border-emerald-200 bg-emerald-500/30 text-emerald-50"
-            : "border-slate-500 bg-slate-900 text-slate-400"
+            ? "border-slate-900 bg-white text-slate-900"
+            : "border-slate-300 bg-slate-100 text-slate-500"
         }`}
       >
         {checked ? "✓" : ""}
@@ -128,20 +128,20 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
   return (
     <>
       {showPropertyBlock && (
-        <div className="rounded-2xl border border-blue-400/30 bg-blue-900/15 p-3 space-y-2">
-        <div className="text-xs uppercase tracking-wide text-blue-200">
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className="text-xs uppercase tracking-wide text-slate-500">
           Pojištění stavby
         </div>
-        <div className="space-y-2 text-sm text-slate-100">
+        <div className="space-y-2 text-sm text-slate-900">
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Adresa</span>
+            <span className="text-slate-600">Adresa</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
                   type="text"
                   value={fields.address}
                   onChange={(e) => onChange("address", e.target.value)}
-                  className="w-44 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                   placeholder="Adresa"
                 />
               ) : (
@@ -150,13 +150,13 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
             </span>
           </div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Typ nemovitosti</span>
+            <span className="text-slate-600">Typ nemovitosti</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <select
                   value={fields.propertyType}
                   onChange={(e) => onChange("propertyType", e.target.value)}
-                  className="w-44 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                 >
                   <option value="">Vyber typ</option>
                   <option value="byt">Byt</option>
@@ -171,13 +171,13 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
             </span>
           </div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Rozsah</span>
+            <span className="text-slate-600">Rozsah</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <select
                   value={fields.propertyCoverage}
                   onChange={(e) => onChange("propertyCoverage", e.target.value)}
-                  className="w-32 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                 >
                   <option value="">Vyber</option>
                   <option value="mini">MINI</option>
@@ -191,14 +191,14 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
             </span>
           </div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Pojistná částka</span>
+            <span className="text-slate-600">Pojistná částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
                   type="number"
                   value={fields.sumInsured}
                   onChange={(e) => onChange("sumInsured", e.target.value)}
-                  className="w-32 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                   placeholder="částka"
                 />
               ) : (
@@ -207,14 +207,14 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
             </span>
           </div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Spoluúčast</span>
+            <span className="text-slate-600">Spoluúčast</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
                   type="number"
                   value={fields.deductible}
                   onChange={(e) => onChange("deductible", e.target.value)}
-                  className="w-32 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                   placeholder="Spoluúčast v Kč"
                 />
               ) : (
@@ -227,20 +227,20 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
       )}
 
       {showOutbuildingBlock && (
-        <div className="rounded-2xl border border-cyan-400/30 bg-cyan-900/15 p-3 space-y-2">
-        <div className="text-xs uppercase tracking-wide text-cyan-200">
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className="text-xs uppercase tracking-wide text-slate-500">
           Vedlejší stavby
         </div>
-        <div className="space-y-2 text-sm text-slate-100">
+        <div className="space-y-2 text-sm text-slate-900">
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Pojistná částka</span>
+            <span className="text-slate-600">Pojistná částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
                   type="number"
                   value={fields.outbuildingSumInsured}
                   onChange={(e) => onChange("outbuildingSumInsured", e.target.value)}
-                  className="w-32 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                  className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                   placeholder="částka"
                 />
               ) : (
@@ -253,19 +253,19 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
       )}
 
       {showHouseholdBlock && (
-        <div className="rounded-2xl border border-indigo-400/30 bg-indigo-900/15 p-3 space-y-2">
-        <div className="text-xs uppercase tracking-wide text-indigo-200">
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className="text-xs uppercase tracking-wide text-slate-500">
           Pojištění domácnosti
         </div>
-        <div className="space-y-2 text-sm text-slate-100">
+        <div className="space-y-2 text-sm text-slate-900">
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Typ</span>
+            <span className="text-slate-600">Typ</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <select
                   value={fields.householdType}
                   onChange={(e) => onChange("householdType", e.target.value)}
-                  className="w-44 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                 >
                   <option value="">Vyber typ</option>
                   <option value="trvale">Trvale obydlená</option>
@@ -281,13 +281,13 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
             </span>
           </div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Rozsah</span>
+            <span className="text-slate-600">Rozsah</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <select
                   value={fields.householdCoverage}
                   onChange={(e) => onChange("householdCoverage", e.target.value)}
-                  className="w-32 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                 >
                   <option value="">Vyber</option>
                   <option value="mini">MINI</option>
@@ -301,14 +301,14 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
             </span>
           </div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Pojistná částka</span>
+            <span className="text-slate-600">Pojistná částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
                   type="number"
                   value={fields.householdSumInsured}
                   onChange={(e) => onChange("householdSumInsured", e.target.value)}
-                  className="w-32 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                   placeholder="částka"
                 />
               ) : (
@@ -317,14 +317,14 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
             </span>
           </div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Spoluúčast</span>
+            <span className="text-slate-600">Spoluúčast</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
                   type="number"
                   value={fields.householdDeductible}
                   onChange={(e) => onChange("householdDeductible", e.target.value)}
-                  className="w-32 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                   placeholder="Spoluúčast v Kč"
                 />
               ) : (
@@ -337,8 +337,8 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
       )}
 
       {showAssistance && (
-        <div className="rounded-2xl border border-teal-400/30 bg-teal-900/15 p-3 space-y-2">
-        <div className="text-xs uppercase tracking-wide text-teal-200">
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className="text-xs uppercase tracking-wide text-slate-500">
           Asistence PLUS
         </div>
         <ToggleRow
@@ -351,20 +351,20 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
       )}
 
       {showLiabilityBlock && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-        <div className="text-xs uppercase tracking-wide text-emerald-200">
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className="text-xs uppercase tracking-wide text-slate-500">
           Pojištění odpovědnosti
         </div>
-        <div className="space-y-2 text-sm text-slate-100">
+        <div className="space-y-2 text-sm text-slate-900">
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Pojistná částka</span>
+            <span className="text-slate-600">Pojistná částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
                   type="number"
                   value={fields.liabilitySumInsured}
                   onChange={(e) => onChange("liabilitySumInsured", e.target.value)}
-                  className="w-32 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                   placeholder="částka"
                 />
               ) : (
@@ -373,14 +373,14 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
             </span>
           </div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Spoluúčast</span>
+            <span className="text-slate-600">Spoluúčast</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
                   type="number"
                   value={fields.liabilityDeductible}
                   onChange={(e) => onChange("liabilityDeductible", e.target.value)}
-                  className="w-32 rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                   placeholder="Spoluúčast v Kč"
                 />
               ) : (
@@ -413,20 +413,20 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
       )}
 
       {showNote && (
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-1">
-        <div className="text-xs uppercase tracking-wide text-slate-300">
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-1 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className="text-xs uppercase tracking-wide text-slate-600">
           Poznámka
         </div>
         {editMode ? (
           <textarea
             value={fields.note}
             onChange={(e) => onChange("note", e.target.value)}
-            className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-2 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900 resize-none"
             rows={3}
             placeholder="Poznámka k rizikům, rekonstrukci apod."
           />
         ) : (
-          <span className="text-sm text-slate-100">
+          <span className="text-sm text-slate-900">
             {domexDetail?.note?.trim() || "—"}
           </span>
         )}

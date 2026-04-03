@@ -164,15 +164,15 @@ function Tag({
 }) {
   const colorMap: Record<typeof tone, string> = {
     neutral:
-      "border-white/20 bg-white/[0.06] text-slate-100 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]",
+      "border-slate-300 bg-white text-slate-900  shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]",
     blue:
-      "border-sky-200/45 bg-sky-400/15 text-sky-50 backdrop-blur-md shadow-[inset_0_1px_0_rgba(186,230,253,0.35)]",
+      "border-sky-200/45 bg-sky-400/15 text-sky-50  shadow-[inset_0_1px_0_rgba(186,230,253,0.35)]",
     green:
-      "border-emerald-200/45 bg-emerald-400/15 text-emerald-50 backdrop-blur-md shadow-[inset_0_1px_0_rgba(209,250,229,0.35)]",
+      "border-emerald-200/45 bg-emerald-400/15 text-emerald-800  shadow-[inset_0_1px_0_rgba(209,250,229,0.35)]",
     amber:
-      "border-amber-200/45 bg-amber-400/15 text-amber-50 backdrop-blur-md shadow-[inset_0_1px_0_rgba(254,243,199,0.35)]",
+      "border-amber-200/45 bg-amber-400/15 text-amber-50  shadow-[inset_0_1px_0_rgba(254,243,199,0.35)]",
     rose:
-      "border-rose-200/45 bg-rose-400/15 text-rose-50 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,228,230,0.35)]",
+      "border-rose-200/45 bg-rose-400/15 text-rose-50  shadow-[inset_0_1px_0_rgba(255,228,230,0.35)]",
   };
 
   return (
@@ -197,14 +197,14 @@ function InfoCard({
 }) {
   return (
     <section
-      className={`relative overflow-hidden rounded-3xl border border-white/15 bg-[linear-gradient(160deg,rgba(15,23,42,0.72),rgba(2,6,23,0.78))] px-4 py-4 backdrop-blur-xl shadow-[0_22px_60px_rgba(2,6,23,0.68)] ${className}`}
+      className={`relative overflow-hidden rounded-3xl border border-slate-300 bg-white ${className}`}
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/10 to-transparent" />
       <div className="relative z-10 mb-3 flex items-center gap-2">
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-white/10 text-sky-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-sky-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]">
           {icon}
         </span>
-        <h3 className="text-lg font-semibold text-white/95">{title}</h3>
+        <h3 className="text-lg font-semibold text-slate-900/95">{title}</h3>
       </div>
       <div className="relative z-10">{children}</div>
     </section>
@@ -213,9 +213,9 @@ function InfoCard({
 
 function SpecRow({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-white/10 py-2 last:border-b-0">
+    <div className="flex items-center justify-between gap-3 border-b border-slate-300 py-2 last:border-b-0">
       <dt className="text-sm text-slate-400">{label}</dt>
-      <dd className="text-sm font-semibold text-slate-100 text-right">{value}</dd>
+      <dd className="text-sm font-semibold text-slate-900 text-right">{value}</dd>
     </div>
   );
 }
@@ -238,7 +238,7 @@ function MetricRing({
   const gradId = `ring-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${unit.toLowerCase()}`;
 
   return (
-    <div className="flex flex-col items-center gap-1 rounded-2xl border border-white/15 bg-white/[0.04] px-3 py-3 backdrop-blur-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]">
+    <div className="flex flex-col items-center gap-1 rounded-2xl border border-slate-300 bg-white px-3 py-3 -lg shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]">
       <div className="relative h-20 w-20">
         <svg viewBox="0 0 80 80" className="h-20 w-20 -rotate-90">
           <circle cx="40" cy="40" r={radius} fill="none" stroke="rgba(148,163,184,0.2)" strokeWidth="8" />
@@ -261,11 +261,11 @@ function MetricRing({
           </defs>
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <div className="text-sm font-bold text-slate-100">{fmtNumber(value)}</div>
+          <div className="text-sm font-bold text-slate-900">{fmtNumber(value)}</div>
           <div className="text-[10px] uppercase tracking-wider text-slate-400">{unit}</div>
         </div>
       </div>
-      <div className="text-xs font-medium text-slate-300">{label}</div>
+      <div className="text-xs font-medium text-slate-600">{label}</div>
     </div>
   );
 }
@@ -435,23 +435,23 @@ export default function VehicleDataPage() {
       <div className="w-full max-w-[1000px] space-y-4">
         <header className="space-y-1">
           <SplitTitle text="Data o vozidle" />
-          <p className="text-xs text-slate-300">
+          <p className="text-xs text-slate-600">
             Data z registru vozidel
           </p>
           <Link
             href="/pomucky"
-            className="inline-flex items-center text-xs text-slate-300 hover:text-white transition"
+            className="inline-flex items-center text-xs text-slate-600 hover:text-slate-900 transition"
           >
             ← Zpět na pomůcky
           </Link>
         </header>
 
-        <div className="relative overflow-hidden rounded-[28px] border border-white/15 bg-[radial-gradient(circle_at_20%_-15%,rgba(56,189,248,0.22),transparent_45%),radial-gradient(circle_at_96%_0%,rgba(99,102,241,0.2),transparent_38%),linear-gradient(160deg,rgba(2,6,23,0.72),rgba(15,23,42,0.66))] px-3 py-3 sm:px-4 sm:py-4 space-y-3 backdrop-blur-2xl shadow-[0_22px_60px_rgba(2,6,23,0.5)]">
-        <section className="relative z-10 rounded-3xl border border-white/15 bg-[linear-gradient(155deg,rgba(15,23,42,0.72),rgba(2,6,23,0.78))] px-4 py-4 backdrop-blur-xl shadow-[0_12px_35px_rgba(0,0,0,0.5)] space-y-3">
+        <div className="relative overflow-hidden rounded-[28px] border border-slate-300 bg-white">
+        <section className="relative z-10 rounded-3xl border border-slate-300 bg-white space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-white">Evidence Vozidel</h2>
-              <p className="text-xs text-slate-300">Zadej VIN a načti datový přehled.</p>
+              <h2 className="text-lg font-semibold text-slate-900">Evidence Vozidel</h2>
+              <p className="text-xs text-slate-600">Zadej VIN a načti datový přehled.</p>
             </div>
 
             {!user && (
@@ -469,7 +469,7 @@ export default function VehicleDataPage() {
                   void handleSearch();
                 }
               }}
-              className="w-full rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2.5 text-sm text-white backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.16)] outline-none focus:ring-2 focus:ring-sky-400/70 focus:border-sky-300/70"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900  shadow-[inset_0_1px_0_rgba(255,255,255,0.16)] outline-none focus:ring-2 focus:ring-sky-400/70 focus:border-sky-300/70"
               placeholder='např. "TMB..."'
             />
 
@@ -482,7 +482,7 @@ export default function VehicleDataPage() {
                   setError(null);
                   setLoadedAt(null);
                 }}
-                className="inline-flex items-center gap-1 rounded-xl border border-white/25 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-slate-100 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:border-white/40 hover:bg-white/[0.1] transition"
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900  shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:border-slate-300 hover:bg-white transition"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 Vymazat
@@ -491,7 +491,7 @@ export default function VehicleDataPage() {
                 type="button"
                 onClick={() => void handleSearch()}
                 disabled={loading || !canSearch}
-                className="inline-flex items-center gap-2 rounded-xl border border-sky-200/65 bg-[linear-gradient(135deg,rgba(56,189,248,0.42),rgba(59,130,246,0.3))] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(56,189,248,0.42),inset_0_1px_0_rgba(186,230,253,0.45)] backdrop-blur-md hover:brightness-110 hover:border-sky-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 rounded-xl border border-sky-200/65 bg-white  hover:brightness-110 hover:border-sky-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {loading ? "Načítám…" : "Vyhledat"}
               </button>
@@ -506,34 +506,34 @@ export default function VehicleDataPage() {
           )}
 
           {error && (
-            <p className="text-xs text-amber-200 bg-amber-900/40 border border-amber-500/60 rounded-xl px-3 py-2">
+            <p className="text-xs text-amber-800 bg-amber-900/40 border border-amber-500/60 rounded-xl px-3 py-2">
               {error}
             </p>
           )}
         </section>
 
         {loading ? (
-          <section className="rounded-3xl border border-white/15 bg-slate-950/55 px-4 py-4 space-y-3 animate-pulse backdrop-blur-lg">
-            <div className="h-7 w-2/5 rounded-lg bg-white/10" />
-            <div className="h-4 w-3/5 rounded-lg bg-white/10" />
+          <section className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3 animate-pulse -lg">
+            <div className="h-7 w-2/5 rounded-lg bg-white" />
+            <div className="h-4 w-3/5 rounded-lg bg-white" />
             <div className="grid gap-3 md:grid-cols-3">
-              <div className="h-28 rounded-2xl bg-white/10" />
-              <div className="h-28 rounded-2xl bg-white/10" />
-              <div className="h-28 rounded-2xl bg-white/10" />
+              <div className="h-28 rounded-2xl bg-white" />
+              <div className="h-28 rounded-2xl bg-white" />
+              <div className="h-28 rounded-2xl bg-white" />
             </div>
-            <div className="h-64 rounded-3xl bg-white/10" />
+            <div className="h-64 rounded-3xl bg-white" />
           </section>
         ) : !result ? (
-          <section className="rounded-2xl border border-white/15 bg-slate-950/55 px-4 py-4 text-sm text-slate-300 backdrop-blur-lg">
+          <section className="rounded-2xl border border-slate-300 bg-white px-4 py-4 text-sm text-slate-600 -lg">
             Zatím nic nezobrazuji. Zadej VIN a dej „Vyhledat“.
           </section>
         ) : !vehicle ? (
-          <section className="rounded-2xl border border-amber-400/30 bg-amber-950/30 px-4 py-4 text-sm text-amber-100">
+          <section className="rounded-2xl border border-amber-400/30 bg-amber-50 px-4 py-4 text-sm text-amber-800">
             Odpověď neobsahuje validní data vozidla.
           </section>
         ) : (
           <div className="space-y-4">
-            <section className="relative overflow-hidden rounded-3xl border border-white/15 bg-[radial-gradient(circle_at_12%_0%,rgba(56,189,248,0.2),transparent_36%),linear-gradient(145deg,rgba(2,6,23,0.78),rgba(15,23,42,0.72))] px-4 py-4 backdrop-blur-xl shadow-[0_18px_48px_rgba(0,0,0,0.55)]">
+            <section className="relative overflow-hidden rounded-3xl border border-slate-300 bg-white">
               <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-white/10 to-transparent" />
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-3">
@@ -546,7 +546,7 @@ export default function VehicleDataPage() {
                   </div>
 
                   <div>
-                    <h2 className="text-5xl leading-tight font-semibold text-white tracking-tight">
+                    <h2 className="text-5xl leading-tight font-semibold text-slate-900 tracking-tight">
                       {vehicle.brand} <span className="text-sky-300">{vehicle.model}</span>
                     </h2>
                   </div>
@@ -559,7 +559,7 @@ export default function VehicleDataPage() {
                     <button
                       type="button"
                       onClick={() => void handleCopyVin()}
-                      className="inline-flex items-center gap-1 rounded-full border border-white/25 bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-slate-100 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:border-sky-300/50 hover:text-sky-100 transition"
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-900  shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:border-sky-300/50 hover:text-sky-100 transition"
                     >
                       <Copy className="h-3.5 w-3.5" />
                       {copiedVin ? "Zkopírováno" : "Kopírovat VIN"}
@@ -567,7 +567,7 @@ export default function VehicleDataPage() {
                     <button
                       type="button"
                       onClick={() => void handleCopyOrv()}
-                      className="inline-flex items-center gap-1 rounded-full border border-white/25 bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-slate-100 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:border-sky-300/50 hover:text-sky-100 transition"
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-900  shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:border-sky-300/50 hover:text-sky-100 transition"
                     >
                       <Copy className="h-3.5 w-3.5" />
                       {copiedOrv ? "Zkopírováno" : "Kopírovat ORV"}
@@ -576,17 +576,17 @@ export default function VehicleDataPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 min-w-[230px]">
-                  <div className="rounded-2xl border border-white/15 bg-white/[0.06] px-3 py-2 backdrop-blur-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
+                  <div className="rounded-2xl border border-slate-300 bg-white px-3 py-2 -lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
                     <div className="text-[10px] uppercase tracking-widest text-slate-400">Rok výroby</div>
-                    <div className="mt-1 text-xl font-semibold text-slate-100">{fmtNumber(vehicle.year)}</div>
+                    <div className="mt-1 text-xl font-semibold text-slate-900">{fmtNumber(vehicle.year)}</div>
                   </div>
-                  <div className="rounded-2xl border border-white/15 bg-white/[0.06] px-3 py-2 backdrop-blur-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
+                  <div className="rounded-2xl border border-slate-300 bg-white px-3 py-2 -lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
                     <div className="text-[10px] uppercase tracking-widest text-slate-400">STK do</div>
-                    <div className="mt-1 text-xl font-semibold text-slate-100">{vehicle.stkDo}</div>
+                    <div className="mt-1 text-xl font-semibold text-slate-900">{vehicle.stkDo}</div>
                   </div>
-                  <div className="rounded-2xl border border-white/15 bg-white/[0.06] px-3 py-2 col-span-2 backdrop-blur-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
+                  <div className="rounded-2xl border border-slate-300 bg-white px-3 py-2 col-span-2 -lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
                     <div className="text-[10px] uppercase tracking-widest text-slate-400">1. registrace / ČR</div>
-                    <div className="mt-1 text-sm font-semibold text-slate-100">
+                    <div className="mt-1 text-sm font-semibold text-slate-900">
                       {vehicle.firstReg} <span className="text-slate-400">/</span> {vehicle.firstRegCz}
                     </div>
                   </div>
@@ -594,25 +594,25 @@ export default function VehicleDataPage() {
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
-                <div className="rounded-2xl border border-white/15 bg-white/[0.06] px-3 py-2 backdrop-blur-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
+                <div className="rounded-2xl border border-slate-300 bg-white px-3 py-2 -lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
                   <div className="text-[10px] uppercase tracking-widest text-slate-400">Výkon</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-100">
+                  <div className="mt-1 text-lg font-semibold text-slate-900">
                     {fmtNumber(vehicle.powerKw)} <span className="text-sm text-slate-400">kW</span>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-white/15 bg-white/[0.06] px-3 py-2 backdrop-blur-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
+                <div className="rounded-2xl border border-slate-300 bg-white px-3 py-2 -lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
                   <div className="text-[10px] uppercase tracking-widest text-slate-400">Objem</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-100">
+                  <div className="mt-1 text-lg font-semibold text-slate-900">
                     {fmtNumber(vehicle.displacement)} <span className="text-sm text-slate-400">cm³</span>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-white/15 bg-white/[0.06] px-3 py-2 backdrop-blur-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
+                <div className="rounded-2xl border border-slate-300 bg-white px-3 py-2 -lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
                   <div className="text-[10px] uppercase tracking-widest text-slate-400">Palivo</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-100">{vehicle.fuel}</div>
+                  <div className="mt-1 text-lg font-semibold text-slate-900">{vehicle.fuel}</div>
                 </div>
-                <div className="rounded-2xl border border-white/15 bg-white/[0.06] px-3 py-2 backdrop-blur-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
+                <div className="rounded-2xl border border-slate-300 bg-white px-3 py-2 -lg shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
                   <div className="text-[10px] uppercase tracking-widest text-slate-400">Místa</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-100">{vehicle.seats}</div>
+                  <div className="mt-1 text-lg font-semibold text-slate-900">{vehicle.seats}</div>
                 </div>
               </div>
             </section>
@@ -633,7 +633,7 @@ export default function VehicleDataPage() {
 
               <InfoCard icon={<Ruler className="h-4 w-4" />} title="Rozměry, Kapacita a Obutí">
                 <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
-                  <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-3 backdrop-blur-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
+                  <div className="rounded-2xl border border-slate-300 bg-white p-3 -lg shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
                     <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-2">Vizualizace rozměrů</div>
                     <svg viewBox="0 0 420 180" className="w-full h-40">
                       <path
@@ -666,13 +666,13 @@ export default function VehicleDataPage() {
                     </svg>
                   </div>
 
-                  <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-3 backdrop-blur-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
+                  <div className="rounded-2xl border border-slate-300 bg-white p-3 -lg shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
                     <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-2">Schválené pneumatiky</div>
                     <div className="space-y-2">
                       {(tireItems.length ? tireItems : ["—"]).map((tire, idx) => (
                         <div
                           key={`${tire}-${idx}`}
-                          className="rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2 text-sm font-semibold text-slate-100 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]"
+                          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900  shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]"
                         >
                           {tire}
                         </div>
@@ -685,12 +685,12 @@ export default function VehicleDataPage() {
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <InfoCard icon={<Weight className="h-4 w-4" />} title="Hmotnosti a Závěs">
-                <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-3 space-y-2.5 backdrop-blur-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
+                <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2.5 -lg shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-300">Vytížení</span>
-                    <span className="text-sm font-bold text-slate-100">{fmtNumber(vehicle.utilizationPct)}%</span>
+                    <span className="text-sm text-slate-600">Vytížení</span>
+                    <span className="text-sm font-bold text-slate-900">{fmtNumber(vehicle.utilizationPct)}%</span>
                   </div>
-                  <div className="h-2 rounded-full bg-white/10 overflow-hidden ring-1 ring-white/10">
+                  <div className="h-2 rounded-full bg-white overflow-hidden ring-1 ring-white/10">
                     <div
                       className="h-full bg-gradient-to-r from-sky-400 via-violet-400 to-rose-400"
                       style={{ width: `${Math.max(0, Math.min(vehicle.utilizationPct ?? 0, 100))}%` }}
@@ -741,7 +741,7 @@ export default function VehicleDataPage() {
               </InfoCard>
             </div>
 
-            <section className="rounded-2xl border border-white/15 bg-[linear-gradient(160deg,rgba(15,23,42,0.65),rgba(2,6,23,0.75))] px-4 py-3 backdrop-blur-xl shadow-[0_12px_30px_rgba(2,6,23,0.5)]">
+            <section className="rounded-2xl border border-slate-300 bg-white">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-emerald-300" />

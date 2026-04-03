@@ -240,7 +240,7 @@ function ToolbarButton({
       type="button"
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className="rounded-xl border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-blue-300/70 hover:text-white"
+      className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:border-slate-900 hover:text-slate-900"
     >
       {label}
     </button>
@@ -1770,18 +1770,18 @@ export default function TvorbaPage() {
           <SplitTitle text="Tvorba" />
           <Link
             href="/pomucky"
-            className="inline-flex items-center rounded-full border border-white/20 px-3 py-1.5 text-xs text-slate-200 transition hover:bg-white/10 hover:text-white"
+            className="inline-flex items-center rounded-full border border-slate-300 px-3 py-1.5 text-xs text-slate-800 transition hover:bg-white hover:text-slate-900"
           >
             ← Zpět na pomůcky
           </Link>
         </header>
 
         <div className="grid items-start gap-5 xl:grid-cols-[332px_1fr]">
-          <aside className="rounded-3xl border border-blue-500/20 bg-gradient-to-br from-slate-950/90 via-slate-900/82 to-slate-900/72 p-4 backdrop-blur-2xl shadow-[0_22px_60px_rgba(0,0,0,0.5)] space-y-4">
+          <aside className="rounded-3xl border border-slate-900 bg-gradient-to-br from-slate-950/90 via-slate-900/82 to-slate-900/72 p-4  shadow-[0_22px_60px_rgba(0,0,0,0.5)] space-y-4">
             <section className="space-y-3">
               <div className="flex items-center gap-2">
                 <Type className="h-4 w-4 text-blue-300" />
-                <h2 className="text-sm font-semibold text-white">Editor obsahu</h2>
+                <h2 className="text-sm font-semibold text-slate-900">Editor obsahu</h2>
               </div>
               <div className="flex flex-wrap gap-2">
                 <ToolbarButton label="Nadpis" onClick={() => applyFormatBlock("H2")} />
@@ -1795,7 +1795,7 @@ export default function TvorbaPage() {
                   className={`inline-flex h-10 w-14 items-center justify-center text-3xl font-semibold transition ${
                     inlineStyleState.bold
                       ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-100 hover:bg-white/10"
+                      : "bg-transparent text-slate-900 hover:bg-white"
                   }`}
                   aria-label="Tučně"
                   title="Tučně"
@@ -1806,10 +1806,10 @@ export default function TvorbaPage() {
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => applyInlineStyle("italic")}
-                  className={`inline-flex h-10 w-14 items-center justify-center border-l border-white/15 text-3xl transition ${
+                  className={`inline-flex h-10 w-14 items-center justify-center border-l border-slate-300 text-3xl transition ${
                     inlineStyleState.italic
                       ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-100 hover:bg-white/10"
+                      : "bg-transparent text-slate-900 hover:bg-white"
                   }`}
                   aria-label="Kurzíva"
                   title="Kurzíva"
@@ -1820,10 +1820,10 @@ export default function TvorbaPage() {
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => applyInlineStyle("underline")}
-                  className={`inline-flex h-10 w-14 items-center justify-center border-l border-white/15 text-3xl transition ${
+                  className={`inline-flex h-10 w-14 items-center justify-center border-l border-slate-300 text-3xl transition ${
                     inlineStyleState.underline
                       ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-100 hover:bg-white/10"
+                      : "bg-transparent text-slate-900 hover:bg-white"
                   }`}
                   aria-label="Podtržení"
                   title="Podtržení"
@@ -1834,10 +1834,10 @@ export default function TvorbaPage() {
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => applyInlineStyle("strikeThrough")}
-                  className={`inline-flex h-10 w-14 items-center justify-center border-l border-white/15 text-3xl transition ${
+                  className={`inline-flex h-10 w-14 items-center justify-center border-l border-slate-300 text-3xl transition ${
                     inlineStyleState.strikeThrough
                       ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-100 hover:bg-white/10"
+                      : "bg-transparent text-slate-900 hover:bg-white"
                   }`}
                   aria-label="Přeškrtnutí"
                   title="Přeškrtnutí"
@@ -1853,7 +1853,7 @@ export default function TvorbaPage() {
                   className={`inline-flex h-10 w-16 items-center justify-center transition ${
                     textAlignMode === "left"
                       ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-100 hover:bg-white/10"
+                      : "bg-transparent text-slate-900 hover:bg-white"
                   }`}
                   aria-label="Zarovnat vlevo"
                   title="Zarovnat vlevo"
@@ -1864,10 +1864,10 @@ export default function TvorbaPage() {
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => applyTextAlign("center")}
-                  className={`inline-flex h-10 w-16 items-center justify-center border-l border-white/15 transition ${
+                  className={`inline-flex h-10 w-16 items-center justify-center border-l border-slate-300 transition ${
                     textAlignMode === "center"
                       ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-100 hover:bg-white/10"
+                      : "bg-transparent text-slate-900 hover:bg-white"
                   }`}
                   aria-label="Zarovnat na střed"
                   title="Zarovnat na střed"
@@ -1878,10 +1878,10 @@ export default function TvorbaPage() {
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => applyTextAlign("right")}
-                  className={`inline-flex h-10 w-16 items-center justify-center border-l border-white/15 transition ${
+                  className={`inline-flex h-10 w-16 items-center justify-center border-l border-slate-300 transition ${
                     textAlignMode === "right"
                       ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-100 hover:bg-white/10"
+                      : "bg-transparent text-slate-900 hover:bg-white"
                   }`}
                   aria-label="Zarovnat vpravo"
                   title="Zarovnat vpravo"
@@ -1892,10 +1892,10 @@ export default function TvorbaPage() {
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => applyTextAlign("justify")}
-                  className={`inline-flex h-10 w-16 items-center justify-center border-l border-white/15 transition ${
+                  className={`inline-flex h-10 w-16 items-center justify-center border-l border-slate-300 transition ${
                     textAlignMode === "justify"
                       ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-100 hover:bg-white/10"
+                      : "bg-transparent text-slate-900 hover:bg-white"
                   }`}
                   aria-label="Zarovnat do bloku"
                   title="Zarovnat do bloku"
@@ -1905,21 +1905,21 @@ export default function TvorbaPage() {
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <label className="w-[84px] text-xs font-semibold text-slate-300">Font</label>
+                  <label className="w-[84px] text-xs font-semibold text-slate-600">Font</label>
                   <div ref={fontMenuRef} className="relative flex-1">
                     <button
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => setFontMenuOpen((prev) => !prev)}
-                      className="inline-flex w-full items-center justify-between rounded-xl border border-slate-500/70 bg-slate-800/85 px-2.5 py-1.5 text-xs font-semibold text-slate-100 outline-none transition hover:border-blue-300/70"
+                      className="inline-flex w-full items-center justify-between rounded-xl border border-slate-500/70 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-900 outline-none transition hover:border-slate-900"
                       style={{ fontFamily: selectedFontOption.css }}
                       aria-label="Vybrat font"
                     >
                       <span>{selectedFontOption.label}</span>
-                      <span className="ml-2 text-[10px] text-slate-300">{fontMenuOpen ? "▲" : "▼"}</span>
+                      <span className="ml-2 text-[10px] text-slate-600">{fontMenuOpen ? "▲" : "▼"}</span>
                     </button>
                     {fontMenuOpen && (
-                      <div className="absolute left-0 top-9 z-30 min-w-[224px] overflow-hidden rounded-xl border border-slate-500/70 bg-slate-950/95 shadow-[0_16px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+                      <div className="absolute left-0 top-9 z-30 min-w-[224px] overflow-hidden rounded-xl border border-slate-500/70 bg-white shadow-[0_16px_32px_rgba(0,0,0,0.5)] ">
                         {FONT_OPTIONS.map((option) => {
                           const isSelected = option.key === fontFamilyKey;
                           return (
@@ -1930,8 +1930,8 @@ export default function TvorbaPage() {
                               onClick={() => handleSelectFont(option)}
                               className={`flex w-full items-center justify-between px-3 py-2 text-left text-[18px] leading-none transition ${
                                 isSelected
-                                  ? "bg-blue-500/30 text-white"
-                                  : "text-slate-100 hover:bg-white/10"
+                                  ? "bg-blue-100 text-slate-900"
+                                  : "text-slate-900 hover:bg-white"
                               }`}
                               style={{ fontFamily: option.css }}
                             >
@@ -1946,7 +1946,7 @@ export default function TvorbaPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <label className="w-[84px] text-xs font-semibold text-slate-300">Velikost textu</label>
+                  <label className="w-[84px] text-xs font-semibold text-slate-600">Velikost textu</label>
                   <select
                     value={fontSizePx}
                     onChange={(e) => {
@@ -1954,7 +1954,7 @@ export default function TvorbaPage() {
                       setFontSizePx(next);
                       applyFontSize(next);
                     }}
-                    className="w-[94px] rounded-xl border border-slate-500/70 bg-slate-800/85 px-2 py-1.5 text-xs font-semibold text-slate-100 outline-none focus:border-blue-300/70"
+                    className="w-[94px] rounded-xl border border-slate-500/70 bg-white px-2 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
                   >
                     {[12, 14, 15, 16, 18, 20, 24, 28, 32].map((size) => (
                       <option key={size} value={size} className="text-slate-900">
@@ -1968,12 +1968,12 @@ export default function TvorbaPage() {
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => setTextPaletteOpen((prev) => !prev)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-500/70 bg-slate-800/85 transition hover:border-blue-300/70"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-500/70 bg-white transition hover:border-slate-900"
                       aria-label="Barva textu"
                       title="Barva textu"
                     >
                       <span
-                        className="h-4 w-4 rounded-sm border border-white/50"
+                        className="h-4 w-4 rounded-sm border border-slate-300"
                         style={{ backgroundColor: textColor }}
                       />
                     </button>
@@ -1988,7 +1988,7 @@ export default function TvorbaPage() {
                     />
 
                     {textPaletteOpen && (
-                      <div className="absolute right-0 top-10 z-30 w-[226px] rounded-xl border border-slate-500/70 bg-slate-950/95 p-2 shadow-[0_16px_32px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                      <div className="absolute right-0 top-10 z-30 w-[226px] rounded-xl border border-slate-500/70 bg-white p-2 shadow-[0_16px_32px_rgba(0,0,0,0.45)] ">
                         <div className="grid grid-cols-8 gap-1.5">
                           {TEXT_COLOR_PALETTE.map((color) => {
                             const isSelected = textColor.toLowerCase() === color.toLowerCase();
@@ -2015,7 +2015,7 @@ export default function TvorbaPage() {
                             type="button"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => textColorInputRef.current?.click()}
-                            className="rounded-lg border border-slate-500/70 bg-slate-800/85 px-2 py-1 text-[11px] font-semibold text-slate-100 transition hover:border-blue-300/70 hover:text-white"
+                            className="rounded-lg border border-slate-500/70 bg-white px-2 py-1 text-[11px] font-semibold text-slate-900 transition hover:border-slate-900 hover:text-slate-900"
                           >
                             Vlastní
                           </button>
@@ -2023,11 +2023,11 @@ export default function TvorbaPage() {
                             type="button"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => void handlePickColorBySample()}
-                            className="rounded-lg border border-blue-300/55 bg-blue-500/20 px-2 py-1 text-[11px] font-semibold text-blue-100 transition hover:bg-blue-500/30"
+                            className="rounded-lg border border-blue-300/55 bg-blue-500/20 px-2 py-1 text-[11px] font-semibold text-white transition hover:bg-blue-500/30"
                           >
                             Pipeta
                           </button>
-                          <span className="ml-auto rounded-md border border-white/20 bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-slate-200">
+                          <span className="ml-auto rounded-md border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-800">
                             {textColor.toUpperCase()}
                           </span>
                         </div>
@@ -2040,7 +2040,7 @@ export default function TvorbaPage() {
                 <button
                   type="button"
                   onClick={handleInsertImageClick}
-                  className="inline-flex items-center gap-2 rounded-xl border border-blue-300/55 bg-blue-500/20 px-3 py-1.5 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/30"
+                  className="inline-flex items-center gap-2 rounded-xl border border-blue-300/55 bg-blue-500/20 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-500/30"
                 >
                   <ImagePlus className="h-3.5 w-3.5" />
                   Vložit obrázek
@@ -2049,7 +2049,7 @@ export default function TvorbaPage() {
                   type="button"
                   onClick={removeActiveImage}
                   disabled={!activeImageId}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-blue-300/60 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:border-blue-300/60 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Smazat vybraný
@@ -2074,7 +2074,7 @@ export default function TvorbaPage() {
                   setTextPaletteOpen(false);
                   setFontMenuOpen(false);
                 }}
-                className="inline-flex w-full items-center justify-between rounded-xl border border-blue-400/35 bg-slate-900/55 px-4 py-2.5 text-sm font-semibold text-blue-100 transition hover:border-blue-300/65 hover:bg-slate-900/70"
+                className="inline-flex w-full items-center justify-between rounded-xl border border-slate-900 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:border-blue-300/65 hover:bg-white"
               >
                 <span className="inline-flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-blue-300" />
@@ -2083,8 +2083,8 @@ export default function TvorbaPage() {
                 <span
                   className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition ${
                     aiPanelOpen
-                      ? "border-blue-300/70 bg-blue-500/75 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
-                      : "border-white/25 bg-slate-700/80"
+                      ? "border-slate-900 bg-blue-500/75 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
+                      : "border-slate-300 bg-slate-200"
                   }`}
                 >
                   <span
@@ -2096,7 +2096,7 @@ export default function TvorbaPage() {
               </button>
 
               {aiPanelOpen && (
-                <div className="space-y-3 rounded-2xl border border-blue-500/20 bg-slate-950/50 p-3">
+                <div className="space-y-3 rounded-2xl border border-slate-900 bg-white p-3">
                   <textarea
                     value={aiPrompt}
                     onChange={(e) => {
@@ -2105,14 +2105,14 @@ export default function TvorbaPage() {
                     }}
                     placeholder="Co chceš napsat? Např. klientský dopis o doplnění podkladů."
                     rows={4}
-                    className="w-full resize-y rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                    className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                   />
 
                   <div className="grid grid-cols-3 gap-2">
                     <select
                       value={aiDocType}
                       onChange={(e) => setAiDocType(e.target.value as AiDocType)}
-                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2 py-1.5 text-xs font-semibold text-slate-100 outline-none focus:border-blue-300/70"
+                      className="rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
                     >
                       <option value="dopis" className="text-slate-900">
                         Dopis
@@ -2128,7 +2128,7 @@ export default function TvorbaPage() {
                     <select
                       value={aiTone}
                       onChange={(e) => setAiTone(e.target.value as AiTone)}
-                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2 py-1.5 text-xs font-semibold text-slate-100 outline-none focus:border-blue-300/70"
+                      className="rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
                     >
                       <option value="formální" className="text-slate-900">
                         Formální
@@ -2144,7 +2144,7 @@ export default function TvorbaPage() {
                     <select
                       value={aiLength}
                       onChange={(e) => setAiLength(e.target.value as AiLength)}
-                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2 py-1.5 text-xs font-semibold text-slate-100 outline-none focus:border-blue-300/70"
+                      className="rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
                     >
                       <option value="krátký" className="text-slate-900">
                         Krátký
@@ -2163,35 +2163,35 @@ export default function TvorbaPage() {
                       value={aiClientName}
                       onChange={(e) => setAiClientName(e.target.value)}
                       placeholder="Jméno klienta"
-                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                      className="rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                     />
                     <input
                       value={aiContractNumber}
                       onChange={(e) => setAiContractNumber(e.target.value)}
                       placeholder="Číslo smlouvy"
-                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                      className="rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                     />
                     <input
                       value={aiProductName}
                       onChange={(e) => setAiProductName(e.target.value)}
                       placeholder="Produkt"
-                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                      className="rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                     />
                     <input
                       value={aiGoal}
                       onChange={(e) => setAiGoal(e.target.value)}
                       placeholder="Cíl textu"
-                      className="rounded-xl border border-white/15 bg-slate-900/70 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                      className="rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                     />
                   </div>
 
-                  <div className="space-y-2 rounded-xl border border-blue-500/25 bg-slate-950/65 p-2.5">
+                  <div className="space-y-2 rounded-xl border border-slate-900 bg-white p-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <label className="text-[11px] font-semibold text-slate-300">Oslovení</label>
+                      <label className="text-[11px] font-semibold text-slate-600">Oslovení</label>
                       <select
                         value={aiAddressing}
                         onChange={(e) => setAiAddressing(e.target.value as AiAddressing)}
-                        className="w-[120px] rounded-lg border border-white/20 bg-slate-900/80 px-2 py-1 text-xs font-semibold text-slate-100 outline-none focus:border-blue-300/70"
+                        className="w-[120px] rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
                       >
                         <option value="vykání" className="text-slate-900">
                           Vykání
@@ -2201,7 +2201,7 @@ export default function TvorbaPage() {
                         </option>
                       </select>
                     </div>
-                    <div className="flex items-center justify-between gap-3 text-[11px] text-slate-200">
+                    <div className="flex items-center justify-between gap-3 text-[11px] text-slate-800">
                       <span>Zahrnout aktuální text z editoru jako kontext</span>
                       <button
                         type="button"
@@ -2210,8 +2210,8 @@ export default function TvorbaPage() {
                         onClick={() => setAiUseCurrentContext((prev) => !prev)}
                         className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition ${
                           aiUseCurrentContext
-                            ? "border-blue-300/70 bg-blue-500/75 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
-                            : "border-white/25 bg-slate-700/80"
+                            ? "border-slate-900 bg-blue-500/75 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
+                            : "border-slate-300 bg-slate-200"
                         }`}
                       >
                         <span
@@ -2237,21 +2237,21 @@ export default function TvorbaPage() {
                     {aiLoading ? "AI generuje…" : "Generovat text"}
                   </button>
 
-                  {aiError && <p className="text-xs text-rose-300">{aiError}</p>}
+                  {aiError && <p className="text-xs text-rose-700">{aiError}</p>}
 
                   {aiResult && (
-                    <div className="space-y-2 rounded-xl border border-blue-500/20 bg-slate-900/65 p-2.5">
+                    <div className="space-y-2 rounded-xl border border-slate-900 bg-white p-2.5">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-blue-200/85">
                         Návrh AI
                       </p>
-                      <div className="max-h-36 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-slate-100 whitespace-pre-wrap">
+                      <div className="max-h-36 overflow-y-auto rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-900 whitespace-pre-wrap">
                         {aiResult}
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={insertAiResultIntoEditor}
-                          className="rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-blue-300/70 hover:text-white"
+                          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-900 transition hover:border-slate-900 hover:text-slate-900"
                         >
                           Vložit do kurzoru
                         </button>
@@ -2277,11 +2277,11 @@ export default function TvorbaPage() {
                   setTextPaletteOpen(false);
                   setFontMenuOpen(false);
                 }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:border-blue-300/70 hover:text-white"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:border-slate-900 hover:text-slate-900"
               >
                 Nastavení PDF
               </button>
-              <p className="text-xs text-slate-300">Kvalita: {selectedPdfQuality.label}</p>
+              <p className="text-xs text-slate-600">Kvalita: {selectedPdfQuality.label}</p>
               {pdfPasswordEnabled && (
                 <p className="text-xs text-blue-300">PDF bude zaheslované.</p>
               )}
@@ -2292,17 +2292,17 @@ export default function TvorbaPage() {
                 type="button"
                 onClick={() => void handleDownloadPdf()}
                 disabled={downloading}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-300/70 bg-blue-500/25 px-4 py-2.5 text-sm font-semibold text-blue-50 shadow-[0_10px_28px_rgba(59,130,246,0.28)] transition hover:bg-blue-500/35 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-blue-500/25 px-4 py-2.5 text-sm font-semibold text-blue-50 shadow-[0_10px_28px_rgba(59,130,246,0.28)] transition hover:bg-blue-500/35 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Download className="h-4 w-4" />
                 {downloading ? "Generuji PDF…" : "Stáhnout PDF"}
               </button>
-              {errorText && <p className="text-xs text-rose-300">{errorText}</p>}
+              {errorText && <p className="text-xs text-rose-700">{errorText}</p>}
             </section>
           </aside>
 
-          <section className="rounded-3xl border border-white/15 bg-gradient-to-br from-black/75 via-black/65 to-black/55 p-4 md:p-6 backdrop-blur-2xl shadow-[0_22px_60px_rgba(0,0,0,0.55)] overflow-auto">
-            <div className="mx-auto w-fit rounded-2xl border border-white/15 bg-slate-900/70 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+          <section className="rounded-3xl border border-slate-300 bg-gradient-to-br from-black/75 via-black/65 to-black/55 p-4 md:p-6  shadow-[0_22px_60px_rgba(0,0,0,0.55)] overflow-auto">
+            <div className="mx-auto w-fit rounded-2xl border border-slate-300 bg-white p-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
               <div
                 ref={pageRef}
                 className="relative w-[210mm] min-h-[297mm] overflow-hidden bg-white text-slate-900 shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
@@ -2353,7 +2353,7 @@ export default function TvorbaPage() {
                       onKeyUp={syncFormattingState}
                       onMouseUp={syncFormattingState}
                       onMouseDown={() => setActiveImageId(null)}
-                      className="min-h-[193mm] rounded-xl border border-dashed border-slate-300 bg-white/80 px-3 py-3 leading-relaxed text-slate-800 outline-none [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5"
+                      className="min-h-[193mm] rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 leading-relaxed text-slate-800 outline-none [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5"
                     />
                     <div className="pointer-events-none absolute inset-0" data-image-layer="1">
                       {placedImages.map((image) => {
@@ -2396,7 +2396,7 @@ export default function TvorbaPage() {
                                     event.stopPropagation();
                                     removeActiveImage();
                                   }}
-                                  className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/50 bg-slate-950/70 text-[11px] font-semibold text-white shadow-md"
+                                  className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-white text-[11px] font-semibold text-slate-900 shadow-md"
                                   aria-label="Smazat obrázek"
                                 >
                                   ×
@@ -2406,7 +2406,7 @@ export default function TvorbaPage() {
                                   type="button"
                                   data-export-ignore="1"
                                   onMouseDown={(event) => startImageInteraction(event, image.id, "resize")}
-                                  className="absolute bottom-0 right-0 h-4 w-4 cursor-se-resize rounded-tl-md border border-white/50 bg-blue-500/80"
+                                  className="absolute bottom-0 right-0 h-4 w-4 cursor-se-resize rounded-tl-md border border-slate-300 bg-blue-500/80"
                                   aria-label="Změnit velikost obrázku"
                                 />
                               </>
@@ -2490,24 +2490,24 @@ export default function TvorbaPage() {
 
         {pdfSettingsOpen && (
           <div
-            className="fixed inset-0 z-[120] flex items-center justify-center bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.2),rgba(2,6,23,0.9)_55%)] p-4 backdrop-blur-md"
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-white p-4 "
             onMouseDown={() => setPdfSettingsOpen(false)}
           >
             <div
-              className="w-full max-w-[560px] max-h-[92vh] overflow-y-auto rounded-2xl border border-blue-400/35 bg-gradient-to-br from-slate-950/96 via-[#050c24]/95 to-slate-950/96 p-4 shadow-[0_26px_76px_rgba(0,0,0,0.7)] ring-1 ring-blue-300/15"
+              className="w-full max-w-[560px] max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-900 bg-gradient-to-br from-slate-950/96 via-[#050c24]/95 to-slate-950/96 p-4 shadow-[0_26px_76px_rgba(0,0,0,0.7)] ring-1 ring-blue-300/15"
               onMouseDown={(event) => event.stopPropagation()}
             >
               <div className="mb-4 flex items-start justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-white">Nastavení PDF</h2>
-                  <p className="mt-1 text-xs text-slate-300/90">
+                  <h2 className="text-base font-semibold text-slate-900">Nastavení PDF</h2>
+                  <p className="mt-1 text-xs text-slate-600">
                     Bezpečnost exportu a správa údajů v patičce.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setPdfSettingsOpen(false)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-slate-200 transition hover:border-blue-300/70 hover:bg-blue-500/20 hover:text-white"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-800 transition hover:border-slate-900 hover:bg-blue-500/20 hover:text-slate-900"
                   aria-label="Zavřít nastavení PDF"
                 >
                   ×
@@ -2518,12 +2518,12 @@ export default function TvorbaPage() {
                 <div className="rounded-xl border border-blue-400/25 bg-gradient-to-br from-slate-900/86 to-slate-950/80 p-3 shadow-[inset_0_1px_0_rgba(148,163,184,0.2)]">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2.5">
-                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-blue-300/35 bg-blue-500/20 text-blue-100">
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-900 bg-blue-100 text-slate-900">
                         <Lock className="h-4 w-4" />
                       </span>
                       <div>
-                        <p className="text-sm font-semibold text-slate-100">Zaheslovat PDF</p>
-                        <p className="text-xs text-slate-300/90">
+                        <p className="text-sm font-semibold text-slate-900">Zaheslovat PDF</p>
+                        <p className="text-xs text-slate-600">
                           Jednorázové heslo pro příští export PDF.
                         </p>
                       </div>
@@ -2542,8 +2542,8 @@ export default function TvorbaPage() {
                       }}
                       className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition ${
                         pdfPasswordEnabled
-                          ? "border-blue-300/70 bg-blue-500/75 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
-                          : "border-white/25 bg-slate-700/80"
+                          ? "border-slate-900 bg-blue-500/75 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
+                          : "border-slate-300 bg-slate-200"
                       }`}
                     >
                       <span
@@ -2554,7 +2554,7 @@ export default function TvorbaPage() {
                     </button>
                   </div>
                   {pdfPasswordEnabled && (
-                    <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+                    <div className="mt-3 space-y-2 border-t border-slate-300 pt-3">
                       <input
                         type="password"
                         value={pdfPassword}
@@ -2563,15 +2563,15 @@ export default function TvorbaPage() {
                           setPdfSaveStatus(null);
                         }}
                         placeholder="Zadej heslo pro otevření PDF"
-                        className="w-full rounded-xl border border-blue-300/35 bg-slate-900/75 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/75"
+                        className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />
-                      <p className="text-xs text-slate-300/95">
+                      <p className="text-xs text-slate-600">
                         Heslo se použije jen jednou a po stažení PDF se automaticky smaže.
                       </p>
                     </div>
                   )}
-                  <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
-                    <p className="text-sm font-semibold text-slate-100">Kvalita exportu PDF</p>
+                  <div className="mt-3 space-y-2 border-t border-slate-300 pt-3">
+                    <p className="text-sm font-semibold text-slate-900">Kvalita exportu PDF</p>
                     <div className="grid grid-cols-3 gap-2">
                       {PDF_QUALITY_ORDER.map((quality) => {
                         const cfg = PDF_QUALITY_PRESETS[quality];
@@ -2586,8 +2586,8 @@ export default function TvorbaPage() {
                             }}
                             className={`rounded-lg border px-2 py-1.5 text-xs font-semibold transition ${
                               isSelected
-                                ? "border-blue-300/80 bg-blue-500/30 text-white"
-                                : "border-white/20 bg-white/10 text-slate-200 hover:border-blue-300/60"
+                                ? "border-blue-300/80 bg-blue-100 text-slate-900"
+                                : "border-slate-300 bg-white text-slate-800 hover:border-blue-300/60"
                             }`}
                           >
                             {cfg.label}
@@ -2595,9 +2595,9 @@ export default function TvorbaPage() {
                         );
                       })}
                     </div>
-                    <p className="text-xs text-slate-300/95">{selectedPdfQuality.helperText}</p>
+                    <p className="text-xs text-slate-600">{selectedPdfQuality.helperText}</p>
                   </div>
-                  <div className="mt-3 flex items-center gap-3 border-t border-white/10 pt-3">
+                  <div className="mt-3 flex items-center gap-3 border-t border-slate-300 pt-3">
                     <button
                       type="button"
                       onClick={handleSavePdfSettings}
@@ -2614,56 +2614,56 @@ export default function TvorbaPage() {
                 <button
                   type="button"
                   onClick={() => setFooterSettingsOpen((prev) => !prev)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-gradient-to-r from-slate-800/75 to-slate-700/65 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:border-blue-300/70 hover:text-white"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:border-slate-900 hover:text-slate-900"
                 >
                   {footerSettingsOpen ? "Nastavení patičky (skrýt)" : "Nastavení patičky"}
                 </button>
 
                 {footerSettingsOpen && (
-                  <div className="space-y-3 rounded-2xl border border-blue-500/25 bg-slate-900/60 p-3 shadow-[inset_0_1px_0_rgba(148,163,184,0.2)]">
-                    <h3 className="text-sm font-semibold text-white">Patička dokumentu</h3>
+                  <div className="space-y-3 rounded-2xl border border-slate-900 bg-white p-3 shadow-[inset_0_1px_0_rgba(148,163,184,0.2)]">
+                    <h3 className="text-sm font-semibold text-slate-900">Patička dokumentu</h3>
                     <div className="space-y-2">
                       <input
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         onBlur={() => void persistFooterDraft(true)}
                         placeholder="Jméno a příjmení"
-                        className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />
                       <input
                         value={jobTitle}
                         onChange={(e) => setJobTitle(e.target.value)}
                         onBlur={() => void persistFooterDraft(true)}
                         placeholder="Pozice"
-                        className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />
                       <input
                         value={companyId}
                         onChange={(e) => setCompanyId(e.target.value)}
                         onBlur={() => void persistFooterDraft(true)}
                         placeholder="IČ"
-                        className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />
                       <input
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                         onBlur={() => void persistFooterDraft(true)}
                         placeholder="Mobil"
-                        className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />
                       <input
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         onBlur={() => void persistFooterDraft(true)}
                         placeholder="E-mail"
-                        className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />
                       <input
                         value={officeAddress}
                         onChange={(e) => setOfficeAddress(e.target.value)}
                         onBlur={() => void persistFooterDraft(true)}
                         placeholder="Adresa kanceláře"
-                        className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:border-blue-300/70"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />
                     </div>
                     <button

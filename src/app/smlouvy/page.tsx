@@ -1,8 +1,9 @@
 // src/app/smlouvy/page.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 import { auth } from "../firebase";
 import {
@@ -422,6 +423,20 @@ type ContractsApiResponse = {
 
 const CONTRACTS_CACHE_KEY = "contracts_cache_v2";
 const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
+const CONTRACTS_VIEW_STATE_KEY = "contracts_view_state_v1";
+
+type ContractsViewState = {
+  userEmail: string;
+  showTeam: boolean;
+  filterMode: FilterMode;
+  searchText: string;
+  selectedCategories: ProductCategory[];
+  selectedInstitutions: Institution[];
+  scrollY: number;
+};
+
+const normalizeEmail = (email?: string | null) =>
+  (email ?? "").trim().toLowerCase();
 
 function readContractsCache(email: string | null | undefined): ContractsCache | null {
   if (!email || typeof window === "undefined") return null;
@@ -451,7 +466,66 @@ function writeContractsCache(cache: ContractsCache) {
   }
 }
 
+function readContractsViewState(userEmail: string | null | undefined): ContractsViewState | null {
+  if (typeof window === "undefined") return null;
+  const normalized = normalizeEmail(userEmail);
+  if (!normalized) return null;
+  try {
+    const key = `${CONTRACTS_VIEW_STATE_KEY}:${normalized}`;
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ContractsViewState>;
+    return {
+      userEmail: normalized,
+      showTeam: Boolean(parsed.showTeam),
+      filterMode: parsed.filterMode === "anniversary" ? "anniversary" : "latest",
+      searchText: typeof parsed.searchText === "string" ? parsed.searchText : "",
+      selectedCategories: Array.isArray(parsed.selectedCategories)
+        ? parsed.selectedCategories.filter((v): v is ProductCategory =>
+            CATEGORY_DEFS.some((d) => d.id === v)
+          )
+        : [],
+      selectedInstitutions: Array.isArray(parsed.selectedInstitutions)
+        ? parsed.selectedInstitutions.filter((v): v is Institution =>
+            INSTITUTION_DEFS.some((d) => d.id === v)
+          )
+        : [],
+      scrollY:
+        typeof parsed.scrollY === "number" && Number.isFinite(parsed.scrollY)
+          ? Math.max(0, parsed.scrollY)
+          : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeContractsViewState(
+  userEmail: string | null | undefined,
+  state: Omit<ContractsViewState, "userEmail">
+) {
+  if (typeof window === "undefined") return;
+  const normalized = normalizeEmail(userEmail);
+  if (!normalized) return;
+  try {
+    const key = `${CONTRACTS_VIEW_STATE_KEY}:${normalized}`;
+    sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        ...state,
+        userEmail: normalized,
+      } satisfies ContractsViewState)
+    );
+    sessionStorage.removeItem(CONTRACTS_VIEW_STATE_KEY);
+  } catch {
+    // best effort
+  }
+}
+
 export default function ContractsPage() {
+  const searchParams = useSearchParams();
+  const [isFilterPending, startFilterTransition] = useTransition();
+  const pendingScrollRestoreRef = useRef<number | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [currentUserPosition, setCurrentUserPosition] =
     useState<Position | null>(null);
@@ -472,6 +546,7 @@ export default function ContractsPage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [autoScanPaused, setAutoScanPaused] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -480,6 +555,8 @@ export default function ContractsPage() {
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<ProductCategory>>(new Set());
   const [selectedInstitutions, setSelectedInstitutions] = useState<Set<Institution>>(new Set());
+  const shouldRestoreView = searchParams?.get("restore") === "1";
+  const normalizedUserEmail = normalizeEmail(user?.email);
 
   const mergeContracts = <T extends { id: string }>(prev: T[], next: T[]): T[] => {
     const seen = new Set(prev.map((c) => c.id));
@@ -803,6 +880,11 @@ export default function ContractsPage() {
         if (!myHasMore) return;
         await fetchMyPage(myCursorDate, true);
       }
+      setAutoScanPaused(false);
+    } catch (e) {
+      console.error("Chyba při načítání dalších smluv:", e);
+      setLoadError("Nepodařilo se načíst další smlouvy. Zkus to prosím znovu.");
+      setAutoScanPaused(true);
     } finally {
       setLoadingMore(false);
     }
@@ -817,6 +899,7 @@ export default function ContractsPage() {
     myHasMore,
     fetchMyPage,
     myCursorDate,
+    setLoadError,
   ]);
 
   const hasMoreContracts =
@@ -826,11 +909,65 @@ export default function ContractsPage() {
     filterMode === "anniversary" || searchText.trim() !== "";
   const hasMoreActive =
     showTeam && canShowTeamToggle ? teamHasMore : myHasMore;
+  const isAnniversaryLoading =
+    filterMode === "anniversary" &&
+    (isFilterPending || loadingMore || hasMoreActive);
+
+  const persistContractsViewState = useCallback(() => {
+    if (!normalizedUserEmail) return;
+    writeContractsViewState(normalizedUserEmail, {
+      showTeam,
+      filterMode,
+      searchText,
+      selectedCategories: Array.from(selectedCategories),
+      selectedInstitutions: Array.from(selectedInstitutions),
+      scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+    });
+  }, [
+    normalizedUserEmail,
+    showTeam,
+    filterMode,
+    searchText,
+    selectedCategories,
+    selectedInstitutions,
+  ]);
+
+  useEffect(() => {
+    if (!shouldRestoreView) return;
+    if (!normalizedUserEmail) return;
+    const saved = readContractsViewState(normalizedUserEmail);
+    if (!saved) return;
+
+    setShowTeam(saved.showTeam);
+    setFilterMode(saved.filterMode);
+    setSearchText(saved.searchText);
+    setSelectedCategories(new Set(saved.selectedCategories));
+    setSelectedInstitutions(new Set(saved.selectedInstitutions));
+    pendingScrollRestoreRef.current = saved.scrollY;
+  }, [shouldRestoreView, normalizedUserEmail]);
+
+  useEffect(() => {
+    if (pendingScrollRestoreRef.current == null) return;
+    if (loading) return;
+    const targetY = pendingScrollRestoreRef.current;
+    const raf = window.requestAnimationFrame(() => {
+      window.scrollTo(0, targetY);
+      const reached = window.scrollY >= targetY - 8;
+      const atBottom =
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 8;
+      if (reached || (atBottom && !hasMoreActive && !loadingMore)) {
+        pendingScrollRestoreRef.current = null;
+      }
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [loading, loadingMore, hasMoreActive, filteredContracts.length]);
 
   useEffect(() => {
     if (!wantsFullScan) return;
     if (!user?.email) return;
     if (loading || loadingMore) return;
+    if (autoScanPaused) return;
     if (!hasMoreActive) return;
     void handleLoadMore(); // při vyhledávání/anniversary postupně načti vše, ne jen první stránku
   }, [
@@ -838,6 +975,7 @@ export default function ContractsPage() {
     user?.email,
     loading,
     loadingMore,
+    autoScanPaused,
     hasMoreActive,
     showTeam,
     canShowTeamToggle,
@@ -847,7 +985,12 @@ export default function ContractsPage() {
   useEffect(() => {
     setSelectedKeys(new Set());
     setSelectMode(false);
+    setAutoScanPaused(false);
   }, [filterMode, searchText, showTeam]);
+
+  useEffect(() => {
+    persistContractsViewState();
+  }, [persistContractsViewState]);
 
   const hasTeamContracts =
     teamContracts.length > 0 && canShowTeamToggle;
@@ -987,20 +1130,21 @@ export default function ContractsPage() {
 
   return (
     <AppLayout active="contracts">
-      <div className="w-full max-w-5xl space-y-6">
+      <div className="min-h-screen w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+        <div className="mx-auto w-full max-w-6xl space-y-6 font-mono text-slate-900">
         {/* HEADER */}
         <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <SplitTitle text="Smlouvy" />
+          <SplitTitle text="Smlouvy" className="!text-slate-900" />
 
           {canShowTeamToggle && (
-            <div className="inline-flex rounded-full bg-slate-950/70 border border-white/15 p-1 text-xs shadow-lg shadow-black/40 self-start sm:self-end">
+            <div className="inline-flex self-start rounded-full border border-slate-900 bg-white p-1 text-xs sm:self-end">
               <button
                 type="button"
                 onClick={() => setShowTeam(false)}
                 className={`px-3 py-1.5 rounded-full transition ${
                   !showTeam
-                    ? "bg-white text-slate-900 shadow-md"
-                    : "text-slate-200"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-700"
                 }`}
               >
                 Moje smlouvy
@@ -1010,8 +1154,8 @@ export default function ContractsPage() {
                 onClick={() => setShowTeam(true)}
                 className={`px-3 py-1.5 rounded-full transition ${
                   showTeam
-                    ? "bg-white text-slate-900 shadow-md"
-                    : "text-slate-200"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-700"
                 }`}
               >
                 Týmové smlouvy
@@ -1022,37 +1166,41 @@ export default function ContractsPage() {
 
         {/* SEARCH BAR + FILTER + BULK ACTIONS */}
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/5 border border-white/15 shadow-[0_14px_40px_rgba(0,0,0,0.6)] backdrop-blur-xl flex-1">
+          <div className="flex flex-1 items-center gap-2 rounded-2xl border border-slate-900 bg-white px-4 py-2.5">
             <span className="text-sm">🔍</span>
             <input
               type="text"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               placeholder="Hledat klienta nebo číslo smlouvy"
-              className="w-full bg-transparent border-none outline-none text-sm text-slate-50 placeholder:text-slate-400"
+              className="w-full border-none bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500"
             />
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-            <div className="inline-flex rounded-full bg-slate-950/70 border border-white/15 p-1 text-xs shadow-inner shadow-black/60">
+            <div className="inline-flex rounded-full border border-slate-900 bg-white p-1 text-xs">
               <button
                 type="button"
-                onClick={() => setFilterMode("latest")}
+                onClick={() =>
+                  startFilterTransition(() => setFilterMode("latest"))
+                }
                 className={`px-3 py-1.5 rounded-full transition ${
                   filterMode === "latest"
-                    ? "bg-white text-slate-900 shadow-md"
-                    : "text-slate-200"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-700"
                 }`}
               >
                 Nejnovější
               </button>
               <button
                 type="button"
-                onClick={() => setFilterMode("anniversary")}
+                onClick={() =>
+                  startFilterTransition(() => setFilterMode("anniversary"))
+                }
                 className={`px-3 py-1.5 rounded-full transition ${
                   filterMode === "anniversary"
-                    ? "bg-white text-slate-900 shadow-md"
-                    : "text-slate-200"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-700"
                 }`}
               >
                 Blížící se výročí
@@ -1063,7 +1211,7 @@ export default function ContractsPage() {
               <button
                 type="button"
                 onClick={() => setFilterModalOpen(true)}
-                className="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-white/20"
+                className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black"
               >
                 Filtr
               </button>
@@ -1078,8 +1226,8 @@ export default function ContractsPage() {
                 }}
                 className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                   selectMode
-                    ? "border-rose-300/70 bg-rose-500/15 text-rose-100"
-                    : "border-white/25 bg-white/10 text-slate-100 hover:bg-white/20"
+                    ? "border-rose-600 bg-rose-100 text-rose-700"
+                    : "border-slate-900 bg-slate-900 text-white hover:bg-black"
                 }`}
               >
                 {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
@@ -1089,7 +1237,7 @@ export default function ContractsPage() {
                   type="button"
                   disabled={selectedKeys.size === 0 || bulkDeleting}
                   onClick={handleBulkDelete}
-                  className="rounded-full border border-rose-300 bg-rose-500/80 text-slate-900 px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                  className="rounded-full border border-rose-600 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                 >
                   {bulkDeleting
                     ? "Mažu…"
@@ -1103,7 +1251,7 @@ export default function ContractsPage() {
                   type="button"
                   disabled={selectedKeys.size === 0 || bulkMarking}
                   onClick={handleBulkMarkPaid}
-                  className="rounded-full border border-emerald-300 bg-emerald-500/80 text-emerald-950 px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                  className="rounded-full border border-emerald-600 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                 >
                   {bulkMarking
                     ? "Ukládám…"
@@ -1118,20 +1266,28 @@ export default function ContractsPage() {
 
         {/* LIST SMLOUV */}
         {loadError && (
-          <div className="rounded-2xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+          <div className="rounded-2xl border border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {loadError}
           </div>
         )}
         {loading ? (
-          <p className="text-sm text-slate-300 mt-4">
+          <p className="mt-4 text-sm text-slate-600">
             Načítám smlouvy…
           </p>
+        ) : isAnniversaryLoading && filteredContracts.length === 0 ? (
+          <div className="mt-4 space-y-2 rounded-2xl border border-slate-900 bg-white px-6 py-8 text-center text-sm text-slate-700">
+            <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+            <p className="font-medium">Vyhledávám blížící se výročí…</p>
+            <p className="text-xs text-slate-500">
+              Procházím další smlouvy, může to chvíli trvat.
+            </p>
+          </div>
         ) : filteredContracts.length === 0 ? (
-          <div className="mt-4 rounded-2xl border border-white/15 bg-white/5 backdrop-blur-lg px-6 py-8 text-center text-sm text-slate-200 space-y-2">
+          <div className="mt-4 space-y-2 rounded-2xl border border-slate-900 bg-white px-6 py-8 text-center text-sm text-slate-700">
             {filterMode === "anniversary" ? (
               <>
                 <p className="font-medium">Žádná blížící se výročí</p>
-                <p className="text-slate-300 text-xs">
+                <p className="text-xs text-slate-500">
                   V okně 60 dní a méně od dneška není žádné výročí (počítáno z data
                   počátku smlouvy, případně podpisu).
                 </p>
@@ -1139,14 +1295,14 @@ export default function ContractsPage() {
             ) : searchText.trim() !== "" ? (
               <>
                 <p className="font-medium">Nic nenalezeno</p>
-                <p className="text-slate-300 text-xs">
+                <p className="text-xs text-slate-500">
                   Zkus upravit hledaný text (klient nebo číslo smlouvy).
                 </p>
               </>
             ) : showTeam && hasTeamContracts ? (
               <>
                 <p className="font-medium">Žádné týmové smlouvy</p>
-                <p className="text-slate-300 text-xs">
+                <p className="text-xs text-slate-500">
                   Až podřízení něco vypočítají a označí jako sepsané,
                   uvidíš je tady.
                 </p>
@@ -1156,7 +1312,7 @@ export default function ContractsPage() {
                 <p className="font-medium">
                   Žádné smlouvy zatím nejsou.
                 </p>
-                <p className="text-slate-300 text-xs">
+                <p className="text-xs text-slate-500">
                   Až něco vypočítáš v kalkulačce a označíš jako sepsané,
                   objeví se zde.
                 </p>
@@ -1165,8 +1321,14 @@ export default function ContractsPage() {
           </div>
         ) : (
           <div className="mt-4 space-y-3">
+            {isAnniversaryLoading && (
+              <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-white px-4 py-2.5 text-xs text-slate-700">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+                <span>Dohledávám další výročí…</span>
+              </div>
+            )}
             {bulkError && (
-              <div className="rounded-2xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              <div className="rounded-2xl border border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                 {bulkError}
               </div>
             )}
@@ -1201,8 +1363,8 @@ export default function ContractsPage() {
 
                 const CardContent = (
                   <article
-                    className={`relative rounded-2xl border border-white/15 bg-white/[0.03] px-4 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.45)] transition hover:border-white/30 hover:bg-white/[0.05] ${
-                      isSelected ? "border-emerald-400/80 ring-2 ring-emerald-300/50" : ""
+                    className={`relative rounded-2xl border border-slate-900 bg-white px-4 py-3 font-mono shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-slate-50 ${
+                      isSelected ? "border-emerald-600 ring-2 ring-emerald-500/40" : ""
                     }`}
                   >
                   {selectMode && (
@@ -1210,8 +1372,8 @@ export default function ContractsPage() {
                       <span
                         className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${
                           isSelected
-                            ? "bg-emerald-400 text-slate-900 border-emerald-300"
-                            : "border-white/30 bg-white/10 text-slate-200"
+                            ? "border-emerald-600 bg-emerald-600 text-white"
+                            : "border-slate-900 bg-white text-slate-700"
                         }`}
                       >
                         ✓
@@ -1221,19 +1383,19 @@ export default function ContractsPage() {
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_190px] sm:gap-4">
                     <div className="min-w-0">
-                      <div className="text-2xl leading-tight font-semibold text-slate-50">
+                      <div className="text-2xl leading-tight font-semibold text-slate-900">
                         {productLabel(c.productKey)}
                       </div>
 
                       {(categoryLabel || institutionLabel) && (
-                        <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-400">
+                        <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">
                           {[categoryLabel, institutionLabel].filter(Boolean).join(" · ")}
                         </div>
                       )}
 
                       {anniversaryInfo.soon && (
                         <div
-                          className="mt-2 text-xs text-amber-200"
+                          className="mt-2 text-xs font-semibold text-rose-600"
                           title={
                             anniversaryInfo.next
                               ? `Výročí: ${anniversaryInfo.next.toLocaleDateString(
@@ -1250,39 +1412,39 @@ export default function ContractsPage() {
 
                       <div className="mt-3 grid grid-cols-1 gap-1 text-sm text-slate-300">
                         <p>
-                          <span className="text-slate-400">Číslo smlouvy:</span>{" "}
-                          <span>{c.contractNumber ?? "—"}</span>
+                          <span className="text-slate-500">Číslo smlouvy:</span>{" "}
+                          <span className="text-slate-900">{c.contractNumber ?? "—"}</span>
                         </p>
                         {c.clientName && (
                           <p>
-                            <span className="text-slate-400">Klient:</span>{" "}
-                            <span>{c.clientName}</span>
+                            <span className="text-slate-500">Klient:</span>{" "}
+                            <span className="text-slate-900">{c.clientName}</span>
                           </p>
                         )}
                         <p>
-                          <span className="text-slate-400">Datum sjednání:</span>{" "}
-                          <span>{signedStr}</span>
+                          <span className="text-slate-500">Datum sjednání:</span>{" "}
+                          <span className="text-slate-900">{signedStr}</span>
                         </p>
                         {adviserName && (
                           <p>
-                            <span className="text-slate-400">Sjednal:</span>{" "}
-                            <span>{adviserName}</span>
+                            <span className="text-slate-500">Sjednal:</span>{" "}
+                            <span className="text-slate-900">{adviserName}</span>
                           </p>
                         )}
                       </div>
                     </div>
 
-                    <div className="border-t border-white/10 pt-3 sm:border-t-0 sm:border-l sm:border-white/10 sm:pt-0 sm:pl-5">
+                    <div className="border-t border-slate-200 pt-3 sm:border-l sm:border-t-0 sm:border-slate-200 sm:pl-5 sm:pt-0">
                       <div className="flex items-end justify-between gap-3 sm:h-full sm:flex-col sm:items-end sm:justify-between">
                         <div className="text-right">
-                          <span className="text-[11px] uppercase tracking-[0.12em] text-slate-400">
+                          <span className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
                             Pojistné
                           </span>
-                          <div className="mt-1 whitespace-nowrap text-4xl leading-none font-semibold tracking-tight text-slate-100">
+                          <div className="mt-1 whitespace-nowrap text-4xl leading-none font-semibold tracking-tight text-slate-900">
                             {formatMoney(premiumDisplay.amount)}
                           </div>
                           {premiumDisplay.cadenceLabel && (
-                            <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-300">
+                            <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">
                               {premiumDisplay.cadenceLabel}
                             </div>
                           )}
@@ -1290,8 +1452,8 @@ export default function ContractsPage() {
                         <span
                           className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${
                             c.paid
-                              ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
-                              : "border-rose-400/40 bg-rose-500/10 text-rose-200"
+                              ? "border-emerald-600 bg-emerald-600 text-white"
+                              : "border-rose-600 bg-rose-600 text-white"
                           }`}
                         >
                           {c.paid ? "Zaplaceno" : "Nezaplaceno"}
@@ -1314,7 +1476,8 @@ export default function ContractsPage() {
               ) : (
                 <Link
                   key={c.id}
-                  href={`/smlouvy/${slug}`}
+                  href={`/smlouvy/${slug}?from=list`}
+                  onClick={persistContractsViewState}
                   className="block group h-full"
                 >
                   {CardContent}
@@ -1329,7 +1492,7 @@ export default function ContractsPage() {
                   type="button"
                   onClick={handleLoadMore}
                   disabled={loadingMore}
-                  className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm text-slate-50 hover:bg-white/10 transition shadow-[0_10px_30px_rgba(0,0,0,0.6)] disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loadingMore ? "Načítám…" : "Načíst dalších 10"}
                 </button>
@@ -1339,7 +1502,7 @@ export default function ContractsPage() {
         )}
 
         {!loading && !hasTeamContracts && canShowTeamToggle && (
-          <p className="text-[11px] text-slate-400 pt-1">
+          <p className="pt-1 text-[11px] text-slate-500">
             Zatím tu nejsou žádní podřízení vázaní na tvůj účet
             (kolekce <code>users</code>, pole{" "}
             <code>managerEmail</code>). Jakmile je doplníme, uvidíš
@@ -1354,20 +1517,20 @@ export default function ContractsPage() {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setFilterModalOpen(false)}
           />
-          <div className="relative w-full max-w-lg rounded-3xl border border-white/15 bg-slate-950/80 backdrop-blur-2xl p-6 space-y-4 shadow-[0_24px_80px_rgba(0,0,0,0.85)]">
+          <div className="relative w-full max-w-lg space-y-4 rounded-3xl border border-slate-900 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-50">Filtry</h3>
+              <h3 className="text-lg font-semibold text-slate-900">Filtry</h3>
               <button
                 type="button"
                 onClick={() => setFilterModalOpen(false)}
-                className="text-sm text-slate-300 hover:text-white"
+                className="text-sm text-slate-600 hover:text-slate-900"
               >
                 ✕
               </button>
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-slate-100">Produkty</p>
+              <p className="text-sm font-semibold text-slate-900">Produkty</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {CATEGORY_DEFS.map((cat) => {
                   const active = selectedCategories.has(cat.id);
@@ -1388,16 +1551,16 @@ export default function ContractsPage() {
                       }
                       className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
                         active
-                          ? "border-emerald-400/70 bg-emerald-500/10 text-emerald-50"
-                          : "border-white/20 bg-white/5 text-slate-200 hover:border-white/35"
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-900 bg-white text-slate-700 hover:bg-slate-50"
                       }`}
                     >
                       <span className="text-sm font-medium">{cat.label}</span>
                       <span
                         className={`h-5 w-5 rounded-full border ${
                           active
-                            ? "bg-emerald-400 border-emerald-300 text-emerald-950"
-                            : "border-white/30"
+                            ? "border-slate-900 bg-white text-slate-900"
+                            : "border-slate-900"
                         }`}
                       >
                         {active ? "✓" : ""}
@@ -1409,7 +1572,7 @@ export default function ContractsPage() {
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-slate-100">Instituce</p>
+              <p className="text-sm font-semibold text-slate-900">Instituce</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {INSTITUTION_DEFS.map((inst) => {
                   const active = selectedInstitutions.has(inst.id);
@@ -1430,16 +1593,16 @@ export default function ContractsPage() {
                       }
                       className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
                         active
-                          ? "border-emerald-400/70 bg-emerald-500/10 text-emerald-50"
-                          : "border-white/20 bg-white/5 text-slate-200 hover:border-white/35"
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-900 bg-white text-slate-700 hover:bg-slate-50"
                       }`}
                     >
                       <span className="text-sm font-medium">{inst.label}</span>
                       <span
                         className={`h-5 w-5 rounded-full border ${
                           active
-                            ? "bg-emerald-400 border-emerald-300 text-emerald-950"
-                            : "border-white/30"
+                            ? "border-slate-900 bg-white text-slate-900"
+                            : "border-slate-900"
                         }`}
                       >
                         {active ? "✓" : ""}
@@ -1457,14 +1620,14 @@ export default function ContractsPage() {
                   setSelectedCategories(new Set());
                   setSelectedInstitutions(new Set());
                 }}
-                className="rounded-xl border border-white/20 bg-white/5 px-4 py-2 text-slate-100 hover:bg-white/10"
+                className="rounded-xl border border-slate-900 bg-white px-4 py-2 text-slate-900 hover:bg-slate-50"
               >
                 Vymazat filtry
               </button>
               <button
                 type="button"
                 onClick={() => setFilterModalOpen(false)}
-                className="rounded-xl bg-emerald-500/80 px-4 py-2 font-semibold text-emerald-950 hover:bg-emerald-400"
+                className="rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-black"
               >
                 Použít
               </button>
@@ -1472,6 +1635,7 @@ export default function ContractsPage() {
           </div>
         </div>
       )}
+      </div>
     </AppLayout>
   );
 }

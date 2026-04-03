@@ -121,9 +121,9 @@ const sumTypeLabel = (val?: string | null) => {
 };
 
 const selectClass =
-  "w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
+  "w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900";
 const inputClass =
-  "w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
+  "w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900";
 
 const sumTypeOptions = [
   { value: "konstantni", label: "Konstantní" },
@@ -147,16 +147,16 @@ const ToggleRow = ({
     onClick={() => onChange(!checked)}
     className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm transition ${
       checked
-        ? "border-emerald-300/70 bg-emerald-500/15 text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.25)]"
-        : "border-white/10 bg-white/5 text-slate-100 hover:border-emerald-200/40 hover:text-emerald-50"
+        ? "border-slate-900 bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.18)]"
+        : "border-slate-300 bg-white text-slate-900 hover:border-slate-900"
     } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
   >
     <span className="text-left">{label}</span>
     <span
       className={`flex h-6 w-6 items-center justify-center rounded-full border text-sm font-semibold ${
         checked
-          ? "border-emerald-200 bg-emerald-500/30 text-emerald-50"
-          : "border-slate-500 bg-slate-900 text-slate-400"
+          ? "border-slate-900 bg-white text-slate-900"
+          : "border-slate-300 bg-slate-100 text-slate-500"
       }`}
     >
       {checked ? "✓" : ""}
@@ -187,7 +187,7 @@ const AmountRow = ({
 }) => (
   <div className="space-y-1">
     <div className="flex items-center justify-between gap-2">
-      <span className="text-slate-300">{label}</span>
+      <span className="text-slate-600">{label}</span>
       <div className="flex items-center gap-2">
         {showType ? (
           editMode ? (
@@ -329,8 +329,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
   return (
     <div className="space-y-3">
       {(editMode || hasDeath || hasDeathTyped || hasDeathAccident) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Smrt</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Smrt</div>
           {hasDeath && (
             <AmountRow
               label="Smrt"
@@ -368,8 +368,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasSerious || hasSeriousForHim || hasSeriousForHer) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Vážná onemocnění</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Vážná onemocnění</div>
           {hasSerious && (
             <AmountRow
               label="Vážná onemocnění"
@@ -407,8 +407,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasPermanentIllness) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Trvalé následky nemoci</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Trvalé následky nemoci</div>
           <AmountRow
             label="Pojistná částka"
             amountValue={fields.permanentIllnessAmount}
@@ -421,8 +421,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasInvalidityIllness) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">
             Invalidita / snížená soběstačnost (úraz nebo nemoc)
           </div>
           {showInvalidityIllness3 && (
@@ -468,8 +468,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasHospitalGeneral) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Pobyt v nemocnici (nemoc/úraz)</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Pobyt v nemocnici (nemoc/úraz)</div>
           <AmountRow
             label="Denní částka"
             amountValue={fields.hospitalGeneralAmount}
@@ -482,11 +482,11 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasWorkIncapacity) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Pracovní neschopnost</div>
-          <div className="space-y-2 text-sm text-slate-100">
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Pracovní neschopnost</div>
+          <div className="space-y-2 text-sm text-slate-900">
             <div className="flex justify-between gap-2">
-              <span className="text-slate-300">Plnění od</span>
+              <span className="text-slate-600">Plnění od</span>
               <span className="font-semibold text-right">
                 {editMode ? (
                   <select
@@ -505,7 +505,7 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
               </span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-slate-300">Zpětné plnění</span>
+              <span className="text-slate-600">Zpětné plnění</span>
               <span className="font-semibold text-right">
                 {editMode ? (
                   <select
@@ -523,7 +523,7 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
               </span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-slate-300">Denní částka</span>
+              <span className="text-slate-600">Denní částka</span>
               <span className="font-semibold text-right">
                 {editMode ? (
                   <input
@@ -545,8 +545,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasCaregiving) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Ošetřování</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Ošetřování</div>
           <AmountRow
             label="Denní částka"
             amountValue={fields.caregivingAmount}
@@ -559,8 +559,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasPermanentAccident || hasInjuryDamage || hasAccidentDaily || hasHospitalAccident) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Úrazová rizika</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Úrazová rizika</div>
           {hasPermanentAccident && (
             <AmountRow
               label="Trvalé následky úrazu"
@@ -605,8 +605,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasInvalidityAccident) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">
             Invalidita / snížená soběstačnost (úraz)
           </div>
           {showInvalidityAccident3 && (
@@ -652,8 +652,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasTraffic) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">
             Pojištění úrazu při dopravní nehodě
           </div>
           {(editMode || hasAmount(contract?.trafficDeathAccidentAmount, fields.trafficDeathAccidentAmount)) && (
@@ -730,8 +730,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasLoan) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Pojištění úvěru</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Pojištění úvěru</div>
           <AmountRow
             label="Smrt"
             amountValue={fields.loanDeathAmount}
@@ -741,7 +741,7 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
             contractAmount={contract?.loanDeathAmount ?? null}
           />
           <div className="space-y-1">
-            <div className="text-slate-200 text-sm font-semibold">Invalidita / snížená soběstačnost</div>
+            <div className="text-slate-700 text-sm font-semibold">Invalidita / snížená soběstačnost</div>
             {(editMode || hasAmount(contract?.loanInvalidity3, fields.loanInvalidity3)) && (
               <AmountRow
                 label="Stupeň 3"
@@ -797,8 +797,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasAddon) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Doplňková připojištění</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Doplňková připojištění</div>
           {(editMode || fields.addonMajakBasic || contract?.addonMajakBasic) && (
             <ToggleRow
               label="MAJÁK zdravotní a sociální infolinka"

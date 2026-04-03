@@ -141,16 +141,16 @@ const ToggleRow = ({
     onClick={() => onChange(!checked)}
     className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm transition ${
       checked
-        ? "border-emerald-300/70 bg-emerald-500/15 text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.25)]"
-        : "border-white/10 bg-white/5 text-slate-100 hover:border-emerald-200/40 hover:text-emerald-50"
+        ? "border-slate-900 bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.18)]"
+        : "border-slate-300 bg-white text-slate-900 hover:border-slate-900"
     } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
   >
     <span className="text-left">{label}</span>
     <span
       className={`flex h-6 w-6 items-center justify-center rounded-full border text-sm font-semibold ${
         checked
-          ? "border-emerald-200 bg-emerald-500/30 text-emerald-50"
-          : "border-slate-500 bg-slate-900 text-slate-400"
+          ? "border-slate-900 bg-white text-slate-900"
+          : "border-slate-300 bg-slate-100 text-slate-500"
       }`}
     >
       {checked ? "✓" : ""}
@@ -159,10 +159,10 @@ const ToggleRow = ({
 );
 
 const selectClass =
-  "w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
+  "w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900";
 
 const inputClass =
-  "w-full rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-xs text-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
+  "w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900";
 
 const sumTypeOptions = [
   { value: "konstantni", label: "Konstantní" },
@@ -195,7 +195,7 @@ const renderAmountRow = ({
 }) => (
   <div className="space-y-1">
     <div className="flex items-center justify-between gap-3">
-      <span className="text-slate-300 whitespace-nowrap">{label}</span>
+      <span className="text-slate-600 whitespace-nowrap">{label}</span>
       <div className="flex items-center gap-3 flex-1 justify-end min-w-[140px]">
         {editMode ? (
           <select
@@ -401,16 +401,16 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
   return (
     <div className="space-y-3">
       {editMode && (
-        <div className="rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-3 space-y-2">
+        <div className="rounded-2xl border border-slate-300 bg-slate-50 p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="text-sm font-semibold text-emerald-50">
+            <div className="text-sm font-semibold text-slate-900">
               Načíst rizika z PDF (ČPP ŽP NEON)
             </div>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
-              className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/25 px-3 py-1.5 text-xs font-semibold text-emerald-50 shadow-[0_12px_30px_rgba(16,185,129,0.25)] hover:bg-emerald-500/35 disabled:opacity-60 disabled:cursor-not-allowed transition"
+              className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(15,23,42,0.2)] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
             >
               {importing ? "Načítám…" : "Vybrat PDF"}
             </button>
@@ -422,17 +422,17 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
               onChange={(e) => handleImportPdf(e.target.files?.[0] ?? null)}
             />
           </div>
-          <p className="text-[12px] text-emerald-100">
+          <p className="text-[12px] text-slate-600">
             Pokusí se načíst hlavní rizika (smrt, invalidity, závažná onemocnění, úrazy, PN) přímo z PDF smlouvy. Data zůstávají jen v prohlížeči.
           </p>
-          {importStatus && <p className="text-[12px] text-emerald-50">{importStatus}</p>}
-          {importError && <p className="text-[12px] text-rose-200">{importError}</p>}
+          {importStatus && <p className="text-[12px] text-slate-700">{importStatus}</p>}
+          {importError && <p className="text-[12px] text-rose-700">{importError}</p>}
         </div>
       )}
 
-      <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-        <div className="text-xs uppercase tracking-wide text-emerald-200">Verze</div>
-        <div className="text-sm text-slate-100">
+      <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className="text-xs uppercase tracking-wide text-slate-500">Verze</div>
+        <div className="text-sm text-slate-900">
           {editMode ? (
             <select
               value={fields.version}
@@ -452,8 +452,8 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       </div>
 
       {hasDeath1 && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Rizika</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Rizika</div>
           {hasDeath1 &&
             renderAmountRow({
               label: "Smrt",
@@ -482,7 +482,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
             })}
           {hasTerminal && (
             <div className="flex justify-between gap-2">
-              <span className="text-slate-300">Smrt nebo terminální stádium</span>
+              <span className="text-slate-600">Smrt nebo terminální stádium</span>
               <span className="font-semibold text-right">
                 {editMode ? (
                   <input
@@ -504,8 +504,8 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || contract?.waiverInvalidity || fields.waiverInvalidity || contract?.waiverUnemployment || fields.waiverUnemployment) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Zproštění od placení</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Zproštění od placení</div>
           <div className="space-y-1">
             {(editMode || contract?.waiverInvalidity || fields.waiverInvalidity) && (
               <ToggleRow
@@ -528,8 +528,8 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasInvalidityA) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Invalidita</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Invalidita</div>
           <div className="space-y-2">
             {showInvalidityA3 &&
               renderAmountRow({
@@ -572,8 +572,8 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasInvalidityB) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Invalidita (2)</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Invalidita (2)</div>
           {showInvalidityB3 &&
             renderAmountRow({
               label: "3. stupeň",
@@ -614,8 +614,8 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || contract?.invalidityPension || fields.invalidityPension) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Invalidita s výplatou důchodu</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Invalidita s výplatou důchodu</div>
           <ToggleRow
             label="Invalidita s výplatou důchodu"
             checked={fields.invalidityPension}
@@ -626,8 +626,8 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasCritical) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Závažná onemocnění a poranění</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Závažná onemocnění a poranění</div>
           {renderAmountRow({
             label: "Krytí",
             typeValue: fields.criticalType,
@@ -643,10 +643,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasChildSurgery) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Operace dítěte s vrozenou vadou</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Operace dítěte s vrozenou vadou</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Pojistná částka</span>
+            <span className="text-slate-600">Pojistná částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -667,10 +667,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasVaccination) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Závažné následky očkování</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Závažné následky očkování</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Pojistná částka</span>
+            <span className="text-slate-600">Pojistná částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -691,10 +691,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasDiabetes) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Cukrovka a její komplikace</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Cukrovka a její komplikace</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Pojistná částka</span>
+            <span className="text-slate-600">Pojistná částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -715,10 +715,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasDeathAccident) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Smrt úrazem</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Smrt úrazem</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Pojistná částka</span>
+            <span className="text-slate-600">Pojistná částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -739,10 +739,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasInjuryPermanent) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Trvalé následky úrazu</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Trvalé následky úrazu</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Pojistná částka</span>
+            <span className="text-slate-600">Pojistná částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -763,10 +763,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasHospitalizationIllness) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Hospitalizace (Nemoc)</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Hospitalizace (Nemoc)</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Denní částka</span>
+            <span className="text-slate-600">Denní částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -787,10 +787,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasHospitalizationInjury) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Hospitalizace (Úraz)</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Hospitalizace (Úraz)</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Denní částka</span>
+            <span className="text-slate-600">Denní částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -811,10 +811,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasAccidentDaily) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Denní odškodné úrazem</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Denní odškodné úrazem</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Denní částka</span>
+            <span className="text-slate-600">Denní částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -835,9 +835,9 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasWorkIncapacity) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Pracovní neschopnost</div>
-          <div className="space-y-2 text-sm text-slate-100">
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Pracovní neschopnost</div>
+          <div className="space-y-2 text-sm text-slate-900">
             <div className="flex flex-wrap gap-2">
               <ToggleRow
                 label="Nemoc"
@@ -853,7 +853,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
               />
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-slate-300">Plnění od</span>
+              <span className="text-slate-600">Plnění od</span>
               <span className="font-semibold text-right">
                 {editMode ? (
                   <select
@@ -872,7 +872,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
               </span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-slate-300">Zpětné plnění</span>
+              <span className="text-slate-600">Zpětné plnění</span>
               <span className="font-semibold text-right">
                 {editMode ? (
                   <select
@@ -890,7 +890,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
               </span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-slate-300">Denní částka</span>
+              <span className="text-slate-600">Denní částka</span>
               <span className="font-semibold text-right">
                 {editMode ? (
                   <input
@@ -912,10 +912,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasCareDependency) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Závislost na péči II.–IV. stupně</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Závislost na péči II.–IV. stupně</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Měsíční částka</span>
+            <span className="text-slate-600">Měsíční částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -936,10 +936,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasSpecialAid) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Příspěvek na pořízení zvláštní pomůcky</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Příspěvek na pořízení zvláštní pomůcky</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Částka</span>
+            <span className="text-slate-600">Částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -960,10 +960,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasCaregiving) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Celodenní ošetřování pojištěného</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Celodenní ošetřování pojištěného</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Denní částka</span>
+            <span className="text-slate-600">Denní částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -984,10 +984,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasReproduction) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Náklady asistované reprodukce</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Náklady asistované reprodukce</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Částka</span>
+            <span className="text-slate-600">Částka</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -1008,8 +1008,8 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasCppHelp) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">ČPP Pomoc</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">ČPP Pomoc</div>
           <ToggleRow
             label="ČPP Pomoc"
             checked={fields.cppHelp}
@@ -1020,10 +1020,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasLiabilityCitizen) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Odpovědnost občana</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Odpovědnost občana</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Limit</span>
+            <span className="text-slate-600">Limit</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -1044,10 +1044,10 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasLiabilityEmployee) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Odpovědnost zaměstnance</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Odpovědnost zaměstnance</div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-300">Limit</span>
+            <span className="text-slate-600">Limit</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -1068,8 +1068,8 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasTravel) && (
-        <div className="rounded-2xl border border-emerald-400/30 bg-emerald-900/15 p-3 space-y-2">
-          <div className="text-xs uppercase tracking-wide text-emerald-200">Cestovní pojištění</div>
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Cestovní pojištění</div>
           <ToggleRow
             label="Cestovní pojištění"
             checked={fields.travelInsurance}

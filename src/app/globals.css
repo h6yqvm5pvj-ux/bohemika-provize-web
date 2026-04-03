@@ -200,23 +200,20 @@ body {
     flex-direction: column;
     overflow-x: hidden;
 
-    /* text bude světlý na tmavém */
-    color: #e5e7eb;
-
-    /* základ – čistě černá */
-    background-color: #000;
+    /* světlý default */
+    color: #0f172a;
+    background-color: #fff;
   }
 
   body.simple-bg {
-    background-color: #000;
+    background-color: #fff;
     background-image: none;
     animation: none;
   }
 
-  /* bílý režim už nepodporujeme */
   body.simple-bg.simple-bg-white {
-    background-color: #000;
-    color: #e5e7eb;
+    background-color: #fff;
+    color: #0f172a;
   }
 
   body.simple-bg.simple-bg-blue {
@@ -232,6 +229,78 @@ body {
   body.simple-bg.simple-bg-white .border-white\/25,
   body.simple-bg.simple-bg-white .border-white\/30 {
     border-color: rgba(15, 23, 42, 0.16) !important;
+  }
+
+  /* Compat vrstva: starší tmavé utility přibarvi do světlého stylu (jen obsah, ne sidebar) */
+  body.simple-bg.simple-bg-white .app-content .bg-slate-950\/95 {
+    background-color: rgba(248, 250, 252, 0.96) !important;
+  }
+  body.simple-bg.simple-bg-white .app-content .bg-slate-950\/90 {
+    background-color: rgba(248, 250, 252, 0.92) !important;
+  }
+  body.simple-bg.simple-bg-white .app-content .bg-slate-950\/80 {
+    background-color: rgba(248, 250, 252, 0.86) !important;
+  }
+  body.simple-bg.simple-bg-white .app-content .bg-slate-950\/70 {
+    background-color: rgba(248, 250, 252, 0.8) !important;
+  }
+  body.simple-bg.simple-bg-white .app-content .bg-slate-900\/95 {
+    background-color: rgba(248, 250, 252, 0.95) !important;
+  }
+  body.simple-bg.simple-bg-white .app-content .bg-slate-900\/90 {
+    background-color: rgba(248, 250, 252, 0.9) !important;
+  }
+  body.simple-bg.simple-bg-white .app-content .bg-slate-900\/80 {
+    background-color: rgba(248, 250, 252, 0.82) !important;
+  }
+  body.simple-bg.simple-bg-white .app-content .bg-slate-900\/75,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-900\/70,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-900\/60 {
+    background-color: rgba(248, 250, 252, 0.76) !important;
+  }
+  body.simple-bg.simple-bg-white .app-content .bg-white\/10,
+  body.simple-bg.simple-bg-white .app-content .bg-white\/5 {
+    background-color: rgba(15, 23, 42, 0.03) !important;
+  }
+  body.simple-bg.simple-bg-white .app-content .text-slate-50,
+  body.simple-bg.simple-bg-white .app-content .text-slate-100,
+  body.simple-bg.simple-bg-white .app-content .text-slate-200 {
+    color: #0f172a !important;
+  }
+  body.simple-bg.simple-bg-white .app-content .text-slate-300 {
+    color: #334155 !important;
+  }
+  body.simple-bg.simple-bg-white .app-content .text-slate-400 {
+    color: #475569 !important;
+  }
+  body.simple-bg.simple-bg-white .app-content .text-white,
+  body.simple-bg.simple-bg-white .app-content .text-white\/95,
+  body.simple-bg.simple-bg-white .app-content .text-white\/90,
+  body.simple-bg.simple-bg-white .app-content .text-white\/80,
+  body.simple-bg.simple-bg-white .app-content .text-white\/70 {
+    color: #0f172a !important;
+  }
+
+  /* Výjimka: pokud je prvek na tmavém/černém podkladu, text má zůstat bílý */
+  body.simple-bg.simple-bg-white .app-content .bg-slate-950.text-white,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-900.text-white,
+  body.simple-bg.simple-bg-white .app-content .bg-black.text-white,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-950 .text-white,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-900 .text-white,
+  body.simple-bg.simple-bg-white .app-content .bg-black .text-white,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-950 .text-white\/95,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-900 .text-white\/95,
+  body.simple-bg.simple-bg-white .app-content .bg-black .text-white\/95,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-950 .text-white\/90,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-900 .text-white\/90,
+  body.simple-bg.simple-bg-white .app-content .bg-black .text-white\/90,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-950 .text-white\/80,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-900 .text-white\/80,
+  body.simple-bg.simple-bg-white .app-content .bg-black .text-white\/80,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-950 .text-white\/70,
+  body.simple-bg.simple-bg-white .app-content .bg-slate-900 .text-white\/70,
+  body.simple-bg.simple-bg-white .app-content .bg-black .text-white\/70 {
+    color: #f8fafc !important;
   }
 
   /* Jednoduché černé pozadí – stáhni i panely do neutrální šedi místo modré */

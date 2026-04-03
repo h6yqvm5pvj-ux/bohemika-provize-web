@@ -264,20 +264,20 @@ export default function StructurePage() {
       <div className="w-full max-w-5xl space-y-6">
         <header className="mb-2">
           <SplitTitle text="Struktura" />
-          <p className="text-sm text-slate-300 mt-1">
+          <p className="text-sm text-slate-600 mt-1">
             Vidíš sebe, své nadřízené i podřízené v rámci vlastní struktury.
           </p>
         </header>
 
-        <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
+        <div className="rounded-3xl border border-slate-900 bg-white  px-5 py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
           {loading ? (
-            <p className="text-sm text-slate-300">Načítám strukturu…</p>
+            <p className="text-sm text-slate-600">Načítám strukturu…</p>
           ) : !treeRoot ? (
-            <p className="text-sm text-slate-300">Strukturu se nepodařilo načíst.</p>
+            <p className="text-sm text-slate-600">Strukturu se nepodařilo načíst.</p>
           ) : layout.nodes.length === 0 || layout.stepX === 0 ? (
-            <p className="text-sm text-slate-300">Strukturu se nepodařilo načíst.</p>
+            <p className="text-sm text-slate-600">Strukturu se nepodařilo načíst.</p>
           ) : (
-            <div className="relative w-full overflow-auto rounded-2xl border border-white/10 bg-black/20">
+            <div className="relative w-full overflow-auto rounded-2xl border border-slate-300 bg-white">
               <svg
                 style={{ minWidth: "100%" }}
                 width={layout.width}

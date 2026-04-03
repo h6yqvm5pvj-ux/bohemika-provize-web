@@ -68,8 +68,8 @@ function StornoPicker({
   onChange: (v: StornoPct) => void;
 }) {
   return (
-    <div className="flex items-center gap-2 text-[11px] text-slate-200">
-      <span className="text-slate-400">{label}:</span>
+    <div className="flex items-center gap-2 text-[11px] text-slate-800">
+      <span className="text-slate-500">{label}:</span>
       {[0, 5, 10].map((val) => (
         <button
           key={val}
@@ -78,7 +78,7 @@ function StornoPicker({
           className={`px-2.5 py-1 rounded-full border transition ${
             value === val
               ? "bg-emerald-500 text-white border-emerald-400 shadow-sm shadow-emerald-500/40"
-              : "border-white/20 text-slate-200 hover:bg-white/5"
+              : "border-slate-300 text-slate-800 hover:bg-white"
           }`}
         >
           {val}%
@@ -473,7 +473,7 @@ export default function ProjectionPage() {
     return (
       <AppLayout active="tools">
         <div className="w-full max-w-4xl mx-auto">
-          <p className="text-sm text-slate-200">
+          <p className="text-sm text-slate-800">
             Přihlas se, abys viděl projekci následných provizí.
           </p>
         </div>
@@ -487,10 +487,10 @@ export default function ProjectionPage() {
         <div className="flex justify-center">
           <SplitTitle text="Vizualizuj si výplatu do budoucna" wrap={false} />
         </div>
-        <div className="text-2xl sm:text-3xl font-semibold text-white/90 leading-tight">
+        <div className="text-2xl sm:text-3xl font-semibold text-slate-900/90 leading-tight">
           Pravidelná péče o klienta zajistí pravidelný příjem!
         </div>
-        <p className="text-sm text-slate-300 max-w-2xl mx-auto">
+        <p className="text-sm text-slate-600 max-w-2xl mx-auto">
           Vyber, zda modeluješ pouze vlastní produkci, nebo chceš řešit i budování
           týmu. V další kroku nastavíš vstupní data a uvidíš projekci na 15 let.
         </p>
@@ -506,7 +506,7 @@ export default function ProjectionPage() {
         <button
           type="button"
           onClick={() => setViewMode("team")}
-          className="rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-white hover:bg-white/10 transition"
+          className="rounded-full border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100 transition"
         >
           Chci budovat tým
         </button>
@@ -518,21 +518,21 @@ export default function ProjectionPage() {
     <div className="w-full max-w-5xl space-y-6">
       <header className="space-y-2">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-semibold tracking-tight text-white">
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
             Poznej kouzlo následných provizí!
           </h1>
           <button
             type="button"
             onClick={() => setViewMode("none")}
-            className="text-xs text-slate-300 hover:text-white"
+            className="text-xs text-slate-600 hover:text-slate-900"
           >
             Změnit volbu
           </button>
         </div>
-        <div className="text-lg sm:text-xl font-semibold text-white/90">
+        <div className="text-lg sm:text-xl font-semibold text-slate-900/90">
           Pravidelná péče o klienta zajistí pravidelný příjem!
         </div>
-        <p className="text-sm text-slate-300">
+        <p className="text-sm text-slate-600">
           Modelace vychází u Života z provize NEONU, u Auta průměr z provize
           ČPP a Allianz, u Majetku z DOMEXU. Modelace počítá s tím, že produkce
           je každý měsíc stejná. Lze započítat každoroční zdražování i míru
@@ -561,8 +561,8 @@ export default function ProjectionPage() {
           onChange={setAutoAnnual}
           extra={
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-[11px] text-slate-200">
-                <span className="text-slate-400">Zdražení:</span>
+              <div className="flex items-center gap-2 text-[11px] text-slate-800">
+                <span className="text-slate-500">Zdražení:</span>
                 {[0, 5, 10].map((val) => (
                   <button
                     key={val}
@@ -571,7 +571,7 @@ export default function ProjectionPage() {
                     className={`px-2.5 py-1 rounded-full border transition ${
                       autoInflation === val
                         ? "bg-emerald-500 text-white border-emerald-400 shadow-sm shadow-emerald-500/40"
-                        : "border-white/20 text-slate-200 hover:bg-white/5"
+                        : "border-slate-300 text-slate-800 hover:bg-white"
                     }`}
                   >
                     {val}%
@@ -601,19 +601,19 @@ export default function ProjectionPage() {
         />
       </section>
 
-      <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
+      <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-300">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-600">
               Roční projekce
             </p>
-            <p className="text-sm text-slate-200">
+            <p className="text-sm text-slate-800">
               Součet okamžitých i následných provizí za daný rok.
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[11px] text-slate-400">Nejlepší rok</p>
-            <p className="text-xl font-semibold text-white">
+            <p className="text-[11px] text-slate-500">Nejlepší rok</p>
+            <p className="text-xl font-semibold text-slate-900">
               {formatMoney(maxYearValue)}
             </p>
           </div>
@@ -632,7 +632,7 @@ export default function ProjectionPage() {
                 className="flex flex-col items-center gap-1 min-w-[48px] cursor-pointer"
                 onClick={() => setSelectedYear(y.year)}
               >
-                <div className="text-[10px] text-slate-200 font-semibold">
+                <div className="text-[10px] text-slate-800 font-semibold">
                   {formatMoney(y.total)}
                 </div>
                 <div
@@ -642,7 +642,7 @@ export default function ProjectionPage() {
                   style={{ height: `${h}px`, transform: isActive ? "translateY(-4px)" : "translateY(0)" }}
                   title={`Rok ${idx + 1}`}
                 />
-                <div className="text-[10px] text-slate-400">
+                <div className="text-[10px] text-slate-500">
                   {idx + 1}. rok
                 </div>
               </div>
@@ -652,13 +652,13 @@ export default function ProjectionPage() {
       </section>
 
       {selectedYear != null && monthlyByYear[selectedYear] && (
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
+        <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-300">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-600">
                 Měsíční výplaty
               </p>
-              <p className="text-sm text-slate-200">
+              <p className="text-sm text-slate-800">
                 Rok {selectedYear} • klikni na jiný rok v grafu pro změnu.
               </p>
             </div>
@@ -668,9 +668,9 @@ export default function ProjectionPage() {
             {monthlyByYear[selectedYear].map((val, idx) => (
               <div
                 key={idx}
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 flex items-center justify-between text-sm text-slate-100"
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 flex items-center justify-between text-sm text-slate-900"
               >
-                <span className="text-slate-300">{MONTH_LABELS[idx]}</span>
+                <span className="text-slate-600">{MONTH_LABELS[idx]}</span>
                 <span className="font-semibold">
                   {val > 0 ? formatMoney(val) : "—"}
                 </span>
@@ -680,7 +680,7 @@ export default function ProjectionPage() {
         </section>
       )}
 
-      <div className="text-xs text-slate-400">
+      <div className="text-xs text-slate-500">
         Odhad provize je orientační: Život dle NEON (měsíční), Auta průměr ČPP/Allianz
         Auto, Majetek DOMEX (výplata dle platby). Výkon se opakuje každý měsíc po celou dobu.
       </div>
@@ -722,32 +722,32 @@ export default function ProjectionPage() {
       <div className="w-full max-w-5xl space-y-6">
         <header className="space-y-2">
           <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-semibold tracking-tight text-white">
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
               Chci budovat tým
             </h1>
             <button
               type="button"
               onClick={() => setViewMode("none")}
-              className="text-xs text-slate-300 hover:text-white"
+              className="text-xs text-slate-600 hover:text-slate-900"
             >
               Změnit volbu
             </button>
           </div>
-          <p className="text-sm text-slate-300">
+          <p className="text-sm text-slate-600">
             Začni zvolením manažerské pozice, následně přidej podřízené, ať už jednoho či více
              a urči libovolný pravidelný výkon aby jsi viděl co ti budování týmu přinese.
           </p>
         </header>
 
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-4">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+        <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-4">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-600">
             Zvol manažerskou pozici
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">Manažerská pozice</label>
+              <label className="text-xs text-slate-500">Manažerská pozice</label>
               <select
-                className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 value={managerPos}
                 onChange={(e) =>
                   setManagerPos(e.target.value as ManagerPosition)
@@ -761,39 +761,39 @@ export default function ProjectionPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">
+              <label className="text-xs text-slate-500">
                 Tvůj Život (měsíční pojistné)
               </label>
               <input
                 type="number"
                 min={0}
-                className="w-full rounded-2xl bg-slate-900 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full rounded-2xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 value={managerLifeMonthly}
                 onChange={(e) => setManagerLifeMonthly(e.target.value)}
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">
+              <label className="text-xs text-slate-500">
                 Tvé Auto (roční pojistné)
               </label>
               <input
                 type="number"
                 min={0}
-                className="w-full rounded-2xl bg-slate-900 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full rounded-2xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 value={managerAutoAnnual}
                 onChange={(e) => setManagerAutoAnnual(e.target.value)}
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">
+              <label className="text-xs text-slate-500">
                 Tvůj Majetek (roční pojistné)
               </label>
               <input
                 type="number"
                 min={0}
-                className="w-full rounded-2xl bg-slate-900 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full rounded-2xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 value={managerPropAnnual}
                 onChange={(e) => setManagerPropAnnual(e.target.value)}
               />
@@ -805,17 +805,17 @@ export default function ProjectionPage() {
           {subordinates.map((sub, idx) => (
             <div
               key={sub.id}
-              className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-4"
+              className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-4"
             >
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-200">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-800">
                   {idx + 1}. Podřízený
                 </h3>
                 {subordinates.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeSub(sub.id)}
-                    className="text-xs text-slate-300 hover:text-white"
+                    className="text-xs text-slate-600 hover:text-slate-900"
                   >
                     Odebrat
                   </button>
@@ -824,11 +824,11 @@ export default function ProjectionPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-500">
                     Zvol pozici
                   </label>
                   <select
-                    className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     value={sub.position}
                     onChange={(e) =>
                       updateSub(
@@ -848,13 +848,13 @@ export default function ProjectionPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-500">
                     Život (měsíční pojistné)
                   </label>
                   <input
                     type="number"
                     min={0}
-                    className="w-full rounded-2xl bg-slate-900 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className="w-full rounded-2xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     value={sub.lifeMonthly}
                     onChange={(e) =>
                       updateSub(sub.id, "lifeMonthly", e.target.value)
@@ -863,13 +863,13 @@ export default function ProjectionPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-500">
                     Auto (roční pojistné)
                   </label>
                   <input
                     type="number"
                     min={0}
-                    className="w-full rounded-2xl bg-slate-900 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className="w-full rounded-2xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     value={sub.autoAnnual}
                     onChange={(e) =>
                       updateSub(sub.id, "autoAnnual", e.target.value)
@@ -878,13 +878,13 @@ export default function ProjectionPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-500">
                     Majetek (roční pojistné)
                   </label>
                   <input
                     type="number"
                     min={0}
-                    className="w-full rounded-2xl bg-slate-900 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className="w-full rounded-2xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     value={sub.propAnnual}
                     onChange={(e) =>
                       updateSub(sub.id, "propAnnual", e.target.value)
@@ -900,34 +900,34 @@ export default function ProjectionPage() {
               type="button"
               onClick={addSub}
               disabled={subordinates.length >= 20}
-              className="rounded-2xl border border-emerald-400/60 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="rounded-2xl border border-emerald-400/60 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-500/30 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               + Přidat dalšího
             </button>
           </div>
         </section>
 
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
+        <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-300">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-600">
                 Roční projekce meziprovize
               </p>
-              <p className="text-sm text-slate-200">
+              <p className="text-sm text-slate-800">
                 Součet manažerských provizí za daný
                 rok.
               </p>
             </div>
             <div className="text-right">
-              <p className="text-[11px] text-slate-400">Nejlepší rok</p>
-              <p className="text-xl font-semibold text-white">
+              <p className="text-[11px] text-slate-500">Nejlepší rok</p>
+              <p className="text-xl font-semibold text-slate-900">
                 {formatMoney(teamMaxYearValue)}
               </p>
             </div>
           </div>
 
           {!hasTeamData ? (
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-slate-600">
               Zadej produkci podřízených, abychom mohli spočítat meziprovizi.
             </p>
           ) : (
@@ -944,7 +944,7 @@ export default function ProjectionPage() {
                     className="flex flex-col items-center gap-1 min-w-[48px] cursor-pointer"
                     onClick={() => setSelectedTeamYear(y.year)}
                   >
-                    <div className="text-[10px] text-slate-200 font-semibold">
+                    <div className="text-[10px] text-slate-800 font-semibold">
                       {formatMoney(y.total)}
                     </div>
                     <div
@@ -957,7 +957,7 @@ export default function ProjectionPage() {
                       }}
                       title={`Rok ${idx + 1}`}
                     />
-                    <div className="text-[10px] text-slate-400">
+                    <div className="text-[10px] text-slate-500">
                       {idx + 1}. rok
                     </div>
                   </div>
@@ -970,13 +970,13 @@ export default function ProjectionPage() {
         {selectedTeamYear != null &&
           teamMonthlyByYear[selectedTeamYear] &&
           hasTeamData && (
-            <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
+            <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-slate-300">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-slate-600">
                     Měsíční výplaty manažerské provize
                   </p>
-                  <p className="text-sm text-slate-200">
+                  <p className="text-sm text-slate-800">
                     Rok {selectedTeamYear} • klikni na jiný rok v grafu pro změnu.
                   </p>
                 </div>
@@ -986,9 +986,9 @@ export default function ProjectionPage() {
                 {teamMonthlyByYear[selectedTeamYear].map((val, idx) => (
                   <div
                     key={idx}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 flex items-center justify-between text-sm text-slate-100"
+                    className="rounded-2xl border border-slate-300 bg-white px-4 py-3 flex items-center justify-between text-sm text-slate-900"
                   >
-                    <span className="text-slate-300">{MONTH_LABELS[idx]}</span>
+                    <span className="text-slate-600">{MONTH_LABELS[idx]}</span>
                     <span className="font-semibold">
                       {val > 0 ? formatMoney(val) : "—"}
                     </span>
@@ -998,7 +998,7 @@ export default function ProjectionPage() {
             </section>
           )}
 
-        <div className="text-xs text-slate-400">
+        <div className="text-xs text-slate-500">
           ŽIVOT vychází z provize produktu ČPP NEON a dobou trvání smlouvy alespoň 15 let. 
           AUTO vychází z provize vyprůměrované všech AUTO Produktů, MAJETEK vychází z provize 
           z produktu DOMEX. Výpočty jsou orientační a není započten 
@@ -1031,15 +1031,15 @@ function InputCard({
   extra?: React.ReactNode;
 }) {
   return (
-    <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
+    <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
       <div>
-        <h2 className="text-lg font-semibold text-white">{title}</h2>
-        <p className="text-xs text-slate-300">{subtitle}</p>
+        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+        <p className="text-xs text-slate-600">{subtitle}</p>
       </div>
       <input
         type="number"
         min={0}
-        className="w-full rounded-xl bg-slate-900 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+        className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />

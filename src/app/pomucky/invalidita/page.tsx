@@ -20,20 +20,20 @@ const SCENARIO_STYLE: Record<
   { panel: string; badge: string }
 > = {
   veryLow: {
-    panel: "from-black/70 via-black/65 to-black/60",
-    badge: "border-emerald-300/60 text-emerald-100 bg-black/60",
+    panel: "from-black/70 via-white to-black/60",
+    badge: "border-emerald-300/60 text-emerald-800 bg-white",
   },
   low: {
-    panel: "from-black/70 via-black/65 to-black/60",
-    badge: "border-emerald-300/60 text-emerald-100 bg-black/60",
+    panel: "from-black/70 via-white to-black/60",
+    badge: "border-emerald-300/60 text-emerald-800 bg-white",
   },
   medium: {
-    panel: "from-black/70 via-black/65 to-black/60",
-    badge: "border-emerald-300/60 text-emerald-100 bg-black/60",
+    panel: "from-black/70 via-white to-black/60",
+    badge: "border-emerald-300/60 text-emerald-800 bg-white",
   },
   high: {
-    panel: "from-black/70 via-black/65 to-black/60",
-    badge: "border-emerald-300/60 text-emerald-100 bg-black/60",
+    panel: "from-black/70 via-white to-black/60",
+    badge: "border-emerald-300/60 text-emerald-800 bg-white",
   },
 };
 
@@ -101,30 +101,30 @@ export default function InvaliditaPage() {
       <div className="w-full max-w-6xl space-y-6">
         <header className="mb-2 space-y-2">
           <SplitTitle text="Kalkulačka Invalidita" />
-          <p className="text-sm text-slate-300 max-w-2xl">
+          <p className="text-sm text-slate-600 max-w-2xl">
             Stanov pojistnou částku podle poklesu příjmu pro invaliditu 1., 2. a
             3. stupně. Zadáš věk, čistý příjem a délku krytí – uvidíš, kolik
             chybí měsíčně i celkově do 65 let.
           </p>
           <Link
             href="/pomucky"
-            className="inline-flex items-center text-xs text-slate-300 hover:text-white transition"
+            className="inline-flex items-center text-xs text-slate-600 hover:text-slate-900 transition"
           >
             ← Zpět na pomůcky
           </Link>
         </header>
 
-        <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.75)] space-y-4">
+        <section className="rounded-3xl border border-slate-300 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.75)] space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 Vstupní parametry
               </h2>
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-slate-600">
                 Věk, čistý příjem a délka krytí (maximálně do 65 let).
               </p>
             </div>
-            <div className="text-xs text-slate-300">
+            <div className="text-xs text-slate-600">
               {totalMonths > 0
                 ? `Počet měsíců: ${totalMonths.toLocaleString("cs-CZ")} (≈ ${safeCoverageYears} let)`
                 : "Nastav věk a délku krytí"}
@@ -132,8 +132,8 @@ export default function InvaliditaPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <label className="space-y-1 text-sm text-slate-200">
-              <span className="block text-xs uppercase tracking-wide text-slate-300">
+            <label className="space-y-1 text-sm text-slate-800">
+              <span className="block text-xs uppercase tracking-wide text-slate-600">
                 Věk klienta
               </span>
               <input
@@ -149,15 +149,15 @@ export default function InvaliditaPage() {
                   const v = handleNumber(raw, age);
                   setAge(Math.max(1, Math.round(v)));
                 }}
-                className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               />
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-500">
                 Délka krytí se omezí do 65 let (max {maxCoverage} let).
               </p>
             </label>
 
-            <label className="space-y-1 text-sm text-slate-200">
-              <span className="block text-xs uppercase tracking-wide text-slate-300">
+            <label className="space-y-1 text-sm text-slate-800">
+              <span className="block text-xs uppercase tracking-wide text-slate-600">
                 Čistý měsíční příjem
               </span>
               <input
@@ -168,15 +168,15 @@ export default function InvaliditaPage() {
                   const v = handleNumber(e.target.value, netIncome);
                   setNetIncome(Math.max(0, Math.round(v)));
                 }}
-                className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               />
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-500">
                 Částka, ze které počítáme pokrytí příjmu.
               </p>
             </label>
 
-            <label className="space-y-1 text-sm text-slate-200">
-              <span className="block text-xs uppercase tracking-wide text-slate-300">
+            <label className="space-y-1 text-sm text-slate-800">
+              <span className="block text-xs uppercase tracking-wide text-slate-600">
                 Délka krytí v letech
               </span>
               <input
@@ -188,9 +188,9 @@ export default function InvaliditaPage() {
                   const v = handleNumber(e.target.value, safeCoverageYears);
                   setCoverageYears(Math.max(0, Math.min(maxCoverage, Math.round(v))));
                 }}
-                className="w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               />
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-500">
                 Maximálně do 65 let (zbývá {maxCoverage} let).
               </p>
             </label>
@@ -200,19 +200,19 @@ export default function InvaliditaPage() {
         <section className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-white">Výstup</h2>
-              <p className="text-xs text-slate-300">
+              <h2 className="text-lg font-semibold text-slate-900">Výstup</h2>
+              <p className="text-xs text-slate-600">
                 Návrh pojistné částky pro každý stupeň invalidity v různých
                 úrovních pokrytí příjmu.
               </p>
             </div>
-            <div className="text-[11px] text-slate-400">
+            <div className="text-[11px] text-slate-500">
               Cílem je kompenzovat pokles schopnosti vydělávat.
             </div>
           </div>
 
           {disabled ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+            <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800">
               Zadej věk, příjem a délku krytí (musí být kladná).
             </div>
           ) : (
@@ -222,14 +222,14 @@ export default function InvaliditaPage() {
                 return (
                   <div
                     key={scenario.id}
-                    className={`relative overflow-hidden rounded-xl border border-white/15 bg-gradient-to-br ${style.panel} px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-3xl transition hover:border-emerald-300/40`}
+                    className={`relative overflow-hidden rounded-xl border border-slate-900 bg-gradient-to-br ${style.panel} px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] -3xl transition hover:border-emerald-300/40`}
                   >
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent" />
-                    <div className="pointer-events-none absolute -left-12 -top-14 h-28 w-40 rotate-12 bg-white/18 blur-3xl opacity-70" />
+                    <div className="pointer-events-none absolute -left-12 -top-14 h-28 w-40 rotate-12 bg-white blur-3xl opacity-70" />
                     <div className="pointer-events-none absolute -right-10 bottom-[-16px] h-20 w-32 rotate-6 bg-emerald-200/12 blur-2xl" />
                     <div className="relative z-10 mb-3 flex items-center justify-between">
-                      <div className="text-sm font-semibold text-white">{scenario.label}</div>
-                      <div className="text-[11px] text-slate-400">
+                      <div className="text-sm font-semibold text-slate-900">{scenario.label}</div>
+                      <div className="text-[11px] text-slate-500">
                         Pokrytí: {scenario.ratios.map((r) => `${Math.round(r * 100)}%`).join(" / ")}
                       </div>
                     </div>
@@ -238,25 +238,25 @@ export default function InvaliditaPage() {
                       {scenario.monthly.map((m, idx) => (
                         <div
                           key={`${scenario.id}-${idx}`}
-                          className="relative overflow-hidden flex items-start justify-between rounded-lg border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/5 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl"
+                          className="relative overflow-hidden flex items-start justify-between rounded-lg border border-slate-900 bg-gradient-to-br from-white/12 via-white/6 to-white/5 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] "
                         >
                           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/12 via-white/4 to-transparent" />
-                          <div className="pointer-events-none absolute -left-6 -top-8 h-16 w-20 rotate-12 bg-white/22 blur-2xl opacity-60" />
+                          <div className="pointer-events-none absolute -left-6 -top-8 h-16 w-20 rotate-12 bg-white blur-2xl opacity-60" />
                           <div className="relative z-10 flex items-start justify-between w-full gap-3">
-                            <div className="text-sm text-slate-200">
-                              <div className="text-xs uppercase tracking-[0.14em] text-slate-400">
+                            <div className="text-sm text-slate-800">
+                              <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
                                 {DEGREE_LABELS[idx]}
                               </div>
-                              <div className="mt-1 text-base font-semibold text-emerald-200 leading-tight">
+                              <div className="mt-1 text-base font-semibold text-emerald-800 leading-tight">
                                 {formatMoney(m)} / měsíc
                               </div>
-                              <div className="text-[11px] text-slate-400">
+                              <div className="text-[11px] text-slate-500">
                                 {Math.round(scenario.ratios[idx] * 100)} % příjmu
                               </div>
                             </div>
-                            <div className="text-right text-sm text-white leading-tight">
-                              <div className="text-[11px] text-slate-400">Celkem</div>
-                              <div className="text-[12px] font-semibold text-emerald-200/90 whitespace-nowrap">
+                            <div className="text-right text-sm text-slate-900 leading-tight">
+                              <div className="text-[11px] text-slate-500">Celkem</div>
+                              <div className="text-[12px] font-semibold text-emerald-800/90 whitespace-nowrap">
                                 {formatMoney(scenario.lump[idx])}
                               </div>
                             </div>
@@ -272,20 +272,20 @@ export default function InvaliditaPage() {
         </section>
 
         {!disabled && (
-          <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.75)] space-y-3">
+          <section className="rounded-3xl border border-slate-300 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.75)] space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-white">
+                <h3 className="text-lg font-semibold text-slate-900">
                   Investice: INVESTIKA Realitní Fond
                 </h3>
-                <p className="text-xs text-slate-300">
+                <p className="text-xs text-slate-600">
                   Jak velkou pojistnou částku je třeba získat, aby šla pokrýt
                   požadovaná měsíční renta (stejná jako pokrytí příjmu) do 65
                   let při zhodnocení 5,5–6 % p.a. Výpočet používá měsíční
                   rentní čerpání včetně reinvestovaných výnosů.
                 </p>
               </div>
-              <div className="text-[11px] text-slate-400">
+              <div className="text-[11px] text-slate-500">
                 Pouze ilustrativní výpočet, nejedná se o investiční
                 doporučení.
               </div>
@@ -297,17 +297,17 @@ export default function InvaliditaPage() {
                 return (
                   <div
                     key={`investika-${scenario.id}`}
-                    className={`relative overflow-hidden rounded-xl border border-white/20 bg-gradient-to-br ${style.panel} px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-3xl transition hover:border-emerald-300/40`}
+                    className={`relative overflow-hidden rounded-xl border border-slate-300 bg-gradient-to-br ${style.panel} px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] -3xl transition hover:border-emerald-300/40`}
                   >
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent" />
-                    <div className="pointer-events-none absolute -left-16 -top-16 h-32 w-48 rotate-12 bg-white/18 blur-3xl opacity-70" />
+                    <div className="pointer-events-none absolute -left-16 -top-16 h-32 w-48 rotate-12 bg-white blur-3xl opacity-70" />
                     <div className="pointer-events-none absolute -right-10 bottom-[-18px] h-24 w-32 rotate-3 bg-emerald-200/15 blur-2xl" />
                     <div className="relative z-10 mb-4 flex items-start justify-between">
                       <div>
-                        <div className="text-sm font-semibold text-white">
+                        <div className="text-sm font-semibold text-slate-900">
                           {scenario.label}
                         </div>
-                        <div className="text-[11px] text-slate-400">
+                        <div className="text-[11px] text-slate-500">
                           Cíl: renta z investice
                         </div>
                       </div>
@@ -338,33 +338,33 @@ export default function InvaliditaPage() {
                         return (
                           <div
                             key={`investika-${scenario.id}-${idx}`}
-                            className="relative overflow-hidden rounded-lg border border-white/15 bg-gradient-to-br from-white/12 via-white/6 to-white/4 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl"
+                            className="relative overflow-hidden rounded-lg border border-slate-900 bg-gradient-to-br from-white/12 via-white/6 to-white/4 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] "
                           >
                             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/12 via-white/4 to-transparent" />
-                            <div className="pointer-events-none absolute -left-8 -top-10 h-16 w-24 rotate-12 bg-white/24 blur-2xl opacity-60" />
+                            <div className="pointer-events-none absolute -left-8 -top-10 h-16 w-24 rotate-12 bg-white blur-2xl opacity-60" />
                             <div className="flex items-start justify-between gap-3 relative z-10">
-                              <div className="text-sm text-slate-200">
-                                <div className="text-xs uppercase tracking-[0.14em] text-slate-400">
+                              <div className="text-sm text-slate-800">
+                                <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
                                   {DEGREE_LABELS[idx]}
                                 </div>
-                                <div className="mt-2 text-lg font-semibold text-emerald-200 leading-tight">
+                                <div className="mt-2 text-lg font-semibold text-emerald-800 leading-tight">
                                   {formatMoney(m)}
                                 </div>
-                                <div className="text-[11px] text-slate-400">
+                                <div className="text-[11px] text-slate-500">
                                   Měsíční renta
                                 </div>
                               </div>
-                              <div className="text-right text-sm text-white leading-tight">
-                                <div className="text-[11px] text-slate-400">
+                              <div className="text-right text-sm text-slate-900 leading-tight">
+                                <div className="text-[11px] text-slate-500">
                                   Potřebný vklad
                                 </div>
-                                <div className="text-[12px] font-semibold text-emerald-200/90 whitespace-nowrap">
+                                <div className="text-[12px] font-semibold text-emerald-800/90 whitespace-nowrap">
                                   {formatMoney(minCapital)}
                                 </div>
-                                <div className="text-[11px] text-slate-500">
+                                <div className="text-[11px] text-slate-900">
                                   až
                                 </div>
-                                <div className="text-[12px] font-semibold text-emerald-200/90 whitespace-nowrap">
+                                <div className="text-[12px] font-semibold text-emerald-800/90 whitespace-nowrap">
                                   {formatMoney(maxCapital)}
                                 </div>
                               </div>
@@ -380,11 +380,11 @@ export default function InvaliditaPage() {
           </section>
         )}
 
-        <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.75)] space-y-3">
-          <h3 className="text-sm font-semibold text-white uppercase tracking-[0.18em]">
+        <section className="rounded-3xl border border-slate-300 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.75)] space-y-3">
+          <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-[0.18em]">
             Metodika
           </h3>
-          <ul className="text-sm text-slate-200 space-y-1 list-disc list-inside">
+          <ul className="text-sm text-slate-800 space-y-1 list-disc list-inside">
             <li>
               1. stupeň: kryje 30–50 % příjmu (klient může částečně pracovat,
               cílem je doplnit výpadek).

@@ -167,25 +167,25 @@ export default function ToolsPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-5xl space-y-6">
-        <header className="mb-2">
-          <SplitTitle text="Pomůcky" />
-          <p className="text-sm text-slate-300 mt-1">
+      <div className="w-full max-w-6xl px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
+        <header className="mb-5">
+          <SplitTitle text="Pomůcky" className="font-mono !text-slate-900" />
+          <p className="mt-2 text-base text-slate-600">
             Rychlé nástroje pro efektivnější práci.
           </p>
         </header>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="mb-6 flex flex-wrap gap-2.5">
           {FILTERS.map((filter) => {
             const active = filter === activeFilter;
             return (
               <button
                 key={filter}
                 onClick={() => setActiveFilter(filter)}
-                className={`px-4 py-2 rounded-full text-sm font-medium border transition backdrop-blur-xl ${
+                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
                   active
-                    ? "bg-black/60 border-emerald-300/70 text-white shadow-[0_12px_36px_rgba(52,211,153,0.18)]"
-                    : "bg-black/40 border-white/15 text-slate-200 hover:border-emerald-300/60 hover:text-white hover:bg-black/55"
+                    ? "border-slate-900 bg-slate-900 text-[#f8fafc]"
+                    : "border-slate-900 bg-white text-slate-900 hover:bg-slate-50"
                 }`}
               >
                 {filter}
@@ -209,14 +209,17 @@ export default function ToolsPage() {
               <CardWrapper
                 key={tool.key}
                 {...wrapperProps}
-                className="relative overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br from-black/70 via-black/65 to-black/60 px-5 py-6 shadow-[0_18px_50px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl transition cursor-pointer hover:border-emerald-300/60"
+                className="group relative overflow-hidden rounded-3xl border border-slate-900 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.1)] transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-[0_14px_30px_rgba(15,23,42,0.14)]"
               >
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent" />
-                <div className="pointer-events-none absolute -left-10 -top-14 h-24 w-36 rotate-12 bg-white/18 blur-3xl opacity-70" />
-                <div className="pointer-events-none absolute -right-10 bottom-[-18px] h-20 w-28 rotate-6 bg-emerald-200/12 blur-2xl" />
                 <div className="relative z-10 space-y-2">
-                  <h2 className="text-lg font-semibold text-white">{tool.title}</h2>
-                  <p className="text-sm text-slate-300">{tool.description}</p>
+                  <span className="inline-flex rounded-full border border-slate-900 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-900">
+                    {tool.category}
+                  </span>
+                  <h2 className="text-xl font-semibold tracking-tight text-slate-900">{tool.title}</h2>
+                  <p className="text-sm leading-relaxed text-slate-600">{tool.description}</p>
+                  <div className="pt-1 text-sm font-semibold text-slate-900 group-hover:underline">
+                    Otevřít →
+                  </div>
                 </div>
               </CardWrapper>
             );

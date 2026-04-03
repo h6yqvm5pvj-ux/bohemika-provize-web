@@ -223,28 +223,28 @@ export default function ArgumentsPage() {
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
             Argumenty & námitky
           </h1>
-          <p className="text-sm text-slate-300">
+          <p className="text-sm text-slate-600">
             Rychlý tahák k nejčastějším námitkám klientů – Život, Neživot,
             Investice, Zlato a obecné situace.
           </p>
         </header>
 
         {/* Vyhledávání */}
-        <section className="rounded-3xl bg-white/5 border border-white/15 backdrop-blur-2xl px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
+        <section className="rounded-3xl bg-white border border-slate-300  px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-300">🔍</span>
+            <span className="text-sm text-slate-600">🔍</span>
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Vyhledej námitku…"
-              className="w-full bg-transparent border-none outline-none text-sm text-slate-50 placeholder:text-slate-400"
+              className="w-full bg-transparent border-none outline-none text-sm text-slate-900 placeholder:text-slate-400"
             />
           </div>
         </section>
 
         {/* Kategorie */}
-        <section className="rounded-3xl bg-white/5 border border-white/15 backdrop-blur-2xl px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.8)] space-y-2">
+        <section className="rounded-3xl bg-white border border-slate-300  px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-2">
           <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
             Kategorie
           </p>
@@ -257,7 +257,7 @@ export default function ArgumentsPage() {
                 className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs transition ${
                   selectedCategory === cat.id
                     ? "bg-white text-slate-900 shadow-md"
-                    : "bg-slate-900/40 text-slate-200 hover:bg-slate-900/70"
+                    : "bg-white text-slate-800 hover:bg-white"
                 }`}
               >
                 <span>{cat.shortLabel}</span>
@@ -277,7 +277,7 @@ export default function ArgumentsPage() {
             return (
               <article
                 key={obj.id}
-                className="rounded-3xl bg-white/5 border border-white/15 backdrop-blur-2xl px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.85)]"
+                className="rounded-3xl bg-white border border-slate-300  px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]"
               >
                 <button
                   type="button"
@@ -292,7 +292,7 @@ export default function ArgumentsPage() {
                       <span className="relative inline-block h-full w-full rounded-full bg-emerald-400" />
                     </span>
                     <div>
-                      <p className="text-sm font-semibold text-slate-50">
+                      <p className="text-sm font-semibold text-slate-900">
                         {obj.title}
                       </p>
                       {catMeta && (
@@ -312,7 +312,7 @@ export default function ArgumentsPage() {
                     {obj.bullets.map((b, idx) => (
                       <div
                         key={idx}
-                        className="flex items-start gap-2 text-sm text-slate-100"
+                        className="flex items-start gap-2 text-sm text-slate-900"
                       >
                         <span className="mt-[6px] inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]" />
                         <p className="leading-snug">
@@ -327,7 +327,7 @@ export default function ArgumentsPage() {
           })}
 
           {filtered.length === 0 && (
-            <p className="text-xs text-slate-300 text-center pt-2">
+            <p className="text-xs text-slate-600 text-center pt-2">
               Nenašel jsem žádnou námitku, která by odpovídala hledání.
             </p>
           )}

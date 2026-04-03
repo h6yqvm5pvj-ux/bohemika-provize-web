@@ -748,15 +748,15 @@ function StatistikaPageInner() {
         <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <SplitTitle text="Statistika" />
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-slate-600">
               Přehled aktivit a uzavřených smluv pro {monthLabel}. Provize počítám podle tvé pozice z profilu:
-              <span className="ml-1 font-semibold text-white">{positionLabel(position)}</span>, režim{" "}
-              <span className="font-semibold text-white">{modeLabel(commissionMode)}</span>.
+              <span className="ml-1 font-semibold text-slate-900">{positionLabel(position)}</span>, režim{" "}
+              <span className="font-semibold text-slate-900">{modeLabel(commissionMode)}</span>.
             </p>
           </div>
           <Link
             href="/pomucky"
-            className="text-xs text-slate-200 border border-white/20 rounded-full px-3 py-1.5 hover:bg-white/10 transition"
+            className="text-xs text-slate-800 border border-slate-300 rounded-full px-3 py-1.5 hover:bg-slate-100 transition"
           >
             ← Zpět na pomůcky
           </Link>
@@ -769,8 +769,8 @@ function StatistikaPageInner() {
             disabled={!canEdit || !!savingState["month"]}
             className={`inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-semibold transition ${
               !canEdit
-                ? "border-white/10 bg-white/5 text-slate-500 cursor-not-allowed"
-                : "border-emerald-300/60 bg-emerald-500/15 text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/25"
+                ? "border-slate-300 bg-white text-slate-900 cursor-not-allowed"
+                : "border-emerald-300/60 bg-emerald-500/15 text-emerald-800 hover:border-emerald-200 hover:bg-emerald-500/25"
             } ${savingState["month"] ? "opacity-70 cursor-wait" : ""}`}
           >
             {savingState["month"] ? "Ukládám měsíc…" : "Uložit měsíc"}
@@ -778,88 +778,88 @@ function StatistikaPageInner() {
           <button
             type="button"
             onClick={() => setHistoryOpen(true)}
-            className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-white hover:border-sky-300/60 hover:bg-sky-500/15 transition"
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:border-sky-300/60 hover:bg-sky-500/15 transition"
           >
             Historie (posledních 12)
           </button>
           {!canEdit && ownerEmail ? (
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-slate-500">
               Přehled pro {ownerEmail}. Úpravy nejsou povolené.
             </span>
           ) : null}
         </div>
 
-        <div className="grid gap-4 rounded-3xl border border-white/10 bg-slate-950/60 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.65)] sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-          <div className="space-y-1 rounded-2xl border border-white/10 bg-white/5 p-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-400">Měsíc</div>
-            <div className="text-lg font-semibold text-white">{monthLabel}</div>
+        <div className="grid gap-4 rounded-3xl border border-slate-300 bg-white p-4 shadow-[0_18px_60px_rgba(0,0,0,0.65)] sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+          <div className="space-y-1 rounded-2xl border border-slate-300 bg-white p-3">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">Měsíc</div>
+            <div className="text-lg font-semibold text-slate-900">{monthLabel}</div>
           </div>
-          <div className="space-y-1 rounded-2xl border border-white/10 bg-white/5 p-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-400">Osloveno</div>
-            <div className="text-lg font-semibold text-white">{totals.outreach}</div>
+          <div className="space-y-1 rounded-2xl border border-slate-300 bg-white p-3">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">Osloveno</div>
+            <div className="text-lg font-semibold text-slate-900">{totals.outreach}</div>
           </div>
-          <div className="space-y-1 rounded-2xl border border-white/10 bg-white/5 p-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-400">Schůzky</div>
-            <div className="text-lg font-semibold text-white">{totals.meetings}</div>
+          <div className="space-y-1 rounded-2xl border border-slate-300 bg-white p-3">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">Schůzky</div>
+            <div className="text-lg font-semibold text-slate-900">{totals.meetings}</div>
           </div>
-          <div className="space-y-1 rounded-2xl border border-white/10 bg-white/5 p-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-400">Odpracováno (h)</div>
-            <div className="text-lg font-semibold text-white">
+          <div className="space-y-1 rounded-2xl border border-slate-300 bg-white p-3">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">Odpracováno (h)</div>
+            <div className="text-lg font-semibold text-slate-900">
               {totals.hours.toLocaleString("cs-CZ", { maximumFractionDigits: 1 })}
             </div>
           </div>
-          <div className="space-y-1 rounded-2xl border border-white/10 bg-white/5 p-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-400">Provize (odhad)</div>
-            <div className="text-lg font-semibold text-emerald-200 drop-shadow-[0_0_12px_rgba(16,185,129,0.25)]">
+          <div className="space-y-1 rounded-2xl border border-slate-300 bg-white p-3">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">Provize (odhad)</div>
+            <div className="text-lg font-semibold text-emerald-800 drop-shadow-[0_0_12px_rgba(16,185,129,0.25)]">
               {formatMoney(totals.commission)}
             </div>
           </div>
-          <div className="space-y-1 rounded-2xl border border-white/10 bg-white/5 p-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-400">Průměrná hodinová mzda</div>
-            <div className="text-lg font-semibold text-emerald-200 drop-shadow-[0_0_12px_rgba(16,185,129,0.25)]">
+          <div className="space-y-1 rounded-2xl border border-slate-300 bg-white p-3">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">Průměrná hodinová mzda</div>
+            <div className="text-lg font-semibold text-emerald-800 drop-shadow-[0_0_12px_rgba(16,185,129,0.25)]">
               {hourlyWage > 0 ? formatMoney(hourlyWage) : "—"}
             </div>
           </div>
         </div>
 
         {historyOpen ? (
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.5)] space-y-3">
+          <div className="rounded-3xl border border-slate-300 bg-white p-4 shadow-[0_18px_60px_rgba(0,0,0,0.5)] space-y-3">
             <div className="flex items-center justify-between">
-              <div className="text-xs uppercase tracking-wider text-slate-400">Historie uložených statistik</div>
-              <div className="text-xs text-slate-400">Max. 12 záznamů</div>
+              <div className="text-xs uppercase tracking-wider text-slate-500">Historie uložených statistik</div>
+              <div className="text-xs text-slate-500">Max. 12 záznamů</div>
             </div>
             {historyItems.length === 0 ? (
-              <p className="text-sm text-slate-400">Zatím žádné uložené měsíční statistiky.</p>
+              <p className="text-sm text-slate-500">Zatím žádné uložené měsíční statistiky.</p>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {historyItems.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-2xl border border-white/10 bg-slate-950/60 p-3 flex flex-col gap-1"
+                    className="rounded-2xl border border-slate-300 bg-white p-3 flex flex-col gap-1"
                   >
-                    <div className="text-sm font-semibold text-white">{item.label}</div>
-                    <div className="text-xs text-slate-400">
-                      Celkem oslovení: <span className="font-semibold text-white">{item.outreach}</span>
+                    <div className="text-sm font-semibold text-slate-900">{item.label}</div>
+                    <div className="text-xs text-slate-500">
+                      Celkem oslovení: <span className="font-semibold text-slate-900">{item.outreach}</span>
                     </div>
-                    <div className="text-xs text-slate-400">
-                      Celkem schůzek: <span className="font-semibold text-white">{item.meetings}</span>
+                    <div className="text-xs text-slate-500">
+                      Celkem schůzek: <span className="font-semibold text-slate-900">{item.meetings}</span>
                     </div>
-                    <div className="text-xs text-slate-400">
+                    <div className="text-xs text-slate-500">
                       Celkem odpracováno:{" "}
-                      <span className="font-semibold text-white">
+                      <span className="font-semibold text-slate-900">
                         {item.hours.toLocaleString("cs-CZ", { maximumFractionDigits: 1 })} h
                       </span>
                     </div>
-                    <div className="text-xs text-slate-400">
+                    <div className="text-xs text-slate-500">
                       Průměrná hodinová mzda:{" "}
-                      <span className="font-semibold text-emerald-200">
+                      <span className="font-semibold text-emerald-800">
                         {item.hours > 0 ? formatMoney(item.commission / item.hours) : "—"}
                       </span>
                     </div>
-                    <div className="text-xs text-slate-400">
-                      Celkem provize: <span className="font-semibold text-emerald-200">{formatMoney(item.commission)}</span>
+                    <div className="text-xs text-slate-500">
+                      Celkem provize: <span className="font-semibold text-emerald-800">{formatMoney(item.commission)}</span>
                     </div>
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-[11px] text-slate-900">
                       Uloženo: {item.savedAt ? new Date(item.savedAt).toLocaleString("cs-CZ") : "—"}
                     </div>
                   </div>
@@ -870,12 +870,12 @@ function StatistikaPageInner() {
         ) : null}
 
         <section className="space-y-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.35)]">
+          <div className="rounded-2xl border border-slate-300 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
             <div className="mb-2 flex items-center justify-between">
-              <div className="text-xs uppercase tracking-wider text-slate-400">
+              <div className="text-xs uppercase tracking-wider text-slate-500">
                 Kalendář {label} • klikni na den pro detail
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-400">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span className="inline-flex h-3 w-3 rounded-full bg-emerald-400/80"></span>
                 <span>uloženo</span>
                 <span className="inline-flex h-3 w-3 rounded-full bg-sky-400/80 ml-3"></span>
@@ -890,10 +890,10 @@ function StatistikaPageInner() {
                 const cls = [
                   "flex flex-col items-center justify-center rounded-xl border px-2 py-1.5 text-sm font-semibold transition",
                   isSelected
-                    ? "border-sky-300/80 bg-sky-500/20 text-white shadow-[0_0_16px_rgba(59,130,246,0.25)]"
+                    ? "border-sky-300/80 bg-sky-100 text-slate-900 shadow-[0_0_16px_rgba(59,130,246,0.25)]"
                     : isSaved
-                      ? "border-emerald-300/60 bg-emerald-500/15 text-emerald-50"
-                      : "border-white/10 bg-slate-950/40 text-slate-100 hover:border-white/30",
+                      ? "border-emerald-300/60 bg-emerald-500/15 text-emerald-800"
+                      : "border-slate-300 bg-white text-slate-900 hover:border-slate-300",
                   isToday ? "ring-1 ring-white/30" : "",
                 ].join(" ");
                 return (
@@ -904,29 +904,29 @@ function StatistikaPageInner() {
                     className={cls}
                   >
                     <div className="text-base leading-none">{idx + 1}</div>
-                    <div className="text-[10px] font-medium text-slate-400">{dayLabel(idx).split(" ")[1]}</div>
+                    <div className="text-[10px] font-medium text-slate-500">{dayLabel(idx).split(" ")[1]}</div>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.5)]">
+          <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-[0_18px_60px_rgba(0,0,0,0.5)]">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-slate-400">
+                <div className="text-[11px] uppercase tracking-wider text-slate-500">
                   Den {safeSelectedIdx + 1} / {daysInMonth}
                 </div>
-                <h3 className="text-lg font-semibold text-white">{selectedLabel}</h3>
+                <h3 className="text-lg font-semibold text-slate-900">{selectedLabel}</h3>
               </div>
-              <div className="text-sm text-slate-300">
+              <div className="text-sm text-slate-600">
                 Provize za den:{" "}
-                <span className="font-semibold text-emerald-200">
+                <span className="font-semibold text-emerald-800">
                   {formatMoney(selectedEntry.contracts.reduce((sum, c) => sum + (c.commission || 0), 0))}
                 </span>
-                <span className="mx-2 text-slate-500">•</span>
+                <span className="mx-2 text-slate-900">•</span>
                 Hodinová mzda:{" "}
-                <span className="font-semibold text-emerald-200">
+                <span className="font-semibold text-emerald-800">
                   {parseNumberSafe(selectedEntry.workedHours) > 0
                     ? formatMoney(
                         selectedEntry.contracts.reduce((sum, c) => sum + (c.commission || 0), 0) /
@@ -939,40 +939,40 @@ function StatistikaPageInner() {
 
             <div className="mt-3 grid gap-3 md:grid-cols-4 lg:grid-cols-5">
               <label className="space-y-1">
-                <span className="text-xs text-slate-300">Osloveno</span>
+                <span className="text-xs text-slate-600">Osloveno</span>
                 <input
                   type="number"
                   min="0"
                   value={selectedEntry.outreach}
                   onChange={(e) => handleDayFieldChange(safeSelectedIdx, "outreach", e.target.value)}
                   disabled={!canEdit}
-                  className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                  className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-xs text-slate-300">Domluveno</span>
+                <span className="text-xs text-slate-600">Domluveno</span>
                 <input
                   type="number"
                   min="0"
                   value={selectedEntry.agreed}
                   onChange={(e) => handleDayFieldChange(safeSelectedIdx, "agreed", e.target.value)}
                   disabled={!canEdit}
-                  className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                  className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-xs text-slate-300">Schůzky</span>
+                <span className="text-xs text-slate-600">Schůzky</span>
                 <input
                   type="number"
                   min="0"
                   value={selectedEntry.meetings}
                   onChange={(e) => handleDayFieldChange(safeSelectedIdx, "meetings", e.target.value)}
                   disabled={!canEdit}
-                  className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                  className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-xs text-slate-300">Odpracováno (hodiny)</span>
+                <span className="text-xs text-slate-600">Odpracováno (hodiny)</span>
                 <input
                   type="number"
                   min="0"
@@ -980,7 +980,7 @@ function StatistikaPageInner() {
                   value={selectedEntry.workedHours}
                   onChange={(e) => handleDayFieldChange(safeSelectedIdx, "workedHours", e.target.value)}
                   disabled={!canEdit}
-                  className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                  className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
                 />
               </label>
               <div className="flex items-end justify-end">
@@ -988,7 +988,7 @@ function StatistikaPageInner() {
                   type="button"
                   onClick={() => handleAddContract(safeSelectedIdx)}
                   disabled={!canEdit}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-emerald-300/50 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.25)] transition hover:border-emerald-200 hover:bg-emerald-500/25"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-emerald-300/50 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-800 shadow-[0_0_18px_rgba(16,185,129,0.25)] transition hover:border-emerald-200 hover:bg-emerald-500/25"
                 >
                   + Přidat smlouvu
                 </button>
@@ -996,7 +996,7 @@ function StatistikaPageInner() {
             </div>
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-xs text-slate-400">
+              <div className="text-xs text-slate-500">
                 {!currentUserEmail
                   ? "Přihlas se, aby šlo data uložit do profilu."
                   : !canEdit
@@ -1015,7 +1015,7 @@ function StatistikaPageInner() {
                 onClick={() => saveDay(safeSelectedIdx)}
                 className={`inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-semibold transition ${
                   !canEdit
-                    ? "border-white/10 bg-white/5 text-slate-500 cursor-not-allowed"
+                    ? "border-slate-300 bg-white text-slate-900 cursor-not-allowed"
                     : "border-sky-300/60 bg-sky-500/15 text-sky-50 hover:border-sky-200 hover:bg-sky-500/25"
                 } ${savingState[safeSelectedIdx] ? "opacity-70 cursor-wait" : ""}`}
               >
@@ -1025,15 +1025,15 @@ function StatistikaPageInner() {
 
             <div className="mt-4 space-y-3">
               {selectedEntry.contracts.length === 0 ? (
-                <p className="text-sm text-slate-400">Zatím žádné smlouvy pro tento den.</p>
+                <p className="text-sm text-slate-500">Zatím žádné smlouvy pro tento den.</p>
               ) : (
                 selectedEntry.contracts.map((contract) => (
                   <div
                     key={contract.id}
-                    className="grid gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3 md:grid-cols-[2fr_1fr_1fr_auto]"
+                    className="grid gap-3 rounded-2xl border border-slate-300 bg-white p-3 md:grid-cols-[2fr_1fr_1fr_auto]"
                   >
                     <label className="space-y-1">
-                      <span className="text-xs text-slate-300">Produkt</span>
+                      <span className="text-xs text-slate-600">Produkt</span>
                       <select
                         value={contract.product}
                         onChange={(e) =>
@@ -1042,7 +1042,7 @@ function StatistikaPageInner() {
                           })
                         }
                         disabled={!canEdit}
-                        className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
                       >
                         {PRODUCT_OPTIONS.map((opt) => (
                           <option key={opt.value} value={opt.value}>
@@ -1053,7 +1053,7 @@ function StatistikaPageInner() {
                     </label>
 
                     <div className="space-y-1">
-                      <span className="text-xs text-slate-300">{premiumLabel(contract.product)}</span>
+                      <span className="text-xs text-slate-600">{premiumLabel(contract.product)}</span>
                       <input
                         type="number"
                         min="0"
@@ -1064,13 +1064,13 @@ function StatistikaPageInner() {
                           })
                         }
                         disabled={!canEdit}
-                        className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
                       />
                     </div>
 
                     {contract.product === "comfortcc" ? (
                       <div className="space-y-2">
-                        <div className="inline-flex rounded-full border border-white/12 bg-white/5 p-1">
+                        <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
                           <button
                             type="button"
                             onClick={() =>
@@ -1081,7 +1081,7 @@ function StatistikaPageInner() {
                             disabled={!canEdit}
                             className={`px-3 py-1.5 text-xs rounded-full transition ${
                               contract.comfortGradual
-                                ? "text-slate-200"
+                                ? "text-slate-800"
                                 : "bg-white text-slate-900 shadow"
                             }`}
                           >
@@ -1098,7 +1098,7 @@ function StatistikaPageInner() {
                             className={`px-3 py-1.5 text-xs rounded-full transition ${
                               contract.comfortGradual
                                 ? "bg-white text-slate-900 shadow"
-                                : "text-slate-200"
+                                : "text-slate-800"
                             }`}
                           >
                             Postupný poplatek
@@ -1107,7 +1107,7 @@ function StatistikaPageInner() {
 
                         {contract.comfortGradual ? (
                           <label className="space-y-1 block">
-                            <span className="text-xs text-slate-300">Pravidelná platba</span>
+                            <span className="text-xs text-slate-600">Pravidelná platba</span>
                             <input
                               type="number"
                               min="0"
@@ -1118,15 +1118,15 @@ function StatistikaPageInner() {
                                 })
                               }
                               disabled={!canEdit}
-                              className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                              className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
                             />
                           </label>
                         ) : null}
                       </div>
                     ) : (
                       <div className="space-y-1">
-                        <span className="text-xs text-slate-300">Provize (odhad)</span>
-                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-emerald-200">
+                        <span className="text-xs text-slate-600">Provize (odhad)</span>
+                        <div className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-800">
                           {formatMoney(contract.commission)}
                         </div>
                       </div>
@@ -1134,8 +1134,8 @@ function StatistikaPageInner() {
 
                     {contract.product === "comfortcc" ? (
                       <div className="space-y-1">
-                        <span className="text-xs text-slate-300">Provize (odhad)</span>
-                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-emerald-200">
+                        <span className="text-xs text-slate-600">Provize (odhad)</span>
+                        <div className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-800">
                           {formatMoney(contract.commission)}
                         </div>
                       </div>
@@ -1146,7 +1146,7 @@ function StatistikaPageInner() {
                           type="button"
                           onClick={() => handleRemoveContract(safeSelectedIdx, contract.id)}
                           disabled={!canEdit}
-                          className="rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-slate-100 transition hover:border-rose-400/60 hover:text-rose-100"
+                          className="rounded-2xl border border-slate-900 bg-slate-100 px-3 py-2 text-sm text-slate-900 transition hover:border-rose-400/60 hover:text-rose-100"
                         >
                           Odebrat
                         </button>
@@ -1161,59 +1161,59 @@ function StatistikaPageInner() {
 
       {historyOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-black/65 backdrop-blur-sm px-4 py-6"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-white px-4 py-6"
           onClick={() => setHistoryOpen(false)}
         >
           <div
-            className="w-full max-w-4xl rounded-3xl border border-white/15 bg-slate-950/90 p-5 shadow-[0_30px_120px_rgba(0,0,0,0.6)] space-y-3"
+            className="w-full max-w-4xl rounded-3xl border border-slate-900 bg-white p-5 shadow-[0_30px_120px_rgba(0,0,0,0.6)] space-y-3"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between gap-2">
               <div>
-                <div className="text-xs uppercase tracking-wider text-slate-400">Historie uložených statistik</div>
-                <div className="text-sm text-slate-300">Posledních 12 uložených měsíců</div>
+                <div className="text-xs uppercase tracking-wider text-slate-500">Historie uložených statistik</div>
+                <div className="text-sm text-slate-600">Posledních 12 uložených měsíců</div>
               </div>
               <button
                 type="button"
                 onClick={() => setHistoryOpen(false)}
-                className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-sm text-white hover:border-sky-300/60 hover:bg-sky-500/20 transition"
+                className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-sm text-slate-900 hover:border-sky-300/60 hover:bg-sky-500/20 transition"
               >
                 Zavřít
               </button>
             </div>
 
             {historyItems.length === 0 ? (
-              <p className="text-sm text-slate-400">Zatím žádné uložené měsíční statistiky.</p>
+              <p className="text-sm text-slate-500">Zatím žádné uložené měsíční statistiky.</p>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {historyItems.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-2xl border border-white/10 bg-slate-900/70 p-3 flex flex-col gap-1"
+                    className="rounded-2xl border border-slate-300 bg-white p-3 flex flex-col gap-1"
                   >
-                    <div className="text-sm font-semibold text-white">{item.label}</div>
-                    <div className="text-xs text-slate-400">
-                      Celkem oslovení: <span className="font-semibold text-white">{item.outreach}</span>
+                    <div className="text-sm font-semibold text-slate-900">{item.label}</div>
+                    <div className="text-xs text-slate-500">
+                      Celkem oslovení: <span className="font-semibold text-slate-900">{item.outreach}</span>
                     </div>
-                    <div className="text-xs text-slate-400">
-                      Celkem schůzek: <span className="font-semibold text-white">{item.meetings}</span>
+                    <div className="text-xs text-slate-500">
+                      Celkem schůzek: <span className="font-semibold text-slate-900">{item.meetings}</span>
                     </div>
-                    <div className="text-xs text-slate-400">
+                    <div className="text-xs text-slate-500">
                       Celkem odpracováno:{" "}
-                      <span className="font-semibold text-white">
+                      <span className="font-semibold text-slate-900">
                         {item.hours.toLocaleString("cs-CZ", { maximumFractionDigits: 1 })} h
                       </span>
                     </div>
-                    <div className="text-xs text-slate-400">
+                    <div className="text-xs text-slate-500">
                       Průměrná hodinová mzda:{" "}
-                      <span className="font-semibold text-emerald-200">
+                      <span className="font-semibold text-emerald-800">
                         {item.hours > 0 ? formatMoney(item.commission / item.hours) : "—"}
                       </span>
                     </div>
-                    <div className="text-xs text-slate-400">
-                      Celkem provize: <span className="font-semibold text-emerald-200">{formatMoney(item.commission)}</span>
+                    <div className="text-xs text-slate-500">
+                      Celkem provize: <span className="font-semibold text-emerald-800">{formatMoney(item.commission)}</span>
                     </div>
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-[11px] text-slate-900">
                       Uloženo: {item.savedAt ? new Date(item.savedAt).toLocaleString("cs-CZ") : "—"}
                     </div>
                   </div>
@@ -1229,7 +1229,7 @@ function StatistikaPageInner() {
 
 export default function StatistikaPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-sm text-slate-300">Načítám…</div>}>
+    <Suspense fallback={<div className="p-4 text-sm text-slate-600">Načítám…</div>}>
       <StatistikaPageInner />
     </Suspense>
   );

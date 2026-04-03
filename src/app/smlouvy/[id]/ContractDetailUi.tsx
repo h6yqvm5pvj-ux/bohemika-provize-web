@@ -2,13 +2,13 @@ import { type ToastMessage } from "./contractDetailTypes";
 
 export const Spinner = ({ className = "h-4 w-4" }: { className?: string }) => (
   <span
-    className={`inline-block animate-spin rounded-full border-2 border-white/30 border-t-white/80 ${className}`}
+    className={`inline-block animate-spin rounded-full border-2 border-slate-300 border-t-slate-900 ${className}`}
     aria-hidden="true"
   />
 );
 
 export const Skeleton = ({ className = "" }: { className?: string }) => (
-  <div className={`animate-pulse rounded-xl bg-white/10 ${className}`} />
+  <div className={`animate-pulse rounded-xl bg-slate-200 ${className}`} />
 );
 
 export function Toasts({
@@ -25,16 +25,16 @@ export function Toasts({
         return (
           <div
             key={toast.id}
-            className={`pointer-events-auto rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-md ${
+            className={`pointer-events-auto rounded-2xl border px-4 py-3 shadow-xl ${
               isError
-                ? "border-rose-400/50 bg-rose-600/20 text-rose-50 shadow-rose-900/40"
-                : "border-emerald-400/50 bg-emerald-500/20 text-emerald-50 shadow-emerald-900/40"
+                ? "border-rose-300 bg-white text-rose-800 shadow-slate-300/40"
+                : "border-slate-300 bg-white text-slate-900 shadow-slate-300/40"
             }`}
           >
             <div className="flex items-start gap-3">
               <div
                 className={`mt-0.5 h-2.5 w-2.5 rounded-full ${
-                  isError ? "bg-rose-300" : "bg-emerald-300"
+                  isError ? "bg-rose-500" : "bg-slate-900"
                 }`}
                 aria-hidden="true"
               />
@@ -42,7 +42,7 @@ export function Toasts({
               <button
                 type="button"
                 onClick={() => onDismiss(toast.id)}
-                className="text-xs text-white/80 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/60 rounded-full px-2"
+                className="rounded-full px-2 text-xs text-slate-500 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
                 aria-label="Zavřít upozornění"
               >
                 ×

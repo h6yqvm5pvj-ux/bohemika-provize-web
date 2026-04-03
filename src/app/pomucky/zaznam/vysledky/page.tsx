@@ -462,17 +462,17 @@ export default function RecordResultsPage() {
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
             Doporučení do dopadů
           </h1>
-          <p className="text-sm text-slate-300 mt-1">
+          <p className="text-sm text-slate-600 mt-1">
             Texty, které můžeš využít v části „Dopady na klienta“ v záznamu
             z jednání. Další pravidla budeme postupně doplňovat.
           </p>
         </header>
 
         <div className="space-y-3">
-          <div className="text-lg font-semibold text-slate-50">
+          <div className="text-lg font-semibold text-slate-900">
             Další požadavky, potřeby a cíle zákazníka
           </div>
-          <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)] space-y-3 text-sm text-slate-50">
+          <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3 text-sm text-slate-900">
             <div className="flex items-start gap-3 leading-relaxed">
               <button
                 type="button"
@@ -481,7 +481,7 @@ export default function RecordResultsPage() {
                     "Klient vyžadoval vysvětlení pojmů, které jsou uvedeny v pojistných podmínkách k požadovanému typu pojištění."
                   )
                 }
-                className="mt-[1px] inline-flex items-center rounded-full border border-white/25 bg-white/10 px-2 py-[3px] text-[11px] font-medium text-slate-100 transition hover:border-emerald-300/60 hover:text-emerald-200"
+                className="mt-[1px] inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-900 transition hover:border-emerald-300/60 hover:text-emerald-800"
               >
                 {copiedText ===
                 "Klient vyžadoval vysvětlení pojmů, které jsou uvedeny v pojistných podmínkách k požadovanému typu pojištění."
@@ -495,9 +495,9 @@ export default function RecordResultsPage() {
               </span>
             </div>
             {additional === null ? (
-              <p className="text-sm text-slate-300">Načítám…</p>
+              <p className="text-sm text-slate-600">Načítám…</p>
             ) : (
-              <div className="space-y-2 text-sm text-slate-50">
+              <div className="space-y-2 text-sm text-slate-900">
                 {additional.map((line, idx) => (
                   <div
                     key={idx}
@@ -506,7 +506,7 @@ export default function RecordResultsPage() {
                     <button
                       type="button"
                       onClick={() => handleCopy(line)}
-                      className="mt-[1px] inline-flex items-center rounded-full border border-white/25 bg-white/10 px-2 py-[3px] text-[11px] font-medium text-slate-100 transition hover:border-emerald-300/60 hover:text-emerald-200"
+                      className="mt-[1px] inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-900 transition hover:border-emerald-300/60 hover:text-emerald-800"
                     >
                       {copiedText === line ? "Zkopírováno" : "Kopírovat"}
                     </button>
@@ -520,20 +520,20 @@ export default function RecordResultsPage() {
         </div>
 
         <div className="space-y-3">
-          <div className="text-lg font-semibold text-slate-50">
+          <div className="text-lg font-semibold text-slate-900">
             Popis dopadů sjednání pojištění/změny pojištění
           </div>
-          <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-6 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
+          <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
             {lines === null ? (
-              <p className="text-sm text-slate-300">Načítám doporučení…</p>
+              <p className="text-sm text-slate-600">Načítám doporučení…</p>
             ) : lines.length === 0 ? (
-              <p className="text-sm text-slate-300">
+              <p className="text-sm text-slate-600">
                 Zatím tu nemám žádná konkrétní doporučení. Vyplň nejdřív krytí
                 na stránce „Záznam z jednání – Život“ a znovu klikni na{" "}
                 <strong>Výsledky</strong>.
               </p>
             ) : (
-              <ul className="space-y-3 text-sm text-slate-50">
+              <ul className="space-y-3 text-sm text-slate-900">
                 {lines.map((line, idx) => (
                   <li
                     key={idx}
@@ -542,7 +542,7 @@ export default function RecordResultsPage() {
                     <button
                       type="button"
                       onClick={() => handleCopy(line)}
-                      className="mt-[1px] inline-flex items-center rounded-full border border-white/25 bg-white/10 px-2 py-[3px] text-[11px] font-medium text-slate-100 transition hover:border-emerald-300/60 hover:text-emerald-200"
+                      className="mt-[1px] inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-900 transition hover:border-emerald-300/60 hover:text-emerald-800"
                     >
                       {copiedText === line ? "Zkopírováno" : "Kopírovat"}
                     </button>
@@ -557,13 +557,13 @@ export default function RecordResultsPage() {
 
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <div className="text-lg font-semibold text-slate-50">
+            <div className="text-lg font-semibold text-slate-900">
               Doporučení pojistného produktu
             </div>
             <button
               type="button"
               onClick={() => setShowProductInfo((v) => !v)}
-              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/25 bg-white/10 text-[11px] text-slate-200 hover:border-emerald-300/60 hover:text-emerald-200 transition"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-slate-100 text-[11px] text-slate-800 hover:border-emerald-300/60 hover:text-emerald-800 transition"
               aria-label="Zobrazit vysvětlení doporučení pojistného produktu"
             >
               i
@@ -571,13 +571,13 @@ export default function RecordResultsPage() {
           </div>
           {showProductInfo && (
             <div className="relative">
-              <div className="absolute -left-4 top-1 h-3 w-3 rotate-45 bg-white/8 border-l border-t border-white/15 blur-[0.5px]" />
-              <div className="rounded-2xl border border-white/15 bg-white/8 backdrop-blur-2xl px-4 py-3 text-sm text-slate-100 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
-                <span className="font-medium text-slate-50">
+              <div className="absolute -left-4 top-1 h-3 w-3 rotate-45 bg-white border-l border-t border-slate-900 blur-[0.5px]" />
+              <div className="rounded-2xl border border-slate-900 bg-white  px-4 py-3 text-sm text-slate-900 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+                <span className="font-medium text-slate-900">
                   Doporučení pojistného produktu
                 </span>{" "}
                 – Vždy by jsi měl/a doporučit 2-3 produkty.{" "}
-                <span className="font-medium text-slate-50">Důvody, na kterých je doporučení založeno:</span>{" "}
+                <span className="font-medium text-slate-900">Důvody, na kterých je doporučení založeno:</span>{" "}
                 Zde vypiš, co doporučená pojišťovna umožnuje pojistit z rizik který klient požaduje.
               </div>
             </div>
@@ -587,29 +587,29 @@ export default function RecordResultsPage() {
             {productRecs.map(({ label, text }) => (
               <section
                 key={label}
-                className="flex h-full flex-col rounded-3xl border border-white/15 bg-white/6 backdrop-blur-2xl px-4 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.8)]"
+                className="flex h-full flex-col rounded-3xl border border-slate-900 bg-white  px-4 py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)]"
               >
-                <div className="text-base font-semibold text-slate-50">
+                <div className="text-base font-semibold text-slate-900">
                   {label}
                 </div>
                 {text ? (
                   <>
-                    <div className="mt-2 text-sm text-slate-200 leading-relaxed flex-1">
+                    <div className="mt-2 text-sm text-slate-800 leading-relaxed flex-1">
                       {text}
                     </div>
                     <div className="mt-4 flex justify-center">
                       <button
                         type="button"
                         onClick={() => handleCopy(text)}
-                        className="inline-flex items-center rounded-full border border-white/25 bg-white/10 px-3 py-[6px] text-[11px] font-medium text-slate-100 transition hover:border-emerald-300/60 hover:text-emerald-200"
+                        className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-[6px] text-[11px] font-medium text-slate-900 transition hover:border-emerald-300/60 hover:text-emerald-800"
                       >
                         {copiedText === text ? "Zkopírováno" : "Kopírovat"}
                       </button>
                     </div>
                   </>
                 ) : (
-                  <div className="mt-2 text-sm text-slate-200 leading-relaxed flex-1">
-                    <span className="text-slate-400">
+                  <div className="mt-2 text-sm text-slate-800 leading-relaxed flex-1">
+                    <span className="text-slate-500">
                       Doplníme po zadání parametrů této pojišťovny.
                     </span>
                   </div>

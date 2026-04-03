@@ -388,7 +388,7 @@ function GoldChart({ points }: { points: Point[] }) {
 
   if (!prepared) {
     return (
-      <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-6 text-sm text-slate-300">
+      <div className="rounded-2xl border border-slate-300 bg-white px-4 py-6 text-sm text-slate-700">
         Nemám historická data pro graf (API nevrátilo dost bodů). Zkus přepnout rozsah.
       </div>
     );
@@ -399,8 +399,8 @@ function GoldChart({ points }: { points: Point[] }) {
   const pointDeltaPct = hp && prevHp && prevHp.v > 0 ? ((hp.v / prevHp.v) - 1) * 100 : null;
 
   return (
-    <div className="relative rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-4">
-      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-300/90">
+    <div className="relative rounded-2xl border border-slate-300 bg-white px-4 py-4">
+      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
         <span>Bodů: {prepared.pts.length}</span>
         <span>Min: {formatCzk(prepared.minPoint.v)}</span>
         <span>Max: {formatCzk(prepared.maxPoint.v)}</span>
@@ -436,7 +436,7 @@ function GoldChart({ points }: { points: Point[] }) {
         </defs>
 
         {/* grid */}
-        <g className="text-white/10" stroke="currentColor" strokeWidth="1">
+        <g className="text-slate-600" stroke="currentColor" strokeWidth="1">
           {prepared.yTicks.map((t, i) => (
             <line key={`gy-${i}`} x1={pad.l} y1={t.y} x2={w - pad.r} y2={t.y} />
           ))}
@@ -446,7 +446,7 @@ function GoldChart({ points }: { points: Point[] }) {
         </g>
 
         {/* y labels */}
-        <g className="fill-slate-300" fontSize="11">
+        <g className="fill-slate-500" fontSize="11">
           {prepared.yTicks.map((t, i) => (
             <text key={`yl-${i}`} x={8} y={t.y + 4} opacity={0.9}>
               {formatCzk(t.v)}
@@ -455,7 +455,7 @@ function GoldChart({ points }: { points: Point[] }) {
         </g>
 
         {/* x labels */}
-        <g className="fill-slate-300" fontSize="11">
+        <g className="fill-slate-500" fontSize="11">
           {prepared.xTicks.map((t, i) => (
             <text
               key={`xl-${i}`}
@@ -476,7 +476,7 @@ function GoldChart({ points }: { points: Point[] }) {
         </g>
 
         {/* area + line */}
-        <g className="text-emerald-200">
+        <g className="text-rose-600">
           <path d={prepared.areaD} fill="url(#goldArea)" />
           <path
             d={prepared.lineD}
@@ -498,8 +498,8 @@ function GoldChart({ points }: { points: Point[] }) {
                 cx={p.x}
                 cy={p.y}
                 r={1.4}
-                fill="rgba(167,243,208,0.65)"
-                stroke="rgba(16,185,129,0.35)"
+                fill="rgba(15,23,42,0.45)"
+                stroke="rgba(15,23,42,0.4)"
                 strokeWidth="0.8"
               />
             ))}
@@ -509,28 +509,28 @@ function GoldChart({ points }: { points: Point[] }) {
         {/* hover */}
         {hp ? (
           <g>
-            <line x1={hp.x} y1={pad.t} x2={hp.x} y2={h - pad.b} stroke="rgba(255,255,255,0.18)" strokeWidth="1" />
-            <line x1={pad.l} y1={hp.y} x2={w - pad.r} y2={hp.y} stroke="rgba(255,255,255,0.14)" strokeWidth="1" />
-            <circle cx={hp.x} cy={hp.y} r={4} fill="rgba(167,243,208,0.95)" stroke="rgba(16,185,129,0.65)" />
+            <line x1={hp.x} y1={pad.t} x2={hp.x} y2={h - pad.b} stroke="rgba(15,23,42,0.2)" strokeWidth="1" />
+            <line x1={pad.l} y1={hp.y} x2={w - pad.r} y2={hp.y} stroke="rgba(15,23,42,0.18)" strokeWidth="1" />
+            <circle cx={hp.x} cy={hp.y} r={4} fill="rgba(15,23,42,0.95)" stroke="rgba(15,23,42,0.6)" />
           </g>
         ) : null}
       </svg>
 
       {hp ? (
         <div
-          className="pointer-events-none absolute rounded-2xl border border-white/15 bg-slate-950/55 backdrop-blur-xl px-3 py-2 text-xs text-slate-100 shadow-[0_18px_60px_rgba(0,0,0,0.65)]"
+          className="pointer-events-none absolute rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.15)]"
           style={{
             left: Math.min(Math.max((hover?.x ?? 0) / w, 0.1), 0.9) * 100 + "%",
             top: 12,
             transform: "translateX(-50%)",
           }}
         >
-          <div className="text-slate-300">{prepared.fmtDate(hp.t)}</div>
+          <div className="text-slate-500">{prepared.fmtDate(hp.t)}</div>
           <div className="mt-0.5 font-semibold">{formatCzk(hp.v)}</div>
           {pointDeltaPct != null && (
-            <div className="mt-0.5 text-slate-300">
+            <div className="mt-0.5 text-slate-500">
               proti předchozímu bodu:{" "}
-              <span className={pointDeltaPct >= 0 ? "text-emerald-200" : "text-rose-200"}>
+              <span className="text-slate-900">
                 {pointDeltaPct >= 0 ? "+" : ""}
                 {formatNum(pointDeltaPct, 2)} %
               </span>
@@ -542,34 +542,18 @@ function GoldChart({ points }: { points: Point[] }) {
   );
 }
 
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-      <div className="text-[11px] uppercase tracking-wider text-slate-400">{label}</div>
-      <div className="mt-1 text-sm text-slate-100">{value}</div>
-    </div>
-  );
-}
-
 function ChangeChip({ label, value }: { label: string; value: number | null | undefined }) {
   const dir = value == null ? "flat" : value > 0 ? "up" : value < 0 ? "down" : "flat";
 
-  const cls =
-    value == null
-      ? "border-white/10 bg-white/5 text-slate-200"
-      : dir === "up"
-        ? "border-emerald-300/30 bg-emerald-500/15 text-emerald-100"
-        : dir === "down"
-          ? "border-rose-300/30 bg-rose-500/15 text-rose-100"
-          : "border-white/10 bg-white/5 text-slate-200";
+  const cls = "border-slate-300 bg-white text-slate-900";
 
   const sign = dir === "up" ? "▲" : dir === "down" ? "▼" : "";
 
   return (
     <div className={["rounded-full border px-3 py-1 text-xs font-semibold tracking-wide", cls].join(" ")}>
-      <span className="text-slate-200/90">{label}</span>
-      <span className="mx-2 text-white/30">•</span>
-      <span className="text-slate-50">{value == null ? "—" : `${sign} ${formatNum(Math.abs(value), 1)} %`}</span>
+      <span className="text-slate-600">{label}</span>
+      <span className="mx-2 text-slate-600">•</span>
+      <span className="text-slate-900">{value == null ? "—" : `${sign} ${formatNum(Math.abs(value), 1)} %`}</span>
     </div>
   );
 }
@@ -581,16 +565,12 @@ export default function GoldToolPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const [usdPerOz, setUsdPerOz] = useState<number | null>(null);
-  const [usdCzk, setUsdCzk] = useState<number | null>(null);
   const [czkPerOz, setCzkPerOz] = useState<number | null>(null);
 
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isStale, setIsStale] = useState(false);
-  const [asOfDate, setAsOfDate] = useState<string | null>(null);
   const [secondsToRefresh, setSecondsToRefresh] = useState(60);
   const [refreshingNow, setRefreshingNow] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   // historie – CZK / oz
   const [history, setHistory] = useState<Point[]>([]);
@@ -601,7 +581,6 @@ export default function GoldToolPage() {
 
   const timerRef = useRef<number | null>(null);
   const secondRef = useRef<number | null>(null);
-  const copiedTimerRef = useRef<number | null>(null);
 
   const selected = UNITS[unit];
 
@@ -693,12 +672,9 @@ export default function GoldToolPage() {
   const loadTick = async () => {
     const snap = await fetchGold({ days: 0 });
 
-    setUsdCzk(snap.usdCzk);
-    setUsdPerOz(snap.usdPerOz);
     setCzkPerOz(snap.czkPerOz);
     setLastUpdated(new Date(snap.ts));
     setIsStale(Boolean(snap.stale));
-    setAsOfDate(snap.asOfDate ?? null);
     setSecondsToRefresh(60);
 
     // nezahlcujeme – držíme max 120 bodů
@@ -719,12 +695,9 @@ export default function GoldToolPage() {
         const snap = await fetchGold({ days: RANGES[range].days, range });
         if (cancelled) return;
 
-        setUsdCzk(snap.usdCzk);
-        setUsdPerOz(snap.usdPerOz);
         setCzkPerOz(snap.czkPerOz);
         setLastUpdated(new Date(snap.ts));
         setIsStale(Boolean(snap.stale));
-        setAsOfDate(snap.asOfDate ?? null);
         setSecondsToRefresh(60);
 
         if (snap.history?.length) setHistory(snap.history);
@@ -770,12 +743,6 @@ export default function GoldToolPage() {
     };
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
-    };
-  }, []);
-
   const manualRefresh = async () => {
     try {
       setRefreshingNow(true);
@@ -788,198 +755,151 @@ export default function GoldToolPage() {
     }
   };
 
-  const copyCurrentPrice = async () => {
-    if (!Number.isFinite(czkForSelectedUnit ?? NaN)) return;
-    const payload = `${formatCzk(czkForSelectedUnit)} (${selected.label})`;
-    try {
-      await navigator.clipboard.writeText(payload);
-      setCopied(true);
-      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
-      copiedTimerRef.current = window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // clipboard může být blokovaný; zůstaneme bez toastu
-    }
-  };
-
-  const formattedAsOfDate = useMemo(() => {
-    if (!asOfDate) return null;
-    const d = Date.parse(`${asOfDate}T00:00:00Z`);
-    if (!Number.isFinite(d)) return asOfDate;
-    return new Date(d).toLocaleDateString("cs-CZ");
-  }, [asOfDate]);
-
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-5xl space-y-6">
-        <header className="flex flex-col gap-2">
-          <SplitTitle text="Zlato" />
-          <Link href="/pomucky" className="inline-flex items-center text-xs text-slate-300 hover:text-white transition">
-            ← Zpět na pomůcky
-          </Link>
-        </header>
+      <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+        <div className="mx-auto w-full max-w-6xl space-y-6 font-mono text-slate-900">
+          <header className="flex flex-col gap-2">
+            <SplitTitle text="Zlato" className="!text-slate-900" />
+            <Link href="/pomucky" className="inline-flex items-center text-xs text-slate-600 transition hover:text-slate-900">
+              ← Zpět na pomůcky
+            </Link>
+          </header>
 
-        <section className="space-y-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-white">Aktuální cena</h2>
-              <p className="text-xs text-slate-300">
-                Zobrazení v CZK. Aktuální cena se
-                obnovuje cca 1× za minutu.
-              </p>
-            </div>
-            <div className="sm:justify-end">
-              <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-white/15 bg-white/5 p-1 backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.35)]">
-                {(Object.keys(UNITS) as UnitKey[]).map((k) => {
-                  const active = unit === k;
-                  return (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setUnit(k)}
-                      className={[
-                        "whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition",
-                        active
-                          ? "bg-emerald-500/25 text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.25)]"
-                          : "text-slate-100 hover:bg-white/10",
-                      ].join(" ")}
-                    >
-                      {UNITS[k].label}
-                    </button>
-                  );
-                })}
+          <section className="space-y-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Aktuální cena</h2>
+                <p className="text-xs text-slate-600">
+                  Zobrazení v CZK. Aktuální cena se obnovuje cca 1× za minutu.
+                </p>
               </div>
-            </div>
-          </div>
-
-          {err ? (
-            <div className="rounded-2xl border border-amber-500/50 bg-amber-900/30 px-4 py-3 text-sm text-amber-100">
-              {err}
-            </div>
-          ) : null}
-
-          <div className="space-y-4">
-            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-950/50 px-5 py-5 space-y-4">
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-r from-emerald-400/12 via-cyan-300/6 to-transparent" />
-              <div className="grid gap-4 md:grid-cols-[1fr_360px] md:items-start">
-                <div>
-                  <div className="text-[11px] uppercase tracking-wider text-slate-400">Cena ({selected.label})</div>
-                  <div className="text-6xl sm:text-7xl lg:text-[5.25rem] font-semibold leading-none tracking-tight text-emerald-200 drop-shadow-[0_0_18px_rgba(16,185,129,0.18)]">
-                    {loading ? "Načítám…" : formatCzk(displayPrice ?? czkForSelectedUnit)}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {lastUpdated ? `Aktualizováno: ${lastUpdated.toLocaleString("cs-CZ")}` : ""}
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span
-                      className={[
-                        "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                        isStale
-                          ? "border-amber-400/35 bg-amber-500/15 text-amber-100"
-                          : "border-emerald-300/35 bg-emerald-500/15 text-emerald-100",
-                      ].join(" ")}
-                    >
-                      {isStale ? "Stale snapshot" : "Live data"}
-                    </span>
-                    <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-slate-200">
-                      Další auto-refresh za {secondsToRefresh}s
-                    </span>
-                    {formattedAsOfDate ? (
-                      <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-slate-200">
-                        Historie k {formattedAsOfDate}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={manualRefresh}
-                      disabled={loading || loadingRange || refreshingNow}
-                      className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {refreshingNow ? "Obnovuji…" : "Obnovit teď"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={copyCurrentPrice}
-                      disabled={loading || czkForSelectedUnit == null}
-                      className="rounded-full border border-emerald-300/35 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {copied ? "Zkopírováno" : "Kopírovat cenu"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-[11px] uppercase tracking-wider text-slate-400">Nárůst / pokles (CZK / unce)</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <ChangeChip label="1 den" value={changes?.d1} />
-                    <ChangeChip label="3 měsíce" value={changes?.m3} />
-                    <ChangeChip label="1 rok" value={changes?.y1} />
-                    <ChangeChip label="2 roky" value={changes?.y2} />
-                    <ChangeChip label="3 roky" value={changes?.y3} />
-                    <ChangeChip label="5 let" value={changes?.y5} />
-                    <ChangeChip label="10 let" value={changes?.y10} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-[11px] uppercase tracking-wider text-slate-400">
-                    Graf ({RANGES[range].label})
-                    {loadingRange ? <span className="ml-2 text-slate-500">• načítám…</span> : null}
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {(Object.keys(RANGES) as RangeKey[]).map((k) => (
+              <div className="sm:justify-end">
+                <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-300 bg-slate-100 p-1">
+                  {(Object.keys(UNITS) as UnitKey[]).map((k) => {
+                    const active = unit === k;
+                    return (
                       <button
                         key={k}
                         type="button"
-                        onClick={() => setRange(k)}
+                        onClick={() => setUnit(k)}
                         className={[
-                          "rounded-full px-3 py-1.5 text-xs font-semibold border transition",
-                          range === k
-                            ? "border-emerald-200/80 bg-emerald-500/20 text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.25)]"
-                            : "border-white/15 bg-white/5 text-slate-100 hover:bg-white/10",
+                          "whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition",
+                          active ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-white",
                         ].join(" ")}
                       >
-                        {RANGES[k].label}
+                        {UNITS[k].label}
                       </button>
-                    ))}
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {err ? (
+              <div className="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                {err}
+              </div>
+            ) : null}
+
+            <div className="space-y-4">
+              <div className="relative overflow-hidden rounded-[28px] border border-slate-300 bg-slate-100 px-5 py-5 space-y-4">
+                <div className="grid gap-4 md:grid-cols-[1fr_360px] md:items-start">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-slate-500">Cena ({selected.label})</div>
+                    <div className="text-6xl font-semibold leading-none tracking-tight text-slate-900 sm:text-7xl lg:text-[5.25rem]">
+                      {loading ? "Načítám…" : formatCzk(displayPrice ?? czkForSelectedUnit)}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {lastUpdated ? `Aktualizováno: ${lastUpdated.toLocaleString("cs-CZ")}` : ""}
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span
+                        className={[
+                          "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                          isStale ? "border-slate-300 bg-white text-slate-600" : "border-emerald-700 bg-emerald-600 text-white",
+                        ].join(" ")}
+                      >
+                        {isStale ? "Stale snapshot" : "Live data"}
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] text-slate-600">
+                        Další auto-refresh za {secondsToRefresh}s
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={manualRefresh}
+                        disabled={loading || loadingRange || refreshingNow}
+                        className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {refreshingNow ? "Obnovuji…" : "Obnovit teď"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-[11px] uppercase tracking-wider text-slate-500">Nárůst / pokles (CZK / unce)</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <ChangeChip label="1 den" value={changes?.d1} />
+                      <ChangeChip label="3 měsíce" value={changes?.m3} />
+                      <ChangeChip label="1 rok" value={changes?.y1} />
+                      <ChangeChip label="2 roky" value={changes?.y2} />
+                      <ChangeChip label="3 roky" value={changes?.y3} />
+                      <ChangeChip label="5 let" value={changes?.y5} />
+                      <ChangeChip label="10 let" value={changes?.y10} />
+                    </div>
                   </div>
                 </div>
 
-                <GoldChart points={chartPoints} />
-              </div>
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-[11px] uppercase tracking-wider text-slate-500">
+                      Graf ({RANGES[range].label})
+                      {loadingRange ? <span className="ml-2 text-slate-500">• načítám…</span> : null}
+                    </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Zlato (CZK / unce)" value={formatCzk(czkPerOz)} />
-                <Field label="Zlato (USD / unce)" value={usdPerOz == null ? "—" : `${formatNum(usdPerOz, 2)} USD`} />
-                <Field label="Kurz USD/CZK" value={usdCzk == null ? "—" : `${formatNum(usdCzk, 3)} CZK`} />
-                <Field label="Cena (CZK / 1 g)" value={czkPerOz == null ? "—" : formatCzk(czkPerOz / OUNCE_G)} />
-              </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(Object.keys(RANGES) as RangeKey[]).map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setRange(k)}
+                          className={[
+                            "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                            range === k ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+                          ].join(" ")}
+                        >
+                          {RANGES[k].label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-[12px] text-slate-300">
-                <span className="text-slate-300">Data jsou orientační.</span>
+                  <GoldChart points={chartPoints} />
+                </div>
+                <div className="flex items-center justify-between rounded-2xl border border-slate-300 bg-white px-4 py-3 text-[12px] text-slate-600">
+                  <span className="text-slate-600">Data jsou orientační.</span>
 
-                <span className="relative group">
-                  <span
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/15 bg-white/5 text-[12px] font-bold text-slate-100/90 shadow-[0_0_18px_rgba(255,255,255,0.06)]"
-                    aria-label="Info"
-                    title=""
-                  >
-                    i
+                  <span className="relative group">
+                    <span
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-[12px] font-bold text-white"
+                      aria-label="Info"
+                      title=""
+                    >
+                      i
+                    </span>
+
+                    <span className="pointer-events-none absolute right-0 top-0 z-10 hidden w-[320px] -translate-y-[calc(100%+10px)] rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 shadow-[0_12px_30px_rgba(15,23,42,0.15)] group-hover:block">
+                      Zdroj: /api/gold (server-side). Spot XAU (USD/oz) + USD/CZK + historie (CZK/oz). Výstup je pouze
+                      informativní.
+                    </span>
                   </span>
-
-                  <span className="pointer-events-none absolute right-0 top-0 z-10 hidden w-[320px] -translate-y-[calc(100%+10px)] rounded-2xl border border-white/15 bg-slate-950/70 px-3 py-2 text-xs text-slate-100 shadow-[0_18px_60px_rgba(0,0,0,0.65)] backdrop-blur-xl group-hover:block">
-                    Zdroj: /api/gold (server-side). Spot XAU (USD/oz) + USD/CZK + historie (CZK/oz). Výstup je pouze
-                    informativní.
-                  </span>
-                </span>
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
     </AppLayout>
   );

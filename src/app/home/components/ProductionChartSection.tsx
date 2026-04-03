@@ -62,17 +62,17 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
   );
 
   return (
-    <div className="rounded-3xl border border-white/12 bg-slate-900/75 backdrop-blur-2xl p-5 sm:p-6 shadow-[0_22px_80px_rgba(0,0,0,0.85)]">
+    <div className="rounded-[28px] border border-slate-900 bg-white p-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-lg sm:text-xl font-semibold text-white">
+          <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">
             Graf produkce — posledních 12 měsíců
           </h2>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-200">
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600">
           <span className="inline-flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-cyan-300" />
-            <span className="font-semibold text-white">{formatMoney(latest.totalCombined)}</span>
+            <span className="h-2 w-2 rounded-full bg-slate-900" />
+            <span className="font-semibold text-slate-900">{formatMoney(latest.totalCombined)}</span>
           </span>
         </div>
       </div>
@@ -87,12 +87,12 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
           >
             <defs>
               <linearGradient id="totalLine" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#67e8f9" stopOpacity="0.9" />
-                <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.4" />
+                <stop offset="0%" stopColor="#0f172a" stopOpacity="0.95" />
+                <stop offset="100%" stopColor="#334155" stopOpacity="0.7" />
               </linearGradient>
               <linearGradient id="areaFill" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="rgba(103,232,249,0.25)" />
-                <stop offset="100%" stopColor="rgba(34,211,238,0.03)" />
+                <stop offset="0%" stopColor="rgba(15,23,42,0.15)" />
+                <stop offset="100%" stopColor="rgba(15,23,42,0.03)" />
               </linearGradient>
               <filter id="tooltipShadow" x="-20%" y="-20%" width="140%" height="140%">
                 <feDropShadow dx="0" dy="6" stdDeviation="10" floodColor="rgba(0,0,0,0.35)" />
@@ -108,7 +108,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
                     x2={p.x}
                     y1={paddingY}
                     y2={paddingY + plotHeight}
-                    stroke="rgba(255,255,255,0.06)"
+                    stroke="rgba(15,23,42,0.1)"
                     strokeWidth={1}
                   />
                 );
@@ -125,7 +125,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
                     x2={paddingX + plotWidth}
                     y1={y}
                     y2={y}
-                    stroke="rgba(255,255,255,0.05)"
+                    stroke="rgba(15,23,42,0.1)"
                     strokeWidth={1}
                     strokeDasharray="4 6"
                   />
@@ -133,7 +133,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
                     x={paddingX + plotWidth + 8}
                     y={y + 4}
                     fontSize="10"
-                    fill="rgba(148,163,184,0.75)"
+                    fill="rgba(71,85,105,0.85)"
                   >
                     {formatMoney(Math.round(value))}
                   </text>
@@ -173,8 +173,8 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
                     cx={x}
                     cy={yTotal}
                     r={4}
-                    fill="#67e8f9"
-                    stroke={selectedIdx === i ? "#a5f3fc" : "#0ea5e9"}
+                    fill="#0f172a"
+                    stroke={selectedIdx === i ? "#0f172a" : "#334155"}
                     strokeWidth={1.5}
                   />
                   {selectedIdx === i && (
@@ -183,7 +183,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
                       cy={yTotal}
                       r={7.5}
                       fill="none"
-                      stroke="rgba(103,232,249,0.4)"
+                      stroke="rgba(15,23,42,0.35)"
                       strokeWidth={2}
                     />
                   )}
@@ -192,7 +192,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
                     y={paddingY + plotHeight + 18}
                     textAnchor="middle"
                     fontSize="11"
-                    fill="rgba(226,232,240,0.8)"
+                    fill="rgba(71,85,105,0.9)"
                   >
                     {d.label}
                   </text>
@@ -209,8 +209,8 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
                   height={tooltipHeight}
                   rx={10}
                   ry={10}
-                  fill="rgba(15,23,42,0.9)"
-                  stroke="rgba(148,163,184,0.4)"
+                  fill="rgba(255,255,255,0.98)"
+                  stroke="rgba(148,163,184,0.7)"
                   strokeWidth={1}
                   filter="url(#tooltipShadow)"
                 />
@@ -218,7 +218,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
                   x={12}
                   y={18}
                   fontSize="11"
-                  fill="rgba(226,232,240,0.9)"
+                  fill="rgba(71,85,105,0.95)"
                 >
                   {selected.label}
                 </text>
@@ -226,7 +226,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
                   x={12}
                   y={36}
                   fontSize="12"
-                  fill="#67e8f9"
+                  fill="#0f172a"
                   fontWeight={600}
                 >
                   Celkem: {formatMoney(selected.totalCombined)}
@@ -235,7 +235,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
                   x={12}
                   y={52}
                   fontSize="12"
-                  fill="#6ee7b7"
+                  fill="#334155"
                   fontWeight={600}
                 >
                   Život: {formatMoney(selected.lifeMonthly)}
@@ -244,7 +244,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
                   x={12}
                   y={68}
                   fontSize="12"
-                  fill="#a5f3fc"
+                  fill="#475569"
                   fontWeight={600}
                 >
                   Vedlejší: {formatMoney(selected.otherAnnual)}
@@ -256,7 +256,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
       </div>
 
       {!hasData && (
-        <p className="mt-3 text-xs text-slate-300">
+        <p className="mt-3 text-xs text-slate-600">
           Zatím žádná osobní produkce v posledních 12 měsících – jakmile přibydou
           smlouvy, graf se vyplní.
         </p>
@@ -297,30 +297,30 @@ export function ProductionChartSection({
   isLiteUI,
 }: ProductionChartSectionProps) {
   const chartCardClass = isLiteUI
-    ? "rounded-3xl border border-white/12 bg-slate-900 px-5 py-5 sm:px-7 sm:py-6 overflow-hidden"
-    : "rounded-3xl border border-white/12 bg-slate-900/80 backdrop-blur-2xl px-5 py-5 sm:px-7 sm:py-6 shadow-[0_22px_80px_rgba(0,0,0,0.85)] overflow-hidden";
+    ? "overflow-hidden rounded-[28px] border border-slate-900 bg-white px-5 py-5 sm:px-7 sm:py-6"
+    : "overflow-hidden rounded-[28px] border border-slate-900 bg-white px-5 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-7 sm:py-6";
 
   return (
     <section className={chartCardClass}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
         <div>
-          <h2 className="text-lg sm:text-xl font-semibold text-white">
+          <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">
             Osobní produkce — posledních 12 měsíců
           </h2>
-          <p className="text-xs text-slate-300">
+          <p className="text-xs text-slate-600">
             Život = měsíční pojistné, vedlejší produkty = roční pojistné
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-full bg-slate-900/60 border border-white/10 p-1 backdrop-blur">
+          <div className="inline-flex rounded-full border border-slate-900 bg-white p-1">
             <button
               type="button"
               onClick={() => setChartMode("personal")}
               className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
                 chartMode === "personal"
-                  ? "bg-white text-slate-900 shadow-md"
-                  : "text-slate-200 hover:bg-white/10"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-700 hover:bg-slate-100"
               }`}
             >
               Osobní
@@ -332,8 +332,8 @@ export function ProductionChartSection({
                   onClick={() => setChartMode("team")}
                   className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
                     chartMode === "team"
-                      ? "bg-white text-slate-900 shadow-md"
-                      : "text-slate-200 hover:bg-white/10"
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-700 hover:bg-slate-100"
                   }`}
                 >
                   Týmová
@@ -343,8 +343,8 @@ export function ProductionChartSection({
                   onClick={() => setChartMode("combined")}
                   className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
                     chartMode === "combined"
-                      ? "bg-white text-slate-900 shadow-md"
-                      : "text-slate-200 hover:bg-white/10"
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-700 hover:bg-slate-100"
                   }`}
                 >
                   Souhrnná
@@ -357,8 +357,8 @@ export function ProductionChartSection({
                   }}
                   className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
                     chartMode === "specific"
-                      ? "bg-white text-slate-900 shadow-md"
-                      : "text-slate-200 hover:bg-white/10"
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-700 hover:bg-slate-100"
                   }`}
                 >
                   Konkrétní
@@ -367,11 +367,11 @@ export function ProductionChartSection({
             )}
           </div>
 
-          <div className="flex items-center gap-2 text-[11px] text-slate-200">
+          <div className="flex items-center gap-2 text-[11px] text-slate-600">
             <span className="inline-flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-cyan-300" />
+              <span className="h-2 w-2 rounded-full bg-slate-900" />
               Celkem (život měsíčně + vedlejší ročně)
-              <span className="font-semibold text-white">
+              <span className="font-semibold text-slate-900">
                 {formatMoney(personalProductionSeries[personalProductionSeries.length - 1]?.totalCombined ?? 0)}
               </span>
             </span>
@@ -380,9 +380,9 @@ export function ProductionChartSection({
       </div>
 
       {chartMode === "specific" && hasTeam && (
-        <div className="mb-3 rounded-2xl border border-white/10 bg-slate-900/70 backdrop-blur px-4 py-3">
+        <div className="mb-3 rounded-2xl border border-slate-900 bg-white px-4 py-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-xs text-slate-200">
+            <div className="text-xs text-slate-700">
               {selectedSubordinate
                 ? `Vybraný podřízený: ${
                     subordinates.find((s) => s.email === selectedSubordinate)?.name ??
@@ -394,7 +394,7 @@ export function ProductionChartSection({
               <button
                 type="button"
                 onClick={() => setSubPickerOpen(true)}
-                className="rounded-full border border-white/20 px-3 py-1 text-xs text-white hover:bg-white/10 transition"
+                className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs text-white transition hover:bg-black"
               >
                 Změnit výběr
               </button>
@@ -402,7 +402,7 @@ export function ProductionChartSection({
                 <button
                   type="button"
                   onClick={() => onSelectSubordinate(null)}
-                  className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-slate-200 hover:bg-white/5 transition"
+                  className="rounded-full border border-slate-900 bg-slate-100 px-3 py-1 text-[11px] text-slate-700 transition hover:bg-white"
                 >
                   Vymazat
                 </button>
@@ -420,18 +420,18 @@ export function ProductionChartSection({
             className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
             onClick={() => setSubPickerOpen(false)}
           />
-          <div className="relative w-full max-w-lg rounded-3xl border border-white/10 bg-slate-900/90 shadow-[0_26px_90px_rgba(0,0,0,0.9)] p-5 space-y-4">
+          <div className="relative w-full max-w-lg space-y-4 rounded-3xl border border-slate-900 bg-white p-5 shadow-[0_26px_90px_rgba(0,0,0,0.35)]">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-white">Vyber podřízeného</h3>
-                <p className="text-xs text-slate-300">
+                <h3 className="text-lg font-semibold text-slate-900">Vyber podřízeného</h3>
+                <p className="text-xs text-slate-600">
                   Filtruješ graf pouze na zvoleného člověka.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSubPickerOpen(false)}
-                className="text-slate-200 hover:text-white text-lg leading-none"
+                className="text-lg leading-none text-slate-600 hover:text-slate-900"
                 aria-label="Zavřít"
               >
                 ×
@@ -443,7 +443,7 @@ export function ProductionChartSection({
               value={subSearch}
               onChange={(e) => setSubSearch(e.target.value)}
               placeholder="Hledej podle jména nebo e-mailu"
-              className="w-full rounded-xl bg-slate-800/80 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full rounded-xl border border-slate-900 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
             />
 
             <div className="max-h-72 overflow-auto space-y-2">
@@ -465,12 +465,12 @@ export function ProductionChartSection({
                     }}
                     className={`w-full text-left rounded-2xl border px-4 py-3 transition ${
                       selectedSubordinate === s.email
-                        ? "bg-sky-500/15 border-sky-400/50 text-white"
-                        : "bg-white/5 border-white/10 text-slate-200 hover:border-sky-400/60 hover:bg-white/10"
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-900 bg-slate-50 text-slate-900 hover:bg-white"
                     }`}
                   >
                     <div className="text-sm font-semibold">{s.name}</div>
-                    <div className="text-xs text-slate-300">{s.email}</div>
+                    <div className={`text-xs ${selectedSubordinate === s.email ? "text-slate-200" : "text-slate-500"}`}>{s.email}</div>
                   </button>
                 ))}
             </div>

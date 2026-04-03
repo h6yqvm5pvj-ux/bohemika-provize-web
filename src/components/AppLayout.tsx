@@ -41,10 +41,16 @@ const loadFirestore = () => {
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [backgroundColor, setBackgroundColor] = useState<"black" | "blue">("black");
+  const [backgroundColor, setBackgroundColor] = useState<"white" | "blue">("white");
   const pathname = usePathname();
   const router = useRouter();
   const lastActiveUpdateRef = useRef(0);
+  const isFullBleedPage =
+    pathname?.startsWith("/pomucky/zlato") ||
+    pathname === "/" ||
+    pathname === "/kalkulacka" ||
+    pathname === "/nastaveni" ||
+    pathname === "/smlouvy";
 
   // status zatím nepoužíváme v UI
   const [subscriptionStatus, setSubscriptionStatus] =
@@ -115,7 +121,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         "settings.backgroundColor"
       );
       if (!mounted) return;
-      const parsed = storedColor === "blue" ? "blue" : "black";
+      const parsed = storedColor === "blue" ? "blue" : "white";
       setBackgroundColor(parsed);
     };
 
@@ -124,7 +130,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const customHandler = (ev: Event) => {
       const detail = (ev as CustomEvent<{ backgroundColor?: string }>).detail;
       if (detail && typeof detail.backgroundColor === "string") {
-        const bg = detail.backgroundColor === "blue" ? "blue" : "black";
+        const bg = detail.backgroundColor === "blue" ? "blue" : "white";
         setBackgroundColor(bg);
       } else {
         updateFromStorage();
@@ -144,7 +150,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  // Přepínání třídy na body kvůli čistě černému / modrému pozadí
+  // Přepínání třídy na body kvůli světlému / modrému pozadí
   useEffect(() => {
     if (typeof document === "undefined") return;
     const body = document.body;
@@ -159,7 +165,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
     body.classList.add("simple-bg");
     body.classList.add(
-      backgroundColor === "blue" ? "simple-bg-blue" : "simple-bg-black"
+      backgroundColor === "blue" ? "simple-bg-blue" : "simple-bg-white"
     );
   }, [backgroundColor]);
 
@@ -332,8 +338,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   };
 
   const navItemBase =
-    "flex items-center justify-between rounded-2xl px-4 py-2.5 transition";
+    "flex items-center justify-between rounded-2xl border px-4 py-2.5 transition-colors";
   const navLabelBase = "flex items-center gap-3";
+  const navItemActiveClass = "border-slate-900 bg-slate-900 text-white";
+  const navItemInactiveClass =
+    "border-transparent text-slate-700 hover:border-slate-900 hover:bg-slate-100 hover:text-slate-900";
 
   const navItems: {
     key: ActivePage;
@@ -352,7 +361,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
   const renderBadge = (isActive: boolean) =>
     isActive && (
-      <span className="text-[11px] rounded-full bg-emerald-500/20 px-3 py-0.5 text-emerald-300">
+      <span className="rounded-full border border-white bg-white px-3 py-0.5 text-[11px] text-slate-900">
         Aktivní
       </span>
     );
@@ -375,8 +384,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   // Pokud auth není připravené, nerenderuj obsah (zamezení blikání nechráněného UI)
   if (!authReady) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-black text-slate-100">
-        <div className="text-sm text-slate-200">Načítám přihlášení…</div>
+      <main className="min-h-screen flex items-center justify-center bg-white text-slate-900">
+        <div className="text-sm text-slate-700">Načítám přihlášení…</div>
       </main>
     );
   }
@@ -387,21 +396,21 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden text-slate-50">
+    <main className="relative min-h-screen overflow-hidden text-slate-900">
       <div
         className="fixed inset-0 -z-10 transition-colors duration-200"
         style={{
           backgroundColor:
             backgroundColor === "blue"
               ? "#0a1b3a"
-              : "#000",
+              : "#ffffff",
         }}
       />
 
       <div className="relative flex min-h-screen">
         {/* SIDEBAR */}
-        <aside className="hidden w-60 flex-col border-r border-white/10 bg-slate-950/70 backdrop-blur-2xl lg:flex">
-          <div className="px-5 py-5 border-b border-white/10">
+        <aside className="hidden w-60 flex-col border-r border-slate-900 bg-white font-mono lg:flex">
+          <div className="border-b border-slate-900 px-5 py-5">
             <div className="flex items-center gap-3 justify-center">
               <Image
                 src="/icons/bohemika_logo.png"
@@ -417,7 +426,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             </div>
           </div>
 
-          <nav className="flex-1 px-4 py-5 space-y-1 text-base">
+          <nav className="flex-1 space-y-2 px-4 py-5 text-base">
             {navItems.map((item) => {
               if (item.requiresTeam && !hasTeam) return null;
               return (
@@ -427,8 +436,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                   prefetch={item.key === "team" ? false : true}
                   className={`${navItemBase} ${
                     active === item.key
-                      ? "bg-white/10 text-slate-50"
-                      : "text-slate-200 hover:bg-white/5"
+                      ? navItemActiveClass
+                      : navItemInactiveClass
                   }`}
                 >
                   <span className={navLabelBase}>
@@ -441,11 +450,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             })}
           </nav>
 
-          <div className="mt-auto border-t border-white/10 px-5 py-3.5 text-sm">
+          <div className="mt-auto border-t border-slate-900 px-5 py-3.5 text-sm">
             {user && (
-              <div className="mb-2 text-[11px] text-slate-400">
+              <div className="mb-2 text-[11px] text-slate-600">
                 Přihlášen jako{" "}
-                <span className="block truncate text-slate-200">
+                <span className="block truncate text-slate-900">
                   {user.email ?? ""}
                 </span>
               </div>
@@ -453,7 +462,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             <button
               type="button"
               onClick={handleLogout}
-              className="w-full rounded-xl bg-white text-xs font-medium text-slate-900 py-2 hover:bg-slate-100"
+              className="w-full rounded-xl border border-slate-900 bg-slate-900 py-2 text-xs font-medium text-white hover:bg-black"
             >
               Odhlásit se
             </button>
@@ -462,7 +471,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
         <div className="flex-1 flex flex-col">
           {/* MOBILE TOP BAR */}
-          <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-slate-950/80 px-4 py-3 backdrop-blur lg:hidden">
+          <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-900 bg-white px-4 py-3 font-mono lg:hidden">
             <div className="flex items-center gap-2">
               <Image
                 src="/icons/bohemika_logo.png"
@@ -472,18 +481,18 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 className="h-10 w-auto"
                 priority
               />
-              <span className="text-sm font-semibold text-slate-100">Bohemka.App</span>
+              <span className="text-sm font-semibold text-slate-900">Bohemka.App</span>
             </div>
             <div className="flex items-center gap-2">
               {user && (
-                <span className="max-w-[150px] truncate text-xs text-slate-300">
+                <span className="max-w-[150px] truncate text-xs text-slate-600">
                   {user.email}
                 </span>
               )}
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen((prev) => !prev)}
-                className="flex items-center gap-2 rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-slate-100 bg-white/5 hover:bg-white/10"
+                className="flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-black"
               >
                 <span className="text-base leading-none">☰</span>
                 <span>Menu</span>
@@ -498,7 +507,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                 onClick={() => setMobileMenuOpen(false)}
               />
-              <div className="relative h-full w-80 max-w-[88%] border-r border-white/10 bg-slate-950/95 px-4 py-5 shadow-2xl overflow-y-auto">
+              <div className="relative h-full w-80 max-w-[88%] overflow-y-auto border-r border-slate-900 bg-white px-4 py-5 font-mono shadow-2xl">
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Image
@@ -513,13 +522,13 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                   <button
                     type="button"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 hover:bg-white/10"
+                    className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-semibold text-white hover:bg-black"
                   >
                     Zavřít
                   </button>
                 </div>
 
-                <nav className="space-y-1">
+                <nav className="space-y-2">
                   {navItems.map((item) => {
                     if (item.requiresTeam && !hasTeam) return null;
                     return (
@@ -530,8 +539,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                         onClick={() => setMobileMenuOpen(false)}
                         className={`${navItemBase} ${
                           active === item.key
-                            ? "bg-white/10 text-slate-50"
-                            : "text-slate-200 hover:bg-white/5"
+                            ? navItemActiveClass
+                            : navItemInactiveClass
                         }`}
                       >
                         <span className={navLabelBase}>
@@ -544,11 +553,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                   })}
                 </nav>
 
-                <div className="mt-6 border-t border-white/10 pt-4">
+                <div className="mt-6 border-t border-slate-900 pt-4">
                   {user && (
-                    <div className="mb-3 text-[11px] text-slate-400">
+                    <div className="mb-3 text-[11px] text-slate-600">
                       Přihlášen jako{" "}
-                      <span className="block truncate text-slate-200">
+                      <span className="block truncate text-slate-900">
                         {user.email ?? ""}
                       </span>
                     </div>
@@ -556,7 +565,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                   <button
                     type="button"
                     onClick={handleLogout}
-                    className="w-full rounded-xl bg-white text-xs font-medium text-slate-900 py-2 hover:bg-slate-100"
+                    className="w-full rounded-xl border border-slate-900 bg-slate-900 py-2 text-xs font-medium text-white hover:bg-black"
                   >
                     Odhlásit se
                   </button>
@@ -570,7 +579,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="fixed bottom-4 right-4 z-20 flex items-center gap-2 rounded-full bg-emerald-500 text-slate-900 px-4 py-2 shadow-lg shadow-emerald-500/40 hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300 lg:hidden"
+              className="fixed bottom-4 right-4 z-20 flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-4 py-2 font-mono text-white shadow-lg shadow-black/35 hover:bg-black focus:outline-none focus:ring-2 focus:ring-slate-400 lg:hidden"
             >
               <span className="text-lg leading-none">☰</span>
               <span className="text-sm font-semibold">Menu</span>
@@ -578,9 +587,16 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           )}
 
           {/* CONTENT / PAYWALL */}
-          <div className="flex-1 flex items-start justify-center px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+          <div
+            className={[
+              "app-content flex-1 flex items-start font-mono",
+              isFullBleedPage
+                ? "justify-start px-0 py-6 sm:py-8 lg:px-0"
+                : "justify-center px-3 py-6 sm:px-4 sm:py-8 lg:px-8",
+            ].join(" ")}
+          >
             {loadingProfile && user ? (
-              <div className="text-sm text-slate-200">
+              <div className="text-sm text-slate-700">
                 Načítám profil a předplatné…
               </div>
             ) : showPaywall ? (

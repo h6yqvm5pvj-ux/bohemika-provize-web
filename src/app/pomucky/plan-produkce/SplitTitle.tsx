@@ -15,12 +15,12 @@ export default function SplitTitle({
     <div
       className={`relative inline-flex ${
         wrap ? "flex-wrap" : "flex-nowrap whitespace-nowrap"
-      } text-5xl sm:text-6xl font-extrabold tracking-tight text-white ${className}`}
+      } text-5xl sm:text-6xl font-extrabold tracking-tight text-slate-900 ${className}`}
     >
       {letters.map((ch, idx) => (
         <span
           key={idx}
-          className="inline-block animate-split-fade"
+          className="inline-block animate-split-fade text-current"
           style={{ animationDelay: `${idx * 45}ms` }}
         >
           {ch === " " ? "\u00A0" : ch}

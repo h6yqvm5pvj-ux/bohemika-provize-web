@@ -19,11 +19,18 @@ export default function RecordOfMeetingPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-5xl space-y-6">
-        {/* header… */}
+      <div className="w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
+        <header className="space-y-1">
+          <h1 className="text-5xl font-semibold leading-none tracking-tight text-slate-900 sm:text-6xl">
+            Záznam z jednání
+          </h1>
+          <p className="text-sm text-slate-600">
+            Vyber typ sjednávaného pojištění a vyplň parametry ve stejném stylu jako zbytek aplikace.
+          </p>
+        </header>
 
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 sm:px-5 sm:py-5 shadow-[0_18px_60px_rgba(0,0,0,0.8)]">
-          <p className="text-xs text-slate-300 mb-3">
+        <section className="rounded-3xl border border-slate-900 bg-white  px-4 py-4 sm:px-5 sm:py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+          <p className="text-xs text-slate-600 mb-3">
             Vyber, jaký typ pojištění sjednáváš…
           </p>
 
@@ -37,12 +44,12 @@ export default function RecordOfMeetingPage() {
                   onClick={() => setSelectedType(t.id)}
                   className={`min-w-[130px] rounded-2xl px-3 py-2 text-left text-xs sm:text-sm transition border ${
                     active
-                      ? "bg-sky-500/90 border-white/80 text-white shadow-lg shadow-sky-500/40"
-                      : "bg-white/5 border-white/20 text-slate-100 hover:bg-white/10"
+                      ? "bg-slate-900 border-slate-900 text-white"
+                      : "bg-white border-slate-900 text-slate-900 hover:bg-slate-100"
                   }`}
                 >
                   <div className="font-semibold">{t.shortTitle}</div>
-                  <div className="text-[11px] text-slate-200/80">
+                  <div className="text-[11px] text-slate-900">
                     {t.subtitle}
                   </div>
                 </button>

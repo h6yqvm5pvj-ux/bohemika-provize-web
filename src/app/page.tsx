@@ -44,7 +44,7 @@ import {
 function SplitTextHeading({ text }: { text: string }) {
   const words = text.split(" ").filter(Boolean);
   return (
-    <div className="text-5xl sm:text-6xl font-extrabold tracking-tight text-white leading-tight flex flex-wrap">
+    <div className="flex flex-wrap text-5xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-6xl">
       <style jsx>{`
         @keyframes splitRise {
           0% {
@@ -72,7 +72,7 @@ function SplitTextHeading({ text }: { text: string }) {
           {Array.from(word).map((char, charIdx) => (
             <span
               key={`${word}-${idx}-${char}-${charIdx}`}
-              className="inline-block text-white drop-shadow-[0_14px_34px_rgba(0,0,0,0.6)]"
+              className="inline-block text-slate-900"
               style={{
                 animation:
                   "splitRise 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
@@ -712,7 +712,7 @@ export default function HomePage() {
         );
         return (
           <section
-            className={`relative z-30 rounded-3xl border border-white/12 bg-slate-900/80 px-5 py-5 sm:px-8 sm:py-7 backdrop-blur-2xl shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3 ${
+            className={`relative z-30 space-y-3 rounded-[28px] border border-slate-900 bg-white px-5 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-8 sm:py-7 ${
               reorderEnabled && draggingSection === id ? "opacity-50" : ""
             } ${reorderEnabled ? "cursor-move" : ""}`}
             draggable={reorderEnabled}
@@ -725,7 +725,7 @@ export default function HomePage() {
                 <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
                   Rychlé akce
                 </p>
-                <h2 className="text-lg sm:text-xl font-semibold text-slate-50">
+                <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">
                   Pomůcky po ruce
                 </h2>
               </div>
@@ -734,28 +734,28 @@ export default function HomePage() {
                   type="button"
                   ref={qaButtonRef}
                   onClick={() => setQaPickerOpen((v) => !v)}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/90 hover:border-emerald-300/60 hover:bg-white/10 transition"
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
                 >
                   + Přidat
                 </button>
                 {qaPickerOpen && (
                   <div
-                    className="absolute right-0 top-full mt-2 w-72 max-h-[320px] overflow-auto rounded-2xl border border-white/15 bg-slate-950/95 backdrop-blur-2xl p-3 shadow-[0_18px_50px_rgba(0,0,0,0.75)] z-50 space-y-2"
+                    className="absolute right-0 top-full z-50 mt-2 max-h-[320px] w-72 space-y-2 overflow-auto rounded-2xl border border-slate-900 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.15)]"
                   >
                     <div className="flex items-center justify-between">
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
                         Pomůcky
                       </div>
                       <button
                         type="button"
                         onClick={() => setQaPickerOpen(false)}
-                        className="text-[12px] text-slate-400 hover:text-slate-200"
+                        className="text-[12px] text-slate-500 hover:text-slate-900"
                       >
                         ×
                       </button>
                     </div>
                     {availableQA.length === 0 ? (
-                      <p className="text-xs text-slate-300">Vše už máš přidané.</p>
+                      <p className="text-xs text-slate-600">Vše už máš přidané.</p>
                     ) : (
                       availableQA.map((opt) => (
                         <button
@@ -765,10 +765,10 @@ export default function HomePage() {
                             persistQuickActions((prev) => [...prev, opt]);
                             setQaPickerOpen(false);
                           }}
-                          className="w-full text-left rounded-xl border border-white/12 bg-white/5 px-3 py-2 text-sm text-slate-100 hover:border-emerald-300/50 hover:bg-white/10 transition"
+                          className="w-full rounded-xl border border-slate-900 bg-slate-50 px-3 py-2 text-left text-sm text-slate-900 transition hover:bg-white"
                         >
                           <div className="font-semibold">{opt.title}</div>
-                          <div className="text-[11px] text-slate-400">
+                          <div className="text-[11px] text-slate-500">
                             {opt.category ?? "Pomůcky"}
                           </div>
                         </button>
@@ -780,7 +780,7 @@ export default function HomePage() {
             </div>
 
             {quickActions.length === 0 ? (
-              <p className="text-sm text-slate-300">
+              <p className="text-sm text-slate-600">
                 Přidej si sem nejčastěji používané pomůcky a měj je na jedno kliknutí.
               </p>
             ) : (
@@ -788,9 +788,9 @@ export default function HomePage() {
                 {quickActions.map((qa) => (
                   <div
                     key={qa.key}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-3 py-1.5 text-sm text-slate-100"
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-3 py-1.5 text-sm text-slate-900"
                   >
-                    <Link href={qa.href} className="hover:text-emerald-200">
+                    <Link href={qa.href} className="hover:text-slate-700">
                       {qa.title}
                     </Link>
                     <button
@@ -798,7 +798,7 @@ export default function HomePage() {
                       onClick={() =>
                         persistQuickActions((prev) => prev.filter((item) => item.key !== qa.key))
                       }
-                      className="text-[12px] text-slate-400 hover:text-rose-200"
+                      className="text-[12px] text-slate-500 hover:text-rose-600"
                       aria-label={`Odebrat ${qa.title}`}
                     >
                       ×
@@ -1056,14 +1056,15 @@ export default function HomePage() {
   return (
     <AppLayout active="home">
       {user && <AutoAnniversaryModal userId={user.uid} />}
-      <div className="w-full max-w-5xl space-y-6 px-3 sm:px-0 min-w-0">
+      <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+        <div className="mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
         <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SplitTextHeading text={`Produkce ${monthLabelCapitalized} ${year}`} />
           <div className="relative self-start">
             <button
               type="button"
               onClick={() => setWidgetPanelOpen((prev) => !prev)}
-              className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/90 hover:border-white/35 hover:bg-white/10 transition"
+              className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
             >
               <svg
                 aria-hidden="true"
@@ -1091,22 +1092,22 @@ export default function HomePage() {
             </button>
 
             {widgetPanelOpen && (
-              <div className="absolute right-0 z-20 mt-2 w-72 rounded-2xl border border-white/15 bg-slate-950/90 backdrop-blur-2xl p-3 shadow-[0_18px_50px_rgba(0,0,0,0.75)]">
+              <div className="absolute right-0 z-20 mt-2 w-72 rounded-2xl border border-slate-900 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.15)]">
                 <div className="flex items-center justify-between gap-2 pb-2">
-                  <div className="text-sm font-semibold text-white">
+                  <div className="text-sm font-semibold text-slate-900">
                     Přizpůsobení domova
                   </div>
                   <button
                     type="button"
                     onClick={() => setWidgetPanelOpen(false)}
-                    className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10 transition"
+                    className="rounded-full border border-slate-900 bg-slate-100 px-2 py-1 text-xs text-slate-700 transition hover:bg-white"
                     aria-label="Zavřít"
                   >
                     ×
                   </button>
                 </div>
 
-                <div className="space-y-2 text-sm text-slate-200">
+                <div className="space-y-2 text-sm text-slate-700">
                     {[
                       { key: "productionSummary", label: "Přehled produkce", disabled: false },
                       { key: "monthlyGoal", label: "Měsíční cíl", disabled: false },
@@ -1127,14 +1128,14 @@ export default function HomePage() {
                         key={opt.key}
                         className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${
                           disabled
-                            ? "cursor-not-allowed border-white/10 bg-white/5 opacity-50"
-                            : "cursor-pointer border-white/15 bg-white/5 hover:border-white/30"
+                            ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-50"
+                            : "cursor-pointer border-slate-900 bg-slate-50 hover:bg-white"
                         }`}
                       >
                         <div className="flex flex-col">
                           <span>{opt.label}</span>
                           {opt.note && disabled ? (
-                            <span className="text-[11px] text-slate-400">
+                            <span className="text-[11px] text-slate-500">
                               {opt.note}
                             </span>
                           ) : null}
@@ -1144,23 +1145,23 @@ export default function HomePage() {
                           checked={checked}
                           disabled={disabled}
                           onChange={() => handleWidgetToggle(opt.key as keyof HomeWidgets)}
-                          className="h-4 w-4 accent-emerald-400"
+                          className="h-4 w-4 accent-slate-900"
                         />
                       </label>
                     );
                   })}
                 </div>
-                <div className="mt-3 rounded-xl border border-white/12 bg-white/5 p-3 flex items-start justify-between gap-3">
+                <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-900 bg-slate-50 p-3">
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-semibold text-white">Režim výkonu</span>
-                    <span className="text-[11px] text-slate-400">
+                    <span className="text-sm font-semibold text-slate-900">Režim výkonu</span>
+                    <span className="text-[11px] text-slate-500">
                       {performanceMode === "lite"
                         ? "Odlehčené vizuály a menší efekty pro slabší zařízení."
                         : "Plné vizuály a efekty."}
                     </span>
                   </div>
-                  <label className="inline-flex items-center gap-2 text-xs text-slate-100">
-                    <span className="text-[11px] uppercase tracking-[0.14em] text-slate-400">
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                    <span className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
                       {performanceMode === "lite" ? "Odlehčený" : "Plný"}
                     </span>
                     <input
@@ -1169,32 +1170,32 @@ export default function HomePage() {
                       onChange={() =>
                         updatePerformanceMode(performanceMode === "lite" ? "default" : "lite")
                       }
-                      className="h-4 w-4 accent-emerald-400"
+                      className="h-4 w-4 accent-slate-900"
                     />
                   </label>
                 </div>
-                <div className="mt-3 rounded-xl border border-white/12 bg-white/5 p-3 flex items-start justify-between gap-3">
+                <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-900 bg-slate-50 p-3">
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-semibold text-white">Ukládání</span>
-                    <span className="text-[11px] text-slate-400">
+                    <span className="text-sm font-semibold text-slate-900">Ukládání</span>
+                    <span className="text-[11px] text-slate-500">
                       {layoutScope === "cloud"
                         ? "Synchronizuje se s tvým profilem (všechna zařízení)."
                         : "Uloží se jen do tohoto zařízení/prohlížeče."}
                     </span>
                   </div>
-                  <label className="inline-flex items-center gap-2 text-xs text-slate-100">
-                    <span className="text-[11px] uppercase tracking-[0.14em] text-slate-400">
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                    <span className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
                       {layoutScope === "cloud" ? "Cloud" : "Jen zařízení"}
                     </span>
                     <input
                       type="checkbox"
                       checked={layoutScope === "cloud"}
                       onChange={handleScopeToggle}
-                      className="h-4 w-4 accent-emerald-400"
+                      className="h-4 w-4 accent-slate-900"
                     />
                   </label>
                 </div>
-                <p className="mt-2 text-[11px] text-slate-400">
+                <p className="mt-2 text-[11px] text-slate-500">
                   {layoutScope === "cloud"
                     ? "Nastavení i rozložení se uloží do profilu a funguje na všech zařízeních."
                     : "Nastavení zůstává jen v tomto prohlížeči (localStorage)."}
@@ -1231,19 +1232,19 @@ export default function HomePage() {
                         }
                       : undefined
                   }
-                  className={`${reorderEnabled ? "relative cursor-grab active:cursor-grabbing" : ""} ${
+                  className={`font-mono ${reorderEnabled ? "relative cursor-grab active:cursor-grabbing" : ""} ${
                     isDragging
-                      ? "ring-2 ring-emerald-300 ring-offset-2 ring-offset-slate-900/80 rounded-3xl"
+                      ? "rounded-3xl ring-2 ring-slate-800 ring-offset-2 ring-offset-white"
                       : ""
                   } ${
                     isHoverTarget
-                      ? "ring-2 ring-white/30 ring-offset-2 ring-offset-slate-900/80 rounded-3xl bg-white/5"
+                      ? "rounded-3xl bg-slate-100 ring-2 ring-slate-400 ring-offset-2 ring-offset-white"
                       : ""
                   }`}
                 >
                   {reorderEnabled && (
                     <div className="pointer-events-none absolute right-3 top-3 z-10">
-                      <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/20 px-3 py-1 text-[11px] font-semibold text-emerald-50 shadow-sm">
+                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-[11px] font-semibold text-white shadow-sm">
                         ⠿ Táhni pro přesun
                       </span>
                     </div>
@@ -1254,8 +1255,7 @@ export default function HomePage() {
             );
           })}
         </div>
-
-
+        </div>
       </div>
     </AppLayout>
   );

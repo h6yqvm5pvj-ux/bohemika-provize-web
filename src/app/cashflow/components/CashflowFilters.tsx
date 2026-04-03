@@ -25,7 +25,7 @@ export function CashflowFilters({
   onProductChange,
 }: CashflowFiltersProps) {
   const baseChip =
-    "rounded-full border px-3 py-1.5 transition text-xs sm:text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]";
+    "rounded-full border px-3 py-1.5 transition text-xs sm:text-sm font-medium";
 
   return (
     <section
@@ -37,7 +37,7 @@ export function CashflowFilters({
         <div className="px-1 py-1">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-300/80">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-600">
                 Filtrování smluv
               </p>
             </div>
@@ -48,8 +48,8 @@ export function CashflowFilters({
               onClick={() => onScopeChange("combined")}
               className={`${baseChip} ${
                 scopeFilter === "combined"
-                  ? "border-emerald-300/70 bg-gradient-to-br from-emerald-300/55 to-teal-300/35 text-slate-950 shadow-[0_10px_24px_rgba(52,211,153,0.35)]"
-                  : "border-white/25 bg-white/6 text-slate-100 hover:bg-white/12"
+                  ? "border-slate-900 bg-slate-950 text-white"
+                  : "border-slate-300 bg-white text-slate-800 hover:border-slate-900"
               }`}
             >
               Kombinovaný
@@ -59,8 +59,8 @@ export function CashflowFilters({
               onClick={() => onScopeChange("own")}
               className={`${baseChip} ${
                 scopeFilter === "own"
-                  ? "border-emerald-300/70 bg-gradient-to-br from-emerald-300/55 to-teal-300/35 text-slate-950 shadow-[0_10px_24px_rgba(52,211,153,0.35)]"
-                  : "border-white/25 bg-white/6 text-slate-100 hover:bg-white/12"
+                  ? "border-slate-900 bg-slate-950 text-white"
+                  : "border-slate-300 bg-white text-slate-800 hover:border-slate-900"
               }`}
             >
               Vlastní
@@ -70,8 +70,8 @@ export function CashflowFilters({
               onClick={() => onScopeChange("team")}
               className={`${baseChip} ${
                 scopeFilter === "team"
-                  ? "border-emerald-300/70 bg-gradient-to-br from-emerald-300/55 to-teal-300/35 text-slate-950 shadow-[0_10px_24px_rgba(52,211,153,0.35)]"
-                  : "border-white/25 bg-white/6 text-slate-100 hover:bg-white/12"
+                  ? "border-slate-900 bg-slate-950 text-white"
+                  : "border-slate-300 bg-white text-slate-800 hover:border-slate-900"
               }`}
             >
               Týmové
@@ -83,7 +83,7 @@ export function CashflowFilters({
       <div className="px-1 py-1">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-300/80">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-600">
               Filtrování produktů
             </p>
           </div>
@@ -96,8 +96,8 @@ export function CashflowFilters({
               onClick={() => onProductChange(option.value)}
               className={`${baseChip} ${
                 productFilter === option.value
-                  ? "border-cyan-300/70 bg-gradient-to-br from-cyan-300/55 to-sky-300/35 text-slate-950 shadow-[0_10px_24px_rgba(56,189,248,0.35)]"
-                  : "border-white/25 bg-white/6 text-slate-100 hover:bg-white/12"
+                  ? "border-slate-900 bg-slate-950 text-white"
+                  : "border-slate-300 bg-white text-slate-800 hover:border-slate-900"
               }`}
             >
               {option.label}

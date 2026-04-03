@@ -489,7 +489,7 @@ export default function PlanProdukcePage() {
     return (
       <AppLayout active="tools">
         <div className="w-full max-w-4xl mx-auto">
-          <p className="text-sm text-slate-200">
+          <p className="text-sm text-slate-800">
             Přihlas se, abys mohl plánovat produkci.
           </p>
         </div>
@@ -503,14 +503,14 @@ export default function PlanProdukcePage() {
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
             <SplitTitle text="Plán produkce" />
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-slate-600">
               Naplánuj počet smluv a pojistné, spočítej orientační okamžitou
               provizi (pozice: {position ?? "neznámá"}).
             </p>
           </div>
           <Link
             href="/pomucky"
-            className="text-xs text-slate-200 border border-white/20 rounded-full px-3 py-1.5 hover:bg-white/10 transition"
+            className="text-xs text-slate-800 border border-slate-300 rounded-full px-3 py-1.5 hover:bg-slate-100 transition"
           >
             ← Zpět na pomůcky
           </Link>
@@ -548,19 +548,19 @@ export default function PlanProdukcePage() {
           />
         </div>
 
-        <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-2">
+        <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-2">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-300">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-600">
                 Odhad okamžité provize
               </p>
-              <p className="text-sm text-slate-200">
+              <p className="text-sm text-slate-800">
                 Součet všech sekcí podle zadaného počtu smluv a pojistného.
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-slate-400">Celkem</p>
-              <p className="text-2xl font-semibold text-white">
+              <p className="text-xs text-slate-500">Celkem</p>
+              <p className="text-2xl font-semibold text-slate-900">
                 {formatMoney(estimates.total)}
               </p>
             </div>
@@ -580,33 +580,33 @@ export default function PlanProdukcePage() {
             type="button"
             onClick={handleGeneratePdf}
             disabled={generating}
-            className="inline-flex items-center gap-2 rounded-full border border-emerald-400/70 bg-emerald-500/30 px-8 py-2.5 text-sm sm:text-base font-semibold text-emerald-50 shadow-[0_0_25px_rgba(16,185,129,0.55)] hover:bg-emerald-500/40 hover:border-emerald-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-full border border-emerald-400/70 bg-emerald-500/30 px-8 py-2.5 text-sm sm:text-base font-semibold text-emerald-800 shadow-[0_0_25px_rgba(16,185,129,0.55)] hover:bg-emerald-500/40 hover:border-emerald-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {generating ? "Generuji PDF…" : "Vygenerovat PDF"}
           </button>
         </div>
 
         {errorText && (
-          <p className="text-xs text-amber-200 bg-amber-900/40 border border-amber-500/60 rounded-xl px-3 py-2">
+          <p className="text-xs text-amber-800 bg-amber-900/40 border border-amber-500/60 rounded-xl px-3 py-2">
             {errorText}
           </p>
         )}
 
         {position === null && (
-          <p className="text-xs text-amber-200 bg-amber-900/40 border border-amber-500/60 rounded-xl px-3 py-2">
+          <p className="text-xs text-amber-800 bg-amber-900/40 border border-amber-500/60 rounded-xl px-3 py-2">
             Nepodařilo se načíst tvoji pozici. Odhad provize může být nepřesný.
           </p>
         )}
 
         {previewHtml && (
-          <section className="mt-2 rounded-3xl border border-white/15 bg-slate-950/70 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.9)] space-y-3">
-            <h2 className="text-sm font-semibold text-slate-50">
+          <section className="mt-2 rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.9)] space-y-3">
+            <h2 className="text-sm font-semibold text-slate-900">
               Náhled PDF
             </h2>
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-slate-600">
               Náhled odpovídá tomu, co stáhneš jako PDF.
             </p>
-            <div className="mt-2 h-[640px] rounded-2xl border border-white/10 overflow-hidden bg-slate-900/60">
+            <div className="mt-2 h-[640px] rounded-2xl border border-slate-300 overflow-hidden bg-white">
               <iframe
                 srcDoc={previewHtml}
                 title="Náhled PDF Plán produkce"
@@ -638,19 +638,19 @@ function PlanCard({
   estimate: BlockEstimate;
 }) {
   return (
-    <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
+    <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
       <div className="text-center">
-        <h2 className="text-lg font-semibold text-white">{title}</h2>
+        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       </div>
 
       <div className="space-y-2">
-        <label className="block text-xs font-semibold text-slate-200">
+        <label className="block text-xs font-semibold text-slate-800">
           Počet smluv
         </label>
         <input
           type="number"
           min={0}
-          className="w-full rounded-xl bg-slate-900 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+          className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
           value={contracts}
           onChange={(e) => onContractsChange(e.target.value)}
           placeholder="např. 5"
@@ -658,20 +658,20 @@ function PlanCard({
       </div>
 
       <div className="space-y-2">
-        <label className="block text-xs font-semibold text-slate-200">
+        <label className="block text-xs font-semibold text-slate-800">
           {premiumLabel}
         </label>
         <input
           type="number"
           min={0}
-          className="w-full rounded-xl bg-slate-900 border border-white/15 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+          className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
           value={premium}
           onChange={(e) => onPremiumChange(e.target.value)}
           placeholder="např. 10000"
         />
       </div>
 
-      <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-slate-100 space-y-1">
+      <div className="rounded-2xl border border-slate-900 bg-slate-100 px-4 py-3 text-sm text-slate-900 space-y-1">
         <div className="flex items-center justify-between">
           <span>Průměr pojistného / smlouva</span>
           <span className="font-semibold">

@@ -44,8 +44,8 @@ function ToggleChip({
       onClick={onClick}
       className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
         active
-          ? "border-emerald-400/80 bg-emerald-500/20 text-emerald-50 shadow-sm shadow-emerald-400/40"
-          : "border-white/20 bg-white/5 text-slate-200 hover:bg-white/10"
+          ? "border-slate-900 bg-slate-900 text-white"
+          : "border-slate-900 bg-white text-slate-800 hover:bg-slate-100"
       }`}
     >
       {label}
@@ -69,14 +69,14 @@ function RiskRow({
   onToggle: (key: string) => void;
 }) {
   return (
-    <div className="space-y-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+    <div className="space-y-2 rounded-2xl border border-slate-300 bg-white px-4 py-3">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div className="text-sm font-semibold text-slate-100">{title}</div>
+        <div className="text-sm font-semibold text-slate-900">{title}</div>
         <input
           type="number"
           min={0}
           placeholder="Pojistná částka v Kč"
-          className="w-full sm:w-56 rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+          className="w-full sm:w-56 rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
           value={amount}
           onChange={(e) => onAmountChange(e.target.value)}
         />
@@ -175,16 +175,16 @@ export function PropertyRecordForm() {
   return (
     <div className="space-y-4">
       {/* Stavba */}
-      <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.8)] space-y-3">
+      <section className="rounded-3xl border border-slate-900 bg-white  px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
         <button
           type="button"
           onClick={() => setOpenBuilding((v) => !v)}
           className="flex w-full items-center justify-between text-left"
         >
-          <span className="text-sm sm:text-base font-semibold text-white">
+          <span className="text-sm sm:text-base font-semibold text-slate-900">
             Stavba
           </span>
-          <span className="text-xs text-slate-300">
+          <span className="text-xs text-slate-600">
             {openBuilding ? "▲" : "▼"}
           </span>
         </button>
@@ -245,16 +245,16 @@ export function PropertyRecordForm() {
       </section>
 
       {/* Domácnost */}
-      <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.8)] space-y-3">
+      <section className="rounded-3xl border border-slate-900 bg-white  px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
         <button
           type="button"
           onClick={() => setOpenHousehold((v) => !v)}
           className="flex w-full items-center justify-between text-left"
         >
-          <span className="text-sm sm:text-base font-semibold text-white">
+          <span className="text-sm sm:text-base font-semibold text-slate-900">
             Domácnost
           </span>
-          <span className="text-xs text-slate-300">
+          <span className="text-xs text-slate-600">
             {openHousehold ? "▲" : "▼"}
           </span>
         </button>
@@ -285,24 +285,24 @@ export function PropertyRecordForm() {
       </section>
 
       {/* Připojištění */}
-      <section className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.8)] space-y-3">
+      <section className="rounded-3xl border border-slate-900 bg-white  px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
         <button
           type="button"
           onClick={() => setOpenExtra((v) => !v)}
           className="flex w-full items-center justify-between text-left"
         >
-          <span className="text-sm sm:text-base font-semibold text-white">
+          <span className="text-sm sm:text-base font-semibold text-slate-900">
             Připojištění
           </span>
-          <span className="text-xs text-slate-300">
+          <span className="text-xs text-slate-600">
             {openExtra ? "▲" : "▼"}
           </span>
         </button>
 
         {openExtra && (
           <div className="space-y-3">
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 flex items-center justify-between">
-              <div className="text-sm font-semibold text-slate-100">
+            <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 flex items-center justify-between">
+              <div className="text-sm font-semibold text-slate-900">
                 Asistenční služby
               </div>
               <ToggleChip
@@ -312,9 +312,9 @@ export function PropertyRecordForm() {
               />
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 space-y-2">
+            <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-slate-100">
+                <div className="text-sm font-semibold text-slate-900">
                   Odpovědnost v běžném občanském životě
                 </div>
                 <ToggleChip
@@ -328,16 +328,16 @@ export function PropertyRecordForm() {
                   type="number"
                   min={0}
                   placeholder="Pojistná částka v Kč"
-                  className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                   value={extraLiabilityAmount}
                   onChange={(e) => setExtraLiabilityAmount(e.target.value)}
                 />
               )}
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 space-y-3">
+            <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-slate-100">
+                <div className="text-sm font-semibold text-slate-900">
                   Odpovědnost vlastníka, držitele nebo nájemce nemovité věci
                 </div>
                 <ToggleChip
@@ -352,7 +352,7 @@ export function PropertyRecordForm() {
                     type="number"
                     min={0}
                     placeholder="Pojistná částka v Kč"
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                     value={extraPropertyLiabilityAmount}
                     onChange={(e) =>
                       setExtraPropertyLiabilityAmount(e.target.value)
@@ -379,9 +379,9 @@ export function PropertyRecordForm() {
               )}
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 space-y-2">
+            <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-slate-100">
+                <div className="text-sm font-semibold text-slate-900">
                   Odpovědnost vlastníka nebo opatrovatele zvířete
                 </div>
                 <ToggleChip
@@ -395,7 +395,7 @@ export function PropertyRecordForm() {
                   type="number"
                   min={0}
                   placeholder="Pojistná částka v Kč"
-                  className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                   value={extraAnimalAmount}
                   onChange={(e) => setExtraAnimalAmount(e.target.value)}
                 />

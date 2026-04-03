@@ -55,6 +55,7 @@ type NotificationSettings = {
     push: boolean;
   };
 };
+type BackgroundPreset = "white" | "blue";
 
 const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   types: {
@@ -81,6 +82,34 @@ const SETTINGS_KEYS = {
 const normalizeEmail = (email?: string | null) =>
   (email ?? "").trim().toLowerCase();
 
+const hasNonEmptyToken = (value: unknown): boolean =>
+  typeof value === "string" && value.trim().length > 0;
+
+const hasAnyPushToken = (data: Record<string, unknown>): boolean => {
+  if (hasNonEmptyToken(data.fcmToken)) return true;
+  if (hasNonEmptyToken(data.pushToken)) return true;
+  if (hasNonEmptyToken(data.notificationToken)) return true;
+
+  const tokenArrays = [data.fcmTokens, data.pushTokens, data.notificationTokens];
+  for (const raw of tokenArrays) {
+    if (Array.isArray(raw) && raw.some((item) => hasNonEmptyToken(item))) {
+      return true;
+    }
+  }
+
+  const tokenMaps = [data.fcmTokensByDevice, data.pushTokensByDevice];
+  for (const raw of tokenMaps) {
+    if (raw && typeof raw === "object") {
+      const values = Object.values(raw as Record<string, unknown>);
+      if (values.some((item) => hasNonEmptyToken(item))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+};
+
 export default function SettingsPage() {
   const router = useRouter();
 
@@ -105,7 +134,7 @@ export default function SettingsPage() {
   const [notificationSettings, setNotificationSettings] =
     useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
-  const [backgroundColor, setBackgroundColor] = useState<"black" | "blue">("black");
+  const [backgroundColor, setBackgroundColor] = useState<BackgroundPreset>("white");
   const [reduceMotion, setReduceMotion] = useState(false);
   const [tipsterMode, setTipsterMode] = useState(false);
 
@@ -213,18 +242,18 @@ export default function SettingsPage() {
             setNotifyMinutes(data.notifyMinutes);
           }
           if (typeof data.backgroundColor === "string") {
-            const c = data.backgroundColor as "black" | "blue";
-            setBackgroundColor(c);
+            const c = data.backgroundColor === "blue" ? "blue" : "white";
+            setBackgroundColor(c as BackgroundPreset);
             if (typeof window !== "undefined") {
               window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, c);
             }
           } else if (typeof window !== "undefined") {
             const stored = window.localStorage.getItem(
               SETTINGS_KEYS.backgroundColor
-            ) as "black" | "blue" | null;
-            if (stored) setBackgroundColor(stored);
+            ) as BackgroundPreset | "black" | null;
+            if (stored) setBackgroundColor(stored === "blue" ? "blue" : "white");
           } else {
-            setBackgroundColor("black");
+            setBackgroundColor("white");
           }
 
           if (typeof data.reduceMotion === "boolean") {
@@ -263,11 +292,7 @@ export default function SettingsPage() {
             }
           }
 
-          if (typeof data.fcmToken === "string" && data.fcmToken.trim().length > 0) {
-            setFcmActive(true);
-          } else {
-            setFcmActive(false);
-          }
+          setFcmActive(hasAnyPushToken(data as Record<string, unknown>));
 
           if (data.notificationSettings) {
             const incoming = data.notificationSettings as NotificationSettings;
@@ -294,13 +319,13 @@ export default function SettingsPage() {
             );
             const storedColor = window.localStorage.getItem(
               SETTINGS_KEYS.backgroundColor
-            ) as "black" | "blue" | null;
+            ) as BackgroundPreset | "black" | null;
 
             if (storedPos) setPosition(storedPos);
             if (storedMode) setMode(storedMode);
             const n = storedGoal ? Number(storedGoal) : 0;
             if (Number.isFinite(n)) setMonthlyGoal(n);
-            if (storedColor) setBackgroundColor(storedColor);
+            if (storedColor) setBackgroundColor(storedColor === "blue" ? "blue" : "white");
             const storedMotion = window.localStorage.getItem(
               SETTINGS_KEYS.reduceMotion
             );
@@ -390,14 +415,6 @@ export default function SettingsPage() {
     await persistNotificationSettings(next);
   };
 
-  const toggleNotificationChannel = async (key: keyof NotificationSettings["channels"]) => {
-    const next = {
-      ...notificationSettings,
-      channels: { ...notificationSettings.channels, [key]: !notificationSettings.channels[key] },
-    };
-    await persistNotificationSettings(next);
-  };
-
   const handleTestPush = async () => {
     if (!user) {
       setTestPushStatus("Nejsi přihlášený.");
@@ -432,7 +449,7 @@ export default function SettingsPage() {
     }
   };
 
-  const handleBackgroundPreset = async (preset: "black" | "blue") => {
+  const handleBackgroundPreset = async (preset: BackgroundPreset) => {
     const color = preset;
     setBackgroundColor(color);
 
@@ -537,135 +554,151 @@ export default function SettingsPage() {
   }
 
   const userEmail = user.email ?? "Neznámý e-mail";
+  const positionDisplay = POSITIONS.find((p) => p.id === position)?.label ?? position;
+  const modeDisplay = COMMISSION_MODES.find((m) => m.id === mode)?.label ?? mode;
+  const enabledNotificationTypes = Object.values(notificationSettings.types).filter(Boolean).length;
 
   return (
     <AppLayout active="settings">
-      <div className="w-full max-w-5xl space-y-6">
+      <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+        <div className="mx-auto w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
         {/* HEADER */}
         <header className="mb-2">
-          <SplitTitle text="Nastavení" />
-          <p className="mt-1 text-sm text-slate-300 max-w-xl">
-            Uprav si výchozí pozici, režim provizí a svůj měsíční cíl.
-          </p>
+          <SplitTitle text="Nastavení" className="font-mono !text-slate-900" />
         </header>
 
         {loadingMeta ? (
-          <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-2xl px-6 py-5 text-sm text-slate-200">
+          <div className="rounded-[28px] border border-slate-900 bg-slate-100 px-6 py-5 text-sm text-slate-700">
             Načítám nastavení…
           </div>
         ) : (
           <>
-            {/* Pozice & režim provizí */}
-            {canChangePosition && (
-              <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
-                    Pozice &amp; režim provizí
-                  </h2>
-                </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+                Pozice: {positionDisplay}
+              </span>
+              <span className="rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+                Režim: {modeDisplay}
+              </span>
+              <span
+                className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
+                  tipsterMode ? "border-slate-900 bg-slate-900 text-white" : "border-slate-900 bg-white text-slate-700"
+                }`}
+              >
+                Tipař: {tipsterMode ? "ON" : "OFF"}
+              </span>
+              <span className="rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+                Notifikace: {enabledNotificationTypes}/4
+              </span>
+            </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* Pozice */}
-                  <div className="space-y-2">
-                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide">
-                      Výchozí pozice
-                    </label>
-                    <select
-                      className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                      value={position}
-                      onChange={(e) =>
-                        handlePositionChange(e.target.value as Position)
-                      }
+            <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+              <section className="h-full space-y-4 rounded-[28px] border border-slate-900 bg-slate-100 px-6 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-8 sm:py-6">
+                <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
+                  Výchozí kalkulačka
+                </h2>
+
+                {canChangePosition ? (
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                        Výchozí pozice
+                      </label>
+                      <select
+                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
+                        value={position}
+                        onChange={(e) =>
+                          handlePositionChange(e.target.value as Position)
+                        }
+                      >
+                        {POSITIONS.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-slate-500">
+                        Tahle pozice se použije jako výchozí v kalkulačce.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                        Výchozí režim provizí
+                      </label>
+                      <select
+                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
+                        value={mode}
+                        onChange={(e) =>
+                          handleModeChange(
+                            e.target.value as CommissionMode
+                          )
+                        }
+                      >
+                        {COMMISSION_MODES.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-slate-500">
+                        Zrychlený / běžný režim se používá u životního pojištění.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    Pozice je nastavena administrátorem.
+                  </p>
+                )}
+
+                <div className="space-y-3 rounded-2xl border border-slate-900 bg-white px-4 py-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-700">
+                        Režim tipařské spolupráce
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        V kalkulačce se zobrazí jen okamžitá provize v nastaveném procentu.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTipsterModeChange(!tipsterMode)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                        tipsterMode
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-900 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                      aria-pressed={tipsterMode}
                     >
-                      {POSITIONS.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.label}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-slate-400">
-                      Tahle pozice se použije jako výchozí v kalkulačce.
-                    </p>
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full ${
+                          tipsterMode ? "bg-white" : "bg-slate-400"
+                        }`}
+                        aria-hidden="true"
+                      />
+                      {tipsterMode ? "ON" : "OFF"}
+                    </button>
                   </div>
 
-                  {/* Režim provizí */}
-                  <div className="space-y-2">
-                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide">
-                      Výchozí režim provizí
-                    </label>
-                    <select
-                      className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                      value={mode}
-                      onChange={(e) =>
-                        handleModeChange(
-                          e.target.value as CommissionMode
-                        )
-                      }
-                    >
-                      {COMMISSION_MODES.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-slate-400">
-                      Zrychlený / běžný režim se používá u životního pojištění.
-                    </p>
-                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Procento provize nastavíš přímo v kalkulačce tlačítkem %.
+                  </p>
                 </div>
               </section>
-            )}
 
-            <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
-              <div className="rounded-2xl border border-white/12 bg-slate-950/40 px-4 py-4 space-y-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="space-y-1">
-                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-300">
-                      Režim tipařské spolupráce
-                    </div>
-                    <p className="text-xs text-slate-400">
-                      V kalkulačce se zobrazí jen okamžitá provize v nastaveném procentu.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleTipsterModeChange(!tipsterMode)}
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                      tipsterMode
-                        ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
-                        : "border-white/20 bg-white/5 text-slate-100 hover:border-white/35"
-                    }`}
-                    aria-pressed={tipsterMode}
-                  >
-                    <span
-                      className={`h-2.5 w-2.5 rounded-full ${
-                        tipsterMode ? "bg-emerald-300" : "bg-slate-300"
-                      }`}
-                      aria-hidden="true"
-                    />
-                    {tipsterMode ? "ON" : "OFF"}
-                  </button>
-                </div>
-
-                <p className="text-[11px] text-slate-400">
-                  Procento provize nastavíš přímo v kalkulačce tlačítkem %.
-                </p>
-              </div>
-            </section>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              {/* Notifikace */}
-              <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-4 py-4 sm:px-6 sm:py-5 space-y-3 shadow-[0_14px_40px_rgba(0,0,0,0.55)]">
+              <section className="h-full space-y-3 rounded-[28px] border border-slate-900 bg-slate-100 px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-6 sm:py-5">
                 <div className="flex flex-col gap-2.5">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+                    <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
                       Notifikace
                     </h2>
                     <span
                       className={`rounded-full px-3 py-1 text-[11px] font-semibold border ${
                         fcmActive
-                          ? "bg-emerald-500/15 text-emerald-100 border-emerald-400/40"
-                          : "bg-rose-500/15 text-rose-100 border-rose-400/40"
+                          ? "border-emerald-700 bg-emerald-600 text-white"
+                          : "border-rose-700 bg-rose-600 text-white"
                       }`}
                     >
                       {fcmActive ? "Aktivní" : "Neaktivní"}
@@ -673,13 +706,13 @@ export default function SettingsPage() {
                   </div>
 
                   {!fcmActive && (
-                    <p className="text-sm text-slate-200">
+                    <p className="text-sm text-slate-700">
                       Otevři mobilní appku a přihlas se – FCM token se uloží do profilu.
                     </p>
                   )}
 
                   <div className="space-y-1.5 max-w-sm">
-                    <label className="text-xs uppercase tracking-wide text-slate-400">
+                    <label className="text-xs uppercase tracking-wide text-slate-500">
                       Nastav kolik minut před událostí ti má přijít notifikace.
                     </label>
                     <input
@@ -692,84 +725,56 @@ export default function SettingsPage() {
                           Math.max(0, Math.min(1440, Number(e.target.value) || 0))
                         )
                       }
-                      className="w-full rounded-xl border border-white/15 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                      className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
                     />
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-[11px] text-slate-500">
                       Použije se při odeslání push notifikace z kalendáře (výchozí 60 min).
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <div className="text-xs uppercase tracking-wide text-slate-400">Typy notifikací</div>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { id: "newContract", label: "Nová smlouva" },
-                          { id: "anniversary", label: "Výročí" },
-                          { id: "unpaid", label: "Nezaplaceno" },
-                          { id: "team", label: "Týmové akce" },
-                        ].map((t) => {
-                          const active = notificationSettings.types[t.id as keyof NotificationSettings["types"]];
-                          return (
-                            <button
-                              key={t.id}
-                              type="button"
-                              onClick={() => toggleNotificationType(t.id as keyof NotificationSettings["types"])}
-                              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                                active
-                                  ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-50"
-                                  : "border-white/20 bg-white/5 text-slate-200 hover:border-white/35"
-                              }`}
-                            >
-                              {t.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <div className="text-xs uppercase tracking-wide text-slate-400">Kanály</div>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { id: "email", label: "E-mail" },
-                          { id: "push", label: "Push" },
-                        ].map((c) => {
-                          const active = notificationSettings.channels[c.id as keyof NotificationSettings["channels"]];
-                          return (
-                            <button
-                              key={c.id}
-                              type="button"
-                              onClick={() => toggleNotificationChannel(c.id as keyof NotificationSettings["channels"])}
-                              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                                active
-                                  ? "border-sky-300/60 bg-sky-500/15 text-sky-50"
-                                  : "border-white/20 bg-white/5 text-slate-200 hover:border-white/35"
-                              }`}
-                            >
-                              {c.label}
-                            </button>
-                          );
-                        })}
-                      </div>
+                  <div className="space-y-1.5">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Typy notifikací</div>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { id: "newContract", label: "Nová smlouva" },
+                        { id: "anniversary", label: "Výročí" },
+                        { id: "unpaid", label: "Nezaplaceno" },
+                        { id: "team", label: "Týmové akce" },
+                      ].map((t) => {
+                        const active = notificationSettings.types[t.id as keyof NotificationSettings["types"]];
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => toggleNotificationType(t.id as keyof NotificationSettings["types"])}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                              active
+                                ? "border-slate-900 bg-slate-900 text-white"
+                                : "border-slate-900 bg-white text-slate-700 hover:bg-slate-50"
+                            }`}
+                          >
+                            {t.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-0.5">
                     <div>
-                      <div className="text-xs uppercase tracking-wide text-slate-400">Testovací push</div>
-                      <p className="text-[11px] text-slate-400">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Testovací push</div>
+                      <p className="text-[11px] text-slate-500">
                         Ověř, že push chodí. Pokud nepřijde, zkontroluj FCM token v mobilní appce.
                       </p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                       {testPushStatus && (
-                        <span className="text-[11px] text-slate-300">{testPushStatus}</span>
+                        <span className="text-[11px] text-slate-600">{testPushStatus}</span>
                       )}
                       <button
                         type="button"
                         onClick={handleTestPush}
-                        className="rounded-full border border-emerald-300/60 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:border-emerald-200 hover:bg-emerald-500/30 transition"
+                        className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
                       >
                         Odeslat test
                       </button>
@@ -777,21 +782,21 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </section>
+            </div>
 
-              {/* Vzhled */}
-              <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-4 py-4 sm:px-6 sm:py-5 space-y-3 shadow-[0_14px_40px_rgba(0,0,0,0.55)]">
+            <section className="space-y-3 rounded-[28px] border border-slate-900 bg-slate-100 px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-6 sm:py-5">
                 <div className="space-y-2.5">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                      <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+                      <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
                         Pozadí aplikace
                       </h2>
-                      <p className="text-xs text-slate-400">
-                        Vyber si jednoduché pozadí – černé nebo tmavě modré.
+                      <p className="text-xs text-slate-500">
+                        Vyber si jednoduché pozadí – bílé nebo tmavě modré.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs uppercase tracking-[0.16em] text-slate-400">
+                      <span className="text-xs uppercase tracking-[0.16em] text-slate-500">
                         Animace
                       </span>
                       <button
@@ -799,14 +804,14 @@ export default function SettingsPage() {
                         onClick={() => handleReduceMotionChange(!reduceMotion)}
                         className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
                           reduceMotion
-                            ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
-                            : "border-white/20 bg-white/5 text-slate-100 hover:border-white/35"
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-900 bg-white text-slate-700 hover:bg-slate-50"
                         }`}
                         aria-pressed={reduceMotion}
                       >
                         <span
                           className={`h-2.5 w-2.5 rounded-full ${
-                            reduceMotion ? "bg-emerald-300" : "bg-slate-300"
+                            reduceMotion ? "bg-white" : "bg-slate-400"
                           }`}
                           aria-hidden="true"
                         />
@@ -817,7 +822,7 @@ export default function SettingsPage() {
 
                   <div className="flex gap-3 h-60">
                     {[
-                      { id: "black" as const, label: "ČERNÁ", bg: "bg-black" },
+                      { id: "white" as const, label: "BÍLÁ", bg: "bg-white" },
                       { id: "blue" as const, label: "MODRÁ", bg: "bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900" },
                     ].map((opt) => {
                       const isActive = backgroundColor === opt.id;
@@ -828,19 +833,25 @@ export default function SettingsPage() {
                           onClick={() => handleBackgroundPreset(opt.id)}
                           className={`relative flex-1 overflow-hidden rounded-2xl border transition ${
                             isActive
-                              ? "border-emerald-300/70 shadow-[0_10px_30px_rgba(16,185,129,0.35)]"
-                              : "border-white/15 hover:border-white/30"
+                              ? "border-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
+                              : "border-slate-900 hover:border-slate-700"
                           }`}
                         >
                           <div className={`absolute inset-0 ${opt.bg}`} />
-                          <div className="absolute inset-0 bg-black/25" />
+                          {opt.id === "blue" ? (
+                            <div className="absolute inset-0 bg-black/25" />
+                          ) : (
+                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(15,23,42,0.06),transparent_55%)]" />
+                          )}
                           {isActive && (
-                            <div className="absolute top-2 right-2 rounded-full border border-emerald-200/70 bg-emerald-500/70 text-[10px] font-semibold text-emerald-950 px-2 py-0.5">
+                            <div className="absolute top-2 right-2 rounded-full border border-slate-900 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-white">
                               Aktivní
                             </div>
                           )}
                           <span
-                            className="relative h-full w-full flex items-center justify-center text-sm font-bold tracking-[0.4em] text-white/90"
+                            className={`relative h-full w-full flex items-center justify-center text-sm font-bold tracking-[0.4em] ${
+                              opt.id === "blue" ? "text-white/90" : "text-slate-900/85"
+                            }`}
                             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
                           >
                             {opt.label}
@@ -850,31 +861,30 @@ export default function SettingsPage() {
                     })}
                   </div>
                 </div>
-              </section>
-            </div>
+            </section>
 
             {/* Účet */}
-            <section className="rounded-3xl border border-white/12 bg-white/5 backdrop-blur-2xl px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_18px_60px_rgba(0,0,0,0.7)]">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+            <section className="space-y-4 rounded-[28px] border border-slate-900 bg-slate-100 px-6 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-8 sm:py-6">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
                 Účet
               </h2>
 
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 text-sm">
                 <div>
-                  <div className="text-slate-300 text-xs uppercase tracking-wide">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
                     E-mail účtu
                   </div>
-                  <div className="mt-1 font-medium text-slate-50">
+                  <div className="mt-1 font-medium text-slate-900">
                     {userEmail}
                   </div>
-                  <p className="mt-1 text-xs text-slate-400">
+                  <p className="mt-1 text-xs text-slate-500">
                     Odhlásit se můžeš kdykoliv pomocí tlačítka v levém panelu
                     dole.
                   </p>
                 </div>
 
                 <div className="w-full sm:max-w-md space-y-3">
-                  <div className="text-slate-300 text-xs uppercase tracking-wide">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
                     Změna hesla
                   </div>
 
@@ -882,18 +892,18 @@ export default function SettingsPage() {
                     <button
                       type="button"
                       onClick={() => setShowPasswordForm(true)}
-                      className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-500/80 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400/90"
+                      className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black"
                     >
                       Změnit heslo
                     </button>
                   )}
 
                   {showPasswordForm && (
-                    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <div className="space-y-3 rounded-2xl border border-slate-900 bg-white p-3">
                       <input
                         type="password"
                         autoComplete="current-password"
-                        className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
                         placeholder="Původní heslo"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
@@ -901,7 +911,7 @@ export default function SettingsPage() {
                       <input
                         type="password"
                         autoComplete="new-password"
-                        className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
                         placeholder="Nové heslo (min. 6 znaků)"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
@@ -909,7 +919,7 @@ export default function SettingsPage() {
                       <input
                         type="password"
                         autoComplete="new-password"
-                        className="w-full rounded-2xl border border-white/20 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
                         placeholder="Potvrď nové heslo"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
@@ -919,7 +929,7 @@ export default function SettingsPage() {
                           type="button"
                           onClick={handleChangePassword}
                           disabled={changingPassword}
-                          className="inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {changingPassword ? "Měním heslo…" : "Potvrdit změnu"}
                         </button>
@@ -932,7 +942,7 @@ export default function SettingsPage() {
                             setConfirmPassword("");
                             setPasswordStatus(null);
                           }}
-                          className="text-xs text-slate-400 hover:text-slate-200"
+                          className="text-xs text-slate-500 hover:text-slate-900"
                         >
                           Zrušit
                         </button>
@@ -941,8 +951,8 @@ export default function SettingsPage() {
                         <div
                           className={`text-xs ${
                             passwordStatus.type === "success"
-                              ? "text-emerald-300"
-                              : "text-rose-300"
+                              ? "text-emerald-700"
+                              : "text-rose-700"
                           }`}
                         >
                           {passwordStatus.message}
@@ -955,6 +965,7 @@ export default function SettingsPage() {
             </section>
           </>
         )}
+        </div>
       </div>
     </AppLayout>
   );

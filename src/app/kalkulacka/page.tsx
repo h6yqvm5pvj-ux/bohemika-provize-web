@@ -495,6 +495,7 @@ export default function CalculatorPage() {
   const [originalContractNumber, setOriginalContractNumber] = useState<string>("");
   const [replacementOpen, setReplacementOpen] = useState(false);
   const [replacementContractNumber, setReplacementContractNumber] = useState<string>("");
+  const [durationHelpOpen, setDurationHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pdfImporting, setPdfImporting] = useState(false);
   const [pdfImportStatus, setPdfImportStatus] = useState<string | null>(null);
@@ -1199,6 +1200,10 @@ export default function CalculatorPage() {
     }
   }, [product]);
 
+  useEffect(() => {
+    setDurationHelpOpen(false);
+  }, [product]);
+
   const handleSaveContract = async (skipDuplicateCheck = false) => {
     if (!user) return;
     if (tipsterModeEnabled) {
@@ -1479,11 +1484,11 @@ export default function CalculatorPage() {
 
   if (!user) {
     return (
-      <main className="relative min-h-screen overflow-hidden bg-black text-slate-50">
+      <main className="relative min-h-screen overflow-hidden bg-black font-mono text-slate-50">
         <div className="fixed inset-0 -z-10 bg-black" />
 
         <div className="relative flex min-h-screen items-center justify-center px-4">
-          <div className="bg-slate-950/90 border border-white/10 rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.9)] backdrop-blur-2xl p-6 w-full max-w-md space-y-4 text-center">
+          <div className="bg-slate-950/90 border border-slate-300 rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.9)] backdrop-blur-2xl p-6 w-full max-w-md space-y-4 text-center">
             <p className="text-sm text-slate-200">
               Pro používání kalkulačky se prosím nejdřív přihlas na domovské
               stránce.
@@ -1595,13 +1600,15 @@ export default function CalculatorPage() {
 
   return (
     <AppLayout active="calc">
+      <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+      <div className="mx-auto w-full max-w-6xl font-mono text-slate-900">
       {saveSuccessFlash && (
         <div
           aria-live="polite"
           className="fixed bottom-6 right-6 z-50 pointer-events-none"
         >
-          <div className="relative flex items-center gap-3 rounded-2xl border border-emerald-300/40 bg-gradient-to-r from-emerald-500/25 via-emerald-500/10 to-emerald-500/25 px-4 py-3 shadow-[0_20px_60px_rgba(16,185,129,0.35)] backdrop-blur-md">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-slate-950 shadow-inner shadow-emerald-200/60">
+          <div className="relative flex items-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.18)]">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-white">
               <svg
                 viewBox="0 0 24 24"
                 aria-hidden="true"
@@ -1614,8 +1621,8 @@ export default function CalculatorPage() {
               </svg>
             </div>
             <div className="space-y-0.5">
-              <p className="text-sm font-semibold text-emerald-50">Sepsáno!</p>
-              <p className="text-[11px] text-emerald-50/80">
+              <p className="text-sm font-semibold text-slate-900">Sepsáno!</p>
+              <p className="text-[11px] text-slate-600">
                 {saveSuccessFlash.clientName || "Uloženo mezi sepsané"}
                 {saveSuccessFlash.contractNumber
                   ? ` • č. ${saveSuccessFlash.contractNumber}`
@@ -1631,15 +1638,15 @@ export default function CalculatorPage() {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setValidationError(null)}
           />
-          <div className="relative w-full max-w-sm rounded-2xl border border-emerald-400/40 bg-slate-900/95 shadow-[0_20px_70px_rgba(0,0,0,0.8)] p-5 space-y-4">
-            <div className="text-sm text-emerald-50">
+          <div className="relative w-full max-w-sm rounded-2xl border border-slate-300 bg-white shadow-[0_20px_70px_rgba(0,0,0,0.35)] p-5 space-y-4">
+            <div className="text-sm text-slate-900">
               {validationError}
             </div>
             <div className="flex justify-end">
               <button
                 type="button"
                 onClick={() => setValidationError(null)}
-                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/30 hover:bg-emerald-400 transition"
+                className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition"
               >
                 OK
               </button>
@@ -1653,8 +1660,8 @@ export default function CalculatorPage() {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setDuplicateModal(null)}
           />
-          <div className="relative w-full max-w-md rounded-2xl border border-emerald-400/40 bg-slate-900/95 shadow-[0_20px_70px_rgba(0,0,0,0.8)] p-5 space-y-4">
-            <div className="text-sm text-emerald-50 space-y-2">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-300 bg-white shadow-[0_20px_70px_rgba(0,0,0,0.35)] p-5 space-y-4">
+            <div className="text-sm text-slate-900 space-y-2">
               <p>
                 Smlouva s číslem <strong>{duplicateModal.contractNumber}</strong> už existuje ({duplicateModal.count}×).
               </p>
@@ -1664,7 +1671,7 @@ export default function CalculatorPage() {
               <button
                 type="button"
                 onClick={() => setDuplicateModal(null)}
-                className="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-100 hover:bg-white/10 transition"
+                className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-900 hover:bg-slate-100 transition"
               >
                 Zrušit
               </button>
@@ -1690,7 +1697,7 @@ export default function CalculatorPage() {
                     setSaving(false);
                   }
                 }}
-                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/30 hover:bg-emerald-400 transition"
+                className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition"
               >
                 Přepsat
               </button>
@@ -1700,7 +1707,7 @@ export default function CalculatorPage() {
                   setDuplicateModal(null);
                   await handleSaveContract(true);
                 }}
-                className="rounded-full border border-emerald-400/50 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/15 transition"
+                className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100 transition"
               >
                 Uložit novou
               </button>
@@ -1713,7 +1720,10 @@ export default function CalculatorPage() {
       <div className="w-full max-w-6xl space-y-6">
         {/* Header */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <SplitTitle text={tipsterModeEnabled ? "Kalkulačka - TIPAŘ" : "Kalkulačka provizí"} />
+          <SplitTitle
+            text={tipsterModeEnabled ? "Kalkulačka - TIPAŘ" : "Kalkulačka provizí"}
+            className="!text-slate-900"
+          />
         </header>
 
         <div className="grid gap-6 items-start lg:grid-cols-[1.05fr_0.95fr]">
@@ -1728,7 +1738,7 @@ export default function CalculatorPage() {
                   <button
                     type="button"
                     onClick={() => setProductOpen((v) => !v)}
-                    className="flex w-full items-center justify-between rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    className="flex w-full items-center justify-between rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
                   >
                     <span className="flex items-center gap-3">
                       <div className="relative h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
@@ -1747,7 +1757,7 @@ export default function CalculatorPage() {
                   </button>
 
                   {productOpen && (
-                    <div className="absolute z-30 mt-2 w-full rounded-2xl border border-white/15 bg-slate-950/95 backdrop-blur-2xl shadow-[0_20px_80px_rgba(0,0,0,0.9)] max-h-80 overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="absolute z-30 mt-2 w-full rounded-2xl border border-slate-300 bg-white backdrop-blur-2xl shadow-[0_20px_80px_rgba(0,0,0,0.9)] max-h-80 overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {PRODUCT_OPTIONS.map((p) => {
                         const isActive = p.id === product;
                         const iconSrc = productIcon(p.id);
@@ -1763,10 +1773,10 @@ export default function CalculatorPage() {
                               setProduct(p.id);
                               setProductOpen(false);
                             }}
-                            className={`flex h-full w-full items-center justify-between gap-3 rounded-xl border border-white/10 px-3 py-2.5 text-left text-sm transition ${
+                            className={`flex h-full w-full items-center justify-between gap-3 rounded-xl border border-slate-300 px-3 py-2.5 text-left text-sm transition ${
                               isActive
-                                ? "bg-white/10 text-slate-50 shadow-inner shadow-emerald-400/30"
-                                : "text-slate-100 hover:bg-white/5"
+                                ? "bg-slate-900 text-white"
+                                : "text-slate-900 hover:bg-slate-100"
                             }`}
                           >
                             <span className="flex items-center gap-3">
@@ -1781,7 +1791,7 @@ export default function CalculatorPage() {
                               <span>{p.label}</span>
                             </span>
                             {unsupportedText && (
-                              <span className="ml-2 rounded-full border border-amber-400/60 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-200">
+                              <span className="ml-2 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
                                 {unsupportedText}
                               </span>
                             )}
@@ -1795,16 +1805,44 @@ export default function CalculatorPage() {
 
               {canImportFromPdf && (
                 <div className="space-y-2">
-                  <div className="flex h-full items-center justify-between gap-3 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-3 py-2.5">
-                    <div className="text-sm font-semibold text-emerald-50">
+                  <div className="flex h-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2.5">
+                    <div className="text-sm font-semibold text-slate-900">
                       Nahraj smlouvu PDF pro načtení údajů.
                     </div>
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={pdfImporting}
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/20 px-3 py-1.5 text-sm font-semibold text-emerald-50 shadow-[0_12px_30px_rgba(16,185,129,0.25)] hover:bg-emerald-500/30 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed transition"
                     >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M14 3v5h5"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M8.5 16h7M8.5 12.5h3.8"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                        />
+                      </svg>
                       {pdfImporting ? "Načítám…" : "Nahrát PDF"}
                     </button>
                     <input
@@ -1816,10 +1854,10 @@ export default function CalculatorPage() {
                     />
                   </div>
                   {pdfImportStatus && (
-                    <p className="text-[12px] text-emerald-50">{pdfImportStatus}</p>
+                    <p className="text-[12px] text-slate-700">{pdfImportStatus}</p>
                   )}
                   {pdfImportError && (
-                    <p className="text-[12px] text-rose-200">{pdfImportError}</p>
+                    <p className="text-[12px] text-rose-700">{pdfImportError}</p>
                   )}
                 </div>
               )}
@@ -1833,18 +1871,26 @@ export default function CalculatorPage() {
                     <span className="inline-flex items-center gap-2">
                       Doba trvání smlouvy
                       {durationHelp && (
-                        <span
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-white/10 text-[11px] text-slate-50"
-                          title={durationHelp}
+                        <button
+                          type="button"
+                          onClick={() => setDurationHelpOpen((prev) => !prev)}
+                          className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-900 hover:bg-slate-100 transition"
+                          aria-expanded={durationHelpOpen}
+                          aria-label="Zobrazit nápovědu k době trvání smlouvy"
                         >
-                          i
-                        </span>
+                          Info
+                        </button>
                       )}
                     </span>
                   </label>
+                  {durationHelp && durationHelpOpen && (
+                    <p className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-700">
+                      {durationHelp}
+                    </p>
+                  )}
                   <input
                     type="number"
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
                     value={durationYears}
                     onChange={(e) => {
                       const val = Number(e.target.value) || 1;
@@ -1861,7 +1907,7 @@ export default function CalculatorPage() {
                 </label>
                 {hasFrequencyPicker ? (
                   <select
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
                     value={frequency}
                     onChange={(e) =>
                       setFrequency(e.target.value as PaymentFrequency)
@@ -1873,11 +1919,11 @@ export default function CalculatorPage() {
                       </option>
                     ))}
                   </select>
-                ) : (
-                  <p className="text-sm text-slate-200">
+                ) : !LIFE_PRODUCTS.includes(product) ? (
+                  <p className="text-sm text-slate-700">
                     {defaultFrequencyText(product)}
                   </p>
-                )}
+                ) : null}
               </div>
             </section>
 
@@ -1890,14 +1936,14 @@ export default function CalculatorPage() {
                     <div className="text-[12px] uppercase tracking-wide text-slate-400 mb-1">
                       Poplatek
                     </div>
-                    <div className="inline-flex rounded-full border border-white/15 bg-white/5 p-1">
+                    <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
                       <button
                         type="button"
                         onClick={() => setComfortGradual(false)}
                         className={`px-3 py-1.5 rounded-full text-sm transition ${
                           !comfortGradual
-                            ? "bg-white text-slate-900 shadow"
-                            : "text-slate-100"
+                            ? "bg-slate-900 text-white shadow"
+                            : "text-slate-900"
                         }`}
                       >
                         Jednorázový poplatek
@@ -1907,8 +1953,8 @@ export default function CalculatorPage() {
                         onClick={() => setComfortGradual(true)}
                         className={`px-3 py-1.5 rounded-full text-sm transition ${
                           comfortGradual
-                            ? "bg-white text-slate-900 shadow"
-                            : "text-slate-100"
+                            ? "bg-slate-900 text-white shadow"
+                            : "text-slate-900"
                         }`}
                       >
                         Postupný poplatek
@@ -1931,8 +1977,8 @@ export default function CalculatorPage() {
                 </label>
                 <input
                   type="number"
-                  className={`w-full rounded-xl border bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 ${
-                    missingFields.includes("částku") ? "border-rose-400/70" : "border-white/15"
+                  className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 ${
+                    missingFields.includes("částku") ? "border-rose-400/70" : "border-slate-300"
                   }`}
                   value={amountText}
                   onChange={(e) => setAmountText(e.target.value)}
@@ -1952,7 +1998,7 @@ export default function CalculatorPage() {
                     </label>
                     <input
                       type="number"
-                      className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                      className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
                       value={comfortPaymentText}
                       onChange={(e) => setComfortPaymentText(e.target.value)}
                       placeholder="Zadejte pravidelnou platbu"
@@ -1966,13 +2012,13 @@ export default function CalculatorPage() {
                       </label>
                       <input
                         type="number"
-                        className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                        className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
                         value={comfortTargetAmountText}
                         onChange={(e) => setComfortTargetAmountText(e.target.value)}
                         placeholder="Např. 200000"
                       />
                       {comfortPayoutCount && (
-                        <p className="text-xs text-slate-300">
+                        <p className="text-xs text-slate-600">
                           Následná provize z platby bude vyplacena celkem {comfortPayoutCount}x.
                         </p>
                       )}
@@ -1987,7 +2033,7 @@ export default function CalculatorPage() {
                     <button
                       type="button"
                       onClick={() => setRefreshOriginalOpen((v) => !v)}
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-50 shadow-[0_12px_36px_rgba(16,185,129,0.25)] hover:border-emerald-200 hover:bg-emerald-500/25 transition"
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
                     >
                       Refresh smlouvy
                     </button>
@@ -1999,12 +2045,12 @@ export default function CalculatorPage() {
                         placeholder="Číslo původní smlouvy"
                         value={originalContractNumber}
                         onChange={(e) => setOriginalContractNumber(e.target.value)}
-                        className="flex-1 min-w-[220px] rounded-full border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-300"
+                        className="flex-1 min-w-[220px] rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
                       />
                     )}
                   </div>
                   {refreshOriginalOpen && (
-                    <p className="text-[11px] text-emerald-200/80">
+                    <p className="text-[11px] text-slate-600">
                       Při uložení nahradíme původní smlouvu se stejným číslem (smažeme starý záznam).
                     </p>
                   )}
@@ -2017,7 +2063,7 @@ export default function CalculatorPage() {
                     <button
                       type="button"
                       onClick={() => setReplacementOpen((v) => !v)}
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-50 shadow-[0_12px_36px_rgba(16,185,129,0.25)] hover:border-emerald-200 hover:bg-emerald-500/25 transition"
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
                     >
                       Náhrada smlouvy
                     </button>
@@ -2029,12 +2075,12 @@ export default function CalculatorPage() {
                         placeholder="Číslo nahrazované smlouvy"
                         value={replacementContractNumber}
                         onChange={(e) => setReplacementContractNumber(e.target.value)}
-                        className="flex-1 min-w-[220px] rounded-full border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-300"
+                        className="flex-1 min-w-[220px] rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
                       />
                     )}
                   </div>
                   {replacementOpen && (
-                    <p className="text-[11px] text-emerald-200/80">
+                    <p className="text-[11px] text-slate-600">
                       Při uložení smažeme nahrazovanou smlouvu se stejným číslem.
                     </p>
                   )}
@@ -2054,8 +2100,8 @@ export default function CalculatorPage() {
               <div className="relative">
                 <input
                   type="text"
-                  className={`w-full rounded-xl border bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 ${
-                    missingFields.includes("jméno klienta") ? "border-rose-400/70" : "border-white/15"
+                  className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 ${
+                    missingFields.includes("jméno klienta") ? "border-rose-400/70" : "border-slate-300"
                   }`}
                   value={clientName}
                   onChange={(e) => {
@@ -2068,7 +2114,7 @@ export default function CalculatorPage() {
                   onBlur={() => setTimeout(() => setClientSuggestionsOpen(false), 100)}
                 />
                 {filteredClientSuggestions.length > 0 && clientSuggestionsOpen && (
-                  <div className="absolute z-30 mt-1 w-full rounded-xl border border-white/15 bg-slate-900/95 backdrop-blur-2xl shadow-[0_14px_40px_rgba(0,0,0,0.7)] overflow-hidden">
+                  <div className="absolute z-30 mt-1 w-full rounded-xl border border-slate-300 bg-white backdrop-blur-2xl shadow-[0_14px_40px_rgba(0,0,0,0.7)] overflow-hidden">
                     {filteredClientSuggestions.map((name) => (
                       <button
                         key={name}
@@ -2078,7 +2124,7 @@ export default function CalculatorPage() {
                           setMissingFields((prev) => prev.filter((k) => k !== "jméno klienta"));
                           setClientSuggestionsOpen(false);
                         }}
-                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-100 hover:bg-white/10"
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-900 hover:bg-slate-100"
                       >
                         <span>{name}</span>
                         <span className="text-xs text-slate-400">vložit</span>
@@ -2095,8 +2141,8 @@ export default function CalculatorPage() {
                 </label>
                 <input
                   type="date"
-                  className={`w-full rounded-xl border bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 [color-scheme:dark] ${
-                    missingFields.includes("datum sjednání") ? "border-rose-400/70" : "border-white/15"
+                  className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 ${
+                    missingFields.includes("datum sjednání") ? "border-rose-400/70" : "border-slate-300"
                   }`}
                   value={contractSignedDate}
                   onChange={(e) => setContractSignedDate(e.target.value)}
@@ -2109,8 +2155,8 @@ export default function CalculatorPage() {
                 </label>
                 <input
                   type="text"
-                  className={`w-full rounded-xl border bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 ${
-                    missingFields.includes("číslo smlouvy") ? "border-rose-400/70" : "border-white/15"
+                  className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 ${
+                    missingFields.includes("číslo smlouvy") ? "border-rose-400/70" : "border-slate-300"
                   }`}
                   value={contractNumber}
                   onChange={(e) => setContractNumber(e.target.value)}
@@ -2124,8 +2170,8 @@ export default function CalculatorPage() {
                 </label>
                 <input
                   type="date"
-                  className={`w-full rounded-xl border bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 [color-scheme:dark] ${
-                    missingFields.includes("datum počátku") ? "border-rose-400/70" : "border-white/15"
+                  className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 ${
+                    missingFields.includes("datum počátku") ? "border-rose-400/70" : "border-slate-300"
                   }`}
                   value={policyStartDate}
                   onChange={(e) => setPolicyStartDate(e.target.value)}
@@ -2143,7 +2189,7 @@ export default function CalculatorPage() {
                     Sjednána jako (pozice)
                   </label>
                   <select
-                    className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
                     value={position}
                     onChange={(e) => setPosition(e.target.value as Position)}
                   >
@@ -2161,7 +2207,7 @@ export default function CalculatorPage() {
                       Režim provize
                     </label>
                     <select
-                      className="w-full rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                      className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
                       value={mode}
                       onChange={(e) => setMode(e.target.value as CommissionMode)}
                     >
@@ -2178,9 +2224,9 @@ export default function CalculatorPage() {
           </div>
 
           {/* Výsledky + tlačítko Sepsáno */}
-          <section className="rounded-3xl border border-emerald-400/40 bg-emerald-950/60 px-5 py-4 space-y-3 backdrop-blur-2xl shadow-[0_18px_60px_rgba(0,0,0,0.9)] h-full overflow-hidden">
+          <section className="rounded-3xl border border-slate-300 bg-white px-5 py-4 space-y-3 shadow-[0_18px_60px_rgba(15,23,42,0.18)] h-full overflow-hidden">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-emerald-50">
+              <h2 className="text-lg font-semibold text-slate-900">
                 Výsledky
               </h2>
 
@@ -2189,7 +2235,7 @@ export default function CalculatorPage() {
                   type="button"
                   onClick={() => setShowCoefModal(true)}
                   disabled={unsupported}
-                  className={`inline-flex items-center gap-2 rounded-xl border border-emerald-400/70 bg-emerald-500/20 px-3 py-2 text-xs sm:text-sm font-semibold text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.3)] hover:bg-emerald-500/30 transition ${
+                  className={`inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-950 px-3 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-slate-800 transition ${
                     unsupported ? "opacity-60 cursor-not-allowed" : ""
                   }`}
                 >
@@ -2200,7 +2246,7 @@ export default function CalculatorPage() {
                   <button
                     type="button"
                     onClick={() => setTipsterPercentPanelOpen((prev) => !prev)}
-                    className="inline-flex items-center rounded-xl border border-emerald-300/70 bg-emerald-500/25 px-3 py-2 text-sm font-semibold text-emerald-50 hover:bg-emerald-500/35 transition"
+                    className="inline-flex items-center rounded-xl border border-slate-900 bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition"
                     aria-pressed={tipsterPercentPanelOpen}
                     aria-label="Nastavit procenta pro tipaře"
                   >
@@ -2215,7 +2261,7 @@ export default function CalculatorPage() {
                     disabled={
                       saving || items.length === 0 || parseNumber(amountText) <= 0
                     }
-                    className="inline-flex items-center rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-emerald-500/40 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="inline-flex items-center rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {saving ? "Ukládám…" : "Sepsáno"}
                   </button>
@@ -2224,12 +2270,12 @@ export default function CalculatorPage() {
             </div>
 
             {tipsterModeEnabled && tipsterPercentPanelOpen && (
-              <div className="rounded-xl border border-emerald-300/35 bg-emerald-900/35 px-3 py-3 space-y-3">
+              <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <label className="block text-xs uppercase tracking-wide text-emerald-100">
+                  <label className="block text-xs uppercase tracking-wide text-slate-600">
                     Zobrazované procento provize
                   </label>
-                  <span className="rounded-full border border-emerald-300/50 bg-emerald-500/15 px-2.5 py-1 text-sm font-bold text-emerald-100">
+                  <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-sm font-bold text-slate-900">
                     {tipsterPercent} %
                   </span>
                 </div>
@@ -2238,7 +2284,7 @@ export default function CalculatorPage() {
                   <button
                     type="button"
                     onClick={() => void persistTipsterPercent(tipsterPercent - 5)}
-                    className="rounded-lg border border-emerald-300/45 bg-black/25 px-2.5 py-1.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20 transition"
+                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-900 hover:bg-slate-100 transition"
                     aria-label="Snížit o 5 procentních bodů"
                   >
                     −5
@@ -2261,14 +2307,14 @@ export default function CalculatorPage() {
                         void persistTipsterPercent(Number((e.currentTarget as HTMLInputElement).value) || 0);
                       }
                     }}
-                    className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-emerald-200/20 accent-emerald-400"
+                    className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-slate-900"
                     aria-label="Nastavit procento tipařské provize"
                   />
 
                   <button
                     type="button"
                     onClick={() => void persistTipsterPercent(tipsterPercent + 5)}
-                    className="rounded-lg border border-emerald-300/45 bg-black/25 px-2.5 py-1.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20 transition"
+                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-900 hover:bg-slate-100 transition"
                     aria-label="Zvýšit o 5 procentních bodů"
                   >
                     +5
@@ -2285,8 +2331,8 @@ export default function CalculatorPage() {
                         onClick={() => void persistTipsterPercent(preset)}
                         className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
                           active
-                            ? "border-emerald-300/70 bg-emerald-500/25 text-emerald-50"
-                            : "border-white/20 bg-white/5 text-slate-100 hover:border-emerald-300/50 hover:bg-emerald-500/15"
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-300 bg-white text-slate-900 hover:bg-slate-100"
                         }`}
                       >
                         {preset} %
@@ -2296,7 +2342,7 @@ export default function CalculatorPage() {
                 </div>
 
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-[11px] text-emerald-100/80">Rozsah 0–100 %</p>
+                  <p className="text-[11px] text-slate-600">Rozsah 0–100 %</p>
                   <input
                     type="number"
                     min={0}
@@ -2307,24 +2353,24 @@ export default function CalculatorPage() {
                       setTipsterPercentDraft(Number(e.target.value) || 0)
                     }
                     onBlur={() => void persistTipsterPercent(tipsterPercent)}
-                    className="w-20 rounded-lg border border-emerald-300/40 bg-black/25 px-2.5 py-1.5 text-sm text-emerald-50 outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-300"
+                    className="w-20 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
                   />
                 </div>
               </div>
             )}
 
             {saveMessage && (
-              <p className="text-xs text-emerald-50/80">{saveMessage}</p>
+              <p className="text-xs text-slate-600">{saveMessage}</p>
             )}
 
             {unsupported && (
-              <p className="text-sm text-amber-200 bg-amber-900/40 border border-amber-500/50 rounded-xl px-3 py-2">
+              <p className="text-sm text-amber-800 bg-amber-100 border border-amber-300 rounded-xl px-3 py-2">
                 {SUPPORTED_LABEL}
               </p>
             )}
 
             {!unsupported && items.length === 0 && (
-              <p className="text-sm text-emerald-50/70">
+              <p className="text-sm text-slate-600">
                 Zadej částku a produkt, hned vypočítáme jednotlivé provize.
               </p>
             )}
@@ -2333,8 +2379,8 @@ export default function CalculatorPage() {
               if (tipsterModeEnabled) {
                 return (
                   <div className="space-y-2">
-                    <div className="flex items-baseline justify-between gap-3 border-b border-emerald-300/15 py-1.5">
-                      <span className="flex items-center gap-3 text-sm text-emerald-50">
+                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-200 py-1.5">
+                      <span className="flex items-center gap-3 text-sm text-slate-900">
                         <span className="relative h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0">
                           <Image
                             src="/icons/penize2.png"
@@ -2345,14 +2391,14 @@ export default function CalculatorPage() {
                         </span>
                         <span>Okamžitá provize ({tipsterPercent} %)</span>
                       </span>
-                      <span className="text-base sm:text-lg font-semibold text-emerald-200">
+                      <span className="text-base sm:text-lg font-semibold text-slate-900">
                         {formatMoney(tipsterImmediateCommission)}
                       </span>
                     </div>
 
                     <div className="pt-2 flex items-center justify-between">
-                      <span className="font-semibold text-emerald-50">Celkem</span>
-                      <span className="text-xl sm:text-2xl font-bold text-emerald-200">
+                      <span className="font-semibold text-slate-900">Celkem</span>
+                      <span className="text-xl sm:text-2xl font-bold text-slate-900">
                         {formatMoney(tipsterImmediateCommission)}
                       </span>
                     </div>
@@ -2377,9 +2423,9 @@ export default function CalculatorPage() {
                     return (
                       <div
                         key={idx}
-                        className="flex items-baseline justify-between gap-3 border-b last:border-b-0 border-emerald-300/15 py-1.5"
+                        className="flex items-baseline justify-between gap-3 border-b last:border-b-0 border-slate-200 py-1.5"
                       >
-                        <span className="flex items-center gap-3 text-sm text-emerald-50">
+                        <span className="flex items-center gap-3 text-sm text-slate-900">
                           {iconSrc && (
                             <div className="relative h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0">
                               <Image
@@ -2392,7 +2438,7 @@ export default function CalculatorPage() {
                           )}
                           <span>{title}</span>
                         </span>
-                        <span className="text-base sm:text-lg font-semibold text-emerald-200">
+                        <span className="text-base sm:text-lg font-semibold text-slate-900">
                           {formatMoney(item.amount)}
                         </span>
                       </div>
@@ -2404,24 +2450,24 @@ export default function CalculatorPage() {
                       product === "koopmajetekobcan" ||
                       product === "maxdomov") &&
                     paymentBasedTotalsMemo ? (
-                      <div className="w-full space-y-1 text-emerald-50">
+                      <div className="w-full space-y-1 text-slate-900">
                         <div className="flex items-center justify-between">
                           <span className="font-semibold">Celkem v 1. roce</span>
-                          <span className="text-xl sm:text-2xl font-bold text-emerald-200">
+                          <span className="text-xl sm:text-2xl font-bold text-slate-900">
                             {formatMoney(paymentBasedTotalsMemo.immediate)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="font-semibold">Celkem ročně následně</span>
-                          <span className="text-xl sm:text-2xl font-bold text-emerald-200">
+                          <span className="text-xl sm:text-2xl font-bold text-slate-900">
                             {formatMoney(paymentBasedTotalsMemo.subsequent)}
                           </span>
                         </div>
                       </div>
                     ) : (
                       <>
-                        <span className="font-semibold text-emerald-50">Celkem</span>
-                        <span className="text-xl sm:text-2xl font-bold text-emerald-200">
+                        <span className="font-semibold text-slate-900">Celkem</span>
+                        <span className="text-xl sm:text-2xl font-bold text-slate-900">
                           {formatMoney(total)}
                         </span>
                       </>
@@ -2442,35 +2488,35 @@ export default function CalculatorPage() {
             aria-label="Zavřít koeficienty"
             onClick={() => setShowCoefModal(false)}
           />
-          <div className="relative z-50 w-full max-w-md rounded-2xl border border-emerald-400/60 bg-slate-950/95 p-6 shadow-2xl shadow-emerald-900/40">
+          <div className="relative z-50 w-full max-w-md rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-black/30">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-slate-50">Koeficienty</h3>
-                <p className="mt-1 text-sm text-slate-300">
+                <h3 className="text-lg font-semibold text-slate-900">Koeficienty</h3>
+                <p className="mt-1 text-sm text-slate-600">
                   {product ? productLabel(product) : "—"} · pozice {positionLabel(position)} · režim {mode}
                 </p>
                 {coefExplanation && (
-                  <p className="mt-2 text-xs text-slate-400 leading-relaxed">
+                  <p className="mt-2 text-xs text-slate-600 leading-relaxed">
                     {coefExplanation}
                   </p>
                 )}
                 {product && (product === "neon" || product === "flexi" || product === "maximaMaxEfekt" || product === "pillowInjury") && (
-                  <p className="mt-2 text-xs font-semibold text-rose-300">
+                  <p className="mt-2 text-xs font-semibold text-rose-700">
                     UPOZORNĚNÍ: Výpočet okamžité provize počítá s tím, že je zpracována karta klienta dle podmínek!
                   </p>
                 )}
                 {product === "neon" && (
-                  <p className="mt-1 text-xs font-semibold text-rose-300">
+                  <p className="mt-1 text-xs font-semibold text-rose-700">
                     Aktuální koeficienty – platnost od 01.07.2024
                   </p>
                 )}
                 {product === "allianzAuto" && (
-                  <p className="mt-1 text-xs font-semibold text-rose-300">
+                  <p className="mt-1 text-xs font-semibold text-rose-700">
                     Aktuální koeficienty – platnost od 01.08.2019
                   </p>
                 )}
                 {product === "csobAuto" && (
-                  <p className="mt-1 text-xs font-semibold text-rose-300">
+                  <p className="mt-1 text-xs font-semibold text-rose-700">
                     Aktuální koeficienty – platnost od 01.11.2024
                   </p>
                 )}
@@ -2478,7 +2524,7 @@ export default function CalculatorPage() {
               <button
                 type="button"
                 onClick={() => setShowCoefModal(false)}
-                className="rounded-full px-2 text-slate-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                className="rounded-full px-2 text-slate-500 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                 aria-label="Zavřít"
               >
                 ×
@@ -2490,14 +2536,14 @@ export default function CalculatorPage() {
                 coefList.map((c, idx) => (
                   <div
                     key={`${c.label}-${idx}`}
-                    className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100"
+                    className="flex items-center justify-between rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-900"
                   >
-                    <span className="text-slate-300">{c.label}</span>
+                    <span className="text-slate-600">{c.label}</span>
                     <span className="font-semibold">{formatCoefficientNumber(c.value)}</span>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-slate-600">
                   Pro tento produkt nebo pozici nemám koeficienty k zobrazení.
                 </p>
               )}
@@ -2505,6 +2551,8 @@ export default function CalculatorPage() {
           </div>
         </div>
       )}
+      </div>
+      </div>
     </AppLayout>
   );
 }
