@@ -1,7 +1,7 @@
 // src/app/smlouvy/page.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -522,7 +522,7 @@ function writeContractsViewState(
   }
 }
 
-export default function ContractsPage() {
+function ContractsPageContent() {
   const searchParams = useSearchParams();
   const [isFilterPending, startFilterTransition] = useTransition();
   const pendingScrollRestoreRef = useRef<number | null>(null);
@@ -1637,5 +1637,23 @@ export default function ContractsPage() {
       )}
       </div>
     </AppLayout>
+  );
+}
+
+function ContractsPageFallback() {
+  return (
+    <AppLayout active="contracts">
+      <div className="min-h-screen w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+        <div className="mx-auto w-full max-w-6xl font-mono text-slate-900">Načítám smlouvy…</div>
+      </div>
+    </AppLayout>
+  );
+}
+
+export default function ContractsPage() {
+  return (
+    <Suspense fallback={<ContractsPageFallback />}>
+      <ContractsPageContent />
+    </Suspense>
   );
 }
