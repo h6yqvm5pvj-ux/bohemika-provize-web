@@ -1576,7 +1576,7 @@ export default function ExportProductionPage() {
               alt="Export produkce"
               width={320}
               height={320}
-              className="h-80 w-auto object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.35)] absolute right-8 top-0"
+              className="h-52 w-auto object-contain absolute right-0 -top-4 opacity-90 pointer-events-none"
               priority
             />
           </div>
@@ -1585,15 +1585,15 @@ export default function ExportProductionPage() {
         {/* Nastavení exportu */}
         <section className="space-y-3">
           {/* Rozsah */}
-          <div className="rounded-3xl border border-slate-900 bg-white  px-5 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)] inline-flex flex-col gap-2 w-fit">
+          <div className="rounded-3xl border border-slate-900 bg-white px-5 py-3 inline-flex flex-col gap-2 w-fit">
             <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
               <button
                 type="button"
                 onClick={() => setScopeOption("own")}
                 className={`px-3 py-1.5 rounded-full border transition ${
                   scopeOption === "own"
-                    ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
-                    : "border-slate-300 text-slate-800 hover:bg-white"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white"
                 }`}
               >
                 Vlastní produkce
@@ -1605,8 +1605,8 @@ export default function ExportProductionPage() {
                 onClick={() => setScopeOption("team")}
                 className={`px-3 py-1.5 rounded-full border transition ${
                   scopeOption === "team"
-                    ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
-                    : "border-slate-300 text-slate-800 hover:bg-white"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white"
                 } ${!hasTeam ? "opacity-40 cursor-not-allowed" : ""}`}
               >
                 Týmová produkce
@@ -1618,8 +1618,8 @@ export default function ExportProductionPage() {
                 onClick={() => setScopeOption("selected")}
                 className={`px-3 py-1.5 rounded-full border transition ${
                   scopeOption === "selected"
-                    ? "bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/40"
-                    : "border-slate-300 text-slate-800 hover:bg-white"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white"
                 } ${!hasTeam ? "opacity-40 cursor-not-allowed" : ""}`}
               >
                 Vybraní podřízení
@@ -1644,7 +1644,7 @@ export default function ExportProductionPage() {
                   Vyber konkrétní podřízené, pro které chceš produkci
                   zahrnout do PDF.
                 </p>
-                <div className="max-h-40 overflow-y-auto rounded-2xl border border-slate-300 bg-white px-3 py-2 space-y-1 text-xs">
+                <div className="max-h-40 overflow-y-auto rounded-2xl border border-slate-900 bg-white px-3 py-2 space-y-1 text-xs">
                   {subordinates.map((sub) => {
                     const active = selectedSubs.has(sub.email);
                     return (
@@ -1652,14 +1652,14 @@ export default function ExportProductionPage() {
                         key={sub.email}
                         type="button"
                         onClick={() => handleToggleSubordinate(sub.email)}
-                        className={`w-full flex items-center justify_between py-1.5 text-left rounded-xl px-2 transition ${
+                        className={`w-full flex items-center justify-between py-1.5 text-left rounded-xl px-2 transition ${
                           active
-                            ? "bg-emerald-500/20 text-emerald-800"
-                            : "text-slate-800 hover:bg-white"
+                            ? "bg-slate-900 text-white"
+                            : "text-slate-800 hover:bg-slate-100"
                         }`}
                       >
                         <span>{sub.name}</span>
-                        <span className="text-[10px] text-slate-500">
+                        <span className={`text-[10px] ${active ? "text-slate-300" : "text-slate-500"}`}>
                           {sub.email}
                         </span>
                       </button>
@@ -1677,7 +1677,7 @@ export default function ExportProductionPage() {
           </div>
 
           {/* Volba období */}
-          <div className="inline-flex flex-wrap gap-2 text-xs sm:text-sm rounded-3xl border border-slate-900 bg-white  px-5 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)] w-fit">
+          <div className="inline-flex flex-wrap gap-2 text-xs sm:text-sm rounded-3xl border border-slate-900 bg-white px-5 py-3 w-fit">
             {([
               ["currentMonth", "Aktuální měsíc"],
               ["last3", "Poslední 3 měsíce"],
@@ -1690,8 +1690,8 @@ export default function ExportProductionPage() {
                 onClick={() => setDateRangeOption(value)}
                 className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm transition ${
                   dateRangeOption === value
-                    ? "bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/40"
-                    : "border-slate-300 text-slate-800 hover:bg-white"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white"
                 }`}
               >
                 {label}
@@ -1700,7 +1700,7 @@ export default function ExportProductionPage() {
           </div>
 
           {/* Volba produktů */}
-          <div className="rounded-3xl border border-slate-900 bg-white  px-5 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)] inline-flex flex-wrap gap-2 text-xs sm:text-sm w-fit">
+          <div className="rounded-3xl border border-slate-900 bg-white px-5 py-3 inline-flex flex-wrap gap-2 text-xs sm:text-sm w-fit">
             <button
               type="button"
               onClick={() =>
@@ -1714,7 +1714,7 @@ export default function ExportProductionPage() {
                   ])
                 )
               }
-              className="px-3 py-1.5 rounded-full border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+              className="px-3 py-1.5 rounded-full border border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white transition"
             >
               Všechny
             </button>
@@ -1748,7 +1748,7 @@ export default function ExportProductionPage() {
         </section>
 
         {errorText && (
-          <p className="text-xs text-amber-300 bg-amber-900/40 border border-amber-500/60 rounded-2xl px-4 py-2">
+          <p className="text-xs text-rose-800 bg-rose-100 border border-rose-300 rounded-2xl px-4 py-2">
             {errorText}
           </p>
         )}
@@ -1759,7 +1759,7 @@ export default function ExportProductionPage() {
             type="button"
             onClick={handlePreview}
             disabled={generating}
-            className="inline-flex items-center gap-2 rounded-full border border-sky-300/70 bg-sky-500/25 px-7 py-2.5 text-sm sm:text-base font-semibold text-sky-50 shadow-[0_0_22px_rgba(56,189,248,0.55)] hover:bg-sky-500/35 hover:border-sky-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-7 py-2.5 text-sm sm:text-base font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {generating ? "Připravuji náhled…" : "Náhled PDF"}
           </button>
@@ -1768,7 +1768,7 @@ export default function ExportProductionPage() {
             type="button"
             onClick={handleGeneratePdf}
             disabled={generating}
-            className="inline-flex items-center gap-2 rounded-full border border-emerald-400/70 bg-emerald-500/30 px-8 py-2.5 text-sm sm:text-base font-semibold text-emerald-800 shadow-[0_0_25px_rgba(16,185,129,0.55)] hover:bg-emerald-500/40 hover:border-emerald-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-8 py-2.5 text-sm sm:text-base font-semibold text-white transition hover:bg-black disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {generating ? "Generuji PDF…" : "Vygenerovat PDF"}
           </button>
@@ -1780,14 +1780,14 @@ export default function ExportProductionPage() {
               setSendStatus(null);
             }}
             disabled={generating || sending}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-7 py-2.5 text-sm sm:text-base font-semibold text-slate-900 shadow-[0_0_22px_rgba(255,255,255,0.25)] hover:bg-slate-100 transition disabled:opacity-60 disabled:cursor-not-allowed "
+            className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-7 py-2.5 text-sm sm:text-base font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {sending ? "Odesílám…" : showEmailForm ? "Skrýt odeslání" : "Odeslat e‑mailem"}
           </button>
         </div>
 
         {showEmailForm && (
-          <div className="mx-auto mt-2 w-full max-w-4xl rounded-2xl border border-slate-300 bg-white  px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+          <div className="mx-auto mt-2 w-full max-w-4xl rounded-2xl border border-slate-900 bg-white px-4 py-3">
             <div className="grid gap-3 sm:grid-cols-[1.3fr_1.1fr_1fr] items-end">
               <label className="space-y-1 text-sm text-slate-800">
                 <span className="block text-[11px] uppercase tracking-wide text-slate-500">
@@ -1831,7 +1831,7 @@ export default function ExportProductionPage() {
             {sendStatus && (
               <p
                 className={`mt-2 text-xs ${
-                  sendStatus.type === "ok" ? "text-emerald-800" : "text-rose-200"
+                  sendStatus.type === "ok" ? "text-emerald-800" : "text-rose-700"
                 }`}
               >
                 {sendStatus.msg}
@@ -1842,7 +1842,7 @@ export default function ExportProductionPage() {
                 type="button"
                 onClick={handleSendEmail}
                 disabled={generating || sending}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-900 shadow-[0_0_18px_rgba(255,255,255,0.25)] hover:bg-slate-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {sending ? "Odesílám…" : "Odeslat e‑mailem"}
               </button>
@@ -1852,7 +1852,7 @@ export default function ExportProductionPage() {
 
         {/* Náhled PDF na stránce */}
         {previewHtml && (
-          <section className="mt-4 rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
+          <section className="mt-4 rounded-3xl border border-slate-900 bg-white px-5 py-5 space-y-3">
             <h2 className="text-sm font-semibold text-slate-900">
               Náhled PDF
             </h2>
@@ -1864,7 +1864,7 @@ export default function ExportProductionPage() {
               <iframe
                 srcDoc={previewHtml}
                 title="Náhled PDF produkce"
-                className="w-full h-full bg-slate-900"
+                className="w-full h-full bg-white"
               />
             </div>
           </section>
@@ -1891,15 +1891,15 @@ function CheckboxChip({
       onClick={onClick}
       className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm transition flex items-center gap-1 ${
         active
-          ? "bg-sky-500 text-white border-sky-400 shadow-sm shadow-sky-500/40"
-          : "border-slate-300 text-slate-800 hover:bg-white"
+          ? "bg-slate-900 text-white border-slate-900"
+          : "border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white"
       }`}
     >
       <span
         className={`inline-flex h-3 w-3 items-center justify-center rounded-full border text-[9px] ${
           active
-            ? "border-white bg-white text-sky-600"
-            : "border-slate-400"
+            ? "border-white bg-white text-slate-900"
+            : "border-slate-500"
         }`}
       >
         {active ? "✓" : ""}

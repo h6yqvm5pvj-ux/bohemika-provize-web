@@ -5,8 +5,8 @@ import {
   collection,
   collectionGroup,
   doc,
-  getDoc,
-  getDocs,
+  getDocFromServer,
+  getDocsFromServer,
   query,
   where,
 } from "firebase/firestore";
@@ -67,8 +67,31 @@ type UseCashflowDataResult = {
 
 type UserDoc = {
   email?: string | null;
+  managerEmail?: string | null;
   position?: Position | null;
 };
+
+type CanonicalUser = {
+  email: string;
+  managerEmail: string | null;
+  position: Position | null;
+  docId: string;
+};
+
+function stableHash(parts: string[]): string {
+  let hash = 2166136261;
+  const joined = parts.join("|");
+  for (let i = 0; i < joined.length; i += 1) {
+    hash ^= joined.charCodeAt(i);
+    hash +=
+      (hash << 1) +
+      (hash << 4) +
+      (hash << 7) +
+      (hash << 8) +
+      (hash << 24);
+  }
+  return (hash >>> 0).toString(16);
+}
 
 function commissionItemsForPosition(
   entry: EntryDoc,
@@ -151,17 +174,27 @@ export function useCashflowData({
   const [hasTeam, setHasTeam] = useState(false);
 
   useEffect(() => {
-    if (!userEmail) return;
+    if (!userEmail) {
+      setCashflowItems([]);
+      setHasTeam(false);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
 
     const load = async () => {
       setLoading(true);
       try {
-        const email = userEmail.toLowerCase();
+        const emailRaw = userEmail.trim();
+        const email = emailRaw.toLowerCase();
         if (!email) throw new Error("Chybí e-mail uživatele");
 
-        const meSnap = await getDoc(doc(db, "users", email));
-        const myPosition = (meSnap.data() as UserDoc | undefined)?.position ?? null;
-        setUserPosition(myPosition ?? null);
+        let meSnap = await getDocFromServer(doc(db, "users", email));
+        if (!meSnap.exists() && emailRaw && emailRaw !== email) {
+          meSnap = await getDocFromServer(doc(db, "users", emailRaw));
+        }
+        let myPosition = (meSnap.data() as UserDoc | undefined)?.position ?? null;
 
         const usersCollection = collection(db, "users");
         const visited = new Set<string>();
@@ -169,76 +202,223 @@ export function useCashflowData({
         const managerOf: Record<string, string | null> = {};
         const queue: string[] = [email];
 
+        // Case-insensitive strom uživatelů (managerEmail může být v DB uložený s různým casingem).
+        const allUsersSnap = await getDocsFromServer(usersCollection);
+        const candidatesByEmail = new Map<string, CanonicalUser[]>();
+        allUsersSnap.forEach((docSnap) => {
+          const data = docSnap.data() as UserDoc;
+          const userEmail = ((data.email ?? docSnap.id ?? "") as string).trim().toLowerCase();
+          if (!userEmail) return;
+          const managerEmail = ((data.managerEmail ?? "") as string).trim().toLowerCase() || null;
+          const current = candidatesByEmail.get(userEmail) ?? [];
+          current.push({
+            email: userEmail,
+            managerEmail,
+            position: data.position ?? null,
+            docId: String(docSnap.id ?? ""),
+          });
+          candidatesByEmail.set(userEmail, current);
+        });
+
+        const usersByEmail = new Map<string, CanonicalUser>();
+        const pickBestCandidate = (items: CanonicalUser[], emailKey: string): CanonicalUser => {
+          return [...items].sort((a, b) => {
+            const aDoc = (a.docId ?? "").trim().toLowerCase();
+            const bDoc = (b.docId ?? "").trim().toLowerCase();
+            const aCanonical = aDoc === emailKey ? 0 : 1;
+            const bCanonical = bDoc === emailKey ? 0 : 1;
+            if (aCanonical !== bCanonical) return aCanonical - bCanonical;
+
+            const aHasPosition = a.position ? 0 : 1;
+            const bHasPosition = b.position ? 0 : 1;
+            if (aHasPosition !== bHasPosition) return aHasPosition - bHasPosition;
+
+            const aHasManager = a.managerEmail ? 0 : 1;
+            const bHasManager = b.managerEmail ? 0 : 1;
+            if (aHasManager !== bHasManager) return aHasManager - bHasManager;
+
+            return aDoc.localeCompare(bDoc, "cs");
+          })[0];
+        };
+
+        candidatesByEmail.forEach((items, emailKey) => {
+          usersByEmail.set(emailKey, pickBestCandidate(items, emailKey));
+        });
+
+        if (!myPosition) {
+          myPosition = usersByEmail.get(email)?.position ?? null;
+        }
+
+        const childrenByManager = new Map<string, CanonicalUser[]>();
+        usersByEmail.forEach((userNode) => {
+          if (!userNode.managerEmail) return;
+          const list = childrenByManager.get(userNode.managerEmail) ?? [];
+          list.push(userNode);
+          childrenByManager.set(userNode.managerEmail, list);
+        });
+
         while (queue.length > 0) {
           const managerEmail = queue.shift()!;
+          const subs = childrenByManager.get(managerEmail) ?? [];
 
-          const subsSnap = await getDocs(
-            query(usersCollection, where("managerEmail", "==", managerEmail))
-          );
-
-          subsSnap.docs.forEach((docSnap) => {
-            const data = docSnap.data() as UserDoc;
-            const subordinateEmail = data.email?.toLowerCase();
+          subs.forEach((subordinate) => {
+            const subordinateEmail = subordinate.email;
             if (!subordinateEmail || visited.has(subordinateEmail)) return;
+            if (subordinateEmail === email) return;
 
             visited.add(subordinateEmail);
-            subordinatePositions[subordinateEmail] = data.position ?? null;
+            subordinatePositions[subordinateEmail] = subordinate.position ?? null;
             managerOf[subordinateEmail] = managerEmail;
             queue.push(subordinateEmail);
           });
         }
 
         const subordinateEmails = Array.from(visited);
-        setHasTeam(subordinateEmails.length > 0);
-
         const entriesGroup = collectionGroup(db, "entries");
-        const allowedEmails = [email, ...subordinateEmails];
+        let managerLinkedDocs: Array<{
+          id: string;
+          ownerEmail: string | null;
+          data: Record<string, unknown>;
+        }> = [];
+        let managerLinkedOwnerEmails: string[] = [];
+        try {
+          const teamByManagerSnap = await getDocsFromServer(
+            query(entriesGroup, where("managerEmailSnapshot", "==", email))
+          );
+          managerLinkedDocs = teamByManagerSnap.docs.map((docSnap) => {
+            const data = docSnap.data() as Record<string, unknown>;
+            const ownerEmail =
+              docSnap.ref.parent.parent?.id ??
+              (typeof data.userEmail === "string" ? data.userEmail : null) ??
+              null;
+            return { id: docSnap.id, ownerEmail, data };
+          });
+          managerLinkedOwnerEmails = Array.from(
+            new Set(
+              managerLinkedDocs
+                .map((item) => (item.ownerEmail ?? "").trim().toLowerCase())
+                .filter(Boolean)
+            )
+          );
+        } catch {
+          // Optional path: continue with hierarchy-derived team when this query/index is unavailable.
+        }
+
+        if (cancelled) return;
+        setUserPosition(myPosition ?? null);
+
+        const hasAnyTeam =
+          subordinateEmails.length > 0 || managerLinkedOwnerEmails.length > 0;
+        setHasTeam(hasAnyTeam);
+
+        const allowedEmails = Array.from(
+          new Set([email, ...subordinateEmails, ...managerLinkedOwnerEmails])
+        );
+        const allowedEmailSet = new Set(allowedEmails);
         const chunks: string[][] = [];
 
         for (let index = 0; index < allowedEmails.length; index += 10) {
           chunks.push(allowedEmails.slice(index, index + 10));
         }
 
-        const allEntries: EntryDoc[] = [];
+        const allEntriesByKey = new Map<string, EntryDoc>();
+        const pushEntry = (
+          docId: string,
+          ownerEmailRaw: string | null | undefined,
+          data: Record<string, unknown>,
+          options?: { allowOutsideAllowed?: boolean }
+        ) => {
+          const ownerEmail = (ownerEmailRaw ?? "").trim().toLowerCase();
+          if (!ownerEmail) return;
+          if (!options?.allowOutsideAllowed && !allowedEmailSet.has(ownerEmail)) return;
+          const key = `${ownerEmail}___${docId}`;
+          if (allEntriesByKey.has(key)) return;
+          const persistedUserEmail =
+            typeof data.userEmail === "string" ? data.userEmail.trim().toLowerCase() : null;
+          allEntriesByKey.set(key, {
+            id: docId,
+            ...(data as any),
+            userEmail: persistedUserEmail || ownerEmail,
+          });
+        };
+
+        // Fast path: modern records with userEmail.
         for (const chunk of chunks) {
-          const snap = await getDocs(
+          const snap = await getDocsFromServer(
             query(entriesGroup, where("userEmail", "in", chunk))
           );
 
           snap.docs.forEach((docSnap) => {
-            allEntries.push({
-              id: docSnap.id,
-              ...(docSnap.data() as any),
-            });
+            const data = docSnap.data() as Record<string, unknown>;
+            const ownerEmail =
+              docSnap.ref.parent.parent?.id ??
+              (typeof data.userEmail === "string" ? data.userEmail : null) ??
+              null;
+            pushEntry(docSnap.id, ownerEmail, data);
           });
         }
+
+        // Fallback: historical records where userEmail is missing.
+        for (const ownerEmail of allowedEmails) {
+          const ownerEntriesRef = collection(db, "users", ownerEmail, "entries");
+          const ownerSnap = await getDocsFromServer(ownerEntriesRef);
+          ownerSnap.docs.forEach((docSnap) => {
+            pushEntry(docSnap.id, ownerEmail, docSnap.data() as Record<string, unknown>);
+          });
+        }
+
+        // Include entries explicitly linked to me as manager (already fetched above).
+        managerLinkedDocs.forEach((item) => {
+          pushEntry(item.id, item.ownerEmail, item.data, { allowOutsideAllowed: true });
+        });
+
+        const allEntries = Array.from(allEntriesByKey.values());
 
         const ownEntries = allEntries
           .filter((entry) => (entry.userEmail ?? "").toLowerCase() === email)
           .map((entry) => ({ ...entry, source: "own" as const }));
 
-        const teamRaw =
-          subordinateEmails.length > 0
-            ? allEntries.filter((entry) =>
-                subordinateEmails.includes((entry.userEmail ?? "").toLowerCase())
-              )
-            : [];
+        const isManagedByCurrentUser = (entry: EntryDoc): boolean => {
+          const owner = (entry.userEmail ?? "").toLowerCase();
+          if (owner && subordinateEmails.includes(owner)) return true;
+
+          const managerSnapshot = (entry.managerEmailSnapshot ?? "").toLowerCase();
+          if (managerSnapshot === email) return true;
+
+          const chain = (entry.managerChain as EntryDoc["managerChain"]) ?? [];
+          if (chain.some((node) => (node.email ?? "").toLowerCase() === email)) return true;
+
+          const managerOverrides =
+            (entry.managerOverrides as EntryDoc["managerOverrides"]) ?? [];
+          return managerOverrides.some(
+            (override) => (override.email ?? "").toLowerCase() === email
+          );
+        };
+
+        const teamRaw = allEntries.filter((entry) =>
+          isManagedByCurrentUser(entry)
+        );
 
         const overrides: EntryDoc[] = [];
-        if (myPosition && teamRaw.length > 0) {
+        if (teamRaw.length > 0) {
           for (const entry of teamRaw) {
             const ownerEmail = (entry.userEmail ?? "").toLowerCase();
-            const subordinatePosition =
-              (entry.position as Position | undefined) ??
-              subordinatePositions[ownerEmail] ??
-              null;
-            if (!subordinatePosition) continue;
-
             const chain =
               (entry.managerChain as EntryDoc["managerChain"]) ?? [];
             const managerIndex = chain.findIndex(
               (node) => (node.email ?? "").toLowerCase() === email
             );
+            const chainSubordinatePosition =
+              managerIndex > 0
+                ? (chain[managerIndex - 1]?.position as Position | null | undefined) ??
+                  null
+                : null;
+            const subordinatePosition =
+              (entry.position as Position | undefined) ??
+              subordinatePositions[ownerEmail] ??
+              chainSubordinatePosition ??
+              null;
+            if (!subordinatePosition) continue;
 
             const storedOverride =
               (entry.managerOverrides as EntryDoc["managerOverrides"])?.find(
@@ -433,15 +613,50 @@ export function useCashflowData({
         }
 
         const cashflow = generateCashflow(entriesForCashflow, 10);
+        if (process.env.NODE_ENV !== "production") {
+          const total = cashflow.reduce((sum, item) => sum + item.amount, 0);
+          const entryFingerprint = stableHash(
+            entriesForCashflow
+              .map((entry) =>
+                `${entry.source ?? "na"}:${(entry.userEmail ?? "").toLowerCase()}:${
+                  entry.originalEntryId ?? entry.id
+                }`
+              )
+              .sort((a, b) => a.localeCompare(b, "cs"))
+          );
+          console.info("[cashflow-debug]", {
+            email,
+            scopeFilter,
+            productFilter,
+            myPosition,
+            hasAnyTeam,
+            subordinateEmails: subordinateEmails.length,
+            managerLinkedOwnerEmails: managerLinkedOwnerEmails.length,
+            allowedEmails: allowedEmails.length,
+            allEntries: allEntries.length,
+            ownEntries: ownEntries.length,
+            teamRaw: teamRaw.length,
+            overrides: overrides.length,
+            entriesForCashflow: entriesForCashflow.length,
+            cashflowItems: cashflow.length,
+            total,
+            entryFingerprint,
+          });
+        }
+        if (cancelled) return;
         setCashflowItems(cashflow);
       } catch (error) {
         console.error("Chyba při načítání cashflow:", error);
       } finally {
+        if (cancelled) return;
         setLoading(false);
       }
     };
 
-    load();
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, [userEmail, scopeFilter, productFilter]);
 
   return {

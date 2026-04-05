@@ -55,7 +55,7 @@ type NotificationSettings = {
     push: boolean;
   };
 };
-type BackgroundPreset = "white" | "blue";
+type BackgroundPreset = "white" | "black";
 
 const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   types: {
@@ -242,7 +242,10 @@ export default function SettingsPage() {
             setNotifyMinutes(data.notifyMinutes);
           }
           if (typeof data.backgroundColor === "string") {
-            const c = data.backgroundColor === "blue" ? "blue" : "white";
+            const c =
+              data.backgroundColor === "black" || data.backgroundColor === "blue"
+                ? "black"
+                : "white";
             setBackgroundColor(c as BackgroundPreset);
             if (typeof window !== "undefined") {
               window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, c);
@@ -250,8 +253,12 @@ export default function SettingsPage() {
           } else if (typeof window !== "undefined") {
             const stored = window.localStorage.getItem(
               SETTINGS_KEYS.backgroundColor
-            ) as BackgroundPreset | "black" | null;
-            if (stored) setBackgroundColor(stored === "blue" ? "blue" : "white");
+            );
+            if (stored) {
+              setBackgroundColor(
+                stored === "black" || stored === "blue" ? "black" : "white"
+              );
+            }
           } else {
             setBackgroundColor("white");
           }
@@ -319,13 +326,19 @@ export default function SettingsPage() {
             );
             const storedColor = window.localStorage.getItem(
               SETTINGS_KEYS.backgroundColor
-            ) as BackgroundPreset | "black" | null;
+            );
 
             if (storedPos) setPosition(storedPos);
             if (storedMode) setMode(storedMode);
             const n = storedGoal ? Number(storedGoal) : 0;
             if (Number.isFinite(n)) setMonthlyGoal(n);
-            if (storedColor) setBackgroundColor(storedColor === "blue" ? "blue" : "white");
+            if (storedColor) {
+              setBackgroundColor(
+                storedColor === "black" || storedColor === "blue"
+                  ? "black"
+                  : "white"
+              );
+            }
             const storedMotion = window.localStorage.getItem(
               SETTINGS_KEYS.reduceMotion
             );
@@ -792,7 +805,7 @@ export default function SettingsPage() {
                         Pozadí aplikace
                       </h2>
                       <p className="text-xs text-slate-500">
-                        Vyber si jednoduché pozadí – bílé nebo tmavě modré.
+                        Vyber si jednoduché pozadí – bílé nebo černé.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -823,7 +836,7 @@ export default function SettingsPage() {
                   <div className="flex gap-3 h-60">
                     {[
                       { id: "white" as const, label: "BÍLÁ", bg: "bg-white" },
-                      { id: "blue" as const, label: "MODRÁ", bg: "bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900" },
+                      { id: "black" as const, label: "ČERNÁ", bg: "bg-black" },
                     ].map((opt) => {
                       const isActive = backgroundColor === opt.id;
                       return (
@@ -831,14 +844,14 @@ export default function SettingsPage() {
                           key={opt.id}
                           type="button"
                           onClick={() => handleBackgroundPreset(opt.id)}
-                          className={`relative flex-1 overflow-hidden rounded-2xl border transition ${
+                          className={`settings-bg-preview relative flex-1 overflow-hidden rounded-2xl border transition ${
                             isActive
                               ? "border-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
                               : "border-slate-900 hover:border-slate-700"
                           }`}
                         >
-                          <div className={`absolute inset-0 ${opt.bg}`} />
-                          {opt.id === "blue" ? (
+                          <div className={`settings-bg-preview-layer absolute inset-0 ${opt.bg}`} />
+                          {opt.id === "black" ? (
                             <div className="absolute inset-0 bg-black/25" />
                           ) : (
                             <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(15,23,42,0.06),transparent_55%)]" />
@@ -849,8 +862,8 @@ export default function SettingsPage() {
                             </div>
                           )}
                           <span
-                            className={`relative h-full w-full flex items-center justify-center text-sm font-bold tracking-[0.4em] ${
-                              opt.id === "blue" ? "text-white/90" : "text-slate-900/85"
+                            className={`settings-bg-preview-label relative h-full w-full flex items-center justify-center text-sm font-bold tracking-[0.4em] ${
+                              opt.id === "black" ? "text-[#f8fafc]" : "text-[#0f172a]"
                             }`}
                             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
                           >

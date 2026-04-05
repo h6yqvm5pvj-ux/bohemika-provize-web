@@ -185,6 +185,7 @@ async function fetchStooqDaily(symbol: string): Promise<DailyPoint[]> {
 }
 
 type DailyPoint = { date: string; close: number };
+type IntradayPoint = { t: number; close: number }; // t=unix seconds (UTC)
 
 type HistoryPoint = { t: number; v: number }; // t=unix seconds (UTC), v=CZK/oz
 
@@ -258,6 +259,48 @@ async function fetchYahooDaily(symbol: string): Promise<DailyPoint[]> {
   }
 
   return dedupeAndSortDaily(out);
+}
+
+function dedupeAndSortIntraday(points: IntradayPoint[]): IntradayPoint[] {
+  if (!points.length) return [];
+
+  const map = new Map<number, number>();
+  for (const p of points) {
+    if (!Number.isFinite(p?.t) || p.t <= 0) continue;
+    if (!Number.isFinite(p?.close) || p.close <= 0) continue;
+    map.set(Math.round(p.t), p.close);
+  }
+
+  return [...map.entries()]
+    .map(([t, close]) => ({ t, close }))
+    .sort((a, b) => a.t - b.t);
+}
+
+async function fetchYahooIntraday(symbol: string, range = "7d", interval = "1h"): Promise<IntradayPoint[]> {
+  const url =
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}` +
+    `?range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}&includePrePost=true&events=history`;
+
+  const j: any = await fetchJson(url);
+  const result = j?.chart?.result?.[0];
+  const timestamps: any[] = Array.isArray(result?.timestamp) ? result.timestamp : [];
+  const closes: any[] = Array.isArray(result?.indicators?.quote?.[0]?.close)
+    ? result.indicators.quote[0].close
+    : [];
+
+  if (!timestamps.length || !closes.length) return [];
+
+  const out: IntradayPoint[] = [];
+  const n = Math.min(timestamps.length, closes.length);
+  for (let i = 0; i < n; i++) {
+    const ts = Number(timestamps[i]);
+    const close = Number(closes[i]);
+    if (!Number.isFinite(ts) || ts <= 0) continue;
+    if (!Number.isFinite(close) || close <= 0) continue;
+    out.push({ t: Math.round(ts), close });
+  }
+
+  return dedupeAndSortIntraday(out);
 }
 
 async function fetchLbmaGoldUsdDaily(): Promise<DailyPoint[]> {
@@ -364,6 +407,47 @@ function rangeToDays(range: string | null): number | null {
   if (r === "y5" || r === "5y") return 1826;
   if (r === "y10" || r === "10y") return 3652;
   return null;
+}
+
+function invertIntradaySeries(series: IntradayPoint[]): IntradayPoint[] {
+  return dedupeAndSortIntraday(
+    series
+      .map((p) => (p.close > 0 ? { t: p.t, close: 1 / p.close } : null))
+      .filter((p): p is IntradayPoint => Boolean(p && Number.isFinite(p.close) && p.close > 0))
+  );
+}
+
+async function fetchW1IntradayGoldCzkSeries(): Promise<HistoryPoint[] | null> {
+  const [xauusd, usdczk, czkusd] = await Promise.all([
+    fetchYahooIntraday("GC=F", "7d", "1h").catch(() => []),
+    fetchYahooIntraday("USDCZK=X", "7d", "1h").catch(() => []),
+    fetchYahooIntraday("CZK=X", "7d", "1h").catch(() => []),
+  ]);
+
+  const fxSeries = usdczk.length >= 8 ? usdczk : invertIntradaySeries(czkusd);
+  if (xauusd.length < 8 || fxSeries.length < 8) return null;
+
+  const out: HistoryPoint[] = [];
+
+  let fxIdx = 0;
+  let lastFx: number | null = null;
+
+  for (const g of xauusd) {
+    while (fxIdx < fxSeries.length && fxSeries[fxIdx].t <= g.t) {
+      const v = fxSeries[fxIdx].close;
+      if (Number.isFinite(v) && v > 0) lastFx = v;
+      fxIdx++;
+    }
+
+    const fx = lastFx;
+    if (!fx || !Number.isFinite(fx) || fx <= 0) continue;
+    if (!Number.isFinite(g.close) || g.close <= 0) continue;
+
+    out.push({ t: g.t, v: round2(g.close * fx) });
+  }
+
+  const points = out.sort((a, b) => a.t - b.t);
+  return points.length >= 8 ? points : null;
 }
 
 function buildHistoryPointsFromCzkSeries(czkSeries: DailyPoint[], days: number | null): HistoryPoint[] {
@@ -643,25 +727,35 @@ export async function GET(req: Request) {
       ? null
       : clamp(Number.isFinite(daysFromParam) ? daysFromParam : daysFromRange ?? 1095, 7, 3652);
 
-    const [usdPerOz, usdCzk, histAll] = await Promise.all([
+    const useW1Intraday = !maxMode && days === 7;
+
+    const [usdPerOz, usdCzk, histAll, intradayW1] = await Promise.all([
       fetchGoldUsdPerOz(),
       fetchUsdCzk(),
       computeGoldCzkSeriesAndChanges().catch(() => null),
+      useW1Intraday ? fetchW1IntradayGoldCzkSeries().catch(() => null) : Promise.resolve(null),
     ]);
 
     const czkPerOz = usdPerOz * usdCzk;
     lastOk = { usdPerOz, usdCzk, czkPerOz, ts: Date.now() };
 
-    const history = histAll?.czkSeries ? buildHistoryPointsFromCzkSeries(histAll.czkSeries, days) : [];
+    const history =
+      intradayW1 && intradayW1.length
+        ? intradayW1
+        : histAll?.czkSeries
+          ? buildHistoryPointsFromCzkSeries(histAll.czkSeries, days)
+          : [];
+    const historyGranularity = intradayW1 && intradayW1.length ? "intraday-1h" : "daily-1d";
 
     return NextResponse.json({
       ok: true,
       ...lastOk,
       // percent změny jsou vždy v CZK/oz (nezávisle na UI jednotkách)
       ...(histAll ? { changesPct: histAll.changesPct, asOfDate: histAll.asOfDate } : {}),
-      history, // denní (downsampled) CZK/oz body pro graf
+      history, // intraday (w1) nebo denní (ostatní range) body pro graf
       historyDays: days ?? null,
       historyMax: maxMode,
+      historyGranularity,
     });
   } catch (err: any) {
     // fallback: poslední úspěšná hodnota (pokud existuje)
@@ -681,11 +775,20 @@ export async function GET(req: Request) {
             7,
             3652
           );
+      const fallbackUseW1Intraday = !fallbackMax && fallbackDays === 7;
 
-      const histAll = await computeGoldCzkSeriesAndChanges().catch(() => null);
-      const history = histAll?.czkSeries
-        ? buildHistoryPointsFromCzkSeries(histAll.czkSeries, fallbackDays)
-        : [];
+      const [histAll, fallbackIntradayW1] = await Promise.all([
+        computeGoldCzkSeriesAndChanges().catch(() => null),
+        fallbackUseW1Intraday ? fetchW1IntradayGoldCzkSeries().catch(() => null) : Promise.resolve(null),
+      ]);
+      const history =
+        fallbackIntradayW1 && fallbackIntradayW1.length
+          ? fallbackIntradayW1
+          : histAll?.czkSeries
+            ? buildHistoryPointsFromCzkSeries(histAll.czkSeries, fallbackDays)
+            : [];
+      const historyGranularity =
+        fallbackIntradayW1 && fallbackIntradayW1.length ? "intraday-1h" : "daily-1d";
 
       return NextResponse.json({
         ok: true,
@@ -695,6 +798,7 @@ export async function GET(req: Request) {
         history,
         historyDays: fallbackDays ?? null,
         historyMax: fallbackMax,
+        historyGranularity,
       });
     }
 

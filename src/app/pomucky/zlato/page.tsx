@@ -101,6 +101,11 @@ function formatNum(v: number | null | undefined, digits = 2): string {
   });
 }
 
+function isWeekendDay(date = new Date()): boolean {
+  const d = date.getDay();
+  return d === 0 || d === 6;
+}
+
 async function fetchGold(input?: { days?: number; range?: RangeKey }): Promise<{
   usdPerOz: number;
   usdCzk: number;
@@ -250,7 +255,7 @@ async function fetchGold(input?: { days?: number; range?: RangeKey }): Promise<{
 
 function GoldChart({ points }: { points: Point[] }) {
   const w = 760;
-  const h = 220;
+  const h = 320;
   const pad = { l: 56, r: 14, t: 14, b: 34 };
 
   const [hover, setHover] = useState<null | { idx: number; x: number; y: number }>(null);
@@ -258,14 +263,25 @@ function GoldChart({ points }: { points: Point[] }) {
   const prepared = useMemo(() => {
     if (!points || points.length < 2) return null;
 
-    const xs = points.map((p) => p.t);
-    const ys = points.map((p) => p.v);
+    const sorted = [...points].sort((a, b) => a.t - b.t);
+    if (sorted.length < 2) return null;
 
+    const rawCandles = sorted.slice(1).map((curr, idx) => {
+      const prev = sorted[idx];
+      const next = sorted[idx + 2] ?? curr;
+      const open = prev.v;
+      const close = curr.v;
+      const high = Math.max(open, close, next.v);
+      const low = Math.min(open, close, next.v);
+      return { t: curr.t, open, close, high, low };
+    });
+
+    const xs = rawCandles.map((c) => c.t);
     const minT = Math.min(...xs);
     const maxT = Math.max(...xs);
 
-    let minV = Math.min(...ys);
-    let maxV = Math.max(...ys);
+    let minV = Math.min(...rawCandles.map((c) => c.low));
+    let maxV = Math.max(...rawCandles.map((c) => c.high));
 
     // padding pro prakticky konstantní sérii
     const rawSpan = maxV - minV;
@@ -288,23 +304,28 @@ function GoldChart({ points }: { points: Point[] }) {
     const xOfT = (t: number) => pad.l + ((t - minT) / spanT) * innerW;
     const yOfV = (v: number) => pad.t + (1 - (v - minV) / spanV) * innerH;
 
-    const pts = points
-      .map((p) => ({
-        t: p.t,
-        v: p.v,
-        x: xOfT(p.t),
-        y: yOfV(p.v),
-      }))
-      .sort((a, b) => a.t - b.t);
+    const candles = rawCandles.map((c) => ({
+      ...c,
+      x: xOfT(c.t),
+      yOpen: yOfV(c.open),
+      yClose: yOfV(c.close),
+      yHigh: yOfV(c.high),
+      yLow: yOfV(c.low),
+      up: c.close >= c.open,
+    }));
 
-    const lineD = pts
-      .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
-      .join(" ");
+    const pts = candles.map((c) => ({
+      t: c.t,
+      v: c.close,
+      x: c.x,
+      y: c.yClose,
+    }));
 
-    const baseY = pad.t + innerH;
-    const areaD = `${lineD} L ${pts[pts.length - 1].x.toFixed(2)} ${baseY.toFixed(2)} L ${pts[0].x.toFixed(
-      2
-    )} ${baseY.toFixed(2)} Z`;
+    const minGap =
+      candles.length > 1
+        ? candles.slice(1).reduce((best, c, i) => Math.min(best, c.x - candles[i].x), Number.POSITIVE_INFINITY)
+        : innerW;
+    const candleWidth = Math.max(3, Math.min(14, Number.isFinite(minGap) ? minGap * 0.6 : 10));
 
     // osy / popisky
     const fmtDate = (ms: number) =>
@@ -337,13 +358,11 @@ function GoldChart({ points }: { points: Point[] }) {
     const startPoint = pts[0];
     const endPoint = pts[pts.length - 1];
     const totalChangePct = startPoint.v > 0 ? ((endPoint.v / startPoint.v) - 1) * 100 : null;
-    const showPointMarkers = pts.length <= 180;
 
     return {
       pts,
-      lineD,
-      areaD,
-      baseY,
+      candles,
+      candleWidth,
       yTicks,
       xTicks,
       fmtDate,
@@ -360,7 +379,6 @@ function GoldChart({ points }: { points: Point[] }) {
       startPoint,
       endPoint,
       totalChangePct,
-      showPointMarkers,
     };
   }, [points, pad.b, pad.l, pad.r, pad.t, w, h]);
 
@@ -381,72 +399,60 @@ function GoldChart({ points }: { points: Point[] }) {
     }
 
     const p = prepared.pts[best];
-    setHover({ idx: best, x: p.x, y: p.y });
+    setHover((prev) => {
+      if (prev && prev.idx === best) return prev;
+      return { idx: best, x: p.x, y: p.y };
+    });
   };
 
   const onLeave = () => setHover(null);
 
   if (!prepared) {
     return (
-      <div className="rounded-2xl border border-slate-300 bg-white px-4 py-6 text-sm text-slate-700">
+      <div className="rounded-3xl border border-slate-700 bg-slate-950 px-4 py-6 text-sm text-slate-100">
         Nemám historická data pro graf (API nevrátilo dost bodů). Zkus přepnout rozsah.
       </div>
     );
   }
 
   const hp = hover ? prepared.pts[hover.idx] : null;
-  const prevHp = hp && hover && hover.idx > 0 ? prepared.pts[hover.idx - 1] : null;
-  const pointDeltaPct = hp && prevHp && prevHp.v > 0 ? ((hp.v / prevHp.v) - 1) * 100 : null;
+  const hoveredCandle = hover ? prepared.candles[hover.idx] : null;
+  const candleDelta = hoveredCandle ? hoveredCandle.close - hoveredCandle.open : null;
+  const candleDeltaPct =
+    hoveredCandle && hoveredCandle.open > 0
+      ? ((hoveredCandle.close - hoveredCandle.open) / hoveredCandle.open) * 100
+      : null;
+  const candleBadgeLightClass =
+    candleDelta == null
+      ? "border border-slate-300 bg-slate-100 text-slate-700"
+      : candleDelta > 0
+        ? "border border-emerald-300 bg-emerald-50 text-emerald-700"
+        : candleDelta < 0
+          ? "border border-rose-300 bg-rose-50 text-rose-700"
+          : "border border-slate-300 bg-slate-100 text-slate-700";
+  const candleTrendSign = candleDelta != null && candleDelta > 0 ? "+" : "";
 
   return (
-    <div className="relative rounded-2xl border border-slate-300 bg-white px-4 py-4">
-      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
-        <span>Bodů: {prepared.pts.length}</span>
-        <span>Min: {formatCzk(prepared.minPoint.v)}</span>
-        <span>Max: {formatCzk(prepared.maxPoint.v)}</span>
-        <span>
-          Změna:{" "}
-          {prepared.totalChangePct == null
-            ? "—"
-            : `${prepared.totalChangePct >= 0 ? "+" : ""}${formatNum(prepared.totalChangePct, 2)} %`}
-        </span>
-      </div>
-
+    <div className="relative rounded-3xl border border-slate-700 bg-slate-950 px-4 py-4">
       <svg
         viewBox={`0 0 ${w} ${h}`}
-        className="w-full h-[220px] select-none"
+        className="w-full h-[320px] select-none"
         role="img"
         aria-label="Graf ceny zlata"
         onMouseMove={onMove}
         onMouseLeave={onLeave}
       >
-        <defs>
-          <linearGradient id="goldArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="currentColor" stopOpacity="0.28" />
-            <stop offset="70%" stopColor="currentColor" stopOpacity="0.06" />
-            <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
-          </linearGradient>
-          <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="2" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
+        <rect x={pad.l} y={pad.t} width={w - pad.l - pad.r} height={h - pad.t - pad.b} fill="#0b1220" rx="8" />
 
         {/* grid */}
-        <g className="text-slate-600" stroke="currentColor" strokeWidth="1">
+        <g stroke="rgba(148,163,184,0.22)" strokeWidth="1">
           {prepared.yTicks.map((t, i) => (
-            <line key={`gy-${i}`} x1={pad.l} y1={t.y} x2={w - pad.r} y2={t.y} />
-          ))}
-          {prepared.xTicks.map((t, i) => (
-            <line key={`gx-${i}`} x1={t.x} y1={pad.t} x2={t.x} y2={h - pad.b} />
+            <line key={`gy-${i}`} x1={pad.l} y1={t.y} x2={w - pad.r} y2={t.y} strokeDasharray="3 3" />
           ))}
         </g>
 
         {/* y labels */}
-        <g className="fill-slate-500" fontSize="11">
+        <g className="fill-slate-300" fontSize="11">
           {prepared.yTicks.map((t, i) => (
             <text key={`yl-${i}`} x={8} y={t.y + 4} opacity={0.9}>
               {formatCzk(t.v)}
@@ -455,7 +461,7 @@ function GoldChart({ points }: { points: Point[] }) {
         </g>
 
         {/* x labels */}
-        <g className="fill-slate-500" fontSize="11">
+        <g className="fill-slate-300" fontSize="11">
           {prepared.xTicks.map((t, i) => (
             <text
               key={`xl-${i}`}
@@ -470,74 +476,99 @@ function GoldChart({ points }: { points: Point[] }) {
         </g>
 
         {/* min/max vodítka */}
-        <g stroke="rgba(148,163,184,0.28)" strokeDasharray="4 4" strokeWidth="1">
+        <g stroke="rgba(148,163,184,0.2)" strokeDasharray="4 4" strokeWidth="1">
           <line x1={pad.l} y1={prepared.minPoint.y} x2={w - pad.r} y2={prepared.minPoint.y} />
           <line x1={pad.l} y1={prepared.maxPoint.y} x2={w - pad.r} y2={prepared.maxPoint.y} />
         </g>
 
-        {/* area + line */}
-        <g className="text-rose-600">
-          <path d={prepared.areaD} fill="url(#goldArea)" />
-          <path
-            d={prepared.lineD}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.25"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            filter="url(#softGlow)"
-          />
+        {/* candles */}
+        <g>
+          {prepared.candles.map((c, i) => {
+            const bodyTop = Math.min(c.yOpen, c.yClose);
+            const bodyHeight = Math.max(1.5, Math.abs(c.yClose - c.yOpen));
+            const color = c.up ? "#34d399" : "#f87171";
+            const stroke = c.up ? "#10b981" : "#ef4444";
+            return (
+              <g key={`c-${i}-${c.t}`}>
+                <line x1={c.x} y1={c.yHigh} x2={c.x} y2={c.yLow} stroke={stroke} strokeWidth={1.2} />
+                <rect
+                  x={c.x - prepared.candleWidth / 2}
+                  y={bodyTop}
+                  width={prepared.candleWidth}
+                  height={bodyHeight}
+                  fill={color}
+                  stroke={stroke}
+                  strokeWidth={1}
+                  rx={1}
+                />
+              </g>
+            );
+          })}
         </g>
-
-        {/* markery datových bodů */}
-        {prepared.showPointMarkers ? (
-          <g>
-            {prepared.pts.map((p, i) => (
-              <circle
-                key={`pt-${i}-${p.t}`}
-                cx={p.x}
-                cy={p.y}
-                r={1.4}
-                fill="rgba(15,23,42,0.45)"
-                stroke="rgba(15,23,42,0.4)"
-                strokeWidth="0.8"
-              />
-            ))}
-          </g>
-        ) : null}
 
         {/* hover */}
         {hp ? (
           <g>
-            <line x1={hp.x} y1={pad.t} x2={hp.x} y2={h - pad.b} stroke="rgba(15,23,42,0.2)" strokeWidth="1" />
-            <line x1={pad.l} y1={hp.y} x2={w - pad.r} y2={hp.y} stroke="rgba(15,23,42,0.18)" strokeWidth="1" />
-            <circle cx={hp.x} cy={hp.y} r={4} fill="rgba(15,23,42,0.95)" stroke="rgba(15,23,42,0.6)" />
+            <line x1={hp.x} y1={pad.t} x2={hp.x} y2={h - pad.b} stroke="rgba(226,232,240,0.28)" strokeWidth="1" />
+            <line x1={pad.l} y1={hp.y} x2={w - pad.r} y2={hp.y} stroke="rgba(226,232,240,0.2)" strokeWidth="1" />
+            <circle cx={hp.x} cy={hp.y} r={4} fill="#f8fafc" stroke="rgba(226,232,240,0.6)" />
+            {hoveredCandle ? (
+              <rect
+                x={hoveredCandle.x - prepared.candleWidth / 2 - 1}
+                y={Math.min(hoveredCandle.yOpen, hoveredCandle.yClose) - 1}
+                width={prepared.candleWidth + 2}
+                height={Math.max(2, Math.abs(hoveredCandle.yClose - hoveredCandle.yOpen) + 2)}
+                fill="none"
+                stroke="rgba(248,250,252,0.8)"
+                strokeWidth="1"
+                rx={1}
+              />
+            ) : null}
           </g>
         ) : null}
       </svg>
 
-      {hp ? (
-        <div
-          className="pointer-events-none absolute rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.15)]"
-          style={{
-            left: Math.min(Math.max((hover?.x ?? 0) / w, 0.1), 0.9) * 100 + "%",
-            top: 12,
-            transform: "translateX(-50%)",
-          }}
-        >
-          <div className="text-slate-500">{prepared.fmtDate(hp.t)}</div>
-          <div className="mt-0.5 font-semibold">{formatCzk(hp.v)}</div>
-          {pointDeltaPct != null && (
-            <div className="mt-0.5 text-slate-500">
-              proti předchozímu bodu:{" "}
-              <span className="text-slate-900">
-                {pointDeltaPct >= 0 ? "+" : ""}
-                {formatNum(pointDeltaPct, 2)} %
+      <div className="mt-3 space-y-2 text-[13px] tabular-nums">
+        <div className="rounded-xl border border-slate-300 bg-slate-100 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-800">
+            <span>
+              Bodů: <span className="font-semibold text-slate-950">{prepared.pts.length}</span>
+            </span>
+            <span>
+              Min: <span className="font-semibold text-slate-950">{formatCzk(prepared.minPoint.v)}</span>
+            </span>
+            <span>
+              Max: <span className="font-semibold text-slate-950">{formatCzk(prepared.maxPoint.v)}</span>
+            </span>
+            <span>
+              Změna:{" "}
+              <span className="font-semibold text-slate-950">
+                {prepared.totalChangePct == null
+                  ? "—"
+                  : `${prepared.totalChangePct >= 0 ? "+" : ""}${formatNum(prepared.totalChangePct, 2)} %`}
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-300 bg-white px-3 py-2">
+          {hoveredCandle && hp ? (
+            <div className="flex flex-wrap items-center gap-2 tabular-nums">
+              <span className="inline-flex rounded-full border border-slate-900 bg-slate-900 px-2.5 py-1 font-semibold text-white">
+                {prepared.fmtDate(hp.t)}
+              </span>
+              <span className={["inline-flex rounded-full px-2.5 py-1 font-semibold", candleBadgeLightClass].join(" ")}>
+                Změna svíčky:{" "}
+                {candleDelta == null
+                  ? "—"
+                  : `${candleTrendSign}${formatCzk(candleDelta)} (${candleTrendSign}${formatNum(candleDeltaPct ?? 0, 2)} %)`}
               </span>
             </div>
+          ) : (
+            <span className="text-slate-600">Najetím na svíčku zobrazíš datum a její změnu.</span>
           )}
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -545,15 +576,21 @@ function GoldChart({ points }: { points: Point[] }) {
 function ChangeChip({ label, value }: { label: string; value: number | null | undefined }) {
   const dir = value == null ? "flat" : value > 0 ? "up" : value < 0 ? "down" : "flat";
 
-  const cls = "border-slate-300 bg-white text-slate-900";
-
-  const sign = dir === "up" ? "▲" : dir === "down" ? "▼" : "";
+  const badgeCls =
+    dir === "up"
+      ? "bg-emerald-600 text-white"
+      : dir === "down"
+        ? "bg-rose-600 text-white"
+        : "bg-slate-700 text-white";
+  const sign = dir === "up" ? "▲" : dir === "down" ? "▼" : "•";
 
   return (
-    <div className={["rounded-full border px-3 py-1 text-xs font-semibold tracking-wide", cls].join(" ")}>
-      <span className="text-slate-600">{label}</span>
-      <span className="mx-2 text-slate-600">•</span>
-      <span className="text-slate-900">{value == null ? "—" : `${sign} ${formatNum(Math.abs(value), 1)} %`}</span>
+    <div className="flex items-center justify-between gap-3 border-b border-slate-200 py-2 last:border-b-0">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">{label}</span>
+      <span className={["inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-semibold leading-none", badgeCls].join(" ")}>
+        <span>{sign}</span>
+        <span>{value == null ? "—" : `${formatNum(Math.abs(value), 1)} %`}</span>
+      </span>
     </div>
   );
 }
@@ -571,6 +608,7 @@ export default function GoldToolPage() {
   const [isStale, setIsStale] = useState(false);
   const [secondsToRefresh, setSecondsToRefresh] = useState(60);
   const [refreshingNow, setRefreshingNow] = useState(false);
+  const [isWeekendPause, setIsWeekendPause] = useState(() => isWeekendDay());
 
   // historie – CZK / oz
   const [history, setHistory] = useState<Point[]>([]);
@@ -720,6 +758,10 @@ export default function GoldToolPage() {
 
     if (timerRef.current) window.clearInterval(timerRef.current);
     timerRef.current = window.setInterval(async () => {
+      const weekendNow = isWeekendDay();
+      setIsWeekendPause((prev) => (prev === weekendNow ? prev : weekendNow));
+      if (weekendNow) return;
+
       try {
         await loadTick();
       } catch {
@@ -735,7 +777,12 @@ export default function GoldToolPage() {
 
   useEffect(() => {
     if (secondRef.current) window.clearInterval(secondRef.current);
+    setIsWeekendPause(isWeekendDay());
     secondRef.current = window.setInterval(() => {
+      const weekendNow = isWeekendDay();
+      setIsWeekendPause((prev) => (prev === weekendNow ? prev : weekendNow));
+      if (weekendNow) return;
+
       setSecondsToRefresh((prev) => (prev <= 1 ? 60 : prev - 1));
     }, 1000);
     return () => {
@@ -755,6 +802,32 @@ export default function GoldToolPage() {
     }
   };
 
+  const changeRows: { label: string; value: number | null | undefined }[] = [
+    { label: "1 den", value: changes?.d1 },
+    { label: "3 měsíce", value: changes?.m3 },
+    { label: "1 rok", value: changes?.y1 },
+    { label: "2 roky", value: changes?.y2 },
+    { label: "3 roky", value: changes?.y3 },
+    { label: "5 let", value: changes?.y5 },
+    { label: "10 let", value: changes?.y10 },
+  ];
+  const positiveChanges = changeRows.filter((row) => row.value != null && row.value > 0).length;
+  const negativeChanges = changeRows.filter((row) => row.value != null && row.value < 0).length;
+  const dataBadge = isWeekendPause
+    ? {
+        label: "Market closed (víkend)",
+        className: "border-rose-700 bg-rose-600 text-white",
+      }
+    : isStale
+      ? {
+          label: "Stale snapshot",
+          className: "border-slate-300 bg-white text-slate-600",
+        }
+      : {
+          label: "Live data",
+          className: "border-emerald-700 bg-emerald-600 text-white",
+        };
+
   return (
     <AppLayout active="tools">
       <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
@@ -771,11 +844,11 @@ export default function GoldToolPage() {
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Aktuální cena</h2>
                 <p className="text-xs text-slate-600">
-                  Zobrazení v CZK. Aktuální cena se obnovuje cca 1× za minutu.
+                  Zobrazení v CZK. Aktuální cena se obnovuje cca 1× za minutu (o víkendu je auto-refresh pozastaven).
                 </p>
               </div>
               <div className="sm:justify-end">
-                <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-300 bg-slate-100 p-1">
+                <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-800 bg-slate-950 p-1">
                   {(Object.keys(UNITS) as UnitKey[]).map((k) => {
                     const active = unit === k;
                     return (
@@ -785,7 +858,7 @@ export default function GoldToolPage() {
                         onClick={() => setUnit(k)}
                         className={[
                           "whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition",
-                          active ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-white",
+                          active ? "bg-white text-slate-900" : "text-white hover:bg-white/10",
                         ].join(" ")}
                       >
                         {UNITS[k].label}
@@ -804,7 +877,7 @@ export default function GoldToolPage() {
 
             <div className="space-y-4">
               <div className="relative overflow-hidden rounded-[28px] border border-slate-300 bg-slate-100 px-5 py-5 space-y-4">
-                <div className="grid gap-4 md:grid-cols-[1fr_360px] md:items-start">
+                <div className="grid gap-4 md:grid-cols-[1fr_500px] md:items-start">
                   <div>
                     <div className="text-[11px] uppercase tracking-wider text-slate-500">Cena ({selected.label})</div>
                     <div className="text-6xl font-semibold leading-none tracking-tight text-slate-900 sm:text-7xl lg:text-[5.25rem]">
@@ -817,13 +890,13 @@ export default function GoldToolPage() {
                       <span
                         className={[
                           "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                          isStale ? "border-slate-300 bg-white text-slate-600" : "border-emerald-700 bg-emerald-600 text-white",
+                          dataBadge.className,
                         ].join(" ")}
                       >
-                        {isStale ? "Stale snapshot" : "Live data"}
+                        {dataBadge.label}
                       </span>
                       <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] text-slate-600">
-                        Další auto-refresh za {secondsToRefresh}s
+                        {isWeekendPause ? "Auto-refresh pozastaven (víkend)" : `Další auto-refresh za ${secondsToRefresh}s`}
                       </span>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -838,16 +911,22 @@ export default function GoldToolPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="text-[11px] uppercase tracking-wider text-slate-500">Nárůst / pokles (CZK / unce)</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <ChangeChip label="1 den" value={changes?.d1} />
-                      <ChangeChip label="3 měsíce" value={changes?.m3} />
-                      <ChangeChip label="1 rok" value={changes?.y1} />
-                      <ChangeChip label="2 roky" value={changes?.y2} />
-                      <ChangeChip label="3 roky" value={changes?.y3} />
-                      <ChangeChip label="5 let" value={changes?.y5} />
-                      <ChangeChip label="10 let" value={changes?.y10} />
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-[11px] uppercase tracking-wider text-slate-500">Nárůst / pokles (CZK / unce)</div>
+                      <div className="inline-flex items-center gap-2 text-[10px]">
+                        <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-800">
+                          ▲ {positiveChanges}
+                        </span>
+                        <span className="rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 font-semibold text-rose-800">
+                          ▼ {negativeChanges}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+                      {changeRows.map((row) => (
+                        <ChangeChip key={row.label} label={row.label} value={row.value} />
+                      ))}
                     </div>
                   </div>
                 </div>

@@ -11,6 +11,7 @@ type Props = {
   monthlyGoal: number | null;
   progress: number;
   progressTone: string;
+  loading: boolean;
   isLiteUI: boolean;
   remainingToGoal: number;
   position?: Position | null;
@@ -22,6 +23,7 @@ export function MonthlyGoalSection({
   monthlyGoal,
   progress,
   progressTone,
+  loading,
   isLiteUI,
   remainingToGoal,
   position,
@@ -39,6 +41,8 @@ export function MonthlyGoalSection({
   const hasGoal = monthlyGoal != null && monthlyGoal > 0;
   const remainingImmediate = Math.max(0, Number(remainingToGoal) || 0);
   const canGeneratePlan = hasGoal && remainingImmediate > 0 && !!position;
+  const normalizedProgress = Math.max(0, Math.min(100, Number(progress) || 0));
+  const progressFillClass = normalizedProgress >= 51 ? "bg-emerald-600" : "bg-rose-600";
 
   useEffect(() => {
     setInputValue(
@@ -119,8 +123,8 @@ export function MonthlyGoalSection({
   };
 
   const goalCardClass = isLiteUI
-    ? "relative min-w-0 h-full overflow-hidden rounded-[28px] border border-slate-900 bg-white px-4 py-5 sm:px-10 sm:py-7"
-    : "relative min-w-0 h-full overflow-hidden rounded-[28px] border border-slate-900 bg-white px-4 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-10 sm:py-7";
+    ? "relative min-w-0 h-full overflow-hidden rounded-[28px] border border-slate-900 bg-white px-4 py-5 transition-[border-color,box-shadow] duration-200 hover:border-slate-700 focus-within:border-slate-700 focus-within:shadow-[0_0_0_1px_rgba(15,23,42,0.12)] sm:px-10 sm:py-7"
+    : "relative min-w-0 h-full overflow-hidden rounded-[28px] border border-slate-900 bg-white px-4 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] transition-[border-color,box-shadow] duration-200 hover:border-slate-700 hover:shadow-[0_16px_36px_rgba(15,23,42,0.16)] focus-within:border-slate-700 focus-within:shadow-[0_16px_36px_rgba(15,23,42,0.16),0_0_0_1px_rgba(15,23,42,0.12)] sm:px-10 sm:py-7";
 
   return (
     <section className={goalCardClass}>
@@ -181,7 +185,9 @@ export function MonthlyGoalSection({
             <div className="flex flex-col items-end gap-2 sm:gap-3">
               <div className="text-right">
                 <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Splněno</div>
-                <div className="text-3xl font-semibold text-slate-900">{progress}%</div>
+                <div className="text-3xl font-semibold text-slate-900">
+                  {loading ? "Načítám…" : `${normalizedProgress}%`}
+                </div>
               </div>
               <div className="flex flex-wrap sm:flex-nowrap justify-end gap-2">
                 <button
@@ -207,8 +213,8 @@ export function MonthlyGoalSection({
         <div className="flex flex-col gap-2">
           <div className="relative h-3.5 w-full overflow-hidden rounded-full border border-slate-900 bg-white">
             <div
-              className={`h-full rounded-full ${progressTone ? "bg-slate-900" : "bg-slate-900"}`}
-              style={{ width: `${progress}%` }}
+              className={`h-full rounded-full ${progressFillClass}`}
+              style={{ width: `${loading ? 0 : normalizedProgress}%` }}
             />
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-500">

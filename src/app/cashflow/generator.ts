@@ -58,9 +58,11 @@ export function generateCashflow(
     const start =
       toDate(entry.policyStartDate) ??
       toDate(entry.contractSignedDate) ??
+      toDate(entry.createdAt) ??
       new Date();
     const agreement =
       toDate(entry.contractSignedDate) ??
+      toDate(entry.createdAt) ??
       toDate(entry.policyStartDate) ??
       start;
     const product = entry.productKey;

@@ -1,7 +1,7 @@
 // src/app/pomucky/struktura/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "../plan-produkce/SplitTitle";
@@ -24,6 +24,8 @@ type UserNode = {
 
 type TreeNode = UserNode & { children: TreeNode[] };
 type PositionedNode = TreeNode & { x: number; y: number };
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 84;
 
 function nameFromEmail(email: string): string {
   const local = email.split("@")[0] ?? "";
@@ -58,6 +60,19 @@ function positionLabel(pos: Position | null): string {
   return map[pos] ?? pos;
 }
 
+function roleIcon(pos: Position | null): string {
+  if (!pos) return "•";
+  if (pos.startsWith("manazer")) return "♔";
+  if (pos.startsWith("poradce")) return "◉";
+  return "•";
+}
+
+function truncateText(value: string, max: number): string {
+  if (!value) return "";
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 1)}…`;
+}
+
 function buildTree(
   rootEmail: string,
   nodesByEmail: Map<string, UserNode>,
@@ -76,6 +91,7 @@ function buildTree(
 
 export default function StructurePage() {
   const router = useRouter();
+  const treeScrollRef = useRef<HTMLDivElement | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [nodes, setNodes] = useState<Map<string, UserNode>>(new Map());
@@ -207,11 +223,13 @@ export default function StructurePage() {
         height: 0,
         stepX: 0,
         stepY: 0,
+        offsetX: 0,
         edges: [] as { from: PositionedNode; to: PositionedNode }[],
       };
 
-    const H_STEP = 140;
-    const V_STEP = 120;
+    const H_STEP = 250;
+    const V_STEP = 145;
+    const TOP_PADDING = 24;
     let nextX = 0;
     let maxDepth = 0;
     const placed: PositionedNode[] = [];
@@ -228,14 +246,22 @@ export default function StructurePage() {
         const maxX = Math.max(...childrenPos.map((c) => c.x));
         x = (minX + maxX) / 2;
       }
-      const positioned: PositionedNode = { ...node, x, y: depth * V_STEP };
+      const positioned: PositionedNode = {
+        ...node,
+        x,
+        y: depth * V_STEP + TOP_PADDING,
+      };
       placed.push(positioned);
       posMap.set(positioned.email, positioned);
       return positioned;
     };
 
     dfs(treeRoot, 0);
+    const minX = Math.min(...placed.map((p) => p.x));
     const maxX = Math.max(...placed.map((p) => p.x));
+    const contentWidth = (maxX - minX) * H_STEP + NODE_WIDTH;
+    const width = Math.max(contentWidth + 80, 960);
+    const offsetX = (width - contentWidth) / 2 + NODE_WIDTH / 2 - minX * H_STEP;
 
     const edges: { from: PositionedNode; to: PositionedNode }[] = [];
     placed.forEach((p) => {
@@ -249,13 +275,26 @@ export default function StructurePage() {
 
     return {
       nodes: placed,
-      width: Math.max((maxX + 1) * H_STEP, 900),
-      height: (maxDepth + 1) * V_STEP + 80,
+      width,
+      height: (maxDepth + 1) * V_STEP + NODE_HEIGHT + TOP_PADDING + 24,
       stepX: H_STEP,
       stepY: V_STEP,
+      offsetX,
       edges,
     };
   }, [treeRoot]);
+
+  useEffect(() => {
+    const centerTree = () => {
+      const el = treeScrollRef.current;
+      if (!el) return;
+      el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
+    };
+
+    centerTree();
+    window.addEventListener("resize", centerTree);
+    return () => window.removeEventListener("resize", centerTree);
+  }, [layout.width, layout.height, loading, treeRoot]);
 
   if (!user) return null;
 
@@ -269,7 +308,7 @@ export default function StructurePage() {
           </p>
         </header>
 
-        <div className="rounded-3xl border border-slate-900 bg-white  px-5 py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+        <div className="px-1 py-1">
           {loading ? (
             <p className="text-sm text-slate-600">Načítám strukturu…</p>
           ) : !treeRoot ? (
@@ -277,7 +316,7 @@ export default function StructurePage() {
           ) : layout.nodes.length === 0 || layout.stepX === 0 ? (
             <p className="text-sm text-slate-600">Strukturu se nepodařilo načíst.</p>
           ) : (
-            <div className="relative w-full overflow-auto rounded-2xl border border-slate-300 bg-white">
+            <div ref={treeScrollRef} className="relative w-full overflow-auto">
               <svg
                 style={{ minWidth: "100%" }}
                 width={layout.width}
@@ -287,13 +326,15 @@ export default function StructurePage() {
               >
                 {/* hrany */}
                 {layout.edges.map(({ from, to }) => (
-                  <line
+                  <path
                     key={`${from.email}-${to.email}`}
-                    x1={from.x * layout.stepX + layout.stepX / 2}
-                    y1={from.y + 70}
-                    x2={to.x * layout.stepX + layout.stepX / 2}
-                    y2={to.y}
-                    stroke="rgba(255,255,255,0.35)"
+                    d={`M ${from.x * layout.stepX + layout.offsetX} ${from.y + NODE_HEIGHT}
+                        C ${from.x * layout.stepX + layout.offsetX} ${from.y + NODE_HEIGHT + 26},
+                          ${to.x * layout.stepX + layout.offsetX} ${to.y - 26},
+                          ${to.x * layout.stepX + layout.offsetX} ${to.y}`}
+                    fill="none"
+                    stroke="#94a3b8"
+                    strokeOpacity="0.55"
                     strokeWidth={2}
                   />
                 ))}
@@ -304,45 +345,44 @@ export default function StructurePage() {
                   return (
                     <g
                       key={node.email}
-                      transform={`translate(${(node as PositionedNode).x * layout.stepX + layout.stepX / 2 - 60}, ${
-                        (node as PositionedNode).y
-                      })`}
+                      transform={`translate(${node.x * layout.stepX + layout.offsetX - NODE_WIDTH / 2}, ${node.y})`}
                     >
                       <rect
-                        width="120"
-                        height="60"
-                        rx="12"
-                        fill={isCurrent ? "rgba(16,185,129,0.18)" : "rgba(255,255,255,0.08)"}
-                        stroke={isCurrent ? "rgba(16,185,129,0.6)" : "rgba(255,255,255,0.2)"}
+                        width={NODE_WIDTH}
+                        height={NODE_HEIGHT}
+                        rx="16"
+                        fill={isCurrent ? "#dcfce7" : "#ffffff"}
+                        stroke={isCurrent ? "#16a34a" : "#cbd5e1"}
                         strokeWidth={2}
                       />
                       <text
-                        x="60"
-                        y="22"
+                        x={NODE_WIDTH / 2}
+                        y="28"
                         textAnchor="middle"
-                        fill="#e2e8f0"
-                        fontSize="12"
-                        fontWeight="600"
+                        fill="#0f172a"
+                        fontSize="15"
+                        fontWeight="700"
                       >
-                        {node.name}
+                        {truncateText(node.name, 24)}
                       </text>
                       <text
-                        x="60"
-                        y="36"
-                        textAnchor="middle"
-                        fill="#cbd5e1"
-                        fontSize="10"
-                      >
-                        {node.email}
-                      </text>
-                      <text
-                        x="60"
+                        x={NODE_WIDTH / 2}
                         y="50"
                         textAnchor="middle"
-                        fill="#93c5fd"
-                        fontSize="10"
+                        fill="#475569"
+                        fontSize="11"
                       >
-                        {positionLabel(node.position)}
+                        {truncateText(node.email, 30)}
+                      </text>
+                      <text
+                        x={NODE_WIDTH / 2}
+                        y="69"
+                        textAnchor="middle"
+                        fill={isCurrent ? "#047857" : "#0f172a"}
+                        fontSize="11"
+                        fontWeight="600"
+                      >
+                        {`${roleIcon(node.position)} ${positionLabel(node.position)}`}
                       </text>
                     </g>
                   );

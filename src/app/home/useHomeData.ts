@@ -263,6 +263,7 @@ export function useHomeData({
     };
 
     const load = async () => {
+      let fallbackPayload: HomeCachePayload | null = null;
       try {
         const now = new Date();
         const currentMonth = now.getMonth();
@@ -280,6 +281,9 @@ export function useHomeData({
 
         const cacheKey = `${email}|${currentYear}-${currentMonth}|${loadPersonalHistory ? "hist" : "nohist"}|${loadTeamHistory ? "teamhist" : "noteamhist"}`;
         const cached = homeDataCache[cacheKey];
+        if (cached?.payload) {
+          fallbackPayload = cached.payload;
+        }
         if (cached && Date.now() - cached.ts < HOME_CACHE_TTL_MS) {
           applyCachedHomeState(cached.payload);
           setLoading(false);
@@ -287,6 +291,9 @@ export function useHomeData({
         }
 
         const persisted = readPersistedHomeCache(cacheKey);
+        if (persisted?.payload) {
+          fallbackPayload = persisted.payload;
+        }
         const seededFromPersist = !!persisted && Date.now() - persisted.ts < HOME_CACHE_TTL_MS;
         if (seededFromPersist && persisted) {
           homeDataCache[cacheKey] = persisted;
@@ -330,9 +337,12 @@ export function useHomeData({
           if (seenPersonal.has(key)) return;
           seenPersonal.add(key);
           const data = docSnap.data() as any as EntryDoc;
+          const persistedUserEmail =
+            typeof data.userEmail === "string" ? data.userEmail.toLowerCase() : "";
           myEntriesList.push({
             ...data,
             id: docSnap.id,
+            userEmail: persistedUserEmail || email,
           });
         };
 
@@ -487,6 +497,7 @@ export function useHomeData({
             teamEntriesAll.push({
               ...(data as any),
               id: docSnap.id,
+              userEmail: (data.userEmail ?? ownerEmail) as string,
             } as EntryDoc);
           }
 
@@ -568,13 +579,21 @@ export function useHomeData({
 
             teamContractSnap.forEach((docSnap) => {
               const data = docSnap.data() as any as EntryDoc;
-              const ownerEmail = (data.userEmail ?? "").toLowerCase();
+              const ownerEmail = (
+                (data.userEmail as string | undefined) ??
+                docSnap.ref.parent.parent?.id ??
+                ""
+              ).toLowerCase();
               collectTeamEntry(docSnap, ownerEmail);
             });
 
             teamCreatedSnap.forEach((docSnap) => {
               const data = docSnap.data() as any as EntryDoc;
-              const ownerEmail = (data.userEmail ?? "").toLowerCase();
+              const ownerEmail = (
+                (data.userEmail as string | undefined) ??
+                docSnap.ref.parent.parent?.id ??
+                ""
+              ).toLowerCase();
               collectTeamEntry(docSnap, ownerEmail);
             });
           })
@@ -633,6 +652,9 @@ export function useHomeData({
         writePersistedHomeCache(cacheKey, payload);
       } catch (e) {
         console.error("Chyba při načítání produkce:", e);
+        if (!cancelled && fallbackPayload) {
+          applyCachedHomeState(fallbackPayload);
+        }
       } finally {
         if (!cancelled) {
           setLoading(false);

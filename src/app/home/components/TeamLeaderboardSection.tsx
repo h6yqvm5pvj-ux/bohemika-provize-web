@@ -22,8 +22,8 @@ export function TeamLeaderboardSection({
   isLiteUI,
 }: Props) {
   const leaderboardClass = isLiteUI
-    ? "relative h-full overflow-hidden rounded-[28px] border border-slate-900 bg-white px-6 py-6 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-10 sm:py-7"
-    : "relative h-full overflow-hidden rounded-[28px] border border-slate-900 bg-white px-6 py-6 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-10 sm:py-7";
+    ? "relative h-full overflow-hidden rounded-[28px] border border-slate-900 bg-white px-6 py-6 transition-[border-color,box-shadow] duration-200 hover:border-slate-700 focus-within:border-slate-700 focus-within:shadow-[0_0_0_1px_rgba(15,23,42,0.12)] sm:px-10 sm:py-7"
+    : "relative h-full overflow-hidden rounded-[28px] border border-slate-900 bg-white px-6 py-6 shadow-[0_12px_28px_rgba(15,23,42,0.1)] transition-[border-color,box-shadow] duration-200 hover:border-slate-700 hover:shadow-[0_16px_36px_rgba(15,23,42,0.16)] focus-within:border-slate-700 focus-within:shadow-[0_16px_36px_rgba(15,23,42,0.16),0_0_0_1px_rgba(15,23,42,0.12)] sm:px-10 sm:py-7";
 
   return (
     <section className={leaderboardClass}>
@@ -107,38 +107,38 @@ export function TeamLeaderboardSection({
           {entries.slice(0, 10).map((row, idx) => (
             <li
               key={row.email}
-              className="relative overflow-hidden rounded-2xl border border-slate-900 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] sm:px-5 sm:py-4"
+              className="relative overflow-hidden rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.14)] sm:px-5 sm:py-4"
             >
               <div className="relative flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div
                     className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold ring-2 ${
                       idx === 0
-                        ? "bg-slate-900 text-white ring-slate-900 ring-offset-2 ring-offset-white"
+                        ? "bg-slate-950 text-white ring-white ring-offset-2 ring-offset-slate-900"
                         : idx === 1
-                          ? "bg-slate-900 text-white ring-slate-900 ring-offset-2 ring-offset-white"
+                          ? "bg-slate-950 text-white ring-white ring-offset-2 ring-offset-slate-900"
                           : idx === 2
-                            ? "bg-slate-900 text-white ring-slate-900 ring-offset-2 ring-offset-white"
-                            : "bg-slate-900 text-white ring-slate-900 ring-offset-2 ring-offset-white"
+                            ? "bg-slate-950 text-white ring-white ring-offset-2 ring-offset-slate-900"
+                            : "bg-slate-950 text-white ring-white ring-offset-2 ring-offset-slate-900"
                     }`}
                   >
                     {idx + 1}
                   </div>
                   <div>
-                    <div className="text-sm font-semibold text-slate-900 sm:text-base">
+                    <div className="text-sm font-semibold text-white sm:text-base">
                       {row.name}
                     </div>
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-[11px] text-white/70">
                       {leaderboardLabel}
                     </div>
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                  <div className="text-[10px] uppercase tracking-wide text-white/70">
                     Pojistné
                   </div>
-                  <div className="text-lg font-semibold text-slate-900 sm:text-xl">
+                  <div className="text-lg font-semibold text-white sm:text-xl">
                     <AnimatedMoney value={row.totalPremium} />
                   </div>
                 </div>

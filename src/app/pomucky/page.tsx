@@ -3,6 +3,26 @@
 
 import { useMemo, useState, type ReactElement } from "react";
 import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
+import {
+  BanknoteArrowDown,
+  BarChart3,
+  Bike,
+  CarFront,
+  Calculator,
+  FileSignature,
+  Gauge,
+  GraduationCap,
+  HeartPulse,
+  Home,
+  Landmark,
+  PenTool,
+  Scale,
+  ShieldCheck,
+  TrendingUp,
+  Trophy,
+  WalletCards,
+} from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "./plan-produkce/SplitTitle";
@@ -25,6 +45,7 @@ export default function ToolsPage() {
     category: (typeof FILTERS)[number];
     title: string;
     description: string;
+    icon: LucideIcon;
     href?: string;
     external?: boolean;
     render?: () => ReactElement;
@@ -37,6 +58,7 @@ export default function ToolsPage() {
         category: "Obecné",
         title: "Argumenty",
         description: "Přehled Argumentů na různé typy námitek od klienta.",
+        icon: Scale,
         href: "/pomucky/argumenty",
       },
       {
@@ -44,6 +66,7 @@ export default function ToolsPage() {
         category: "Obecné",
         title: "Školící materiály",
         description: "Rozcestník pro onboarding i produktová školení na jednom místě.",
+        icon: GraduationCap,
         href: "/pomucky/skolici-materialy",
       },
       {
@@ -51,6 +74,7 @@ export default function ToolsPage() {
         category: "Obecné",
         title: "Záznam z jednání",
         description: "Pomůcka pro správně vypsaný Záznam z jednání.",
+        icon: FileSignature,
         href: "/pomucky/zaznam",
       },
       {
@@ -58,6 +82,7 @@ export default function ToolsPage() {
         category: "Obecné",
         title: "Tvorba",
         description: "Interaktivní A4 editor dokumentu s pevnou hlavičkou, patičkou a stažením do PDF.",
+        icon: PenTool,
         href: "/pomucky/tvorba",
       },
       {
@@ -65,6 +90,7 @@ export default function ToolsPage() {
         category: "Investice",
         title: "Investiční kalkulačka",
         description: "Spočítej konečnou hodnotu investice při pravidelných vkladech.",
+        icon: Calculator,
         href: "/pomucky/investicni-kalkulacka",
       },
       {
@@ -72,6 +98,7 @@ export default function ToolsPage() {
         category: "Finance",
         title: "Statistika",
         description: "Denní statistika oslovení, schůzek a smluv s výpočtem provize.",
+        icon: BarChart3,
         href: "/pomucky/statistika",
       },
       {
@@ -79,6 +106,7 @@ export default function ToolsPage() {
         category: "Finance",
         title: "Export produkce",
         description: "Statistika s možností stažení v PDF a Odeslání mailem.",
+        icon: BanknoteArrowDown,
         href: "/pomucky/export-produkce",
       },
       {
@@ -86,6 +114,7 @@ export default function ToolsPage() {
         category: "Finance",
         title: "Plán produkce",
         description: "Naplánuj si cíleně Produkci a rovnou uvidíš svou odměnu. Můžeš i stáhnout v PDF.",
+        icon: Trophy,
         href: "/pomucky/plan-produkce",
       },
       {
@@ -93,6 +122,7 @@ export default function ToolsPage() {
         category: "Investice",
         title: "Zlato",
         description: "Přehled a kalkulace pro investice do zlata.",
+        icon: Landmark,
         href: "/pomucky/zlato",
       },
       {
@@ -100,6 +130,7 @@ export default function ToolsPage() {
         category: "Pojištění majetku",
         title: "Katastr nemovitostí",
         description: "Vyhledej údaje z CUZK podle kódu adresního místa (RÚIAN) s autorizací přes tvůj účet.",
+        icon: Home,
         href: "/cuzk",
       },
       {
@@ -107,6 +138,7 @@ export default function ToolsPage() {
         category: "Pojištění majetku",
         title: "ČAP Kalkulačka",
         description: "Kalkulace orientační pojistné hodnoty rodinného domu.",
+        icon: WalletCards,
         href: "https://www.cap.cz/kophn",
         external: true,
       },
@@ -115,6 +147,7 @@ export default function ToolsPage() {
         category: "Pojištění vozidel",
         title: "Data o vozidle",
         description: "Přehledné místo pro technické údaje, VIN a historii vozu.",
+        icon: CarFront,
         href: "/pomucky/data-o-vozidle",
       },
       {
@@ -122,6 +155,7 @@ export default function ToolsPage() {
         category: "Pojištění vozidel",
         title: "Kontrola tachometru",
         description: "Ověř si nájezd vozidla online během pár vteřin.",
+        icon: Gauge,
         href: "https://www.kontrolatachometru.cz/",
         external: true,
       },
@@ -130,6 +164,7 @@ export default function ToolsPage() {
         category: "Finance",
         title: "Projekce výkonu",
         description: "Vizualizuj si výplatu do budoucna.",
+        icon: TrendingUp,
         href: "/pomucky/projekce-vykonu",
       },
       {
@@ -137,6 +172,7 @@ export default function ToolsPage() {
         category: "Životní pojištění",
         title: "Jak nastavit Pracovní neschopnost",
         description: "Kalkulačka na stanovení pojistné částky pro případ pracovní neschopnosti.",
+        icon: HeartPulse,
         href: "/pomucky/pracovni-neschopenka",
       },
       {
@@ -144,6 +180,7 @@ export default function ToolsPage() {
         category: "Životní pojištění",
         title: "Jak nastavit Invaliditu",
         description: "Kalkulačka na stanovení pojistné částky pro Invaliditu 1., 2. a 3. stupně dle poklesu příjmu.",
+        icon: ShieldCheck,
         href: "/pomucky/invalidita",
       },
       {
@@ -151,6 +188,7 @@ export default function ToolsPage() {
         category: "Životní pojištění",
         title: "Srovnavač Trvalých následků",
         description: "Otevři srovnavač pro trvalé následky úrazu.",
+        icon: Bike,
         href: "/pomucky/srovnavac-trvalych-nasledku",
       },
     ],
@@ -201,6 +239,7 @@ export default function ToolsPage() {
             }
 
             const CardWrapper = tool.external ? "a" : Link;
+            const ToolIcon = tool.icon;
             const wrapperProps = tool.external
               ? { href: tool.href ?? "#", target: "_blank", rel: "noreferrer" }
               : { href: tool.href ?? "#" };
@@ -209,17 +248,15 @@ export default function ToolsPage() {
               <CardWrapper
                 key={tool.key}
                 {...wrapperProps}
-                className="group relative overflow-hidden rounded-3xl border border-slate-900 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.1)] transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-[0_14px_30px_rgba(15,23,42,0.14)]"
+                className="group relative overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 px-5 py-6 shadow-[0_12px_28px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:bg-black hover:shadow-[0_16px_34px_rgba(15,23,42,0.36)]"
               >
-                <div className="relative z-10 space-y-2">
-                  <span className="inline-flex rounded-full border border-slate-900 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-900">
-                    {tool.category}
+                <div className="relative z-10 flex items-center gap-3">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-400/40 bg-slate-900 transition group-hover:border-slate-200/80">
+                    <ToolIcon className="h-5 w-5 text-[#f8fafc]" />
                   </span>
-                  <h2 className="text-xl font-semibold tracking-tight text-slate-900">{tool.title}</h2>
-                  <p className="text-sm leading-relaxed text-slate-600">{tool.description}</p>
-                  <div className="pt-1 text-sm font-semibold text-slate-900 group-hover:underline">
-                    Otevřít →
-                  </div>
+                  <h2 className="text-xl font-semibold tracking-tight text-white group-hover:underline">
+                    {tool.title}
+                  </h2>
                 </div>
               </CardWrapper>
             );

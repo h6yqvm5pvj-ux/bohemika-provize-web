@@ -56,11 +56,6 @@ export default function PracovniNeschopenkaPage() {
       <div className="w-full max-w-6xl space-y-6">
         <header className="mb-2 space-y-2">
           <SplitTitle text="Kalkulačka neschopenka" />
-          <p className="text-sm text-slate-600 max-w-2xl">
-            Kalkulačka na stanovení pojistné částky pro případ pracovní
-            neschopnosti. Výpočet vychází z redukovaného denního vyměřovacího
-            základu a doporučení pokrýt alespoň 40 % poklesu příjmu.
-          </p>
           <Link
             href="/pomucky"
             className="inline-flex items-center text-xs text-slate-600 hover:text-slate-900 transition"
@@ -143,13 +138,13 @@ export default function PracovniNeschopenkaPage() {
               {results.map((period) => (
                 <div
                   key={period.id}
-                  className="rounded-2xl border border-slate-900 bg-white px-4 py-4"
+                  className="rounded-2xl border border-slate-900 bg-slate-900 px-4 py-4 text-white"
                 >
                   <div className="mb-3 flex items-center justify-between">
-                    <div className="text-sm font-semibold text-slate-900">
+                    <div className="text-sm font-semibold text-white">
                       {period.label}
                     </div>
-                    <div className="text-[11px] text-slate-500">{period.note}</div>
+                    <div className="text-[11px] text-slate-300">{period.note}</div>
                   </div>
 
                   <div className="space-y-3">
@@ -214,13 +209,13 @@ export default function PracovniNeschopenkaPage() {
           )}
         </section>
 
-        <section className="rounded-3xl border border-slate-900 bg-amber-50 px-5 py-4">
+        <section className="rounded-3xl border border-slate-900 bg-rose-300 px-5 py-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-[0.16em]">
+              <h3 className="text-sm font-semibold text-black uppercase tracking-[0.16em]">
                 Upozornění na krácení (–50 %) nemocenské dávky vyplácené státem.
               </h3>
-              <p className="text-sm text-slate-800">
+              <p className="text-sm text-black">
                 Rvačka, opilost, zneužití látek nebo úmyslný přestupek/trestný čin
                 snižují dávku o polovinu.
               </p>

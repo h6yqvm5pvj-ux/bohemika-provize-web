@@ -403,8 +403,8 @@ type ContractsCache = {
   savedAt: number;
   myHasMore?: boolean;
   teamHasMore?: boolean;
-  myCursorDate?: number | null;
-  teamCursorDate?: number | null;
+  myCursorDate?: string | number | null;
+  teamCursorDate?: string | number | null;
   teamEmails?: string[];
 };
 
@@ -415,9 +415,11 @@ type ContractsApiResponse = {
   teamEmails?: string[];
   contracts?: (ContractDoc & { adviserEmail: string | null })[];
   hasMore?: boolean;
+  nextCursorToken?: string | null;
   nextCursor?: number | null;
   teamContracts?: (ContractDoc & { adviserEmail: string | null })[];
   teamHasMore?: boolean;
+  teamNextCursorToken?: string | null;
   teamNextCursor?: number | null;
 };
 
@@ -437,6 +439,22 @@ type ContractsViewState = {
 
 const normalizeEmail = (email?: string | null) =>
   (email ?? "").trim().toLowerCase();
+
+const normalizeCursorToken = (value: unknown): string | null => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+};
+
+const cursorFromApi = (
+  token: string | null | undefined,
+  legacyMillis: number | null | undefined
+): string | null => normalizeCursorToken(token ?? legacyMillis ?? null);
 
 function readContractsCache(email: string | null | undefined): ContractsCache | null {
   if (!email || typeof window === "undefined") return null;
@@ -537,8 +555,8 @@ function ContractsPageContent() {
   >([]);
   const [myHasMore, setMyHasMore] = useState(true);
   const [teamHasMore, setTeamHasMore] = useState(true);
-  const [myCursorDate, setMyCursorDate] = useState<Date | null>(null);
-  const [teamCursorDate, setTeamCursorDate] = useState<Date | null>(null);
+  const [myCursorDate, setMyCursorDate] = useState<string | null>(null);
+  const [teamCursorDate, setTeamCursorDate] = useState<string | null>(null);
 
   const [showTeam, setShowTeam] = useState(false);
   const [filterMode, setFilterMode] = useState<FilterMode>("latest");
@@ -575,7 +593,7 @@ function ContractsPageContent() {
       includeTeam,
     }: {
       scope: "my" | "team";
-      cursor?: Date | null;
+      cursor?: string | null;
       includeTeam?: boolean;
     }) => {
       if (!user) {
@@ -583,7 +601,7 @@ function ContractsPageContent() {
       }
       const token = await user.getIdToken(true); // force refresh to avoid expired/invalid token
       const params = new URLSearchParams({ scope });
-      if (cursor) params.set("cursor", String(cursor.getTime()));
+      if (cursor) params.set("cursor", cursor);
       if (includeTeam) params.set("includeTeam", "1");
 
       const res = await fetch(`/api/contracts?${params.toString()}`, {
@@ -599,7 +617,7 @@ function ContractsPageContent() {
   );
 
   const fetchMyPage = useCallback(
-    async (startBefore: Date | null, append: boolean) => {
+    async (startBefore: string | null, append: boolean) => {
       if (!user?.email) {
         return { list: [] as ContractDoc[], oldest: null as Date | null, hasMore: false };
       }
@@ -610,7 +628,7 @@ function ContractsPageContent() {
 
       setMyContracts((prev) => (append ? mergeContracts(prev, list) : list));
       setMyHasMore(hasMore);
-      setMyCursorDate(data.nextCursor ? new Date(data.nextCursor) : null);
+      setMyCursorDate(cursorFromApi(data.nextCursorToken, data.nextCursor));
 
       return { list, oldest, hasMore };
     },
@@ -618,7 +636,7 @@ function ContractsPageContent() {
   );
 
   const fetchTeamPage = useCallback(
-    async (startBefore: Date | null, append: boolean) => {
+    async (startBefore: string | null, append: boolean) => {
       const teamEmails = teamUsersRef.current.map((u) => u.email).filter(Boolean);
       if (teamEmails.length === 0) {
         setTeamContracts([]);
@@ -634,7 +652,7 @@ function ContractsPageContent() {
 
       setTeamContracts((prev) => (append ? mergeContracts(prev, list) : list));
       setTeamHasMore(hasMore);
-      setTeamCursorDate(data.nextCursor ? new Date(data.nextCursor) : null);
+      setTeamCursorDate(cursorFromApi(data.nextCursorToken, data.nextCursor));
 
       return { list, oldest, hasMore };
     },
@@ -652,8 +670,10 @@ function ContractsPageContent() {
       setTeamContracts(teamList);
       setMyHasMore(Boolean(data.hasMore));
       setTeamHasMore(Boolean(data.teamHasMore));
-      setMyCursorDate(data.nextCursor ? new Date(data.nextCursor) : null);
-      setTeamCursorDate(data.teamNextCursor ? new Date(data.teamNextCursor) : null);
+      setMyCursorDate(cursorFromApi(data.nextCursorToken, data.nextCursor));
+      setTeamCursorDate(
+        cursorFromApi(data.teamNextCursorToken, data.teamNextCursor)
+      );
 
       const teamEmails = (data.teamEmails ?? []).map((em) => em.toLowerCase());
       teamUsersRef.current = teamEmails.map((em) => ({
@@ -671,8 +691,8 @@ function ContractsPageContent() {
         savedAt: Date.now(),
         myHasMore: Boolean(data.hasMore),
         teamHasMore: Boolean(data.teamHasMore),
-        myCursorDate: data.nextCursor ?? null,
-        teamCursorDate: data.teamNextCursor ?? null,
+        myCursorDate: cursorFromApi(data.nextCursorToken, data.nextCursor),
+        teamCursorDate: cursorFromApi(data.teamNextCursorToken, data.teamNextCursor),
         teamEmails,
       });
     },
@@ -732,8 +752,8 @@ function ContractsPageContent() {
         setCurrentUserPosition(cached.position ?? null);
         setMyHasMore(cached.myHasMore ?? true);
         setTeamHasMore(cached.teamHasMore ?? true);
-        setMyCursorDate(cached.myCursorDate ? new Date(cached.myCursorDate) : null);
-        setTeamCursorDate(cached.teamCursorDate ? new Date(cached.teamCursorDate) : null);
+        setMyCursorDate(normalizeCursorToken(cached.myCursorDate));
+        setTeamCursorDate(normalizeCursorToken(cached.teamCursorDate));
         if (cached.teamEmails?.length) {
           teamUsersRef.current = cached.teamEmails.map((em) => ({
             id: em,

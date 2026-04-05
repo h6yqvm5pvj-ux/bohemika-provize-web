@@ -47,9 +47,11 @@ type ContractsResponse = {
   contracts: ContractResponseItem[];
   hasMore: boolean;
   nextCursor: number | null;
+  nextCursorToken: string | null;
   teamContracts?: ContractResponseItem[];
   teamHasMore?: boolean;
   teamNextCursor?: number | null;
+  teamNextCursorToken?: string | null;
 };
 
 type ErrorResponse = { ok: false; error: string };
@@ -94,16 +96,50 @@ const toMillis = (value: any): number | null => {
 const contractSortDate = (data: ContractDoc): Date | null =>
   toDate(data.contractSignedDate) ?? toDate(data.createdAt);
 
-const parseCursor = (search: URLSearchParams): Date | null => {
+type ParsedCursor = {
+  date: Date;
+  ts: number;
+  key: string | null;
+};
+
+const encodeCursorToken = (ts: number, key: string) =>
+  `${ts}::${encodeURIComponent(key)}`;
+
+const contractCursorKey = (ownerEmail: string, docId: string) =>
+  `${normalizeEmail(ownerEmail)}___${docId}`;
+
+const responseCursorKey = (item: ContractResponseItem) =>
+  contractCursorKey(
+    normalizeEmail(item.adviserEmail ?? item.userEmail ?? ""),
+    item.id
+  );
+
+const parseCursor = (search: URLSearchParams): ParsedCursor | null => {
   const raw = search.get("cursor");
   if (!raw) return null;
+  const sep = raw.indexOf("::");
+  if (sep > 0) {
+    const ts = Number(raw.slice(0, sep));
+    if (Number.isFinite(ts)) {
+      const date = new Date(ts);
+      if (!Number.isNaN(date.getTime())) {
+        const keyPart = raw.slice(sep + 2);
+        const key = keyPart ? decodeURIComponent(keyPart) : null;
+        return { date, ts, key };
+      }
+    }
+  }
   const num = Number(raw);
   if (Number.isFinite(num)) {
     const d = new Date(num);
-    return Number.isNaN(d.getTime()) ? null : d;
+    if (!Number.isNaN(d.getTime())) {
+      return { date: d, ts: d.getTime(), key: null };
+    }
+    return null;
   }
   const d = new Date(raw);
-  return Number.isNaN(d.getTime()) ? null : d;
+  if (Number.isNaN(d.getTime())) return null;
+  return { date: d, ts: d.getTime(), key: null };
 };
 
 const normalizeEmail = (email: string | null | undefined) =>
@@ -156,9 +192,14 @@ const collectTeamEmails = (rootEmail: string, childrenByManager: Map<string, any
 
 async function fetchContractsForOwners(
   owners: string[],
-  cursor: Date | null,
+  cursor: ParsedCursor | null,
   pageSize: number
-): Promise<{ list: ContractResponseItem[]; hasMore: boolean; nextCursor: number | null }> {
+): Promise<{
+  list: ContractResponseItem[];
+  hasMore: boolean;
+  nextCursor: number | null;
+  nextCursorToken: string | null;
+}> {
   // Fetch one extra record to detect if more pages exist (so the UI can show the load-more button)
   const pageLimit = pageSize + 1;
   if (!adminDb) {
@@ -167,35 +208,78 @@ async function fetchContractsForOwners(
   const collected: ContractResponseItem[] = [];
   const seen = new Set<string>();
   let collectionGroupFailed = false;
+  const cursorTs = cursor?.ts ?? null;
+  const cursorKey = cursor?.key ?? null;
+
+  const shouldIncludeByCursor = (
+    data: ContractDoc,
+    docId: string,
+    ownerEmail: string
+  ): boolean => {
+    if (!cursorTs) return true;
+    const sortDate = contractSortDate(data);
+    if (!sortDate) return false;
+    const ts = sortDate.getTime();
+    if (ts < cursorTs) return true;
+    if (ts > cursorTs) return false;
+    if (!cursorKey) return false;
+    const itemKey = contractCursorKey(ownerEmail, docId);
+    return itemKey < cursorKey;
+  };
+
+  const pushCollected = (docId: string, ownerEmail: string, data: ContractDoc) => {
+    if (!shouldIncludeByCursor(data, docId, ownerEmail)) return;
+    const key = `${ownerEmail}___${docId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    collected.push({
+      ...data,
+      contractSignedDate: toMillis(data.contractSignedDate),
+      createdAt: toMillis(data.createdAt),
+      policyStartDate: toMillis((data as any).policyStartDate),
+      id: docId,
+      adviserEmail: ownerEmail,
+      userEmail: data.userEmail ?? ownerEmail,
+    });
+  };
 
   // collectionGroup queries (userEmail stored)
+  // Pull by both date fields so records without contractSignedDate are still included.
   for (let i = 0; i < owners.length; i += 10) {
     const chunk = owners.slice(i, i + 10);
     try {
-      let q = adminDb
+      let qBySigned = adminDb
         .collectionGroup("entries")
         .where("userEmail", "in", chunk)
         .orderBy("contractSignedDate", "desc");
+      let qByCreated = adminDb
+        .collectionGroup("entries")
+        .where("userEmail", "in", chunk)
+        .orderBy("createdAt", "desc");
       if (cursor) {
-        q = q.where("contractSignedDate", "<", cursor);
+        qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
+        qByCreated = qByCreated.where("createdAt", "<=", cursor.date);
       }
-      const snap = await q.limit(pageLimit).get();
-      snap.docs.forEach((doc) => {
-        const data = doc.data() as any as ContractDoc;
-        const ownerEmail = normalizeEmail((data.userEmail as string | undefined) ?? chunk[0]);
-        const key = `${ownerEmail}___${doc.id}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        collected.push({
-          ...data,
-          contractSignedDate: toMillis(data.contractSignedDate),
-          createdAt: toMillis(data.createdAt),
-          policyStartDate: toMillis((data as any).policyStartDate),
-          id: doc.id,
-          adviserEmail: ownerEmail,
-          userEmail: data.userEmail ?? ownerEmail,
+
+      const [signedSnap, createdSnap] = await Promise.all([
+        qBySigned.limit(pageLimit).get(),
+        qByCreated.limit(pageLimit).get(),
+      ]);
+
+      const consumeSnap = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
+        snap.docs.forEach((doc) => {
+          const data = doc.data() as any as ContractDoc;
+          const ownerEmail = normalizeEmail(
+            (data.userEmail as string | undefined) ??
+              doc.ref.parent.parent?.id ??
+              chunk[0]
+          );
+          pushCollected(doc.id, ownerEmail, data);
         });
-      });
+      };
+
+      consumeSnap(signedSnap);
+      consumeSnap(createdSnap);
     } catch {
       // Keep the endpoint functional even when collectionGroup index is missing/misconfigured.
       collectionGroupFailed = true;
@@ -211,30 +295,35 @@ async function fetchContractsForOwners(
   // fallback: per-user path (covers records without userEmail)
   for (const owner of owners) {
     try {
-      let q = adminDb
+      let qBySigned = adminDb
         .collection("users")
         .doc(owner)
         .collection("entries")
         .orderBy("contractSignedDate", "desc");
+      let qByCreated = adminDb
+        .collection("users")
+        .doc(owner)
+        .collection("entries")
+        .orderBy("createdAt", "desc");
       if (cursor) {
-        q = q.where("contractSignedDate", "<", cursor);
+        qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
+        qByCreated = qByCreated.where("createdAt", "<=", cursor.date);
       }
-      const snap = await q.limit(pageLimit).get();
-      snap.docs.forEach((doc) => {
-        const data = doc.data() as any as ContractDoc;
-        const key = `${owner}___${doc.id}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        collected.push({
-          ...data,
-          contractSignedDate: toMillis(data.contractSignedDate),
-          createdAt: toMillis(data.createdAt),
-          policyStartDate: toMillis((data as any).policyStartDate),
-          id: doc.id,
-          adviserEmail: owner,
-          userEmail: data.userEmail ?? owner,
+
+      const [signedSnap, createdSnap] = await Promise.all([
+        qBySigned.limit(pageLimit).get(),
+        qByCreated.limit(pageLimit).get(),
+      ]);
+
+      const consumeSnap = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
+        snap.docs.forEach((doc) => {
+          const data = doc.data() as any as ContractDoc;
+          pushCollected(doc.id, owner, data);
         });
-      });
+      };
+
+      consumeSnap(signedSnap);
+      consumeSnap(createdSnap);
     } catch {
       // Ignore one broken owner branch instead of failing the whole response.
     }
@@ -246,17 +335,28 @@ async function fetchContractsForOwners(
     if (!da && !db) return 0;
     if (!da) return 1;
     if (!db) return -1;
-    return db.getTime() - da.getTime();
+    const diff = db.getTime() - da.getTime();
+    if (diff !== 0) return diff;
+    const keyA = responseCursorKey(a);
+    const keyB = responseCursorKey(b);
+    if (keyA === keyB) return 0;
+    return keyA > keyB ? -1 : 1;
   });
 
   const page = collected.slice(0, pageSize);
   const hasMore = collected.length > pageSize;
   const oldest = page.length > 0 ? contractSortDate(page[page.length - 1]) : null;
+  const oldestKey =
+    page.length > 0 ? responseCursorKey(page[page.length - 1]) : null;
+  const nextCursor = oldest ? oldest.getTime() : null;
+  const nextCursorToken =
+    oldest && oldestKey ? encodeCursorToken(oldest.getTime(), oldestKey) : null;
 
   return {
     list: page,
     hasMore,
-    nextCursor: oldest ? oldest.getTime() : null,
+    nextCursor,
+    nextCursorToken,
   };
 }
 
@@ -327,7 +427,8 @@ export async function GET(req: NextRequest) {
   }
 
   const owners = scopeParam === "team" ? teamEmails : [email];
-  const { list, hasMore, nextCursor } = await fetchContractsForOwners(
+  const { list, hasMore, nextCursor, nextCursorToken } =
+    await fetchContractsForOwners(
     owners,
     cursor,
     pageSize
@@ -336,11 +437,13 @@ export async function GET(req: NextRequest) {
   let teamContracts: ContractResponseItem[] | undefined;
   let teamHasMore: boolean | undefined;
   let teamNextCursor: number | null | undefined;
+  let teamNextCursorToken: string | null | undefined;
   if (includeTeam && teamEmails.length > 0) {
     const teamRes = await fetchContractsForOwners(teamEmails, null, pageSize);
     teamContracts = teamRes.list;
     teamHasMore = teamRes.hasMore;
     teamNextCursor = teamRes.nextCursor;
+    teamNextCursorToken = teamRes.nextCursorToken;
   }
 
   const response: ContractsResponse = {
@@ -352,9 +455,11 @@ export async function GET(req: NextRequest) {
     contracts: list,
     hasMore,
     nextCursor,
+    nextCursorToken,
     teamContracts,
     teamHasMore,
     teamNextCursor,
+    teamNextCursorToken,
   };
 
   return NextResponse.json(response);

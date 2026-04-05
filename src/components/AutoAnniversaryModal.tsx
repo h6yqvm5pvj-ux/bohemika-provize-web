@@ -1,17 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, collectionGroup, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { type Product } from "@/app/types/domain";
 
 type FirestoreTimestamp = { seconds: number; nanoseconds: number };
 
-type ContractDoc = {
+type EntryDoc = {
   id: string;
-  product?: Product;
+  userEmail?: string | null;
+  productKey?: Product;
   clientName?: string | null;
   contractNumber?: string | null;
+  policyStartDate?: string | FirestoreTimestamp | Date | null;
+  contractSignedDate?: string | FirestoreTimestamp | Date | null;
+  createdAt?: string | FirestoreTimestamp | Date | null;
   contractStartDate?: string | FirestoreTimestamp | Date | null;
 };
 
@@ -92,38 +96,90 @@ function nextAnniversary(start: Date, now: Date): Date {
   return ann;
 }
 
-export function AutoAnniversaryModal({ userId }: { userId: string }) {
+const normalizeEmail = (email?: string | null) => (email ?? "").trim().toLowerCase();
+
+export function AutoAnniversaryModal({
+  userEmail,
+}: {
+  userEmail?: string | null;
+}) {
   const [rows, setRows] = useState<AnniversaryRow[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!userId) return;
+    const normalizedEmail = normalizeEmail(userEmail);
+    if (!normalizedEmail) {
+      setRows([]);
+      setOpen(false);
+      setLoading(false);
+      return;
+    }
+
     const load = async () => {
       setLoading(true);
       try {
-        const qContracts = query(
-          collection(db, "contracts"),
-          where("userId", "==", userId),
-          where("product", "in", AUTO_PRODUCTS)
+        const rawEmail = (userEmail ?? "").trim();
+        const ownerIds = Array.from(
+          new Set([
+            normalizedEmail,
+            rawEmail && rawEmail !== normalizedEmail ? rawEmail : null,
+          ].filter(Boolean) as string[])
         );
-        const snap = await getDocs(qContracts);
+
+        const byEntryKey = new Map<string, EntryDoc>();
+
+        const ownerSnaps = await Promise.all(
+          ownerIds.map((owner) => getDocs(collection(db, "users", owner, "entries")))
+        );
+        ownerSnaps.forEach((ownerSnap, index) => {
+          const owner = ownerIds[index];
+          ownerSnap.forEach((docSnap) => {
+            const key = `${owner.toLowerCase()}___${docSnap.id}`;
+            byEntryKey.set(key, {
+              ...(docSnap.data() as Omit<EntryDoc, "id">),
+              id: key,
+            });
+          });
+        });
+
+        const groupSnap = await getDocs(
+          query(collectionGroup(db, "entries"), where("userEmail", "==", normalizedEmail))
+        );
+        groupSnap.forEach((docSnap) => {
+          const data = docSnap.data() as Omit<EntryDoc, "id">;
+          const owner =
+            normalizeEmail(data.userEmail) ||
+            normalizeEmail(docSnap.ref.parent.parent?.id) ||
+            normalizedEmail;
+          const key = `${owner}___${docSnap.id}`;
+          if (!byEntryKey.has(key)) {
+            byEntryKey.set(key, { ...data, id: key });
+          }
+        });
+
         const now = new Date();
 
         const results: AnniversaryRow[] = [];
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() as ContractDoc;
-          const start = toDate(data.contractStartDate);
+        byEntryKey.forEach((data) => {
+          const start =
+            toDate(data.policyStartDate) ??
+            toDate(data.contractSignedDate) ??
+            toDate(data.createdAt) ??
+            toDate(data.contractStartDate);
           if (!start) return;
+
           const ann = nextAnniversary(start, now);
           const diffDays = Math.ceil(
             (ann.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
           );
           if (diffDays < 0 || diffDays > 60) return;
-          const product = data.product;
-          if (!product) return;
+
+          const product = data.productKey;
+          if (!product || !AUTO_PRODUCTS.includes(product)) return;
+
           results.push({
-            id: docSnap.id,
+            id: data.id,
             client: data.clientName ?? "Neznámý klient",
             contractNumber: data.contractNumber ?? "—",
             product,
@@ -140,8 +196,8 @@ export function AutoAnniversaryModal({ userId }: { userId: string }) {
         setLoading(false);
       }
     };
-    load();
-  }, [userId]);
+    void load();
+  }, [userEmail]);
 
   const content = useMemo(
     () =>

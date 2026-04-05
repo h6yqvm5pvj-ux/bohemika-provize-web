@@ -67,7 +67,7 @@ function SplitTextHeading({ text }: { text: string }) {
       {words.map((word, idx) => (
         <span
           key={`${word}-${idx}`}
-          className="relative flex overflow-hidden mr-3 last:mr-0 gap-[2px]"
+          className="relative flex overflow-hidden mr-4 last:mr-0 gap-[2px]"
         >
           {Array.from(word).map((char, charIdx) => (
             <span
@@ -685,6 +685,7 @@ export default function HomePage() {
             monthlyGoal={monthlyGoal}
             progress={progress}
             progressTone={progressTone}
+            loading={loading}
             isLiteUI={isLiteUI}
             remainingToGoal={remainingToGoal}
             position={userMeta?.position ?? null}
@@ -835,7 +836,10 @@ export default function HomePage() {
   const sectionSpan: Record<HomeSection, string> = {
     gold: "md:col-span-1",
     summary: "md:col-span-2",
-    goal: "md:col-span-1",
+    goal:
+      showLeaderboardSection && showGoldWidget
+        ? "md:col-span-1 md:col-start-2"
+        : "md:col-span-1",
     leaderboard: "md:col-span-1",
     quickActions: "md:col-span-1",
     chart: "md:col-span-2",
@@ -845,7 +849,7 @@ export default function HomePage() {
     gold: "",
     summary: "",
     goal: "",
-    leaderboard: "md:row-span-2",
+    leaderboard: "",
     quickActions: "",
     chart: "",
   };
@@ -1055,7 +1059,7 @@ export default function HomePage() {
 
   return (
     <AppLayout active="home">
-      {user && <AutoAnniversaryModal userId={user.uid} />}
+      {user && <AutoAnniversaryModal userEmail={user.email} />}
       <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
         <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

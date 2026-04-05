@@ -216,8 +216,10 @@ body {
     color: #0f172a;
   }
 
-  body.simple-bg.simple-bg-blue {
-    background-color: #0a1b3a;
+  body.simple-bg.simple-bg-blue,
+  body.simple-bg.simple-bg-black {
+    background-color: #000;
+    color: #f8fafc;
   }
 
   /* Vypnuto: bílé přebarvení */
@@ -303,11 +305,190 @@ body {
     color: #f8fafc !important;
   }
 
-  /* Jednoduché černé pozadí – stáhni i panely do neutrální šedi místo modré */
+  /* Jednoduché černé pozadí – převrať kontrast: světlé plochy do černa, tmavé do bíla */
   body.simple-bg.simple-bg-black {
     --surface-950-rgb: 6, 6, 8;
     --surface-900-rgb: 10, 10, 12;
     --surface-800-rgb: 18, 18, 20;
+  }
+
+  body.simple-bg.simple-bg-black .bg-white,
+  body.simple-bg.simple-bg-black .bg-slate-50,
+  body.simple-bg.simple-bg-black .bg-slate-100,
+  body.simple-bg.simple-bg-black .bg-slate-200,
+  body.simple-bg.simple-bg-black .bg-slate-300 {
+    background-color: #000 !important;
+  }
+
+  body.simple-bg.simple-bg-black .bg-white\/95,
+  body.simple-bg.simple-bg-black .bg-white\/90,
+  body.simple-bg.simple-bg-black .bg-white\/80,
+  body.simple-bg.simple-bg-black .bg-white\/70,
+  body.simple-bg.simple-bg-black .bg-white\/50,
+  body.simple-bg.simple-bg-black .bg-white\/30,
+  body.simple-bg.simple-bg-black .bg-white\/10,
+  body.simple-bg.simple-bg-black .bg-white\/5 {
+    background-color: rgba(0, 0, 0, 0.92) !important;
+  }
+
+  body.simple-bg.simple-bg-black .bg-slate-950,
+  body.simple-bg.simple-bg-black .bg-slate-900,
+  body.simple-bg.simple-bg-black .bg-black {
+    background-color: #fff !important;
+  }
+
+  /* Hierarchie textu i v černém režimu (title / body / hint) */
+  body.simple-bg.simple-bg-black .text-slate-950,
+  body.simple-bg.simple-bg-black .text-slate-900,
+  body.simple-bg.simple-bg-black .text-black {
+    color: #f8fafc !important;
+  }
+
+  body.simple-bg.simple-bg-black .text-slate-800 {
+    color: #e2e8f0 !important;
+  }
+
+  body.simple-bg.simple-bg-black .text-slate-700 {
+    color: #cbd5e1 !important;
+  }
+
+  body.simple-bg.simple-bg-black .text-slate-600,
+  body.simple-bg.simple-bg-black .text-slate-500 {
+    color: #94a3b8 !important;
+  }
+
+  body.simple-bg.simple-bg-black .text-slate-400 {
+    color: #64748b !important;
+  }
+
+  body.simple-bg.simple-bg-black .bg-slate-900.text-white,
+  body.simple-bg.simple-bg-black .bg-slate-900.text-white\/95,
+  body.simple-bg.simple-bg-black .bg-slate-900.text-white\/90,
+  body.simple-bg.simple-bg-black .bg-slate-900.text-white\/80,
+  body.simple-bg.simple-bg-black .bg-slate-900.text-white\/70,
+  body.simple-bg.simple-bg-black .bg-slate-900.text-slate-900,
+  body.simple-bg.simple-bg-black .bg-slate-900.text-slate-950,
+  body.simple-bg.simple-bg-black .bg-slate-900.text-slate-800,
+  body.simple-bg.simple-bg-black .bg-slate-900.text-slate-700,
+  body.simple-bg.simple-bg-black .bg-slate-900.text-slate-600,
+  body.simple-bg.simple-bg-black .bg-slate-900.text-slate-500,
+  body.simple-bg.simple-bg-black .bg-slate-900.text-slate-400,
+  body.simple-bg.simple-bg-black .bg-slate-900.text-black,
+  body.simple-bg.simple-bg-black .bg-slate-900 .text-white,
+  body.simple-bg.simple-bg-black .bg-slate-900 .text-white\/95,
+  body.simple-bg.simple-bg-black .bg-slate-900 .text-white\/90,
+  body.simple-bg.simple-bg-black .bg-slate-900 .text-white\/80,
+  body.simple-bg.simple-bg-black .bg-slate-900 .text-white\/70,
+  body.simple-bg.simple-bg-black .bg-slate-900 .text-slate-50,
+  body.simple-bg.simple-bg-black .bg-slate-900 .text-slate-100,
+  body.simple-bg.simple-bg-black .bg-slate-900 .text-slate-200,
+  body.simple-bg.simple-bg-black .bg-slate-900 .text-slate-300,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-white,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-white\/95,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-white\/90,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-white\/80,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-white\/70,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-slate-900,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-slate-950,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-slate-800,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-slate-700,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-slate-600,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-slate-500,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-slate-400,
+  body.simple-bg.simple-bg-black .bg-slate-950.text-black,
+  body.simple-bg.simple-bg-black .bg-slate-950 .text-white,
+  body.simple-bg.simple-bg-black .bg-slate-950 .text-white\/95,
+  body.simple-bg.simple-bg-black .bg-slate-950 .text-white\/90,
+  body.simple-bg.simple-bg-black .bg-slate-950 .text-white\/80,
+  body.simple-bg.simple-bg-black .bg-slate-950 .text-white\/70,
+  body.simple-bg.simple-bg-black .bg-slate-950 .text-slate-50,
+  body.simple-bg.simple-bg-black .bg-slate-950 .text-slate-100,
+  body.simple-bg.simple-bg-black .bg-slate-950 .text-slate-200,
+  body.simple-bg.simple-bg-black .bg-slate-950 .text-slate-300,
+  body.simple-bg.simple-bg-black .bg-black.text-white,
+  body.simple-bg.simple-bg-black .bg-black.text-white\/95,
+  body.simple-bg.simple-bg-black .bg-black.text-white\/90,
+  body.simple-bg.simple-bg-black .bg-black.text-white\/80,
+  body.simple-bg.simple-bg-black .bg-black.text-white\/70,
+  body.simple-bg.simple-bg-black .bg-black.text-slate-900,
+  body.simple-bg.simple-bg-black .bg-black.text-slate-950,
+  body.simple-bg.simple-bg-black .bg-black.text-slate-800,
+  body.simple-bg.simple-bg-black .bg-black.text-slate-700,
+  body.simple-bg.simple-bg-black .bg-black.text-slate-600,
+  body.simple-bg.simple-bg-black .bg-black.text-slate-500,
+  body.simple-bg.simple-bg-black .bg-black.text-slate-400,
+  body.simple-bg.simple-bg-black .bg-black.text-black,
+  body.simple-bg.simple-bg-black .bg-black .text-white {
+    color: #0f172a !important;
+  }
+  body.simple-bg.simple-bg-black .bg-black .text-white\/95,
+  body.simple-bg.simple-bg-black .bg-black .text-white\/90,
+  body.simple-bg.simple-bg-black .bg-black .text-white\/80,
+  body.simple-bg.simple-bg-black .bg-black .text-white\/70,
+  body.simple-bg.simple-bg-black .bg-black .text-slate-50,
+  body.simple-bg.simple-bg-black .bg-black .text-slate-100,
+  body.simple-bg.simple-bg-black .bg-black .text-slate-200,
+  body.simple-bg.simple-bg-black .bg-black .text-slate-300 {
+    color: #0f172a !important;
+  }
+
+  body.simple-bg.simple-bg-black .border-slate-900,
+  body.simple-bg.simple-bg-black .border-slate-800,
+  body.simple-bg.simple-bg-black .border-slate-700,
+  body.simple-bg.simple-bg-black .border-slate-600,
+  body.simple-bg.simple-bg-black .border-slate-500,
+  body.simple-bg.simple-bg-black .border-slate-400,
+  body.simple-bg.simple-bg-black .border-slate-300 {
+    border-color: rgba(248, 250, 252, 0.85) !important;
+  }
+
+  body.simple-bg.simple-bg-black .border-white,
+  body.simple-bg.simple-bg-black .border-white\/95,
+  body.simple-bg.simple-bg-black .border-white\/90,
+  body.simple-bg.simple-bg-black .border-white\/80,
+  body.simple-bg.simple-bg-black .border-white\/70,
+  body.simple-bg.simple-bg-black .border-white\/30,
+  body.simple-bg.simple-bg-black .border-white\/20,
+  body.simple-bg.simple-bg-black .border-white\/15,
+  body.simple-bg.simple-bg-black .border-white\/10 {
+    border-color: rgba(15, 23, 42, 0.65) !important;
+  }
+
+  /* Cashflow: v černém režimu nech měsíční karty světlé a čitelné */
+  body.simple-bg.simple-bg-black .cashflow-card-month {
+    background-color: #ffffff !important;
+    border-color: #0f172a !important;
+    color: #0f172a !important;
+  }
+
+  body.simple-bg.simple-bg-black .cashflow-card-month * {
+    color: #0f172a !important;
+  }
+
+  body.simple-bg.simple-bg-black .cashflow-card-month .bg-slate-200 {
+    background-color: #e2e8f0 !important;
+  }
+
+  body.simple-bg.simple-bg-black .cashflow-card-month .bg-slate-900 {
+    background-color: #0f172a !important;
+  }
+
+  body.simple-bg.simple-bg-black .cashflow-card-month .bg-black {
+    background-color: #0f172a !important;
+  }
+
+  body.simple-bg.simple-bg-black .cashflow-card-month .bg-black,
+  body.simple-bg.simple-bg-black .cashflow-card-month .bg-black * {
+    color: #ffffff !important;
+  }
+
+  /* Nastavení: náhled voleb pozadí musí zůstat doslovný (bílá je bílá, černá je černá) */
+  body.simple-bg.simple-bg-black .settings-bg-preview .settings-bg-preview-layer.bg-white {
+    background-color: #ffffff !important;
+  }
+
+  body.simple-bg.simple-bg-black .settings-bg-preview .settings-bg-preview-layer.bg-black {
+    background-color: #000000 !important;
   }
 
   body.simple-bg.simple-bg-black .bg-slate-950\/95 {

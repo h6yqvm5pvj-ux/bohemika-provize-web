@@ -11,12 +11,6 @@ import {
 } from "firebase/auth";
 import { auth, db } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { Sora } from "next/font/google";
-
-const sora = Sora({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 export default function LoginPage() {
   const router = useRouter();
@@ -136,20 +130,18 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden text-slate-50">
-      <div className="fixed inset-0 -z-10 bg-black" />
+    <main className="min-h-screen bg-white text-slate-900">
+      <div className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-10">
+        <div className="w-full max-w-xl space-y-8">
+          <div className="space-y-2 text-center">
+            <AnimatedHeading text="Bohemka.App" className="font-mono" />
+            <p className="text-sm text-slate-600">Přihlaš se do svého účtu.</p>
+          </div>
 
-      <div className="flex min-h-screen flex-col items-center justify-center px-4 gap-8">
-        <AnimatedHeading
-          text="Bohemka.App"
-          className={sora.className}
-        />
-
-        {/* Glassy login karta */}
-        <div className="w-full max-w-xl rounded-3xl border border-white/15 bg-white/5 backdrop-blur-2xl px-8 py-9 sm:px-10 sm:py-11 shadow-[0_30px_90px_rgba(0,0,0,0.9)]">
+          <div className="w-full rounded-3xl border border-slate-900 bg-white px-8 py-9 sm:px-10 sm:py-11">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-200">
+              <label className="text-xs font-medium text-slate-700">
                 E-mail
               </label>
               <input
@@ -158,13 +150,13 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-xl border border-white/15 bg-slate-950/50 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/80 focus:border-sky-500/80"
+                className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0"
                 placeholder="Zadej email"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-200">
+              <label className="text-xs font-medium text-slate-700">
                 Heslo
               </label>
               <input
@@ -173,7 +165,7 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-xl border border-white/15 bg-slate-950/50 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/80 focus:border-sky-500/80"
+                className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0"
                 placeholder="••••••••"
               />
               <div className="flex justify-end">
@@ -181,7 +173,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleReset}
                   disabled={loading}
-                  className="text-[11px] text-sky-200 hover:text-sky-100 transition disabled:opacity-60"
+                  className="text-[11px] text-slate-600 hover:text-slate-900 transition disabled:opacity-60"
                 >
                   Zapomenuté heslo?
                 </button>
@@ -189,12 +181,12 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/40 rounded-xl px-3 py-2">
+              <p className="rounded-xl border border-rose-600 bg-rose-100 px-3 py-2 text-xs text-rose-800">
                 {error}
               </p>
             )}
             {resetStatus && (
-              <p className="text-xs text-sky-200 bg-sky-500/10 border border-sky-400/40 rounded-xl px-3 py-2">
+              <p className="rounded-xl border border-emerald-600 bg-emerald-100 px-3 py-2 text-xs text-emerald-900">
                 {resetStatus}
               </p>
             )}
@@ -202,11 +194,12 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="mt-2 w-full rounded-xl bg-white text-slate-900 py-2.5 text-sm font-medium hover:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="mt-2 w-full rounded-xl border border-slate-900 bg-slate-900 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Přihlašuji…" : "Přihlásit se"}
             </button>
           </form>
+          </div>
         </div>
       </div>
     </main>
@@ -223,7 +216,7 @@ function AnimatedHeading({
   const chars = Array.from(text);
   return (
     <div
-      className={`text-6xl sm:text-7xl font-semibold text-white leading-tight flex flex-wrap gap-x-[2px] ${
+      className={`text-5xl sm:text-6xl font-semibold text-slate-900 leading-tight flex flex-wrap justify-center gap-x-[2px] ${
         className ?? ""
       }`}
     >

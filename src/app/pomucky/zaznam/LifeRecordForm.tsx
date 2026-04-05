@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { FileCheck2 } from "lucide-react";
 
 type WaiverInvalidityScope = "twoAndThree" | "threeOnly";
 type InvalidityDegreesSelection = "all" | "twoAndThree" | "threeOnly";
@@ -1615,9 +1616,9 @@ export function LifeRecordForm() {
         <button
           type="button"
           onClick={handleResultsClick}
-          className="inline-flex items-center gap-2 rounded-full border border-emerald-400/70 bg-emerald-500/20 px-8 py-2.5 text-sm sm:text-base font-semibold text-emerald-800 shadow-[0_0_25px_rgba(16,185,129,0.55)] hover:bg-emerald-500/30 hover:border-emerald-200 transition"
+          className="inline-flex items-center gap-2 rounded-full border border-emerald-700 bg-emerald-600 px-8 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(5,150,105,0.35)] transition hover:bg-emerald-500 hover:shadow-[0_18px_34px_rgba(5,150,105,0.45)] sm:text-base"
         >
-          <span>📄</span>
+          <FileCheck2 className="h-4 w-4 sm:h-5 sm:w-5" />
           <span>Výsledky</span>
         </button>
       </div>
@@ -1645,7 +1646,7 @@ function BenefitCard({
   children,
 }: BenefitCardProps) {
   return (
-    <section className="rounded-3xl border border-slate-900 bg-white  px-4 py-4 sm:px-5 sm:py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+    <section className="rounded-3xl border border-slate-800 bg-slate-950 px-4 py-4 sm:px-5 sm:py-5 shadow-[0_12px_26px_rgba(15,23,42,0.3)]">
       <button
         type="button"
         onClick={onToggle}
@@ -1655,17 +1656,17 @@ function BenefitCard({
           className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs transition ${
             enabled
               ? "border-emerald-600 bg-emerald-500 text-white"
-              : "border-slate-400 bg-white text-transparent"
+              : "border-slate-500 bg-slate-900 text-transparent"
           }`}
         >
           {enabled ? "✓" : ""}
         </div>
         <div className="flex-1">
-          <h3 className="text-sm sm:text-base font-semibold text-slate-900">
+          <h3 className="text-sm sm:text-base font-semibold text-[#f8fafc]">
             {title}
           </h3>
           {subtitle && (
-            <p className="text-[11px] sm:text-xs text-slate-600 mt-0.5">
+            <p className="mt-0.5 text-[11px] text-[#cbd5e1] sm:text-xs">
               {subtitle}
             </p>
           )}
@@ -1673,7 +1674,11 @@ function BenefitCard({
       </button>
 
       {enabled && children && (
-        <div className="mt-3 border-t border-slate-300 pt-3">{children}</div>
+        <div className="mt-3 border-t border-slate-700 pt-3">
+          <div className="rounded-2xl border border-slate-300 bg-white p-3">
+            {children}
+          </div>
+        </div>
       )}
     </section>
   );

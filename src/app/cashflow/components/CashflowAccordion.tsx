@@ -29,7 +29,7 @@ export function CashflowAccordion({
         return (
           <section
             key={yearGroup.year}
-            className="cashflow-card-year relative overflow-hidden rounded-3xl border border-slate-900 bg-slate-100 p-4 sm:p-5 shadow-[0_12px_24px_rgba(15,23,42,0.1)]"
+            className="cashflow-card-year relative overflow-hidden rounded-3xl border border-slate-900 bg-slate-900 p-4 sm:p-5 shadow-[0_12px_24px_rgba(15,23,42,0.28)]"
           >
 
             <button
@@ -38,28 +38,28 @@ export function CashflowAccordion({
               className="relative z-10 flex w-full items-center justify-between gap-4 text-left"
             >
               <div className="min-w-0">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                <p className="text-sm font-semibold uppercase tracking-[0.08em] text-white">
                   Cashflow rok
                 </p>
-                <h2 className="text-xl sm:text-2xl font-semibold text-slate-950">
+                <h2 className="text-xl sm:text-2xl font-semibold text-white">
                   {yearGroup.year}
                 </h2>
               </div>
 
               <div className="flex items-center gap-3 sm:gap-4">
                 <div className="text-right">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                  <p className="text-sm font-semibold uppercase tracking-[0.08em] text-white">
                     Celkem
                   </p>
-                  <p className="text-2xl sm:text-3xl font-semibold leading-none text-slate-950">
+                  <p className="text-2xl sm:text-3xl font-semibold leading-none text-emerald-400">
                     {formatMoney(yearGroup.total)}
                   </p>
                 </div>
                 <div className="ml-3 text-right sm:ml-6">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                  <p className="text-sm font-semibold uppercase tracking-[0.08em] text-white">
                     Průměr / měsíc
                   </p>
-                  <p className="text-2xl sm:text-3xl font-semibold leading-none text-slate-950">
+                  <p className="text-2xl sm:text-3xl font-semibold leading-none text-emerald-400">
                     {formatMoney(averagePerActiveMonth)}
                   </p>
                 </div>
@@ -75,7 +75,7 @@ export function CashflowAccordion({
             </button>
 
             {yearOpen && (
-              <div className="relative z-10 mt-4 border-t border-slate-200 pt-4">
+              <div className="relative z-10 mt-4 border-t border-slate-700 pt-4">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {yearGroup.months.map((month) => {
                     const monthRatio = Math.min(

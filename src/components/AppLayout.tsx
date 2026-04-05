@@ -41,7 +41,7 @@ const loadFirestore = () => {
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [backgroundColor, setBackgroundColor] = useState<"white" | "blue">("white");
+  const [backgroundColor, setBackgroundColor] = useState<"white" | "black">("white");
   const pathname = usePathname();
   const router = useRouter();
   const lastActiveUpdateRef = useRef(0);
@@ -121,7 +121,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         "settings.backgroundColor"
       );
       if (!mounted) return;
-      const parsed = storedColor === "blue" ? "blue" : "white";
+      const parsed =
+        storedColor === "black" || storedColor === "blue" ? "black" : "white";
       setBackgroundColor(parsed);
     };
 
@@ -130,7 +131,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const customHandler = (ev: Event) => {
       const detail = (ev as CustomEvent<{ backgroundColor?: string }>).detail;
       if (detail && typeof detail.backgroundColor === "string") {
-        const bg = detail.backgroundColor === "blue" ? "blue" : "white";
+        const bg =
+          detail.backgroundColor === "black" || detail.backgroundColor === "blue"
+            ? "black"
+            : "white";
         setBackgroundColor(bg);
       } else {
         updateFromStorage();
@@ -150,7 +154,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  // Přepínání třídy na body kvůli světlému / modrému pozadí
+  // Přepínání třídy na body kvůli světlému / černému kontrastu
   useEffect(() => {
     if (typeof document === "undefined") return;
     const body = document.body;
@@ -159,13 +163,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     body.classList.remove(
       "simple-bg",
       "simple-bg-black",
-      "simple-bg-white",
-      "simple-bg-blue"
+      "simple-bg-white"
     );
 
     body.classList.add("simple-bg");
     body.classList.add(
-      backgroundColor === "blue" ? "simple-bg-blue" : "simple-bg-white"
+      backgroundColor === "black" ? "simple-bg-black" : "simple-bg-white"
     );
   }, [backgroundColor]);
 
@@ -338,7 +341,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   };
 
   const navItemBase =
-    "flex items-center justify-between rounded-2xl border px-4 py-2.5 transition-colors";
+    "flex items-center rounded-2xl border px-4 py-2.5 transition-colors";
   const navLabelBase = "flex items-center gap-3";
   const navItemActiveClass = "border-slate-900 bg-slate-900 text-white";
   const navItemInactiveClass =
@@ -358,13 +361,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     { key: "tools", href: "/pomucky", label: "Pomůcky" },
     { key: "settings", href: "/nastaveni", label: "Nastavení" },
   ];
-
-  const renderBadge = (isActive: boolean) =>
-    isActive && (
-      <span className="rounded-full border border-white bg-white px-3 py-0.5 text-[11px] text-slate-900">
-        Aktivní
-      </span>
-    );
 
   const icon = (
     <Image
@@ -401,8 +397,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         className="fixed inset-0 -z-10 transition-colors duration-200"
         style={{
           backgroundColor:
-            backgroundColor === "blue"
-              ? "#0a1b3a"
+            backgroundColor === "black"
+              ? "#000000"
               : "#ffffff",
         }}
       />
@@ -444,7 +440,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                     {icon}
                     <span>{item.label}</span>
                   </span>
-                  {renderBadge(active === item.key)}
                 </Link>
               );
             })}
@@ -547,7 +542,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                           {icon}
                           <span>{item.label}</span>
                         </span>
-                        {renderBadge(active === item.key)}
                       </Link>
                     );
                   })}

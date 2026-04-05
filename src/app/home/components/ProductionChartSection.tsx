@@ -297,8 +297,8 @@ export function ProductionChartSection({
   isLiteUI,
 }: ProductionChartSectionProps) {
   const chartCardClass = isLiteUI
-    ? "overflow-hidden rounded-[28px] border border-slate-900 bg-white px-5 py-5 sm:px-7 sm:py-6"
-    : "overflow-hidden rounded-[28px] border border-slate-900 bg-white px-5 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-7 sm:py-6";
+    ? "overflow-hidden rounded-[28px] border border-slate-900 bg-white px-5 py-5 transition-[border-color,box-shadow] duration-200 hover:border-slate-700 focus-within:border-slate-700 focus-within:shadow-[0_0_0_1px_rgba(15,23,42,0.12)] sm:px-7 sm:py-6"
+    : "overflow-hidden rounded-[28px] border border-slate-900 bg-white px-5 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] transition-[border-color,box-shadow] duration-200 hover:border-slate-700 hover:shadow-[0_16px_36px_rgba(15,23,42,0.16)] focus-within:border-slate-700 focus-within:shadow-[0_16px_36px_rgba(15,23,42,0.16),0_0_0_1px_rgba(15,23,42,0.12)] sm:px-7 sm:py-6";
 
   return (
     <section className={chartCardClass}>
