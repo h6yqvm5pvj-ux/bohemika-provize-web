@@ -36,7 +36,7 @@ export function CashflowMonthModal({
                 Přehled měsíce
               </p>
               <h3 className="text-2xl font-semibold">{month.label}</h3>
-              <p className="text-sm text-slate-600">{month.items.length} položek</p>
+              <p className="text-sm text-slate-600">{month.items.length} Smluv</p>
             </div>
             <div className="text-right">
               <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">

@@ -903,9 +903,6 @@ const getNnOrange10xPercent = (percent: number): number => {
   return NN_ORANGE_10X_TABLE[idx] ?? 0;
 };
 
-const formatMultiplier = (m: number): string =>
-  Number.isInteger(m) ? `${m}×` : `${m.toFixed(1)}×`;
-
 const getAllianzZivotPercent = (percent: number): number => {
   const clamped = Math.min(100, Math.max(0, percent));
   let lower = ALLIANZ_ZIVOT_ANCHORS[0];
@@ -1047,118 +1044,119 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const payoutPillow =
     sumInsuredValue * pillowMultiplier * (rangePercentValue / 100);
 
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState<string | null>(null);
 
   const cards = [
     {
       key: "cpp-10x",
       insurer: "ČPP Neon",
-      badges: [`${multiplier}× pojistná částka`, "10× progrese"],
+      badges: ["10× progrese"],
       payout: payout,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier} × ${rangePercentValue}%.`,
     },
     {
       key: "cpp-5x",
       insurer: "ČPP Neon",
-      badges: [`${multiplier5x}× pojistná částka`, "5× progrese"],
+      badges: ["5× progrese"],
       payout: payout5x,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${rangePercentValue}%.`,
     },
     {
       key: "uniqa-domino",
       insurer: "UNIQA Domino",
-      badges: [`${multiplierUniqa}× pojistná částka`, "10× progrese"],
+      badges: ["10× progrese"],
       payout: payoutUniqa,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplierUniqa} × ${rangePercentValue}%.`,
     },
     {
       key: "uniqa-zivot-radost",
       insurer: "UNIQA Život & radost",
-      badges: [`${uniqaZivotPercent}% plnění`, "10× progrese"],
+      badges: ["10× progrese"],
       payout: payoutUniqaZivot,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaZivotPercent}%.`,
     },
     {
       key: "koop-flexi",
       insurer: "Kooperativa FLEXI",
-      badges: [`${kooperativaFlexiPercent}% plnění`, "10× progrese"],
+      badges: ["10× progrese"],
       payout: payoutKooperativaFlexi,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexiPercent}%.`,
     },
     {
       key: "koop-flexi-4x",
       insurer: "Kooperativa FLEXI",
-      badges: [`${kooperativaFlexi4Percent}% plnění`, "4× progrese"],
+      badges: ["4× progrese"],
       payout: payoutKooperativaFlexi4,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexi4Percent}%.`,
     },
     {
       key: "metlife-oneguard",
       insurer: "MetLife OneGuard",
-      badges: [`${metlifeOneGuardPercent}% plnění`, "10× progrese"],
+      badges: ["10× progrese"],
       payout: payoutMetlifeOneGuard,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${rangePercentValue}% × ${metlifeOneGuardPercent}%.`,
     },
     {
       key: "metlife-garde6",
       insurer: "MetLife Garde 6.0",
-      badges: [`${metlifeGarde6Percent}% plnění`, "10× progrese"],
+      badges: ["10× progrese"],
       payout: payoutMetlifeGarde6,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${rangePercentValue}% × ${metlifeGarde6Percent}%.`,
     },
     {
       key: "csob-nas-zivot",
       insurer: "ČSOB Náš Život",
-      badges: [`${csobNasZivotPercent}% plnění`, "8× progrese"],
+      badges: ["8× progrese"],
       payout: payoutCsobNasZivot,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${csobNasZivotPercent}%.`,
     },
     {
       key: "generali-muj-zivot",
       insurer: "Generali Můj Život",
-      badges: [`${generaliMujZivotPercent}% plnění`, "10× progrese"],
+      badges: ["10× progrese"],
       payout: payoutGeneraliMujZivot,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliMujZivotPercent}%.`,
     },
     {
       key: "nn-orange",
       insurer: "NN Orange",
-      badges: [`${nnOrangePercent}% plnění`, "5× progrese"],
+      badges: ["5× progrese"],
       payout: payoutNnOrange,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrangePercent}%.`,
     },
     {
       key: "nn-orange-10x",
       insurer: "NN Orange",
-      badges: [`${nnOrange10xPercent}% plnění`, "10× progrese"],
+      badges: ["10× progrese"],
       payout: payoutNnOrange10x,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrange10xPercent}%.`,
     },
     {
       key: "maxima-maxefekt",
       insurer: "Maxima MAXEFEKT 6.0",
-      badges: [`${maximaMaxefektMultiplier}× pojistná částka`, "10× progrese"],
+      badges: ["10× progrese"],
       payout: payoutMaximaMaxefekt,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${maximaMaxefektMultiplier} × ${rangePercentValue}%.`,
     },
     {
       key: "allianz-zivot",
       insurer: "Allianz Život",
-      badges: [`${allianzZivotPercent}% plnění`, "8× progrese"],
+      badges: ["8× progrese"],
       payout: payoutAllianzZivot,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzZivotPercent}%.`,
     },
     {
       key: "simplea-2",
       insurer: "Simplea 2.0",
-      badges: [`${simpleaMultiplier}× pojistná částka`, "10× progrese"],
+      badges: ["10× progrese"],
       payout: payoutSimplea,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${simpleaMultiplier} × ${rangePercentValue}%.`,
     },
     {
       key: "pillow-uraz-nemoc",
       insurer: "Pillow Úraz Nemoc",
-      badges: [`${formatMultiplier(pillowMultiplier)} pojistná částka`, "10× progrese"],
+      badges: ["10× progrese"],
       payout: payoutPillow,
       info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${rangePercentValue}% × ${pillowMultiplier}.`,
     },
@@ -1176,6 +1174,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
   });
 
   const sortedCards = [...visibleCards].sort((a, b) => b.payout - a.payout);
+  const activeFilterCount =
+    (showOnly10x ? 1 : 0) +
+    (compactList ? 1 : 0) +
+    (selectedInsurers.length > 0 ? 1 : 0);
 
   const podiumStyles: Array<{
     title: string;
@@ -1187,8 +1189,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
     {
       title: "1. místo",
       subtitle: "Nejvyšší plnění",
-      border: "border-[1.5px] border-slate-900",
-      badgeBg: "bg-slate-900 text-white",
+      border: "border-[1.5px] [border-color:rgba(100,116,139,0.85)]",
+      badgeBg: "bg-white text-slate-900",
       badgeText: "TOP",
     },
   ];
@@ -1276,86 +1278,147 @@ export default function SrovnavacTrvalychNasledkuPage() {
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="text-[11px] text-slate-500">Filtr:</div>
-              <button
-                type="button"
-                onClick={() => setShowOnly10x((v) => !v)}
-                className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                  showOnly10x
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-900 bg-white text-slate-900 hover:bg-slate-900 hover:text-white"
-                }`}
-              >
-                Pouze 10× progrese
-              </button>
-              {showOnly10x && (
-                <span className="text-[11px] text-slate-500">
-                  Zobrazuji jen varianty s 10× progresí.
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                <span className="font-semibold text-slate-700">
+                  {activeFilterCount === 0
+                    ? "Bez aktivních filtrů"
+                    : `Aktivní filtry: ${activeFilterCount}`}
                 </span>
-              )}
-              {selectedInsurers.length > 0 && (
-                <span className="text-[11px] text-slate-500">
-                  Vybráno pojišťoven: {selectedInsurers.length}
-                </span>
-              )}
-              <div className="ml-auto flex items-center gap-2">
-                <span className="text-[11px] text-slate-500">Zobrazení:</span>
-                <button
-                  type="button"
-                  onClick={() => setCompactList((v) => !v)}
-                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                    compactList
-                      ? "border-slate-900 bg-slate-900 text-white"
-                      : "border-slate-900 bg-white text-slate-900 hover:bg-slate-900 hover:text-white"
-                  }`}
-                >
-                  {compactList ? "Kompaktní (1/řádek)" : "Karty (3/řádek)"}
-                </button>
+                {showOnly10x && (
+                  <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5">
+                    10× progrese
+                  </span>
+                )}
+                {selectedInsurers.length > 0 && (
+                  <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5">
+                    Pojišťovny: {selectedInsurers.length}
+                  </span>
+                )}
+                {compactList && (
+                  <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5">
+                    Kompaktní
+                  </span>
+                )}
               </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="text-[11px] text-slate-500">Pojišťovny:</div>
               <button
                 type="button"
-                onClick={() => setSelectedInsurers([])}
-                className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                  selectedInsurers.length === 0
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-900 bg-white text-slate-900 hover:bg-slate-900 hover:text-white"
-                }`}
+                onClick={() => setFiltersOpen(true)}
+                className="inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black"
               >
-                Všechny
+                Filtry
               </button>
-              {insurerOptions.map((insurer) => {
-                const active = selectedInsurers.includes(insurer);
-
-                return (
-                  <button
-                    key={insurer}
-                    type="button"
-                    onClick={() =>
-                      setSelectedInsurers((current) =>
-                        current.includes(insurer)
-                          ? current.filter((item) => item !== insurer)
-                          : [...current, insurer]
-                      )
-                    }
-                    className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                      active
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-900 bg-white text-slate-900 hover:bg-slate-900 hover:text-white"
-                    }`}
-                    aria-pressed={active}
-                  >
-                    {insurer}
-                  </button>
-                );
-              })}
             </div>
           </section>
         </div>
+
+        {filtersOpen && (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/45 px-4 py-6"
+            onClick={() => setFiltersOpen(false)}
+          >
+            <div
+              className="w-full max-w-3xl rounded-3xl border border-slate-900 bg-white px-5 py-5 shadow-[0_25px_70px_rgba(2,6,23,0.35)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-slate-900">Filtry a zobrazení</h3>
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen(false)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-sm text-white hover:bg-black"
+                  aria-label="Zavřít filtry"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="text-[11px] text-slate-500">Filtr:</div>
+                  <button
+                    type="button"
+                    onClick={() => setShowOnly10x((v) => !v)}
+                    className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                      showOnly10x
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-900 bg-white text-slate-900 hover:bg-slate-900 hover:text-white"
+                    }`}
+                  >
+                    Pouze 10× progrese
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-[11px] text-slate-500">Zobrazení:</div>
+                  <button
+                    type="button"
+                    onClick={() => setCompactList((v) => !v)}
+                    className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                      compactList
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-900 bg-white text-slate-900 hover:bg-slate-900 hover:text-white"
+                    }`}
+                  >
+                    {compactList ? "Kompaktní (1/řádek)" : "Karty (3/řádek)"}
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-[11px] text-slate-500">Pojišťovny:</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedInsurers([])}
+                      className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                        selectedInsurers.length === 0
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-900 bg-white text-slate-900 hover:bg-slate-900 hover:text-white"
+                      }`}
+                    >
+                      Všechny
+                    </button>
+                    {insurerOptions.map((insurer) => {
+                      const active = selectedInsurers.includes(insurer);
+
+                      return (
+                        <button
+                          key={insurer}
+                          type="button"
+                          onClick={() =>
+                            setSelectedInsurers((current) =>
+                              current.includes(insurer)
+                                ? current.filter((item) => item !== insurer)
+                                : [...current, insurer]
+                            )
+                          }
+                          className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                            active
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-900 bg-white text-slate-900 hover:bg-slate-900 hover:text-white"
+                          }`}
+                          aria-pressed={active}
+                        >
+                          {insurer}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setFiltersOpen(false)}
+                    className="inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black"
+                  >
+                    Zavřít
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">
@@ -1374,17 +1437,17 @@ export default function SrovnavacTrvalychNasledkuPage() {
               const podium = podiumStyles[idx];
               const borderClass = podium
                 ? `${podium.border} border`
-                : "border border-slate-900";
+                : "border [border-color:rgba(71,85,105,0.75)]";
 
               return (
                 <div
                   key={card.key}
-                  className={`relative print-card rounded-3xl bg-white ${compactList ? "px-4 py-4" : "px-5 py-5"} ${borderClass} ${
+                  className={`relative print-card rounded-3xl bg-[#020617] text-[#f8fafc] shadow-[0_12px_30px_rgba(2,6,23,0.38)] ${compactList ? "px-4 py-4" : "px-5 py-5"} ${borderClass} ${
                     compactList ? "md:flex md:items-center md:gap-4" : ""
                   }`}
                 >
                   {podium && (
-                    <div className="absolute -top-3 left-4 z-10 flex items-center gap-2 rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-900">
+                    <div className="absolute -top-3 left-4 z-10 flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-slate-900">
                       <span className={`rounded-full px-2 py-0.5 ${podium.badgeBg}`}>
                         {podium.badgeText}
                       </span>
@@ -1398,16 +1461,16 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     }`}
                   >
                     <div>
-                      <div className="text-xs uppercase tracking-wide text-slate-600">
+                      <div className="text-xs uppercase tracking-wide text-[#94a3b8]">
                         Pojišťovna
                       </div>
-                      <div className="text-xl font-semibold text-slate-900">{card.insurer}</div>
+                      <div className="text-xl font-semibold text-[#f8fafc]">{card.insurer}</div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
                     {card.badges.map((badge) => (
                       <div
                         key={badge}
-                        className="rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] text-slate-900"
+                        className="rounded-full border [border-color:rgba(148,163,184,0.55)] bg-[#0f172a] px-3 py-1 text-[11px] text-[#e2e8f0]"
                       >
                         {badge}
                       </div>
@@ -1418,9 +1481,9 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   <div
                     className={`mt-4 space-y-2 ${compactList ? "md:mt-0 md:w-1/3" : ""}`}
                   >
-                    <div className="text-sm text-slate-600">Plnění</div>
+                    <div className="text-sm text-[#94a3b8]">Plnění</div>
                     <div
-                      className={`font-bold text-emerald-800 ${
+                      className={`font-bold text-[#34d399] ${
                         compactList ? "text-2xl" : "text-3xl"
                       }`}
                     >
@@ -1434,7 +1497,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   <button
                     type="button"
                     onClick={() => setInfoOpen(infoOpen === card.key ? null : card.key)}
-                    className="relative bottom-0 right-0 mt-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-xs font-semibold text-white transition hover:bg-black"
+                    className="relative bottom-0 right-0 mt-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white bg-white text-xs font-semibold text-slate-900 transition hover:bg-slate-100"
                     aria-label={`Zobrazit výpočet pro ${card.insurer}`}
                   >
                     i

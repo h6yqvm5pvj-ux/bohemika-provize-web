@@ -1765,29 +1765,29 @@ export default function TvorbaPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-[1360px] space-y-6">
-        <header className="space-y-2">
+      <div className="w-full max-w-[1360px] space-y-7">
+        <header className="space-y-3 sm:flex sm:items-end sm:justify-between sm:space-y-0">
           <SplitTitle text="Tvorba" />
           <Link
             href="/pomucky"
-            className="inline-flex items-center rounded-full border border-slate-300 px-3 py-1.5 text-xs text-slate-800 transition hover:bg-white hover:text-slate-900"
+            className="inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black"
           >
             ← Zpět na pomůcky
           </Link>
         </header>
 
-        <div className="grid items-start gap-5 xl:grid-cols-[332px_1fr]">
-          <aside className="rounded-3xl border border-slate-900 bg-gradient-to-br from-slate-950/90 via-slate-900/82 to-slate-900/72 p-4  shadow-[0_22px_60px_rgba(0,0,0,0.5)] space-y-4">
+        <div className="grid items-start gap-6 xl:grid-cols-[352px_1fr]">
+          <aside className="xl:sticky xl:top-6 rounded-[30px] border border-slate-300 bg-gradient-to-br from-white via-slate-50 to-[#eef2ff] p-4 shadow-[0_24px_64px_rgba(15,23,42,0.18)] space-y-4">
             <section className="space-y-3">
               <div className="flex items-center gap-2">
-                <Type className="h-4 w-4 text-blue-300" />
+                <Type className="h-4 w-4 text-slate-600" />
                 <h2 className="text-sm font-semibold text-slate-900">Editor obsahu</h2>
               </div>
               <div className="flex flex-wrap gap-2">
                 <ToolbarButton label="Nadpis" onClick={() => applyFormatBlock("H2")} />
                 <ToolbarButton label="Odrážky" onClick={() => applyList(false)} />
               </div>
-              <div className="inline-flex overflow-hidden rounded-xl border border-slate-500/70 bg-slate-600/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="inline-flex overflow-hidden rounded-xl border border-slate-300 bg-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
@@ -1845,7 +1845,7 @@ export default function TvorbaPage() {
                   <span className="text-[34px] line-through leading-none">S</span>
                 </button>
               </div>
-              <div className="inline-flex overflow-hidden rounded-xl border border-slate-500/70 bg-slate-600/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="inline-flex overflow-hidden rounded-xl border border-slate-300 bg-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
@@ -1911,7 +1911,7 @@ export default function TvorbaPage() {
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => setFontMenuOpen((prev) => !prev)}
-                      className="inline-flex w-full items-center justify-between rounded-xl border border-slate-500/70 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-900 outline-none transition hover:border-slate-900"
+                      className="inline-flex w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-900 outline-none transition hover:border-slate-900"
                       style={{ fontFamily: selectedFontOption.css }}
                       aria-label="Vybrat font"
                     >
@@ -1919,7 +1919,7 @@ export default function TvorbaPage() {
                       <span className="ml-2 text-[10px] text-slate-600">{fontMenuOpen ? "▲" : "▼"}</span>
                     </button>
                     {fontMenuOpen && (
-                      <div className="absolute left-0 top-9 z-30 min-w-[224px] overflow-hidden rounded-xl border border-slate-500/70 bg-white shadow-[0_16px_32px_rgba(0,0,0,0.5)] ">
+                      <div className="absolute left-0 top-9 z-30 min-w-[224px] overflow-hidden rounded-xl border border-slate-300 bg-white shadow-[0_16px_32px_rgba(15,23,42,0.25)] ">
                         {FONT_OPTIONS.map((option) => {
                           const isSelected = option.key === fontFamilyKey;
                           return (
@@ -1936,7 +1936,7 @@ export default function TvorbaPage() {
                               style={{ fontFamily: option.css }}
                             >
                               <span>{option.label}</span>
-                              {isSelected && <span className="text-xs font-semibold text-blue-200">✓</span>}
+                              {isSelected && <span className="text-xs font-semibold text-slate-700">✓</span>}
                             </button>
                           );
                         })}
@@ -1954,7 +1954,7 @@ export default function TvorbaPage() {
                       setFontSizePx(next);
                       applyFontSize(next);
                     }}
-                    className="w-[94px] rounded-xl border border-slate-500/70 bg-white px-2 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
+                    className="w-[94px] rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
                   >
                     {[12, 14, 15, 16, 18, 20, 24, 28, 32].map((size) => (
                       <option key={size} value={size} className="text-slate-900">
@@ -1968,7 +1968,7 @@ export default function TvorbaPage() {
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => setTextPaletteOpen((prev) => !prev)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-500/70 bg-white transition hover:border-slate-900"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white transition hover:border-slate-900"
                       aria-label="Barva textu"
                       title="Barva textu"
                     >
@@ -1988,7 +1988,7 @@ export default function TvorbaPage() {
                     />
 
                     {textPaletteOpen && (
-                      <div className="absolute right-0 top-10 z-30 w-[226px] rounded-xl border border-slate-500/70 bg-white p-2 shadow-[0_16px_32px_rgba(0,0,0,0.45)] ">
+                      <div className="absolute right-0 top-10 z-30 w-[226px] rounded-xl border border-slate-300 bg-white p-2 shadow-[0_16px_32px_rgba(15,23,42,0.24)] ">
                         <div className="grid grid-cols-8 gap-1.5">
                           {TEXT_COLOR_PALETTE.map((color) => {
                             const isSelected = textColor.toLowerCase() === color.toLowerCase();
@@ -2015,7 +2015,7 @@ export default function TvorbaPage() {
                             type="button"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => textColorInputRef.current?.click()}
-                            className="rounded-lg border border-slate-500/70 bg-white px-2 py-1 text-[11px] font-semibold text-slate-900 transition hover:border-slate-900 hover:text-slate-900"
+                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-900 transition hover:border-slate-900 hover:text-slate-900"
                           >
                             Vlastní
                           </button>
@@ -2023,7 +2023,7 @@ export default function TvorbaPage() {
                             type="button"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => void handlePickColorBySample()}
-                            className="rounded-lg border border-blue-300/55 bg-blue-500/20 px-2 py-1 text-[11px] font-semibold text-white transition hover:bg-blue-500/30"
+                            className="rounded-lg border border-slate-900 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-white transition hover:bg-black"
                           >
                             Pipeta
                           </button>
@@ -2040,7 +2040,7 @@ export default function TvorbaPage() {
                 <button
                   type="button"
                   onClick={handleInsertImageClick}
-                  className="inline-flex items-center gap-2 rounded-xl border border-blue-300/55 bg-blue-500/20 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-500/30"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
                 >
                   <ImagePlus className="h-3.5 w-3.5" />
                   Vložit obrázek
@@ -2049,7 +2049,7 @@ export default function TvorbaPage() {
                   type="button"
                   onClick={removeActiveImage}
                   disabled={!activeImageId}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:border-blue-300/60 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Smazat vybraný
@@ -2074,10 +2074,10 @@ export default function TvorbaPage() {
                   setTextPaletteOpen(false);
                   setFontMenuOpen(false);
                 }}
-                className="inline-flex w-full items-center justify-between rounded-xl border border-slate-900 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:border-blue-300/65 hover:bg-white"
+                className="inline-flex w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:border-slate-900 hover:bg-white"
               >
                 <span className="inline-flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-blue-300" />
+                  <Sparkles className="h-4 w-4 text-slate-600" />
                   AI asistent
                 </span>
                 <span
@@ -2096,7 +2096,7 @@ export default function TvorbaPage() {
               </button>
 
               {aiPanelOpen && (
-                <div className="space-y-3 rounded-2xl border border-slate-900 bg-white p-3">
+                <div className="space-y-3 rounded-2xl border border-slate-300 bg-slate-50/70 p-3">
                   <textarea
                     value={aiPrompt}
                     onChange={(e) => {
@@ -2185,7 +2185,7 @@ export default function TvorbaPage() {
                     />
                   </div>
 
-                  <div className="space-y-2 rounded-xl border border-slate-900 bg-white p-2.5">
+                  <div className="space-y-2 rounded-xl border border-slate-300 bg-white p-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <label className="text-[11px] font-semibold text-slate-600">Oslovení</label>
                       <select
@@ -2227,7 +2227,7 @@ export default function TvorbaPage() {
                     type="button"
                     onClick={() => void handleGenerateAiText()}
                     disabled={aiLoading}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-300/60 bg-blue-500/25 px-4 py-2 text-sm font-semibold text-blue-50 transition hover:bg-blue-500/35 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {aiLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -2240,8 +2240,8 @@ export default function TvorbaPage() {
                   {aiError && <p className="text-xs text-rose-700">{aiError}</p>}
 
                   {aiResult && (
-                    <div className="space-y-2 rounded-xl border border-slate-900 bg-white p-2.5">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-blue-200/85">
+                    <div className="space-y-2 rounded-xl border border-slate-300 bg-white p-2.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-600">
                         Návrh AI
                       </p>
                       <div className="max-h-36 overflow-y-auto rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-900 whitespace-pre-wrap">
@@ -2258,7 +2258,7 @@ export default function TvorbaPage() {
                         <button
                           type="button"
                           onClick={replaceEditorWithAiResult}
-                          className="rounded-lg border border-blue-300/60 bg-blue-500/20 px-2.5 py-1.5 text-xs font-semibold text-blue-50 transition hover:bg-blue-500/30"
+                          className="rounded-lg border border-slate-900 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
                         >
                           Nahradit celý text
                         </button>
@@ -2277,13 +2277,13 @@ export default function TvorbaPage() {
                   setTextPaletteOpen(false);
                   setFontMenuOpen(false);
                 }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:border-slate-900 hover:text-slate-900"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black"
               >
                 Nastavení PDF
               </button>
               <p className="text-xs text-slate-600">Kvalita: {selectedPdfQuality.label}</p>
               {pdfPasswordEnabled && (
-                <p className="text-xs text-blue-300">PDF bude zaheslované.</p>
+                <p className="text-xs text-emerald-700">PDF bude zaheslované.</p>
               )}
             </section>
 
@@ -2292,7 +2292,7 @@ export default function TvorbaPage() {
                 type="button"
                 onClick={() => void handleDownloadPdf()}
                 disabled={downloading}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-blue-500/25 px-4 py-2.5 text-sm font-semibold text-blue-50 shadow-[0_10px_28px_rgba(59,130,246,0.28)] transition hover:bg-blue-500/35 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(15,23,42,0.26)] transition hover:bg-black disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Download className="h-4 w-4" />
                 {downloading ? "Generuji PDF…" : "Stáhnout PDF"}
@@ -2301,11 +2301,11 @@ export default function TvorbaPage() {
             </section>
           </aside>
 
-          <section className="rounded-3xl border border-slate-300 bg-gradient-to-br from-black/75 via-black/65 to-black/55 p-4 md:p-6  shadow-[0_22px_60px_rgba(0,0,0,0.55)] overflow-auto">
-            <div className="mx-auto w-fit rounded-2xl border border-slate-300 bg-white p-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+          <section className="rounded-[32px] border border-slate-300 bg-gradient-to-br from-slate-100 via-white to-slate-100 p-4 md:p-6 shadow-[0_24px_64px_rgba(15,23,42,0.16)] overflow-auto">
+            <div className="mx-auto w-fit rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_20px_52px_rgba(15,23,42,0.22)]">
               <div
                 ref={pageRef}
-                className="relative w-[210mm] min-h-[297mm] overflow-hidden bg-white text-slate-900 shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+                className="relative w-[210mm] min-h-[297mm] overflow-hidden bg-white text-slate-900 shadow-[0_18px_42px_rgba(15,23,42,0.22)]"
               >
                 <header className="relative h-[42mm] border-b border-slate-200 px-[14mm] py-[1mm] flex items-center">
                   <Image
@@ -2490,11 +2490,11 @@ export default function TvorbaPage() {
 
         {pdfSettingsOpen && (
           <div
-            className="fixed inset-0 z-[120] flex items-center justify-center bg-white p-4 "
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-[2px]"
             onMouseDown={() => setPdfSettingsOpen(false)}
           >
             <div
-              className="w-full max-w-[560px] max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-900 bg-gradient-to-br from-slate-950/96 via-[#050c24]/95 to-slate-950/96 p-4 shadow-[0_26px_76px_rgba(0,0,0,0.7)] ring-1 ring-blue-300/15"
+              className="w-full max-w-[560px] max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-300 bg-gradient-to-br from-white via-slate-50 to-[#eef2ff] p-4 shadow-[0_30px_84px_rgba(15,23,42,0.32)]"
               onMouseDown={(event) => event.stopPropagation()}
             >
               <div className="mb-4 flex items-start justify-between">
@@ -2507,7 +2507,7 @@ export default function TvorbaPage() {
                 <button
                   type="button"
                   onClick={() => setPdfSettingsOpen(false)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-800 transition hover:border-slate-900 hover:bg-blue-500/20 hover:text-slate-900"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-800 transition hover:border-slate-900 hover:bg-slate-100 hover:text-slate-900"
                   aria-label="Zavřít nastavení PDF"
                 >
                   ×
@@ -2515,10 +2515,10 @@ export default function TvorbaPage() {
               </div>
 
               <div className="space-y-3">
-                <div className="rounded-xl border border-blue-400/25 bg-gradient-to-br from-slate-900/86 to-slate-950/80 p-3 shadow-[inset_0_1px_0_rgba(148,163,184,0.2)]">
+                <div className="rounded-xl border border-slate-300 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.08)]">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2.5">
-                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-900 bg-blue-100 text-slate-900">
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-slate-100 text-slate-900">
                         <Lock className="h-4 w-4" />
                       </span>
                       <div>
@@ -2542,7 +2542,7 @@ export default function TvorbaPage() {
                       }}
                       className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition ${
                         pdfPasswordEnabled
-                          ? "border-slate-900 bg-blue-500/75 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
+                          ? "border-slate-900 bg-slate-900"
                           : "border-slate-300 bg-slate-200"
                       }`}
                     >
@@ -2601,12 +2601,12 @@ export default function TvorbaPage() {
                     <button
                       type="button"
                       onClick={handleSavePdfSettings}
-                      className="inline-flex items-center justify-center rounded-xl border border-blue-300/60 bg-blue-500/25 px-3 py-1.5 text-xs font-semibold text-blue-50 transition hover:bg-blue-500/35"
+                      className="inline-flex items-center justify-center rounded-xl border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
                     >
                       {pdfPasswordEnabled ? "Potvrdit heslo pro 1 export" : "Potvrdit nastavení"}
                     </button>
                     {pdfSaveStatus && (
-                      <p className="text-xs font-medium text-blue-200">{pdfSaveStatus}</p>
+                      <p className="text-xs font-medium text-slate-700">{pdfSaveStatus}</p>
                     )}
                   </div>
                 </div>
@@ -2614,13 +2614,13 @@ export default function TvorbaPage() {
                 <button
                   type="button"
                   onClick={() => setFooterSettingsOpen((prev) => !prev)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:border-slate-900 hover:text-slate-900"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black"
                 >
                   {footerSettingsOpen ? "Nastavení patičky (skrýt)" : "Nastavení patičky"}
                 </button>
 
                 {footerSettingsOpen && (
-                  <div className="space-y-3 rounded-2xl border border-slate-900 bg-white p-3 shadow-[inset_0_1px_0_rgba(148,163,184,0.2)]">
+                  <div className="space-y-3 rounded-2xl border border-slate-300 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.08)]">
                     <h3 className="text-sm font-semibold text-slate-900">Patička dokumentu</h3>
                     <div className="space-y-2">
                       <input
@@ -2670,11 +2670,11 @@ export default function TvorbaPage() {
                       type="button"
                       onClick={() => void handleSaveFooterProfile()}
                       disabled={savingFooter}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-300/55 bg-blue-500/22 px-4 py-2.5 text-sm font-semibold text-blue-50 transition hover:bg-blue-500/32 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {savingFooter ? "Ukládám…" : "Uložit údaje patičky"}
                     </button>
-                    {saveStatus && <p className="text-xs text-blue-300">{saveStatus}</p>}
+                    {saveStatus && <p className="text-xs text-slate-700">{saveStatus}</p>}
                   </div>
                 )}
               </div>

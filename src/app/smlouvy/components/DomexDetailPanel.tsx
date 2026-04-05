@@ -1,4 +1,11 @@
 import React from "react";
+import {
+  House,
+  HousePlus,
+  LifeBuoy,
+  Shield,
+  Sofa,
+} from "lucide-react";
 import type { Product } from "@/app/types/domain";
 
 type DomexDetail = {
@@ -129,8 +136,9 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
     <>
       {showPropertyBlock && (
         <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="text-xs uppercase tracking-wide text-slate-500">
-          Pojištění stavby
+        <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
+          <House size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+          <span>Pojištění stavby</span>
         </div>
         <div className="space-y-2 text-sm text-slate-900">
           <div className="flex justify-between gap-2">
@@ -228,8 +236,9 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
 
       {showOutbuildingBlock && (
         <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="text-xs uppercase tracking-wide text-slate-500">
-          Vedlejší stavby
+        <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
+          <HousePlus size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+          <span>Vedlejší stavby</span>
         </div>
         <div className="space-y-2 text-sm text-slate-900">
           <div className="flex justify-between gap-2">
@@ -254,8 +263,9 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
 
       {showHouseholdBlock && (
         <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="text-xs uppercase tracking-wide text-slate-500">
-          Pojištění domácnosti
+        <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
+          <Sofa size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+          <span>Pojištění domácnosti</span>
         </div>
         <div className="space-y-2 text-sm text-slate-900">
           <div className="flex justify-between gap-2">
@@ -338,8 +348,9 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
 
       {showAssistance && (
         <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="text-xs uppercase tracking-wide text-slate-500">
-          Asistence PLUS
+        <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
+          <LifeBuoy size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+          <span>Asistence PLUS</span>
         </div>
         <ToggleRow
           label="Asistence PLUS"
@@ -352,8 +363,9 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
 
       {showLiabilityBlock && (
         <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="text-xs uppercase tracking-wide text-slate-500">
-          Pojištění odpovědnosti
+        <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
+          <Shield size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+          <span>Pojištění odpovědnosti</span>
         </div>
         <div className="space-y-2 text-sm text-slate-900">
           <div className="flex justify-between gap-2">

@@ -101,7 +101,7 @@ export function CashflowAccordion({
                               {month.label}
                             </h3>
                             <p className="mt-1 text-sm text-slate-600">
-                              {month.items.length} položek
+                              {month.items.length} Smluv
                             </p>
                           </div>
 

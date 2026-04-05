@@ -252,7 +252,7 @@ export default function ToolsPage() {
               >
                 <div className="relative z-10 flex items-center gap-3">
                   <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-400/40 bg-slate-900 transition group-hover:border-slate-200/80">
-                    <ToolIcon className="h-5 w-5 text-[#f8fafc]" />
+                    <ToolIcon className="h-5 w-5 text-white" />
                   </span>
                   <h2 className="text-xl font-semibold tracking-tight text-white group-hover:underline">
                     {tool.title}

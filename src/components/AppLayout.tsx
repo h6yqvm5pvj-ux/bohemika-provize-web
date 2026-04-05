@@ -11,6 +11,16 @@ import {
   signOut,
   type User as FirebaseUser,
 } from "firebase/auth";
+import type { LucideIcon } from "lucide-react";
+import {
+  Calculator,
+  CalendarDays,
+  FileText,
+  Home,
+  Settings,
+  UsersRound,
+  Wrench,
+} from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 type ActivePage =
@@ -341,35 +351,54 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   };
 
   const navItemBase =
-    "flex items-center rounded-2xl border px-4 py-2.5 transition-colors";
-  const navLabelBase = "flex items-center gap-3";
-  const navItemActiveClass = "border-slate-900 bg-slate-900 text-white";
+    "group relative flex items-center rounded-2xl px-3 py-2.5 transition-all duration-200";
+  const navLabelBase = "flex w-full items-center gap-3";
+  const navItemActiveClass =
+    "bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.24)]";
   const navItemInactiveClass =
-    "border-transparent text-slate-700 hover:border-slate-900 hover:bg-slate-100 hover:text-slate-900";
+    "text-slate-700 hover:bg-slate-100 hover:text-slate-900";
 
   const navItems: {
     key: ActivePage;
     href: string;
     label: string;
+    icon: LucideIcon;
     requiresTeam?: boolean;
   }[] = [
-    { key: "home", href: "/", label: "Domů" },
-    { key: "team", href: "/muj-tym", label: "Můj tým", requiresTeam: true },
-    { key: "calc", href: "/kalkulacka", label: "Kalkulačka" },
-    { key: "contracts", href: "/smlouvy", label: "Smlouvy" },
-    { key: "cashflow", href: "/cashflow", label: "Provizní kalendář" },
-    { key: "tools", href: "/pomucky", label: "Pomůcky" },
-    { key: "settings", href: "/nastaveni", label: "Nastavení" },
+    { key: "home", href: "/", label: "Domů", icon: Home },
+    {
+      key: "team",
+      href: "/muj-tym",
+      label: "Můj tým",
+      icon: UsersRound,
+      requiresTeam: true,
+    },
+    { key: "calc", href: "/kalkulacka", label: "Kalkulačka", icon: Calculator },
+    { key: "contracts", href: "/smlouvy", label: "Smlouvy", icon: FileText },
+    {
+      key: "cashflow",
+      href: "/cashflow",
+      label: "Provizní kalendář",
+      icon: CalendarDays,
+    },
+    { key: "tools", href: "/pomucky", label: "Pomůcky", icon: Wrench },
+    { key: "settings", href: "/nastaveni", label: "Nastavení", icon: Settings },
   ];
 
-  const icon = (
-    <Image
-      src="/icons/produkt.png"
-      alt=""
-      width={22}
-      height={22}
-      className="shrink-0"
-    />
+  const renderNavIcon = (Icon: LucideIcon, isActive: boolean) => (
+    <span
+      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition ${
+        isActive
+          ? "border-white/30 bg-white/10"
+          : "border-slate-300 bg-white group-hover:border-slate-400 group-hover:bg-slate-50"
+      }`}
+      aria-hidden="true"
+    >
+      <Icon
+        className={`h-[18px] w-[18px] ${isActive ? "text-white" : "text-slate-700"}`}
+        strokeWidth={2}
+      />
+    </span>
   );
 
   const showPaywall =
@@ -405,8 +434,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
       <div className="relative flex min-h-screen">
         {/* SIDEBAR */}
-        <aside className="hidden w-60 flex-col border-r border-slate-900 bg-white font-mono lg:flex">
-          <div className="border-b border-slate-900 px-5 py-5">
+        <aside className="hidden w-56 flex-col border-r border-slate-200 bg-white/95 font-mono shadow-[8px_0_30px_rgba(15,23,42,0.08)] backdrop-blur-sm lg:flex">
+          <div className="border-b border-slate-200 px-5 py-5">
             <div className="flex items-center gap-3 justify-center">
               <Image
                 src="/icons/bohemika_logo.png"
@@ -422,45 +451,54 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             </div>
           </div>
 
-          <nav className="flex-1 space-y-2 px-4 py-5 text-base">
+          <nav className="flex-1 space-y-2 px-3 py-5 text-base">
             {navItems.map((item) => {
               if (item.requiresTeam && !hasTeam) return null;
+              const isActive = active === item.key;
               return (
                 <Link
                   key={item.key}
                   href={item.href}
                   prefetch={item.key === "team" ? false : true}
                   className={`${navItemBase} ${
-                    active === item.key
+                    isActive
                       ? navItemActiveClass
                       : navItemInactiveClass
                   }`}
                 >
-                  <span className={navLabelBase}>
-                    {icon}
-                    <span>{item.label}</span>
+                  {isActive ? (
+                    <span
+                      className="absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-emerald-400"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                    <span className={navLabelBase}>
+                    {renderNavIcon(item.icon, isActive)}
+                    <span className="truncate">{item.label}</span>
                   </span>
                 </Link>
               );
             })}
           </nav>
 
-          <div className="mt-auto border-t border-slate-900 px-5 py-3.5 text-sm">
-            {user && (
-              <div className="mb-2 text-[11px] text-slate-600">
-                Přihlášen jako{" "}
-                <span className="block truncate text-slate-900">
-                  {user.email ?? ""}
-                </span>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="w-full rounded-xl border border-slate-900 bg-slate-900 py-2 text-xs font-medium text-white hover:bg-black"
-            >
-              Odhlásit se
-            </button>
+          <div className="mt-auto border-t border-slate-200 px-4 py-4 text-sm">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              {user && (
+                <div className="mb-2 text-[11px] text-slate-600">
+                  Přihlášen jako{" "}
+                  <span className="block truncate text-slate-900">
+                    {user.email ?? ""}
+                  </span>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full rounded-xl border border-slate-900 bg-slate-900 py-2 text-xs font-semibold text-white transition hover:bg-black"
+              >
+                Odhlásit se
+              </button>
+            </div>
           </div>
         </aside>
 
@@ -526,6 +564,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 <nav className="space-y-2">
                   {navItems.map((item) => {
                     if (item.requiresTeam && !hasTeam) return null;
+                    const isActive = active === item.key;
                     return (
                       <Link
                         key={item.key}
@@ -533,14 +572,20 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                         prefetch={item.key === "team" ? false : true}
                         onClick={() => setMobileMenuOpen(false)}
                         className={`${navItemBase} ${
-                          active === item.key
+                          isActive
                             ? navItemActiveClass
                             : navItemInactiveClass
                         }`}
                       >
+                        {isActive ? (
+                          <span
+                            className="absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-emerald-400"
+                            aria-hidden="true"
+                          />
+                        ) : null}
                         <span className={navLabelBase}>
-                          {icon}
-                          <span>{item.label}</span>
+                          {renderNavIcon(item.icon, isActive)}
+                          <span className="truncate">{item.label}</span>
                         </span>
                       </Link>
                     );
@@ -590,8 +635,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             ].join(" ")}
           >
             {loadingProfile && user ? (
-              <div className="text-sm text-slate-700">
-                Načítám profil a předplatné…
+              <div className="flex w-full min-h-[70vh] items-center justify-center">
+                <div
+                  className="h-14 w-14 animate-spin rounded-full border-[4px] border-current border-t-transparent text-slate-700"
+                  role="status"
+                  aria-label="Načítám profil a předplatné"
+                />
               </div>
             ) : showPaywall ? (
               <div className="w-full max-w-md rounded-3xl border border-white/15 bg-slate-950/90 backdrop-blur-2xl px-6 py-6 sm:px-8 sm:py-8 shadow-[0_24px_80px_rgba(0,0,0,0.9)] space-y-5 text-center">

@@ -4,6 +4,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import {
+  ArrowLeft,
+  CalendarDays,
+  FileText,
+  Package,
+  PencilLine,
+  StickyNote,
+  UserRound,
+} from "lucide-react";
 
 import { auth, db } from "../../firebase";
 import {
@@ -2366,9 +2375,10 @@ export default function ContractDetailPage() {
                       setDetailsSaved(false);
                       setEditMode(true);
                     }}
-                    className={ghostButtonClass}
+                    className={`${ghostButtonClass} inline-flex items-center gap-2`}
                   >
-                    Upravit údaje
+                    <PencilLine size={16} strokeWidth={2} aria-hidden="true" />
+                    <span>Upravit údaje</span>
                   </button>
                 )}
 
@@ -2401,9 +2411,10 @@ export default function ContractDetailPage() {
 
                 <Link
                   href={backToContractsHref}
-                  className={ghostButtonClass}
+                  className={`${ghostButtonClass} inline-flex items-center gap-2`}
                 >
-                  ← Zpět na smlouvy
+                  <ArrowLeft size={16} strokeWidth={2} aria-hidden="true" />
+                  <span>Zpět na smlouvy</span>
                 </Link>
               </div>
             </header>
@@ -2430,7 +2441,10 @@ export default function ContractDetailPage() {
                 {/* Klient / Produkt boxy */}
                 <section className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   <div className={sectionPanelClass}>
-                    <div className={metaLabelClass}>Klient</div>
+                    <div className={`${metaLabelClass} inline-flex items-center gap-2`}>
+                      <UserRound size={14} strokeWidth={2} aria-hidden="true" />
+                      <span>Klient</span>
+                    </div>
                     {editMode ? (
                       <div className="space-y-2">
                         <input
@@ -2472,7 +2486,10 @@ export default function ContractDetailPage() {
                   </div>
 
                   <div className={sectionPanelClass}>
-                    <div className={metaLabelClass}>Produkt</div>
+                    <div className={`${metaLabelClass} inline-flex items-center gap-2`}>
+                      <Package size={14} strokeWidth={2} aria-hidden="true" />
+                      <span>Produkt</span>
+                    </div>
                     <div>
                       <div className="flex items-center gap-3">
                         <span className="text-4xl font-semibold tracking-tight leading-none text-slate-900">
@@ -2539,7 +2556,10 @@ export default function ContractDetailPage() {
                 <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   <div className={sectionPanelClass}>
                     <h3 className={`mb-3 flex items-center gap-2 text-xl font-semibold ${monoHeadingClass}`}>
-                      <span className={monoChipDarkClass}>Základní údaje</span>
+                      <span className={monoChipDarkClass}>
+                        <FileText size={14} strokeWidth={2} aria-hidden="true" />
+                        <span>Základní údaje</span>
+                      </span>
                     </h3>
                     <dl className="space-y-3 text-lg text-slate-800">
                       <div className="flex justify-between gap-2">
@@ -2568,7 +2588,10 @@ export default function ContractDetailPage() {
                   {/* DATA SMLOUVY */}
                   <div className={sectionPanelClass}>
                     <h3 className={`mb-3 flex items-center gap-2 text-xl font-semibold ${monoHeadingClass}`}>
-                      <span className={monoChipDarkClass}>Data smlouvy</span>
+                      <span className={monoChipDarkClass}>
+                        <CalendarDays size={14} strokeWidth={2} aria-hidden="true" />
+                        <span>Data smlouvy</span>
+                      </span>
                     </h3>
                     <dl className="space-y-3 text-lg text-slate-800">
                       <div className="flex justify-between gap-2">
@@ -2959,7 +2982,10 @@ export default function ContractDetailPage() {
                 <section className={`${noteCardClass} space-y-4 lg:h-fit lg:mt-10`}>
                   <div className="flex items-center justify-between gap-3">
                     <h3 className={`text-xl font-semibold ${monoHeadingClass} flex items-center gap-2`}>
-                      <span className={monoChipDarkClass}>Poznámka</span>
+                      <span className={monoChipDarkClass}>
+                        <StickyNote size={14} strokeWidth={2} aria-hidden="true" />
+                        <span>Poznámka</span>
+                      </span>
                       Poznámka ke smlouvě
                     </h3>
                     {noteSaved && (

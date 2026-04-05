@@ -4,6 +4,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import {
+  BarChart3,
+  CheckCircle2,
+  FileText,
+  Package,
+  RefreshCcw,
+  Repeat2,
+  Sigma,
+  SlidersHorizontal,
+} from "lucide-react";
 import { auth, db } from "../firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
@@ -1732,7 +1742,10 @@ export default function CalculatorPage() {
             <section className={`w-full space-y-3 ${canImportFromPdf ? "md:max-w-xl" : ""}`}>
               <div className="space-y-1">
                 <label className="block text-sm font-medium mb-1">
-                  Produkt
+                  <span className="inline-flex items-center gap-1.5">
+                    <Package size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                    <span>Produkt</span>
+                  </span>
                 </label>
                 <div className="relative">
                   <button
@@ -1903,7 +1916,10 @@ export default function CalculatorPage() {
 
               <div className="space-y-1">
                 <label className="block text-sm font-medium">
-                  Parametry platby
+                  <span className="inline-flex items-center gap-1.5">
+                    <SlidersHorizontal size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                    <span>Parametry platby</span>
+                  </span>
                 </label>
                 {hasFrequencyPicker ? (
                   <select
@@ -2035,6 +2051,7 @@ export default function CalculatorPage() {
                       onClick={() => setRefreshOriginalOpen((v) => !v)}
                       className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
                     >
+                      <RefreshCcw size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                       Refresh smlouvy
                     </button>
                     {refreshOriginalOpen && (
@@ -2065,6 +2082,7 @@ export default function CalculatorPage() {
                       onClick={() => setReplacementOpen((v) => !v)}
                       className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
                     >
+                      <Repeat2 size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                       Náhrada smlouvy
                     </button>
                     {replacementOpen && (
@@ -2091,7 +2109,10 @@ export default function CalculatorPage() {
             {/* Detaily smlouvy */}
             {!tipsterModeEnabled && (
             <section className="space-y-3">
-              <h2 className="text-sm font-semibold">Detaily smlouvy</h2>
+              <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                <FileText size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                <span>Detaily smlouvy</span>
+              </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="block text-sm font-medium">
@@ -2226,8 +2247,9 @@ export default function CalculatorPage() {
           {/* Výsledky + tlačítko Sepsáno */}
           <section className="rounded-3xl border border-slate-300 bg-white px-5 py-4 space-y-3 shadow-[0_18px_60px_rgba(15,23,42,0.18)] h-full overflow-hidden">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-slate-900">
-                Výsledky
+              <h2 className="inline-flex items-center gap-1.5 text-lg font-semibold text-slate-900">
+                <BarChart3 size={18} strokeWidth={2} className="text-slate-700" aria-hidden="true" />
+                <span>Výsledky</span>
               </h2>
 
               <div className="flex items-center gap-2">
@@ -2239,6 +2261,7 @@ export default function CalculatorPage() {
                     unsupported ? "opacity-60 cursor-not-allowed" : ""
                   }`}
                 >
+                  <Sigma size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                   Zobrazit koeficienty
                 </button>
 
@@ -2261,8 +2284,9 @@ export default function CalculatorPage() {
                     disabled={
                       saving || items.length === 0 || parseNumber(amountText) <= 0
                     }
-                    className="inline-flex items-center rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
+                    <CheckCircle2 size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                     {saving ? "Ukládám…" : "Sepsáno"}
                   </button>
                 )}
@@ -2391,14 +2415,14 @@ export default function CalculatorPage() {
                         </span>
                         <span>Okamžitá provize ({tipsterPercent} %)</span>
                       </span>
-                      <span className="text-base sm:text-lg font-semibold text-slate-900">
+                      <span className="text-lg sm:text-2xl font-semibold text-slate-900">
                         {formatMoney(tipsterImmediateCommission)}
                       </span>
                     </div>
 
                     <div className="pt-2 flex items-center justify-between">
                       <span className="font-semibold text-slate-900">Celkem</span>
-                      <span className="text-xl sm:text-2xl font-bold text-slate-900">
+                      <span className="text-2xl sm:text-3xl font-bold text-slate-900">
                         {formatMoney(tipsterImmediateCommission)}
                       </span>
                     </div>
@@ -2438,7 +2462,7 @@ export default function CalculatorPage() {
                           )}
                           <span>{title}</span>
                         </span>
-                        <span className="text-base sm:text-lg font-semibold text-slate-900">
+                        <span className="text-lg sm:text-2xl font-semibold text-slate-900">
                           {formatMoney(item.amount)}
                         </span>
                       </div>
@@ -2453,13 +2477,13 @@ export default function CalculatorPage() {
                       <div className="w-full space-y-1 text-slate-900">
                         <div className="flex items-center justify-between">
                           <span className="font-semibold">Celkem v 1. roce</span>
-                          <span className="text-xl sm:text-2xl font-bold text-slate-900">
+                          <span className="text-2xl sm:text-3xl font-bold text-slate-900">
                             {formatMoney(paymentBasedTotalsMemo.immediate)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="font-semibold">Celkem ročně následně</span>
-                          <span className="text-xl sm:text-2xl font-bold text-slate-900">
+                          <span className="text-2xl sm:text-3xl font-bold text-slate-900">
                             {formatMoney(paymentBasedTotalsMemo.subsequent)}
                           </span>
                         </div>
@@ -2467,7 +2491,7 @@ export default function CalculatorPage() {
                     ) : (
                       <>
                         <span className="font-semibold text-slate-900">Celkem</span>
-                        <span className="text-xl sm:text-2xl font-bold text-slate-900">
+                        <span className="text-2xl sm:text-3xl font-bold text-slate-900">
                           {formatMoney(total)}
                         </span>
                       </>

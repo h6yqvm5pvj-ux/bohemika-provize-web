@@ -1,4 +1,12 @@
 import React from "react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Car,
+  CarFront,
+  LifeBuoy,
+  Shield,
+  Wrench,
+} from "lucide-react";
 import type { Product } from "@/app/types/domain";
 
 export type AutoFields = {
@@ -117,6 +125,19 @@ const ToggleRow = ({
   </button>
 );
 
+const SectionTitle = ({
+  icon: Icon,
+  label,
+}: {
+  icon: LucideIcon;
+  label: string;
+}) => (
+  <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
+    <Icon size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+    <span>{label}</span>
+  </div>
+);
+
 export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: Props) {
   if (!prod) return null;
 
@@ -129,7 +150,7 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
   return (
     <>
       <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-1 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="text-xs uppercase tracking-wide text-slate-500">Parametry vozidla</div>
+        <SectionTitle icon={CarFront} label="Parametry vozidla" />
         <div className="text-sm text-slate-900">
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Značka / model</span>
@@ -151,7 +172,7 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
       </div>
 
       <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="text-xs uppercase tracking-wide text-slate-500">Povinné ručení</div>
+        <SectionTitle icon={Shield} label="Povinné ručení" />
         <div className="text-sm text-slate-900">
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Limity</span>
@@ -183,7 +204,7 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
       </div>
 
       <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="text-xs uppercase tracking-wide text-slate-500">Asistence</div>
+        <SectionTitle icon={LifeBuoy} label="Asistence" />
         <div className="text-sm text-slate-900">
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Tarif</span>
@@ -211,7 +232,7 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
 
       {(editMode || hasHullData) && (
         <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Havarijní pojištění</div>
+          <SectionTitle icon={Car} label="Havarijní pojištění" />
           <div className="text-sm text-slate-900 space-y-2">
             <div className="flex justify-between gap-2">
               <span className="text-slate-600">Pojistná částka</span>
@@ -254,7 +275,7 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="text-xs uppercase tracking-wide text-slate-500">Připojištění</div>
+        <SectionTitle icon={Wrench} label="Připojištění" />
         <div className="space-y-1">
           {[
             { key: "carAddonGlass", label: "Skla", checked: fields.carAddonGlass },

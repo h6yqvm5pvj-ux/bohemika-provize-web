@@ -98,9 +98,12 @@ export default function CashflowPage() {
               />
 
               {loading ? (
-                <p className="rounded-2xl border border-slate-900 bg-slate-100 px-4 py-3 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
-                  Načítám data…
-                </p>
+                <div className="rounded-2xl border border-slate-900 bg-slate-100 px-4 py-10 shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
+                  <div className="flex flex-col items-center justify-center gap-3 text-slate-900">
+                    <span className="h-12 w-12 animate-spin rounded-full border-[3px] border-slate-300 border-t-slate-900" />
+                    <p className="text-lg font-semibold">Načítám...</p>
+                  </div>
+                </div>
               ) : yearGroups.length === 0 ? (
                 <p className="rounded-2xl border border-slate-900 bg-slate-100 px-4 py-3 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
                   Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat.

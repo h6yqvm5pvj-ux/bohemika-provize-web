@@ -4,6 +4,15 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import {
+  AlertCircle,
+  ArrowDownUp,
+  CalendarDays,
+  CheckCircle2,
+  SlidersHorizontal,
+  UserRound,
+  UsersRound,
+} from "lucide-react";
 
 import { auth } from "../firebase";
 import {
@@ -1161,24 +1170,26 @@ function ContractsPageContent() {
               <button
                 type="button"
                 onClick={() => setShowTeam(false)}
-                className={`px-3 py-1.5 rounded-full transition ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full transition ${
                   !showTeam
                     ? "bg-slate-900 text-white"
                     : "text-slate-700"
                 }`}
               >
-                Moje smlouvy
+                <UserRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                <span>Moje smlouvy</span>
               </button>
               <button
                 type="button"
                 onClick={() => setShowTeam(true)}
-                className={`px-3 py-1.5 rounded-full transition ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full transition ${
                   showTeam
                     ? "bg-slate-900 text-white"
                     : "text-slate-700"
                 }`}
               >
-                Týmové smlouvy
+                <UsersRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                <span>Týmové smlouvy</span>
               </button>
             </div>
           )}
@@ -1204,26 +1215,28 @@ function ContractsPageContent() {
                 onClick={() =>
                   startFilterTransition(() => setFilterMode("latest"))
                 }
-                className={`px-3 py-1.5 rounded-full transition ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full transition ${
                   filterMode === "latest"
                     ? "bg-slate-900 text-white"
                     : "text-slate-700"
                 }`}
               >
-                Nejnovější
+                <ArrowDownUp size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                <span>Nejnovější</span>
               </button>
               <button
                 type="button"
                 onClick={() =>
                   startFilterTransition(() => setFilterMode("anniversary"))
                 }
-                className={`px-3 py-1.5 rounded-full transition ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full transition ${
                   filterMode === "anniversary"
                     ? "bg-slate-900 text-white"
                     : "text-slate-700"
                 }`}
               >
-                Blížící se výročí
+                <CalendarDays size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                <span>Blížící se výročí</span>
               </button>
             </div>
 
@@ -1231,9 +1244,10 @@ function ContractsPageContent() {
               <button
                 type="button"
                 onClick={() => setFilterModalOpen(true)}
-                className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black"
               >
-                Filtr
+                <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                <span>Filtr</span>
               </button>
               <button
                 type="button"
@@ -1476,7 +1490,12 @@ function ContractsPageContent() {
                               : "border-rose-600 bg-rose-600 text-white"
                           }`}
                         >
-                          {c.paid ? "Zaplaceno" : "Nezaplaceno"}
+                          {c.paid ? (
+                            <CheckCircle2 size={14} strokeWidth={2} className="mr-1.5 shrink-0" aria-hidden="true" />
+                          ) : (
+                            <AlertCircle size={14} strokeWidth={2} className="mr-1.5 shrink-0" aria-hidden="true" />
+                          )}
+                          <span>{c.paid ? "Zaplaceno" : "Nezaplaceno"}</span>
                         </span>
                       </div>
                     </div>

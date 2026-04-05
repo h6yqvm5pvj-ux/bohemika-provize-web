@@ -3,6 +3,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  AtSign,
+  BellRing,
+  Calculator,
+  KeyRound,
+  Palette,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
 
 import type { User as FirebaseUser } from "firebase/auth";
 import {
@@ -587,28 +596,33 @@ export default function SettingsPage() {
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+                <UserRound size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                 Pozice: {positionDisplay}
               </span>
-              <span className="rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+                <Calculator size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                 Režim: {modeDisplay}
               </span>
               <span
-                className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold ${
                   tipsterMode ? "border-slate-900 bg-slate-900 text-white" : "border-slate-900 bg-white text-slate-700"
                 }`}
               >
+                <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
                 Tipař: {tipsterMode ? "ON" : "OFF"}
               </span>
-              <span className="rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+                <BellRing size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                 Notifikace: {enabledNotificationTypes}/4
               </span>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
               <section className="h-full space-y-4 rounded-[28px] border border-slate-900 bg-slate-100 px-6 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-8 sm:py-6">
-                <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
-                  Výchozí kalkulačka
+                <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
+                  <Calculator size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                  <span>Výchozí kalkulačka</span>
                 </h2>
 
                 {canChangePosition ? (
@@ -668,8 +682,9 @@ export default function SettingsPage() {
                 <div className="space-y-3 rounded-2xl border border-slate-900 bg-white px-4 py-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-1">
-                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-700">
-                        Režim tipařské spolupráce
+                      <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-slate-700">
+                        <Sparkles size={12} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                        <span>Režim tipařské spolupráce</span>
                       </div>
                       <p className="text-xs text-slate-500">
                         V kalkulačce se zobrazí jen okamžitá provize v nastaveném procentu.
@@ -704,8 +719,9 @@ export default function SettingsPage() {
               <section className="h-full space-y-3 rounded-[28px] border border-slate-900 bg-slate-100 px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-6 sm:py-5">
                 <div className="flex flex-col gap-2.5">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
-                      Notifikace
+                    <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
+                      <BellRing size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                      <span>Notifikace</span>
                     </h2>
                     <span
                       className={`rounded-full px-3 py-1 text-[11px] font-semibold border ${
@@ -801,8 +817,9 @@ export default function SettingsPage() {
                 <div className="space-y-2.5">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                      <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
-                        Pozadí aplikace
+                      <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
+                        <Palette size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                        <span>Pozadí aplikace</span>
                       </h2>
                       <p className="text-xs text-slate-500">
                         Vyber si jednoduché pozadí – bílé nebo černé.
@@ -878,14 +895,16 @@ export default function SettingsPage() {
 
             {/* Účet */}
             <section className="space-y-4 rounded-[28px] border border-slate-900 bg-slate-100 px-6 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-8 sm:py-6">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
-                Účet
+              <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
+                <UserRound size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                <span>Účet</span>
               </h2>
 
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 text-sm">
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">
-                    E-mail účtu
+                  <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
+                    <AtSign size={12} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
+                    <span>E-mail účtu</span>
                   </div>
                   <div className="mt-1 font-medium text-slate-900">
                     {userEmail}
@@ -897,16 +916,18 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="w-full sm:max-w-md space-y-3">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">
-                    Změna hesla
+                  <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
+                    <KeyRound size={12} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
+                    <span>Změna hesla</span>
                   </div>
 
                   {!showPasswordForm && (
                     <button
                       type="button"
                       onClick={() => setShowPasswordForm(true)}
-                      className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black"
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black"
                     >
+                      <KeyRound size={15} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                       Změnit heslo
                     </button>
                   )}
