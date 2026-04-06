@@ -9,8 +9,10 @@ import {
   Calculator,
   KeyRound,
   Palette,
+  Snail,
   Sparkles,
   UserRound,
+  Zap,
 } from "lucide-react";
 
 import type { User as FirebaseUser } from "firebase/auth";
@@ -579,10 +581,18 @@ export default function SettingsPage() {
   const positionDisplay = POSITIONS.find((p) => p.id === position)?.label ?? position;
   const modeDisplay = COMMISSION_MODES.find((m) => m.id === mode)?.label ?? mode;
   const enabledNotificationTypes = Object.values(notificationSettings.types).filter(Boolean).length;
+  const panelClass =
+    "rounded-[24px] border border-slate-200 bg-white px-6 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:px-8 sm:py-6";
+  const compactPanelClass =
+    "rounded-[24px] border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:px-6 sm:py-5";
+  const fieldClass =
+    "w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
+  const toggleOffClass =
+    "border-slate-300 bg-white text-slate-700 hover:bg-slate-50";
 
   return (
     <AppLayout active="settings">
-      <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+      <div className="w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
         {/* HEADER */}
         <header className="mb-2">
@@ -590,37 +600,37 @@ export default function SettingsPage() {
         </header>
 
         {loadingMeta ? (
-          <div className="rounded-[28px] border border-slate-900 bg-slate-100 px-6 py-5 text-sm text-slate-700">
+          <div className="rounded-[24px] border border-slate-200 bg-white px-6 py-5 text-sm text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
             Načítám nastavení…
           </div>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
                 <UserRound size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                 Pozice: {positionDisplay}
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
                 <Calculator size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                 Režim: {modeDisplay}
               </span>
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                  tipsterMode ? "border-slate-900 bg-slate-900 text-white" : "border-slate-900 bg-white text-slate-700"
+                  tipsterMode ? "border-slate-900 bg-slate-900 text-white" : toggleOffClass
                 }`}
               >
                 <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
                 Tipař: {tipsterMode ? "ON" : "OFF"}
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
                 <BellRing size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                 Notifikace: {enabledNotificationTypes}/4
               </span>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-              <section className="h-full space-y-4 rounded-[28px] border border-slate-900 bg-slate-100 px-6 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-8 sm:py-6">
-                <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
+              <section className={`h-full space-y-4 ${panelClass}`}>
+                <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
                   <Calculator size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                   <span>Výchozí kalkulačka</span>
                 </h2>
@@ -632,7 +642,7 @@ export default function SettingsPage() {
                         Výchozí pozice
                       </label>
                       <select
-                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
+                        className={fieldClass}
                         value={position}
                         onChange={(e) =>
                           handlePositionChange(e.target.value as Position)
@@ -653,21 +663,50 @@ export default function SettingsPage() {
                       <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
                         Výchozí režim provizí
                       </label>
-                      <select
-                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
-                        value={mode}
-                        onChange={(e) =>
-                          handleModeChange(
-                            e.target.value as CommissionMode
-                          )
-                        }
+                      <div
+                        className="inline-flex w-full max-w-md rounded-2xl border border-slate-300 bg-slate-100 p-1"
+                        role="radiogroup"
+                        aria-label="Výchozí režim provizí"
                       >
-                        {COMMISSION_MODES.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.label}
-                          </option>
-                        ))}
-                      </select>
+                        {COMMISSION_MODES.map((m) => {
+                          const active = mode === m.id;
+                          const isAccelerated = m.id === "accelerated";
+                          const isStandard = m.id === "standard";
+
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => void handleModeChange(m.id)}
+                              className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                                active
+                                  ? "border border-slate-900 bg-white text-slate-900 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
+                                  : "border border-transparent text-slate-600 hover:text-slate-900"
+                              }`}
+                              role="radio"
+                              aria-checked={active}
+                            >
+                              {isAccelerated && (
+                                <Zap
+                                  size={14}
+                                  strokeWidth={2.2}
+                                  className={active ? "text-amber-500" : "text-amber-600"}
+                                  aria-hidden="true"
+                                />
+                              )}
+                              {isStandard && (
+                                <Snail
+                                  size={14}
+                                  strokeWidth={2.2}
+                                  className={active ? "text-slate-600" : "text-slate-500"}
+                                  aria-hidden="true"
+                                />
+                              )}
+                              {m.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                       <p className="text-xs text-slate-500">
                         Zrychlený / běžný režim se používá u životního pojištění.
                       </p>
@@ -679,24 +718,18 @@ export default function SettingsPage() {
                   </p>
                 )}
 
-                <div className="space-y-3 rounded-2xl border border-slate-900 bg-white px-4 py-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-1">
-                      <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-slate-700">
-                        <Sparkles size={12} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                        <span>Režim tipařské spolupráce</span>
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        V kalkulačce se zobrazí jen okamžitá provize v nastaveném procentu.
-                      </p>
-                    </div>
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold text-slate-900">
+                      Režim tipařské spolupráce
+                    </span>
                     <button
                       type="button"
                       onClick={() => handleTipsterModeChange(!tipsterMode)}
                       className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                         tipsterMode
                           ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-900 bg-white text-slate-700 hover:bg-slate-50"
+                          : toggleOffClass
                       }`}
                       aria-pressed={tipsterMode}
                     >
@@ -709,17 +742,13 @@ export default function SettingsPage() {
                       {tipsterMode ? "ON" : "OFF"}
                     </button>
                   </div>
-
-                  <p className="text-[11px] text-slate-500">
-                    Procento provize nastavíš přímo v kalkulačce tlačítkem %.
-                  </p>
                 </div>
               </section>
 
-              <section className="h-full space-y-3 rounded-[28px] border border-slate-900 bg-slate-100 px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-6 sm:py-5">
+              <section className={`h-full space-y-3 ${compactPanelClass}`}>
                 <div className="flex flex-col gap-2.5">
                   <div className="flex items-center justify-between">
-                    <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
+                    <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
                       <BellRing size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                       <span>Notifikace</span>
                     </h2>
@@ -754,7 +783,7 @@ export default function SettingsPage() {
                           Math.max(0, Math.min(1440, Number(e.target.value) || 0))
                         )
                       }
-                      className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
                     />
                     <p className="text-[11px] text-slate-500">
                       Použije se při odeslání push notifikace z kalendáře (výchozí 60 min).
@@ -779,7 +808,7 @@ export default function SettingsPage() {
                             className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                               active
                                 ? "border-slate-900 bg-slate-900 text-white"
-                                : "border-slate-900 bg-white text-slate-700 hover:bg-slate-50"
+                                : toggleOffClass
                             }`}
                           >
                             {t.label}
@@ -813,11 +842,11 @@ export default function SettingsPage() {
               </section>
             </div>
 
-            <section className="space-y-3 rounded-[28px] border border-slate-900 bg-slate-100 px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-6 sm:py-5">
+            <section className={`space-y-3 ${compactPanelClass}`}>
                 <div className="space-y-2.5">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                      <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
+                      <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
                         <Palette size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                         <span>Pozadí aplikace</span>
                       </h2>
@@ -835,7 +864,7 @@ export default function SettingsPage() {
                         className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
                           reduceMotion
                             ? "border-slate-900 bg-slate-900 text-white"
-                            : "border-slate-900 bg-white text-slate-700 hover:bg-slate-50"
+                            : toggleOffClass
                         }`}
                         aria-pressed={reduceMotion}
                       >
@@ -863,8 +892,8 @@ export default function SettingsPage() {
                           onClick={() => handleBackgroundPreset(opt.id)}
                           className={`settings-bg-preview relative flex-1 overflow-hidden rounded-2xl border transition ${
                             isActive
-                              ? "border-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
-                              : "border-slate-900 hover:border-slate-700"
+                              ? "border-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.12)]"
+                              : "border-slate-300 hover:border-slate-500"
                           }`}
                         >
                           <div className={`settings-bg-preview-layer absolute inset-0 ${opt.bg}`} />
@@ -894,8 +923,8 @@ export default function SettingsPage() {
             </section>
 
             {/* Účet */}
-            <section className="space-y-4 rounded-[28px] border border-slate-900 bg-slate-100 px-6 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-8 sm:py-6">
-              <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
+            <section className={`space-y-4 ${panelClass}`}>
+              <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
                 <UserRound size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                 <span>Účet</span>
               </h2>
@@ -933,11 +962,11 @@ export default function SettingsPage() {
                   )}
 
                   {showPasswordForm && (
-                    <div className="space-y-3 rounded-2xl border border-slate-900 bg-white p-3">
+                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                       <input
                         type="password"
                         autoComplete="current-password"
-                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
+                        className={fieldClass}
                         placeholder="Původní heslo"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
@@ -945,7 +974,7 @@ export default function SettingsPage() {
                       <input
                         type="password"
                         autoComplete="new-password"
-                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
+                        className={fieldClass}
                         placeholder="Nové heslo (min. 6 znaků)"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
@@ -953,7 +982,7 @@ export default function SettingsPage() {
                       <input
                         type="password"
                         autoComplete="new-password"
-                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/20"
+                        className={fieldClass}
                         placeholder="Potvrď nové heslo"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}

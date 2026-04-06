@@ -15,27 +15,7 @@ const SCENARIOS = [
 
 const DEGREE_LABELS = ["1. stupeň", "2. stupeň", "3. stupeň"];
 const INVESTIKA_RETURN_RANGE = { min: 0.055, max: 0.06 };
-const SCENARIO_STYLE: Record<
-  (typeof SCENARIOS)[number]["id"],
-  { panel: string; badge: string }
-> = {
-  veryLow: {
-    panel: "from-black/70 via-white to-black/60",
-    badge: "border-emerald-300/60 text-emerald-800 bg-white",
-  },
-  low: {
-    panel: "from-black/70 via-white to-black/60",
-    badge: "border-emerald-300/60 text-emerald-800 bg-white",
-  },
-  medium: {
-    panel: "from-black/70 via-white to-black/60",
-    badge: "border-emerald-300/60 text-emerald-800 bg-white",
-  },
-  high: {
-    panel: "from-black/70 via-white to-black/60",
-    badge: "border-emerald-300/60 text-emerald-800 bg-white",
-  },
-};
+const INVESTMENT_PRODUCT_NAME = "INVESTIKA Realitní Fond";
 
 function formatMoney(value: number): string {
   if (!Number.isFinite(value)) return "0 Kč";
@@ -65,6 +45,9 @@ export default function InvaliditaPage() {
   const [ageInput, setAgeInput] = useState("35");
   const [netIncome, setNetIncome] = useState(32830);
   const [coverageYears, setCoverageYears] = useState(65 - 35);
+  const [activeModel, setActiveModel] = useState<"insurance" | "investment">("insurance");
+  const [activeScenarioId, setActiveScenarioId] =
+    useState<(typeof SCENARIOS)[number]["id"]>("medium");
 
   const maxCoverage = Math.max(0, 65 - age);
   const safeCoverageYears = Math.max(0, Math.min(coverageYears, maxCoverage));
@@ -83,6 +66,10 @@ export default function InvaliditaPage() {
       };
     });
   }, [netIncome, totalMonths]);
+  const activeScenario = useMemo(
+    () => results.find((s) => s.id === activeScenarioId) ?? results[0],
+    [results, activeScenarioId]
+  );
 
   const handleNumber = (val: string, fallback: number) => {
     const num = Number(val.replace(",", "."));
@@ -114,7 +101,7 @@ export default function InvaliditaPage() {
           </Link>
         </header>
 
-        <section className="rounded-3xl border border-slate-300 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.75)] space-y-4">
+        <section className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">
@@ -149,7 +136,7 @@ export default function InvaliditaPage() {
                   const v = handleNumber(raw, age);
                   setAge(Math.max(1, Math.round(v)));
                 }}
-                className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-xl bg-white border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               />
               <p className="text-[11px] text-slate-500">
                 Délka krytí se omezí do 65 let (max {maxCoverage} let).
@@ -168,7 +155,7 @@ export default function InvaliditaPage() {
                   const v = handleNumber(e.target.value, netIncome);
                   setNetIncome(Math.max(0, Math.round(v)));
                 }}
-                className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-xl bg-white border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               />
               <p className="text-[11px] text-slate-500">
                 Částka, ze které počítáme pokrytí příjmu.
@@ -188,7 +175,7 @@ export default function InvaliditaPage() {
                   const v = handleNumber(e.target.value, safeCoverageYears);
                   setCoverageYears(Math.max(0, Math.min(maxCoverage, Math.round(v))));
                 }}
-                className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="w-full rounded-xl bg-white border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               />
               <p className="text-[11px] text-slate-500">
                 Maximálně do 65 let (zbývá {maxCoverage} let).
@@ -201,207 +188,217 @@ export default function InvaliditaPage() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Výstup</h2>
-              <p className="text-xs text-slate-600">
-                Návrh pojistné částky pro každý stupeň invalidity v různých
-                úrovních pokrytí příjmu.
+              <p className="text-sm text-slate-600">
+                {activeModel === "insurance"
+                  ? "Návrh pojistné částky pro každý stupeň invalidity v různých úrovních pokrytí příjmu."
+                  : `Investiční varianta (${INVESTMENT_PRODUCT_NAME}) pro pokrytí měsíční renty do 65 let (5,5–6 % p.a.).`}
               </p>
             </div>
-            <div className="text-[11px] text-slate-500">
-              Cílem je kompenzovat pokles schopnosti vydělávat.
+            <div className="text-xs text-slate-500">
+              {activeModel === "insurance"
+                ? "Cílem je kompenzovat pokles schopnosti vydělávat."
+                : "Pouze ilustrativní výpočet, nejedná se o investiční doporučení."}
             </div>
           </div>
+
+          <div className="inline-flex flex-wrap gap-2 rounded-2xl border border-slate-300 bg-white p-2">
+            <button
+              type="button"
+              onClick={() => setActiveModel("insurance")}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                activeModel === "insurance"
+                  ? "border border-slate-900 bg-slate-900 text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              Pojistné plnění
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveModel("investment")}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                activeModel === "investment"
+                  ? "border border-slate-900 bg-slate-900 text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              Investiční varianta
+            </button>
+          </div>
+          {activeModel === "investment" && (
+            <div className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-900">
+              Produkt: {INVESTMENT_PRODUCT_NAME}
+            </div>
+          )}
 
           {disabled ? (
             <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800">
               Zadej věk, příjem a délku krytí (musí být kladná).
             </div>
           ) : (
-            <div className="grid gap-3 lg:gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {results.map((scenario) => {
-                const style = SCENARIO_STYLE[scenario.id];
-                return (
-                  <div
-                    key={scenario.id}
-                    className={`relative overflow-hidden rounded-xl border border-slate-900 bg-gradient-to-br ${style.panel} px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] -3xl transition hover:border-emerald-300/40`}
-                  >
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent" />
-                    <div className="pointer-events-none absolute -left-12 -top-14 h-28 w-40 rotate-12 bg-white blur-3xl opacity-70" />
-                    <div className="pointer-events-none absolute -right-10 bottom-[-16px] h-20 w-32 rotate-6 bg-emerald-200/12 blur-2xl" />
-                    <div className="relative z-10 mb-3 flex items-center justify-between">
-                      <div className="text-sm font-semibold text-slate-900">{scenario.label}</div>
-                      <div className="text-[11px] text-slate-500">
-                        Pokrytí: {scenario.ratios.map((r) => `${Math.round(r * 100)}%`).join(" / ")}
+            <div className="space-y-3">
+              <div className="inline-flex flex-wrap gap-2 rounded-2xl border border-slate-300 bg-white p-2">
+                {SCENARIOS.map((scenario) => {
+                  const active = scenario.id === activeScenario.id;
+                  return (
+                    <button
+                      key={scenario.id}
+                      type="button"
+                      onClick={() => setActiveScenarioId(scenario.id)}
+                      className={`rounded-full px-4 py-2 text-base font-semibold transition ${
+                        active
+                          ? "border border-slate-900 bg-slate-900 text-white"
+                          : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      {scenario.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {activeModel === "insurance" ? (
+                <div className="rounded-2xl border border-slate-900 bg-slate-900 px-4 py-4 text-white">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="text-xl font-semibold text-white">{activeScenario.label}</div>
+                    <div className="text-xs text-slate-300 text-right">
+                      Pokrytí: {activeScenario.ratios.map((r) => `${Math.round(r * 100)}%`).join(" / ")}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {activeScenario.monthly.map((m, idx) => (
+                      <div
+                        key={`${activeScenario.id}-${idx}`}
+                        className="rounded-lg border border-slate-200 bg-white px-4 py-3"
+                      >
+                        <div className="grid gap-2.5 sm:grid-cols-[132px_1.15fr_1fr] sm:items-center">
+                          <div className="text-sm uppercase tracking-[0.12em] font-semibold text-slate-500">
+                            {DEGREE_LABELS[idx]}
+                          </div>
+                          <div className="text-sm text-slate-900">
+                            <div className="text-xl sm:text-2xl font-bold tabular-nums text-emerald-700 leading-none">
+                              {formatMoney(m)} / měsíc
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {Math.round(activeScenario.ratios[idx] * 100)} % příjmu
+                            </div>
+                          </div>
+                          <div className="text-sm text-slate-900 sm:text-right">
+                            <div className="text-xs text-slate-500">Celkem do 65 let</div>
+                            <div className="mt-0.5 text-lg sm:text-xl font-bold tabular-nums text-emerald-700 whitespace-nowrap">
+                              {formatMoney(activeScenario.lump[idx])}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-slate-900 bg-slate-900 px-4 py-4 text-white">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xl font-semibold text-white">
+                        {activeScenario.label}
+                      </div>
+                      <div className="text-xs text-slate-300">
+                        Cíl: renta z investice ({INVESTMENT_PRODUCT_NAME})
                       </div>
                     </div>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold leading-none text-slate-900 shadow-[0_2px_10px_rgba(15,23,42,0.2)]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                      <span>5,5–6 %</span>
+                      <span className="text-slate-600">p.a.</span>
+                    </span>
+                  </div>
 
-                    <div className="relative z-10 space-y-3">
-                      {scenario.monthly.map((m, idx) => (
+                  <div className="space-y-2.5">
+                    {activeScenario.monthly.map((m, idx) => {
+                      const minCapital = Math.round(
+                        requiredCapitalForRenta(
+                          m,
+                          totalMonths,
+                          INVESTIKA_RETURN_RANGE.max
+                        )
+                      );
+                      const maxCapital = Math.round(
+                        requiredCapitalForRenta(
+                          m,
+                          totalMonths,
+                          INVESTIKA_RETURN_RANGE.min
+                        )
+                      );
+
+                      return (
                         <div
-                          key={`${scenario.id}-${idx}`}
-                          className="relative overflow-hidden flex items-start justify-between rounded-lg border border-slate-900 bg-gradient-to-br from-white/12 via-white/6 to-white/5 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] "
+                          key={`investika-${activeScenario.id}-${idx}`}
+                          className="rounded-lg border border-slate-200 bg-white px-4 py-3"
                         >
-                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/12 via-white/4 to-transparent" />
-                          <div className="pointer-events-none absolute -left-6 -top-8 h-16 w-20 rotate-12 bg-white blur-2xl opacity-60" />
-                          <div className="relative z-10 flex items-start justify-between w-full gap-3">
-                            <div className="text-sm text-slate-800">
-                              <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
-                                {DEGREE_LABELS[idx]}
+                          <div className="grid gap-2.5 sm:grid-cols-[132px_1.15fr_1fr] sm:items-center">
+                            <div className="text-sm uppercase tracking-[0.12em] font-semibold text-slate-500">
+                              {DEGREE_LABELS[idx]}
+                            </div>
+                            <div className="text-sm text-slate-900">
+                              <div className="text-xl sm:text-2xl font-bold tabular-nums text-emerald-700 leading-none">
+                                {formatMoney(m)}
                               </div>
-                              <div className="mt-1 text-base font-semibold text-emerald-800 leading-tight">
-                                {formatMoney(m)} / měsíc
-                              </div>
-                              <div className="text-[11px] text-slate-500">
-                                {Math.round(scenario.ratios[idx] * 100)} % příjmu
+                              <div className="mt-1 text-xs text-slate-500">
+                                Měsíční renta
                               </div>
                             </div>
-                            <div className="text-right text-sm text-slate-900 leading-tight">
-                              <div className="text-[11px] text-slate-500">Celkem</div>
-                              <div className="text-[12px] font-semibold text-emerald-800/90 whitespace-nowrap">
-                                {formatMoney(scenario.lump[idx])}
+                            <div className="text-sm text-slate-900 sm:text-right">
+                              <div className="text-xs text-slate-500">
+                                Potřebný vklad
+                              </div>
+                              <div className="mt-0.5 text-base sm:text-lg font-bold tabular-nums text-emerald-700 whitespace-nowrap">
+                                od {formatMoney(minCapital)}
+                              </div>
+                              <div className="text-base sm:text-lg font-bold tabular-nums text-emerald-700 whitespace-nowrap">
+                                do {formatMoney(maxCapital)}
                               </div>
                             </div>
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                </div>
+              )}
             </div>
           )}
         </section>
 
-        {!disabled && (
-          <section className="rounded-3xl border border-slate-300 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.75)] space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">
-                  Investice: INVESTIKA Realitní Fond
-                </h3>
-                <p className="text-xs text-slate-600">
-                  Jak velkou pojistnou částku je třeba získat, aby šla pokrýt
-                  požadovaná měsíční renta (stejná jako pokrytí příjmu) do 65
-                  let při zhodnocení 5,5–6 % p.a. Výpočet používá měsíční
-                  rentní čerpání včetně reinvestovaných výnosů.
-                </p>
-              </div>
-              <div className="text-[11px] text-slate-500">
-                Pouze ilustrativní výpočet, nejedná se o investiční
-                doporučení.
-              </div>
-            </div>
-
-            <div className="grid gap-3 lg:gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {results.map((scenario) => {
-                const style = SCENARIO_STYLE[scenario.id];
-                return (
-                  <div
-                    key={`investika-${scenario.id}`}
-                    className={`relative overflow-hidden rounded-xl border border-slate-300 bg-gradient-to-br ${style.panel} px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] -3xl transition hover:border-emerald-300/40`}
-                  >
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-white/4 to-transparent" />
-                    <div className="pointer-events-none absolute -left-16 -top-16 h-32 w-48 rotate-12 bg-white blur-3xl opacity-70" />
-                    <div className="pointer-events-none absolute -right-10 bottom-[-18px] h-24 w-32 rotate-3 bg-emerald-200/15 blur-2xl" />
-                    <div className="relative z-10 mb-4 flex items-start justify-between">
-                      <div>
-                        <div className="text-sm font-semibold text-slate-900">
-                          {scenario.label}
-                        </div>
-                        <div className="text-[11px] text-slate-500">
-                          Cíl: renta z investice
-                        </div>
-                      </div>
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] ${style.badge}`}
-                      >
-                        5,5–6 % p.a.
-                      </span>
-                    </div>
-
-                    <div className="relative z-10 space-y-3">
-                      {scenario.monthly.map((m, idx) => {
-                        const minCapital = Math.round(
-                          requiredCapitalForRenta(
-                            m,
-                            totalMonths,
-                            INVESTIKA_RETURN_RANGE.max
-                          )
-                        );
-                        const maxCapital = Math.round(
-                          requiredCapitalForRenta(
-                            m,
-                            totalMonths,
-                            INVESTIKA_RETURN_RANGE.min
-                          )
-                        );
-
-                        return (
-                          <div
-                            key={`investika-${scenario.id}-${idx}`}
-                            className="relative overflow-hidden rounded-lg border border-slate-900 bg-gradient-to-br from-white/12 via-white/6 to-white/4 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] "
-                          >
-                            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/12 via-white/4 to-transparent" />
-                            <div className="pointer-events-none absolute -left-8 -top-10 h-16 w-24 rotate-12 bg-white blur-2xl opacity-60" />
-                            <div className="flex items-start justify-between gap-3 relative z-10">
-                              <div className="text-sm text-slate-800">
-                                <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
-                                  {DEGREE_LABELS[idx]}
-                                </div>
-                                <div className="mt-2 text-lg font-semibold text-emerald-800 leading-tight">
-                                  {formatMoney(m)}
-                                </div>
-                                <div className="text-[11px] text-slate-500">
-                                  Měsíční renta
-                                </div>
-                              </div>
-                              <div className="text-right text-sm text-slate-900 leading-tight">
-                                <div className="text-[11px] text-slate-500">
-                                  Potřebný vklad
-                                </div>
-                                <div className="text-[12px] font-semibold text-emerald-800/90 whitespace-nowrap">
-                                  {formatMoney(minCapital)}
-                                </div>
-                                <div className="text-[11px] text-slate-900">
-                                  až
-                                </div>
-                                <div className="text-[12px] font-semibold text-emerald-800/90 whitespace-nowrap">
-                                  {formatMoney(maxCapital)}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
-        <section className="rounded-3xl border border-slate-300 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.75)] space-y-3">
-          <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-[0.18em]">
-            Metodika
-          </h3>
-          <ul className="text-sm text-slate-800 space-y-1 list-disc list-inside">
-            <li>
-              1. stupeň: kryje 30–50 % příjmu (klient může částečně pracovat,
-              cílem je doplnit výpadek).
-            </li>
-            <li>
-              2. stupeň: kryje 50–75 % příjmu (výrazně omezená pracovní schopnost,
-              důchod obvykle nepokryje náklady).
-            </li>
-            <li>
-              3. stupeň: cílem je 100 % příjmu (schopnost pracovat téměř mizí,
-              důchod kryje jen část).
-            </li>
-            <li>
-              Výpočet: čistý příjem × procento pokrytí × počet měsíců do konce
-              krytí (max do 65 let).
-            </li>
-          </ul>
+        <section className="rounded-3xl border border-slate-200 bg-white px-5 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-slate-900 uppercase tracking-[0.18em]">
+              <span>Metodika</span>
+              <span className="text-[11px] normal-case tracking-normal text-slate-500 group-open:hidden">
+                Zobrazit
+              </span>
+              <span className="hidden text-[11px] normal-case tracking-normal text-slate-500 group-open:inline">
+                Skrýt
+              </span>
+            </summary>
+            <ul className="mt-3 text-sm text-slate-800 space-y-1 list-disc list-inside">
+              <li>
+                1. stupeň: kryje 30–50 % příjmu (klient může částečně pracovat,
+                cílem je doplnit výpadek).
+              </li>
+              <li>
+                2. stupeň: kryje 50–75 % příjmu (výrazně omezená pracovní schopnost,
+                důchod obvykle nepokryje náklady).
+              </li>
+              <li>
+                3. stupeň: cílem je 100 % příjmu (schopnost pracovat téměř mizí,
+                důchod kryje jen část).
+              </li>
+              <li>
+                Výpočet: čistý příjem × procento pokrytí × počet měsíců do konce
+                krytí (max do 65 let).
+              </li>
+            </ul>
+          </details>
         </section>
       </div>
     </AppLayout>

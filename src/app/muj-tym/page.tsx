@@ -17,7 +17,7 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
-import { type Position, type Product } from "@/app/types/domain";
+import { type Position, type Product, type PaymentFrequency } from "@/app/types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
 type Member = {
@@ -92,22 +92,156 @@ const ONLINE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minut
 const RECENT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 1 den
 
 type Category = "life" | "auto" | "property" | "travel" | "comfort" | "other";
-const CATEGORY_LABELS: Record<Category, string> = {
-  life: "Životní",
-  auto: "Auto",
-  property: "Majetek",
-  travel: "Cestovko",
-  comfort: "Zlato",
-  other: "Ostatní",
+type ProductionCategory = "life" | "auto" | "property" | "travel" | "comfort";
+type AggregateMetrics = { contracts: number; annualPremium: number; monthlyPremium: number };
+type ContractStats = {
+  total: number;
+  month: number;
+  categories: Record<Category, number>;
+  categoryMetrics: Record<Category, AggregateMetrics>;
+  institutionMetrics: Record<string, AggregateMetrics>;
+  institutionByCategory: Record<Category, Record<string, AggregateMetrics>>;
 };
-const CATEGORY_COLORS: Record<Category, string> = {
-  life: "#60a5fa", // modrá
-  auto: "#f59e0b", // zlatá
-  property: "#22c55e", // zelená
-  travel: "#38bdf8", // světle modrá
-  comfort: "#c084fc", // fialová
-  other: "#e5e7eb", // šedá
-};
+const PRODUCTION_CATEGORY_TABS: { key: ProductionCategory; label: string }[] = [
+  { key: "life", label: "Životní pojištění" },
+  { key: "auto", label: "Auta" },
+  { key: "property", label: "Majetek" },
+  { key: "comfort", label: "Zlato" },
+  { key: "travel", label: "Cestovko" },
+];
+const LIFE_PRODUCTS = new Set<Product>(["neon", "flexi", "maximaMaxEfekt", "pillowInjury"]);
+
+function categorizeProduct(p?: Product | null): Category {
+  switch (p) {
+    case "neon":
+    case "flexi":
+    case "maximaMaxEfekt":
+    case "pillowInjury":
+      return "life";
+    case "cppAuto":
+    case "allianzAuto":
+    case "csobAuto":
+    case "uniqaAuto":
+    case "pillowAuto":
+    case "kooperativaAuto":
+      return "auto";
+    case "domex":
+    case "koopmajetekobcan":
+    case "maxdomov":
+    case "cppPPRbez":
+    case "cppPPRs":
+    case "zamex":
+    case "cppsimplex":
+      return "property";
+    case "cppcestovko":
+    case "axacestovko":
+      return "travel";
+    case "comfortcc":
+      return "comfort";
+    default:
+      return "other";
+  }
+}
+
+function institutionLabelForProduct(product?: Product | null): string {
+  switch (product) {
+    case "neon":
+    case "domex":
+    case "cppAuto":
+    case "cppcestovko":
+    case "cppPPRbez":
+    case "cppPPRs":
+    case "cppsimplex":
+    case "zamex":
+      return "ČPP";
+    case "flexi":
+    case "koopmajetekobcan":
+    case "kooperativaAuto":
+      return "Kooperativa";
+    case "maximaMaxEfekt":
+    case "maxdomov":
+      return "Maxima";
+    case "allianzAuto":
+      return "Allianz";
+    case "uniqaAuto":
+      return "UNIQA";
+    case "csobAuto":
+      return "ČSOB";
+    case "pillowAuto":
+    case "pillowInjury":
+      return "Pillow";
+    case "axacestovko":
+      return "AXA";
+    case "comfortcc":
+      return "Comfort Commodity";
+    default:
+      return "Ostatní";
+  }
+}
+
+function paymentsPerYear(freq?: PaymentFrequency | null): number {
+  switch (freq) {
+    case "monthly":
+      return 12;
+    case "quarterly":
+      return 4;
+    case "semiannual":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function annualPremiumFromEntry(data: any, category: Category): number {
+  const raw = Number(data?.inputAmount ?? 0);
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  const product = data?.productKey as Product | undefined;
+  if (product && LIFE_PRODUCTS.has(product)) {
+    return raw * 12;
+  }
+  if (category === "comfort") {
+    return raw;
+  }
+  return raw * paymentsPerYear((data?.frequencyRaw ?? "annual") as PaymentFrequency);
+}
+
+function formatMoney(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0 Kč";
+  return `${Math.round(value).toLocaleString("cs-CZ")} Kč`;
+}
+
+function emptyCategoryCounts(): Record<Category, number> {
+  return {
+    life: 0,
+    auto: 0,
+    property: 0,
+    travel: 0,
+    comfort: 0,
+    other: 0,
+  };
+}
+
+function emptyCategoryMetrics(): Record<Category, AggregateMetrics> {
+  return {
+    life: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
+    auto: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
+    property: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
+    travel: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
+    comfort: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
+    other: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
+  };
+}
+
+function emptyInstitutionByCategory(): Record<Category, Record<string, AggregateMetrics>> {
+  return {
+    life: {},
+    auto: {},
+    property: {},
+    travel: {},
+    comfort: {},
+    other: {},
+  };
+}
 
 const formatRelative = (ts: number | null | undefined): string => {
   if (!ts) return "—";
@@ -125,10 +259,7 @@ const formatRelative = (ts: number | null | undefined): string => {
 type TeamCachePayload = {
   members: Member[];
   lastActive: Record<string, number | null>;
-  contractCounts: Record<
-    string,
-    { total: number; month: number; categories: Record<Category, number> }
-  >;
+  contractCounts: Record<string, ContractStats>;
   contractsLoaded: boolean;
   contractsError: boolean;
   userPosition: Position | null;
@@ -162,20 +293,21 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(true);
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [lastActive, setLastActive] = useState<Record<string, number | null>>({});
-  const [contractCounts, setContractCounts] = useState<
-    Record<string, { total: number; month: number; categories: Record<Category, number> }>
-  >({});
+  const [contractCounts, setContractCounts] = useState<Record<string, ContractStats>>({});
   const [contractsLoaded, setContractsLoaded] = useState(false);
   const [, setContractsRefreshing] = useState(false);
   const [contractsError, setContractsError] = useState(false);
   const [userPosition, setUserPosition] = useState<Position | null>(null);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
   const [sortBy, setSortBy] = useState<SortKey>("activity");
+  const [productionCategory, setProductionCategory] = useState<ProductionCategory>("life");
+  const [detailTab, setDetailTab] = useState<"overview" | "subordinates">("overview");
+  const [showMembersPanel, setShowMembersPanel] = useState(true);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const copyEmailTimerRef = useRef<number | null>(null);
   const usedCacheRef = useRef(false);
   const cacheStateRef = useRef<{
-    contractCounts: Record<string, { total: number; month: number; categories: Record<Category, number> }>;
+    contractCounts: Record<string, ContractStats>;
     contractsLoaded: boolean;
     contractsError: boolean;
   }>({
@@ -371,7 +503,7 @@ export default function TeamPage() {
       }
       setContractsRefreshing(true);
       setContractsError(false);
-      const stats: Record<string, { total: number; month: number; categories: Record<Category, number> }> = {};
+      const stats: Record<string, ContractStats> = {};
       try {
         const emails = Array.from(new Set(members.map((m) => m.email.toLowerCase()))); // dedupe
         const now = new Date();
@@ -379,45 +511,6 @@ export default function TeamPage() {
         const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
         const entries = collectionGroup(db, "entries");
         const chunkSize = 10;
-        const emptyCategories = (): Record<Category, number> => ({
-          life: 0,
-          auto: 0,
-          property: 0,
-          travel: 0,
-          comfort: 0,
-          other: 0,
-        });
-        const categorizeProduct = (p?: Product | null): Category => {
-          switch (p) {
-            case "neon":
-            case "flexi":
-            case "maximaMaxEfekt":
-            case "pillowInjury":
-              return "life";
-            case "cppAuto":
-            case "allianzAuto":
-            case "csobAuto":
-            case "uniqaAuto":
-            case "pillowAuto":
-            case "kooperativaAuto":
-              return "auto";
-            case "domex":
-            case "koopmajetekobcan":
-            case "maxdomov":
-            case "cppPPRbez":
-            case "cppPPRs":
-            case "zamex":
-            case "cppsimplex":
-              return "property";
-            case "cppcestovko":
-            case "axacestovko":
-              return "travel";
-            case "comfortcc":
-              return "comfort";
-            default:
-              return "other";
-          }
-        };
 
         for (let i = 0; i < emails.length; i += chunkSize) {
           const chunk = emails.slice(i, i + chunkSize);
@@ -430,11 +523,38 @@ export default function TeamPage() {
               stats[email] ?? {
                 total: 0,
                 month: 0,
-                categories: emptyCategories(),
+                categories: emptyCategoryCounts(),
+                categoryMetrics: emptyCategoryMetrics(),
+                institutionMetrics: {},
+                institutionByCategory: emptyInstitutionByCategory(),
               };
             current.total += 1;
             const category = categorizeProduct(data.productKey as Product | undefined);
             current.categories[category] = (current.categories[category] ?? 0) + 1;
+            const annualPremium = annualPremiumFromEntry(data, category);
+            const monthlyPremium = annualPremium / 12;
+            const byCategory = current.categoryMetrics[category] ?? { contracts: 0, annualPremium: 0, monthlyPremium: 0 };
+            byCategory.contracts += 1;
+            byCategory.annualPremium += annualPremium;
+            byCategory.monthlyPremium += monthlyPremium;
+            current.categoryMetrics[category] = byCategory;
+
+            const institution = institutionLabelForProduct(data.productKey as Product | undefined);
+            const byInstitution = current.institutionMetrics[institution] ?? { contracts: 0, annualPremium: 0, monthlyPremium: 0 };
+            byInstitution.contracts += 1;
+            byInstitution.annualPremium += annualPremium;
+            byInstitution.monthlyPremium += monthlyPremium;
+            current.institutionMetrics[institution] = byInstitution;
+            const byInstitutionForCategory = current.institutionByCategory[category][institution] ?? {
+              contracts: 0,
+              annualPremium: 0,
+              monthlyPremium: 0,
+            };
+            byInstitutionForCategory.contracts += 1;
+            byInstitutionForCategory.annualPremium += annualPremium;
+            byInstitutionForCategory.monthlyPremium += monthlyPremium;
+            current.institutionByCategory[category][institution] = byInstitutionForCategory;
+
             const date = toDate((data as any).contractSignedDate ?? data.createdAt);
             const ts = date?.getTime();
             if (ts != null && ts >= monthStart && ts < nextMonthStart) {
@@ -523,12 +643,42 @@ export default function TeamPage() {
   }, [filteredMembers]);
 
   useEffect(() => {
+    setDetailTab("overview");
+  }, [selectedEmail]);
+
+  useEffect(() => {
     return () => {
       if (copyEmailTimerRef.current) window.clearTimeout(copyEmailTimerRef.current);
     };
   }, []);
 
   const selected = members.find((m) => m.email === selectedEmail) ?? null;
+  const selectedProductionRows = useMemo(() => {
+    if (!selected) return [] as { name: string; contracts: number; annualPremium: number; monthlyPremium: number }[];
+    const stats = contractCounts[selected.email];
+    const raw = stats?.institutionByCategory?.[productionCategory] ?? {};
+    return Object.entries(raw)
+      .map(([name, row]) => ({
+        name,
+        contracts: row?.contracts ?? 0,
+        annualPremium: row?.annualPremium ?? 0,
+        monthlyPremium: row?.monthlyPremium ?? (row?.annualPremium ?? 0) / 12,
+      }))
+      .filter((row) => row.contracts > 0 || row.annualPremium > 0 || row.monthlyPremium > 0)
+      .sort((a, b) => b.annualPremium - a.annualPremium || b.contracts - a.contracts || a.name.localeCompare(b.name, "cs"));
+  }, [selected, productionCategory, contractCounts]);
+  const selectedProductionTotals = useMemo(
+    () =>
+      selectedProductionRows.reduce(
+        (acc, row) => ({
+          contracts: acc.contracts + row.contracts,
+          annualPremium: acc.annualPremium + row.annualPremium,
+          monthlyPremium: acc.monthlyPremium + row.monthlyPremium,
+        }),
+        { contracts: 0, annualPremium: 0, monthlyPremium: 0 }
+      ),
+    [selectedProductionRows]
+  );
   const subordinatesOfSelected = useMemo(
     () => (selected ? members.filter((m) => (m.managerEmail ?? "").toLowerCase() === selected.email) : []),
     [selected, members]
@@ -562,29 +712,37 @@ export default function TeamPage() {
     const now = Date.now();
     if (!ts) {
       return {
-        label: "Neznámé",
+        statusLabel: "Bez aktivity",
+        relativeLabel: "bez záznamu",
         className: "bg-white text-slate-600 border-slate-300",
+        dotClassName: "bg-slate-400",
         title: "Bez záznamu o aktivitě",
       };
     }
     const diff = now - ts;
     if (diff <= ONLINE_THRESHOLD_MS) {
       return {
-        label: "Online",
+        statusLabel: "Online",
+        relativeLabel: formatRelative(ts),
         className: "bg-emerald-50 text-emerald-700 border-emerald-600",
+        dotClassName: "bg-emerald-500",
         title: `Aktivní ${new Date(ts).toLocaleString("cs-CZ")}`,
       };
     }
     if (diff <= RECENT_THRESHOLD_MS) {
       return {
-        label: formatRelative(ts),
+        statusLabel: "Aktivní dnes",
+        relativeLabel: formatRelative(ts),
         className: "bg-amber-50 text-amber-700 border-amber-600",
+        dotClassName: "bg-amber-500",
         title: `Naposledy ${new Date(ts).toLocaleString("cs-CZ")}`,
       };
     }
     return {
-      label: formatRelative(ts),
+      statusLabel: "Bez aktivity",
+      relativeLabel: formatRelative(ts),
       className: "bg-white text-slate-600 border-slate-300",
+      dotClassName: "bg-slate-400",
       title: `Naposledy ${new Date(ts).toLocaleString("cs-CZ")}`,
     };
   };
@@ -595,98 +753,6 @@ export default function TeamPage() {
     const stats = contractCounts[email];
     const value = key === "total" ? stats?.total : stats?.month;
     return value != null ? String(value) : "0";
-  };
-
-  const categoryLegend = (email: string) => {
-    const stats = contractCounts[email];
-    const total = stats?.total ?? 0;
-    if (!stats || total === 0) {
-      return <div className="text-sm text-slate-500">Žádné smlouvy.</div>;
-    }
-    const entries = (Object.keys(CATEGORY_LABELS) as Category[])
-      .map((cat) => ({ cat, count: stats.categories?.[cat] ?? 0 }))
-      .filter((c) => c.count > 0);
-    if (entries.length === 0) {
-      return <div className="text-sm text-slate-500">Žádné smlouvy.</div>;
-    }
-    return (
-      <div className="space-y-1">
-        {entries.map(({ cat, count }) => {
-          const pct = Math.round((count / total) * 100);
-          return (
-            <div key={cat} className="flex items-center gap-2 text-[12px] text-slate-900">
-              <span
-                className="h-3 w-3 rounded-full border border-slate-300 shadow-sm"
-                style={{ backgroundColor: CATEGORY_COLORS[cat] }}
-              />
-              <span className="font-semibold">{CATEGORY_LABELS[cat]}</span>
-              <span className="text-slate-500">{count} · {pct}%</span>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const renderCategoryPie = (email: string) => {
-    const stats = contractCounts[email];
-    const total = stats?.total ?? 0;
-    if (!stats || total === 0) {
-      return <div className="text-sm text-slate-500">Žádné smlouvy.</div>;
-    }
-    const entries = (Object.keys(CATEGORY_LABELS) as Category[])
-      .map((cat) => ({ cat, count: stats.categories?.[cat] ?? 0 }))
-      .filter((c) => c.count > 0);
-    if (entries.length === 0) return <div className="text-sm text-slate-500">Žádné smlouvy.</div>;
-
-    const size = 140;
-    const r = 60;
-    const cx = size / 2;
-    const cy = size / 2;
-    const TAU = Math.PI * 2;
-
-    const arcPath = (start: number, end: number) => {
-      const startX = cx + r * Math.cos(start);
-      const startY = cy + r * Math.sin(start);
-      const endX = cx + r * Math.cos(end);
-      const endY = cy + r * Math.sin(end);
-      const largeArc = end - start > Math.PI ? 1 : 0;
-      return `M ${cx} ${cy} L ${startX} ${startY} A ${r} ${r} 0 ${largeArc} 1 ${endX} ${endY} Z`;
-    };
-
-    // Pokud je jen jedna kategorie, vykresli plný kruh
-    if (entries.length === 1) {
-      return (
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          <circle cx={cx} cy={cy} r={r} fill={CATEGORY_COLORS[entries[0].cat]} />
-        </svg>
-      );
-    }
-
-    let angle = -Math.PI / 2; // začneme nahoře
-    const slices = entries.map(({ cat, count }) => {
-      const delta = (count / total) * TAU;
-      const start = angle;
-      const end = angle + delta;
-      angle = end;
-      return { cat, start, end };
-    });
-
-    return (
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        {slices.map((s) => (
-          <path key={s.cat} d={arcPath(s.start, s.end)} fill={CATEGORY_COLORS[s.cat]} stroke="#0f172a" strokeWidth="1" />
-        ))}
-        {/* vyříznutý střed pro donut */}
-        <circle cx={cx} cy={cy} r={r * 0.42} fill="#0f172a" stroke="#1e293b" strokeWidth="1" />
-        <text x={cx} y={cy - 4} textAnchor="middle" className="fill-white" style={{ fontSize: "13px", fontWeight: 700 }}>
-          {total}
-        </text>
-        <text x={cx} y={cy + 12} textAnchor="middle" className="fill-slate-400" style={{ fontSize: "11px" }}>
-          smluv
-        </text>
-      </svg>
-    );
   };
 
   const canSendTeamMessage = isManagerPosition(userPosition) && members.length > 0;
@@ -743,6 +809,17 @@ export default function TeamPage() {
                     Zpráva týmu
                   </Link>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={() => setShowMembersPanel((v) => !v)}
+                  className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                    showMembersPanel
+                      ? "border-slate-900 bg-slate-900 text-white hover:bg-black"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  {showMembersPanel ? "Skrýt podřízené" : `Zobrazit podřízené (${filteredMembers.length})`}
+                </button>
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -764,58 +841,67 @@ export default function TeamPage() {
                   );
                 })}
               </div>
+
+              {showMembersPanel && (
+                <div className="space-y-2 border-t border-slate-200 pt-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
+                    <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+                      {filteredMembers.length} osob
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 max-h-[360px] overflow-auto pr-1 sm:grid-cols-2 xl:grid-cols-4">
+                    {filteredMembers.length === 0 && (
+                      <div className="col-span-full rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                        Pro zadaný filtr nejsou žádní členové.
+                      </div>
+                    )}
+                    {filteredMembers.map((m) => {
+                      const isSelected = m.email === selectedEmail;
+                      const last = lastActiveBadge(m.email);
+                      return (
+                        <button
+                          key={m.email}
+                          onClick={() => setSelectedEmail(m.email)}
+                          className={[
+                            "w-full min-h-[88px] rounded-xl border px-3 py-2 text-left transition flex flex-col items-start gap-2",
+                            isSelected
+                              ? "border-slate-900 bg-slate-100 text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.1)]"
+                              : "border-slate-300 bg-white text-slate-900 hover:border-slate-900 hover:bg-slate-50",
+                          ].join(" ")}
+                        >
+                          <div className="w-full">
+                            <div className="text-[15px] font-semibold leading-tight break-words">{m.name}</div>
+                          </div>
+                          <div className="flex w-full flex-col items-start gap-1">
+                            <span
+                              className={`text-[11px] inline-flex items-center justify-center gap-1.5 rounded-full border px-2 py-0.5 ${last.className}`}
+                              aria-label={last.title}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full ${last.dotClassName}`} />
+                              {last.statusLabel}
+                            </span>
+                            <span className="text-[11px] leading-none text-slate-500">{last.relativeLabel}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[0.58fr_1.42fr] gap-4 items-start">
-              <div className="relative overflow-hidden rounded-3xl border border-slate-900 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.14)] space-y-3">
-                <div className="relative z-10 flex items-center justify-between">
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
-                  <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
-                    {filteredMembers.length} osob
-                  </span>
-                </div>
-                <div className="relative z-10 space-y-2">
-                  {filteredMembers.length === 0 && (
-                    <div className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                      Pro zadaný filtr nejsou žádní členové.
-                    </div>
-                  )}
-                  {filteredMembers.map((m) => {
-                    const isSelected = m.email === selectedEmail;
-                    const last = lastActiveBadge(m.email);
-                    return (
-                      <button
-                        key={m.email}
-                        onClick={() => setSelectedEmail(m.email)}
-                        className={[
-                          "w-full text-left px-3 py-3 rounded-2xl border transition flex items-center justify-between gap-3",
-                          isSelected
-                            ? "border-slate-900 bg-slate-100 text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.1)]"
-                            : "border-slate-300 bg-white text-slate-900 hover:border-slate-900 hover:bg-slate-50",
-                        ].join(" ")}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-semibold truncate">{m.name}</div>
-                        </div>
-                        <span
-                          className={`text-[11px] inline-flex items-center justify-center rounded-full border px-2 py-0.5 ${last.className}`}
-                          title={last.title}
-                        >
-                          {last.label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="space-y-4">
+            <div className="space-y-4">
                 {selected ? (
                   <>
                     <div className="relative z-10 flex flex-col gap-3 border-b border-slate-200 pb-4">
                       <div>
                         <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1">Detail</div>
                         <div className="whitespace-nowrap text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">{selected.name}</div>
+                        <div className="mt-2 space-y-0.5">
+                          <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Pozice</div>
+                          <div className="text-2xl font-bold leading-tight text-slate-900">{positionLabel(selected.position)}</div>
+                        </div>
                         <p className="text-sm text-slate-500 mt-1">{selected.email}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <button
@@ -838,79 +924,147 @@ export default function TeamPage() {
                             Statistiky
                           </Link>
                         </div>
-                      </div>
-                    </div>
-
-                    <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Pozice</div>
-                        <div className="text-sm font-semibold text-slate-900">{positionLabel(selected.position)}</div>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Naposledy aktivní</div>
-                        <div className="text-sm font-semibold text-slate-900" title={formatLastActive(selected.email)}>
-                          {formatRelative(lastActive[selected.email])}
+                        <div className="mt-3 inline-flex gap-2 rounded-full border border-slate-300 bg-white p-1">
+                          <button
+                            type="button"
+                            onClick={() => setDetailTab("overview")}
+                            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                              detailTab === "overview"
+                                ? "border border-slate-900 bg-slate-900 text-white"
+                                : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                            }`}
+                          >
+                            Přehled
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDetailTab("subordinates")}
+                            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                              detailTab === "subordinates"
+                                ? "border border-slate-900 bg-slate-900 text-white"
+                                : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                            }`}
+                          >
+                            Podřízení ({subordinatesOfSelected.length})
+                          </button>
                         </div>
                       </div>
                     </div>
 
-                    <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4 sm:grid-cols-2">
-                      <div>
-                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Celkem smluv</div>
-                        <div className="text-xl font-bold text-slate-900">{contractCountLabel(selected.email, "total")}</div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Smluv tento měsíc</div>
-                        <div className="text-xl font-bold text-slate-900">{contractCountLabel(selected.email, "month")}</div>
-                      </div>
-                    </div>
-
-                    <div className="relative space-y-2 overflow-hidden border-b border-slate-200 py-4">
-                      <div className="relative z-10 flex items-center justify-between">
-                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Podíl kategorií</div>
-                        <div className="text-[11px] text-slate-500">(podle počtu smluv)</div>
-                      </div>
-                      <div className="relative z-10 grid grid-cols-1 sm:grid-cols-[150px_1fr] items-center gap-3">
-                        <div className="flex justify-center">{renderCategoryPie(selected.email)}</div>
-                        <div>{categoryLegend(selected.email)}</div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 pt-2">
-                      <div className="flex items-center justify-between">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
-                        <span className="text-[11px] text-slate-500">
-                          {subordinatesOfSelected.length} {subordinatesOfSelected.length === 1 ? "osoba" : "osob"}
-                        </span>
-                      </div>
-                      {subordinatesOfSelected.length === 0 ? (
-                        <div className="text-sm text-slate-500 rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2">
-                          Nemá podřízené.
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {subordinatesOfSelected.map((sub) => (
-                            <div
-                              key={sub.email}
-                              className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 space-y-1"
-                            >
-                              <div className="text-sm font-semibold text-slate-900">{sub.name}</div>
-                              <div className="text-xs text-slate-500">{sub.email}</div>
-                              <div className="text-xs text-slate-500">
-                                {positionLabel(sub.position)} · Celkem: {contractCountLabel(sub.email, "total")} · Tento měsíc:{" "}
-                                {contractCountLabel(sub.email, "month")}
-                              </div>
+                    {detailTab === "overview" ? (
+                      <>
+                        <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4">
+                          <div className="space-y-1">
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Naposledy aktivní</div>
+                            <div className="text-sm font-semibold text-slate-900" title={formatLastActive(selected.email)}>
+                              {formatRelative(lastActive[selected.email])}
                             </div>
-                          ))}
+                          </div>
                         </div>
-                      )}
-                    </div>
+
+                        <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4 sm:grid-cols-2">
+                          <div>
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Celkem smluv</div>
+                            <div className="text-xl font-bold text-slate-900">{contractCountLabel(selected.email, "total")}</div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Smluv tento měsíc</div>
+                            <div className="text-xl font-bold text-slate-900">{contractCountLabel(selected.email, "month")}</div>
+                          </div>
+                        </div>
+
+                        <div className="relative space-y-3 border-b border-slate-200 py-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Produkce</div>
+                            <div className="text-[11px] text-slate-500">Pojišťovna / počet smluv / měsíční / roční</div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            {PRODUCTION_CATEGORY_TABS.map((tab) => {
+                              const active = productionCategory === tab.key;
+                              return (
+                                <button
+                                  key={tab.key}
+                                  type="button"
+                                  onClick={() => setProductionCategory(tab.key)}
+                                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                                    active
+                                      ? "border-slate-900 bg-slate-900 text-white"
+                                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  {tab.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-3">
+                            {selectedProductionRows.length === 0 ? (
+                              <div className="text-sm text-slate-500">V této kategorii zatím nejsou smlouvy.</div>
+                            ) : (
+                              <div className="space-y-1.5">
+                                <div className="hidden sm:grid sm:grid-cols-[minmax(120px,1fr)_90px_120px_120px] items-center gap-2 px-3 text-[11px] uppercase tracking-wide text-slate-500">
+                                  <div>Pojišťovna</div>
+                                  <div className="text-right">Smluv</div>
+                                  <div className="text-right">Měsíční</div>
+                                  <div className="text-right">Roční</div>
+                                </div>
+                                {selectedProductionRows.map((row) => (
+                                  <div key={row.name} className="grid grid-cols-1 gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 sm:grid-cols-[minmax(120px,1fr)_90px_120px_120px] sm:items-center sm:gap-2">
+                                    <div className="min-w-0 text-sm font-semibold text-slate-900">{row.name}</div>
+                                    <div className="text-sm text-slate-700 sm:text-right">{row.contracts}x smluv</div>
+                                    <div className="text-sm font-semibold text-emerald-700 sm:text-right">{formatMoney(row.monthlyPremium)}</div>
+                                    <div className="text-sm font-semibold text-emerald-700 sm:text-right">{formatMoney(row.annualPremium)}</div>
+                                  </div>
+                                ))}
+                                <div className="grid grid-cols-1 gap-1 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-white sm:grid-cols-[minmax(120px,1fr)_90px_120px_120px] sm:items-center sm:gap-2">
+                                  <div className="text-sm font-bold">Celkem</div>
+                                  <div className="text-sm font-semibold sm:text-right">{selectedProductionTotals.contracts}x smluv</div>
+                                  <div className="text-sm font-bold text-emerald-300 sm:text-right">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
+                                  <div className="text-sm font-bold text-emerald-300 sm:text-right">{formatMoney(selectedProductionTotals.annualPremium)}</div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-2 pt-2">
+                        <div className="flex items-center justify-between">
+                          <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
+                          <span className="text-[11px] text-slate-500">
+                            {subordinatesOfSelected.length} {subordinatesOfSelected.length === 1 ? "osoba" : "osob"}
+                          </span>
+                        </div>
+                        {subordinatesOfSelected.length === 0 ? (
+                          <div className="text-sm text-slate-500 rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2">
+                            Nemá podřízené.
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {subordinatesOfSelected.map((sub) => (
+                              <div
+                                key={sub.email}
+                                className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 space-y-1"
+                              >
+                                <div className="text-sm font-semibold text-slate-900">{sub.name}</div>
+                                <div className="text-xs text-slate-500">{sub.email}</div>
+                                <div className="text-xs text-slate-500">
+                                  {positionLabel(sub.position)} · Celkem: {contractCountLabel(sub.email, "total")} · Tento měsíc:{" "}
+                                  {contractCountLabel(sub.email, "month")}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 ) : (
-                  <div className="text-sm text-slate-500">Vyber podřízeného vlevo.</div>
+                  <div className="text-sm text-slate-500">Vyber podřízeného v horním panelu.</div>
                 )}
               </div>
-            </div>
           </>
         )}
       </div>

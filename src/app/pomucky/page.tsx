@@ -5,6 +5,7 @@ import { useMemo, useState, type ReactElement } from "react";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import {
+  Accessibility,
   BanknoteArrowDown,
   BarChart3,
   Bike,
@@ -18,7 +19,6 @@ import {
   Landmark,
   PenTool,
   Scale,
-  ShieldCheck,
   TrendingUp,
   Trophy,
   WalletCards,
@@ -180,7 +180,7 @@ export default function ToolsPage() {
         category: "Životní pojištění",
         title: "Jak nastavit Invaliditu",
         description: "Kalkulačka na stanovení pojistné částky pro Invaliditu 1., 2. a 3. stupně dle poklesu příjmu.",
-        icon: ShieldCheck,
+        icon: Accessibility,
         href: "/pomucky/invalidita",
       },
       {

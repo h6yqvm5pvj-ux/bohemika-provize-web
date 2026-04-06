@@ -713,7 +713,7 @@ export default function HomePage() {
         );
         return (
           <section
-            className={`relative z-30 space-y-3 rounded-[28px] border border-slate-900 bg-white px-5 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:px-8 sm:py-7 ${
+            className={`relative z-30 space-y-3 rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:px-8 sm:py-7 ${
               reorderEnabled && draggingSection === id ? "opacity-50" : ""
             } ${reorderEnabled ? "cursor-move" : ""}`}
             draggable={reorderEnabled}
@@ -741,7 +741,7 @@ export default function HomePage() {
                 </button>
                 {qaPickerOpen && (
                   <div
-                    className="absolute right-0 top-full z-50 mt-2 max-h-[320px] w-72 space-y-2 overflow-auto rounded-2xl border border-slate-900 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.15)]"
+                    className="absolute right-0 top-full z-50 mt-2 max-h-[320px] w-72 space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]"
                   >
                     <div className="flex items-center justify-between">
                       <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
@@ -766,7 +766,7 @@ export default function HomePage() {
                             persistQuickActions((prev) => [...prev, opt]);
                             setQaPickerOpen(false);
                           }}
-                          className="w-full rounded-xl border border-slate-900 bg-slate-50 px-3 py-2 text-left text-sm text-slate-900 transition hover:bg-white"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm text-slate-900 transition hover:bg-white"
                         >
                           <div className="font-semibold">{opt.title}</div>
                           <div className="text-[11px] text-slate-500">
@@ -789,7 +789,7 @@ export default function HomePage() {
                 {quickActions.map((qa) => (
                   <div
                     key={qa.key}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-3 py-1.5 text-sm text-slate-900"
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900"
                   >
                     <Link href={qa.href} className="hover:text-slate-700">
                       {qa.title}
@@ -848,8 +848,14 @@ export default function HomePage() {
   const sectionRowSpan: Record<HomeSection, string> = {
     gold: "",
     summary: "",
-    goal: "",
-    leaderboard: "",
+    goal:
+      showLeaderboardSection && showGoldWidget && showMonthlyGoalSection
+        ? "md:row-start-2"
+        : "",
+    leaderboard:
+      showLeaderboardSection && showGoldWidget && showMonthlyGoalSection
+        ? "md:row-span-2"
+        : "",
     quickActions: "",
     chart: "",
   };
@@ -1060,7 +1066,7 @@ export default function HomePage() {
   return (
     <AppLayout active="home">
       {user && <AutoAnniversaryModal userEmail={user.email} />}
-      <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+      <div className="w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
         <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SplitTextHeading text={`Produkce ${monthLabelCapitalized} ${year}`} />
@@ -1096,7 +1102,7 @@ export default function HomePage() {
             </button>
 
             {widgetPanelOpen && (
-              <div className="absolute right-0 z-20 mt-2 w-72 rounded-2xl border border-slate-900 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.15)]">
+              <div className="absolute right-0 z-20 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
                 <div className="flex items-center justify-between gap-2 pb-2">
                   <div className="text-sm font-semibold text-slate-900">
                     Přizpůsobení domova
@@ -1104,7 +1110,7 @@ export default function HomePage() {
                   <button
                     type="button"
                     onClick={() => setWidgetPanelOpen(false)}
-                    className="rounded-full border border-slate-900 bg-slate-100 px-2 py-1 text-xs text-slate-700 transition hover:bg-white"
+                    className="rounded-full border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 transition hover:bg-slate-50"
                     aria-label="Zavřít"
                   >
                     ×
@@ -1133,7 +1139,7 @@ export default function HomePage() {
                         className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${
                           disabled
                             ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-50"
-                            : "cursor-pointer border-slate-900 bg-slate-50 hover:bg-white"
+                            : "cursor-pointer border-slate-200 bg-slate-50 hover:bg-white"
                         }`}
                       >
                         <div className="flex flex-col">
@@ -1155,7 +1161,7 @@ export default function HomePage() {
                     );
                   })}
                 </div>
-                <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-900 bg-slate-50 p-3">
+                <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex flex-col gap-1">
                     <span className="text-sm font-semibold text-slate-900">Režim výkonu</span>
                     <span className="text-[11px] text-slate-500">
@@ -1178,7 +1184,7 @@ export default function HomePage() {
                     />
                   </label>
                 </div>
-                <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-900 bg-slate-50 p-3">
+                <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex flex-col gap-1">
                     <span className="text-sm font-semibold text-slate-900">Ukládání</span>
                     <span className="text-[11px] text-slate-500">

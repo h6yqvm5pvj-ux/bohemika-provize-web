@@ -62,7 +62,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
   );
 
   return (
-    <div className="rounded-[28px] border border-slate-900 bg-white p-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] sm:p-6">
+    <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">
@@ -297,8 +297,8 @@ export function ProductionChartSection({
   isLiteUI,
 }: ProductionChartSectionProps) {
   const chartCardClass = isLiteUI
-    ? "overflow-hidden rounded-[28px] border border-slate-900 bg-white px-5 py-5 transition-[border-color,box-shadow] duration-200 hover:border-slate-700 focus-within:border-slate-700 focus-within:shadow-[0_0_0_1px_rgba(15,23,42,0.12)] sm:px-7 sm:py-6"
-    : "overflow-hidden rounded-[28px] border border-slate-900 bg-white px-5 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.1)] transition-[border-color,box-shadow] duration-200 hover:border-slate-700 hover:shadow-[0_16px_36px_rgba(15,23,42,0.16)] focus-within:border-slate-700 focus-within:shadow-[0_16px_36px_rgba(15,23,42,0.16),0_0_0_1px_rgba(15,23,42,0.12)] sm:px-7 sm:py-6";
+    ? "overflow-hidden rounded-[24px] border border-slate-200 bg-white px-5 py-5 transition-[border-color,box-shadow] duration-200 hover:border-slate-300 focus-within:border-slate-300 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.35)] sm:px-7 sm:py-6"
+    : "overflow-hidden rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.1)] focus-within:border-slate-300 focus-within:shadow-[0_12px_28px_rgba(15,23,42,0.1),0_0_0_1px_rgba(148,163,184,0.35)] sm:px-7 sm:py-6";
 
   return (
     <section className={chartCardClass}>
@@ -313,7 +313,7 @@ export function ProductionChartSection({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-full border border-slate-900 bg-white p-1">
+          <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
             <button
               type="button"
               onClick={() => setChartMode("personal")}
@@ -380,7 +380,7 @@ export function ProductionChartSection({
       </div>
 
       {chartMode === "specific" && hasTeam && (
-        <div className="mb-3 rounded-2xl border border-slate-900 bg-white px-4 py-3">
+        <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-slate-700">
               {selectedSubordinate
@@ -402,7 +402,7 @@ export function ProductionChartSection({
                 <button
                   type="button"
                   onClick={() => onSelectSubordinate(null)}
-                  className="rounded-full border border-slate-900 bg-slate-100 px-3 py-1 text-[11px] text-slate-700 transition hover:bg-white"
+                  className="rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] text-slate-700 transition hover:bg-slate-50"
                 >
                   Vymazat
                 </button>

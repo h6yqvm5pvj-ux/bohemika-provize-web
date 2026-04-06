@@ -24,8 +24,8 @@ export function GoldWidget({
   onRefresh,
 }: Props) {
   const goldCardClass = isLiteUI
-    ? "relative w-full overflow-hidden rounded-[28px] border border-slate-900 bg-white px-4 py-3 transition-[border-color,box-shadow] duration-200 hover:border-slate-700 focus-within:border-slate-700 focus-within:shadow-[0_0_0_1px_rgba(15,23,42,0.12)] sm:px-5 sm:py-3"
-    : "relative w-full overflow-hidden rounded-[28px] border border-slate-900 bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.1)] transition-[border-color,box-shadow] duration-200 hover:border-slate-700 hover:shadow-[0_16px_36px_rgba(15,23,42,0.16)] focus-within:border-slate-700 focus-within:shadow-[0_16px_36px_rgba(15,23,42,0.16),0_0_0_1px_rgba(15,23,42,0.12)] sm:px-5 sm:py-3";
+    ? "relative w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white px-4 py-3 transition-[border-color,box-shadow] duration-200 hover:border-slate-300 focus-within:border-slate-300 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.35)] sm:px-5 sm:py-3"
+    : "relative w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.1)] focus-within:border-slate-300 focus-within:shadow-[0_12px_28px_rgba(15,23,42,0.1),0_0_0_1px_rgba(148,163,184,0.35)] sm:px-5 sm:py-3";
 
   return (
     <section className={goldCardClass}>

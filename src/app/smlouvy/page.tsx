@@ -1159,14 +1159,14 @@ function ContractsPageContent() {
 
   return (
     <AppLayout active="contracts">
-      <div className="min-h-screen w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+      <div className="min-h-screen w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl space-y-6 font-mono text-slate-900">
         {/* HEADER */}
         <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <SplitTitle text="Smlouvy" className="!text-slate-900" />
 
           {canShowTeamToggle && (
-            <div className="inline-flex self-start rounded-full border border-slate-900 bg-white p-1 text-xs sm:self-end">
+            <div className="inline-flex self-start rounded-full border border-slate-300 bg-white p-1 text-xs sm:self-end">
               <button
                 type="button"
                 onClick={() => setShowTeam(false)}
@@ -1197,7 +1197,7 @@ function ContractsPageContent() {
 
         {/* SEARCH BAR + FILTER + BULK ACTIONS */}
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-1 items-center gap-2 rounded-2xl border border-slate-900 bg-white px-4 py-2.5">
+          <div className="flex flex-1 items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 shadow-[0_6px_18px_rgba(15,23,42,0.04)]">
             <span className="text-sm">🔍</span>
             <input
               type="text"
@@ -1209,7 +1209,7 @@ function ContractsPageContent() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-            <div className="inline-flex rounded-full border border-slate-900 bg-white p-1 text-xs">
+            <div className="inline-flex rounded-full border border-slate-300 bg-white p-1 text-xs">
               <button
                 type="button"
                 onClick={() =>
@@ -1309,15 +1309,15 @@ function ContractsPageContent() {
             Načítám smlouvy…
           </p>
         ) : isAnniversaryLoading && filteredContracts.length === 0 ? (
-          <div className="mt-4 space-y-2 rounded-2xl border border-slate-900 bg-white px-6 py-8 text-center text-sm text-slate-700">
-            <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+          <div className="mt-4 space-y-2 rounded-2xl border border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+            <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
             <p className="font-medium">Vyhledávám blížící se výročí…</p>
             <p className="text-xs text-slate-500">
               Procházím další smlouvy, může to chvíli trvat.
             </p>
           </div>
         ) : filteredContracts.length === 0 ? (
-          <div className="mt-4 space-y-2 rounded-2xl border border-slate-900 bg-white px-6 py-8 text-center text-sm text-slate-700">
+          <div className="mt-4 space-y-2 rounded-2xl border border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
             {filterMode === "anniversary" ? (
               <>
                 <p className="font-medium">Žádná blížící se výročí</p>
@@ -1356,8 +1356,8 @@ function ContractsPageContent() {
         ) : (
           <div className="mt-4 space-y-3">
             {isAnniversaryLoading && (
-              <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-white px-4 py-2.5 text-xs text-slate-700">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+              <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)]">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
                 <span>Dohledávám další výročí…</span>
               </div>
             )}
@@ -1397,7 +1397,7 @@ function ContractsPageContent() {
 
                 const CardContent = (
                   <article
-                    className={`relative rounded-2xl border border-slate-900 bg-white px-4 py-3 font-mono shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-slate-50 ${
+                    className={`relative rounded-2xl border border-slate-200 bg-white px-4 py-3 font-mono shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:border-slate-300 hover:bg-slate-50 ${
                       isSelected ? "border-emerald-600 ring-2 ring-emerald-500/40" : ""
                     }`}
                   >
@@ -1407,7 +1407,7 @@ function ContractsPageContent() {
                         className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${
                           isSelected
                             ? "border-emerald-600 bg-emerald-600 text-white"
-                            : "border-slate-900 bg-white text-slate-700"
+                            : "border-slate-300 bg-white text-slate-700"
                         }`}
                       >
                         ✓
@@ -1444,7 +1444,7 @@ function ContractsPageContent() {
                         </div>
                       )}
 
-                      <div className="mt-3 grid grid-cols-1 gap-1 text-sm text-slate-300">
+                      <div className="mt-3 grid grid-cols-1 gap-1 text-sm text-slate-700">
                         <p>
                           <span className="text-slate-500">Číslo smlouvy:</span>{" "}
                           <span className="text-slate-900">{c.contractNumber ?? "—"}</span>
@@ -1556,7 +1556,7 @@ function ContractsPageContent() {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setFilterModalOpen(false)}
           />
-          <div className="relative w-full max-w-lg space-y-4 rounded-3xl border border-slate-900 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+          <div className="relative w-full max-w-lg space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-slate-900">Filtry</h3>
               <button
@@ -1591,7 +1591,7 @@ function ContractsPageContent() {
                       className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
                         active
                           ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-900 bg-white text-slate-700 hover:bg-slate-50"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                       }`}
                     >
                       <span className="text-sm font-medium">{cat.label}</span>
@@ -1599,7 +1599,7 @@ function ContractsPageContent() {
                         className={`h-5 w-5 rounded-full border ${
                           active
                             ? "border-slate-900 bg-white text-slate-900"
-                            : "border-slate-900"
+                            : "border-slate-300"
                         }`}
                       >
                         {active ? "✓" : ""}
@@ -1633,7 +1633,7 @@ function ContractsPageContent() {
                       className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
                         active
                           ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-900 bg-white text-slate-700 hover:bg-slate-50"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                       }`}
                     >
                       <span className="text-sm font-medium">{inst.label}</span>
@@ -1641,7 +1641,7 @@ function ContractsPageContent() {
                         className={`h-5 w-5 rounded-full border ${
                           active
                             ? "border-slate-900 bg-white text-slate-900"
-                            : "border-slate-900"
+                            : "border-slate-300"
                         }`}
                       >
                         {active ? "✓" : ""}
@@ -1659,7 +1659,7 @@ function ContractsPageContent() {
                   setSelectedCategories(new Set());
                   setSelectedInstitutions(new Set());
                 }}
-                className="rounded-xl border border-slate-900 bg-white px-4 py-2 text-slate-900 hover:bg-slate-50"
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-slate-900 hover:bg-slate-50"
               >
                 Vymazat filtry
               </button>
@@ -1682,7 +1682,7 @@ function ContractsPageContent() {
 function ContractsPageFallback() {
   return (
     <AppLayout active="contracts">
-      <div className="min-h-screen w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+      <div className="min-h-screen w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl font-mono text-slate-900">Načítám smlouvy…</div>
       </div>
     </AppLayout>
