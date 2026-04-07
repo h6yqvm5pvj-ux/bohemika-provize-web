@@ -21,9 +21,7 @@ export function TeamLeaderboardSection({
   onRangeChange,
   isLiteUI,
 }: Props) {
-  const leaderboardClass = isLiteUI
-    ? "relative h-full overflow-hidden rounded-[24px] border border-slate-200 bg-white px-6 py-6 transition-[border-color,box-shadow] duration-200 hover:border-slate-300 focus-within:border-slate-300 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.35)] sm:px-10 sm:py-7"
-    : "relative h-full overflow-hidden rounded-[24px] border border-slate-200 bg-white px-6 py-6 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.1)] focus-within:border-slate-300 focus-within:shadow-[0_12px_28px_rgba(15,23,42,0.1),0_0_0_1px_rgba(148,163,184,0.35)] sm:px-10 sm:py-7";
+  const leaderboardClass = `ui-card ${isLiteUI ? "ui-card-quiet" : ""} relative h-full overflow-hidden px-6 py-6 sm:px-10 sm:py-7`;
 
   return (
     <section className={leaderboardClass}>
@@ -35,14 +33,14 @@ export function TeamLeaderboardSection({
         </div>
 
         <div className="flex flex-col items-start gap-2 text-[11px] sm:items-end sm:text-xs">
-          <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
+          <div className="ui-chip-group">
             <button
               type="button"
               onClick={() => onProductFilterChange("life")}
-              className={`px-3 py-1.5 rounded-full transition ${
+              className={`ui-chip ui-focus px-3 py-1.5 ${
                 lbProductFilter === "life"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-700 hover:bg-slate-100"
+                  ? "ui-chip-active"
+                  : ""
               }`}
             >
               Život
@@ -50,24 +48,24 @@ export function TeamLeaderboardSection({
             <button
               type="button"
               onClick={() => onProductFilterChange("other")}
-              className={`px-3 py-1.5 rounded-full transition ${
+              className={`ui-chip ui-focus px-3 py-1.5 ${
                 lbProductFilter === "other"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-700 hover:bg-slate-100"
+                  ? "ui-chip-active"
+                  : ""
               }`}
             >
               Vedlejší produkty
             </button>
           </div>
 
-          <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
+          <div className="ui-chip-group">
             <button
               type="button"
               onClick={() => onRangeChange("month")}
-              className={`px-3 py-1.5 rounded-full transition ${
+              className={`ui-chip ui-focus px-3 py-1.5 ${
                 lbRange === "month"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-700 hover:bg-slate-100"
+                  ? "ui-chip-active"
+                  : ""
               }`}
             >
               Aktuální měsíc
@@ -75,10 +73,10 @@ export function TeamLeaderboardSection({
             <button
               type="button"
               onClick={() => onRangeChange("sixMonths")}
-              className={`px-3 py-1.5 rounded-full transition ${
+              className={`ui-chip ui-focus px-3 py-1.5 ${
                 lbRange === "sixMonths"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-700 hover:bg-slate-100"
+                  ? "ui-chip-active"
+                  : ""
               }`}
             >
               Posledních 6 měsíců
@@ -86,10 +84,10 @@ export function TeamLeaderboardSection({
             <button
               type="button"
               onClick={() => onRangeChange("year")}
-              className={`px-3 py-1.5 rounded-full transition ${
+              className={`ui-chip ui-focus px-3 py-1.5 ${
                 lbRange === "year"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-700 hover:bg-slate-100"
+                  ? "ui-chip-active"
+                  : ""
               }`}
             >
               Aktuální rok
@@ -138,7 +136,7 @@ export function TeamLeaderboardSection({
                   <div className="text-[10px] uppercase tracking-wide text-white/70">
                     Pojistné
                   </div>
-                  <div className="text-lg font-semibold text-white sm:text-xl">
+                  <div className="text-lg font-semibold text-emerald-300 sm:text-xl">
                     <AnimatedMoney value={row.totalPremium} />
                   </div>
                 </div>

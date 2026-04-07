@@ -770,7 +770,7 @@ export default function TeamPage() {
           <p className="text-sm text-slate-600">Nemáš nastavené žádné podřízené.</p>
         ) : (
           <>
-            <div className="space-y-3 rounded-3xl border border-slate-900 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+            <div className="ui-card space-y-3 rounded-3xl p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border border-slate-900 bg-white px-3 py-2">
                   <span className="text-slate-500 text-sm">🔍</span>
@@ -797,14 +797,14 @@ export default function TeamPage() {
 
                 <Link
                   href="/pomucky/struktura"
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-black"
+                  className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm"
                 >
                   Struktura
                 </Link>
                 {canSendTeamMessage ? (
                   <Link
                     href="/pomucky/zprava-tymu"
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-black"
+                    className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm"
                   >
                     Zpráva týmu
                   </Link>
@@ -812,17 +812,17 @@ export default function TeamPage() {
                 <button
                   type="button"
                   onClick={() => setShowMembersPanel((v) => !v)}
-                  className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                  className={`ui-focus inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
                     showMembersPanel
-                      ? "border-slate-900 bg-slate-900 text-white hover:bg-black"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      ? "ui-btn-primary"
+                      : "ui-btn-secondary"
                   }`}
                 >
                   {showMembersPanel ? "Skrýt podřízené" : `Zobrazit podřízené (${filteredMembers.length})`}
                 </button>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="ui-chip-group flex w-fit flex-wrap gap-2">
                 {ACTIVITY_FILTERS.map((option) => {
                   const active = activityFilter === option.key;
                   return (
@@ -830,11 +830,7 @@ export default function TeamPage() {
                       key={option.key}
                       type="button"
                       onClick={() => setActivityFilter(option.key)}
-                      className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                        active
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-900 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
+                      className={`ui-chip ui-focus px-3 py-1 text-xs ${active ? "ui-chip-active" : ""}`}
                     >
                       {option.label}
                     </button>
@@ -907,43 +903,35 @@ export default function TeamPage() {
                           <button
                             type="button"
                             onClick={handleCopySelectedEmail}
-                            className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+                            className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
                           >
                             {copiedEmail ? "Zkopírováno" : "Kopírovat e-mail"}
                           </button>
                           <a
                             href={`mailto:${selected.email}`}
-                            className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+                            className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
                           >
                             Napsat e-mail
                           </a>
                           <Link
                             href={`/pomucky/statistika?user=${encodeURIComponent(selected.email)}`}
-                            className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+                            className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
                           >
                             Statistiky
                           </Link>
                         </div>
-                        <div className="mt-3 inline-flex gap-2 rounded-full border border-slate-300 bg-white p-1">
+                        <div className="ui-chip-group mt-3 inline-flex gap-2">
                           <button
                             type="button"
                             onClick={() => setDetailTab("overview")}
-                            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                              detailTab === "overview"
-                                ? "border border-slate-900 bg-slate-900 text-white"
-                                : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                            }`}
+                            className={`ui-chip ui-focus px-3 py-1 text-xs ${detailTab === "overview" ? "ui-chip-active" : ""}`}
                           >
                             Přehled
                           </button>
                           <button
                             type="button"
                             onClick={() => setDetailTab("subordinates")}
-                            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                              detailTab === "subordinates"
-                                ? "border border-slate-900 bg-slate-900 text-white"
-                                : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                            }`}
+                            className={`ui-chip ui-focus px-3 py-1 text-xs ${detailTab === "subordinates" ? "ui-chip-active" : ""}`}
                           >
                             Podřízení ({subordinatesOfSelected.length})
                           </button>
@@ -975,11 +963,11 @@ export default function TeamPage() {
 
                         <div className="relative space-y-3 border-b border-slate-200 py-4">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Produkce</div>
-                            <div className="text-[11px] text-slate-500">Pojišťovna / počet smluv / měsíční / roční</div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Produkce</div>
+                            <div className="text-xs font-semibold text-slate-500">Pojišťovna / počet smluv / měsíční / roční</div>
                           </div>
 
-                          <div className="flex flex-wrap gap-2">
+                          <div className="ui-chip-group flex w-fit flex-wrap gap-2">
                             {PRODUCTION_CATEGORY_TABS.map((tab) => {
                               const active = productionCategory === tab.key;
                               return (
@@ -987,11 +975,7 @@ export default function TeamPage() {
                                   key={tab.key}
                                   type="button"
                                   onClick={() => setProductionCategory(tab.key)}
-                                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                                    active
-                                      ? "border-slate-900 bg-slate-900 text-white"
-                                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                                  }`}
+                                  className={`ui-chip ui-focus px-3 py-1 text-xs ${active ? "ui-chip-active" : ""}`}
                                 >
                                   {tab.label}
                                 </button>
@@ -999,30 +983,30 @@ export default function TeamPage() {
                             })}
                           </div>
 
-                          <div className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-3">
+                          <div className="ui-card ui-card-quiet rounded-2xl bg-slate-50 px-4 py-4">
                             {selectedProductionRows.length === 0 ? (
                               <div className="text-sm text-slate-500">V této kategorii zatím nejsou smlouvy.</div>
                             ) : (
                               <div className="space-y-1.5">
-                                <div className="hidden sm:grid sm:grid-cols-[minmax(120px,1fr)_90px_120px_120px] items-center gap-2 px-3 text-[11px] uppercase tracking-wide text-slate-500">
+                                <div className="hidden sm:grid sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] items-center gap-3 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                                   <div>Pojišťovna</div>
                                   <div className="text-right">Smluv</div>
                                   <div className="text-right">Měsíční</div>
                                   <div className="text-right">Roční</div>
                                 </div>
                                 {selectedProductionRows.map((row) => (
-                                  <div key={row.name} className="grid grid-cols-1 gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 sm:grid-cols-[minmax(120px,1fr)_90px_120px_120px] sm:items-center sm:gap-2">
-                                    <div className="min-w-0 text-sm font-semibold text-slate-900">{row.name}</div>
-                                    <div className="text-sm text-slate-700 sm:text-right">{row.contracts}x smluv</div>
-                                    <div className="text-sm font-semibold text-emerald-700 sm:text-right">{formatMoney(row.monthlyPremium)}</div>
-                                    <div className="text-sm font-semibold text-emerald-700 sm:text-right">{formatMoney(row.annualPremium)}</div>
+                                  <div key={row.name} className="grid grid-cols-1 gap-1 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] sm:items-center sm:gap-3">
+                                    <div className="min-w-0 text-base font-bold text-slate-900 sm:text-lg">{row.name}</div>
+                                    <div className="text-sm font-semibold text-slate-700 sm:text-right sm:text-base">{row.contracts}x smluv</div>
+                                    <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.monthlyPremium)}</div>
+                                    <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.annualPremium)}</div>
                                   </div>
                                 ))}
-                                <div className="grid grid-cols-1 gap-1 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-white sm:grid-cols-[minmax(120px,1fr)_90px_120px_120px] sm:items-center sm:gap-2">
-                                  <div className="text-sm font-bold">Celkem</div>
-                                  <div className="text-sm font-semibold sm:text-right">{selectedProductionTotals.contracts}x smluv</div>
-                                  <div className="text-sm font-bold text-emerald-300 sm:text-right">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
-                                  <div className="text-sm font-bold text-emerald-300 sm:text-right">{formatMoney(selectedProductionTotals.annualPremium)}</div>
+                                <div className="grid grid-cols-1 gap-1 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-white sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] sm:items-center sm:gap-3">
+                                  <div className="text-base font-bold sm:text-lg">Celkem</div>
+                                  <div className="text-sm font-semibold sm:text-right sm:text-base">{selectedProductionTotals.contracts}x smluv</div>
+                                  <div className="text-base font-bold text-emerald-300 sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
+                                  <div className="text-base font-bold text-emerald-300 sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.annualPremium)}</div>
                                 </div>
                               </div>
                             )}

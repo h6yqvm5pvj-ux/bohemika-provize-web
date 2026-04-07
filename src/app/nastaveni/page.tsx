@@ -66,7 +66,7 @@ type NotificationSettings = {
     push: boolean;
   };
 };
-type BackgroundPreset = "white" | "black";
+type BackgroundPreset = "white";
 
 const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   types: {
@@ -253,11 +253,8 @@ export default function SettingsPage() {
             setNotifyMinutes(data.notifyMinutes);
           }
           if (typeof data.backgroundColor === "string") {
-            const c =
-              data.backgroundColor === "black" || data.backgroundColor === "blue"
-                ? "black"
-                : "white";
-            setBackgroundColor(c as BackgroundPreset);
+            const c: BackgroundPreset = "white";
+            setBackgroundColor(c);
             if (typeof window !== "undefined") {
               window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, c);
             }
@@ -266,9 +263,8 @@ export default function SettingsPage() {
               SETTINGS_KEYS.backgroundColor
             );
             if (stored) {
-              setBackgroundColor(
-                stored === "black" || stored === "blue" ? "black" : "white"
-              );
+              setBackgroundColor("white");
+              window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, "white");
             }
           } else {
             setBackgroundColor("white");
@@ -344,11 +340,8 @@ export default function SettingsPage() {
             const n = storedGoal ? Number(storedGoal) : 0;
             if (Number.isFinite(n)) setMonthlyGoal(n);
             if (storedColor) {
-              setBackgroundColor(
-                storedColor === "black" || storedColor === "blue"
-                  ? "black"
-                  : "white"
-              );
+              setBackgroundColor("white");
+              window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, "white");
             }
             const storedMotion = window.localStorage.getItem(
               SETTINGS_KEYS.reduceMotion
@@ -851,7 +844,7 @@ export default function SettingsPage() {
                         <span>Pozadí aplikace</span>
                       </h2>
                       <p className="text-xs text-slate-500">
-                        Vyber si jednoduché pozadí – bílé nebo černé.
+                        Používáme jednoduché bílé pozadí.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -882,7 +875,6 @@ export default function SettingsPage() {
                   <div className="flex gap-3 h-60">
                     {[
                       { id: "white" as const, label: "BÍLÁ", bg: "bg-white" },
-                      { id: "black" as const, label: "ČERNÁ", bg: "bg-black" },
                     ].map((opt) => {
                       const isActive = backgroundColor === opt.id;
                       return (
@@ -897,20 +889,14 @@ export default function SettingsPage() {
                           }`}
                         >
                           <div className={`settings-bg-preview-layer absolute inset-0 ${opt.bg}`} />
-                          {opt.id === "black" ? (
-                            <div className="absolute inset-0 bg-black/25" />
-                          ) : (
-                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(15,23,42,0.06),transparent_55%)]" />
-                          )}
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(15,23,42,0.06),transparent_55%)]" />
                           {isActive && (
                             <div className="absolute top-2 right-2 rounded-full border border-slate-900 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-white">
                               Aktivní
                             </div>
                           )}
                           <span
-                            className={`settings-bg-preview-label relative h-full w-full flex items-center justify-center text-sm font-bold tracking-[0.4em] ${
-                              opt.id === "black" ? "text-[#f8fafc]" : "text-[#0f172a]"
-                            }`}
+                            className="settings-bg-preview-label relative h-full w-full flex items-center justify-center text-sm font-bold tracking-[0.4em] text-[#0f172a]"
                             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
                           >
                             {opt.label}

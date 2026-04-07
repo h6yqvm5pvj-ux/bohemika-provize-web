@@ -1818,7 +1818,7 @@ export default function CalculatorPage() {
 
               {canImportFromPdf && (
                 <div className="space-y-2">
-                  <div className="flex h-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2.5">
+                  <div className="ui-card ui-card-quiet flex h-full items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5">
                     <div className="text-sm font-semibold text-slate-900">
                       Nahraj smlouvu PDF pro načtení údajů.
                     </div>
@@ -1826,7 +1826,7 @@ export default function CalculatorPage() {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={pdfImporting}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                      className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <svg
                         aria-hidden="true"
@@ -1952,14 +1952,14 @@ export default function CalculatorPage() {
                     <div className="text-[12px] uppercase tracking-wide text-slate-400 mb-1">
                       Poplatek
                     </div>
-                    <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
+                    <div className="ui-chip-group">
                       <button
                         type="button"
                         onClick={() => setComfortGradual(false)}
-                        className={`px-3 py-1.5 rounded-full text-sm transition ${
+                        className={`ui-chip ui-focus px-3 py-1.5 text-sm ${
                           !comfortGradual
-                            ? "bg-slate-900 text-white shadow"
-                            : "text-slate-900"
+                            ? "ui-chip-active"
+                            : ""
                         }`}
                       >
                         Jednorázový poplatek
@@ -1967,10 +1967,10 @@ export default function CalculatorPage() {
                       <button
                         type="button"
                         onClick={() => setComfortGradual(true)}
-                        className={`px-3 py-1.5 rounded-full text-sm transition ${
+                        className={`ui-chip ui-focus px-3 py-1.5 text-sm ${
                           comfortGradual
-                            ? "bg-slate-900 text-white shadow"
-                            : "text-slate-900"
+                            ? "ui-chip-active"
+                            : ""
                         }`}
                       >
                         Postupný poplatek
@@ -2049,7 +2049,7 @@ export default function CalculatorPage() {
                     <button
                       type="button"
                       onClick={() => setRefreshOriginalOpen((v) => !v)}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
+                      className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm"
                     >
                       <RefreshCcw size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                       Refresh smlouvy
@@ -2080,7 +2080,7 @@ export default function CalculatorPage() {
                     <button
                       type="button"
                       onClick={() => setReplacementOpen((v) => !v)}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
+                      className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm"
                     >
                       <Repeat2 size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                       Náhrada smlouvy
@@ -2245,7 +2245,7 @@ export default function CalculatorPage() {
           </div>
 
           {/* Výsledky + tlačítko Sepsáno */}
-          <section className="rounded-3xl border border-slate-300 bg-white px-5 py-4 space-y-3 shadow-[0_18px_60px_rgba(15,23,42,0.18)] h-full overflow-hidden">
+          <section className="ui-card rounded-3xl bg-white px-5 py-4 space-y-3 h-full overflow-hidden">
             <div className="flex items-center justify-between gap-3">
               <h2 className="inline-flex items-center gap-1.5 text-lg font-semibold text-slate-900">
                 <BarChart3 size={18} strokeWidth={2} className="text-slate-700" aria-hidden="true" />
@@ -2257,7 +2257,7 @@ export default function CalculatorPage() {
                   type="button"
                   onClick={() => setShowCoefModal(true)}
                   disabled={unsupported}
-                  className={`inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-950 px-3 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-slate-800 transition ${
+                  className={`ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm ${
                     unsupported ? "opacity-60 cursor-not-allowed" : ""
                   }`}
                 >
@@ -2269,7 +2269,7 @@ export default function CalculatorPage() {
                   <button
                     type="button"
                     onClick={() => setTipsterPercentPanelOpen((prev) => !prev)}
-                    className="inline-flex items-center rounded-xl border border-slate-900 bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition"
+                    className="ui-btn-primary ui-focus inline-flex items-center rounded-xl px-3 py-2 text-sm"
                     aria-pressed={tipsterPercentPanelOpen}
                     aria-label="Nastavit procenta pro tipaře"
                   >
@@ -2353,9 +2353,9 @@ export default function CalculatorPage() {
                         key={preset}
                         type="button"
                         onClick={() => void persistTipsterPercent(preset)}
-                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
+                        className={`ui-chip ui-focus rounded-full px-2.5 py-1 text-xs font-semibold transition ${
                           active
-                            ? "border-slate-900 bg-slate-900 text-white"
+                            ? "ui-chip-active"
                             : "border-slate-300 bg-white text-slate-900 hover:bg-slate-100"
                         }`}
                       >

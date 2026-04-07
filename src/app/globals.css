@@ -48,6 +48,24 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Unified UI tokens */
+  --ui-radius-lg: 20px;
+  --ui-radius-xl: 24px;
+  --ui-border: rgba(15, 23, 42, 0.16);
+  --ui-border-strong: rgba(15, 23, 42, 0.3);
+  --ui-surface: rgba(255, 255, 255, 0.95);
+  --ui-surface-soft: rgba(248, 250, 252, 0.92);
+  --ui-surface-strong: #0f172a;
+  --ui-text: #0f172a;
+  --ui-text-muted: #64748b;
+  --ui-text-inverse: #f8fafc;
+  --ui-accent: #34d399;
+  --ui-focus: rgba(16, 185, 129, 0.35);
+  --ui-shadow-sm: 0 8px 20px rgba(15, 23, 42, 0.08);
+  --ui-shadow-md: 0 14px 30px rgba(15, 23, 42, 0.14);
+  --ui-shadow-glass: 0 0 0 1px rgba(148, 163, 184, 0.2),
+    0 0 30px rgba(45, 212, 191, 0.2), 0 16px 32px rgba(2, 6, 23, 0.35);
 }
 
 @theme inline {
@@ -185,6 +203,22 @@ body {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* Unified UI tokens (dark) */
+  --ui-border: rgba(148, 163, 184, 0.28);
+  --ui-border-strong: rgba(203, 213, 225, 0.4);
+  --ui-surface: rgba(15, 23, 42, 0.86);
+  --ui-surface-soft: rgba(15, 23, 42, 0.72);
+  --ui-surface-strong: #020617;
+  --ui-text: #f8fafc;
+  --ui-text-muted: #94a3b8;
+  --ui-text-inverse: #f8fafc;
+  --ui-accent: #34d399;
+  --ui-focus: rgba(52, 211, 153, 0.4);
+  --ui-shadow-sm: 0 10px 24px rgba(2, 6, 23, 0.45);
+  --ui-shadow-md: 0 16px 32px rgba(2, 6, 23, 0.6);
+  --ui-shadow-glass: 0 0 0 1px rgba(148, 163, 184, 0.24),
+    0 0 36px rgba(45, 212, 191, 0.16), 0 16px 36px rgba(2, 6, 23, 0.6);
 }
 
 /* Jednoduché tmavé pozadí na <body> */
@@ -542,4 +576,118 @@ body {
     background-color: rgba(var(--surface-800-rgb), 0.8) !important;
   }
 
+}
+
+@layer components {
+  .ui-card {
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-xl);
+    background: var(--ui-surface);
+    box-shadow: var(--ui-shadow-sm);
+    transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+  }
+
+  .ui-card:hover {
+    border-color: var(--ui-border-strong);
+    box-shadow: var(--ui-shadow-md);
+  }
+
+  .ui-card-quiet {
+    box-shadow: none;
+  }
+
+  .ui-chip-group {
+    display: inline-flex;
+    border-radius: 999px;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-surface-soft);
+    padding: 4px;
+    gap: 4px;
+  }
+
+  .ui-chip {
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ui-text-muted);
+    font-weight: 600;
+    transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+  }
+
+  .ui-chip:hover {
+    background: rgba(148, 163, 184, 0.14);
+    color: var(--ui-text);
+  }
+
+  .ui-chip-active {
+    background: var(--ui-surface-strong);
+    color: var(--ui-text-inverse);
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+
+  .ui-btn-primary {
+    border-radius: 12px;
+    border: 1px solid var(--ui-surface-strong);
+    background: var(--ui-surface-strong);
+    color: var(--ui-text-inverse);
+    font-weight: 600;
+    transition: filter 140ms ease, background-color 140ms ease;
+  }
+
+  .ui-btn-primary:hover {
+    filter: brightness(0.92);
+  }
+
+  .ui-btn-secondary {
+    border-radius: 12px;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-surface-soft);
+    color: var(--ui-text);
+    font-weight: 600;
+    transition: border-color 140ms ease, background-color 140ms ease;
+  }
+
+  .ui-btn-secondary:hover {
+    border-color: var(--ui-border-strong);
+  }
+
+  .ui-focus:focus-visible,
+  .ui-btn-primary:focus-visible,
+  .ui-btn-secondary:focus-visible,
+  .ui-chip:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--ui-focus);
+  }
+
+  .ui-kicker {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ui-text-muted);
+    font-weight: 600;
+  }
+
+  .ui-money-positive {
+    color: var(--ui-accent);
+    text-shadow: 0 0 10px rgba(52, 211, 153, 0.22);
+  }
+
+  .ui-glass {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--ui-radius-lg);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    background: rgba(15, 23, 42, 0.72);
+    background: color-mix(in srgb, var(--ui-surface-strong) 72%, transparent);
+    box-shadow: var(--ui-shadow-glass);
+    backdrop-filter: blur(12px);
+  }
+
+  .ui-glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(135deg, rgba(45, 212, 191, 0.12), transparent 52%, rgba(16, 185, 129, 0.1));
+  }
 }

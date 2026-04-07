@@ -21,12 +21,12 @@ export function CashflowHeader({
           className="text-4xl sm:text-5xl !text-slate-900"
         />
 
-        <div className="min-w-[340px] rounded-2xl border border-slate-900 bg-slate-950 px-5 py-4 shadow-[0_12px_24px_rgba(2,6,23,0.35)]">
-          <div className="text-[11px] uppercase tracking-[0.22em] text-white">
+        <div className="ui-glass min-w-[340px] px-5 py-4">
+          <div className="relative ui-kicker text-white/90">
             Celkové očekávané cashflow
           </div>
-          <div className="mt-1">
-            <div className="whitespace-nowrap text-3xl sm:text-4xl font-semibold leading-none text-emerald-400">
+          <div className="relative mt-1">
+            <div className="ui-money-positive whitespace-nowrap text-3xl sm:text-4xl font-semibold leading-none">
               {formatMoney(totalCashflow)}
             </div>
           </div>
@@ -37,7 +37,7 @@ export function CashflowHeader({
         <button
           type="button"
           onClick={onTogglePastYears}
-          className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
+          className="ui-btn-primary ui-focus rounded-full px-4 py-2 text-sm"
         >
           {showPastYears ? "Skrýt předchozí roky" : "Zobrazit předchozí roky"}
         </button>

@@ -51,7 +51,7 @@ const loadFirestore = () => {
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [backgroundColor, setBackgroundColor] = useState<"white" | "black">("white");
+  const [backgroundColor, setBackgroundColor] = useState<"white">("white");
   const pathname = usePathname();
   const router = useRouter();
   const lastActiveUpdateRef = useRef(0);
@@ -130,10 +130,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       const storedColor = window.localStorage.getItem(
         "settings.backgroundColor"
       );
+      if (storedColor !== "white") {
+        window.localStorage.setItem("settings.backgroundColor", "white");
+      }
       if (!mounted) return;
-      const parsed =
-        storedColor === "black" || storedColor === "blue" ? "black" : "white";
-      setBackgroundColor(parsed);
+      setBackgroundColor("white");
     };
 
     updateFromStorage();
@@ -141,11 +142,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const customHandler = (ev: Event) => {
       const detail = (ev as CustomEvent<{ backgroundColor?: string }>).detail;
       if (detail && typeof detail.backgroundColor === "string") {
-        const bg =
-          detail.backgroundColor === "black" || detail.backgroundColor === "blue"
-            ? "black"
-            : "white";
-        setBackgroundColor(bg);
+        window.localStorage.setItem("settings.backgroundColor", "white");
+        setBackgroundColor("white");
       } else {
         updateFromStorage();
       }
@@ -177,9 +175,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     );
 
     body.classList.add("simple-bg");
-    body.classList.add(
-      backgroundColor === "black" ? "simple-bg-black" : "simple-bg-white"
-    );
+    body.classList.add("simple-bg-white");
   }, [backgroundColor]);
 
   const handleLogout = async () => {
@@ -425,10 +421,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       <div
         className="fixed inset-0 -z-10 transition-colors duration-200"
         style={{
-          backgroundColor:
-            backgroundColor === "black"
-              ? "#000000"
-              : "#ffffff",
+          backgroundColor: "#ffffff",
         }}
       />
 
@@ -482,7 +475,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           </nav>
 
           <div className="mt-auto border-t border-slate-200 px-4 py-4 text-sm">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div className="ui-card ui-card-quiet rounded-2xl bg-slate-50 p-3">
               {user && (
                 <div className="mb-2 text-[11px] text-slate-600">
                   Přihlášen jako{" "}
@@ -494,7 +487,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
               <button
                 type="button"
                 onClick={handleLogout}
-                className="w-full rounded-xl border border-slate-900 bg-slate-900 py-2 text-xs font-semibold text-white transition hover:bg-black"
+                className="ui-btn-primary ui-focus w-full rounded-xl py-2 text-xs"
               >
                 Odhlásit se
               </button>
@@ -525,7 +518,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen((prev) => !prev)}
-                className="flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-black"
+                className="ui-btn-primary ui-focus flex items-center gap-2 rounded-xl px-3 py-2 text-xs"
               >
                 <span className="text-base leading-none">☰</span>
                 <span>Menu</span>
@@ -555,7 +548,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                   <button
                     type="button"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-semibold text-white hover:bg-black"
+                    className="ui-btn-primary ui-focus rounded-full px-3 py-1 text-xs"
                   >
                     Zavřít
                   </button>
@@ -604,7 +597,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                   <button
                     type="button"
                     onClick={handleLogout}
-                    className="w-full rounded-xl border border-slate-900 bg-slate-900 py-2 text-xs font-medium text-white hover:bg-black"
+                    className="ui-btn-primary ui-focus w-full rounded-xl py-2 text-xs"
                   >
                     Odhlásit se
                   </button>
@@ -618,7 +611,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="fixed bottom-4 right-4 z-20 flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-4 py-2 font-mono text-white shadow-lg shadow-black/35 hover:bg-black focus:outline-none focus:ring-2 focus:ring-slate-400 lg:hidden"
+              className="ui-btn-primary ui-focus fixed bottom-4 right-4 z-20 flex items-center gap-2 rounded-full px-4 py-2 font-mono text-white shadow-lg shadow-black/35 lg:hidden"
             >
               <span className="text-lg leading-none">☰</span>
               <span className="text-sm font-semibold">Menu</span>
@@ -657,15 +650,15 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                   <button
                     type="button"
                     onClick={handleReloadSubscription}
-                    className="w-full rounded-2xl bg-white/10 border border-white/30 px-4 py-2.5 text-sm font-medium text-slate-50 hover:bg-white/15"
-                  >
-                    Mám zaplaceno, načíst znovu
-                  </button>
+                  className="ui-btn-secondary ui-focus w-full rounded-2xl border-white/30 bg-white/10 px-4 py-2.5 text-sm text-slate-50 hover:bg-white/15"
+                >
+                  Mám zaplaceno, načíst znovu
+                </button>
 
                   <button
                     type="button"
                     onClick={handleLogout}
-                    className="w-full rounded-2xl bg-white text-slate-900 px-4 py-2.5 text-sm font-medium hover:bg-slate-100"
+                    className="ui-btn-secondary ui-focus w-full rounded-2xl bg-white px-4 py-2.5 text-sm text-slate-900 hover:bg-slate-100"
                   >
                     Zpět na přihlášení
                   </button>

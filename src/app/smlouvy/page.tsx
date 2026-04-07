@@ -1166,14 +1166,14 @@ function ContractsPageContent() {
           <SplitTitle text="Smlouvy" className="!text-slate-900" />
 
           {canShowTeamToggle && (
-            <div className="inline-flex self-start rounded-full border border-slate-300 bg-white p-1 text-xs sm:self-end">
+            <div className="ui-chip-group self-start text-xs sm:self-end">
               <button
                 type="button"
                 onClick={() => setShowTeam(false)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full transition ${
+                className={`ui-chip ui-focus inline-flex items-center gap-1.5 px-3 py-1.5 ${
                   !showTeam
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-700"
+                    ? "ui-chip-active"
+                    : ""
                 }`}
               >
                 <UserRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
@@ -1182,10 +1182,10 @@ function ContractsPageContent() {
               <button
                 type="button"
                 onClick={() => setShowTeam(true)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full transition ${
+                className={`ui-chip ui-focus inline-flex items-center gap-1.5 px-3 py-1.5 ${
                   showTeam
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-700"
+                    ? "ui-chip-active"
+                    : ""
                 }`}
               >
                 <UsersRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
@@ -1197,7 +1197,7 @@ function ContractsPageContent() {
 
         {/* SEARCH BAR + FILTER + BULK ACTIONS */}
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-1 items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 shadow-[0_6px_18px_rgba(15,23,42,0.04)]">
+          <div className="ui-card ui-card-quiet flex flex-1 items-center gap-2 rounded-2xl bg-white px-4 py-2.5">
             <span className="text-sm">🔍</span>
             <input
               type="text"
@@ -1209,16 +1209,16 @@ function ContractsPageContent() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-            <div className="inline-flex rounded-full border border-slate-300 bg-white p-1 text-xs">
+            <div className="ui-chip-group text-xs">
               <button
                 type="button"
                 onClick={() =>
                   startFilterTransition(() => setFilterMode("latest"))
                 }
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full transition ${
+                className={`ui-chip ui-focus inline-flex items-center gap-1.5 px-3 py-1.5 ${
                   filterMode === "latest"
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-700"
+                    ? "ui-chip-active"
+                    : ""
                 }`}
               >
                 <ArrowDownUp size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
@@ -1229,10 +1229,10 @@ function ContractsPageContent() {
                 onClick={() =>
                   startFilterTransition(() => setFilterMode("anniversary"))
                 }
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full transition ${
+                className={`ui-chip ui-focus inline-flex items-center gap-1.5 px-3 py-1.5 ${
                   filterMode === "anniversary"
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-700"
+                    ? "ui-chip-active"
+                    : ""
                 }`}
               >
                 <CalendarDays size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
@@ -1244,7 +1244,7 @@ function ContractsPageContent() {
               <button
                 type="button"
                 onClick={() => setFilterModalOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black"
+                className="ui-btn-primary ui-focus inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs"
               >
                 <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                 <span>Filtr</span>
@@ -1258,10 +1258,10 @@ function ContractsPageContent() {
                     setSelectMode(true);
                   }
                 }}
-                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                className={`ui-focus rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                   selectMode
                     ? "border-rose-600 bg-rose-100 text-rose-700"
-                    : "border-slate-900 bg-slate-900 text-white hover:bg-black"
+                    : "ui-btn-primary"
                 }`}
               >
                 {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
@@ -1309,7 +1309,7 @@ function ContractsPageContent() {
             Načítám smlouvy…
           </p>
         ) : isAnniversaryLoading && filteredContracts.length === 0 ? (
-          <div className="mt-4 space-y-2 rounded-2xl border border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+          <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
             <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
             <p className="font-medium">Vyhledávám blížící se výročí…</p>
             <p className="text-xs text-slate-500">
@@ -1317,7 +1317,7 @@ function ContractsPageContent() {
             </p>
           </div>
         ) : filteredContracts.length === 0 ? (
-          <div className="mt-4 space-y-2 rounded-2xl border border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+          <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
             {filterMode === "anniversary" ? (
               <>
                 <p className="font-medium">Žádná blížící se výročí</p>
@@ -1356,7 +1356,7 @@ function ContractsPageContent() {
         ) : (
           <div className="mt-4 space-y-3">
             {isAnniversaryLoading && (
-              <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)]">
+              <div className="ui-card ui-card-quiet flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-xs text-slate-700">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
                 <span>Dohledávám další výročí…</span>
               </div>
