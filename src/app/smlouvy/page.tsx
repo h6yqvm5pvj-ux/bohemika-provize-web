@@ -316,25 +316,22 @@ function nextAnniversaryDate(start: Date, now: Date): Date {
   return candidate;
 }
 
-function addYears(date: Date, years: number) {
-  const copy = new Date(date.getTime());
-  copy.setFullYear(copy.getFullYear() + years);
-  return copy;
-}
+const ANNIVERSARY_WINDOW_DAYS = 90;
 
 function isAnniversarySoon(
   date: Date | null
-): { soon: boolean; next?: Date; daysLeft?: number } {
+): { soon: boolean; next?: Date; daysLeft?: number; anniversaryNumber?: number } {
   if (!date) return { soon: false };
-  const now = new Date();
+  const nowRaw = new Date();
+  const now = new Date(nowRaw.getFullYear(), nowRaw.getMonth(), nowRaw.getDate());
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const next = nextAnniversaryDate(start, now);
   const diffDays = (next.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
   const daysLeft = Math.ceil(diffDays);
-  const firstAnniversary = addYears(start, 1);
-  const isRealAnniversary = next.getTime() >= firstAnniversary.getTime();
-  const soon = diffDays <= 60 && diffDays >= 0 && isRealAnniversary;
-  return { soon, next, daysLeft };
+  const anniversaryNumber = next.getFullYear() - start.getFullYear();
+  const isRealAnniversary = anniversaryNumber >= 1;
+  const soon = diffDays <= ANNIVERSARY_WINDOW_DAYS && diffDays >= 0 && isRealAnniversary;
+  return { soon, next, daysLeft, anniversaryNumber: isRealAnniversary ? anniversaryNumber : undefined };
 }
 
 function formatDaysLeft(days: number): string {
@@ -549,6 +546,14 @@ function writeContractsViewState(
   }
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    const msg = error.message?.trim();
+    if (msg) return msg;
+  }
+  return fallback;
+}
+
 function ContractsPageContent() {
   const searchParams = useSearchParams();
   const [isFilterPending, startFilterTransition] = useTransition();
@@ -608,15 +613,45 @@ function ContractsPageContent() {
       if (!user) {
         throw new Error("Nejsi přihlášený.");
       }
-      const token = await user.getIdToken(true); // force refresh to avoid expired/invalid token
       const params = new URLSearchParams({ scope });
       if (cursor) params.set("cursor", cursor);
       if (includeTeam) params.set("includeTeam", "1");
 
-      const res = await fetch(`/api/contracts?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = (await res.json()) as ContractsApiResponse;
+      const requestWithToken = async (token: string) =>
+        fetch(`/api/contracts?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+      let token: string;
+      try {
+        // Prefer cached token. Forced refresh only when API returns 401.
+        token = await user.getIdToken();
+      } catch (err) {
+        const code = (err as { code?: string } | null)?.code;
+        if (code === "auth/network-request-failed") {
+          throw new Error(
+            "Síťové připojení je dočasně nedostupné. Zkus to prosím znovu."
+          );
+        }
+        throw err;
+      }
+
+      let res: Response;
+      try {
+        res = await requestWithToken(token);
+      } catch {
+        throw new Error(
+          "Nepodařilo se spojit se serverem. Zkontroluj připojení a zkus to znovu."
+        );
+      }
+
+      let data = (await res.json()) as ContractsApiResponse;
+      if (res.status === 401) {
+        const refreshed = await user.getIdToken(true);
+        res = await requestWithToken(refreshed);
+        data = (await res.json()) as ContractsApiResponse;
+      }
+
       if (!res.ok || data.ok === false) {
         throw new Error(data.error || "Nepodařilo se načíst smlouvy.");
       }
@@ -718,8 +753,13 @@ function ContractsPageContent() {
         const data = await apiFetchContracts({ scope: "my", includeTeam: true });
         applyContractsPayload(email, data);
       } catch (e) {
-        console.error("Chyba při načítání smluv:", e);
-        setLoadError("Nepodařilo se načíst nejnovější smlouvy.");
+        const msg = getErrorMessage(e, "Nepodařilo se načíst nejnovější smlouvy.");
+        if (msg.toLowerCase().includes("síť") || msg.toLowerCase().includes("network")) {
+          console.warn("Dočasný výpadek sítě při načítání smluv:", msg);
+        } else {
+          console.error("Chyba při načítání smluv:", e);
+        }
+        setLoadError(msg);
       } finally {
         if (!silent) setLoading(false);
       }
@@ -911,8 +951,13 @@ function ContractsPageContent() {
       }
       setAutoScanPaused(false);
     } catch (e) {
-      console.error("Chyba při načítání dalších smluv:", e);
-      setLoadError("Nepodařilo se načíst další smlouvy. Zkus to prosím znovu.");
+      const msg = getErrorMessage(e, "Nepodařilo se načíst další smlouvy. Zkus to prosím znovu.");
+      if (msg.toLowerCase().includes("síť") || msg.toLowerCase().includes("network")) {
+        console.warn("Dočasný výpadek sítě při načítání dalších smluv:", msg);
+      } else {
+        console.error("Chyba při načítání dalších smluv:", e);
+      }
+      setLoadError(msg);
       setAutoScanPaused(true);
     } finally {
       setLoadingMore(false);
@@ -1322,7 +1367,7 @@ function ContractsPageContent() {
               <>
                 <p className="font-medium">Žádná blížící se výročí</p>
                 <p className="text-xs text-slate-500">
-                  V okně 60 dní a méně od dneška není žádné výročí (počítáno z data
+                  V okně 90 dní a méně od dneška není žádné výročí (počítáno z data
                   počátku smlouvy, případně podpisu).
                 </p>
               </>
@@ -1432,14 +1477,22 @@ function ContractsPageContent() {
                           className="mt-2 text-xs font-semibold text-rose-600"
                           title={
                             anniversaryInfo.next
-                              ? `Výročí: ${anniversaryInfo.next.toLocaleDateString(
+                              ? `${
+                                  anniversaryInfo.anniversaryNumber
+                                    ? `${anniversaryInfo.anniversaryNumber}. výročí`
+                                    : "Výročí"
+                                }: ${anniversaryInfo.next.toLocaleDateString(
                                   "cs-CZ"
                                 )}`
                               : undefined
                           }
                         >
                           {anniversaryInfo.daysLeft != null
-                            ? `${formatDaysLeft(anniversaryInfo.daysLeft)} do výročí`
+                            ? `${
+                                anniversaryInfo.anniversaryNumber
+                                  ? `${anniversaryInfo.anniversaryNumber}. výročí`
+                                  : "Výročí"
+                              } za ${formatDaysLeft(anniversaryInfo.daysLeft)}`
                             : "Blížící se výročí"}
                         </div>
                       )}
@@ -1533,7 +1586,7 @@ function ContractsPageContent() {
                   disabled={loadingMore}
                   className="rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {loadingMore ? "Načítám…" : "Načíst dalších 10"}
+                  {loadingMore ? "Načítám…" : "Načíst další smlouvy"}
                 </button>
               </div>
             )}

@@ -56,7 +56,7 @@ type ContractsResponse = {
 
 type ErrorResponse = { ok: false; error: string };
 
-const PAGE_SIZE_DEFAULT = 10;
+const PAGE_SIZE_DEFAULT = 30;
 const PAGE_SIZE_MAX = 50;
 
 const isManagerPosition = (pos: Position | null | undefined): boolean =>
