@@ -146,17 +146,6 @@ const PRODUCT_OPTIONS: { id: Product; label: string }[] = [
   { id: "comfortcc", label: "Comfort Commodity" },
 ];
 
-const TEMPORARILY_UNAVAILABLE_AUTO_PRODUCTS: Product[] = [
-  "allianzAuto",
-  "csobAuto",
-  "uniqaAuto",
-  "pillowAuto",
-  "kooperativaAuto",
-];
-
-const AUTO_PRODUCT_TEMP_UNAVAILABLE_MESSAGE =
-  "Aktuálně nelze přidat z důvodu změn koeficientů. U auto produktů je dočasně dostupné pouze ČPP Auto.";
-
 const REPLACEMENT_ELIGIBLE_PRODUCTS: Product[] = [
   "zamex",
   "domex",
@@ -525,7 +514,6 @@ export default function CalculatorPage() {
   const [items, setItems] = useState<CommissionResultItemDTO[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [unsupported, setUnsupported] = useState(false);
-  const [productNotice, setProductNotice] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -837,12 +825,6 @@ export default function CalculatorPage() {
   }, [user]);
 
   useEffect(() => {
-    if (TEMPORARILY_UNAVAILABLE_AUTO_PRODUCTS.includes(product)) {
-      setProduct("cppAuto");
-      setProductNotice(AUTO_PRODUCT_TEMP_UNAVAILABLE_MESSAGE);
-      return;
-    }
-
     const allowed = allowedFrequencies(product);
     if (!allowed.includes(frequency)) {
       setFrequency(allowed[0]);
@@ -1234,11 +1216,6 @@ export default function CalculatorPage() {
 
   const handleSaveContract = async (skipDuplicateCheck = false) => {
     if (!user) return;
-
-    if (TEMPORARILY_UNAVAILABLE_AUTO_PRODUCTS.includes(product)) {
-      setSaveMessage(AUTO_PRODUCT_TEMP_UNAVAILABLE_MESSAGE);
-      return;
-    }
 
     if (tipsterModeEnabled) {
       setSaveMessage("V režimu TIPAŘSKÉ spolupráce se smlouvy neukládají.");
@@ -1798,8 +1775,6 @@ export default function CalculatorPage() {
                       {PRODUCT_OPTIONS.map((p) => {
                         const isActive = p.id === product;
                         const iconSrc = productIcon(p.id);
-                        const temporarilyUnavailable =
-                          TEMPORARILY_UNAVAILABLE_AUTO_PRODUCTS.includes(p.id);
                         const unsupportedText = SUPPORTED_PRODUCTS.includes(p.id)
                           ? null
                           : "zatím bez výpočtu";
@@ -1809,20 +1784,13 @@ export default function CalculatorPage() {
                             key={p.id}
                             type="button"
                             onClick={() => {
-                              if (temporarilyUnavailable) {
-                                setProductNotice(AUTO_PRODUCT_TEMP_UNAVAILABLE_MESSAGE);
-                                return;
-                              }
                               setProduct(p.id);
-                              setProductNotice(null);
                               setProductOpen(false);
                             }}
                             className={`flex h-full w-full items-center justify-between gap-3 rounded-xl border border-slate-300 px-3 py-2.5 text-left text-sm transition ${
                               isActive
                                 ? "bg-slate-900 text-white"
-                                : temporarilyUnavailable
-                                  ? "cursor-not-allowed text-slate-400 bg-slate-50"
-                                  : "text-slate-900 hover:bg-slate-100"
+                                : "text-slate-900 hover:bg-slate-100"
                             }`}
                           >
                             <span className="flex items-center gap-3">
@@ -1836,11 +1804,6 @@ export default function CalculatorPage() {
                               </div>
                               <span>{p.label}</span>
                             </span>
-                            {temporarilyUnavailable && (
-                              <span className="ml-2 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
-                                dočasně nedostupné
-                              </span>
-                            )}
                             {unsupportedText && (
                               <span className="ml-2 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
                                 {unsupportedText}
@@ -1852,11 +1815,6 @@ export default function CalculatorPage() {
                     </div>
                   )}
                 </div>
-                {productNotice && (
-                  <p className="rounded-xl border border-amber-300 bg-amber-100 px-3 py-2 text-xs text-amber-800">
-                    {productNotice}
-                  </p>
-                )}
               </div>
 
               {canImportFromPdf && (

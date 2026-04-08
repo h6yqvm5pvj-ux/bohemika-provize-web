@@ -1549,44 +1549,7 @@ export function calculateCppPPRs(
 // ---------- Allianz Auto ----------
 
 function allianzAutoCoefficient(position: Position): number {
-  switch (position) {
-    // Poradci 1–10
-    case "poradce1":
-      return 4.16;
-    case "poradce2":
-      return 4.64;
-    case "poradce3":
-      return 5.04;
-    case "poradce4":
-      return 6.29;
-    case "poradce5":
-      return 7.07;
-    case "poradce6":
-      return 7.56;
-    case "poradce7":
-      return 8.44;
-    case "poradce8":
-      return 8.95;
-    case "poradce9":
-      return 9.33;
-    case "poradce10":
-      return 9.59;
-    // Manažeři 4–10
-    case "manazer4":
-      return 7.56;
-    case "manazer5":
-      return 8.44;
-    case "manazer6":
-      return 9.27;
-    case "manazer7":
-      return 10.08;
-    case "manazer8":
-      return 10.96;
-    case "manazer9":
-      return 11.72;
-    case "manazer10":
-      return 12.6;
-  }
+  return cppAutoCoefficient(position);
 }
 
 export function calculateAllianzAuto(
@@ -1595,7 +1558,7 @@ export function calculateAllianzAuto(
   position: Position
 ): CommissionResultDTO {
   const annual = amount * periodsPerYear(frequency);
-  const coef = allianzAutoCoefficient(position) / 100;
+  const coef = allianzAutoCoefficient(position);
   const immediate = annual * coef;
 
   const items: CommissionResultItemDTO[] = [
@@ -1607,44 +1570,7 @@ export function calculateAllianzAuto(
 // ---------- ČSOB Auto ----------
 
 function csobAutoCoefficient(position: Position): number {
-  switch (position) {
-    // Poradci 1–10
-    case "poradce1":
-      return 0.0393;
-    case "poradce2":
-      return 0.0438;
-    case "poradce3":
-      return 0.0476;
-    case "poradce4":
-      return 0.0594;
-    case "poradce5":
-      return 0.0668;
-    case "poradce6":
-      return 0.0714;
-    case "poradce7":
-      return 0.0798;
-    case "poradce8":
-      return 0.0845;
-    case "poradce9":
-      return 0.0881;
-    case "poradce10":
-      return 0.0906;
-    // Manažeři 4–10
-    case "manazer4":
-      return 0.0714;
-    case "manazer5":
-      return 0.0798;
-    case "manazer6":
-      return 0.0875;
-    case "manazer7":
-      return 0.0952;
-    case "manazer8":
-      return 0.1036;
-    case "manazer9":
-      return 0.1107;
-    case "manazer10":
-      return 0.119;
-  }
+  return cppAutoCoefficient(position);
 }
 
 export function calculateCsobAuto(
@@ -1666,44 +1592,7 @@ export function calculateCsobAuto(
 // ---------- UNIQA Auto ----------
 
 function uniqaAutoCoefficient(position: Position): number {
-  switch (position) {
-    // Poradci 1–10
-    case "poradce1":
-      return 0.0416;
-    case "poradce2":
-      return 0.0464;
-    case "poradce3":
-      return 0.0504;
-    case "poradce4":
-      return 0.0629;
-    case "poradce5":
-      return 0.0707;
-    case "poradce6":
-      return 0.0756;
-    case "poradce7":
-      return 0.0844;
-    case "poradce8":
-      return 0.0895;
-    case "poradce9":
-      return 0.0933;
-    case "poradce10":
-      return 0.096;
-    // Manažeři 4–10
-    case "manazer4":
-      return 0.0756;
-    case "manazer5":
-      return 0.0877;
-    case "manazer6":
-      return 0.0927;
-    case "manazer7":
-      return 0.1008;
-    case "manazer8":
-      return 0.1096;
-    case "manazer9":
-      return 0.1172;
-    case "manazer10":
-      return 0.126;
-  }
+  return cppAutoCoefficient(position);
 }
 
 export function calculateUniqaAuto(
@@ -1724,45 +1613,7 @@ export function calculateUniqaAuto(
 // ---------- Pillow Auto ----------
 
 function pillowAutoCoefficient(position: Position): number {
-  // stejné jako Allianz/UNIQA v procentech
-  switch (position) {
-    // Poradci 1–10
-    case "poradce1":
-      return 4.16;
-    case "poradce2":
-      return 4.64;
-    case "poradce3":
-      return 5.04;
-    case "poradce4":
-      return 6.29;
-    case "poradce5":
-      return 7.07;
-    case "poradce6":
-      return 7.56;
-    case "poradce7":
-      return 8.44;
-    case "poradce8":
-      return 8.95;
-    case "poradce9":
-      return 9.33;
-    case "poradce10":
-      return 9.59;
-    // Manažeři 4–10
-    case "manazer4":
-      return 7.56;
-    case "manazer5":
-      return 8.44;
-    case "manazer6":
-      return 9.27;
-    case "manazer7":
-      return 10.08;
-    case "manazer8":
-      return 10.96;
-    case "manazer9":
-      return 11.72;
-    case "manazer10":
-      return 12.6;
-  }
+  return cppAutoCoefficient(position);
 }
 
 export function calculatePillowAuto(
@@ -1770,7 +1621,7 @@ export function calculatePillowAuto(
   frequency: PaymentFrequency,
   position: Position
 ): CommissionResultDTO {
-  const coef = pillowAutoCoefficient(position) / 100;
+  const coef = pillowAutoCoefficient(position);
   const perPayment = amount * coef;
   const annualTotal = perPayment * periodsPerYear(frequency);
 
@@ -1783,45 +1634,7 @@ export function calculatePillowAuto(
 // ---------- Kooperativa Auto ----------
 
 function kooperativaAutoCoefficient(position: Position): number {
-  // stejné koeficienty jako Pillow/Allianz auto (v procentech)
-  switch (position) {
-    // Poradci 1–10
-    case "poradce1":
-      return 4.16;
-    case "poradce2":
-      return 4.64;
-    case "poradce3":
-      return 5.04;
-    case "poradce4":
-      return 6.29;
-    case "poradce5":
-      return 7.07;
-    case "poradce6":
-      return 7.56;
-    case "poradce7":
-      return 8.44;
-    case "poradce8":
-      return 8.95;
-    case "poradce9":
-      return 9.33;
-    case "poradce10":
-      return 9.59;
-    // Manažeři 4–10
-    case "manazer4":
-      return 7.56;
-    case "manazer5":
-      return 8.44;
-    case "manazer6":
-      return 9.27;
-    case "manazer7":
-      return 10.08;
-    case "manazer8":
-      return 10.96;
-    case "manazer9":
-      return 11.72;
-    case "manazer10":
-      return 12.6;
-  }
+  return cppAutoCoefficient(position);
 }
 
 export function calculateKooperativaAuto(
@@ -1829,7 +1642,7 @@ export function calculateKooperativaAuto(
   frequency: PaymentFrequency,
   position: Position
 ): CommissionResultDTO {
-  const coef = pct(kooperativaAutoCoefficient(position));
+  const coef = kooperativaAutoCoefficient(position);
   const perPayment = amount * coef;
   const annualTotal = perPayment * periodsPerYear(frequency);
 
@@ -2300,15 +2113,15 @@ export function getCoefficientSummary(
     case "cppPPRs":
       return [{ label: "Koeficient (z platby)", value: cppPPRsCoefficient(position) }];
     case "allianzAuto":
-      return [{ label: "Koeficient (z platby)", value: allianzAutoCoefficient(position) / 100 }];
+      return [{ label: "Koeficient (z platby)", value: allianzAutoCoefficient(position) }];
     case "csobAuto":
       return [{ label: "Koeficient (z platby)", value: csobAutoCoefficient(position) }];
     case "uniqaAuto":
       return [{ label: "Koeficient (z platby)", value: uniqaAutoCoefficient(position) }];
     case "pillowAuto":
-      return [{ label: "Koeficient (z platby)", value: pillowAutoCoefficient(position) / 100 }];
+      return [{ label: "Koeficient (z platby)", value: pillowAutoCoefficient(position) }];
     case "kooperativaAuto":
-      return [{ label: "Koeficient (z platby)", value: kooperativaAutoCoefficient(position) / 100 }];
+      return [{ label: "Koeficient (z platby)", value: kooperativaAutoCoefficient(position) }];
     case "zamex":
       return [{ label: "Koeficient (z platby)", value: zamexCoefficient(position) }];
     case "cppcestovko":
