@@ -7,9 +7,59 @@ import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "../plan-produkce/SplitTitle";
 
+let html2pdfPromise: Promise<any> | null = null;
+
+async function getHtml2Pdf() {
+  if (!html2pdfPromise) {
+    html2pdfPromise = import("html2pdf.js").then(
+      (mod: unknown) =>
+        (mod as { default?: unknown }).default ??
+        (mod as Record<string, unknown>)
+    );
+  }
+  return html2pdfPromise;
+}
+
+type ComparisonCard = {
+  key: string;
+  insurer: string;
+  badges: string[];
+  payout: number;
+  info: string;
+};
+
 const parseNumber = (val: string): number => {
   const num = Number(val.replace(",", ".").replace(/\s+/g, ""));
   return Number.isFinite(num) ? num : NaN;
+};
+
+const clampPercent = (value: number): number => Math.min(100, Math.max(0, value));
+
+const parsePercentInput = (raw: string): number => {
+  const parsed = parseNumber(raw);
+  if (!Number.isFinite(parsed)) return 0;
+  return clampPercent(parsed);
+};
+
+const formatPercent = (value: number): string =>
+  `${value.toLocaleString("cs-CZ", { maximumFractionDigits: 1 })} %`;
+
+const stripUnsupportedColorFunctions = (input: string): string =>
+  input.replace(/(?:oklch|lab)\([^)]*\)/gi, "#0f172a");
+
+const getInsurerLogoPath = (insurer: string): string | null => {
+  const normalized = insurer.toLowerCase();
+  if (normalized.includes("čpp") || normalized.includes("cpp")) return "/icons/cpp.png";
+  if (normalized.includes("uniqa")) return "/icons/uniqa.png";
+  if (normalized.includes("nn")) return "/icons/nn.png";
+  if (normalized.includes("kooperativa")) return "/icons/koop.png";
+  if (normalized.includes("pillow")) return "/icons/pillow.png";
+  if (normalized.includes("generali")) return "/icons/generali.png";
+  if (normalized.includes("metlife")) return "/icons/metlife.png";
+  if (normalized.includes("allianz")) return "/icons/allianz.png";
+  if (normalized.includes("maxima")) return "/icons/maxima.png";
+  if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csob.png";
+  return null;
 };
 
 const formatKcInput = (value: number): string =>
@@ -755,6 +805,110 @@ const NN_ORANGE_10X_TABLE: number[] = [
   1000, // 100 %
 ];
 
+const GENERALI_BEL_MONDO_20_TABLE: number[] = [
+  0, // 0 %
+  1, // 1 %
+  2, // 2 %
+  3, // 3 %
+  4, // 4 %
+  5, // 5 %
+  6, // 6 %
+  7, // 7 %
+  8, // 8 %
+  9, // 9 %
+  10, // 10 %
+  11, // 11 %
+  12, // 12 %
+  13, // 13 %
+  14, // 14 %
+  15, // 15 %
+  17, // 16 %
+  19, // 17 %
+  21, // 18 %
+  23, // 19 %
+  25, // 20 %
+  27, // 21 %
+  29, // 22 %
+  31, // 23 %
+  33, // 24 %
+  35, // 25 %
+  38, // 26 %
+  41, // 27 %
+  44, // 28 %
+  47, // 29 %
+  50, // 30 %
+  53, // 31 %
+  56, // 32 %
+  59, // 33 %
+  62, // 34 %
+  65, // 35 %
+  69, // 36 %
+  73, // 37 %
+  77, // 38 %
+  81, // 39 %
+  85, // 40 %
+  89, // 41 %
+  93, // 42 %
+  97, // 43 %
+  101, // 44 %
+  105, // 45 %
+  113, // 46 %
+  121, // 47 %
+  129, // 48 %
+  137, // 49 %
+  145, // 50 %
+  153, // 51 %
+  161, // 52 %
+  169, // 53 %
+  177, // 54 %
+  185, // 55 %
+  196, // 56 %
+  207, // 57 %
+  218, // 58 %
+  229, // 59 %
+  240, // 60 %
+  251, // 61 %
+  262, // 62 %
+  273, // 63 %
+  284, // 64 %
+  295, // 65 %
+  308, // 66 %
+  321, // 67 %
+  334, // 68 %
+  347, // 69 %
+  360, // 70 %
+  373, // 71 %
+  386, // 72 %
+  399, // 73 %
+  412, // 74 %
+  425, // 75 %
+  441, // 76 %
+  457, // 77 %
+  473, // 78 %
+  489, // 79 %
+  505, // 80 %
+  521, // 81 %
+  537, // 82 %
+  553, // 83 %
+  569, // 84 %
+  585, // 85 %
+  607, // 86 %
+  629, // 87 %
+  651, // 88 %
+  673, // 89 %
+  695, // 90 %
+  720, // 91 %
+  745, // 92 %
+  770, // 93 %
+  795, // 94 %
+  820, // 95 %
+  856, // 96 %
+  892, // 97 %
+  928, // 98 %
+  964, // 99 %
+  1000, // 100 %
+];
+
 const ALLIANZ_ZIVOT_ANCHORS: Array<{ p: number; v: number }> = [
   { p: 0, v: 0 },
   { p: 5, v: 5 },
@@ -903,6 +1057,11 @@ const getNnOrange10xPercent = (percent: number): number => {
   return NN_ORANGE_10X_TABLE[idx] ?? 0;
 };
 
+const getGeneraliBelMondo20Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return GENERALI_BEL_MONDO_20_TABLE[idx] ?? 0;
+};
+
 const getAllianzZivotPercent = (percent: number): number => {
   const clamped = Math.min(100, Math.max(0, percent));
   let lower = ALLIANZ_ZIVOT_ANCHORS[0];
@@ -1006,172 +1165,501 @@ export default function SrovnavacTrvalychNasledkuPage() {
     return limited;
   })();
 
-  const multiplier = getMultiplierForRange(rangePercentValue);
-  const payout = sumInsuredValue * multiplier * (rangePercentValue / 100);
-  const multiplier5x = getMultiplierForRange5x(rangePercentValue);
-  const payout5x = sumInsuredValue * multiplier5x * (rangePercentValue / 100);
-  const multiplierUniqa = getMultiplierUniqaDomino(rangePercentValue);
-  const payoutUniqa = sumInsuredValue * multiplierUniqa * (rangePercentValue / 100);
-  const uniqaZivotPercent = getUniqaZivotRadostPercent(rangePercentValue);
-  const payoutUniqaZivot = sumInsuredValue * (uniqaZivotPercent / 100);
-  const kooperativaFlexiPercent = getKooperativaFlexiPercent(rangePercentValue);
-  const payoutKooperativaFlexi = sumInsuredValue * (kooperativaFlexiPercent / 100);
-  const kooperativaFlexi4Percent = getKooperativaFlexi4Percent(rangePercentValue);
-  const payoutKooperativaFlexi4 = sumInsuredValue * (kooperativaFlexi4Percent / 100);
-  const metlifeOneGuardPercent = getMetlifeOneGuardPercent(rangePercentValue);
-  const payoutMetlifeOneGuard =
-    sumInsuredValue * (rangePercentValue / 100) * (metlifeOneGuardPercent / 100);
-  const metlifeGarde6Percent = getMetlifeGarde6Percent(rangePercentValue);
-  const payoutMetlifeGarde6 =
-    sumInsuredValue * (rangePercentValue / 100) * (metlifeGarde6Percent / 100);
-  const csobNasZivotPercent = getCsobNasZivotPercent(rangePercentValue);
-  const payoutCsobNasZivot = sumInsuredValue * (csobNasZivotPercent / 100);
-  const generaliMujZivotPercent = getGeneraliMujZivotPercent(rangePercentValue);
-  const payoutGeneraliMujZivot = sumInsuredValue * (generaliMujZivotPercent / 100);
-  const nnOrangePercent = getNnOrangePercent(rangePercentValue);
-  const payoutNnOrange = sumInsuredValue * (nnOrangePercent / 100);
-  const nnOrange10xPercent = getNnOrange10xPercent(rangePercentValue);
-  const payoutNnOrange10x = sumInsuredValue * (nnOrange10xPercent / 100);
-  const maximaMaxefektMultiplier = getMaximaMaxefektMultiplier(rangePercentValue);
-  const payoutMaximaMaxefekt =
-    sumInsuredValue * maximaMaxefektMultiplier * (rangePercentValue / 100);
-  const allianzZivotPercent = getAllianzZivotPercent(rangePercentValue);
-  const payoutAllianzZivot = sumInsuredValue * (allianzZivotPercent / 100);
-  const simpleaMultiplier = getSimpleaMultiplier(rangePercentValue);
-  const payoutSimplea =
-    sumInsuredValue * simpleaMultiplier * (rangePercentValue / 100);
-  const pillowMultiplier = getPillowMultiplier(rangePercentValue);
-  const payoutPillow =
-    sumInsuredValue * pillowMultiplier * (rangePercentValue / 100);
+  const buildCardsForPercent = (percent: number): ComparisonCard[] => {
+    const normalizedPercent = clampPercent(percent);
+
+    const multiplier = getMultiplierForRange(normalizedPercent);
+    const payout = sumInsuredValue * multiplier * (normalizedPercent / 100);
+    const multiplier5x = getMultiplierForRange5x(normalizedPercent);
+    const payout5x = sumInsuredValue * multiplier5x * (normalizedPercent / 100);
+    const multiplierUniqa = getMultiplierUniqaDomino(normalizedPercent);
+    const payoutUniqa = sumInsuredValue * multiplierUniqa * (normalizedPercent / 100);
+    const uniqaZivotPercent = getUniqaZivotRadostPercent(normalizedPercent);
+    const payoutUniqaZivot = sumInsuredValue * (uniqaZivotPercent / 100);
+    const kooperativaFlexiPercent = getKooperativaFlexiPercent(normalizedPercent);
+    const payoutKooperativaFlexi = sumInsuredValue * (kooperativaFlexiPercent / 100);
+    const kooperativaFlexi4Percent = getKooperativaFlexi4Percent(normalizedPercent);
+    const payoutKooperativaFlexi4 = sumInsuredValue * (kooperativaFlexi4Percent / 100);
+    const metlifeOneGuardPercent = getMetlifeOneGuardPercent(normalizedPercent);
+    const payoutMetlifeOneGuard =
+      sumInsuredValue * (normalizedPercent / 100) * (metlifeOneGuardPercent / 100);
+    const metlifeGarde6Percent = getMetlifeGarde6Percent(normalizedPercent);
+    const payoutMetlifeGarde6 =
+      sumInsuredValue * (normalizedPercent / 100) * (metlifeGarde6Percent / 100);
+    const csobNasZivotPercent = getCsobNasZivotPercent(normalizedPercent);
+    const payoutCsobNasZivot = sumInsuredValue * (csobNasZivotPercent / 100);
+    const generaliMujZivotPercent = getGeneraliMujZivotPercent(normalizedPercent);
+    const payoutGeneraliMujZivot = sumInsuredValue * (generaliMujZivotPercent / 100);
+    const nnOrangePercent = getNnOrangePercent(normalizedPercent);
+    const payoutNnOrange = sumInsuredValue * (nnOrangePercent / 100);
+    const nnOrange10xPercent = getNnOrange10xPercent(normalizedPercent);
+    const payoutNnOrange10x = sumInsuredValue * (nnOrange10xPercent / 100);
+    const generaliBelMondo20Percent = getGeneraliBelMondo20Percent(normalizedPercent);
+    const payoutGeneraliBelMondo20 = sumInsuredValue * (generaliBelMondo20Percent / 100);
+    const maximaMaxefektMultiplier = getMaximaMaxefektMultiplier(normalizedPercent);
+    const payoutMaximaMaxefekt =
+      sumInsuredValue * maximaMaxefektMultiplier * (normalizedPercent / 100);
+    const allianzZivotPercent = getAllianzZivotPercent(normalizedPercent);
+    const payoutAllianzZivot = sumInsuredValue * (allianzZivotPercent / 100);
+    const simpleaMultiplier = getSimpleaMultiplier(normalizedPercent);
+    const payoutSimplea =
+      sumInsuredValue * simpleaMultiplier * (normalizedPercent / 100);
+    const pillowMultiplier = getPillowMultiplier(normalizedPercent);
+    const payoutPillow =
+      sumInsuredValue * pillowMultiplier * (normalizedPercent / 100);
+
+    return [
+      {
+        key: "cpp-10x",
+        insurer: "ČPP Neon",
+        badges: ["10× progrese"],
+        payout: payout,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier} × ${formatPercent(normalizedPercent)}.`,
+      },
+      {
+        key: "cpp-5x",
+        insurer: "ČPP Neon",
+        badges: ["5× progrese"],
+        payout: payout5x,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
+      },
+      {
+        key: "uniqa-domino",
+        insurer: "UNIQA Domino",
+        badges: ["10× progrese"],
+        payout: payoutUniqa,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplierUniqa} × ${formatPercent(normalizedPercent)}.`,
+      },
+      {
+        key: "uniqa-zivot-radost",
+        insurer: "UNIQA Život & radost",
+        badges: ["10× progrese"],
+        payout: payoutUniqaZivot,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaZivotPercent}%.`,
+      },
+      {
+        key: "koop-flexi",
+        insurer: "Kooperativa FLEXI",
+        badges: ["10× progrese"],
+        payout: payoutKooperativaFlexi,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexiPercent}%.`,
+      },
+      {
+        key: "koop-flexi-4x",
+        insurer: "Kooperativa FLEXI",
+        badges: ["4× progrese"],
+        payout: payoutKooperativaFlexi4,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexi4Percent}%.`,
+      },
+      {
+        key: "metlife-oneguard",
+        insurer: "MetLife OneGuard",
+        badges: ["10× progrese"],
+        payout: payoutMetlifeOneGuard,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${metlifeOneGuardPercent}%.`,
+      },
+      {
+        key: "metlife-garde6",
+        insurer: "MetLife Garde 6.0",
+        badges: ["10× progrese"],
+        payout: payoutMetlifeGarde6,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${metlifeGarde6Percent}%.`,
+      },
+      {
+        key: "csob-nas-zivot",
+        insurer: "ČSOB Náš Život",
+        badges: ["8× progrese"],
+        payout: payoutCsobNasZivot,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${csobNasZivotPercent}%.`,
+      },
+      {
+        key: "generali-muj-zivot",
+        insurer: "Generali Můj Život",
+        badges: ["10× progrese"],
+        payout: payoutGeneraliMujZivot,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliMujZivotPercent}%.`,
+      },
+      {
+        key: "generali-bel-mondo-20",
+        insurer: "Generali Bel Mondo 20",
+        badges: ["10× progrese"],
+        payout: payoutGeneraliBelMondo20,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliBelMondo20Percent}%.`,
+      },
+      {
+        key: "nn-orange",
+        insurer: "NN Orange",
+        badges: ["5× progrese"],
+        payout: payoutNnOrange,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrangePercent}%.`,
+      },
+      {
+        key: "nn-orange-10x",
+        insurer: "NN Orange",
+        badges: ["10× progrese"],
+        payout: payoutNnOrange10x,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrange10xPercent}%.`,
+      },
+      {
+        key: "maxima-maxefekt",
+        insurer: "Maxima MAXEFEKT 6.0",
+        badges: ["10× progrese"],
+        payout: payoutMaximaMaxefekt,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${maximaMaxefektMultiplier} × ${formatPercent(normalizedPercent)}.`,
+      },
+      {
+        key: "allianz-zivot",
+        insurer: "Allianz Život",
+        badges: ["8× progrese"],
+        payout: payoutAllianzZivot,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzZivotPercent}%.`,
+      },
+      {
+        key: "simplea-2",
+        insurer: "Simplea 2.0",
+        badges: ["10× progrese"],
+        payout: payoutSimplea,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${simpleaMultiplier} × ${formatPercent(normalizedPercent)}.`,
+      },
+      {
+        key: "pillow-uraz-nemoc",
+        insurer: "Pillow Úraz Nemoc",
+        badges: ["10× progrese"],
+        payout: payoutPillow,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${pillowMultiplier}.`,
+      },
+    ];
+  };
 
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState<string | null>(null);
-
-  const cards = [
-    {
-      key: "cpp-10x",
-      insurer: "ČPP Neon",
-      badges: ["10× progrese"],
-      payout: payout,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier} × ${rangePercentValue}%.`,
-    },
-    {
-      key: "cpp-5x",
-      insurer: "ČPP Neon",
-      badges: ["5× progrese"],
-      payout: payout5x,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${rangePercentValue}%.`,
-    },
-    {
-      key: "uniqa-domino",
-      insurer: "UNIQA Domino",
-      badges: ["10× progrese"],
-      payout: payoutUniqa,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplierUniqa} × ${rangePercentValue}%.`,
-    },
-    {
-      key: "uniqa-zivot-radost",
-      insurer: "UNIQA Život & radost",
-      badges: ["10× progrese"],
-      payout: payoutUniqaZivot,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaZivotPercent}%.`,
-    },
-    {
-      key: "koop-flexi",
-      insurer: "Kooperativa FLEXI",
-      badges: ["10× progrese"],
-      payout: payoutKooperativaFlexi,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexiPercent}%.`,
-    },
-    {
-      key: "koop-flexi-4x",
-      insurer: "Kooperativa FLEXI",
-      badges: ["4× progrese"],
-      payout: payoutKooperativaFlexi4,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexi4Percent}%.`,
-    },
-    {
-      key: "metlife-oneguard",
-      insurer: "MetLife OneGuard",
-      badges: ["10× progrese"],
-      payout: payoutMetlifeOneGuard,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${rangePercentValue}% × ${metlifeOneGuardPercent}%.`,
-    },
-    {
-      key: "metlife-garde6",
-      insurer: "MetLife Garde 6.0",
-      badges: ["10× progrese"],
-      payout: payoutMetlifeGarde6,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${rangePercentValue}% × ${metlifeGarde6Percent}%.`,
-    },
-    {
-      key: "csob-nas-zivot",
-      insurer: "ČSOB Náš Život",
-      badges: ["8× progrese"],
-      payout: payoutCsobNasZivot,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${csobNasZivotPercent}%.`,
-    },
-    {
-      key: "generali-muj-zivot",
-      insurer: "Generali Můj Život",
-      badges: ["10× progrese"],
-      payout: payoutGeneraliMujZivot,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliMujZivotPercent}%.`,
-    },
-    {
-      key: "nn-orange",
-      insurer: "NN Orange",
-      badges: ["5× progrese"],
-      payout: payoutNnOrange,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrangePercent}%.`,
-    },
-    {
-      key: "nn-orange-10x",
-      insurer: "NN Orange",
-      badges: ["10× progrese"],
-      payout: payoutNnOrange10x,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrange10xPercent}%.`,
-    },
-    {
-      key: "maxima-maxefekt",
-      insurer: "Maxima MAXEFEKT 6.0",
-      badges: ["10× progrese"],
-      payout: payoutMaximaMaxefekt,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${maximaMaxefektMultiplier} × ${rangePercentValue}%.`,
-    },
-    {
-      key: "allianz-zivot",
-      insurer: "Allianz Život",
-      badges: ["8× progrese"],
-      payout: payoutAllianzZivot,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzZivotPercent}%.`,
-    },
-    {
-      key: "simplea-2",
-      insurer: "Simplea 2.0",
-      badges: ["10× progrese"],
-      payout: payoutSimplea,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${simpleaMultiplier} × ${rangePercentValue}%.`,
-    },
-    {
-      key: "pillow-uraz-nemoc",
-      insurer: "Pillow Úraz Nemoc",
-      badges: ["10× progrese"],
-      payout: payoutPillow,
-      info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${rangePercentValue}% × ${pillowMultiplier}.`,
-    },
-  ];
+  const [scenarioAInput, setScenarioAInput] = useState("25");
+  const [scenarioBInput, setScenarioBInput] = useState("50");
+  const [scenarioCInput, setScenarioCInput] = useState("75");
+  const [scenarioExporting, setScenarioExporting] = useState(false);
+  const [scenarioExportError, setScenarioExportError] = useState<string | null>(null);
+  const cards = buildCardsForPercent(rangePercentValue);
 
   const insurerOptions = Array.from(new Set(cards.map((card) => card.insurer)));
 
-  const visibleCards = cards.filter((card) => {
-    const matchesProgression =
-      !showOnly10x || card.badges.some((badge) => badge.includes("10× progrese"));
-    const matchesInsurer =
-      selectedInsurers.length === 0 || selectedInsurers.includes(card.insurer);
+  const applyCardFilters = (sourceCards: ComparisonCard[]): ComparisonCard[] =>
+    sourceCards.filter((card) => {
+      const matchesProgression =
+        !showOnly10x || card.badges.some((badge) => badge.includes("10× progrese"));
+      const matchesInsurer =
+        selectedInsurers.length === 0 || selectedInsurers.includes(card.insurer);
 
-    return matchesProgression && matchesInsurer;
-  });
+      return matchesProgression && matchesInsurer;
+    });
+
+  const scenarioValues = [
+    { label: "Nižší rozsah", percent: parsePercentInput(scenarioAInput) },
+    { label: "Střední rozsah", percent: parsePercentInput(scenarioBInput) },
+    { label: "Vysoký rozsah", percent: parsePercentInput(scenarioCInput) },
+  ];
+
+  const escapeHtml = (value: string): string =>
+    value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+  const handleExportThreeScenarioPdf = async () => {
+    if (sumInsuredValue <= 0) {
+      setScenarioExportError("Zadej nejdřív pojistnou částku.");
+      return;
+    }
+
+    setScenarioExportError(null);
+    setScenarioExporting(true);
+    try {
+      const html2pdf = await getHtml2Pdf();
+      const generatedAt = new Date().toLocaleString("cs-CZ");
+
+      const scenariosHtml = scenarioValues
+        .map((scenario) => {
+          const scenarioCards = [...applyCardFilters(buildCardsForPercent(scenario.percent))]
+            .sort((a, b) => b.payout - a.payout);
+          const rowsHtml = scenarioCards
+            .map(
+              (card, idx) => {
+                const logoPath = getInsurerLogoPath(card.insurer);
+                const logoClass =
+                  logoPath === "/icons/koop.png"
+                    ? " insurer-logo--koop"
+                    : logoPath === "/icons/cpp.png"
+                      ? " insurer-logo--cpp"
+                      : "";
+                const insurerCell = logoPath
+                  ? `<div class="insurer-cell"><span class="insurer-logo-wrap"><img class="insurer-logo${logoClass}" src="${escapeHtml(
+                      logoPath
+                    )}" alt="" /></span><span>${escapeHtml(card.insurer)}</span></div>`
+                  : escapeHtml(card.insurer);
+                return `
+                <tr>
+                  <td>${idx + 1}.</td>
+                  <td>${insurerCell}</td>
+                  <td>${escapeHtml(card.badges.join(", "))}</td>
+                  <td>${escapeHtml(formatMoney(card.payout))}</td>
+                </tr>
+              `;
+              }
+            )
+            .join("");
+
+          return `
+            <section class="scenario-block">
+              <div class="scenario-title">${escapeHtml(scenario.label)} · rozsah poškození ${escapeHtml(
+                formatPercent(scenario.percent)
+              )}</div>
+              <div class="meta-row">
+                <div>Pojistná částka: <strong>${escapeHtml(formatMoney(sumInsuredValue))}</strong></div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Pojišťovna</th>
+                    <th>Varianta</th>
+                    <th>Plnění</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rowsHtml || `<tr><td colspan="4" class="empty-cell">Bez výsledků pro tento scénář.</td></tr>`}
+                </tbody>
+              </table>
+            </section>
+          `;
+        })
+        .join("");
+
+      const pdfHtml = `
+        <div class="pdf-page">
+          <header class="page-header">
+            <div class="brand-head">
+              <img class="brand-logo" src="/icons/bohemika_logo.png" alt="Bohemika" />
+              <h1>
+                <span class="title-line">Porovnání plnění</span>
+                <span class="title-line">TRVALÝCH NÁSLEDKŮ ÚRAZU</span>
+              </h1>
+            </div>
+            <div class="meta">Vygenerováno: ${escapeHtml(generatedAt)}</div>
+          </header>
+          <div class="scenarios-stack">
+            ${scenariosHtml}
+          </div>
+        </div>
+      `;
+
+      const styleBlock = `
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 8mm;
+          }
+          * { box-sizing: border-box; }
+          .pdf-root {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            background: #ffffff;
+            color: #0f172a;
+          }
+          .pdf-page {
+            width: 100%;
+            padding: 8px;
+          }
+          .scenarios-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+          }
+          .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 8px;
+          }
+          .brand-head {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+          }
+          .brand-logo {
+            width: auto;
+            height: 56px;
+            max-width: 52px;
+            display: block;
+          }
+          .page-header h1 {
+            margin: 0;
+            font-size: 26px;
+            line-height: 1.08;
+          }
+          .title-line {
+            display: block;
+          }
+          .meta {
+            font-size: 13px;
+            color: #475569;
+            white-space: nowrap;
+          }
+          .scenario-block {
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 8px;
+            display: block;
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+          .scenario-title {
+            margin-bottom: 6px;
+            padding: 7px 10px;
+            border: 1px solid #020617;
+            border-radius: 8px;
+            background: #020617;
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 700;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            line-height: 1.1;
+          }
+          .meta-row {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 6px;
+            margin-bottom: 12px;
+            font-size: 14px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #1e293b;
+            border-radius: 8px;
+            overflow: hidden;
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+          thead th {
+            background: #0f172a;
+            color: #f8fafc;
+            text-align: left;
+            font-size: 16px;
+            padding: 10px 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+          }
+          tbody td {
+            border-top: 1px solid #cbd5e1;
+            padding: 10px 12px;
+            font-size: 16px;
+            line-height: 1.25;
+            page-break-inside: avoid;
+          }
+          .insurer-cell {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+          }
+          .insurer-logo-wrap {
+            width: 52px;
+            height: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 52px;
+          }
+          .insurer-logo {
+            width: auto;
+            height: auto;
+            max-width: 50px;
+            max-height: 32px;
+            object-fit: contain;
+            display: block;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: high-quality;
+          }
+          .insurer-logo--koop {
+            max-width: 58px;
+            max-height: 36px;
+          }
+          .insurer-logo--cpp {
+            max-width: 64px;
+            max-height: 40px;
+          }
+          thead th:first-child,
+          tbody td:first-child { width: 42px; }
+          thead th:last-child,
+          tbody td:last-child {
+            text-align: right;
+            white-space: nowrap;
+          }
+          tbody tr:nth-child(even) td {
+            background: #f8fafc;
+          }
+          tbody td:last-child {
+            font-weight: 700;
+            color: #065f46;
+          }
+          .empty, .empty-cell {
+            padding: 8px;
+            border: 1px dashed #94a3b8;
+            border-radius: 8px;
+            font-size: 10px;
+            color: #475569;
+            text-align: center;
+            background: #f8fafc;
+          }
+        </style>
+      `;
+
+      const fileStamp = new Date().toISOString().slice(0, 10);
+      const opt: any = {
+        margin: [6, 6, 6, 6],
+        filename: `srovnani_trvalych_nasledku_scenare_${fileStamp}.pdf`,
+        image: { type: "jpeg", quality: 0.92 },
+        html2canvas: {
+          scale: 2.2,
+          backgroundColor: "#ffffff",
+          useCORS: true,
+          onclone: (doc: Document) => {
+            // html2canvas neumí CSS color funkce lab()/oklch()
+            // z některých globálních stylů, proto je při exportu odfiltrujeme.
+            doc.querySelectorAll("link[rel='stylesheet']").forEach((n) => n.remove());
+            doc.querySelectorAll("style").forEach((n) => {
+              const text = n.textContent ?? "";
+              if (/(oklch|lab)\(/i.test(text)) n.remove();
+            });
+          },
+        },
+        jsPDF: { unit: "pt", format: "a4", orientation: "portrait", compress: true },
+        pagebreak: {
+          mode: ["css", "legacy"],
+          avoid: ["tr"],
+        },
+      };
+
+      const exportHtml = stripUnsupportedColorFunctions(
+        `<div class="pdf-root">${styleBlock}${pdfHtml}</div>`
+      );
+
+      await (html2pdf() as any).set(opt).from(exportHtml).save();
+    } catch (error) {
+      console.error("Nepodařilo se vygenerovat 3 scénáře PDF", error);
+      const detail =
+        error instanceof Error && error.message ? ` (${error.message})` : "";
+      setScenarioExportError(`Generování 3stránkového PDF selhalo${detail}. Zkus to prosím znovu.`);
+    } finally {
+      setScenarioExporting(false);
+    }
+  };
+
+  const visibleCards = applyCardFilters(cards);
 
   const sortedCards = [...visibleCards].sort((a, b) => b.payout - a.payout);
   const activeFilterCount =
@@ -1269,13 +1757,23 @@ export default function SrovnavacTrvalychNasledkuPage() {
           <section className="w-full rounded-3xl border border-slate-900 bg-white px-5 py-5 space-y-3">
             <div className="flex flex-wrap items-center gap-3 justify-between">
               <h2 className="text-lg font-semibold text-slate-900">Filtry</h2>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white"
-              >
-                Export PDF
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white"
+                >
+                  Export PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportThreeScenarioPdf}
+                  disabled={scenarioExporting}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {scenarioExporting ? "Generuji…" : "Export 3 scénáře PDF"}
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
@@ -1308,6 +1806,58 @@ export default function SrovnavacTrvalychNasledkuPage() {
               >
                 Filtry
               </button>
+            </div>
+
+            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                Scénáře pro klientský PDF výstup
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <label className="space-y-1 text-xs text-slate-700">
+                  <span>Nižší rozsah (%)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={scenarioAInput}
+                    onChange={(e) => setScenarioAInput(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-slate-700">
+                  <span>Střední rozsah (%)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={scenarioBInput}
+                    onChange={(e) => setScenarioBInput(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-slate-700">
+                  <span>Vysoký rozsah (%)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={scenarioCInput}
+                    onChange={(e) => setScenarioCInput(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  />
+                </label>
+              </div>
+              <div className="text-[11px] text-slate-500">
+                Export se pokusí vše zkompaktovat na co nejmenší počet stran.
+              </div>
+              {scenarioExportError && (
+                <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                  {scenarioExportError}
+                </div>
+              )}
             </div>
           </section>
         </div>
