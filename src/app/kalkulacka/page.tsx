@@ -302,6 +302,17 @@ function productIcon(product: Product): string {
   return "/icons/produkt.png";
 }
 
+function isAutoProduct(product: Product | null): product is Product {
+  return (
+    product === "cppAuto" ||
+    product === "allianzAuto" ||
+    product === "csobAuto" ||
+    product === "uniqaAuto" ||
+    product === "pillowAuto" ||
+    product === "kooperativaAuto"
+  );
+}
+
 function shouldShowDuration(product: Product): boolean {
   return product === "neon" || product === "maximaMaxEfekt";
 }
@@ -2535,14 +2546,9 @@ export default function CalculatorPage() {
                     Aktuální koeficienty – platnost od 01.07.2024
                   </p>
                 )}
-                {product === "allianzAuto" && (
+                {product && isAutoProduct(product) && (
                   <p className="mt-1 text-xs font-semibold text-rose-700">
-                    Aktuální koeficienty – platnost od 01.08.2019
-                  </p>
-                )}
-                {product === "csobAuto" && (
-                  <p className="mt-1 text-xs font-semibold text-rose-700">
-                    Aktuální koeficienty – platnost od 01.11.2024
+                    Provizní podmínky aktuální od 01.04.2026
                   </p>
                 )}
               </div>

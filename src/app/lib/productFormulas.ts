@@ -1605,7 +1605,8 @@ export function calculateUniqaAuto(
   const annualTotal = perPayment * periodsPerYear(frequency);
 
   const items: CommissionResultItemDTO[] = [
-    { title: "📅 Okamžitá provize", amount: annualTotal },
+    { title: "🚙 Okamžitá provize", amount: perPayment },
+    { title: "📅 Provize za rok", amount: annualTotal },
   ];
   return { items, total: annualTotal };
 }

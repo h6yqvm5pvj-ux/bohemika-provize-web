@@ -154,19 +154,67 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
         <div className="text-sm text-slate-900">
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Značka / model</span>
-            <span className="font-semibold">{contract?.carMake || "—"}</span>
+            <span className="font-semibold text-right">
+              {editMode ? (
+                <input
+                  type="text"
+                  value={fields.carMake}
+                  onChange={(e) => onChange("carMake", e.target.value)}
+                  className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                  placeholder="např. Škoda Octavia"
+                />
+              ) : (
+                contract?.carMake || fields.carMake || "—"
+              )}
+            </span>
           </div>
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">SPZ</span>
-            <span className="font-semibold">{contract?.carPlate || "—"}</span>
+            <span className="font-semibold text-right">
+              {editMode ? (
+                <input
+                  type="text"
+                  value={fields.carPlate}
+                  onChange={(e) => onChange("carPlate", e.target.value)}
+                  className="w-36 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                  placeholder="např. 1AB2345"
+                />
+              ) : (
+                contract?.carPlate || fields.carPlate || "—"
+              )}
+            </span>
           </div>
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">VIN</span>
-            <span className="font-semibold">{contract?.carVin || "—"}</span>
+            <span className="font-semibold text-right">
+              {editMode ? (
+                <input
+                  type="text"
+                  value={fields.carVin}
+                  onChange={(e) => onChange("carVin", e.target.value)}
+                  className="w-52 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                  placeholder="VIN"
+                />
+              ) : (
+                contract?.carVin || fields.carVin || "—"
+              )}
+            </span>
           </div>
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">TP</span>
-            <span className="font-semibold">{contract?.carTp || "—"}</span>
+            <span className="font-semibold text-right">
+              {editMode ? (
+                <input
+                  type="text"
+                  value={fields.carTp}
+                  onChange={(e) => onChange("carTp", e.target.value)}
+                  className="w-36 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                  placeholder="Číslo TP"
+                />
+              ) : (
+                contract?.carTp || fields.carTp || "—"
+              )}
+            </span>
           </div>
         </div>
       </div>

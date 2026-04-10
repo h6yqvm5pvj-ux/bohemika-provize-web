@@ -2,7 +2,16 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
+import {
+  Calculator,
+  ChartNoAxesColumn,
+  ChevronLeft,
+  FileDown,
+  Files,
+  SlidersHorizontal,
+} from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "../plan-produkce/SplitTitle";
@@ -60,6 +69,34 @@ const getInsurerLogoPath = (insurer: string): string | null => {
   if (normalized.includes("maxima")) return "/icons/maxima.png";
   if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csob.png";
   return null;
+};
+
+const splitInsurerAndProduct = (value: string): { insurerName: string; productName: string } => {
+  const insurerPrefixes = [
+    "ČPP",
+    "UNIQA",
+    "Kooperativa",
+    "MetLife",
+    "ČSOB",
+    "Generali",
+    "NN",
+    "Maxima",
+    "Allianz",
+    "Simplea",
+    "Pillow",
+  ];
+
+  const lower = value.toLowerCase();
+  const matched = insurerPrefixes.find((prefix) => lower.startsWith(prefix.toLowerCase()));
+  if (!matched) {
+    return { insurerName: value, productName: value };
+  }
+
+  const productName = value.slice(matched.length).trim();
+  return {
+    insurerName: matched,
+    productName: productName || value,
+  };
 };
 
 const formatKcInput = (value: number): string =>
@@ -1693,16 +1730,20 @@ export default function SrovnavacTrvalychNasledkuPage() {
           </div>
           <Link
             href="/pomucky"
-            className="inline-flex items-center text-xs text-slate-600 hover:text-slate-900 transition"
+            className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 transition"
           >
-            ← Zpět na pomůcky
+            <ChevronLeft className="h-3.5 w-3.5" />
+            <span>Zpět na pomůcky</span>
           </Link>
         </header>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(360px,430px)_1fr]">
           <section className="w-full rounded-3xl border border-slate-900 bg-white px-5 py-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <h2 className="text-lg font-semibold text-slate-900">Vstupní parametry</h2>
+              <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
+                <Calculator className="h-4 w-4 text-slate-600" />
+                <span>Vstupní parametry</span>
+              </h2>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
@@ -1756,14 +1797,18 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
           <section className="w-full rounded-3xl border border-slate-900 bg-white px-5 py-5 space-y-3">
             <div className="flex flex-wrap items-center gap-3 justify-between">
-              <h2 className="text-lg font-semibold text-slate-900">Filtry</h2>
+              <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
+                <SlidersHorizontal className="h-4 w-4 text-slate-600" />
+                <span>Filtry</span>
+              </h2>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => window.print()}
                   className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white"
                 >
-                  Export PDF
+                  <FileDown className="h-3.5 w-3.5" />
+                  <span>Export PDF</span>
                 </button>
                 <button
                   type="button"
@@ -1771,7 +1816,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   disabled={scenarioExporting}
                   className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {scenarioExporting ? "Generuji…" : "Export 3 scénáře PDF"}
+                  <Files className="h-3.5 w-3.5" />
+                  <span>{scenarioExporting ? "Generuji…" : "Export 3 scénáře PDF"}</span>
                 </button>
               </div>
             </div>
@@ -1802,9 +1848,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
               <button
                 type="button"
                 onClick={() => setFiltersOpen(true)}
-                className="inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black"
               >
-                Filtry
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <span>Filtry</span>
               </button>
             </div>
 
@@ -1872,7 +1919,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="mb-4 flex items-center justify-between gap-3">
-                <h3 className="text-lg font-semibold text-slate-900">Filtry a zobrazení</h3>
+                <h3 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
+                  <SlidersHorizontal className="h-4 w-4 text-slate-600" />
+                  <span>Filtry a zobrazení</span>
+                </h3>
                 <button
                   type="button"
                   onClick={() => setFiltersOpen(false)}
@@ -1972,7 +2022,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">Srovnání plnění</h2>
+            <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
+              <ChartNoAxesColumn className="h-4 w-4 text-slate-600" />
+              <span>Srovnání plnění</span>
+            </h2>
             <span className="text-[11px] text-slate-500">Výsledek podle zadaných parametrů.</span>
           </div>
 
@@ -1988,6 +2041,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
               const borderClass = podium
                 ? `${podium.border} border`
                 : "border [border-color:rgba(71,85,105,0.75)]";
+              const logoPath = getInsurerLogoPath(card.insurer);
+              const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
 
               return (
                 <div
@@ -2010,11 +2065,27 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       compactList ? "md:w-1/3" : ""
                     }`}
                   >
-                    <div>
-                      <div className="text-xs uppercase tracking-wide text-[#94a3b8]">
-                        Pojišťovna
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white">
+                        {logoPath ? (
+                          <Image
+                            src={logoPath}
+                            alt={insurerName}
+                            width={32}
+                            height={28}
+                            className="h-7 w-8 object-contain"
+                          />
+                        ) : (
+                          <span className="text-[10px] font-semibold text-[#cbd5e1]">LOGO</span>
+                        )}
+                      </span>
+                      <div className="space-y-0.5">
+                        <div className="text-xs uppercase tracking-wide text-[#94a3b8]">
+                          Pojišťovna
+                        </div>
+                        <div className="text-xl font-semibold text-[#f8fafc]">{insurerName}</div>
+                        <div className="text-sm text-[#cbd5e1]">{productName}</div>
                       </div>
-                      <div className="text-xl font-semibold text-[#f8fafc]">{card.insurer}</div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
                     {card.badges.map((badge) => (

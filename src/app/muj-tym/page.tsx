@@ -374,19 +374,36 @@ export default function TeamPage() {
       setLoading(true);
       try {
         const usersCol = collection(db, "users");
-        // načtení vlastní pozice
+        // načtení vlastního profilu
+        let meData: any = null;
+        let meDocId = userEmail;
         try {
           const meSnap = await getDoc(doc(usersCol, userEmail));
-          pos = meSnap.exists() ? ((meSnap.data() as any).position as Position | undefined) ?? null : null;
+          meData = meSnap.exists() ? (meSnap.data() as any) : null;
+          meDocId = meSnap.id;
+          pos = (meData?.position as Position | undefined) ?? null;
           setUserPosition(pos);
         } catch (err) {
           console.error("Chyba při načítání pozice uživatele", err);
           setUserPosition(null);
         }
-        const queue = [userEmail];
+        const ownEmail = ((meData?.email as string | undefined)?.trim() || userEmail).toLowerCase();
+        const queue = [ownEmail];
         const visited = new Set<string>();
         all = [];
         const seededLastActive: Record<string, number | null> = {};
+
+        // aktuálně přihlášený uživatel musí být v seznamu vždy
+        const ownLastActive = toDate(meData?.lastActive)?.getTime();
+        seededLastActive[ownEmail] = Number.isFinite(ownLastActive) ? Number(ownLastActive) : null;
+        all.push({
+          email: ownEmail,
+          name: nameFromEmail(ownEmail),
+          position: pos,
+          managerEmail: ((meData?.managerEmail as string | undefined)?.toLowerCase() ?? null),
+          docId: meDocId,
+        });
+        visited.add(ownEmail);
 
         while (queue.length > 0) {
           const mgr = queue.shift()!;
