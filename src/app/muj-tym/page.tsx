@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -177,6 +178,21 @@ function institutionLabelForProduct(product?: Product | null): string {
     default:
       return "Ostatní";
   }
+}
+
+function insurerLogoPath(insurer: string): string | null {
+  const normalized = insurer.toLowerCase();
+  if (normalized.includes("čpp") || normalized.includes("cpp")) return "/icons/cpp.png";
+  if (normalized.includes("kooperativa")) return "/icons/koop.png";
+  if (normalized.includes("maxima")) return "/icons/maxima.png";
+  if (normalized.includes("allianz")) return "/icons/allianz.png";
+  if (normalized.includes("uniqa")) return "/icons/uniqa.png";
+  if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csob.png";
+  if (normalized.includes("pillow")) return "/icons/pillow.png";
+  if (normalized.includes("generali")) return "/icons/generali.png";
+  if (normalized.includes("metlife")) return "/icons/metlife.png";
+  if (normalized.includes("nn")) return "/icons/nn.png";
+  return null;
 }
 
 function paymentsPerYear(freq?: PaymentFrequency | null): number {
@@ -1011,14 +1027,30 @@ export default function TeamPage() {
                                   <div className="text-right">Měsíční</div>
                                   <div className="text-right">Roční</div>
                                 </div>
-                                {selectedProductionRows.map((row) => (
+                                {selectedProductionRows.map((row) => {
+                                  const logo = insurerLogoPath(row.name);
+                                  return (
                                   <div key={row.name} className="grid grid-cols-1 gap-1 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] sm:items-center sm:gap-3">
-                                    <div className="min-w-0 text-base font-bold text-slate-900 sm:text-lg">{row.name}</div>
+                                    <div className="min-w-0 flex items-center gap-2">
+                                      {logo ? (
+                                        <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm">
+                                          <Image
+                                            src={logo}
+                                            alt={row.name}
+                                            width={40}
+                                            height={40}
+                                            className="h-9 w-9 object-contain"
+                                          />
+                                        </span>
+                                      ) : null}
+                                      <span className="min-w-0 text-base font-bold text-slate-900 sm:text-lg">{row.name}</span>
+                                    </div>
                                     <div className="text-sm font-semibold text-slate-700 sm:text-right sm:text-base">{row.contracts}x smluv</div>
                                     <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.monthlyPremium)}</div>
                                     <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.annualPremium)}</div>
                                   </div>
-                                ))}
+                                );
+                                })}
                                 <div className="grid grid-cols-1 gap-1 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-white sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] sm:items-center sm:gap-3">
                                   <div className="text-base font-bold sm:text-lg">Celkem</div>
                                   <div className="text-sm font-semibold sm:text-right sm:text-base">{selectedProductionTotals.contracts}x smluv</div>

@@ -83,6 +83,14 @@ const SETTINGS_KEYS = {
   tipsterPercent: "settings.tipsterPercent",
 };
 const TIPSTER_PERCENT_PRESETS = [10, 20, 30, 40, 50, 75, 100];
+const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
+  cppAuto: "/provize/cppauto.jpg",
+  allianzAuto: "/provize/allianzauto.jpg",
+  csobAuto: "/provize/csobauto.jpg",
+  uniqaAuto: "/provize/uniqaauto.jpg",
+  pillowAuto: "/provize/pillowauto.jpg",
+  kooperativaAuto: "/provize/koopauto.jpg",
+};
 
 function formatMoney(value: number): string {
   if (Number.isNaN(value)) return "0 Kč";
@@ -648,6 +656,11 @@ export default function CalculatorPage() {
         return "";
     }
   }, [product, frequency]);
+  const autoTermsPreviewUrl = useMemo(() => {
+    if (!product) return null;
+    return AUTO_TERMS_PREVIEW_BY_PRODUCT[product] ?? null;
+  }, [product]);
+  const showAutoTermsPreview = Boolean(autoTermsPreviewUrl);
   const filteredClientSuggestions = useMemo(() => {
     const q = clientName.trim().toLowerCase();
     if (!q) return [];
@@ -2517,14 +2530,18 @@ export default function CalculatorPage() {
       </div>
 
       {showCoefModal && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center px-4 py-6">
+        <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto px-4 py-6">
           <button
             type="button"
             className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
             aria-label="Zavřít koeficienty"
             onClick={() => setShowCoefModal(false)}
           />
-          <div className="relative z-50 w-full max-w-md rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-black/30">
+          <div
+            className={`relative z-50 w-full max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-black/30 ${
+              showAutoTermsPreview ? "max-w-5xl" : "max-w-md"
+            }`}
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">Koeficienty</h3>
@@ -2579,6 +2596,35 @@ export default function CalculatorPage() {
                 </p>
               )}
             </div>
+
+            {showAutoTermsPreview && autoTermsPreviewUrl && (
+              <div className="mt-4 rounded-xl border border-slate-300 bg-slate-50 p-2 sm:p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    Provizní podmínky {product ? productLabel(product) : "Auto"} (náhled)
+                  </p>
+                  <a
+                    href={autoTermsPreviewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900"
+                  >
+                    Otevřít v nové kartě
+                  </a>
+                </div>
+                <div className="h-[62vh] min-h-[460px] overflow-auto rounded-lg border border-slate-300 bg-slate-100 p-2">
+                  <Image
+                    src={autoTermsPreviewUrl}
+                    alt={`Provizní podmínky ${product ? productLabel(product) : "Auto"}`}
+                    width={1600}
+                    height={2400}
+                    className="mx-auto h-auto w-full rounded-md"
+                    sizes="(max-width: 1024px) 100vw, 1200px"
+                    priority
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
