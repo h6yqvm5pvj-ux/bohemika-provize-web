@@ -7,7 +7,15 @@ import Link from "next/link";
 import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "../../plan-produkce/SplitTitle";
 
-const INSURERS = [
+type InsurerCard = {
+  key: string;
+  title: string;
+  logo: string;
+  description: string;
+  href?: string;
+};
+
+const INSURERS: readonly InsurerCard[] = [
   {
     key: "cpp",
     title: "ČPP",
@@ -21,7 +29,7 @@ const INSURERS = [
     logo: "/icons/koop.png",
     description: "Dokumenty a materiály pro životní pojištění Kooperativa.",
   },
-] as const;
+];
 
 export default function DokumentyZivotniPojisteniPage() {
   return (

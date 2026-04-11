@@ -18,7 +18,7 @@ type DocumentSection = {
   href?: string;
 };
 
-const DOCUMENT_SECTIONS = [
+const DOCUMENT_SECTIONS: readonly DocumentSection[] = [
   {
     key: "zivotni",
     title: "Životní pojištění",
@@ -64,7 +64,7 @@ const DOCUMENT_SECTIONS = [
       "Kontrolní body před uzavřením investice",
     ],
   },
-] as const satisfies readonly DocumentSection[];
+];
 
 export default function DokumentyPage() {
   const [search, setSearch] = useState("");
