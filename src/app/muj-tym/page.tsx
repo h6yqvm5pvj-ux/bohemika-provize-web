@@ -13,6 +13,7 @@ import {
   getDocFromServer,
   getDocs,
   query,
+  updateDoc,
   where,
 } from "firebase/firestore";
 
@@ -66,6 +67,26 @@ function positionLabel(pos?: Position | null): string {
   };
   return map[pos] ?? pos;
 }
+
+const POSITION_OPTIONS: { id: Position; label: string }[] = [
+  { id: "poradce1", label: "Poradce 1" },
+  { id: "poradce2", label: "Poradce 2" },
+  { id: "poradce3", label: "Poradce 3" },
+  { id: "poradce4", label: "Poradce 4" },
+  { id: "poradce5", label: "Poradce 5" },
+  { id: "poradce6", label: "Poradce 6" },
+  { id: "poradce7", label: "Poradce 7" },
+  { id: "poradce8", label: "Poradce 8" },
+  { id: "poradce9", label: "Poradce 9" },
+  { id: "poradce10", label: "Poradce 10" },
+  { id: "manazer4", label: "Manažer 4" },
+  { id: "manazer5", label: "Manažer 5" },
+  { id: "manazer6", label: "Manažer 6" },
+  { id: "manazer7", label: "Manažer 7" },
+  { id: "manazer8", label: "Manažer 8" },
+  { id: "manazer9", label: "Manažer 9" },
+  { id: "manazer10", label: "Manažer 10" },
+];
 
 function isManagerPosition(pos?: Position | null): boolean {
   if (!pos) return false;
@@ -279,6 +300,7 @@ type TeamCachePayload = {
   contractsLoaded: boolean;
   contractsError: boolean;
   userPosition: Position | null;
+  canManagePositions: boolean;
 };
 
 const TEAM_CACHE_TTL_MS = 60 * 1000;
@@ -314,13 +336,20 @@ export default function TeamPage() {
   const [, setContractsRefreshing] = useState(false);
   const [contractsError, setContractsError] = useState(false);
   const [userPosition, setUserPosition] = useState<Position | null>(null);
+  const [canManagePositions, setCanManagePositions] = useState(false);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
   const [sortBy, setSortBy] = useState<SortKey>("activity");
   const [productionCategory, setProductionCategory] = useState<ProductionCategory>("life");
   const [detailTab, setDetailTab] = useState<"overview" | "subordinates">("overview");
   const [showMembersPanel, setShowMembersPanel] = useState(true);
   const [copiedEmail, setCopiedEmail] = useState(false);
+  const [positionModalOpen, setPositionModalOpen] = useState(false);
+  const [positionDraft, setPositionDraft] = useState<Position>("poradce1");
+  const [savingPosition, setSavingPosition] = useState(false);
+  const [positionSaveError, setPositionSaveError] = useState<string | null>(null);
+  const [positionSaveSuccess, setPositionSaveSuccess] = useState(false);
   const copyEmailTimerRef = useRef<number | null>(null);
+  const positionSaveTimerRef = useRef<number | null>(null);
   const usedCacheRef = useRef(false);
   const cacheStateRef = useRef<{
     contractCounts: Record<string, ContractStats>;
@@ -341,6 +370,7 @@ export default function TeamPage() {
     setContractsLoaded(payload.contractsLoaded);
     setContractsError(payload.contractsError);
     setUserPosition(payload.userPosition);
+    setCanManagePositions(payload.canManagePositions);
   };
 
   useEffect(() => {
@@ -369,11 +399,13 @@ export default function TeamPage() {
       if (!userEmail) {
         setMembers([]);
         setUserPosition(null);
+        setCanManagePositions(false);
         setLoading(false);
         return;
       }
 
       let pos: Position | null = null;
+      let canManage = false;
       let lastActiveMap: Record<string, number | null> = {};
       let all: Member[] = [];
 
@@ -398,10 +430,13 @@ export default function TeamPage() {
           meData = meSnap.exists() ? (meSnap.data() as any) : null;
           meDocId = meSnap.id;
           pos = (meData?.position as Position | undefined) ?? null;
+          canManage = meData?.adminFunction === true || meData?.adminfunction === true;
           setUserPosition(pos);
+          setCanManagePositions(canManage);
         } catch (err) {
           console.error("Chyba při načítání pozice uživatele", err);
           setUserPosition(null);
+          setCanManagePositions(false);
         }
         const ownEmail = ((meData?.email as string | undefined)?.trim() || userEmail).toLowerCase();
         const queue = [ownEmail];
@@ -505,6 +540,7 @@ export default function TeamPage() {
               contractsLoaded: cacheStateRef.current.contractsLoaded,
               contractsError: cacheStateRef.current.contractsError,
               userPosition: pos,
+              canManagePositions: canManage,
             },
           };
         }
@@ -616,6 +652,7 @@ export default function TeamPage() {
               contractsLoaded: true,
               contractsError,
               userPosition,
+              canManagePositions,
             },
           };
         }
@@ -625,7 +662,7 @@ export default function TeamPage() {
     if (usedCacheRef.current && contractsLoaded) return;
 
     void loadContractCounts();
-  }, [members, cacheKey, lastActive, userPosition, contractsLoaded, contractsError]);
+  }, [members, cacheKey, lastActive, userPosition, canManagePositions, contractsLoaded, contractsError]);
 
   const filteredMembers = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -677,11 +714,15 @@ export default function TeamPage() {
 
   useEffect(() => {
     setDetailTab("overview");
+    setPositionModalOpen(false);
+    setPositionSaveError(null);
+    setPositionSaveSuccess(false);
   }, [selectedEmail]);
 
   useEffect(() => {
     return () => {
       if (copyEmailTimerRef.current) window.clearTimeout(copyEmailTimerRef.current);
+      if (positionSaveTimerRef.current) window.clearTimeout(positionSaveTimerRef.current);
     };
   }, []);
 
@@ -716,6 +757,11 @@ export default function TeamPage() {
     () => (selected ? members.filter((m) => (m.managerEmail ?? "").toLowerCase() === selected.email) : []),
     [selected, members]
   );
+  const isSelectedSubordinate = useMemo(
+    () => !!selected?.email && !!userEmail && selected.email.toLowerCase() !== userEmail.toLowerCase(),
+    [selected, userEmail]
+  );
+  const canEditSelectedPosition = canManagePositions && isSelectedSubordinate;
 
   const handleCopySelectedEmail = async () => {
     if (!selected?.email) return;
@@ -789,6 +835,72 @@ export default function TeamPage() {
   };
 
   const canSendTeamMessage = isManagerPosition(userPosition) && members.length > 0;
+
+  const openPositionModal = () => {
+    if (!selected || !canEditSelectedPosition) return;
+    setPositionDraft(selected.position ?? "poradce1");
+    setPositionSaveError(null);
+    setPositionModalOpen(true);
+  };
+
+  const saveSelectedPosition = async () => {
+    if (!selected || !canEditSelectedPosition) return;
+    if (selected.position === positionDraft) {
+      setPositionModalOpen(false);
+      return;
+    }
+    setSavingPosition(true);
+    setPositionSaveError(null);
+    try {
+      const targetId = selected.docId ?? selected.email;
+      await updateDoc(doc(db, "users", targetId), {
+        position: positionDraft,
+      });
+
+      setMembers((prev) =>
+        prev.map((member) =>
+          member.email === selected.email
+            ? {
+                ...member,
+                position: positionDraft,
+              }
+            : member
+        )
+      );
+
+      if (cacheKey && teamDataCache[cacheKey]) {
+        teamDataCache[cacheKey] = {
+          ...teamDataCache[cacheKey],
+          payload: {
+            ...teamDataCache[cacheKey].payload,
+            members: teamDataCache[cacheKey].payload.members.map((member) =>
+              member.email === selected.email
+                ? {
+                    ...member,
+                    position: positionDraft,
+                  }
+                : member
+            ),
+          },
+        };
+      }
+
+      setPositionModalOpen(false);
+      setPositionSaveSuccess(true);
+      if (positionSaveTimerRef.current) window.clearTimeout(positionSaveTimerRef.current);
+      positionSaveTimerRef.current = window.setTimeout(() => {
+        setPositionSaveSuccess(false);
+      }, 3000);
+    } catch (e: any) {
+      if (e?.code === "permission-denied") {
+        setPositionSaveError("Nemáš oprávnění měnit pozici tohoto uživatele.");
+      } else {
+        setPositionSaveError("Uložení se nepovedlo. Zkus to prosím znovu.");
+      }
+    } finally {
+      setSavingPosition(false);
+    }
+  };
 
   return (
     <AppLayout active="team">
@@ -952,7 +1064,19 @@ export default function TeamPage() {
                           >
                             Statistiky
                           </Link>
+                          {canEditSelectedPosition ? (
+                            <button
+                              type="button"
+                              onClick={openPositionModal}
+                              className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
+                            >
+                              Změnit pozici
+                            </button>
+                          ) : null}
                         </div>
+                        {positionSaveSuccess ? (
+                          <div className="mt-2 text-sm font-semibold text-emerald-700">Pozice změněna.</div>
+                        ) : null}
                         <div className="ui-chip-group mt-3 inline-flex gap-2">
                           <button
                             type="button"
@@ -1101,6 +1225,56 @@ export default function TeamPage() {
           </>
         )}
       </div>
+      {positionModalOpen && selected ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-300 bg-white p-4 shadow-2xl">
+            <div className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Změna pozice</div>
+            <div className="mt-2 text-lg font-bold text-slate-900">{selected.name}</div>
+            <div className="text-sm text-slate-500">{selected.email}</div>
+
+            <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Nová pozice
+            </label>
+            <select
+              value={positionDraft}
+              onChange={(e) => setPositionDraft(e.target.value as Position)}
+              disabled={savingPosition}
+              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+            >
+              {POSITION_OPTIONS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+
+            {positionSaveError ? <div className="mt-3 text-sm text-rose-700">{positionSaveError}</div> : null}
+
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (savingPosition) return;
+                  setPositionModalOpen(false);
+                  setPositionSaveError(null);
+                }}
+                className="ui-btn-secondary ui-focus rounded-xl px-3 py-2 text-sm"
+                disabled={savingPosition}
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                onClick={saveSelectedPosition}
+                className="ui-btn-primary ui-focus rounded-xl px-3 py-2 text-sm"
+                disabled={savingPosition}
+              >
+                {savingPosition ? "Ukládám..." : "Uložit změny"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AppLayout>
   );
 }

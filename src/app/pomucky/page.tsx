@@ -11,6 +11,7 @@ import {
   Bike,
   CarFront,
   Calculator,
+  Files,
   FileSignature,
   Gauge,
   GraduationCap,
@@ -68,6 +69,14 @@ export default function ToolsPage() {
         description: "Rozcestník pro onboarding i produktová školení na jednom místě.",
         icon: GraduationCap,
         href: "/pomucky/skolici-materialy",
+      },
+      {
+        key: "dokumenty",
+        category: "Obecné",
+        title: "Dokumenty",
+        description: "Centrální místo pro interní šablony, podklady a materiály.",
+        icon: Files,
+        href: "/pomucky/dokumenty",
       },
       {
         key: "zaznam",

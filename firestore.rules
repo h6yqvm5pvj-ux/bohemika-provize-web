@@ -38,15 +38,16 @@ service cloud.firestore {
       return authUid() != null && uid is string && authUid() == uid;
     }
 
-    // Vrátí manažera daného uživatele (pokud existuje), jinak null.
+    // Vrátí manažera daného uživatele (pokud existuje), jinak prázdný string.
     function managerEmailOf(email) {
       let clean = normEmail(email);
-      let ref = /databases/$(database)/documents/users/$(clean);
-      return clean != null
-        && exists(ref)
-        && get(ref).data is map
-        ? normEmail(get(ref).data.managerEmail)
-        : null;
+      let safe = clean == "" ? "__missing__" : clean;
+      let ref = /databases/$(database)/documents/users/$(safe);
+      let snap = get(ref);
+      return clean != ""
+        && snap.data is map
+        ? normEmail(snap.data.managerEmail)
+        : "";
     }
 
     // Ověří, jestli je přihlášený uživatel v manažerském řetězci - používá pre-computed managerChain z dokumentu
@@ -80,6 +81,52 @@ service cloud.firestore {
       return exists(ref) && get(ref).data is map
         ? get(ref).data.canChangePosition != false
         : true;
+    }
+
+    function authUserHasAdminFunction() {
+      let me = authEmail();
+      let clean = (me is string) ? me : "";
+      let safe = clean == "" ? "__missing__" : clean;
+      let ref = /databases/$(database)/documents/users/$(safe);
+      return clean != ""
+        && exists(ref)
+        && get(ref).data is map
+        && (
+          get(ref).data.adminFunction == true
+          || get(ref).data.adminfunction == true
+        );
+    }
+
+    function isManagerInHierarchyOfResource() {
+      let me = authEmail();
+      let m1 = resource != null && resource.data is map ? normEmail(resource.data.managerEmail) : "";
+      let m2 = managerEmailOf(m1);
+      let m3 = managerEmailOf(m2);
+      let m4 = managerEmailOf(m3);
+      let m5 = managerEmailOf(m4);
+      let m6 = managerEmailOf(m5);
+      let m7 = managerEmailOf(m6);
+      let m8 = managerEmailOf(m7);
+      return me != null
+        && me != ""
+        && (
+          m1 == me ||
+          m2 == me ||
+          m3 == me ||
+          m4 == me ||
+          m5 == me ||
+          m6 == me ||
+          m7 == me ||
+          m8 == me
+        );
+    }
+
+    function isPrivilegedSubordinatePositionUpdate() {
+      return resource != null
+        && authUserHasAdminFunction()
+        && isManagerInHierarchyOfResource()
+        && resource.data.canChangePosition != false
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(["position"]);
     }
 
     function isAuthEmail(email) {
@@ -191,9 +238,12 @@ service cloud.firestore {
       allow read: if isSignedIn();
       // zapisuje majitel nebo admin
       allow create: if (isOwner(userEmail) || isAdmin()) && !isSettingCanChangeToTrue();
-      allow update: if (isOwner(userEmail) || isAdmin())
-                    && !isSettingCanChangeToTrue()
-                    && (!isChangingPositionOrMode() || canEditPositionFields(userEmail) || isAdmin());
+      allow update: if (
+          (isOwner(userEmail) || isAdmin())
+          && !isSettingCanChangeToTrue()
+          && (!isChangingPositionOrMode() || canEditPositionFields(userEmail) || isAdmin())
+        )
+        || isPrivilegedSubordinatePositionUpdate();
       allow delete: if isOwner(userEmail) || isAdmin();
 
       // ---------- entries ----------
