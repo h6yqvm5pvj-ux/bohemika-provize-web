@@ -1059,7 +1059,17 @@ export default function HomePage() {
 
   const visibleSections = homeLayout.filter(isSectionVisible);
 
-  if (!authReady || !user) return null;
+  if (!authReady) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-white text-slate-900">
+        <div className="text-sm text-slate-700">Načítám přihlášení…</div>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return <AppLayout active="home">{null}</AppLayout>;
+  }
 
   return (
     <AppLayout active="home">
