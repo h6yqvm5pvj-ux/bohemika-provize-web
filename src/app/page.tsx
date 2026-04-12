@@ -283,6 +283,7 @@ export default function HomePage() {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
       if (!fbUser) {
         setUser(null);
+        setAuthReady(true);
         return;
       }
       setUser(fbUser);
