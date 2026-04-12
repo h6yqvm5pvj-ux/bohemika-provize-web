@@ -68,6 +68,7 @@ const getInsurerLogoPath = (insurer: string): string | null => {
   if (normalized.includes("allianz")) return "/icons/allianz.png";
   if (normalized.includes("maxima")) return "/icons/maxima.png";
   if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csob.png";
+  if (normalized.includes("simplea")) return "/icons/simplea.png";
   return null;
 };
 

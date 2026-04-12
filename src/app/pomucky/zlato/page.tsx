@@ -257,10 +257,14 @@ function GoldChart({ points }: { points: Point[] }) {
   const w = 760;
   const h = 320;
   const pad = { l: 56, r: 14, t: 14, b: 34 };
+  const MIN_VISIBLE_CANDLES = 20;
 
   const [hover, setHover] = useState<null | { idx: number; x: number; y: number }>(null);
+  const [viewRange, setViewRange] = useState<{ start: number; end: number } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const panRef = useRef<null | { startX: number; start: number; end: number }>(null);
 
-  const prepared = useMemo(() => {
+  const baseCandles = useMemo(() => {
     if (!points || points.length < 2) return null;
 
     const sorted = [...points].sort((a, b) => a.t - b.t);
@@ -276,14 +280,44 @@ function GoldChart({ points }: { points: Point[] }) {
       return { t: curr.t, open, close, high, low };
     });
 
-    const xs = rawCandles.map((c) => c.t);
+    return rawCandles.length ? rawCandles : null;
+  }, [points]);
+
+  useEffect(() => {
+    if (!baseCandles || !baseCandles.length) {
+      setViewRange(null);
+      setHover(null);
+      return;
+    }
+    setViewRange((prev) => {
+      const total = baseCandles.length;
+      if (!prev) return { start: 0, end: total - 1 };
+      const count = Math.max(1, Math.min(total, prev.end - prev.start + 1));
+      const start = Math.min(Math.max(0, prev.start), Math.max(0, total - count));
+      return { start, end: start + count - 1 };
+    });
+    setHover(null);
+  }, [baseCandles?.length]);
+
+  const prepared = useMemo(() => {
+    if (!baseCandles || !baseCandles.length) return null;
+
+    const totalCandles = baseCandles.length;
+    const clampedStart = Math.min(Math.max(0, viewRange?.start ?? 0), totalCandles - 1);
+    const clampedEnd = Math.min(
+      Math.max(clampedStart, viewRange?.end ?? totalCandles - 1),
+      totalCandles - 1
+    );
+    const visible = baseCandles.slice(clampedStart, clampedEnd + 1);
+    if (!visible.length) return null;
+
+    const xs = visible.map((c) => c.t);
     const minT = Math.min(...xs);
     const maxT = Math.max(...xs);
 
-    let minV = Math.min(...rawCandles.map((c) => c.low));
-    let maxV = Math.max(...rawCandles.map((c) => c.high));
+    let minV = Math.min(...visible.map((c) => c.low));
+    let maxV = Math.max(...visible.map((c) => c.high));
 
-    // padding pro prakticky konstantní sérii
     const rawSpan = maxV - minV;
     if (rawSpan < Math.max(1e-9, Math.abs(maxV) * 0.0005)) {
       const p = Math.max(1, Math.abs(maxV) * 0.01);
@@ -297,14 +331,13 @@ function GoldChart({ points }: { points: Point[] }) {
 
     const spanT = Math.max(1, maxT - minT);
     const spanV = Math.max(1e-9, maxV - minV);
-
     const innerW = w - pad.l - pad.r;
     const innerH = h - pad.t - pad.b;
 
     const xOfT = (t: number) => pad.l + ((t - minT) / spanT) * innerW;
     const yOfV = (v: number) => pad.t + (1 - (v - minV) / spanV) * innerH;
 
-    const candles = rawCandles.map((c) => ({
+    const candles = visible.map((c) => ({
       ...c,
       x: xOfT(c.t),
       yOpen: yOfV(c.open),
@@ -327,7 +360,6 @@ function GoldChart({ points }: { points: Point[] }) {
         : innerW;
     const candleWidth = Math.max(3, Math.min(14, Number.isFinite(minGap) ? minGap * 0.6 : 10));
 
-    // osy / popisky
     const fmtDate = (ms: number) =>
       new Date(ms).toLocaleDateString("cs-CZ", {
         day: "2-digit",
@@ -349,7 +381,6 @@ function GoldChart({ points }: { points: Point[] }) {
     };
 
     const yTicks = buildTicks(minV, maxV, 5).map((v) => ({ y: yOfV(v), v }));
-
     const xTickCount = spanDays > 3650 ? 8 : spanDays > 1825 ? 7 : spanDays > 730 ? 6 : spanDays > 120 ? 5 : 4;
     const xTicks = buildTicks(minT, maxT, xTickCount).map((t) => ({ x: xOfT(t), t }));
 
@@ -367,29 +398,31 @@ function GoldChart({ points }: { points: Point[] }) {
       xTicks,
       fmtDate,
       fmtTickDate,
-      minV,
-      maxV,
-      minT,
-      maxT,
-      xOfT,
-      yOfV,
-      spanDays,
       minPoint,
       maxPoint,
-      startPoint,
-      endPoint,
       totalChangePct,
+      windowStart: clampedStart,
+      windowEnd: clampedEnd,
+      totalCandles,
     };
-  }, [points, pad.b, pad.l, pad.r, pad.t, w, h]);
+  }, [baseCandles, viewRange, pad.b, pad.l, pad.r, pad.t, w, h]);
 
-  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!prepared) return;
-    const rect = (e.currentTarget as any).getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * w;
+  const minVisibleCandles = prepared ? Math.min(MIN_VISIBLE_CANDLES, prepared.totalCandles) : MIN_VISIBLE_CANDLES;
+  const visibleCount = prepared ? prepared.windowEnd - prepared.windowStart + 1 : 0;
 
-    // najdi nejbližší bod podle X
+  const getMousePoint = (e: React.MouseEvent<SVGSVGElement> | React.WheelEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const xRaw = ((e.clientX - rect.left) / rect.width) * w;
+    const yRaw = ((e.clientY - rect.top) / rect.height) * h;
+    const x = Math.min(w - pad.r, Math.max(pad.l, xRaw));
+    const y = Math.min(h - pad.b, Math.max(pad.t, yRaw));
+    return { x, y };
+  };
+
+  const nearestIdxByX = (x: number) => {
+    if (!prepared) return 0;
     let best = 0;
-    let bestD = Infinity;
+    let bestD = Number.POSITIVE_INFINITY;
     for (let i = 0; i < prepared.pts.length; i++) {
       const d = Math.abs(prepared.pts[i].x - x);
       if (d < bestD) {
@@ -397,15 +430,85 @@ function GoldChart({ points }: { points: Point[] }) {
         best = i;
       }
     }
-
-    const p = prepared.pts[best];
-    setHover((prev) => {
-      if (prev && prev.idx === best) return prev;
-      return { idx: best, x: p.x, y: p.y };
-    });
+    return best;
   };
 
-  const onLeave = () => setHover(null);
+  const zoomTo = (factor: number, pivotAbsIndex?: number) => {
+    if (!prepared) return;
+    const total = prepared.totalCandles;
+    const currentCount = prepared.windowEnd - prepared.windowStart + 1;
+    const targetCount = Math.min(
+      total,
+      Math.max(minVisibleCandles, Math.round(currentCount * factor))
+    );
+    if (targetCount === currentCount) return;
+
+    const pivot = Math.min(
+      prepared.windowEnd,
+      Math.max(
+        prepared.windowStart,
+        pivotAbsIndex ?? Math.round((prepared.windowStart + prepared.windowEnd) / 2)
+      )
+    );
+    const ratio =
+      currentCount > 1
+        ? (pivot - prepared.windowStart) / (currentCount - 1)
+        : 0.5;
+
+    let newStart = Math.round(pivot - ratio * (targetCount - 1));
+    newStart = Math.min(Math.max(0, newStart), Math.max(0, total - targetCount));
+    const newEnd = newStart + targetCount - 1;
+    setViewRange({ start: newStart, end: newEnd });
+  };
+
+  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!prepared) return;
+    const { x, y } = getMousePoint(e);
+
+    if (panRef.current) {
+      const base = panRef.current;
+      const width = Math.max(1, w - pad.l - pad.r);
+      const count = base.end - base.start + 1;
+      const shift = Math.round((-(x - base.startX) / width) * count);
+      const maxStart = Math.max(0, prepared.totalCandles - count);
+      const nextStart = Math.min(Math.max(0, base.start + shift), maxStart);
+      setViewRange({ start: nextStart, end: nextStart + count - 1 });
+    }
+
+    const idx = nearestIdxByX(x);
+    setHover({ idx, x, y });
+  };
+
+  const stopPan = () => {
+    panRef.current = null;
+    setIsPanning(false);
+  };
+
+  const onDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!prepared || e.button !== 0) return;
+    if (visibleCount >= prepared.totalCandles) return;
+    const { x } = getMousePoint(e);
+    panRef.current = {
+      startX: x,
+      start: prepared.windowStart,
+      end: prepared.windowEnd,
+    };
+    setIsPanning(true);
+  };
+
+  const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+    if (!prepared) return;
+    e.preventDefault();
+    const { x } = getMousePoint(e);
+    const nearest = nearestIdxByX(x);
+    const absPivot = prepared.windowStart + nearest;
+    zoomTo(e.deltaY > 0 ? 1.2 : 0.8, absPivot);
+  };
+
+  const onLeave = () => {
+    stopPan();
+    setHover(null);
+  };
 
   if (!prepared) {
     return (
@@ -431,27 +534,65 @@ function GoldChart({ points }: { points: Point[] }) {
           ? "border border-rose-300 bg-rose-50 text-rose-700"
           : "border border-slate-300 bg-slate-100 text-slate-700";
   const candleTrendSign = candleDelta != null && candleDelta > 0 ? "+" : "";
+  const canZoomOut = visibleCount < prepared.totalCandles;
+  const canZoomIn = visibleCount > minVisibleCandles;
 
   return (
     <div className="relative rounded-3xl border border-slate-700 bg-slate-950 px-4 py-4">
+      <div className="absolute right-5 top-5 z-10 flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => zoomTo(0.8)}
+          disabled={!canZoomIn}
+          className="h-7 w-7 rounded-md border border-slate-500 bg-slate-900/90 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Přiblížit graf"
+          title="Přiblížit"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          onClick={() => zoomTo(1.2)}
+          disabled={!canZoomOut}
+          className="h-7 w-7 rounded-md border border-slate-500 bg-slate-900/90 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Oddálit graf"
+          title="Oddálit"
+        >
+          −
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setViewRange({ start: 0, end: prepared.totalCandles - 1 });
+            setHover(null);
+          }}
+          disabled={!canZoomOut}
+          className="rounded-md border border-slate-500 bg-slate-900/90 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-40"
+          title="Reset zoomu"
+        >
+          Reset
+        </button>
+      </div>
+
       <svg
         viewBox={`0 0 ${w} ${h}`}
-        className="w-full h-[320px] select-none"
+        className={`h-[320px] w-full select-none ${isPanning ? "cursor-grabbing" : "cursor-crosshair"}`}
         role="img"
         aria-label="Graf ceny zlata"
         onMouseMove={onMove}
+        onMouseDown={onDown}
+        onMouseUp={stopPan}
         onMouseLeave={onLeave}
+        onWheel={onWheel}
       >
         <rect x={pad.l} y={pad.t} width={w - pad.l - pad.r} height={h - pad.t - pad.b} fill="#0b1220" rx="8" />
 
-        {/* grid */}
         <g stroke="rgba(148,163,184,0.22)" strokeWidth="1">
           {prepared.yTicks.map((t, i) => (
             <line key={`gy-${i}`} x1={pad.l} y1={t.y} x2={w - pad.r} y2={t.y} strokeDasharray="3 3" />
           ))}
         </g>
 
-        {/* y labels */}
         <g className="fill-slate-300" fontSize="11">
           {prepared.yTicks.map((t, i) => (
             <text key={`yl-${i}`} x={8} y={t.y + 4} opacity={0.9}>
@@ -460,7 +601,6 @@ function GoldChart({ points }: { points: Point[] }) {
           ))}
         </g>
 
-        {/* x labels */}
         <g className="fill-slate-300" fontSize="11">
           {prepared.xTicks.map((t, i) => (
             <text
@@ -475,13 +615,11 @@ function GoldChart({ points }: { points: Point[] }) {
           ))}
         </g>
 
-        {/* min/max vodítka */}
         <g stroke="rgba(148,163,184,0.2)" strokeDasharray="4 4" strokeWidth="1">
           <line x1={pad.l} y1={prepared.minPoint.y} x2={w - pad.r} y2={prepared.minPoint.y} />
           <line x1={pad.l} y1={prepared.maxPoint.y} x2={w - pad.r} y2={prepared.maxPoint.y} />
         </g>
 
-        {/* candles */}
         <g>
           {prepared.candles.map((c, i) => {
             const bodyTop = Math.min(c.yOpen, c.yClose);
@@ -506,12 +644,13 @@ function GoldChart({ points }: { points: Point[] }) {
           })}
         </g>
 
-        {/* hover */}
-        {hp ? (
+        {hover ? (
           <g>
-            <line x1={hp.x} y1={pad.t} x2={hp.x} y2={h - pad.b} stroke="rgba(226,232,240,0.28)" strokeWidth="1" />
-            <line x1={pad.l} y1={hp.y} x2={w - pad.r} y2={hp.y} stroke="rgba(226,232,240,0.2)" strokeWidth="1" />
-            <circle cx={hp.x} cy={hp.y} r={4} fill="#f8fafc" stroke="rgba(226,232,240,0.6)" />
+            <line x1={hover.x} y1={pad.t} x2={hover.x} y2={h - pad.b} stroke="rgba(226,232,240,0.28)" strokeWidth="1" />
+            <line x1={pad.l} y1={hover.y} x2={w - pad.r} y2={hover.y} stroke="rgba(226,232,240,0.2)" strokeWidth="1" />
+            {hp ? (
+              <circle cx={hp.x} cy={hp.y} r={4} fill="#f8fafc" stroke="rgba(226,232,240,0.6)" />
+            ) : null}
             {hoveredCandle ? (
               <rect
                 x={hoveredCandle.x - prepared.candleWidth / 2 - 1}
@@ -565,7 +704,7 @@ function GoldChart({ points }: { points: Point[] }) {
               </span>
             </div>
           ) : (
-            <span className="text-slate-600">Najetím na svíčku zobrazíš datum a její změnu.</span>
+            <span className="text-slate-600">Najetím na svíčku zobrazíš datum a její změnu. Kolečkem myši zoomuješ, tažením posouváš.</span>
           )}
         </div>
       </div>

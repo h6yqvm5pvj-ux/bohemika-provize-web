@@ -84,52 +84,50 @@ export function CashflowAccordion({
                     );
 
                     return (
-                      <div
+                      <button
                         key={month.key}
-                        className="cashflow-card-month relative overflow-hidden rounded-2xl border border-slate-900 bg-white p-3 shadow-[0_8px_18px_rgba(15,23,42,0.08)]"
+                        type="button"
+                        onClick={() => onSelectMonth(month)}
+                        className="group cashflow-card-month relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-left shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:border-slate-300 hover:bg-slate-50"
                       >
-                        <button
-                          type="button"
-                          onClick={() => onSelectMonth(month)}
-                          className="flex w-full items-center justify-between gap-3 text-left"
-                        >
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_158px] sm:gap-3">
                           <div className="min-w-0">
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                            <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
                               Měsíc
-                            </p>
-                            <h3 className="text-lg font-semibold text-slate-900">
+                            </div>
+                            <h3 className="text-[1.9rem] leading-none font-semibold tracking-tight text-slate-900 sm:text-[2.2rem]">
                               {month.label}
                             </h3>
-                            <p className="mt-1 text-sm text-slate-600">
-                              {month.items.length} Smluv
+                            <p className="mt-1.5 text-[15px] text-slate-600">
+                              {month.items.length} smluv
                             </p>
                           </div>
 
-                          <div className="flex items-center gap-3">
-                            <div className="text-right">
-                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                                Součet
-                              </p>
-                              <p className="text-base sm:text-lg font-semibold text-slate-950">
-                                {formatMoney(month.total)}
-                              </p>
+                          <div className="border-t border-slate-200 pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                            <div className="flex items-end justify-between gap-3 sm:h-full sm:flex-col sm:items-end sm:justify-between">
+                              <div className="text-right">
+                                <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
+                                  Součet
+                                </div>
+                                <div className="mt-1 whitespace-nowrap text-[1.8rem] leading-none font-semibold tracking-tight text-slate-900">
+                                  {formatMoney(month.total)}
+                                </div>
+                              </div>
+
+                              <span className="inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-white transition group-hover:bg-black">
+                                Otevřít
+                              </span>
                             </div>
-
-                            <span
-                              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/30 bg-black text-[11px] text-white"
-                            >
-                              ▶
-                            </span>
                           </div>
-                        </button>
+                        </div>
 
-                        <div className="mt-2 h-1.5 rounded-full bg-slate-200">
+                        <div className="mt-2.5 h-1.5 rounded-full bg-slate-200">
                           <div
                             className="h-full rounded-full bg-slate-900"
                             style={{ width: `${Math.max(monthRatio, 6)}%` }}
                           />
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>

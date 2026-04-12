@@ -3,6 +3,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
@@ -142,6 +143,18 @@ const INSTITUTION_DEFS: { id: Institution; label: string }[] = [
   { id: "comfort", label: "Comfort Commodity" },
 ];
 
+const INSTITUTION_LOGO_BY_ID: Partial<Record<Institution, string>> = {
+  cpp: "/icons/cpp.png",
+  kooperativa: "/icons/koop.png",
+  maxima: "/icons/maxima.png",
+  allianz: "/icons/allianz.png",
+  uniqa: "/icons/uniqa.png",
+  csob: "/icons/csob.png",
+  pillow: "/icons/pillow.png",
+  axa: "/icons/axalogo.png",
+  comfort: "/icons/gold.png",
+};
+
 const LIFE_PRODUCTS = new Set<Product>(PRODUCT_CATEGORY_MAP.life);
 const GOLD_PRODUCT: Product = "comfortcc";
 const AUTO_PRODUCTS = new Set<Product>(PRODUCT_CATEGORY_MAP.auto);
@@ -208,16 +221,26 @@ function categoryForProduct(product?: Product | null): ProductCategory | null {
   return null;
 }
 
-function categoryLabelForProduct(product?: Product | null): string | null {
-  const category = categoryForProduct(product);
-  if (!category) return null;
-  return CATEGORY_DEFS.find((it) => it.id === category)?.label ?? null;
-}
-
 function institutionLabelForProduct(product?: Product | null): string | null {
   if (!product) return null;
   const institution = PRODUCT_INSTITUTION_MAP[product];
   return institution ? INSTITUTION_LABEL_BY_ID[institution] ?? null : null;
+}
+
+function institutionForProduct(product?: Product | null): Institution | null {
+  if (!product) return null;
+  return PRODUCT_INSTITUTION_MAP[product] ?? null;
+}
+
+function institutionMonogram(label: string): string {
+  const chunks = label
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (chunks.length === 0) return "?";
+  if (chunks.length === 1) return chunks[0].slice(0, 3).toUpperCase();
+  return `${chunks[0][0] ?? ""}${chunks[1][0] ?? ""}`.toUpperCase();
 }
 
 function toDate(value: unknown): Date | null {
@@ -1437,8 +1460,21 @@ function ContractsPageContent() {
                     ? adviserNameFromEmail(ownerEmail)
                     : "";
                 const premiumDisplay = premiumDisplayForContract(c as ContractDoc);
-                const categoryLabel = categoryLabelForProduct(c.productKey as Product | undefined);
                 const institutionLabel = institutionLabelForProduct(c.productKey as Product | undefined);
+                const institutionId = institutionForProduct(c.productKey as Product | undefined);
+                const institutionLogo = institutionId ? INSTITUTION_LOGO_BY_ID[institutionId] : null;
+                const institutionLogoClass =
+                  institutionId === "cpp" || institutionId === "kooperativa"
+                    ? "object-contain scale-[1.5] p-0"
+                    : institutionId === "allianz"
+                      ? "object-contain scale-[1.2] p-0"
+                      : institutionId === "axa"
+                        ? "object-contain scale-[1.2] p-0"
+                        : institutionId === "pillow"
+                          ? "object-contain scale-[1.2] p-0"
+                          : institutionId === "maxima"
+                            ? "object-contain scale-[1.2] p-0"
+                    : "object-contain p-1";
 
                 const CardContent = (
                   <article
@@ -1462,15 +1498,28 @@ function ContractsPageContent() {
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_190px] sm:gap-4">
                     <div className="min-w-0">
-                      <div className="text-2xl leading-tight font-semibold text-slate-900">
-                        {productLabel(c.productKey)}
-                      </div>
-
-                      {(categoryLabel || institutionLabel) && (
-                        <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                          {[categoryLabel, institutionLabel].filter(Boolean).join(" · ")}
+                      <div className="flex items-center gap-3">
+                        {institutionLabel ? (
+                          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+                            {institutionLogo ? (
+                              <Image
+                                src={institutionLogo}
+                                alt={`${institutionLabel} logo`}
+                                fill
+                                sizes="40px"
+                                className={institutionLogoClass}
+                              />
+                            ) : (
+                              <span className="text-[10px] font-semibold tracking-wide text-slate-600">
+                                {institutionMonogram(institutionLabel)}
+                              </span>
+                            )}
+                          </span>
+                        ) : null}
+                        <div className="min-w-0 text-3xl leading-none font-semibold text-slate-900 sm:text-[2.4rem]">
+                          {productLabel(c.productKey)}
                         </div>
-                      )}
+                      </div>
 
                       {anniversaryInfo.soon && (
                         <div
@@ -1668,6 +1717,7 @@ function ContractsPageContent() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {INSTITUTION_DEFS.map((inst) => {
                   const active = selectedInstitutions.has(inst.id);
+                  const logoSrc = INSTITUTION_LOGO_BY_ID[inst.id];
                   return (
                     <button
                       key={inst.id}
@@ -1689,7 +1739,24 @@ function ContractsPageContent() {
                           : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                       }`}
                     >
-                      <span className="text-sm font-medium">{inst.label}</span>
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <span className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white">
+                          {logoSrc ? (
+                            <Image
+                              src={logoSrc}
+                              alt={`${inst.label} logo`}
+                              fill
+                              sizes="28px"
+                              className="object-contain p-1"
+                            />
+                          ) : (
+                            <span className="text-[10px] font-semibold tracking-wide text-slate-600">
+                              {institutionMonogram(inst.label)}
+                            </span>
+                          )}
+                        </span>
+                        <span className="truncate text-sm font-medium">{inst.label}</span>
+                      </span>
                       <span
                         className={`h-5 w-5 rounded-full border ${
                           active

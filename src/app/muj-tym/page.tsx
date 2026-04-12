@@ -4,6 +4,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import {
+  BarChart3,
+  Copy,
+  Eye,
+  EyeOff,
+  Mail,
+  MessageSquare,
+  Network,
+  Search,
+  UserCog,
+} from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
@@ -351,6 +362,7 @@ export default function TeamPage() {
   const copyEmailTimerRef = useRef<number | null>(null);
   const positionSaveTimerRef = useRef<number | null>(null);
   const usedCacheRef = useRef(false);
+  const lastActiveRef = useRef<Record<string, number | null>>({});
   const cacheStateRef = useRef<{
     contractCounts: Record<string, ContractStats>;
     contractsLoaded: boolean;
@@ -380,6 +392,10 @@ export default function TeamPage() {
       contractsError,
     };
   }, [contractCounts, contractsLoaded, contractsError]);
+
+  useEffect(() => {
+    lastActiveRef.current = lastActive;
+  }, [lastActive]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -553,6 +569,7 @@ export default function TeamPage() {
 
   useEffect(() => {
     const loadContractCounts = async () => {
+      let nextContractsError = false;
       // použij cache jen jako skeleton, ale vždy načti čerstvá data
       if (cacheKey) {
         const cached = teamDataCache[cacheKey];
@@ -637,20 +654,21 @@ export default function TeamPage() {
       } catch (e) {
         console.error("Chyba při načítání počtu smluv", e);
         setContractCounts({});
-        setContractsError(true);
+        nextContractsError = true;
       } finally {
         setContractsLoaded(true);
         setContractsRefreshing(false);
+        setContractsError(nextContractsError);
 
         if (cacheKey) {
           teamDataCache[cacheKey] = {
             ts: Date.now(),
             payload: {
               members,
-              lastActive,
+              lastActive: lastActiveRef.current,
               contractCounts: stats ?? {},
               contractsLoaded: true,
-              contractsError,
+              contractsError: nextContractsError,
               userPosition,
               canManagePositions,
             },
@@ -662,7 +680,7 @@ export default function TeamPage() {
     if (usedCacheRef.current && contractsLoaded) return;
 
     void loadContractCounts();
-  }, [members, cacheKey, lastActive, userPosition, canManagePositions, contractsLoaded, contractsError]);
+  }, [members, cacheKey, userPosition, canManagePositions, contractsLoaded, contractsError]);
 
   const filteredMembers = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -915,313 +933,328 @@ export default function TeamPage() {
           <p className="text-sm text-slate-600">Nemáš nastavené žádné podřízené.</p>
         ) : (
           <>
-            <div className="ui-card space-y-3 rounded-3xl p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border border-slate-900 bg-white px-3 py-2">
-                  <span className="text-slate-500 text-sm">🔍</span>
-                  <input
-                    type="text"
-                    placeholder="Jméno nebo e-mail"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500"
-                  />
-                </div>
-
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as SortKey)}
-                  className="rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none hover:bg-slate-50"
-                >
-                  {SORT_OPTIONS.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-
-                <Link
-                  href="/pomucky/struktura"
-                  className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm"
-                >
-                  Struktura
-                </Link>
-                {canSendTeamMessage ? (
-                  <Link
-                    href="/pomucky/zprava-tymu"
-                    className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm"
-                  >
-                    Zpráva týmu
-                  </Link>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setShowMembersPanel((v) => !v)}
-                  className={`ui-focus inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
-                    showMembersPanel
-                      ? "ui-btn-primary"
-                      : "ui-btn-secondary"
-                  }`}
-                >
-                  {showMembersPanel ? "Skrýt podřízené" : `Zobrazit podřízené (${filteredMembers.length})`}
-                </button>
-              </div>
-
-              <div className="ui-chip-group flex w-fit flex-wrap gap-2">
-                {ACTIVITY_FILTERS.map((option) => {
-                  const active = activityFilter === option.key;
-                  return (
-                    <button
-                      key={option.key}
-                      type="button"
-                      onClick={() => setActivityFilter(option.key)}
-                      className={`ui-chip ui-focus px-3 py-1 text-xs ${active ? "ui-chip-active" : ""}`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {showMembersPanel && (
-                <div className="space-y-2 border-t border-slate-200 pt-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
-                    <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
-                      {filteredMembers.length} osob
-                    </span>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)] lg:items-stretch">
+              <aside className="ui-card rounded-3xl p-3 h-full">
+                <div className="flex h-full flex-col gap-3">
+                  <div className="flex min-w-[220px] items-center gap-2 rounded-xl border border-slate-900 bg-white px-3 py-2">
+                    <Search className="h-4 w-4 text-slate-500" aria-hidden="true" />
+                    <input
+                      type="text"
+                      placeholder="Jméno nebo e-mail"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500"
+                    />
                   </div>
-                  <div className="grid grid-cols-1 gap-2 max-h-[360px] overflow-auto pr-1 sm:grid-cols-2 xl:grid-cols-4">
-                    {filteredMembers.length === 0 && (
-                      <div className="col-span-full rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                        Pro zadaný filtr nejsou žádní členové.
-                      </div>
-                    )}
-                    {filteredMembers.map((m) => {
-                      const isSelected = m.email === selectedEmail;
-                      const last = lastActiveBadge(m.email);
+
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as SortKey)}
+                    className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none hover:bg-slate-50"
+                  >
+                    {SORT_OPTIONS.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="grid grid-cols-1 gap-2">
+                    <Link
+                      href="/pomucky/struktura"
+                      className="ui-btn-primary ui-focus inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm"
+                    >
+                      <Network size={14} strokeWidth={2} aria-hidden="true" />
+                      Struktura
+                    </Link>
+                    {canSendTeamMessage ? (
+                      <Link
+                        href="/pomucky/zprava-tymu"
+                        className="ui-btn-primary ui-focus inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm"
+                      >
+                        <MessageSquare size={14} strokeWidth={2} aria-hidden="true" />
+                        Zpráva týmu
+                      </Link>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setShowMembersPanel((v) => !v)}
+                      className={`ui-focus inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                        showMembersPanel
+                          ? "ui-btn-primary"
+                          : "ui-btn-secondary"
+                      }`}
+                    >
+                      {showMembersPanel ? (
+                        <EyeOff size={14} strokeWidth={2} aria-hidden="true" />
+                      ) : (
+                        <Eye size={14} strokeWidth={2} aria-hidden="true" />
+                      )}
+                      {showMembersPanel ? "Skrýt podřízené" : `Zobrazit podřízené (${filteredMembers.length})`}
+                    </button>
+                  </div>
+
+                  <div className="ui-chip-group flex w-full flex-wrap gap-2">
+                    {ACTIVITY_FILTERS.map((option) => {
+                      const active = activityFilter === option.key;
                       return (
                         <button
-                          key={m.email}
-                          onClick={() => setSelectedEmail(m.email)}
-                          className={[
-                            "w-full min-h-[88px] rounded-xl border px-3 py-2 text-left transition flex flex-col items-start gap-2",
-                            isSelected
-                              ? "border-slate-900 bg-slate-100 text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.1)]"
-                              : "border-slate-300 bg-white text-slate-900 hover:border-slate-900 hover:bg-slate-50",
-                          ].join(" ")}
+                          key={option.key}
+                          type="button"
+                          onClick={() => setActivityFilter(option.key)}
+                          className={`ui-chip ui-focus px-3 py-1 text-xs ${active ? "ui-chip-active" : ""}`}
                         >
-                          <div className="w-full">
-                            <div className="text-[15px] font-semibold leading-tight break-words">{m.name}</div>
-                          </div>
-                          <div className="flex w-full flex-col items-start gap-1">
-                            <span
-                              className={`text-[11px] inline-flex items-center justify-center gap-1.5 rounded-full border px-2 py-0.5 ${last.className}`}
-                              aria-label={last.title}
-                            >
-                              <span className={`h-1.5 w-1.5 rounded-full ${last.dotClassName}`} />
-                              {last.statusLabel}
-                            </span>
-                            <span className="text-[11px] leading-none text-slate-500">{last.relativeLabel}</span>
-                          </div>
+                          {option.label}
                         </button>
                       );
                     })}
                   </div>
-                </div>
-              )}
-            </div>
 
-            <div className="space-y-4">
-                {selected ? (
-                  <>
-                    <div className="relative z-10 flex flex-col gap-3 border-b border-slate-200 pb-4">
-                      <div>
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1">Detail</div>
-                        <div className="whitespace-nowrap text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">{selected.name}</div>
-                        <div className="mt-2 space-y-0.5">
-                          <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Pozice</div>
-                          <div className="text-2xl font-bold leading-tight text-slate-900">{positionLabel(selected.position)}</div>
-                        </div>
-                        <p className="text-sm text-slate-500 mt-1">{selected.email}</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={handleCopySelectedEmail}
-                            className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
-                          >
-                            {copiedEmail ? "Zkopírováno" : "Kopírovat e-mail"}
-                          </button>
-                          <a
-                            href={`mailto:${selected.email}`}
-                            className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
-                          >
-                            Napsat e-mail
-                          </a>
-                          <Link
-                            href={`/pomucky/statistika?user=${encodeURIComponent(selected.email)}`}
-                            className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
-                          >
-                            Statistiky
-                          </Link>
-                          {canEditSelectedPosition ? (
-                            <button
-                              type="button"
-                              onClick={openPositionModal}
-                              className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
-                            >
-                              Změnit pozici
-                            </button>
-                          ) : null}
-                        </div>
-                        {positionSaveSuccess ? (
-                          <div className="mt-2 text-sm font-semibold text-emerald-700">Pozice změněna.</div>
-                        ) : null}
-                        <div className="ui-chip-group mt-3 inline-flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setDetailTab("overview")}
-                            className={`ui-chip ui-focus px-3 py-1 text-xs ${detailTab === "overview" ? "ui-chip-active" : ""}`}
-                          >
-                            Přehled
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDetailTab("subordinates")}
-                            className={`ui-chip ui-focus px-3 py-1 text-xs ${detailTab === "subordinates" ? "ui-chip-active" : ""}`}
-                          >
-                            Podřízení ({subordinatesOfSelected.length})
-                          </button>
-                        </div>
+                  {showMembersPanel && (
+                    <div className="space-y-2 border-t border-slate-200 pt-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
+                        <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+                          {filteredMembers.length} osob
+                        </span>
                       </div>
-                    </div>
-
-                    {detailTab === "overview" ? (
-                      <>
-                        <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4">
-                          <div className="space-y-1">
-                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Naposledy aktivní</div>
-                            <div className="text-sm font-semibold text-slate-900" title={formatLastActive(selected.email)}>
-                              {formatRelative(lastActive[selected.email])}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4 sm:grid-cols-2">
-                          <div>
-                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Celkem smluv</div>
-                            <div className="text-xl font-bold text-slate-900">{contractCountLabel(selected.email, "total")}</div>
-                          </div>
-                          <div>
-                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Smluv tento měsíc</div>
-                            <div className="text-xl font-bold text-slate-900">{contractCountLabel(selected.email, "month")}</div>
-                          </div>
-                        </div>
-
-                        <div className="relative space-y-3 border-b border-slate-200 py-4">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Produkce</div>
-                            <div className="text-xs font-semibold text-slate-500">Pojišťovna / počet smluv / měsíční / roční</div>
-                          </div>
-
-                          <div className="ui-chip-group flex w-fit flex-wrap gap-2">
-                            {PRODUCTION_CATEGORY_TABS.map((tab) => {
-                              const active = productionCategory === tab.key;
-                              return (
-                                <button
-                                  key={tab.key}
-                                  type="button"
-                                  onClick={() => setProductionCategory(tab.key)}
-                                  className={`ui-chip ui-focus px-3 py-1 text-xs ${active ? "ui-chip-active" : ""}`}
-                                >
-                                  {tab.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                          <div className="ui-card ui-card-quiet rounded-2xl bg-slate-50 px-4 py-4">
-                            {selectedProductionRows.length === 0 ? (
-                              <div className="text-sm text-slate-500">V této kategorii zatím nejsou smlouvy.</div>
-                            ) : (
-                              <div className="space-y-1.5">
-                                <div className="hidden sm:grid sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] items-center gap-3 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                                  <div>Pojišťovna</div>
-                                  <div className="text-right">Smluv</div>
-                                  <div className="text-right">Měsíční</div>
-                                  <div className="text-right">Roční</div>
-                                </div>
-                                {selectedProductionRows.map((row) => {
-                                  const logo = insurerLogoPath(row.name);
-                                  return (
-                                  <div key={row.name} className="grid grid-cols-1 gap-1 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] sm:items-center sm:gap-3">
-                                    <div className="min-w-0 flex items-center gap-2">
-                                      {logo ? (
-                                        <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm">
-                                          <Image
-                                            src={logo}
-                                            alt={row.name}
-                                            width={40}
-                                            height={40}
-                                            className="h-9 w-9 object-contain"
-                                          />
-                                        </span>
-                                      ) : null}
-                                      <span className="min-w-0 text-base font-bold text-slate-900 sm:text-lg">{row.name}</span>
-                                    </div>
-                                    <div className="text-sm font-semibold text-slate-700 sm:text-right sm:text-base">{row.contracts}x smluv</div>
-                                    <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.monthlyPremium)}</div>
-                                    <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.annualPremium)}</div>
-                                  </div>
-                                );
-                                })}
-                                <div className="grid grid-cols-1 gap-1 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-white sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] sm:items-center sm:gap-3">
-                                  <div className="text-base font-bold sm:text-lg">Celkem</div>
-                                  <div className="text-sm font-semibold sm:text-right sm:text-base">{selectedProductionTotals.contracts}x smluv</div>
-                                  <div className="text-base font-bold text-emerald-300 sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
-                                  <div className="text-base font-bold text-emerald-300 sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.annualPremium)}</div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="space-y-2 pt-2">
-                        <div className="flex items-center justify-between">
-                          <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
-                          <span className="text-[11px] text-slate-500">
-                            {subordinatesOfSelected.length} {subordinatesOfSelected.length === 1 ? "osoba" : "osob"}
-                          </span>
-                        </div>
-                        {subordinatesOfSelected.length === 0 ? (
-                          <div className="text-sm text-slate-500 rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2">
-                            Nemá podřízené.
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {subordinatesOfSelected.map((sub) => (
-                              <div
-                                key={sub.email}
-                                className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 space-y-1"
-                              >
-                                <div className="text-sm font-semibold text-slate-900">{sub.name}</div>
-                                <div className="text-xs text-slate-500">{sub.email}</div>
-                                <div className="text-xs text-slate-500">
-                                  {positionLabel(sub.position)} · Celkem: {contractCountLabel(sub.email, "total")} · Tento měsíc:{" "}
-                                  {contractCountLabel(sub.email, "month")}
-                                </div>
-                              </div>
-                            ))}
+                      <div className="grid grid-cols-1 gap-2 max-h-[58vh] overflow-auto pr-1 lg:max-h-none lg:overflow-visible">
+                        {filteredMembers.length === 0 && (
+                          <div className="col-span-full rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                            Pro zadaný filtr nejsou žádní členové.
                           </div>
                         )}
+                        {filteredMembers.map((m) => {
+                          const isSelected = m.email === selectedEmail;
+                          const last = lastActiveBadge(m.email);
+                          return (
+                            <button
+                              key={m.email}
+                              onClick={() => setSelectedEmail(m.email)}
+                              className={[
+                                "w-full min-h-[88px] rounded-xl border px-3 py-2 text-left transition flex flex-col items-start gap-2",
+                                isSelected
+                                  ? "border-slate-900 bg-slate-100 text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.1)]"
+                                  : "border-slate-300 bg-white text-slate-900 hover:border-slate-900 hover:bg-slate-50",
+                              ].join(" ")}
+                            >
+                              <div className="w-full">
+                                <div className="text-[15px] font-semibold leading-tight break-words">{m.name}</div>
+                              </div>
+                              <div className="flex w-full flex-col items-start gap-1">
+                                <span
+                                  className={`text-[11px] inline-flex items-center justify-center gap-1.5 rounded-full border px-2 py-0.5 ${last.className}`}
+                                  aria-label={last.title}
+                                >
+                                  <span className={`h-1.5 w-1.5 rounded-full ${last.dotClassName}`} />
+                                  {last.statusLabel}
+                                </span>
+                                <span className="text-[11px] leading-none text-slate-500">{last.relativeLabel}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-sm text-slate-500">Vyber podřízeného v horním panelu.</div>
-                )}
-              </div>
+                    </div>
+                  )}
+                </div>
+              </aside>
+
+              <div className="ui-card space-y-4 rounded-3xl p-4 sm:p-5">
+                  {selected ? (
+                    <>
+                      <div className="relative z-10 flex flex-col gap-3 border-b border-slate-200 pb-4">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1">Detail</div>
+                          <div className="whitespace-nowrap text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">{selected.name}</div>
+                          <div className="mt-2 space-y-0.5">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Pozice</div>
+                            <div className="text-2xl font-bold leading-tight text-slate-900">{positionLabel(selected.position)}</div>
+                          </div>
+                          <p className="text-sm text-slate-500 mt-1">{selected.email}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={handleCopySelectedEmail}
+                              className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
+                            >
+                              <Copy size={12} strokeWidth={2} aria-hidden="true" />
+                              {copiedEmail ? "Zkopírováno" : "Kopírovat e-mail"}
+                            </button>
+                            <a
+                              href={`mailto:${selected.email}`}
+                              className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
+                            >
+                              <Mail size={12} strokeWidth={2} aria-hidden="true" />
+                              Napsat e-mail
+                            </a>
+                            <Link
+                              href={`/pomucky/statistika?user=${encodeURIComponent(selected.email)}`}
+                              className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
+                            >
+                              <BarChart3 size={12} strokeWidth={2} aria-hidden="true" />
+                              Statistiky
+                            </Link>
+                            {canEditSelectedPosition ? (
+                              <button
+                                type="button"
+                                onClick={openPositionModal}
+                                className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
+                              >
+                                <UserCog size={12} strokeWidth={2} aria-hidden="true" />
+                                Změnit pozici
+                              </button>
+                            ) : null}
+                          </div>
+                          {positionSaveSuccess ? (
+                            <div className="mt-2 text-sm font-semibold text-emerald-700">Pozice změněna.</div>
+                          ) : null}
+                          <div className="ui-chip-group mt-3 inline-flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setDetailTab("overview")}
+                              className={`ui-chip ui-focus px-3 py-1 text-xs ${detailTab === "overview" ? "ui-chip-active" : ""}`}
+                            >
+                              Přehled
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDetailTab("subordinates")}
+                              className={`ui-chip ui-focus px-3 py-1 text-xs ${detailTab === "subordinates" ? "ui-chip-active" : ""}`}
+                            >
+                              Podřízení ({subordinatesOfSelected.length})
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {detailTab === "overview" ? (
+                        <>
+                          <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4">
+                            <div className="space-y-1">
+                              <div className="text-[11px] uppercase tracking-wide text-slate-500">Naposledy aktivní</div>
+                              <div className="text-sm font-semibold text-slate-900" title={formatLastActive(selected.email)}>
+                                {formatRelative(lastActive[selected.email])}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4 sm:grid-cols-2">
+                            <div>
+                              <div className="text-[11px] uppercase tracking-wide text-slate-500">Celkem smluv</div>
+                              <div className="text-xl font-bold text-slate-900">{contractCountLabel(selected.email, "total")}</div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] uppercase tracking-wide text-slate-500">Smluv tento měsíc</div>
+                              <div className="text-xl font-bold text-slate-900">{contractCountLabel(selected.email, "month")}</div>
+                            </div>
+                          </div>
+
+                          <div className="relative space-y-3 border-b border-slate-200 py-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Produkce</div>
+                              <div className="text-xs font-semibold text-slate-500">Pojišťovna / počet smluv / měsíční / roční</div>
+                            </div>
+
+                            <div className="ui-chip-group flex w-fit flex-wrap gap-2">
+                              {PRODUCTION_CATEGORY_TABS.map((tab) => {
+                                const active = productionCategory === tab.key;
+                                return (
+                                  <button
+                                    key={tab.key}
+                                    type="button"
+                                    onClick={() => setProductionCategory(tab.key)}
+                                    className={`ui-chip ui-focus px-3 py-1 text-xs ${active ? "ui-chip-active" : ""}`}
+                                  >
+                                    {tab.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            <div className="ui-card ui-card-quiet rounded-2xl bg-slate-50 px-4 py-4">
+                              {selectedProductionRows.length === 0 ? (
+                                <div className="text-sm text-slate-500">V této kategorii zatím nejsou smlouvy.</div>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  <div className="hidden sm:grid sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] items-center gap-3 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                    <div>Pojišťovna</div>
+                                    <div className="text-right">Smluv</div>
+                                    <div className="text-right">Měsíční</div>
+                                    <div className="text-right">Roční</div>
+                                  </div>
+                                  {selectedProductionRows.map((row) => {
+                                    const logo = insurerLogoPath(row.name);
+                                    return (
+                                    <div key={row.name} className="grid grid-cols-1 gap-1 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] sm:items-center sm:gap-3">
+                                      <div className="min-w-0 flex items-center gap-2">
+                                        {logo ? (
+                                          <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm">
+                                            <Image
+                                              src={logo}
+                                              alt={row.name}
+                                              width={40}
+                                              height={40}
+                                              className="h-9 w-9 object-contain"
+                                            />
+                                          </span>
+                                        ) : null}
+                                        <span className="min-w-0 text-base font-bold text-slate-900 sm:text-lg">{row.name}</span>
+                                      </div>
+                                      <div className="text-sm font-semibold text-slate-700 sm:text-right sm:text-base">{row.contracts}x smluv</div>
+                                      <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.monthlyPremium)}</div>
+                                      <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.annualPremium)}</div>
+                                    </div>
+                                  );
+                                  })}
+                                  <div className="grid grid-cols-1 gap-1 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-white sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] sm:items-center sm:gap-3">
+                                    <div className="text-base font-bold sm:text-lg">Celkem</div>
+                                    <div className="text-sm font-semibold sm:text-right sm:text-base">{selectedProductionTotals.contracts}x smluv</div>
+                                    <div className="text-base font-bold text-emerald-300 sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
+                                    <div className="text-base font-bold text-emerald-300 sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.annualPremium)}</div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="space-y-2 pt-2">
+                          <div className="flex items-center justify-between">
+                            <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
+                            <span className="text-[11px] text-slate-500">
+                              {subordinatesOfSelected.length} {subordinatesOfSelected.length === 1 ? "osoba" : "osob"}
+                            </span>
+                          </div>
+                          {subordinatesOfSelected.length === 0 ? (
+                            <div className="text-sm text-slate-500 rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2">
+                              Nemá podřízené.
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {subordinatesOfSelected.map((sub) => (
+                                <div
+                                  key={sub.email}
+                                  className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 space-y-1"
+                                >
+                                  <div className="text-sm font-semibold text-slate-900">{sub.name}</div>
+                                  <div className="text-xs text-slate-500">{sub.email}</div>
+                                  <div className="text-xs text-slate-500">
+                                    {positionLabel(sub.position)} · Celkem: {contractCountLabel(sub.email, "total")} · Tento měsíc:{" "}
+                                    {contractCountLabel(sub.email, "month")}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-sm text-slate-500">Vyber podřízeného v levém panelu.</div>
+                  )}
+                </div>
+            </div>
           </>
         )}
       </div>

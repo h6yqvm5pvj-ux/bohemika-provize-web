@@ -98,9 +98,8 @@ export function ProductionSummarySection({
         </div>
 
         <div className="flex min-h-[220px] h-full flex-col justify-center space-y-6 text-center md:px-6">
-          <h2 className="text-2xl font-semibold text-white sm:text-3xl">
-            <span className="block">Týmová</span>
-            <span className="block">produkce</span>
+          <h2 className="whitespace-nowrap text-2xl font-semibold text-white sm:text-3xl">
+            Týmová produkce
           </h2>
           {loading ? (
             <p className="text-base text-slate-300">Načítám…</p>

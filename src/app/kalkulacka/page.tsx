@@ -1476,6 +1476,7 @@ export default function CalculatorPage() {
         durationYears: shouldShowDuration(product) ? durationYears : null,
         userEmail: email,
         contractNumber: contractNumber || null,
+        paid: false,
         managerEmailSnapshot: mgrEmail ?? null,
         managerPositionSnapshot: mgrPos ?? null,
         managerModeSnapshot: mgrMode ?? null,
