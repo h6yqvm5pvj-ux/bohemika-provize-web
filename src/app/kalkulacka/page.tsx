@@ -123,7 +123,7 @@ const frequencyLabel = (f: PaymentFrequency) => {
 };
 
 const PRODUCT_OPTIONS: { id: Product; label: string }[] = [
-  { id: "neon", label: "ČPP ŽP NEON" },
+  { id: "neon", label: "ČPP - Životní pojištění NEON Life / Risk" },
   { id: "flexi", label: "Kooperativa ŽP FLEXI" },
   { id: "maximaMaxEfekt", label: "MAXIMA ŽP MaxEfekt" },
   { id: "pillowInjury", label: "Pillow Úraz / Nemoc" },

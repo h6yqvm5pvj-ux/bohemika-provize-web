@@ -2,10 +2,13 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AppLayout } from "@/components/AppLayout";
+import {
+  buildChildrenByManager,
+  collectSubordinateHierarchy,
+} from "@/app/lib/teamHierarchy";
 import { auth, db } from "../../firebase";
 
 import {
@@ -22,6 +25,7 @@ import {
 } from "firebase/firestore";
 import { type Position, type Product } from "../../types/domain";
 import SplitTitle from "../plan-produkce/SplitTitle";
+import { CalendarDays, Search, Tags, UsersRound } from "lucide-react";
 
 /* -------------------- lazy import html2pdf.js (kvůli Next/SSR) -------------------- */
 
@@ -88,6 +92,23 @@ type PerUserStats = AggregatedStats & {
   positionLabel?: string | null;
 };
 
+const DATE_RANGE_OPTIONS: [DateRangeOption, string][] = [
+  ["currentMonth", "Aktuální měsíc"],
+  ["last3", "Poslední 3 měsíce"],
+  ["last6", "Posledních 6 měsíců"],
+  ["currentYear", "Aktuální rok"],
+];
+
+const CATEGORY_FILTERS: { key: ProductCategory; label: string }[] = [
+  { key: "life", label: "Životní pojištění" },
+  { key: "nonlife", label: "Neživotní pojištění" },
+  { key: "auto", label: "Auto" },
+  { key: "property", label: "Majetek" },
+  { key: "gold", label: "Zlato" },
+];
+
+const ALL_CATEGORY_KEYS: ProductCategory[] = CATEGORY_FILTERS.map((c) => c.key);
+
 /* ---------------------------- produktové skupiny ------------------------ */
 
 const LIFE_PRODUCTS: Product[] = [
@@ -117,6 +138,29 @@ const PROPERTY_PRODUCTS: Product[] = [
   "cppcestovko",
   "axacestovko",
 ];
+
+const PRODUCT_ICON_PATHS: Partial<Record<Product, string>> = {
+  neon: "/icons/cpp.png",
+  domex: "/icons/cpp.png",
+  cppsimplex: "/icons/cpp.png",
+  cppPPRbez: "/icons/cpp.png",
+  cppAuto: "/icons/cpp.png",
+  cppPPRs: "/icons/cpp.png",
+  cppcestovko: "/icons/cpp.png",
+  zamex: "/icons/cpp.png",
+  flexi: "/icons/koop.png",
+  kooperativaAuto: "/icons/koop.png",
+  koopmajetekobcan: "/icons/koop.png",
+  maximaMaxEfekt: "/icons/maxima.png",
+  maxdomov: "/icons/maxima.png",
+  pillowInjury: "/icons/pillow.png",
+  pillowAuto: "/icons/pillow.png",
+  allianzAuto: "/icons/allianz.png",
+  csobAuto: "/icons/csob.png",
+  uniqaAuto: "/icons/uniqa.png",
+  axacestovko: "/icons/axalogo.png",
+  comfortcc: "/icons/gold.png",
+};
 
 function productCategory(p: Product): ProductCategory {
   if (LIFE_PRODUCTS.includes(p)) return "life";
@@ -186,6 +230,40 @@ function productLabel(p: Product): string {
       return "ČPP Cestovko";
     case "axacestovko":
       return "AXA Cestovko";
+    case "comfortcc":
+      return "Comfort Commodity";
+  }
+}
+
+function institutionLabel(p: Product): string {
+  switch (p) {
+    case "neon":
+    case "domex":
+    case "cppsimplex":
+    case "cppPPRbez":
+    case "cppAuto":
+    case "cppPPRs":
+    case "cppcestovko":
+    case "zamex":
+      return "ČPP";
+    case "flexi":
+    case "kooperativaAuto":
+    case "koopmajetekobcan":
+      return "Kooperativa";
+    case "maximaMaxEfekt":
+    case "maxdomov":
+      return "Maxima";
+    case "pillowInjury":
+    case "pillowAuto":
+      return "Pillow";
+    case "allianzAuto":
+      return "Allianz";
+    case "csobAuto":
+      return "ČSOB";
+    case "uniqaAuto":
+      return "UNIQA";
+    case "axacestovko":
+      return "AXA";
     case "comfortcc":
       return "Comfort Commodity";
   }
@@ -319,6 +397,51 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function normalizeForSearch(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Nepodařilo se převést obrázek na data URL."));
+      }
+    };
+    reader.onerror = () => {
+      reject(reader.error ?? new Error("Nepodařilo se načíst obrázek."));
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+type ThemeIconKind = "life" | "nonlife" | "auto" | "property" | "gold";
+
+function themeIconSvg(kind: ThemeIconKind): string {
+  const base =
+    'xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+  switch (kind) {
+    case "life":
+      return `<svg ${base}><path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.4A4 4 0 0 1 19 11c0 5.5-7 10-7 10Z"/></svg>`;
+    case "auto":
+      return `<svg ${base}><path d="M3 13h18l-1.5-4.5a2 2 0 0 0-1.9-1.4H6.4a2 2 0 0 0-1.9 1.4L3 13Zm0 0v4m18-4v4M7 17a1.5 1.5 0 1 0 0 .01M17 17a1.5 1.5 0 1 0 0 .01"/></svg>`;
+    case "property":
+      return `<svg ${base}><path d="m3 11 9-7 9 7M5 10.5V20h14v-9.5M10 20v-5h4v5"/></svg>`;
+    case "gold":
+      return `<svg ${base}><path d="M4 8h16l-2 8H6L4 8Zm3-3h10l1 3H6l1-3Zm1 11h8v3H8v-3Z"/></svg>`;
+    case "nonlife":
+    default:
+      return `<svg ${base}><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>`;
+  }
+}
+
 // html2canvas neumí lab/oklch barvy → nahradíme je běžnými hex/barvami
 function stripUnsupportedColors(html: string): string {
   return html.replace(/(?:oklch|lab)\([^)]*\)/gi, "#0f172a");
@@ -368,15 +491,13 @@ function getDateRange(option: DateRangeOption): { from: Date; to: Date } {
 /* ------------------------------- komponenta ----------------------------- */
 
 export default function ExportProductionPage() {
-  const router = useRouter();
-
   const [user, setUser] = useState<FirebaseUser | null>(null);
 
   const [dateRangeOption, setDateRangeOption] =
     useState<DateRangeOption>("last3");
   const [scopeOption, setScopeOption] = useState<ScopeOption>("own");
   const [categories, setCategories] = useState<Set<ProductCategory>>(
-    () => new Set<ProductCategory>(["life", "nonlife", "auto", "property", "gold"])
+    () => new Set<ProductCategory>(ALL_CATEGORY_KEYS)
   );
 
   const [currentUserPosition, setCurrentUserPosition] =
@@ -394,13 +515,17 @@ export default function ExportProductionPage() {
     { type: "ok" | "error"; msg: string } | null
   >(null);
   const [showEmailForm, setShowEmailForm] = useState(false);
+  const [subordinatesPickerOpen, setSubordinatesPickerOpen] = useState(false);
+  const [subordinateSearch, setSubordinateSearch] = useState("");
 
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+  const [productIconDataUrls, setProductIconDataUrls] = useState<
+    Partial<Record<Product, string>>
+  >({});
 
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [recipient, setRecipient] = useState("");
-  const [smtpUser, setSmtpUser] = useState("");
-  const [smtpPass, setSmtpPass] = useState("");
+  const subordinatesPickerRef = useRef<HTMLDivElement | null>(null);
 
   const blobToBase64 = async (blob: Blob): Promise<string> => {
     const buffer = await blob.arrayBuffer();
@@ -416,6 +541,28 @@ export default function ExportProductionPage() {
   const hasTeam = subordinates.length > 0;
   const isTeamScope =
     scopeOption === "team" || scopeOption === "selected";
+  const allCategoriesSelected = ALL_CATEGORY_KEYS.every((key) =>
+    categories.has(key)
+  );
+  const activeFiltersSummary = [
+    `Rozsah: ${labelForScope(scopeOption)}`,
+    `Období: ${labelForDateRange(dateRangeOption)}`,
+    allCategoriesSelected
+      ? "Kategorie: Všechny"
+      : `Kategorie: ${categories.size}/${ALL_CATEGORY_KEYS.length}`,
+    scopeOption === "selected" && hasTeam
+      ? `Poradci: ${selectedSubs.size}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
+  const filteredSubordinates = useMemo(() => {
+    const q = normalizeForSearch(subordinateSearch);
+    if (!q) return subordinates;
+    return subordinates.filter((sub) =>
+      normalizeForSearch(`${sub.name} ${sub.email}`).includes(q)
+    );
+  }, [subordinates, subordinateSearch]);
 
   /* ----------------------------- auth ----------------------------- */
 
@@ -423,19 +570,12 @@ export default function ExportProductionPage() {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
       if (!fbUser) {
         setUser(null);
-        router.push("/login");
         return;
       }
       setUser(fbUser);
     });
     return () => unsub();
-  }, [router]);
-
-  useEffect(() => {
-    if (user?.email && !smtpUser) {
-      setSmtpUser(user.email);
-    }
-  }, [user, smtpUser]);
+  }, []);
 
   /* ------------------------- podřízení --------------------------- */
 
@@ -449,35 +589,91 @@ export default function ExportProductionPage() {
       setErrorText(null);
 
       try {
-        // aktuální uživatel – kvůli pozici
-        const meDoc = await getDocs(
-          query(collection(db, "users"), where("email", "==", email))
-        );
-        const meData = meDoc.docs[0]?.data() as { position?: Position } | undefined;
-        setCurrentUserPosition(meData?.position ?? null);
-
         const usersRef = collection(db, "users");
-        const subsQ = query(
-          usersRef,
-          where("managerEmail", "==", email)
-        );
-        const subsSnap = await getDocs(subsQ);
+        const usersSnap = await getDocs(usersRef);
+        type UserNode = {
+          email: string;
+          managerEmail: string | null;
+          position: Position | null;
+          fullName?: string | null;
+          docId: string;
+        };
 
-        const list: Subordinate[] = subsSnap.docs.map((d) => {
-          const data = d.data() as any;
-          const e = (data.email as string | undefined) ?? d.id;
-          return {
-            email: e.toLowerCase(),
-            name: (data.fullName as string | undefined) ?? nameFromEmail(e),
-            position: data.position ?? null,
-          };
+        const candidatesByEmail = new Map<string, UserNode[]>();
+        usersSnap.forEach((docSnap) => {
+          const data = docSnap.data() as any;
+          const rawEmail = ((data.email as string | undefined) ?? docSnap.id)
+            .trim()
+            .toLowerCase();
+          if (!rawEmail) return;
+
+          const current = candidatesByEmail.get(rawEmail) ?? [];
+          current.push({
+            email: rawEmail,
+            managerEmail:
+              ((data.managerEmail as string | undefined)?.trim().toLowerCase() ??
+                null),
+            position: (data.position as Position | undefined) ?? null,
+            fullName: (data.fullName as string | undefined) ?? null,
+            docId: docSnap.id,
+          });
+          candidatesByEmail.set(rawEmail, current);
+        });
+
+        const pickBestCandidate = (items: UserNode[], emailKey: string): UserNode => {
+          return [...items].sort((a, b) => {
+            const aDoc = a.docId.trim().toLowerCase();
+            const bDoc = b.docId.trim().toLowerCase();
+            const aCanonical = aDoc === emailKey ? 0 : 1;
+            const bCanonical = bDoc === emailKey ? 0 : 1;
+            if (aCanonical !== bCanonical) return aCanonical - bCanonical;
+
+            const aHasPosition = a.position ? 0 : 1;
+            const bHasPosition = b.position ? 0 : 1;
+            if (aHasPosition !== bHasPosition) return aHasPosition - bHasPosition;
+
+            const aHasManager = a.managerEmail ? 0 : 1;
+            const bHasManager = b.managerEmail ? 0 : 1;
+            if (aHasManager !== bHasManager) return aHasManager - bHasManager;
+
+            return aDoc.localeCompare(bDoc, "cs");
+          })[0];
+        };
+
+        const usersByEmail = new Map<string, UserNode>();
+        candidatesByEmail.forEach((items, emailKey) => {
+          usersByEmail.set(emailKey, pickBestCandidate(items, emailKey));
+        });
+
+        const me = usersByEmail.get(email) ?? null;
+        setCurrentUserPosition(me?.position ?? null);
+
+        const childrenByManager = buildChildrenByManager(usersByEmail.values());
+        const hierarchy = collectSubordinateHierarchy(email, childrenByManager);
+        const list: Subordinate[] = [];
+        hierarchy.subordinateEmails.forEach((subEmail) => {
+          const node = hierarchy.subordinateByEmail.get(subEmail);
+          if (!node) return;
+          list.push({
+            email: node.email,
+            name: node.fullName ?? nameFromEmail(node.email),
+            position: node.position,
+          });
         });
 
         list.sort((a, b) => a.name.localeCompare(b.name, "cs"));
         setSubordinates(list);
+        const allowedEmails = new Set(list.map((s) => s.email));
+        setSelectedSubs((prev) => {
+          const next = new Set<string>();
+          for (const subEmail of prev) {
+            if (allowedEmails.has(subEmail)) next.add(subEmail);
+          }
+          return next;
+        });
       } catch (e) {
         console.error("Chyba při načítání podřízených", e);
-        setErrorText("Nepodařilo se načíst podřízené poradce.");
+        setErrorText("Nepodařilo se načíst podřízené (včetně celého týmu).");
       } finally {
         setLoadingSubs(false);
       }
@@ -486,25 +682,81 @@ export default function ExportProductionPage() {
     loadSubs();
   }, [user]);
 
+  useEffect(() => {
+    if (scopeOption !== "selected" || !hasTeam) {
+      setSubordinatesPickerOpen(false);
+      setSubordinateSearch("");
+    }
+  }, [scopeOption, hasTeam]);
+
+  useEffect(() => {
+    if (!subordinatesPickerOpen) return;
+    const onDown = (ev: MouseEvent) => {
+      const el = subordinatesPickerRef.current;
+      if (!el) return;
+      if (!el.contains(ev.target as Node)) {
+        setSubordinatesPickerOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [subordinatesPickerOpen]);
+
+  useEffect(() => {
+    if (!subordinatesPickerOpen) {
+      setSubordinateSearch("");
+    }
+  }, [subordinatesPickerOpen]);
+
   /* --------------------------- logo ------------------------------ */
 
   useEffect(() => {
-    const loadLogo = async () => {
+    let cancelled = false;
+
+    const readAsset = async (path: string): Promise<string | null> => {
       try {
-        const res = await fetch("/icons/bohemika_logo.png");
+        const res = await fetch(path);
+        if (!res.ok) return null;
         const blob = await res.blob();
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          if (typeof reader.result === "string") {
-            setLogoDataUrl(reader.result);
-          }
-        };
-        reader.readAsDataURL(blob);
-      } catch (e) {
-        console.error("Nepodařilo se načíst logo:", e);
+        return await blobToDataUrl(blob);
+      } catch {
+        return null;
       }
     };
-    loadLogo();
+
+    const loadBrandAssets = async () => {
+      try {
+        const [logo, iconEntries] = await Promise.all([
+          readAsset("/icons/bohemika_logo.png"),
+          Promise.all(
+            (Object.entries(PRODUCT_ICON_PATHS) as [Product, string][]).map(
+              async ([product, path]) =>
+                [product, await readAsset(path)] as const
+            )
+          ),
+        ]);
+
+        if (cancelled) return;
+
+        if (logo) {
+          setLogoDataUrl(logo);
+        }
+
+        const nextIcons: Partial<Record<Product, string>> = {};
+        for (const [product, dataUrl] of iconEntries) {
+          if (!dataUrl) continue;
+          nextIcons[product] = dataUrl;
+        }
+        setProductIconDataUrls(nextIcons);
+      } catch (e) {
+        console.error("Nepodařilo se načíst brand assety pro export:", e);
+      }
+    };
+
+    void loadBrandAssets();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const selectedCategories = useMemo(
@@ -771,11 +1023,21 @@ export default function ExportProductionPage() {
         : `<div class="logo-placeholder">B</div>`;
 
     const summarySections: string[] = [];
+    const themedHeading = (
+      label: string,
+      kind: ThemeIconKind,
+      className = "card-title"
+    ) => `
+      <div class="${className}">
+        <span class="theme-icon" aria-hidden="true">${themeIconSvg(kind)}</span>
+        <span>${escapeHtml(label)}</span>
+      </div>
+    `;
 
     if (includeLife && (summary.lifeContracts > 0 || summary.lifeMonthly > 0)) {
       summarySections.push(`
         <div class="card">
-          <div class="card-title">Životní pojištění</div>
+          ${themedHeading("Životní pojištění", "life")}
           <div class="card-row">
             <span>Měsíční pojistné celkem</span>
             <span>${formatMoney(summary.lifeMonthly)}</span>
@@ -798,7 +1060,7 @@ export default function ExportProductionPage() {
     ) {
       summarySections.push(`
         <div class="card">
-          <div class="card-title">Neživotní pojištění</div>
+          ${themedHeading("Neživotní pojištění", "nonlife")}
           <div class="card-row">
             <span>Roční pojistné celkem</span>
             <span>${formatMoney(summary.nonLifeAnnual)}</span>
@@ -817,7 +1079,7 @@ export default function ExportProductionPage() {
     ) {
       summarySections.push(`
         <div class="card">
-          <div class="card-title">Pojištění vozidel</div>
+          ${themedHeading("Pojištění vozidel", "auto")}
           <div class="card-row">
             <span>Roční pojistné celkem</span>
             <span>${formatMoney(summary.autoAnnual)}</span>
@@ -836,7 +1098,7 @@ export default function ExportProductionPage() {
     ) {
       summarySections.push(`
         <div class="card">
-          <div class="card-title">Majetek &amp; ostatní neživot</div>
+          ${themedHeading("Majetek & ostatní neživot", "property")}
           <div class="card-row">
             <span>Roční pojistné celkem</span>
             <span>${formatMoney(summary.propertyAnnual)}</span>
@@ -852,7 +1114,7 @@ export default function ExportProductionPage() {
     if (includeGold && (summary.goldContracts > 0 || summary.goldTotal > 0)) {
       summarySections.push(`
         <div class="card">
-          <div class="card-title">Zlato (Comfort Commodity)</div>
+          ${themedHeading("Zlato (Comfort Commodity)", "gold")}
           <div class="card-row">
             <span>Objem (poplatek)</span>
             <span>${formatMoney(summary.goldTotal)}</span>
@@ -874,7 +1136,7 @@ export default function ExportProductionPage() {
         if (includeLife && (stats.lifeContracts > 0 || stats.lifeMonthly > 0)) {
           userSections.push(`
             <div class="card-inner">
-              <div class="card-subtitle">Životní pojištění</div>
+              ${themedHeading("Životní pojištění", "life", "card-subtitle")}
               <div class="card-row">
                 <span>Měsíční pojistné</span>
                 <span>${formatMoney(stats.lifeMonthly)}</span>
@@ -897,7 +1159,7 @@ export default function ExportProductionPage() {
         ) {
           userSections.push(`
             <div class="card-inner">
-              <div class="card-subtitle">Neživotní pojištění</div>
+              ${themedHeading("Neživotní pojištění", "nonlife", "card-subtitle")}
               <div class="card-row">
                 <span>Roční pojistné</span>
                 <span>${formatMoney(stats.nonLifeAnnual)}</span>
@@ -916,7 +1178,7 @@ export default function ExportProductionPage() {
         ) {
           userSections.push(`
             <div class="card-inner">
-              <div class="card-subtitle">Pojištění vozidel</div>
+              ${themedHeading("Pojištění vozidel", "auto", "card-subtitle")}
               <div class="card-row">
                 <span>Roční pojistné</span>
                 <span>${formatMoney(stats.autoAnnual)}</span>
@@ -935,7 +1197,7 @@ export default function ExportProductionPage() {
         ) {
           userSections.push(`
             <div class="card-inner">
-              <div class="card-subtitle">Majetek &amp; ostatní neživot</div>
+              ${themedHeading("Majetek & ostatní neživot", "property", "card-subtitle")}
               <div class="card-row">
                 <span>Roční pojistné</span>
                 <span>${formatMoney(stats.propertyAnnual)}</span>
@@ -951,7 +1213,7 @@ export default function ExportProductionPage() {
         if (includeGold && (stats.goldContracts > 0 || stats.goldTotal > 0)) {
           userSections.push(`
             <div class="card-inner">
-              <div class="card-subtitle">Zlato (Comfort Commodity)</div>
+              ${themedHeading("Zlato (Comfort Commodity)", "gold", "card-subtitle")}
               <div class="card-row">
                 <span>Objem (poplatek)</span>
                 <span>${formatMoney(stats.goldTotal)}</span>
@@ -992,6 +1254,49 @@ export default function ExportProductionPage() {
       }
     }
 
+    const productRowsHtml = Array.from(perProduct.entries())
+      .sort((a, b) => b[1].annual - a[1].annual)
+      .map(([prod, vals]) => {
+        const provider = institutionLabel(prod);
+        const iconDataUrl = productIconDataUrls[prod] ?? null;
+        const iconPath = PRODUCT_ICON_PATHS[prod] ?? null;
+        const iconSrc =
+          iconDataUrl ??
+          (iconPath
+            ? (() => {
+                try {
+                  return new URL(iconPath, window.location.origin).toString();
+                } catch {
+                  return iconPath;
+                }
+              })()
+            : null);
+        const iconMarkup = iconSrc
+          ? `<span class="product-logo"><img src="${escapeHtml(
+              iconSrc
+            )}" alt="${escapeHtml(provider)}" /></span>`
+          : `<span class="product-logo product-logo-fallback">${escapeHtml(
+              provider.charAt(0).toUpperCase()
+            )}</span>`;
+
+        return `
+          <tr>
+            <td class="product">
+              <div class="product-cell">
+                ${iconMarkup}
+                <div class="product-meta">
+                  <div class="product-name">${escapeHtml(productLabel(prod))}</div>
+                  <div class="product-provider">${escapeHtml(provider)}</div>
+                </div>
+              </div>
+            </td>
+            <td class="count">${vals.contracts}</td>
+            <td class="amount">${formatMoney(vals.annual)}</td>
+          </tr>
+        `;
+      })
+      .join("");
+
     const html = `
       <html>
         <head>
@@ -1001,7 +1306,7 @@ export default function ExportProductionPage() {
             body {
               margin: 0;
               padding: 32px 0;
-              background: linear-gradient(180deg,#e6ebfb 0%,#e9eefc 40%,#eef2ff 100%);
+              background: #f1f5f9;
               font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
                 system-ui, -system-ui, sans-serif;
               color: #0f172a;
@@ -1010,12 +1315,12 @@ export default function ExportProductionPage() {
             .page {
               width: 760px;
               margin: 0 auto;
-              background: #f8fbff;
-              border-radius: 26px;
-              border: 1px solid #d9e2f7;
+              background: #ffffff;
+              border-radius: 22px;
+              border: 1.5px solid #0f172a;
               box-shadow:
-                0 24px 80px rgba(15, 23, 42, 0.2),
-                0 0 0 1px rgba(255,255,255,0.7) inset;
+                0 20px 60px rgba(15, 23, 42, 0.16),
+                0 0 0 1px rgba(15, 23, 42, 0.04) inset;
               padding: 32px 34px 36px;
             }
             .page-header {
@@ -1027,12 +1332,13 @@ export default function ExportProductionPage() {
             .logo {
               width: 52px;
               height: 52px;
-              border-radius: 20px;
-              background: linear-gradient(135deg,#e0f2fe,#dbeafe);
+              border-radius: 16px;
+              background: #ffffff;
+              border: 1px solid #cbd5e1;
               display: flex;
               align-items: center;
               justify-content: center;
-              box-shadow: 0 10px 30px rgba(37, 99, 235, 0.45);
+              box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
             }
             .logo-img {
               max-width: 36px;
@@ -1045,37 +1351,37 @@ export default function ExportProductionPage() {
             }
             .title-block h1 {
               margin: 0;
-              font-size: 22px;
+              font-size: 26px;
+              font-weight: 700;
               letter-spacing: 0.02em;
             }
             .title-block p {
               margin: 2px 0 0;
               font-size: 12px;
-              letter-spacing: 0.18em;
+              letter-spacing: 0.1em;
               text-transform: uppercase;
-              color: #64748b;
+              color: #334155;
             }
             .info-card {
               margin-top: 8px;
               padding: 14px 16px;
-              border-radius: 18px;
-              background: rgba(255,255,255,0.95);
-              border: 1px solid rgba(148, 163, 184, 0.35);
-              box-shadow: 0 14px 40px rgba(15, 23, 42, 0.2);
+              border-radius: 14px;
+              background: #f8fafc;
+              border: 1px solid #cbd5e1;
               font-size: 12px;
               line-height: 1.6;
             }
             .info-card strong { font-weight: 600; }
             .divider {
               margin: 20px 0;
-              border-bottom: 1px solid rgba(148, 163, 184, 0.5);
+              border-bottom: 1px solid #cbd5e1;
             }
             .section-title {
               font-size: 13px;
               font-weight: 600;
-              letter-spacing: 0.12em;
+              letter-spacing: 0.08em;
               text-transform: uppercase;
-              color: #64748b;
+              color: #0f172a;
               margin-bottom: 10px;
             }
             .card-grid {
@@ -1090,22 +1396,46 @@ export default function ExportProductionPage() {
               page-break-inside: avoid;
             }
             .card {
-              border-radius: 18px;
-              background: linear-gradient(135deg,#ffffff,#f5f7fb);
-              border: 1px solid #d6e0f2;
-              box-shadow:
-                0 18px 55px rgba(15, 23, 42, 0.15),
-                0 0 0 1px rgba(255,255,255,0.9) inset;
+              border-radius: 14px;
+              background: #ffffff;
+              border: 1px solid #cbd5e1;
+              box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
               padding: 14px 16px 14px;
               font-size: 12px;
             }
             .card-title {
+              display: flex;
+              align-items: center;
+              gap: 8px;
               font-size: 14px;
               font-weight: 600;
               margin-bottom: 6px;
               letter-spacing: 0.06em;
               text-transform: uppercase;
-              color: #1d4ed8;
+              color: #111827;
+            }
+            .theme-icon {
+              width: 18px;
+              height: 18px;
+              border-radius: 6px;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              background: #f1f5f9;
+              border: 1px solid #cbd5e1;
+              color: #0f172a;
+              flex-shrink: 0;
+              overflow: hidden;
+              line-height: 0;
+            }
+            .theme-icon svg {
+              width: 12px;
+              height: 12px;
+              fill: none;
+              stroke: currentColor;
+              stroke-width: 1.8;
+              stroke-linecap: round;
+              stroke-linejoin: round;
             }
             .card-row {
               display: flex;
@@ -1144,8 +1474,8 @@ export default function ExportProductionPage() {
               width: 26px;
               height: 26px;
               border-radius: 999px;
-              background: linear-gradient(135deg,#22c55e,#16a34a);
-              color: #ecfdf5;
+              background: #0f172a;
+              color: #ffffff;
               display: flex;
               align-items: center;
               justify-content: center;
@@ -1170,13 +1500,14 @@ export default function ExportProductionPage() {
               border-spacing: 0;
               margin-top: 10px;
               font-size: 12px;
-              border-radius: 14px;
+              border-radius: 12px;
               overflow: hidden;
-              box-shadow: 0 10px 28px rgba(15,23,42,0.12);
+              border: 1px solid #cbd5e1;
+              box-shadow: 0 8px 20px rgba(15,23,42,0.08);
             }
             .product-table thead {
-              background: linear-gradient(135deg,#eef2ff,#e6ecfd);
-              color: #1e293b;
+              background: #e2e8f0;
+              color: #0f172a;
             }
             .product-table th {
               padding: 10px 12px;
@@ -1185,19 +1516,64 @@ export default function ExportProductionPage() {
               letter-spacing: 0.04em;
               text-transform: uppercase;
               font-size: 11px;
-              border-bottom: 1px solid #dde5f7;
+              border-bottom: 1px solid #cbd5e1;
             }
             .product-table tbody tr:nth-child(odd) { background: #ffffff; }
-            .product-table tbody tr:nth-child(even) { background: #f7f9ff; }
+            .product-table tbody tr:nth-child(even) { background: #f8fafc; }
             .product-table td {
               padding: 10px 12px;
-              border-bottom: 1px solid #e4eaf7;
+              border-bottom: 1px solid #e2e8f0;
               color: #334155;
               vertical-align: top;
             }
-            .product-table td.product { width: 55%; text-align: left; }
-            .product-table td.count { width: 15%; text-align: center; font-weight: 700; color: #0f172a; }
-            .product-table td.amount { width: 30%; text-align: right; font-weight: 700; color: #0f172a; }
+            .product-table td.product { width: 62%; text-align: left; }
+            .product-table td.count { width: 12%; text-align: center; font-weight: 700; color: #0f172a; }
+            .product-table td.amount { width: 26%; text-align: right; font-weight: 700; color: #0f172a; }
+            .product-cell {
+              display: flex;
+              align-items: center;
+              gap: 10px;
+              min-height: 34px;
+            }
+            .product-logo {
+              width: 30px;
+              height: 30px;
+              border-radius: 8px;
+              border: 1px solid #cbd5e1;
+              background: #ffffff;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+              flex-shrink: 0;
+            }
+            .product-logo img {
+              width: 100%;
+              height: 100%;
+              object-fit: contain;
+              padding: 3px;
+            }
+            .product-logo-fallback {
+              font-size: 11px;
+              font-weight: 700;
+              color: #334155;
+              background: #f1f5f9;
+            }
+            .product-meta {
+              min-width: 0;
+            }
+            .product-name {
+              color: #0f172a;
+              line-height: 1.3;
+              font-weight: 600;
+            }
+            .product-provider {
+              margin-top: 2px;
+              font-size: 10px;
+              color: #64748b;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+            }
             .monthly-chart {
               display: flex;
               align-items: flex-end;
@@ -1246,13 +1622,24 @@ export default function ExportProductionPage() {
               border-radius: 12px;
               background: #ffffff;
               padding: 6px 8px;
-              border: 1px solid #d7e1f3;
+              border: 1px solid #cbd5e1;
             }
             .card-subtitle {
+              display: flex;
+              align-items: center;
+              gap: 6px;
               font-size: 11px;
               font-weight: 600;
-              color: #1d4ed8;
+              color: #0f172a;
               margin-bottom: 3px;
+            }
+            .card-subtitle .theme-icon {
+              width: 16px;
+              height: 16px;
+            }
+            .card-subtitle .theme-icon svg {
+              width: 10px;
+              height: 10px;
             }
             .footer-note {
               margin-top: 14px;
@@ -1260,7 +1647,7 @@ export default function ExportProductionPage() {
               color: #94a3b8;
             }
             @media print {
-              body { background: #eef2ff; }
+              body { background: #f1f5f9; }
             }
           </style>
         </head>
@@ -1269,8 +1656,8 @@ export default function ExportProductionPage() {
             <div class="page-header">
               ${logoHtml}
               <div class="title-block">
-                <h1>Produkce</h1>
-                <p>${dateLabel}</p>
+                <h1>Bohemika.App - Produkce</h1>
+                <p>${dateLabel} - ${scopeLabel}</p>
               </div>
             </div>
 
@@ -1310,18 +1697,7 @@ export default function ExportProductionPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        ${Array.from(perProduct.entries())
-                          .sort((a, b) => b[1].annual - a[1].annual)
-                          .map(
-                            ([prod, vals]) => `
-                              <tr>
-                                <td class="product">${escapeHtml(productLabel(prod))}</td>
-                                <td class="count">${vals.contracts}</td>
-                                <td class="amount">${formatMoney(vals.annual)}</td>
-                              </tr>
-                            `
-                          )
-                          .join("")}
+                        ${productRowsHtml}
                       </tbody>
                     </table>
                   </div>
@@ -1372,7 +1748,7 @@ export default function ExportProductionPage() {
             }
 
             <div class="footer-note">
-              PDF bylo vygenerováno z interní webové aplikace Bohemika Provize.
+              PDF bylo vygenerováno z interní webové aplikace Bohemka.App .
               Čísla jsou orientační a mohou se lišit od údajů v systémech
               jednotlivých společností.
             </div>
@@ -1464,13 +1840,6 @@ export default function ExportProductionPage() {
       setSendStatus({ type: "error", msg: "Vyplň e-mail příjemce." });
       return;
     }
-    if (!smtpUser.trim() || !smtpPass.trim()) {
-      setSendStatus({
-        type: "error",
-        msg: "Vyplň SMTP uživatele a heslo.",
-      });
-      return;
-    }
 
     setSending(true);
     setSendStatus(null);
@@ -1512,18 +1881,19 @@ export default function ExportProductionPage() {
       };
       const subject = `Statistika produkce – ${rangeLabelMap[dateRangeOption] ?? dateRangeOption}`;
       const filename = `${filenameBase}_${dateRangeOption}.pdf`;
+      const token = await user.getIdToken();
 
       const res = await fetch("/api/send-email", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           to: recipient.trim(),
           subject,
           text: "V příloze posílám export produkce.",
           pdfBase64: base64,
-          smtpUser,
-          smtpPass,
-          from: smtpUser,
           filename,
         }),
       });
@@ -1561,12 +1931,12 @@ export default function ExportProductionPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-4xl space-y-4">
+      <div className="w-full max-w-[1500px] space-y-4">
         <header className="relative">
           <div className="flex items-end justify-between gap-4">
             <SplitTitle
               text="Statistika"
-              className="text-6xl sm:text-7xl lg:text-8xl"
+              className="text-5xl sm:text-6xl lg:text-7xl"
             />
           </div>
 
@@ -1582,293 +1952,343 @@ export default function ExportProductionPage() {
           </div>
         </header>
 
-        {/* Nastavení exportu */}
-        <section className="space-y-3">
-          {/* Rozsah */}
-          <div className="rounded-3xl border border-slate-900 bg-white px-5 py-3 inline-flex flex-col gap-2 w-fit">
-            <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
-              <button
-                type="button"
-                onClick={() => setScopeOption("own")}
-                className={`px-3 py-1.5 rounded-full border transition ${
-                  scopeOption === "own"
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white"
-                }`}
-              >
-                Vlastní produkce
-              </button>
-
-              <button
-                type="button"
-                disabled={!hasTeam}
-                onClick={() => setScopeOption("team")}
-                className={`px-3 py-1.5 rounded-full border transition ${
-                  scopeOption === "team"
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white"
-                } ${!hasTeam ? "opacity-40 cursor-not-allowed" : ""}`}
-              >
-                Týmová produkce
-              </button>
-
-              <button
-                type="button"
-                disabled={!hasTeam}
-                onClick={() => setScopeOption("selected")}
-                className={`px-3 py-1.5 rounded-full border transition ${
-                  scopeOption === "selected"
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white"
-                } ${!hasTeam ? "opacity-40 cursor-not-allowed" : ""}`}
-              >
-                Vybraní podřízení
-              </button>
-            </div>
-
-            {loadingSubs && (
-              <p className="text-xs text-slate-600">Načítám podřízené…</p>
-            )}
-
-            {!loadingSubs && !hasTeam && (
-              <p className="text-xs text-slate-600">
-                Nemáš v databázi nastavené podřízené (pole{" "}
-                <code>managerEmail</code>), proto je dostupná pouze vlastní
-                produkce.
-              </p>
-            )}
-
-            {scopeOption === "selected" && hasTeam && (
-              <div className="space-y-2">
-                <p className="text-xs text-slate-600">
-                  Vyber konkrétní podřízené, pro které chceš produkci
-                  zahrnout do PDF.
-                </p>
-                <div className="max-h-40 overflow-y-auto rounded-2xl border border-slate-900 bg-white px-3 py-2 space-y-1 text-xs">
-                  {subordinates.map((sub) => {
-                    const active = selectedSubs.has(sub.email);
-                    return (
-                      <button
-                        key={sub.email}
-                        type="button"
-                        onClick={() => handleToggleSubordinate(sub.email)}
-                        className={`w-full flex items-center justify-between py-1.5 text-left rounded-xl px-2 transition ${
-                          active
-                            ? "bg-slate-900 text-white"
-                            : "text-slate-800 hover:bg-slate-100"
-                        }`}
-                      >
-                        <span>{sub.name}</span>
-                        <span className={`text-[10px] ${active ? "text-slate-300" : "text-slate-500"}`}>
-                          {sub.email}
-                        </span>
-                      </button>
-                    );
-                  })}
+        <div className="grid gap-4 lg:grid-cols-[264px_minmax(0,1fr)] lg:items-start xl:grid-cols-[284px_minmax(0,1fr)]">
+          <aside className="space-y-3 lg:sticky lg:top-2">
+            {/* Nastavení exportu */}
+            <section className="space-y-2.5 rounded-2xl border border-slate-200/80 bg-slate-50/95 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.06)] backdrop-blur supports-[backdrop-filter]:bg-slate-50/85">
+              <div className="space-y-1.5">
+                <div className="ui-kicker inline-flex items-center gap-1.5">
+                  <UsersRound
+                    size={12}
+                    strokeWidth={2.2}
+                    className="shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span>Rozsah exportu</span>
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  Vybráno:{" "}
-                  <span className="font-semibold">
-                    {selectedSubs.size} poradců
-                  </span>
-                </p>
+                <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-white p-1.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setScopeOption("own")}
+                    className={`ui-focus w-full rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
+                      scopeOption === "own"
+                        ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.16)]"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    Vlastní produkce
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!hasTeam}
+                    onClick={() => setScopeOption("team")}
+                    className={`ui-focus w-full rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
+                      scopeOption === "team"
+                        ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.16)]"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                    } ${!hasTeam ? "cursor-not-allowed opacity-45" : ""}`}
+                  >
+                    Týmová produkce
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!hasTeam}
+                    onClick={() => setScopeOption("selected")}
+                    className={`ui-focus w-full rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
+                      scopeOption === "selected"
+                        ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.16)]"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                    } ${!hasTeam ? "cursor-not-allowed opacity-45" : ""}`}
+                  >
+                    Vybraní podřízení
+                  </button>
+                </div>
+
+                {loadingSubs && (
+                  <p className="text-xs text-slate-600">Načítám podřízené…</p>
+                )}
+                {!loadingSubs && !hasTeam && (
+                  <p className="text-xs text-slate-600">
+                    Nemáš nastavené podřízené, proto je dostupná jen vlastní
+                    produkce.
+                  </p>
+                )}
+
+                {scopeOption === "selected" && hasTeam && (
+                  <div ref={subordinatesPickerRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setSubordinatesPickerOpen((v) => !v)}
+                      className={`ui-focus inline-flex w-full items-center justify-between rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                        subordinatesPickerOpen
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                      }`}
+                    >
+                      <span>Vybraní podřízení ({selectedSubs.size})</span>
+                      <span>{subordinatesPickerOpen ? "▴" : "▾"}</span>
+                    </button>
+
+                    {subordinatesPickerOpen && (
+                      <div className="absolute left-0 top-full z-40 mt-2 w-full rounded-2xl border border-slate-300 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.16)]">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+                          <div className="text-xs font-semibold text-slate-700">
+                            Vyber poradce
+                          </div>
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedSubs(
+                                  new Set(subordinates.map((s) => s.email))
+                                )
+                              }
+                              className="ui-focus rounded-xl border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              Vše
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSubs(new Set())}
+                              className="ui-focus rounded-xl border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              Nic
+                            </button>
+                          </div>
+                        </div>
+                        <div className="border-b border-slate-200 px-2.5 py-2">
+                          <label className="relative block">
+                            <Search
+                              size={14}
+                              strokeWidth={2}
+                              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                              aria-hidden="true"
+                            />
+                            <input
+                              type="text"
+                              value={subordinateSearch}
+                              onChange={(e) => setSubordinateSearch(e.target.value)}
+                              placeholder="Hledat poradce nebo e-mail"
+                              className="ui-focus w-full rounded-xl border border-slate-300 bg-white py-1.5 pl-8 pr-2.5 text-xs text-slate-800 outline-none placeholder:text-slate-400"
+                            />
+                          </label>
+                        </div>
+                        <div className="max-h-56 overflow-y-auto p-2 space-y-1">
+                          {filteredSubordinates.length === 0 ? (
+                            <p className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px] text-slate-500">
+                              Nenašel se žádný podřízený pro zadaný filtr.
+                            </p>
+                          ) : (
+                            filteredSubordinates.map((sub) => {
+                              const active = selectedSubs.has(sub.email);
+                              return (
+                                <button
+                                  key={sub.email}
+                                  type="button"
+                                  onClick={() => handleToggleSubordinate(sub.email)}
+                                  className={`ui-focus w-full rounded-xl border px-2.5 py-1.5 text-left transition ${
+                                    active
+                                      ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]"
+                                      : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <span className="block text-[12px] font-semibold">
+                                    {sub.name}
+                                  </span>
+                                  <span
+                                    className={`block text-[10px] ${
+                                      active ? "text-slate-300" : "text-slate-500"
+                                    }`}
+                                  >
+                                    {sub.email}
+                                  </span>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Volba období */}
-          <div className="inline-flex flex-wrap gap-2 text-xs sm:text-sm rounded-3xl border border-slate-900 bg-white px-5 py-3 w-fit">
-            {([
-              ["currentMonth", "Aktuální měsíc"],
-              ["last3", "Poslední 3 měsíce"],
-              ["last6", "Posledních 6 měsíců"],
-              ["currentYear", "Aktuální rok"],
-            ] as [DateRangeOption, string][]).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setDateRangeOption(value)}
-                className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm transition ${
-                  dateRangeOption === value
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+              <div className="space-y-1.5">
+                <div className="ui-kicker inline-flex items-center gap-1.5">
+                  <CalendarDays
+                    size={12}
+                    strokeWidth={2.2}
+                    className="shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span>Období</span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-slate-200 bg-white p-1.5 text-xs">
+                  {DATE_RANGE_OPTIONS.map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setDateRangeOption(value)}
+                      className={`ui-focus rounded-xl border px-2.5 py-2 text-center text-xs font-semibold transition ${
+                        dateRangeOption === value
+                          ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.16)]"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          {/* Volba produktů */}
-          <div className="rounded-3xl border border-slate-900 bg-white px-5 py-3 inline-flex flex-wrap gap-2 text-xs sm:text-sm w-fit">
-            <button
-              type="button"
-              onClick={() =>
-                setCategories(
-                  new Set<ProductCategory>([
-                    "life",
-                    "nonlife",
-                    "auto",
-                    "property",
-                    "gold",
-                  ])
-                )
-              }
-              className="px-3 py-1.5 rounded-full border border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white transition"
-            >
-              Všechny
-            </button>
+              <div className="space-y-1.5">
+                <div className="ui-kicker inline-flex items-center gap-1.5">
+                  <Tags
+                    size={12}
+                    strokeWidth={2.2}
+                    className="shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span>Kategorie produktu</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 rounded-xl border border-slate-200 bg-white p-1.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCategories(new Set<ProductCategory>(ALL_CATEGORY_KEYS))
+                    }
+                    className={`ui-focus inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition ${
+                      allCategoriesSelected
+                        ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.16)]"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    Všechny
+                  </button>
+                  {CATEGORY_FILTERS.map((category) => (
+                    <CheckboxChip
+                      key={category.key}
+                      label={category.label}
+                      active={categories.has(category.key)}
+                      onClick={() => handleToggleCategory(category.key)}
+                    />
+                  ))}
+                </div>
+              </div>
 
-            <CheckboxChip
-              label="Životní pojištění"
-              active={categories.has("life")}
-              onClick={() => handleToggleCategory("life")}
-            />
-            <CheckboxChip
-              label="Neživotní pojištění"
-              active={categories.has("nonlife")}
-              onClick={() => handleToggleCategory("nonlife")}
-            />
-            <CheckboxChip
-              label="Auto"
-              active={categories.has("auto")}
-              onClick={() => handleToggleCategory("auto")}
-            />
-            <CheckboxChip
-              label="Majetek"
-              active={categories.has("property")}
-              onClick={() => handleToggleCategory("property")}
-            />
-            <CheckboxChip
-              label="Zlato"
-              active={categories.has("gold")}
-              onClick={() => handleToggleCategory("gold")}
-            />
-          </div>
-        </section>
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
+                {activeFiltersSummary}
+              </div>
+            </section>
+          </aside>
 
-        {errorText && (
-          <p className="text-xs text-rose-800 bg-rose-100 border border-rose-300 rounded-2xl px-4 py-2">
-            {errorText}
-          </p>
-        )}
-
-        {/* Tlačítka */}
-        <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
-          <button
-            type="button"
-            onClick={handlePreview}
-            disabled={generating}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-7 py-2.5 text-sm sm:text-base font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {generating ? "Připravuji náhled…" : "Náhled PDF"}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleGeneratePdf}
-            disabled={generating}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-8 py-2.5 text-sm sm:text-base font-semibold text-white transition hover:bg-black disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {generating ? "Generuji PDF…" : "Vygenerovat PDF"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setShowEmailForm((v) => !v);
-              setSendStatus(null);
-            }}
-            disabled={generating || sending}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-7 py-2.5 text-sm sm:text-base font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {sending ? "Odesílám…" : showEmailForm ? "Skrýt odeslání" : "Odeslat e‑mailem"}
-          </button>
-        </div>
-
-        {showEmailForm && (
-          <div className="mx-auto mt-2 w-full max-w-4xl rounded-2xl border border-slate-900 bg-white px-4 py-3">
-            <div className="grid gap-3 sm:grid-cols-[1.3fr_1.1fr_1fr] items-end">
-              <label className="space-y-1 text-sm text-slate-800">
-                <span className="block text-[11px] uppercase tracking-wide text-slate-500">
-                  E-mail příjemce
-                </span>
-                <input
-                  type="email"
-                  value={recipient}
-                  onChange={(e) => setRecipient(e.target.value)}
-                  className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  placeholder="klient@example.com"
-                />
-              </label>
-
-              <label className="space-y-1 text-sm text-slate-800">
-                <span className="block text-[11px] uppercase tracking-wide text-slate-500">
-                  Zadej firemní e-mail
-                </span>
-                <input
-                  type="email"
-                  value={smtpUser}
-                  onChange={(e) => setSmtpUser(e.target.value)}
-                  className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  placeholder="tvoje@domena.cz"
-                />
-              </label>
-
-              <label className="space-y-1 text-sm text-slate-800">
-                <span className="block text-[11px] uppercase tracking-wide text-slate-500">
-                  Zadej heslo k e-mailu
-                </span>
-                <input
-                  type="password"
-                  value={smtpPass}
-                  onChange={(e) => setSmtpPass(e.target.value)}
-                  className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  placeholder="••••••••"
-                />
-              </label>
-            </div>
-            {sendStatus && (
-              <p
-                className={`mt-2 text-xs ${
-                  sendStatus.type === "ok" ? "text-emerald-800" : "text-rose-700"
-                }`}
-              >
-                {sendStatus.msg}
+          <div className="space-y-4">
+            {errorText && (
+              <p className="rounded-2xl border border-rose-300 bg-rose-100 px-4 py-2 text-xs text-rose-800">
+                {errorText}
               </p>
             )}
-            <div className="mt-3 text-right">
-              <button
-                type="button"
-                onClick={handleSendEmail}
-                disabled={generating || sending}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {sending ? "Odesílám…" : "Odeslat e‑mailem"}
-              </button>
-            </div>
-          </div>
-        )}
 
-        {/* Náhled PDF na stránce */}
-        {previewHtml && (
-          <section className="mt-4 rounded-3xl border border-slate-900 bg-white px-5 py-5 space-y-3">
-            <h2 className="text-sm font-semibold text-slate-900">
-              Náhled PDF
-            </h2>
-            <p className="text-xs text-slate-600">
-              Náhled odpovídá tomu, co se stáhne jako PDF. V prohlížeči se
-              může lehce lišit od výsledného PDF (kvůli renderingu fontů).
-            </p>
-            <div className="mt-2 h-[640px] rounded-2xl border border-slate-300 overflow-hidden bg-white">
-              <iframe
-                srcDoc={previewHtml}
-                title="Náhled PDF produkce"
-                className="w-full h-full bg-white"
-              />
-            </div>
-          </section>
-        )}
+            {/* Tlačítka */}
+            <section className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_6px_18px_rgba(15,23,42,0.05)]">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handlePreview}
+                  disabled={generating}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-white px-6 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {generating ? "Připravuji náhled…" : "Náhled PDF"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleGeneratePdf}
+                  disabled={generating}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-7 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {generating ? "Generuji PDF…" : "Vygenerovat PDF"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEmailForm((v) => !v);
+                    setSendStatus(null);
+                  }}
+                  disabled={generating || sending}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-white px-6 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {sending
+                    ? "Odesílám…"
+                    : showEmailForm
+                    ? "Skrýt odeslání"
+                    : "Odeslat e‑mailem"}
+                </button>
+              </div>
+
+              {showEmailForm && (
+                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                  <div className="grid items-end gap-3 sm:grid-cols-1">
+                    <label className="space-y-1 text-sm text-slate-800">
+                      <span className="block text-[11px] uppercase tracking-wide text-slate-500">
+                        E-mail příjemce
+                      </span>
+                      <input
+                        type="email"
+                        value={recipient}
+                        onChange={(e) => setRecipient(e.target.value)}
+                        className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500"
+                        placeholder="klient@example.com"
+                      />
+                    </label>
+                  </div>
+                  {sendStatus && (
+                    <p
+                      className={`mt-2 text-xs ${
+                        sendStatus.type === "ok"
+                          ? "text-emerald-800"
+                          : "text-rose-700"
+                      }`}
+                    >
+                      {sendStatus.msg}
+                    </p>
+                  )}
+                  <div className="mt-3 text-right">
+                    <button
+                      type="button"
+                      onClick={handleSendEmail}
+                      disabled={generating || sending}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {sending ? "Odesílám…" : "Odeslat e‑mailem"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* Náhled PDF na stránce */}
+            {previewHtml && (
+              <section className="space-y-3">
+                <h2 className="text-sm font-semibold text-slate-900">
+                  Náhled PDF
+                </h2>
+                <p className="text-xs text-slate-600">
+                  Náhled odpovídá tomu, co se stáhne jako PDF. V prohlížeči se
+                  může lehce lišit od výsledného PDF (kvůli renderingu fontů).
+                </p>
+                <div className="h-[640px] overflow-hidden rounded-2xl border border-slate-300/80 bg-white shadow-[0_14px_30px_rgba(15,23,42,0.12)]">
+                  <iframe
+                    srcDoc={previewHtml}
+                    title="Náhled PDF produkce"
+                    className="h-full w-full bg-white"
+                  />
+                </div>
+              </section>
+            )}
+          </div>
+        </div>
       </div>
     </AppLayout>
   );
@@ -1889,17 +2309,17 @@ function CheckboxChip({
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm transition flex items-center gap-1 ${
+      className={`ui-focus inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition ${
         active
-          ? "bg-slate-900 text-white border-slate-900"
-          : "border-slate-900 text-slate-900 hover:bg-slate-900 hover:text-white"
+          ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.16)]"
+          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
       }`}
     >
       <span
-        className={`inline-flex h-3 w-3 items-center justify-center rounded-full border text-[9px] ${
+        className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[9px] ${
           active
             ? "border-white bg-white text-slate-900"
-            : "border-slate-500"
+            : "border-slate-300 text-transparent"
         }`}
       >
         {active ? "✓" : ""}

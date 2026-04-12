@@ -7,6 +7,10 @@ import {
   type Position,
   type Product,
 } from "@/app/types/domain";
+import {
+  buildChildrenByManager,
+  collectSubordinateHierarchy,
+} from "@/app/lib/teamHierarchy";
 
 type FirestoreTimestamp = {
   seconds: number;
@@ -114,6 +118,14 @@ const responseCursorKey = (item: ContractResponseItem) =>
     item.id
   );
 
+const safeDecodeCursorKey = (value: string): string | null => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+};
+
 const parseCursor = (search: URLSearchParams): ParsedCursor | null => {
   const raw = search.get("cursor");
   if (!raw) return null;
@@ -124,7 +136,8 @@ const parseCursor = (search: URLSearchParams): ParsedCursor | null => {
       const date = new Date(ts);
       if (!Number.isNaN(date.getTime())) {
         const keyPart = raw.slice(sep + 2);
-        const key = keyPart ? decodeURIComponent(keyPart) : null;
+        const key = keyPart ? safeDecodeCursorKey(keyPart) : null;
+        if (keyPart && key == null) return null;
         return { date, ts, key };
       }
     }
@@ -162,32 +175,8 @@ const buildUserTree = async () => {
     users.push({ email, managerEmail: managerEmail || null, position });
   });
 
-  const childrenByManager = new Map<string, UserNode[]>();
-  for (const u of users) {
-    if (!u.managerEmail) continue;
-    const list = childrenByManager.get(u.managerEmail) ?? [];
-    list.push(u);
-    childrenByManager.set(u.managerEmail, list);
-  }
-
+  const childrenByManager = buildChildrenByManager(users);
   return { users, childrenByManager };
-};
-
-const collectTeamEmails = (rootEmail: string, childrenByManager: Map<string, any[]>): string[] => {
-  const visited = new Set<string>();
-  const queue: string[] = [rootEmail];
-
-  while (queue.length > 0) {
-    const mgr = queue.shift()!;
-    const children = childrenByManager.get(mgr) ?? [];
-    for (const child of children) {
-      if (!child.email || visited.has(child.email)) continue;
-      visited.add(child.email);
-      queue.push(child.email);
-    }
-  }
-
-  return Array.from(visited);
 };
 
 async function fetchContractsForOwners(
@@ -392,7 +381,7 @@ async function getAuthContext(req: NextRequest) {
   const hasDirectSubs = (childrenByManager.get(email) ?? []).length > 0;
   const teamEmails =
     isManagerPosition(position) || hasDirectSubs
-      ? collectTeamEmails(email, childrenByManager)
+      ? collectSubordinateHierarchy(email, childrenByManager).subordinateEmails
       : [];
 
   return {

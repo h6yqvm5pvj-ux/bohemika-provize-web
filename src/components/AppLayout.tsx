@@ -417,7 +417,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden text-slate-900">
+    <main className="relative min-h-screen text-slate-900">
       <div
         className="fixed inset-0 -z-10 transition-colors duration-200"
         style={{

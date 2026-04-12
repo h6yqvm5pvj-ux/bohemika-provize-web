@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   AtSign,
   BellRing,
@@ -122,8 +121,6 @@ const hasAnyPushToken = (data: Record<string, unknown>): boolean => {
 };
 
 export default function SettingsPage() {
-  const router = useRouter();
-
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
@@ -164,13 +161,12 @@ export default function SettingsPage() {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
       if (!fbUser) {
         setUser(null);
-        router.push("/login");
         return;
       }
       setUser(fbUser);
     });
     return () => unsub();
-  }, [router]);
+  }, []);
 
   // načtení metadat uživatele z Firestore
   useEffect(() => {

@@ -34,6 +34,10 @@ import {
   entrySignedDate,
 } from "./homeUtils";
 import {
+  buildChildrenByManager,
+  collectSubordinateHierarchy,
+} from "@/app/lib/teamHierarchy";
+import {
   collection,
   collectionGroup,
   doc,
@@ -434,33 +438,14 @@ export function useHomeData({
           });
         });
 
-        const childrenByManager = new Map<string, UserNode[]>();
-        for (const u of allUsers) {
-          if (!u.managerEmail) continue;
-          const arr = childrenByManager.get(u.managerEmail) ?? [];
-          arr.push(u);
-          childrenByManager.set(u.managerEmail, arr);
-        }
-
-        const visited = new Set<string>();
+        const childrenByManager = buildChildrenByManager(allUsers);
+        const hierarchy = collectSubordinateHierarchy(email, childrenByManager);
+        const subEmails = hierarchy.subordinateEmails;
         const subPositionMap = new Map<string, Position | undefined>();
-        const managerOf = new Map<string, string | null>();
-        const queue: string[] = [];
-        queue.push(email);
-
-        while (queue.length > 0) {
-          const currentManager = queue.shift()!;
-          const children = childrenByManager.get(currentManager) ?? [];
-          for (const child of children) {
-            if (!child.email || visited.has(child.email)) continue;
-            visited.add(child.email);
-            queue.push(child.email);
-            subPositionMap.set(child.email, child.position);
-            managerOf.set(child.email, currentManager);
-          }
-        }
-
-        const subEmails = Array.from(visited);
+        hierarchy.subordinateByEmail.forEach((node, subEmail) => {
+          subPositionMap.set(subEmail, node.position);
+        });
+        const managerOf = hierarchy.managerOf;
 
         if (!cancelled) {
           setHasTeam(subEmails.length > 0);

@@ -1,35 +1,77 @@
 // src/app/api/send-email/route.ts
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import { adminAuth } from "@/lib/server/firebaseAdmin";
+
+export const runtime = "nodejs";
 
 type RequestBody = {
   to?: string;
   subject?: string;
   text?: string;
   pdfBase64?: string;
-  smtpUser?: string;
-  smtpPass?: string;
-  from?: string;
   filename?: string;
 };
 
+const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024; // 8 MB
+
+function getBearerToken(req: Request): string | null {
+  const authHeader = req.headers.get("authorization") ?? "";
+  if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
+  const token = authHeader.slice(7).trim();
+  return token || null;
+}
+
+function sanitizePdfBase64(value: string): string {
+  return value.replace(/^data:application\/pdf;base64,/i, "").trim();
+}
+
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as RequestBody;
+    if (!adminAuth) {
+      return NextResponse.json(
+        { error: "Server není nakonfigurovaný (chybí Firebase Admin)." },
+        { status: 500 }
+      );
+    }
+
+    const token = getBearerToken(req);
+    if (!token) {
+      return NextResponse.json({ error: "Missing bearer token" }, { status: 401 });
+    }
+
+    let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
+    try {
+      decoded = await adminAuth.verifyIdToken(token);
+    } catch {
+      return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });
+    }
+
+    const senderEmail = decoded.email?.trim().toLowerCase();
+    if (!senderEmail) {
+      return NextResponse.json({ error: "User e-mail missing in token" }, { status: 401 });
+    }
+
+    let body: RequestBody;
+    try {
+      body = (await req.json()) as RequestBody;
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
+    }
+
     const to = body.to?.trim();
     const subject = body.subject?.trim() || "Pozvánka";
     const text = body.text?.trim() || "";
-    const pdfBase64 = body.pdfBase64?.trim();
-    const smtpUser = body.smtpUser?.trim() || process.env.SMTP_USER;
-    const smtpPass = body.smtpPass?.trim() || process.env.SMTP_PASS;
-    const from =
-      body.from?.trim() || process.env.SMTP_FROM || smtpUser || undefined;
+    const pdfBase64Raw = body.pdfBase64?.trim();
+    const smtpUser = process.env.SMTP_USER?.trim();
+    const smtpPass = process.env.SMTP_PASS?.trim();
+    const from = process.env.SMTP_FROM?.trim() || smtpUser || undefined;
     const filename = body.filename?.trim() || "priloha.pdf";
 
     if (!to) {
       return NextResponse.json({ error: "Missing recipient" }, { status: 400 });
     }
-    if (!pdfBase64) {
+    if (!pdfBase64Raw) {
       return NextResponse.json({ error: "Missing PDF data" }, { status: 400 });
     }
     if (!smtpUser || !smtpPass) {
@@ -43,10 +85,19 @@ export async function POST(req: Request) {
     const host = SMTP_HOST || "smtp.forpsi.com";
     const port = Number(SMTP_PORT || 587);
 
-    if (!host || !port) {
+    if (!host || !Number.isFinite(port) || port <= 0) {
       return NextResponse.json(
         { error: "SMTP server is not configured." },
         { status: 500 }
+      );
+    }
+
+    const pdfBase64 = sanitizePdfBase64(pdfBase64Raw);
+    const estimatedBytes = Math.floor((pdfBase64.length * 3) / 4);
+    if (estimatedBytes > MAX_ATTACHMENT_BYTES) {
+      return NextResponse.json(
+        { error: "PDF attachment is too large." },
+        { status: 413 }
       );
     }
 
@@ -61,9 +112,16 @@ export async function POST(req: Request) {
     });
 
     const buffer = Buffer.from(pdfBase64, "base64");
+    if (!buffer.length || buffer.length > MAX_ATTACHMENT_BYTES) {
+      return NextResponse.json(
+        { error: "PDF attachment is invalid or too large." },
+        { status: 400 }
+      );
+    }
 
     await transporter.sendMail({
       from,
+      replyTo: senderEmail,
       to,
       subject,
       text: text || "Posílám ti pozvánku v příloze.",

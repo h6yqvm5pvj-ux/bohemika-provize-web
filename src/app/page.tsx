@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import { auth, db } from "./firebase";
 import {
@@ -222,8 +221,6 @@ const normalizeHomeLayout = (layout: HomeSection[] | null | undefined): HomeSect
 // ---------- komponenta ----------
 
 export default function HomePage() {
-  const router = useRouter();
-
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [lbProductFilter, setLbProductFilter] =
     useState<LeaderboardProductFilter>("life");
@@ -286,7 +283,6 @@ export default function HomePage() {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
       if (!fbUser) {
         setUser(null);
-        router.push("/login");
         return;
       }
       setUser(fbUser);
@@ -294,7 +290,7 @@ export default function HomePage() {
     });
 
     return () => unsub();
-  }, [router]);
+  }, []);
 
   const persistHomeWidgets = (updater: (prev: HomeWidgets) => HomeWidgets) => {
     setHomeWidgets((prev) => {

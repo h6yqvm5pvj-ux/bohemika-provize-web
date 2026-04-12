@@ -2,8 +2,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { AppLayout } from "@/components/AppLayout";
+import {
+  buildChildrenByManager,
+  collectSubordinateHierarchy,
+} from "@/app/lib/teamHierarchy";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import { auth, db } from "../../firebase";
 import {
@@ -90,7 +93,6 @@ function buildTree(
 }
 
 export default function StructurePage() {
-  const router = useRouter();
   const treeScrollRef = useRef<HTMLDivElement | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,13 +103,12 @@ export default function StructurePage() {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
       if (!fbUser) {
         setUser(null);
-        router.push("/login");
         return;
       }
       setUser(fbUser);
     });
     return () => unsub();
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -142,15 +143,6 @@ export default function StructurePage() {
           });
         }
 
-        // adjacency list children
-        const childrenByManager = new Map<string, string[]>();
-        map.forEach((u) => {
-          if (!u.managerEmail) return;
-          const arr = childrenByManager.get(u.managerEmail) ?? [];
-          arr.push(u.email);
-          childrenByManager.set(u.managerEmail, arr);
-        });
-
         // zjisti viditelné e-maily: vlastní + předci + potomci
         const visible = new Set<string>();
         visible.add(email);
@@ -164,17 +156,9 @@ export default function StructurePage() {
           depth += 1;
         }
 
-        // potomci (BFS)
-        const queue: string[] = [email];
-        while (queue.length > 0) {
-          const parent = queue.shift()!;
-          const kids = childrenByManager.get(parent) ?? [];
-          for (const kid of kids) {
-            if (visible.has(kid)) continue;
-            visible.add(kid);
-            queue.push(kid);
-          }
-        }
+        const childrenByManager = buildChildrenByManager(map.values());
+        const hierarchy = collectSubordinateHierarchy(email, childrenByManager);
+        hierarchy.subordinateEmails.forEach((subEmail) => visible.add(subEmail));
 
         setNodes(map);
         setVisibleEmails(visible);

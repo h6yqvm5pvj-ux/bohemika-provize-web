@@ -41,6 +41,10 @@ import {
   calculateZamex,
 } from "../lib/productFormulas";
 import { totalWithMultipliers } from "../lib/commissionTotals";
+import {
+  buildChildrenByManager,
+  collectSubordinateHierarchy,
+} from "../lib/teamHierarchy";
 import { generateCashflow } from "./generator";
 import {
   normalizeTitleKey,
@@ -197,10 +201,7 @@ export function useCashflowData({
         let myPosition = (meSnap.data() as UserDoc | undefined)?.position ?? null;
 
         const usersCollection = collection(db, "users");
-        const visited = new Set<string>();
         const subordinatePositions: Record<string, Position | null> = {};
-        const managerOf: Record<string, string | null> = {};
-        const queue: string[] = [email];
 
         // Case-insensitive strom uživatelů (managerEmail může být v DB uložený s různým casingem).
         const allUsersSnap = await getDocsFromServer(usersCollection);
@@ -249,31 +250,12 @@ export function useCashflowData({
           myPosition = usersByEmail.get(email)?.position ?? null;
         }
 
-        const childrenByManager = new Map<string, CanonicalUser[]>();
-        usersByEmail.forEach((userNode) => {
-          if (!userNode.managerEmail) return;
-          const list = childrenByManager.get(userNode.managerEmail) ?? [];
-          list.push(userNode);
-          childrenByManager.set(userNode.managerEmail, list);
+        const childrenByManager = buildChildrenByManager(usersByEmail.values());
+        const hierarchy = collectSubordinateHierarchy(email, childrenByManager);
+        hierarchy.subordinateByEmail.forEach((subordinate, subordinateEmail) => {
+          subordinatePositions[subordinateEmail] = subordinate.position ?? null;
         });
-
-        while (queue.length > 0) {
-          const managerEmail = queue.shift()!;
-          const subs = childrenByManager.get(managerEmail) ?? [];
-
-          subs.forEach((subordinate) => {
-            const subordinateEmail = subordinate.email;
-            if (!subordinateEmail || visited.has(subordinateEmail)) return;
-            if (subordinateEmail === email) return;
-
-            visited.add(subordinateEmail);
-            subordinatePositions[subordinateEmail] = subordinate.position ?? null;
-            managerOf[subordinateEmail] = managerEmail;
-            queue.push(subordinateEmail);
-          });
-        }
-
-        const subordinateEmails = Array.from(visited);
+        const subordinateEmails = hierarchy.subordinateEmails;
         const entriesGroup = collectionGroup(db, "entries");
         let managerLinkedDocs: Array<{
           id: string;

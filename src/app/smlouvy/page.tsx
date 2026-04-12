@@ -610,6 +610,8 @@ function ContractsPageContent() {
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<ProductCategory>>(new Set());
   const [selectedInstitutions, setSelectedInstitutions] = useState<Set<Institution>>(new Set());
+  const [listMicroAnimating, setListMicroAnimating] = useState(false);
+  const lastListTransitionSignatureRef = useRef<string | null>(null);
   const shouldRestoreView = searchParams?.get("restore") === "1";
   const normalizedUserEmail = normalizeEmail(user?.email);
 
@@ -960,6 +962,35 @@ function ContractsPageContent() {
     );
   }, [displayedContracts, searchText, filterMode, selectedCategories, selectedInstitutions]);
 
+  const listTransitionSignature = useMemo(
+    () =>
+      JSON.stringify({
+        view: showTeam && canShowTeamToggle ? "team" : "mine",
+        mode: filterMode,
+        categories: Array.from(selectedCategories).sort(),
+        institutions: Array.from(selectedInstitutions).sort(),
+      }),
+    [showTeam, canShowTeamToggle, filterMode, selectedCategories, selectedInstitutions]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (lastListTransitionSignatureRef.current == null) {
+      lastListTransitionSignatureRef.current = listTransitionSignature;
+      return;
+    }
+
+    if (lastListTransitionSignatureRef.current === listTransitionSignature) return;
+    lastListTransitionSignatureRef.current = listTransitionSignature;
+
+    setListMicroAnimating(true);
+    const raf = window.requestAnimationFrame(() => {
+      setListMicroAnimating(false);
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [listTransitionSignature]);
+
   const handleLoadMore = useCallback(async () => {
     if (loadingMore) return;
     if (!user?.email) return;
@@ -1264,7 +1295,7 @@ function ContractsPageContent() {
         </header>
 
         {/* SEARCH BAR + FILTER + BULK ACTIONS */}
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="sticky top-16 z-40 mt-2 flex flex-col gap-2 rounded-2xl border border-slate-200/80 bg-slate-50/95 p-2 shadow-[0_8px_20px_rgba(15,23,42,0.06)] backdrop-blur supports-[backdrop-filter]:bg-slate-50/85 sm:flex-row sm:items-center sm:justify-between lg:top-2">
           <div className="ui-card ui-card-quiet flex flex-1 items-center gap-2 rounded-2xl bg-white px-4 py-2.5">
             <span className="text-sm">🔍</span>
             <input
@@ -1367,74 +1398,81 @@ function ContractsPageContent() {
         </div>
 
         {/* LIST SMLOUV */}
-        {loadError && (
-          <div className="rounded-2xl border border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {loadError}
-          </div>
-        )}
-        {loading ? (
-          <p className="mt-4 text-sm text-slate-600">
-            Načítám smlouvy…
-          </p>
-        ) : isAnniversaryLoading && filteredContracts.length === 0 ? (
-          <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
-            <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
-            <p className="font-medium">Vyhledávám blížící se výročí…</p>
-            <p className="text-xs text-slate-500">
-              Procházím další smlouvy, může to chvíli trvat.
+        <div
+          className={`transition-[opacity,transform] duration-300 ease-out will-change-transform ${
+            listMicroAnimating
+              ? "translate-y-2 opacity-0"
+              : "translate-y-0 opacity-100"
+          }`}
+        >
+          {loadError && (
+            <div className="rounded-2xl border border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {loadError}
+            </div>
+          )}
+          {loading ? (
+            <p className="mt-4 text-sm text-slate-600">
+              Načítám smlouvy…
             </p>
-          </div>
-        ) : filteredContracts.length === 0 ? (
-          <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
-            {filterMode === "anniversary" ? (
-              <>
-                <p className="font-medium">Žádná blížící se výročí</p>
-                <p className="text-xs text-slate-500">
-                  V okně 90 dní a méně od dneška není žádné výročí (počítáno z data
-                  počátku smlouvy, případně podpisu).
-                </p>
-              </>
-            ) : searchText.trim() !== "" ? (
-              <>
-                <p className="font-medium">Nic nenalezeno</p>
-                <p className="text-xs text-slate-500">
-                  Zkus upravit hledaný text (klient nebo číslo smlouvy).
-                </p>
-              </>
-            ) : showTeam && hasTeamContracts ? (
-              <>
-                <p className="font-medium">Žádné týmové smlouvy</p>
-                <p className="text-xs text-slate-500">
-                  Až podřízení něco vypočítají a označí jako sepsané,
-                  uvidíš je tady.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="font-medium">
-                  Žádné smlouvy zatím nejsou.
-                </p>
-                <p className="text-xs text-slate-500">
-                  Až něco vypočítáš v kalkulačce a označíš jako sepsané,
-                  objeví se zde.
-                </p>
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="mt-4 space-y-3">
-            {isAnniversaryLoading && (
-              <div className="ui-card ui-card-quiet flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-xs text-slate-700">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
-                <span>Dohledávám další výročí…</span>
-              </div>
-            )}
-            {bulkError && (
-              <div className="rounded-2xl border border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {bulkError}
-              </div>
-            )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          ) : isAnniversaryLoading && filteredContracts.length === 0 ? (
+            <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
+              <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+              <p className="font-medium">Vyhledávám blížící se výročí…</p>
+              <p className="text-xs text-slate-500">
+                Procházím další smlouvy, může to chvíli trvat.
+              </p>
+            </div>
+          ) : filteredContracts.length === 0 ? (
+            <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
+              {filterMode === "anniversary" ? (
+                <>
+                  <p className="font-medium">Žádná blížící se výročí</p>
+                  <p className="text-xs text-slate-500">
+                    V okně 90 dní a méně od dneška není žádné výročí (počítáno z data
+                    počátku smlouvy, případně podpisu).
+                  </p>
+                </>
+              ) : searchText.trim() !== "" ? (
+                <>
+                  <p className="font-medium">Nic nenalezeno</p>
+                  <p className="text-xs text-slate-500">
+                    Zkus upravit hledaný text (klient nebo číslo smlouvy).
+                  </p>
+                </>
+              ) : showTeam && hasTeamContracts ? (
+                <>
+                  <p className="font-medium">Žádné týmové smlouvy</p>
+                  <p className="text-xs text-slate-500">
+                    Až podřízení něco vypočítají a označí jako sepsané,
+                    uvidíš je tady.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium">
+                    Žádné smlouvy zatím nejsou.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Až něco vypočítáš v kalkulačce a označíš jako sepsané,
+                    objeví se zde.
+                  </p>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {isAnniversaryLoading && (
+                <div className="ui-card ui-card-quiet flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-xs text-slate-700">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+                  <span>Dohledávám další výročí…</span>
+                </div>
+              )}
+              {bulkError && (
+                <div className="rounded-2xl border border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {bulkError}
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {filteredContracts.map((c: any) => {
                 const signed =
                   toDate((c as any).contractSignedDate) ??
@@ -1516,7 +1554,7 @@ function ContractsPageContent() {
                             )}
                           </span>
                         ) : null}
-                        <div className="min-w-0 text-3xl leading-none font-semibold text-slate-900 sm:text-[2.4rem]">
+                        <div className="min-w-0 text-xl leading-tight font-semibold text-slate-900 sm:text-[1.95rem]">
                           {productLabel(c.productKey)}
                         </div>
                       </div>
@@ -1625,22 +1663,22 @@ function ContractsPageContent() {
                 </Link>
               );
               })}
-            </div>
-
-            {hasMoreContracts && !loading && (
-              <div className="flex justify-center">
-                <button
-                  type="button"
-                  onClick={handleLoadMore}
-                  disabled={loadingMore}
-                  className="rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {loadingMore ? "Načítám…" : "Načíst další smlouvy"}
-                </button>
               </div>
-            )}
-          </div>
-        )}
+              {hasMoreContracts && !loading && (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loadingMore ? "Načítám…" : "Načíst další smlouvy"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {!loading && !hasTeamContracts && canShowTeamToggle && (
           <p className="pt-1 text-[11px] text-slate-500">
@@ -1653,7 +1691,7 @@ function ContractsPageContent() {
       </div>
 
       {filterModalOpen && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setFilterModalOpen(false)}

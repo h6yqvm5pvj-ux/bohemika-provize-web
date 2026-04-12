@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   onAuthStateChanged,
   type User as FirebaseUser,
@@ -23,7 +22,6 @@ import { CashflowItemModal } from "./components/CashflowItemModal";
 import { CashflowMonthModal } from "./components/CashflowMonthModal";
 
 export default function CashflowPage() {
-  const router = useRouter();
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [showPastYears, setShowPastYears] = useState(false);
   const [selectedItem, setSelectedItem] = useState<CashflowItem | null>(null);
@@ -38,14 +36,13 @@ export default function CashflowPage() {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (!firebaseUser) {
         setUser(null);
-        router.push("/login");
         return;
       }
       setUser(firebaseUser);
     });
 
     return () => unsubscribe();
-  }, [router]);
+  }, []);
 
   const { loading, cashflowItems, hasTeam } = useCashflowData({
     userEmail: user?.email,

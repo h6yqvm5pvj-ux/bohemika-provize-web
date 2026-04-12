@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import {
   BarChart3,
   Copy,
@@ -30,6 +29,10 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
+import {
+  buildChildrenByManager,
+  collectSubordinateHierarchy,
+} from "@/app/lib/teamHierarchy";
 import { type Position, type Product, type PaymentFrequency } from "@/app/types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
@@ -335,7 +338,6 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 ];
 
 export default function TeamPage() {
-  const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [search, setSearch] = useState("");
@@ -401,14 +403,13 @@ export default function TeamPage() {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (!u?.email) {
         setUserEmail(null);
-        router.push("/login");
         return;
       }
       const em = u.email.toLowerCase();
       setUserEmail(em);
     });
     return () => unsub();
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     const loadTeam = async () => {
@@ -455,46 +456,115 @@ export default function TeamPage() {
           setCanManagePositions(false);
         }
         const ownEmail = ((meData?.email as string | undefined)?.trim() || userEmail).toLowerCase();
-        const queue = [ownEmail];
-        const visited = new Set<string>();
         all = [];
         const seededLastActive: Record<string, number | null> = {};
 
+        type TeamUserNode = {
+          email: string;
+          name: string;
+          position: Position | null;
+          managerEmail: string | null;
+          docId: string;
+          lastActiveTs: number | null;
+        };
+
+        const allUsersSnap = await getDocs(usersCol);
+        const candidatesByEmail = new Map<string, TeamUserNode[]>();
+        allUsersSnap.forEach((docSnap) => {
+          const data = docSnap.data() as any;
+          const rawEmail = ((data.email as string | undefined)?.trim() || docSnap.id).toLowerCase();
+          if (!rawEmail) return;
+
+          const node: TeamUserNode = {
+            email: rawEmail,
+            name: nameFromEmail(rawEmail),
+            position: (data.position as Position | undefined) ?? null,
+            managerEmail: ((data.managerEmail as string | undefined)?.toLowerCase() ?? null),
+            docId: docSnap.id,
+            lastActiveTs: (() => {
+              const ts = toDate(data.lastActive)?.getTime();
+              return Number.isFinite(ts) ? Number(ts) : null;
+            })(),
+          };
+
+          const current = candidatesByEmail.get(rawEmail) ?? [];
+          current.push(node);
+          candidatesByEmail.set(rawEmail, current);
+        });
+
+        const pickBestCandidate = (
+          items: TeamUserNode[],
+          emailKey: string
+        ): TeamUserNode => {
+          return [...items].sort((a, b) => {
+            const aDoc = a.docId.trim().toLowerCase();
+            const bDoc = b.docId.trim().toLowerCase();
+            const aCanonical = aDoc === emailKey ? 0 : 1;
+            const bCanonical = bDoc === emailKey ? 0 : 1;
+            if (aCanonical !== bCanonical) return aCanonical - bCanonical;
+
+            const aHasPosition = a.position ? 0 : 1;
+            const bHasPosition = b.position ? 0 : 1;
+            if (aHasPosition !== bHasPosition) return aHasPosition - bHasPosition;
+
+            const aHasManager = a.managerEmail ? 0 : 1;
+            const bHasManager = b.managerEmail ? 0 : 1;
+            if (aHasManager !== bHasManager) return aHasManager - bHasManager;
+
+            return aDoc.localeCompare(bDoc, "cs");
+          })[0];
+        };
+
+        const usersByEmail = new Map<string, TeamUserNode>();
+        candidatesByEmail.forEach((items, emailKey) => {
+          usersByEmail.set(emailKey, pickBestCandidate(items, emailKey));
+        });
+
+        const ownExisting = usersByEmail.get(ownEmail);
+        if (!ownExisting) {
+          usersByEmail.set(ownEmail, {
+            email: ownEmail,
+            name: nameFromEmail(ownEmail),
+            position: (meData?.position as Position | undefined) ?? null,
+            managerEmail: ((meData?.managerEmail as string | undefined)?.toLowerCase() ?? null),
+            docId: meDocId,
+            lastActiveTs: (() => {
+              const ts = toDate(meData?.lastActive)?.getTime();
+              return Number.isFinite(ts) ? Number(ts) : null;
+            })(),
+          });
+        }
+
+        const ownNode = usersByEmail.get(ownEmail)!;
+        if (!pos && ownNode.position) {
+          pos = ownNode.position;
+          setUserPosition(pos);
+        }
+
         // aktuálně přihlášený uživatel musí být v seznamu vždy
-        const ownLastActive = toDate(meData?.lastActive)?.getTime();
-        seededLastActive[ownEmail] = Number.isFinite(ownLastActive) ? Number(ownLastActive) : null;
+        seededLastActive[ownEmail] = ownNode.lastActiveTs;
         all.push({
           email: ownEmail,
           name: nameFromEmail(ownEmail),
-          position: pos,
-          managerEmail: ((meData?.managerEmail as string | undefined)?.toLowerCase() ?? null),
-          docId: meDocId,
+          position: ownNode.position,
+          managerEmail: ownNode.managerEmail,
+          docId: ownNode.docId,
         });
-        visited.add(ownEmail);
 
-        while (queue.length > 0) {
-          const mgr = queue.shift()!;
-          const snap = await getDocs(query(usersCol, where("managerEmail", "==", mgr)));
-          for (const docSnap of snap.docs) {
-            const data = docSnap.data() as any;
-            const docId = docSnap.id;
-            const rawEmail = (data.email as string | undefined)?.trim() || docId;
-            const em = rawEmail.toLowerCase();
-            if (!em || visited.has(em)) continue;
-            visited.add(em);
-            const pos = (data.position as Position | undefined) ?? null;
-            const rawLastActive = toDate(data.lastActive)?.getTime();
-            seededLastActive[em] = Number.isFinite(rawLastActive) ? Number(rawLastActive) : null;
-            all.push({
-              email: em,
-              name: nameFromEmail(em),
-              position: pos,
-              managerEmail: ((data.managerEmail as string | undefined)?.toLowerCase() ?? mgr),
-              docId,
-            });
-            queue.push(em);
-          }
-        }
+        const childrenByManager = buildChildrenByManager(usersByEmail.values());
+        const hierarchy = collectSubordinateHierarchy(ownEmail, childrenByManager);
+        hierarchy.subordinateEmails.forEach((subEmail) => {
+          const node = hierarchy.subordinateByEmail.get(subEmail);
+          if (!node) return;
+          seededLastActive[subEmail] = node.lastActiveTs;
+          all.push({
+            email: subEmail,
+            name: node.name,
+            position: node.position,
+            managerEmail: node.managerEmail,
+            docId: node.docId,
+          });
+        });
 
         setMembers(all);
         if (all.length) {
