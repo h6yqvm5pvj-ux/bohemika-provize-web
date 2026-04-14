@@ -230,6 +230,29 @@ function durationRange(product: Product): [number, number] {
   }
 }
 
+function durationFallback(product: Product): number {
+  switch (product) {
+    case "neon":
+      return 15;
+    case "flexi":
+      return 30;
+    case "maximaMaxEfekt":
+      return 20;
+    default:
+      return 1;
+  }
+}
+
+function normalizedDurationYears(
+  product: Product,
+  years: number | null | undefined
+): number {
+  const [min, max] = durationRange(product);
+  const raw = typeof years === "number" && Number.isFinite(years) ? years : durationFallback(product);
+  const wholeYears = Math.floor(raw);
+  return Math.min(max, Math.max(min, wholeYears));
+}
+
 function allowedFrequencies(product: Product): PaymentFrequency[] {
   switch (product) {
     case "neon":
@@ -462,7 +485,7 @@ export default function CalculatorPage() {
   const [position, setPosition] = useState<Position>("manazer7");
   const [mode, setMode] = useState<CommissionMode>("accelerated");
   const [frequency, setFrequency] = useState<PaymentFrequency>("monthly");
-  const [durationYears, setDurationYears] = useState<number>(15);
+  const [durationYears, setDurationYears] = useState<number | null>(null);
   const [amountText, setAmountText] = useState<string>("");
   const [tipsterModeEnabled, setTipsterModeEnabled] = useState(false);
   const [tipsterPercent, setTipsterPercent] = useState(100);
@@ -820,6 +843,11 @@ export default function CalculatorPage() {
     }
 
     const [min, max] = durationRange(product);
+    if (durationYears == null) {
+      if (product === "neon") return;
+      setDurationYears(durationFallback(product));
+      return;
+    }
     if (durationYears < min || durationYears > max) {
       setDurationYears(Math.min(max, Math.max(min, durationYears)));
     }
@@ -828,10 +856,10 @@ export default function CalculatorPage() {
     // defaultně zůstává nastavený režim z profilu (mode)
   }, [product, frequency, durationYears]);
 
-  // ČPP ŽP NEON má být vždy předvyplněno na 15 let
+  // Výchozí hodnota doby trvání po změně produktu
   useEffect(() => {
     if (product === "neon") {
-      setDurationYears(15);
+      setDurationYears(null);
     }
     if (product === "maximaMaxEfekt") {
       setDurationYears(20);
@@ -997,8 +1025,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "neon") {
-      const [min, max] = durationRange("neon");
-      const y = Math.min(15, Math.min(max, Math.max(min, durationYears)));
+      const y = Math.min(15, normalizedDurationYears("neon", durationYears));
       const dto = calculateNeon(val, position, y, mode);
       setItems(dto.items);
       setTotal(dto.total);
@@ -1007,8 +1034,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "flexi") {
-      const [min, max] = durationRange("flexi");
-      const y = Math.min(max, Math.max(min, durationYears));
+      const y = normalizedDurationYears("flexi", durationYears);
       const dto = calculateFlexi(val, position, mode, y);
       setItems(dto.items);
       setTotal(dto.total);
@@ -1017,8 +1043,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "maximaMaxEfekt") {
-      const [min, max] = durationRange("maximaMaxEfekt");
-      const y = Math.min(max, Math.max(min, durationYears));
+      const y = normalizedDurationYears("maximaMaxEfekt", durationYears);
       const dto = calculateMaxEfekt(val, y, position, mode);
       setItems(dto.items);
       setTotal(dto.total);
@@ -1614,6 +1639,19 @@ export default function CalculatorPage() {
 
     // kontrola duplicitního čísla smlouvy
     const trimmedContractNumber = contractNumber.trim();
+    const trimmedOriginalContractNumber = originalContractNumber.trim();
+    const shouldRefreshOriginalNeon =
+      product === "neon" &&
+      refreshOriginalOpen &&
+      trimmedOriginalContractNumber.length > 0;
+
+    if (product === "neon" && refreshOriginalOpen && !trimmedOriginalContractNumber) {
+      const msg = "Pro refresh doplň číslo původní smlouvy.";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return;
+    }
+
     if (!skipDuplicateCheck) {
       try {
         if (trimmedContractNumber) {
@@ -1781,7 +1819,7 @@ export default function CalculatorPage() {
         return Array.from(s);
       })();
 
-      await addDoc(entriesRef, {
+      const savedContractRef = await addDoc(entriesRef, {
         productKey: product,
         entryType: "contract" as ContractEntryType,
         createdAt: serverTimestamp(),
@@ -1824,6 +1862,71 @@ export default function CalculatorPage() {
         allowedEmails,
       });
 
+      let refreshStornoFailed = false;
+      let refreshStornoUpdated = 0;
+      if (shouldRefreshOriginalNeon) {
+        const stornoDate = start ?? new Date();
+        const refreshSignedDate = signed ?? new Date();
+        try {
+          const token = await user.getIdToken();
+          const refreshRes = await fetch("/api/contracts", {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action: "refreshNeonStorno",
+              originalContractNumber: trimmedOriginalContractNumber,
+              newEntryId: savedContractRef.id,
+              stornoDateMs: stornoDate.getTime(),
+              refreshSignedDateMs: refreshSignedDate.getTime(),
+            }),
+          });
+          const refreshRaw = await refreshRes.text();
+          let refreshData:
+            | { ok: true; updated?: number }
+            | { ok: false; error?: string }
+            | null = null;
+          if (refreshRaw) {
+            try {
+              refreshData = JSON.parse(refreshRaw) as
+                | { ok: true; updated?: number }
+                | { ok: false; error?: string };
+            } catch {
+              refreshData = null;
+            }
+          }
+
+          if (!refreshRes.ok) {
+            const apiError =
+              refreshData && refreshData.ok === false
+                ? refreshData.error
+                : null;
+            throw new Error(
+              apiError ||
+                `Refresh storno selhalo (HTTP ${refreshRes.status}).`
+            );
+          }
+
+          if (!refreshData || refreshData.ok !== true) {
+            const apiError =
+              refreshData && refreshData.ok === false
+                ? refreshData.error
+                : null;
+            throw new Error(apiError || "Refresh storno se nepodařilo uložit.");
+          }
+
+          refreshStornoUpdated = Number(refreshData.updated ?? 0);
+        } catch (refreshUpdateErr) {
+          refreshStornoFailed = true;
+          console.warn(
+            "Označení původní NEON smlouvy jako stornované selhalo",
+            refreshUpdateErr
+          );
+        }
+      }
+
       if (typeof window !== "undefined") {
         try {
           sessionStorage.removeItem("contracts_cache_v2");
@@ -1834,7 +1937,27 @@ export default function CalculatorPage() {
         }
       }
 
-      setSaveMessage("Smlouva byla uložena mezi sepsané.");
+      if (shouldRefreshOriginalNeon) {
+        const stornoDateLabel =
+          start && Number.isFinite(start.getTime())
+            ? start.toLocaleDateString("cs-CZ")
+            : policyStartDate.trim();
+        if (refreshStornoFailed) {
+          setSaveMessage(
+            "Smlouva byla uložena, ale původní smlouvu se nepodařilo označit jako stornovanou."
+          );
+        } else if (refreshStornoUpdated > 0) {
+          setSaveMessage(
+            `Smlouva byla uložena. Původní smlouva (${trimmedOriginalContractNumber}) byla označena jako stornovaná k ${stornoDateLabel}.`
+          );
+        } else {
+          setSaveMessage(
+            `Smlouva byla uložena. Původní smlouva (${trimmedOriginalContractNumber}) nebyla nalezena k označení storna.`
+          );
+        }
+      } else {
+        setSaveMessage("Smlouva byla uložena mezi sepsané.");
+      }
       setSaveSuccessFlash({
         contractNumber: contractNumber.trim() || null,
         clientName: clientName.trim() || null,
@@ -1900,19 +2023,16 @@ export default function CalculatorPage() {
 
     switch (product) {
       case "neon": {
-        const [min, max] = durationRange("neon");
-        const y = Math.min(15, Math.min(max, Math.max(min, years)));
+        const y = Math.min(15, normalizedDurationYears("neon", years));
         return calculateNeon(val, pos, y, usedMode);
       }
       case "flexi":
       {
-        const [min, max] = durationRange("flexi");
-        const y = Math.min(max, Math.max(min, years));
+        const y = normalizedDurationYears("flexi", years);
         return calculateFlexi(val, pos, usedMode, y);
       }
       case "maximaMaxEfekt": {
-        const [min, max] = durationRange("maximaMaxEfekt");
-        const y = Math.min(max, Math.max(min, years));
+        const y = normalizedDurationYears("maximaMaxEfekt", years);
         return calculateMaxEfekt(val, y, pos, usedMode);
       }
       case "pillowInjury":
@@ -2344,11 +2464,20 @@ export default function CalculatorPage() {
                   <input
                     type="number"
                     className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                    value={durationYears}
+                    value={durationYears ?? ""}
                     onChange={(e) => {
-                      const val = Number(e.target.value) || 1;
+                      const raw = e.target.value.trim();
+                      if (!raw) {
+                        setDurationYears(null);
+                        return;
+                      }
+                      const parsed = Number(raw);
+                      if (!Number.isFinite(parsed)) {
+                        setDurationYears(null);
+                        return;
+                      }
                       const [min, max] = durationRange(product);
-                      setDurationYears(Math.min(max, Math.max(min, val)));
+                      setDurationYears(Math.min(max, Math.max(min, Math.floor(parsed))));
                     }}
                   />
                 </div>
@@ -2520,7 +2649,7 @@ export default function CalculatorPage() {
                   </div>
                   {product === "neon" && refreshOriginalOpen && (
                     <p className="text-[11px] text-slate-600">
-                      Při uložení nahradíme původní smlouvu se stejným číslem (smažeme starý záznam).
+                      Při uložení označíme původní smlouvu jako stornovanou k datu počátku nové smlouvy.
                     </p>
                   )}
                   <p className="text-[11px] text-slate-600">

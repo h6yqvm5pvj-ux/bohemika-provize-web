@@ -96,6 +96,7 @@ export default function ContractDetailPage() {
   const rawId = params?.id;
   const backToContractsHref =
     searchParams?.get("from") === "list" ? "/smlouvy?restore=1" : "/smlouvy";
+  const fromListSuffix = searchParams?.get("from") === "list" ? "?from=list" : "";
 
   // slug: email___entryId
   let ownerEmail: string | null = null;
@@ -157,6 +158,7 @@ export default function ContractDetailPage() {
   const [stornoDateInput, setStornoDateInput] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showStornoModal, setShowStornoModal] = useState(false);
+  const [canOpenRefreshReplacement, setCanOpenRefreshReplacement] = useState(false);
   const { toasts, pushToast, dismissToast } = useToasts();
   const [unauthorized, setUnauthorized] = useState(false);
 
@@ -457,6 +459,22 @@ export default function ContractDetailPage() {
     : "—";
   const maturityDate = contractMaturityDate(lifecycleInput);
   const maturityDateLabel = maturityDate ? formatDate(maturityDate) : "—";
+  const refreshReplacementEntryId =
+    typeof contract?.refreshReplacedByEntryId === "string"
+      ? contract.refreshReplacedByEntryId.trim()
+      : "";
+  const refreshReplacementOwnerEmail =
+    normalizeEmail(contract?.refreshReplacedByOwnerEmail ?? null) ?? "";
+  const hasRefreshReplacement =
+    refreshReplacementEntryId.length > 0 && refreshReplacementOwnerEmail.length > 0;
+  const refreshReplacementSignedLabel = contract?.refreshReplacedBySignedDate
+    ? formatDate(contract.refreshReplacedBySignedDate)
+    : "—";
+  const refreshReplacementHref = hasRefreshReplacement
+    ? `/smlouvy/${encodeURIComponent(
+        `${refreshReplacementOwnerEmail}___${refreshReplacementEntryId}`
+      )}${fromListSuffix}`
+    : null;
   const premium = isEndorsement
     ? Number(
         contract?.newInputAmount ??
@@ -547,10 +565,15 @@ export default function ContractDetailPage() {
       };
     });
   }, [contract?.id, contractTimeline, ownerEmail, searchParams]);
+  const hasTimelineChange = useMemo(() => {
+    if (isEndorsement) return true;
+    return contractTimeline.some((entry) => entry.entryType === "endorsement");
+  }, [contractTimeline, isEndorsement]);
   const contractTotal = contract?.total ?? 0;
   const freq = (contract?.frequencyRaw as PaymentFrequency | null | undefined) ?? null;
   const prod = contract?.productKey as Product | undefined;
   const isLifeInsuranceContract = Boolean(prod && LIFE_PRODUCT_KEYS.has(prod));
+  const showTimelineSection = isLifeInsuranceContract && hasTimelineChange;
   const isPaymentBasedProduct =
     prod === "domex" || prod === "koopmajetekobcan" || prod === "maxdomov";
   const paymentMultiplier = isPaymentBasedProduct ? paymentsPerYear(freq) : 1;
@@ -600,6 +623,60 @@ export default function ContractDetailPage() {
     return isManagerOnChain || isManagerOnCurrentChain;
   }, [managerPosition, isManagerOnChain, isManagerOnCurrentChain]);
   const canViewContract = isOwnContract || isManagerOnChain || isManagerOnCurrentChain;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkRefreshReplacementAccess = async () => {
+      if (!hasRefreshReplacement || !normalizedUserEmail) {
+        setCanOpenRefreshReplacement(false);
+        return;
+      }
+
+      if (normalizedUserEmail === refreshReplacementOwnerEmail) {
+        setCanOpenRefreshReplacement(true);
+        return;
+      }
+
+      try {
+        const linkedRef = doc(
+          db,
+          "users",
+          refreshReplacementOwnerEmail,
+          "entries",
+          refreshReplacementEntryId
+        );
+        const linkedSnap = await getDoc(linkedRef);
+        if (!linkedSnap.exists()) {
+          if (!cancelled) setCanOpenRefreshReplacement(false);
+          return;
+        }
+
+        const linked = linkedSnap.data() as any;
+        const canOpen =
+          normalizeEmail(linked.userEmail ?? refreshReplacementOwnerEmail) ===
+            normalizedUserEmail ||
+          normalizeEmail(linked.managerEmailSnapshot) === normalizedUserEmail ||
+          isEmailInChain(normalizedUserEmail, linked.managerChain ?? null) ||
+          isEmailInChain(normalizedUserEmail, linked.managerOverrides ?? null);
+
+        if (!cancelled) setCanOpenRefreshReplacement(canOpen);
+      } catch (refreshAccessErr) {
+        console.error("Chyba při ověřování přístupu na refresh smlouvu:", refreshAccessErr);
+        if (!cancelled) setCanOpenRefreshReplacement(false);
+      }
+    };
+
+    void checkRefreshReplacementAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    hasRefreshReplacement,
+    normalizedUserEmail,
+    refreshReplacementOwnerEmail,
+    refreshReplacementEntryId,
+  ]);
 
   const effectiveManagerPosition =
     managerPosition ?? ((contract as any)?.managerPositionSnapshot as Position | null | undefined) ?? null;
@@ -2734,8 +2811,8 @@ export default function ContractDetailPage() {
                     </span>
                   )}
                   {isStornoContract ? (
-                    <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
-                      {stornoDateLabel !== "—" ? `Storno od ${stornoDateLabel}` : "Storno"}
+                    <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-100 px-5 py-2.5 text-base font-semibold uppercase tracking-tight text-amber-800 sm:text-lg">
+                      STORNO
                     </span>
                   ) : isDozitaContract ? (
                     <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-800">
@@ -3029,6 +3106,32 @@ export default function ContractDetailPage() {
                             : "Aktivní"}
                         </dd>
                       </div>
+                      {(contract?.refreshReplacedBySignedDate || hasRefreshReplacement) && (
+                        <div className="flex justify-between gap-2">
+                          <dt className={keyValueLabelClass}>Refresh</dt>
+                          <dd className={`${keyValueValueClass} max-w-[70%] text-right text-sm leading-snug`}>
+                            <span className="block">
+                              Na tuto smlouvu byl sjednán Refresh dne{" "}
+                              {refreshReplacementSignedLabel !== "—"
+                                ? refreshReplacementSignedLabel
+                                : "—"}
+                              .
+                            </span>
+                            {refreshReplacementHref && canOpenRefreshReplacement ? (
+                              <Link
+                                href={refreshReplacementHref}
+                                className="mt-1 inline-flex items-center rounded-full border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                              >
+                                Otevřít novou smlouvu
+                              </Link>
+                            ) : hasRefreshReplacement ? (
+                              <span className="mt-1 block text-xs text-slate-500">
+                                Na novou smlouvu nemáš oprávnění.
+                              </span>
+                            ) : null}
+                          </dd>
+                        </div>
+                      )}
                     </dl>
                   </div>
 
@@ -3125,7 +3228,7 @@ export default function ContractDetailPage() {
               </div>
             </section>
 
-            {isLifeInsuranceContract && (
+            {showTimelineSection && (
               <section className={sectionPanelClass}>
                 <h3 className={`mb-3 flex items-center gap-2 text-xl font-semibold ${monoHeadingClass}`}>
                   <span className={monoChipDarkClass}>

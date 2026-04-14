@@ -17,6 +17,9 @@ export type ContractDoc = {
   paid?: boolean | null;
   status?: "active" | "storno" | string | null;
   stornoDate?: FirestoreTimestamp | Date | string | number | null;
+  refreshReplacedByEntryId?: string | null;
+  refreshReplacedByOwnerEmail?: string | null;
+  refreshReplacedBySignedDate?: FirestoreTimestamp | Date | string | number | null;
   entryType?: "contract" | "endorsement" | string | null;
   rootContractEntryId?: string | null;
   parentContractEntryId?: string | null;

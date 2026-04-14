@@ -327,6 +327,63 @@ async function fetchContractsForOwners(
   };
 }
 
+async function findEntriesByContractNumberAcrossUsers(
+  contractNumber: string
+): Promise<
+  FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>[]
+> {
+  if (!adminDb) {
+    throw new Error("Firebase Admin credentials are not configured.");
+  }
+  const db = adminDb;
+
+  try {
+    const byGroup = await db
+      .collectionGroup("entries")
+      .where("contractNumber", "==", contractNumber)
+      .get();
+    return byGroup.docs;
+  } catch (err) {
+    console.warn(
+      "Refresh storno: collectionGroup(contractNumber) selhal, pouštím fallback přes users/*/entries.",
+      err
+    );
+  }
+
+  const usersSnap = await db.collection("users").get();
+  const ownerIds = usersSnap.docs.map((doc) => doc.id).filter(Boolean);
+  const hits: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>[] = [];
+
+  for (let i = 0; i < ownerIds.length; i += 20) {
+    const chunk = ownerIds.slice(i, i + 20);
+    const chunkSnaps = await Promise.all(
+      chunk.map(async (ownerId) => {
+        try {
+          return await db
+            .collection("users")
+            .doc(ownerId)
+            .collection("entries")
+            .where("contractNumber", "==", contractNumber)
+            .get();
+        } catch (scanErr) {
+          console.warn(
+            `Refresh storno: fallback query selhal pro users/${ownerId}/entries.`,
+            scanErr
+          );
+          return null;
+        }
+      })
+    );
+
+    chunkSnaps.forEach((snap) => {
+      if (!snap) return;
+      hits.push(...snap.docs);
+    });
+  }
+
+  return hits;
+}
+
 async function getAuthContext(req: NextRequest) {
   if (!adminAuth || !adminDb) {
     return { error: "Server není správně nakonfigurován (chybí Firebase Admin credentials).", status: 500 } as const;
@@ -444,6 +501,113 @@ export async function PATCH(req: NextRequest) {
     body = await req.json();
   } catch {
     return NextResponse.json({ ok: false, error: "Neplatný JSON payload." }, { status: 400 });
+  }
+
+  const action =
+    typeof body?.action === "string" ? body.action.trim() : "";
+  if (action === "refreshNeonStorno") {
+    try {
+      const originalContractNumber =
+        typeof body?.originalContractNumber === "string"
+          ? body.originalContractNumber.trim()
+          : "";
+      const newEntryId =
+        typeof body?.newEntryId === "string" ? body.newEntryId.trim() : "";
+      const stornoDateMs = Number(body?.stornoDateMs);
+      const refreshSignedDateMs = Number(body?.refreshSignedDateMs);
+
+      if (!originalContractNumber) {
+        return NextResponse.json(
+          { ok: false, error: "Chybí číslo původní smlouvy." },
+          { status: 400 }
+        );
+      }
+      if (!newEntryId) {
+        return NextResponse.json(
+          { ok: false, error: "Chybí ID nové smlouvy." },
+          { status: 400 }
+        );
+      }
+      if (!Number.isFinite(stornoDateMs) || !Number.isFinite(refreshSignedDateMs)) {
+        return NextResponse.json(
+          { ok: false, error: "Chybí validní data refreshu." },
+          { status: 400 }
+        );
+      }
+
+      const stornoDate = new Date(stornoDateMs);
+      const refreshSignedDate = new Date(refreshSignedDateMs);
+      if (
+        Number.isNaN(stornoDate.getTime()) ||
+        Number.isNaN(refreshSignedDate.getTime())
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "Neplatné datum storna nebo sjednání refreshu." },
+          { status: 400 }
+        );
+      }
+
+      const newEntryRef = adminDb
+        ?.collection("users")
+        .doc(email)
+        .collection("entries")
+        .doc(newEntryId);
+      const newEntrySnap = await newEntryRef?.get();
+      if (!newEntrySnap?.exists) {
+        return NextResponse.json(
+          { ok: false, error: "Nová smlouva pro refresh nebyla nalezena." },
+          { status: 404 }
+        );
+      }
+
+      const newEntryData = newEntrySnap.data() as ContractDoc | undefined;
+      if ((newEntryData?.productKey as Product | undefined) !== "neon") {
+        return NextResponse.json(
+          { ok: false, error: "Refresh storno je dostupné jen pro ČPP ŽP NEON." },
+          { status: 400 }
+        );
+      }
+
+      const refreshTargets = await findEntriesByContractNumberAcrossUsers(
+        originalContractNumber
+      );
+
+      let updated = 0;
+      for (const snap of refreshTargets) {
+        const data = snap.data() as ContractDoc;
+        if ((data.productKey as Product | undefined) !== "neon") continue;
+
+        const owner = normalizeEmail(
+          (snap.ref.parent.parent?.id as string | undefined) ??
+            (data.userEmail as string | undefined)
+        );
+        if (owner === email && snap.id === newEntryId) continue;
+
+        await snap.ref.set(
+          {
+            status: "storno",
+            stornoDate,
+            refreshReplacedByEntryId: newEntryId,
+            refreshReplacedByOwnerEmail: email,
+            refreshReplacedBySignedDate: refreshSignedDate,
+          },
+          { merge: true }
+        );
+        updated += 1;
+      }
+
+      return NextResponse.json({ ok: true, updated });
+    } catch (refreshErr: any) {
+      const message =
+        typeof refreshErr?.message === "string" && refreshErr.message.trim()
+          ? refreshErr.message.trim()
+          : "Neznámá chyba při refresh storno.";
+      console.error("PATCH /api/contracts refreshNeonStorno selhal:", refreshErr);
+      return NextResponse.json(
+        { ok: false, error: `Refresh storno selhalo: ${message}` },
+        { status: 500 }
+      );
+    }
   }
 
   const entries = Array.isArray(body.entries) ? body.entries : [];
