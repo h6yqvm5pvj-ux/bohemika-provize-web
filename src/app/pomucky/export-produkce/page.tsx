@@ -9,6 +9,23 @@ import {
   buildChildrenByManager,
   collectSubordinateHierarchy,
 } from "@/app/lib/teamHierarchy";
+import {
+  POSITION_LABELS,
+  formatMoney,
+  toDate,
+} from "@/app/lib/formatters";
+import {
+  PRODUCT_ORDER,
+  hasProductGroup,
+  isAutoProduct,
+  isComfortProduct,
+  isLifeProduct,
+  isPropertyProduct,
+  isTravelProduct,
+  productInstitutionLabel,
+  productInstitutionLogo,
+  productLabel as productLabelFromCatalog,
+} from "@/app/lib/productCatalog";
 import { auth, db } from "../../firebase";
 
 import {
@@ -108,165 +125,29 @@ const CATEGORY_FILTERS: { key: ProductCategory; label: string }[] = [
 ];
 
 const ALL_CATEGORY_KEYS: ProductCategory[] = CATEGORY_FILTERS.map((c) => c.key);
-
-/* ---------------------------- produktové skupiny ------------------------ */
-
-const LIFE_PRODUCTS: Product[] = [
-  "neon",
-  "flexi",
-  "maximaMaxEfekt",
-  "pillowInjury",
-];
-
-const AUTO_PRODUCTS: Product[] = [
-  "cppAuto",
-  "allianzAuto",
-  "csobAuto",
-  "uniqaAuto",
-  "pillowAuto",
-  "kooperativaAuto",
-];
-
-const PROPERTY_PRODUCTS: Product[] = [
-  "domex",
-  "koopmajetekobcan",
-  "cppPPRbez",
-  "maxdomov",
-  "cppsimplex",
-  "zamex",
-  "cppPPRs",
-  "cppcestovko",
-  "axacestovko",
-];
-
-const PRODUCT_ICON_PATHS: Partial<Record<Product, string>> = {
-  neon: "/icons/cpp.png",
-  domex: "/icons/cpp.png",
-  cppsimplex: "/icons/cpp.png",
-  cppPPRbez: "/icons/cpp.png",
-  cppAuto: "/icons/cpp.png",
-  cppPPRs: "/icons/cpp.png",
-  cppcestovko: "/icons/cpp.png",
-  zamex: "/icons/cpp.png",
-  flexi: "/icons/koop.png",
-  kooperativaAuto: "/icons/koop.png",
-  koopmajetekobcan: "/icons/koop.png",
-  maximaMaxEfekt: "/icons/maxima.png",
-  maxdomov: "/icons/maxima.png",
-  pillowInjury: "/icons/pillow.png",
-  pillowAuto: "/icons/pillow.png",
-  allianzAuto: "/icons/allianz.png",
-  csobAuto: "/icons/csob.png",
-  uniqaAuto: "/icons/uniqa.png",
-  axacestovko: "/icons/axalogo.png",
-  comfortcc: "/icons/gold.png",
-};
+const PRODUCT_ICON_PATHS: Partial<Record<Product, string>> = Object.fromEntries(
+  PRODUCT_ORDER.map((product) => [
+    product,
+    productInstitutionLogo(product),
+  ]).filter((entry): entry is [Product, string] => Boolean(entry[1]))
+) as Partial<Record<Product, string>>;
 
 function productCategory(p: Product): ProductCategory {
-  if (LIFE_PRODUCTS.includes(p)) return "life";
-  if (AUTO_PRODUCTS.includes(p)) return "auto";
-  if (PROPERTY_PRODUCTS.includes(p)) return "property";
-  if (p === "comfortcc") return "gold";
+  if (isLifeProduct(p)) return "life";
+  if (isAutoProduct(p)) return "auto";
+  if (isPropertyProduct(p) || isTravelProduct(p) || hasProductGroup(p, "liability")) {
+    return "property";
+  }
+  if (isComfortProduct(p)) return "gold";
   return "nonlife";
 }
 
-const POSITION_LABELS: Record<Position, string> = {
-  poradce1: "Poradce 1",
-  poradce2: "Poradce 2",
-  poradce3: "Poradce 3",
-  poradce4: "Poradce 4",
-  poradce5: "Poradce 5",
-  poradce6: "Poradce 6",
-  poradce7: "Poradce 7",
-  poradce8: "Poradce 8",
-  poradce9: "Poradce 9",
-  poradce10: "Poradce 10",
-  manazer4: "Manažer 4",
-  manazer5: "Manažer 5",
-  manazer6: "Manažer 6",
-  manazer7: "Manažer 7",
-  manazer8: "Manažer 8",
-  manazer9: "Manažer 9",
-  manazer10: "Manažer 10",
-};
-
 function productLabel(p: Product): string {
-  switch (p) {
-    case "neon":
-      return "ČPP ŽP NEON";
-    case "flexi":
-      return "Kooperativa ŽP FLEXI";
-    case "maximaMaxEfekt":
-      return "MAXIMA ŽP MaxEfekt";
-    case "pillowInjury":
-      return "Pillow Úraz / Nemoc";
-    case "zamex":
-      return "ČPP ZAMEX";
-    case "domex":
-      return "ČPP DOMEX";
-    case "koopmajetekobcan":
-      return "Kooperativa Pojištění majetku a odpovědnosti občanů a právní ochrany";
-    case "cppsimplex":
-      return "ČPP Simplex";
-    case "cppPPRbez":
-      return "ČPP Pojištění majetku a odpovědnosti podnikatelů";
-    case "maxdomov":
-      return "Maxima MAXDOMOV";
-    case "cppAuto":
-      return "ČPP Auto";
-    case "cppPPRs":
-      return "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS";
-    case "allianzAuto":
-      return "Allianz Auto";
-    case "csobAuto":
-      return "ČSOB Auto";
-    case "uniqaAuto":
-      return "UNIQA Auto";
-    case "pillowAuto":
-      return "Pillow Auto";
-    case "kooperativaAuto":
-      return "Kooperativa Auto";
-    case "cppcestovko":
-      return "ČPP Cestovko";
-    case "axacestovko":
-      return "AXA Cestovko";
-    case "comfortcc":
-      return "Comfort Commodity";
-  }
+  return productLabelFromCatalog(p, p);
 }
 
 function institutionLabel(p: Product): string {
-  switch (p) {
-    case "neon":
-    case "domex":
-    case "cppsimplex":
-    case "cppPPRbez":
-    case "cppAuto":
-    case "cppPPRs":
-    case "cppcestovko":
-    case "zamex":
-      return "ČPP";
-    case "flexi":
-    case "kooperativaAuto":
-    case "koopmajetekobcan":
-      return "Kooperativa";
-    case "maximaMaxEfekt":
-    case "maxdomov":
-      return "Maxima";
-    case "pillowInjury":
-    case "pillowAuto":
-      return "Pillow";
-    case "allianzAuto":
-      return "Allianz";
-    case "csobAuto":
-      return "ČSOB";
-    case "uniqaAuto":
-      return "UNIQA";
-    case "axacestovko":
-      return "AXA";
-    case "comfortcc":
-      return "Comfort Commodity";
-  }
+  return productInstitutionLabel(p, p) ?? p;
 }
 
 /* -------------------------------- helpers ------------------------------- */
@@ -285,37 +166,6 @@ function emptyStats(): AggregatedStats {
     goldTotal: 0,
     goldContracts: 0,
   };
-}
-
-function toDate(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "toDate" in value &&
-    typeof (value as any).toDate === "function"
-  ) {
-    const d = (value as any).toDate();
-    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
-  }
-
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "seconds" in value &&
-    typeof (value as any).seconds === "number"
-  ) {
-    const v = value as { seconds: number; nanoseconds?: number };
-    const ms =
-      v.seconds * 1000 + Math.floor((v.nanoseconds ?? 0) / 1_000_000);
-    const d = new Date(ms);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  const d = new Date(value as any);
-  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function nameFromEmail(email: string | null | undefined): string {
@@ -378,15 +228,6 @@ function toAnnualPremium(
     default:
       return amount;
   }
-}
-
-function formatMoney(value: number): string {
-  if (!Number.isFinite(value)) return "0 Kč";
-  return (
-    value.toLocaleString("cs-CZ", {
-      maximumFractionDigits: 0,
-    }) + " Kč"
-  );
 }
 
 function escapeHtml(text: string): string {
@@ -872,10 +713,11 @@ export default function ExportProductionPage() {
       const amount = entry.inputAmount ?? 0;
       if (!amount || !Number.isFinite(amount)) continue;
 
-      const isLife = LIFE_PRODUCTS.includes(p);
-      const isAuto = AUTO_PRODUCTS.includes(p);
-      const isProperty = PROPERTY_PRODUCTS.includes(p);
-      const isGold = p === "comfortcc";
+      const isLife = isLifeProduct(p);
+      const isAuto = isAutoProduct(p);
+      const isProperty =
+        isPropertyProduct(p) || isTravelProduct(p) || hasProductGroup(p, "liability");
+      const isGold = isComfortProduct(p);
       const isNonLife = !isLife && !isGold;
 
       const annualForProduct = isGold

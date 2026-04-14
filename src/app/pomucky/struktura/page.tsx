@@ -7,6 +7,7 @@ import {
   buildChildrenByManager,
   collectSubordinateHierarchy,
 } from "@/app/lib/teamHierarchy";
+import { positionLabel as positionLabelValue } from "@/app/lib/formatters";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import { auth, db } from "../../firebase";
 import {
@@ -40,27 +41,7 @@ function nameFromEmail(email: string): string {
 }
 
 function positionLabel(pos: Position | null): string {
-  if (!pos) return "Neznámá pozice";
-  const map: Record<Position, string> = {
-    poradce1: "Poradce 1",
-    poradce2: "Poradce 2",
-    poradce3: "Poradce 3",
-    poradce4: "Poradce 4",
-    poradce5: "Poradce 5",
-    poradce6: "Poradce 6",
-    poradce7: "Poradce 7",
-    poradce8: "Poradce 8",
-    poradce9: "Poradce 9",
-    poradce10: "Poradce 10",
-    manazer4: "Manažer 4",
-    manazer5: "Manažer 5",
-    manazer6: "Manažer 6",
-    manazer7: "Manažer 7",
-    manazer8: "Manažer 8",
-    manazer9: "Manažer 9",
-    manazer10: "Manažer 10",
-  };
-  return map[pos] ?? pos;
+  return positionLabelValue(pos, { emptyLabel: "Neznámá pozice" });
 }
 
 function roleIcon(pos: Position | null): string {

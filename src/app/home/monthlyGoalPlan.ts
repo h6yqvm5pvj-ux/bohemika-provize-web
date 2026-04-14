@@ -15,6 +15,7 @@ import {
   calculateMaxdomov,
   calculateNeon,
 } from "@/app/lib/productFormulas";
+import { productLabel } from "@/app/lib/productCatalog";
 
 type PremiumUnit = "monthly" | "annual";
 
@@ -58,7 +59,7 @@ const MAX_ALLOWED_OVERSHOOT = 1_500;
 
 const NEON_TEMPLATE: SuggestionTemplate = {
   product: "neon",
-  label: "ČPP ŽP NEON",
+  label: productLabel("neon"),
   premiumUnit: "monthly",
   minPremium: 1_000,
   maxPremium: 1_700,
@@ -71,7 +72,7 @@ const NEON_TEMPLATE: SuggestionTemplate = {
 const NON_LIFE_TEMPLATES: SuggestionTemplate[] = [
   {
     product: "cppAuto",
-    label: "ČPP Auto",
+    label: productLabel("cppAuto"),
     premiumUnit: "annual",
     minPremium: 5_000,
     maxPremium: 15_000,
@@ -82,7 +83,7 @@ const NON_LIFE_TEMPLATES: SuggestionTemplate[] = [
   },
   {
     product: "allianzAuto",
-    label: "Allianz Auto",
+    label: productLabel("allianzAuto"),
     premiumUnit: "annual",
     minPremium: 5_000,
     maxPremium: 15_000,
@@ -93,7 +94,7 @@ const NON_LIFE_TEMPLATES: SuggestionTemplate[] = [
   },
   {
     product: "domex",
-    label: "ČPP DOMEX",
+    label: productLabel("domex"),
     premiumUnit: "annual",
     minPremium: 2_000,
     maxPremium: 10_000,
@@ -104,7 +105,7 @@ const NON_LIFE_TEMPLATES: SuggestionTemplate[] = [
   },
   {
     product: "maxdomov",
-    label: "Maxima MAXDOMOV",
+    label: productLabel("maxdomov"),
     premiumUnit: "annual",
     minPremium: 2_000,
     maxPremium: 10_000,
@@ -115,7 +116,7 @@ const NON_LIFE_TEMPLATES: SuggestionTemplate[] = [
   },
   {
     product: "cppsimplex",
-    label: "ČPP Simplex",
+    label: productLabel("cppsimplex"),
     premiumUnit: "annual",
     minPremium: 3_000,
     maxPremium: 7_000,
@@ -126,7 +127,7 @@ const NON_LIFE_TEMPLATES: SuggestionTemplate[] = [
   },
   {
     product: "cppcestovko",
-    label: "ČPP Cestovko",
+    label: productLabel("cppcestovko"),
     premiumUnit: "annual",
     minPremium: 300,
     maxPremium: 1_000,
@@ -137,7 +138,7 @@ const NON_LIFE_TEMPLATES: SuggestionTemplate[] = [
   },
   {
     product: "axacestovko",
-    label: "AXA Cestovko",
+    label: productLabel("axacestovko"),
     premiumUnit: "annual",
     minPremium: 300,
     maxPremium: 1_000,

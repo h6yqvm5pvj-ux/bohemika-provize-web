@@ -413,12 +413,12 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
 
   // Doba trvání smlouvy
   const durationMatch =
-    fullText.match(/Doba\s+trvání\s+smlouvy\s*([0-9]{1,2})/i)?.[1] ??
-    asciiText.match(/doba trvani smlouvy\s*([0-9]{1,2})/i)?.[1];
+    fullText.match(/Doba\s+trvání\s+smlouvy\s*([0-9]{1,3})/i)?.[1] ??
+    asciiText.match(/doba trvani smlouvy\s*([0-9]{1,3})/i)?.[1];
   if (durationMatch) {
     const yrs = Number.parseInt(durationMatch, 10);
     if (Number.isFinite(yrs)) {
-      result.durationYears = Math.min(15, Math.max(1, yrs));
+      result.durationYears = Math.max(1, yrs);
     }
   }
 

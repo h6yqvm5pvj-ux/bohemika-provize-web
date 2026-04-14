@@ -30,6 +30,16 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
 import {
+  formatMoney as formatMoneyValue,
+  positionLabel,
+  toDate,
+} from "@/app/lib/formatters";
+import {
+  isLifeProduct,
+  productCategory as productCategoryFromCatalog,
+  productInstitutionLabel,
+} from "@/app/lib/productCatalog";
+import {
   buildChildrenByManager,
   collectSubordinateHierarchy,
 } from "@/app/lib/teamHierarchy";
@@ -44,11 +54,6 @@ type Member = {
   docId?: string;
 };
 
-type FirestoreTimestamp = {
-  seconds: number;
-  nanoseconds?: number;
-};
-
 function nameFromEmail(email: string | null | undefined): string {
   if (!email) return "Neznámý uživatel";
   const local = email.split("@")[0] ?? "";
@@ -56,30 +61,6 @@ function nameFromEmail(email: string | null | undefined): string {
   if (!parts.length) return email;
   const cap = (s: string) => (s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1).toLowerCase());
   return parts.map(cap).join(" ");
-}
-
-function positionLabel(pos?: Position | null): string {
-  if (!pos) return "—";
-  const map: Record<Position, string> = {
-    poradce1: "Poradce 1",
-    poradce2: "Poradce 2",
-    poradce3: "Poradce 3",
-    poradce4: "Poradce 4",
-    poradce5: "Poradce 5",
-    poradce6: "Poradce 6",
-    poradce7: "Poradce 7",
-    poradce8: "Poradce 8",
-    poradce9: "Poradce 9",
-    poradce10: "Poradce 10",
-    manazer4: "Manažer 4",
-    manazer5: "Manažer 5",
-    manazer6: "Manažer 6",
-    manazer7: "Manažer 7",
-    manazer8: "Manažer 8",
-    manazer9: "Manažer 9",
-    manazer10: "Manažer 10",
-  };
-  return map[pos] ?? pos;
 }
 
 const POSITION_OPTIONS: { id: Position; label: string }[] = [
@@ -107,23 +88,6 @@ function isManagerPosition(pos?: Position | null): boolean {
   return pos.startsWith("manazer");
 }
 
-function toDate(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value === "object" && value !== null && "toDate" in value && typeof (value as any).toDate === "function") {
-    const d = (value as any).toDate();
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  if (typeof value === "object" && value !== null && "seconds" in value && typeof (value as any).seconds === "number") {
-    const v = value as FirestoreTimestamp;
-    const ms = v.seconds * 1000 + Math.floor((v.nanoseconds ?? 0) / 1_000_000);
-    const d = new Date(ms);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  const d = new Date(value as any);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
 const ONLINE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minut
 const RECENT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 1 den
 
@@ -145,34 +109,18 @@ const PRODUCTION_CATEGORY_TABS: { key: ProductionCategory; label: string }[] = [
   { key: "comfort", label: "Zlato" },
   { key: "travel", label: "Cestovko" },
 ];
-const LIFE_PRODUCTS = new Set<Product>(["neon", "flexi", "maximaMaxEfekt", "pillowInjury"]);
 
 function categorizeProduct(p?: Product | null): Category {
-  switch (p) {
-    case "neon":
-    case "flexi":
-    case "maximaMaxEfekt":
-    case "pillowInjury":
+  switch (productCategoryFromCatalog(p)) {
+    case "life":
       return "life";
-    case "cppAuto":
-    case "allianzAuto":
-    case "csobAuto":
-    case "uniqaAuto":
-    case "pillowAuto":
-    case "kooperativaAuto":
+    case "auto":
       return "auto";
-    case "domex":
-    case "koopmajetekobcan":
-    case "maxdomov":
-    case "cppPPRbez":
-    case "cppPPRs":
-    case "zamex":
-    case "cppsimplex":
+    case "property":
       return "property";
-    case "cppcestovko":
-    case "axacestovko":
+    case "travel":
       return "travel";
-    case "comfortcc":
+    case "comfort":
       return "comfort";
     default:
       return "other";
@@ -180,39 +128,7 @@ function categorizeProduct(p?: Product | null): Category {
 }
 
 function institutionLabelForProduct(product?: Product | null): string {
-  switch (product) {
-    case "neon":
-    case "domex":
-    case "cppAuto":
-    case "cppcestovko":
-    case "cppPPRbez":
-    case "cppPPRs":
-    case "cppsimplex":
-    case "zamex":
-      return "ČPP";
-    case "flexi":
-    case "koopmajetekobcan":
-    case "kooperativaAuto":
-      return "Kooperativa";
-    case "maximaMaxEfekt":
-    case "maxdomov":
-      return "Maxima";
-    case "allianzAuto":
-      return "Allianz";
-    case "uniqaAuto":
-      return "UNIQA";
-    case "csobAuto":
-      return "ČSOB";
-    case "pillowAuto":
-    case "pillowInjury":
-      return "Pillow";
-    case "axacestovko":
-      return "AXA";
-    case "comfortcc":
-      return "Comfort Commodity";
-    default:
-      return "Ostatní";
-  }
+  return productInstitutionLabel(product, "Ostatní") ?? "Ostatní";
 }
 
 function insurerLogoPath(insurer: string): string | null {
@@ -247,7 +163,7 @@ function annualPremiumFromEntry(data: any, category: Category): number {
   const raw = Number(data?.inputAmount ?? 0);
   if (!Number.isFinite(raw) || raw <= 0) return 0;
   const product = data?.productKey as Product | undefined;
-  if (product && LIFE_PRODUCTS.has(product)) {
+  if (isLifeProduct(product)) {
     return raw * 12;
   }
   if (category === "comfort") {
@@ -257,8 +173,7 @@ function annualPremiumFromEntry(data: any, category: Category): number {
 }
 
 function formatMoney(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "0 Kč";
-  return `${Math.round(value).toLocaleString("cs-CZ")} Kč`;
+  return formatMoneyValue(value, { nonPositiveAsEmpty: true });
 }
 
 function emptyCategoryCounts(): Record<Category, number> {
@@ -337,6 +252,9 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "name", label: "Jméno A-Z" },
 ];
 
+const MEMBER_LIST_ESTIMATED_ROW_HEIGHT = 104;
+const MEMBER_LIST_OVERSCAN = 6;
+
 export default function TeamPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -363,8 +281,11 @@ export default function TeamPage() {
   const [positionSaveSuccess, setPositionSaveSuccess] = useState(false);
   const copyEmailTimerRef = useRef<number | null>(null);
   const positionSaveTimerRef = useRef<number | null>(null);
+  const membersListRef = useRef<HTMLDivElement | null>(null);
   const usedCacheRef = useRef(false);
   const lastActiveRef = useRef<Record<string, number | null>>({});
+  const [membersScrollTop, setMembersScrollTop] = useState(0);
+  const [membersViewportHeight, setMembersViewportHeight] = useState(0);
   const cacheStateRef = useRef<{
     contractCounts: Record<string, ContractStats>;
     contractsLoaded: boolean;
@@ -793,6 +714,96 @@ export default function TeamPage() {
   }, [members, search, activityFilter, sortBy, lastActive, contractCounts]);
 
   useEffect(() => {
+    if (!showMembersPanel) return;
+    const el = membersListRef.current;
+    if (!el) return;
+
+    let rafId: number | null = null;
+    const syncNow = () => {
+      setMembersScrollTop(el.scrollTop);
+      setMembersViewportHeight(el.clientHeight);
+    };
+    const onScroll = () => {
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        setMembersScrollTop(el.scrollTop);
+      });
+    };
+
+    syncNow();
+    el.addEventListener("scroll", onScroll, { passive: true });
+
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            setMembersViewportHeight(el.clientHeight);
+          })
+        : null;
+    resizeObserver?.observe(el);
+
+    const onWindowResize = () => {
+      setMembersViewportHeight(el.clientHeight);
+    };
+    window.addEventListener("resize", onWindowResize);
+
+    return () => {
+      if (rafId != null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      el.removeEventListener("scroll", onScroll);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", onWindowResize);
+    };
+  }, [showMembersPanel, filteredMembers.length]);
+
+  const virtualizedMembers = useMemo(() => {
+    const total = filteredMembers.length;
+    const enabled =
+      showMembersPanel && total > 60 && membersViewportHeight > 0;
+
+    if (!enabled) {
+      return {
+        enabled: false,
+        topPadding: 0,
+        bottomPadding: 0,
+        items: filteredMembers,
+      };
+    }
+
+    const startIndex = Math.max(
+      0,
+      Math.floor(membersScrollTop / MEMBER_LIST_ESTIMATED_ROW_HEIGHT) -
+        MEMBER_LIST_OVERSCAN
+    );
+    const endIndex = Math.min(
+      total - 1,
+      Math.ceil(
+        (membersScrollTop + membersViewportHeight) /
+          MEMBER_LIST_ESTIMATED_ROW_HEIGHT
+      ) + MEMBER_LIST_OVERSCAN
+    );
+
+    const topPadding = startIndex * MEMBER_LIST_ESTIMATED_ROW_HEIGHT;
+    const bottomPadding = Math.max(
+      0,
+      (total - endIndex - 1) * MEMBER_LIST_ESTIMATED_ROW_HEIGHT
+    );
+
+    return {
+      enabled: true,
+      topPadding,
+      bottomPadding,
+      items: filteredMembers.slice(startIndex, endIndex + 1),
+    };
+  }, [
+    filteredMembers,
+    membersScrollTop,
+    membersViewportHeight,
+    showMembersPanel,
+  ]);
+
+  useEffect(() => {
     if (!filteredMembers.length) {
       setSelectedEmail(null);
       return;
@@ -1088,13 +1099,23 @@ export default function TeamPage() {
                           {filteredMembers.length} osob
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 gap-2 max-h-[58vh] overflow-auto pr-1 lg:max-h-none lg:overflow-visible">
+                      <div
+                        ref={membersListRef}
+                        className="grid grid-cols-1 gap-2 max-h-[58vh] overflow-auto pr-1 lg:max-h-none lg:overflow-visible"
+                      >
                         {filteredMembers.length === 0 && (
                           <div className="col-span-full rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">
                             Pro zadaný filtr nejsou žádní členové.
                           </div>
                         )}
-                        {filteredMembers.map((m) => {
+                        {virtualizedMembers.enabled && virtualizedMembers.topPadding > 0 && (
+                          <div
+                            aria-hidden="true"
+                            className="col-span-full"
+                            style={{ height: virtualizedMembers.topPadding }}
+                          />
+                        )}
+                        {virtualizedMembers.items.map((m) => {
                           const isSelected = m.email === selectedEmail;
                           const last = lastActiveBadge(m.email);
                           return (
@@ -1124,6 +1145,14 @@ export default function TeamPage() {
                             </button>
                           );
                         })}
+                        {virtualizedMembers.enabled &&
+                          virtualizedMembers.bottomPadding > 0 && (
+                            <div
+                              aria-hidden="true"
+                              className="col-span-full"
+                              style={{ height: virtualizedMembers.bottomPadding }}
+                            />
+                          )}
                       </div>
                     </div>
                   )}

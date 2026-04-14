@@ -690,4 +690,78 @@ body {
     pointer-events: none;
     background: linear-gradient(135deg, rgba(45, 212, 191, 0.12), transparent 52%, rgba(16, 185, 129, 0.1));
   }
+
+  /*
+    Backward compatibility: older pages still use hardcoded slate classes
+    for dark action boxes. Map them to the selected box theme.
+  */
+  :root[data-box-theme] .bg-slate-900,
+  :root[data-box-theme] .bg-slate-950,
+  :root[data-box-theme] .border-slate-900,
+  :root[data-box-theme] .ring-offset-slate-900 {
+    --ui-theme-strong: var(--ui-surface-strong);
+  }
+
+  :root[data-box-theme] .bg-slate-900,
+  :root[data-box-theme] .bg-slate-950 {
+    background-color: var(--ui-theme-strong) !important;
+  }
+
+  :root[data-box-theme] .bg-slate-950\/95 {
+    background-color: color-mix(in srgb, var(--ui-theme-strong) 95%, transparent) !important;
+  }
+
+  :root[data-box-theme] .bg-slate-950\/90,
+  :root[data-box-theme] .bg-slate-900\/90 {
+    background-color: color-mix(in srgb, var(--ui-theme-strong) 90%, transparent) !important;
+  }
+
+  :root[data-box-theme] .bg-slate-950\/80,
+  :root[data-box-theme] .bg-slate-900\/80 {
+    background-color: color-mix(in srgb, var(--ui-theme-strong) 80%, transparent) !important;
+  }
+
+  :root[data-box-theme] .bg-slate-950\/75,
+  :root[data-box-theme] .bg-slate-900\/75 {
+    background-color: color-mix(in srgb, var(--ui-theme-strong) 75%, transparent) !important;
+  }
+
+  :root[data-box-theme] .bg-slate-950\/70,
+  :root[data-box-theme] .bg-slate-900\/70 {
+    background-color: color-mix(in srgb, var(--ui-theme-strong) 70%, transparent) !important;
+  }
+
+  :root[data-box-theme] .bg-slate-950\/65 {
+    background-color: color-mix(in srgb, var(--ui-theme-strong) 65%, transparent) !important;
+  }
+
+  :root[data-box-theme] .bg-slate-950\/60,
+  :root[data-box-theme] .bg-slate-900\/60 {
+    background-color: color-mix(in srgb, var(--ui-theme-strong) 60%, transparent) !important;
+  }
+
+  :root[data-box-theme] .border-slate-900 {
+    border-color: var(--ui-theme-strong) !important;
+  }
+
+  :root[data-box-theme] .ring-offset-slate-900 {
+    --tw-ring-offset-color: var(--ui-theme-strong) !important;
+  }
+
+  :root[data-box-theme] .hover\:bg-black:hover,
+  :root[data-box-theme] .hover\:bg-slate-800:hover,
+  :root[data-box-theme] .hover\:bg-slate-900:hover {
+    background-color: color-mix(in srgb, var(--ui-theme-strong) 88%, black) !important;
+  }
+
+  :root[data-box-theme] .focus\:border-slate-900:focus {
+    border-color: var(--ui-theme-strong) !important;
+  }
+
+  :root[data-box-theme] .focus\:ring-slate-900:focus,
+  :root[data-box-theme] .focus\:ring-slate-900\/10:focus,
+  :root[data-box-theme] .focus\:ring-slate-900\/20:focus,
+  :root[data-box-theme] .focus\:ring-slate-900\/30:focus {
+    --tw-ring-color: var(--ui-focus) !important;
+  }
 }

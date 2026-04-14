@@ -1,5 +1,6 @@
 import React from "react";
 import type { Product } from "@/app/types/domain";
+import { formatMoney as formatMoneyValue } from "@/app/lib/formatters";
 
 export type FlexiFields = {
   deathAmount: string;
@@ -106,9 +107,7 @@ type Props = {
 };
 
 const formatMoney = (value: number | undefined | null) =>
-  value != null && Number.isFinite(value)
-    ? `${value.toLocaleString("cs-CZ", { maximumFractionDigits: 0 })} Kč`
-    : "—";
+  formatMoneyValue(value, { emptyValueLabel: "—" });
 
 const sumTypeLabel = (val?: string | null) => {
   const map: Record<string, string> = {

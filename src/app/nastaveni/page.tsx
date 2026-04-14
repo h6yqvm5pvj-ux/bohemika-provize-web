@@ -25,6 +25,15 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 
 import { auth, db } from "../firebase";
 import { AppLayout } from "@/components/AppLayout";
+import {
+  BOX_THEME_EVENT,
+  BOX_THEME_LOCAL_STORAGE_KEY,
+  BOX_THEME_OPTIONS,
+  DEFAULT_BOX_THEME,
+  applyBoxThemeToRoot,
+  resolveBoxTheme,
+  type BoxTheme,
+} from "@/lib/boxTheme";
 import type { Position, CommissionMode } from "../types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
@@ -85,6 +94,7 @@ const SETTINGS_KEYS = {
   mode: "settings.mode",
   monthlyGoal: "settings.monthlyGoal",
   backgroundColor: "settings.backgroundColor",
+  boxTheme: BOX_THEME_LOCAL_STORAGE_KEY,
   reduceMotion: "settings.reduceMotion",
   tipsterMode: "settings.tipsterMode",
 };
@@ -143,6 +153,7 @@ export default function SettingsPage() {
     useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
   const [backgroundColor, setBackgroundColor] = useState<BackgroundPreset>("white");
+  const [boxTheme, setBoxTheme] = useState<BoxTheme>(DEFAULT_BOX_THEME);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [tipsterMode, setTipsterMode] = useState(false);
 
@@ -154,6 +165,16 @@ export default function SettingsPage() {
     } else {
       root.removeAttribute("data-motion");
     }
+  };
+
+  const applyBoxThemePreference = (value: unknown) => {
+    const next = resolveBoxTheme(value);
+    setBoxTheme(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SETTINGS_KEYS.boxTheme, next);
+      applyBoxThemeToRoot(next);
+    }
+    return next;
   };
 
   // auth
@@ -266,6 +287,16 @@ export default function SettingsPage() {
             setBackgroundColor("white");
           }
 
+          if (typeof data.boxTheme === "string") {
+            applyBoxThemePreference(data.boxTheme);
+          } else if (typeof window !== "undefined") {
+            applyBoxThemePreference(
+              window.localStorage.getItem(SETTINGS_KEYS.boxTheme)
+            );
+          } else {
+            setBoxTheme(DEFAULT_BOX_THEME);
+          }
+
           if (typeof data.reduceMotion === "boolean") {
             setReduceMotion(data.reduceMotion);
             applyMotionPreference(data.reduceMotion);
@@ -330,6 +361,9 @@ export default function SettingsPage() {
             const storedColor = window.localStorage.getItem(
               SETTINGS_KEYS.backgroundColor
             );
+            const storedBoxTheme = window.localStorage.getItem(
+              SETTINGS_KEYS.boxTheme
+            );
 
             if (storedPos) setPosition(storedPos);
             if (storedMode) setMode(storedMode);
@@ -339,6 +373,7 @@ export default function SettingsPage() {
               setBackgroundColor("white");
               window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, "white");
             }
+            applyBoxThemePreference(storedBoxTheme);
             const storedMotion = window.localStorage.getItem(
               SETTINGS_KEYS.reduceMotion
             );
@@ -480,6 +515,18 @@ export default function SettingsPage() {
       simpleBackground: true,
       backgroundColor: color,
     });
+  };
+
+  const handleBoxThemeChange = async (nextTheme: BoxTheme) => {
+    const resolved = applyBoxThemePreference(nextTheme);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(BOX_THEME_EVENT, {
+          detail: { boxTheme: resolved },
+        })
+      );
+    }
+    await saveUserFields({ boxTheme: resolved });
   };
 
   const handleReduceMotionChange = async (value: boolean) => {
@@ -900,6 +947,49 @@ export default function SettingsPage() {
                         </button>
                       );
                     })}
+                  </div>
+
+                  <div className="space-y-2.5">
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
+                        Barva tmavých boxů
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Změní barvu tmavých tlačítek a aktivních filtrů v celé aplikaci.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                      {BOX_THEME_OPTIONS.map((opt) => {
+                        const isActive = boxTheme === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => void handleBoxThemeChange(opt.id)}
+                            aria-pressed={isActive}
+                            className={`flex flex-col items-start gap-2 rounded-2xl border px-3 py-2 text-left transition ${
+                              isActive
+                                ? "border-slate-900 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.12)]"
+                                : "border-slate-300 bg-white hover:border-slate-500"
+                            }`}
+                          >
+                            <span
+                              className="h-8 w-full rounded-lg"
+                              style={{
+                                background: `linear-gradient(135deg, ${opt.swatchFrom}, ${opt.swatchTo})`,
+                              }}
+                            />
+                            <span className="text-xs font-semibold text-slate-800">
+                              {opt.label}
+                            </span>
+                            <span className="text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                              {isActive ? "Aktivní" : "Vybrat"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
             </section>

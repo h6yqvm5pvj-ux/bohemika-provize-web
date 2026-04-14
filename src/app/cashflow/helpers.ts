@@ -3,13 +3,20 @@ import type {
   PaymentFrequency,
   Product,
 } from "../types/domain";
+import {
+  hasProductGroup,
+  isComfortProduct,
+  isLifeProduct,
+  productLabel as productLabelFromCatalog,
+} from "@/app/lib/productCatalog";
 import type {
   CashflowItem,
-  FirestoreTimestamp,
   MonthGroup,
   ProductFilter,
   YearGroup,
 } from "./types";
+import { formatMoney, toDate } from "@/app/lib/formatters";
+export { formatMoney, toDate };
 
 const MONTH_LABELS = [
   "leden",
@@ -25,48 +32,6 @@ const MONTH_LABELS = [
   "listopad",
   "prosinec",
 ];
-
-export function toDate(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    const cz = trimmed.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
-    if (cz) {
-      const day = Number(cz[1]);
-      const month = Number(cz[2]);
-      const year = Number(cz[3]);
-      const d = new Date(year, month - 1, day);
-      return Number.isNaN(d.getTime()) ? null : d;
-    }
-  }
-
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "seconds" in value &&
-    typeof (value as FirestoreTimestamp).seconds === "number"
-  ) {
-    const v = value as FirestoreTimestamp;
-    const ms =
-      v.seconds * 1000 + Math.floor((v.nanoseconds ?? 0) / 1_000_000);
-    const d = new Date(ms);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  const d = new Date(value as string | number | Date);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-export function formatMoney(value: number | undefined | null): string {
-  if (value == null || !Number.isFinite(value)) return "0 Kč";
-  return (
-    value.toLocaleString("cs-CZ", {
-      maximumFractionDigits: 0,
-    }) + " Kč"
-  );
-}
 
 export function monthLabelFromDate(d: Date): string {
   return `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`;
@@ -88,50 +53,8 @@ export function frequencyText(f?: PaymentFrequency | null): string {
 }
 
 export function productLabel(p?: Product | "unknown"): string {
-  switch (p) {
-    case "neon":
-      return "ČPP ŽP NEON";
-    case "flexi":
-      return "Kooperativa ŽP FLEXI";
-    case "maximaMaxEfekt":
-      return "MAXIMA ŽP MaxEfekt";
-    case "pillowInjury":
-      return "Pillow Úraz / Nemoc";
-    case "zamex":
-      return "ČPP ZAMEX";
-    case "domex":
-      return "ČPP DOMEX";
-    case "koopmajetekobcan":
-      return "Kooperativa Pojištění majetku a odpovědnosti občanů a právní ochrany";
-    case "cppPPRbez":
-      return "ČPP Pojištění majetku a odpovědnosti podnikatelů";
-    case "maxdomov":
-      return "Maxima MAXDOMOV";
-    case "cppAuto":
-      return "ČPP Auto";
-    case "cppsimplex":
-      return "ČPP Simplex";
-    case "cppPPRs":
-      return "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS";
-    case "allianzAuto":
-      return "Allianz Auto";
-    case "csobAuto":
-      return "ČSOB Auto";
-    case "uniqaAuto":
-      return "UNIQA Auto";
-    case "pillowAuto":
-      return "Pillow Auto";
-    case "kooperativaAuto":
-      return "Kooperativa Auto";
-    case "cppcestovko":
-      return "ČPP Cestovko";
-    case "axacestovko":
-      return "AXA Cestovko";
-    case "comfortcc":
-      return "Comfort Commodity";
-    default:
-      return "Neznámý produkt";
-  }
+  if (p === "unknown") return "Neznámý produkt";
+  return productLabelFromCatalog(p, "Neznámý produkt");
 }
 
 export function normalizeTitleKey(title: string): string {
@@ -163,46 +86,23 @@ export function matchesProductFilter(
   if (!product) return false;
   if (productFilter === "all") return true;
   if (productFilter === "life") {
-    return (
-      product === "neon" ||
-      product === "flexi" ||
-      product === "maximaMaxEfekt" ||
-      product === "pillowInjury"
-    );
+    return isLifeProduct(product);
   }
   if (productFilter === "auto") {
-    return (
-      product === "cppAuto" ||
-      product === "allianzAuto" ||
-      product === "csobAuto" ||
-      product === "uniqaAuto" ||
-      product === "pillowAuto" ||
-      product === "kooperativaAuto"
-    );
+    return hasProductGroup(product, "auto");
   }
   if (productFilter === "property") {
     return (
-      product === "domex" ||
-      product === "koopmajetekobcan" ||
-      product === "maxdomov" ||
-      product === "cppsimplex" ||
-      product === "cppPPRs" ||
-      product === "cppPPRbez" ||
-      product === "cppcestovko" ||
-      product === "axacestovko" ||
-      product === "zamex"
+      hasProductGroup(product, "property") ||
+      hasProductGroup(product, "travel") ||
+      hasProductGroup(product, "liability")
     );
   }
   if (productFilter === "other") {
-    return !(
-      product === "neon" ||
-      product === "flexi" ||
-      product === "maximaMaxEfekt" ||
-      product === "pillowInjury"
-    );
+    return !isLifeProduct(product);
   }
   if (productFilter === "gold") {
-    return product === "comfortcc";
+    return isComfortProduct(product);
   }
   return true;
 }

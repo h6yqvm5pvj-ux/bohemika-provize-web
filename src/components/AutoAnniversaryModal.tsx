@@ -3,9 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, collectionGroup, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/app/firebase";
+import { toDate } from "@/app/lib/formatters";
+import {
+  isAutoProduct,
+  productLabel as productLabelFromCatalog,
+} from "@/app/lib/productCatalog";
 import { type Product } from "@/app/types/domain";
 
-type FirestoreTimestamp = { seconds: number; nanoseconds: number };
+type FirestoreTimestamp = {
+  seconds: number;
+  nanoseconds?: number;
+  toDate?: () => Date;
+};
 
 type EntryDoc = {
   id: string;
@@ -26,66 +35,6 @@ type AnniversaryRow = {
   product: Product;
   daysToAnniversary: number;
 };
-
-const AUTO_PRODUCTS: Product[] = [
-  "cppAuto",
-  "allianzAuto",
-  "csobAuto",
-  "uniqaAuto",
-  "pillowAuto",
-  "kooperativaAuto",
-];
-
-const PRODUCT_LABEL: Record<Product, string> = {
-  neon: "ČPP ŽP NEON",
-  flexi: "Kooperativa ŽP FLEXI",
-  maximaMaxEfekt: "MAXIMA ŽP MaxEfekt",
-  pillowInjury: "Pillow Úraz / Nemoc",
-  zamex: "ČPP ZAMEX",
-  domex: "ČPP DOMEX",
-  koopmajetekobcan: "Kooperativa Pojištění majetku a odpovědnosti občanů a právní ochrany",
-  maxdomov: "Maxima MAXDOMOV",
-  cppsimplex: "ČPP Simplex",
-  cppAuto: "ČPP Auto",
-  allianzAuto: "Allianz Auto",
-  csobAuto: "ČSOB Auto",
-  uniqaAuto: "UNIQA Auto",
-  pillowAuto: "Pillow Auto",
-  kooperativaAuto: "Kooperativa Auto",
-  cppPPRs: "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS",
-  cppPPRbez: "ČPP Pojištění majetku a odpovědnosti podnikatelů",
-  cppcestovko: "ČPP Cestovko",
-  axacestovko: "AXA Cestovko",
-  comfortcc: "Comfort Commodity",
-};
-
-function toDate(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "toDate" in value &&
-    typeof (value as any).toDate === "function"
-  ) {
-    const d = (value as any).toDate();
-    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
-  }
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "seconds" in value &&
-    typeof (value as any).seconds === "number"
-  ) {
-    const v = value as FirestoreTimestamp;
-    const ms =
-      v.seconds * 1000 + Math.floor((v.nanoseconds ?? 0) / 1_000_000);
-    const d = new Date(ms);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  const d = new Date(value as any);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
 
 function nextAnniversary(start: Date, now: Date): Date {
   const ann = new Date(start);
@@ -176,7 +125,7 @@ export function AutoAnniversaryModal({
           if (diffDays < 0 || diffDays > 60) return;
 
           const product = data.productKey;
-          if (!product || !AUTO_PRODUCTS.includes(product)) return;
+          if (!product || !isAutoProduct(product)) return;
 
           results.push({
             id: data.id,
@@ -203,7 +152,7 @@ export function AutoAnniversaryModal({
     () =>
       rows.map((r) => ({
         ...r,
-        productLabel: PRODUCT_LABEL[r.product] ?? r.product,
+        productLabel: productLabelFromCatalog(r.product, r.product),
       })),
     [rows]
   );

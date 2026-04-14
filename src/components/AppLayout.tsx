@@ -22,6 +22,11 @@ import {
   Wrench,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  BOX_THEME_EVENT,
+  BOX_THEME_LOCAL_STORAGE_KEY,
+  applyBoxThemeToRoot,
+} from "@/lib/boxTheme";
 
 type ActivePage =
   | "home"
@@ -120,6 +125,37 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  // Načíst a aplikovat barvu tmavých boxů (tlačítka/chipy) z localStorage
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const applyFromValue = (value?: unknown) => {
+      const theme = applyBoxThemeToRoot(
+        value ?? window.localStorage.getItem(BOX_THEME_LOCAL_STORAGE_KEY)
+      );
+      window.localStorage.setItem(BOX_THEME_LOCAL_STORAGE_KEY, theme);
+    };
+
+    applyFromValue();
+
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key && ev.key !== BOX_THEME_LOCAL_STORAGE_KEY) return;
+      applyFromValue(ev.newValue);
+    };
+
+    const onCustom = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ boxTheme?: string }>).detail;
+      applyFromValue(detail?.boxTheme);
+    };
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(BOX_THEME_EVENT, onCustom as EventListener);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(BOX_THEME_EVENT, onCustom as EventListener);
+    };
   }, []);
 
   // Animated background nastavení z localStorage

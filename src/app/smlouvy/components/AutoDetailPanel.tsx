@@ -8,6 +8,7 @@ import {
   Wrench,
 } from "lucide-react";
 import type { Product } from "@/app/types/domain";
+import { formatMoney as formatMoneyValue } from "@/app/lib/formatters";
 
 export type AutoFields = {
   carMake: string;
@@ -58,9 +59,7 @@ export type AutoDetail = {
 } | null;
 
 const formatMoney = (value: number | undefined | null) =>
-  value != null && Number.isFinite(value)
-    ? `${value.toLocaleString("cs-CZ", { maximumFractionDigits: 0 })} Kč`
-    : "—";
+  formatMoneyValue(value, { emptyValueLabel: "—" });
 
 const formatLimitLabel = (val: string): string => {
   if (!val) return "—";

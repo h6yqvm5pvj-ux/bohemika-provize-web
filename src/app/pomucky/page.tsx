@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import {
   Accessibility,
+  ArrowUpRight,
   BanknoteArrowDown,
   BarChart3,
   Bike,
@@ -89,7 +90,7 @@ export default function ToolsPage() {
       {
         key: "tvorba",
         category: "Obecné",
-        title: "Tvorba",
+        title: "Tvorba PDF",
         description: "Interaktivní A4 editor dokumentu s pevnou hlavičkou, patičkou a stažením do PDF.",
         icon: PenTool,
         href: "/pomucky/tvorba",
@@ -257,16 +258,22 @@ export default function ToolsPage() {
               <CardWrapper
                 key={tool.key}
                 {...wrapperProps}
-                className="group relative overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 px-5 py-6 shadow-[0_12px_28px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:bg-black hover:shadow-[0_16px_34px_rgba(15,23,42,0.36)]"
+                className="group relative flex h-full items-center gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-[1px] hover:border-slate-300 hover:bg-slate-50/80 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
               >
-                <div className="relative z-10 flex items-center gap-3">
-                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-400/40 bg-slate-900 transition group-hover:border-slate-200/80">
-                    <ToolIcon className="h-5 w-5 text-white" />
-                  </span>
-                  <h2 className="text-xl font-semibold tracking-tight text-white group-hover:underline">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition group-hover:border-slate-300 group-hover:bg-white group-hover:text-slate-900">
+                  <ToolIcon className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    {tool.category}
+                  </p>
+                  <h2 className="mt-1 text-lg font-semibold leading-snug tracking-tight text-slate-900">
                     {tool.title}
                   </h2>
                 </div>
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition group-hover:border-slate-300 group-hover:text-slate-900">
+                  <ArrowUpRight className="h-4 w-4" />
+                </span>
               </CardWrapper>
             );
           })}

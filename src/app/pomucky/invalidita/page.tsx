@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import { AppLayout } from "@/components/AppLayout";
+import { formatMoney } from "@/app/lib/formatters";
 
 const SCENARIOS = [
   { id: "veryLow", label: "Velmi nízké", ratios: [0.1, 0.2, 0.3] },
@@ -16,15 +17,6 @@ const SCENARIOS = [
 const DEGREE_LABELS = ["1. stupeň", "2. stupeň", "3. stupeň"];
 const INVESTIKA_RETURN_RANGE = { min: 0.055, max: 0.06 };
 const INVESTMENT_PRODUCT_NAME = "INVESTIKA Realitní Fond";
-
-function formatMoney(value: number): string {
-  if (!Number.isFinite(value)) return "0 Kč";
-  return (
-    value.toLocaleString("cs-CZ", {
-      maximumFractionDigits: 0,
-    }) + " Kč"
-  );
-}
 
 function requiredCapitalForRenta(
   monthly: number,

@@ -14,6 +14,8 @@ export type FirestoreTimestamp = {
 export type EntryDoc = {
   id: string;
   originalEntryId?: string | null;
+  status?: "active" | "storno" | string | null;
+  stornoDate?: unknown;
 
   productKey?: Product;
   frequencyRaw?: PaymentFrequency | null;

@@ -6,6 +6,7 @@ export type FlexiPdfResult = {
   clientName?: string | null;
   policyStartDate?: string | null;
   contractSignedDate?: string | null;
+  durationYears?: number | null;
   amount?: number | null;
   frequency?: PaymentFrequency | null;
 };
@@ -29,6 +30,12 @@ const parseAmount = (val: string | null | undefined): number | null => {
   const cleaned = val.replace(/\s+/g, "").replace(",", ".").trim();
   const num = Number.parseFloat(cleaned);
   return Number.isFinite(num) ? Math.round(num) : null;
+};
+
+const parseYearFromIso = (isoDate: string | null | undefined): number | null => {
+  if (!isoDate) return null;
+  const year = Number.parseInt(isoDate.slice(0, 4), 10);
+  return Number.isFinite(year) ? year : null;
 };
 
 const stripTitles = (name: string): string => {
@@ -111,6 +118,26 @@ export async function parseFlexiPdf(file: File): Promise<FlexiPdfResult> {
   const startIso = toDateInput(startMatch);
   if (startIso) {
     result.policyStartDate = startIso;
+  }
+
+  // Konec pojištění (pro výpočet doby trvání smlouvy)
+  const endMatch =
+    fullText.match(/Konec\s+pojištění[^\d]*(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/i)?.[1] ??
+    ascii.match(/konec pojisteni[^\d]*(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/i)?.[1];
+  const endYearOnlyMatch =
+    fullText.match(/konec\s+pojištění[\s\S]{0,120}?(\d{4})/i)?.[1] ??
+    ascii.match(/konec pojisteni[\s\S]{0,120}?(\d{4})/i)?.[1] ??
+    ascii.match(/konci v roce[\s:]*([12]\d{3})/i)?.[1];
+  const endIso = toDateInput(endMatch);
+  const startYear = parseYearFromIso(startIso);
+  const endYear =
+    parseYearFromIso(endIso) ??
+    (endYearOnlyMatch ? Number.parseInt(endYearOnlyMatch, 10) : null);
+  if (startYear != null && endYear != null) {
+    const years = endYear - startYear;
+    if (years > 0) {
+      result.durationYears = years;
+    }
   }
 
   // Datum sjednání / uzavření

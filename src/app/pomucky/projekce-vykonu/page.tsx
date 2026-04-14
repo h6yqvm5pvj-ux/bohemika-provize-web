@@ -7,6 +7,10 @@ import { doc, getDoc } from "firebase/firestore";
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
 import {
+  formatMoney as formatMoneyValue,
+  positionLabel as positionLabelValue,
+} from "@/app/lib/formatters";
+import {
   calculateNeon,
   calculateCppAuto,
   calculateAllianzAuto,
@@ -89,35 +93,11 @@ function StornoPicker({
 }
 
 function formatMoney(v: number): string {
-  if (!Number.isFinite(v)) return "0 Kč";
-  return (
-    v.toLocaleString("cs-CZ", {
-      maximumFractionDigits: 0,
-    }) + " Kč"
-  );
+  return formatMoneyValue(v);
 }
 
 function positionLabel(pos?: Position | null): string {
-  const map: Record<Position, string> = {
-    poradce1: "Poradce 1",
-    poradce2: "Poradce 2",
-    poradce3: "Poradce 3",
-    poradce4: "Poradce 4",
-    poradce5: "Poradce 5",
-    poradce6: "Poradce 6",
-    poradce7: "Poradce 7",
-    poradce8: "Poradce 8",
-    poradce9: "Poradce 9",
-    poradce10: "Poradce 10",
-    manazer4: "Manažer 4",
-    manazer5: "Manažer 5",
-    manazer6: "Manažer 6",
-    manazer7: "Manažer 7",
-    manazer8: "Manažer 8",
-    manazer9: "Manažer 9",
-    manazer10: "Manažer 10",
-  };
-  return pos ? map[pos] ?? pos : "neznámá";
+  return positionLabelValue(pos, { emptyLabel: "neznámá" });
 }
 
 function estimatePayoutDate(policyStart: Date, cutoffDay = 25): Date {

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import { AppLayout } from "@/components/AppLayout";
+import { formatMoney } from "@/app/lib/formatters";
 
 const PERIODS = [
   { id: "p30", label: "1.–30. den", rate: 0.6, note: "60 % redukovaného DVZ" },
@@ -12,15 +13,6 @@ const PERIODS = [
 ] as const;
 
 const DAILY_TARGET_RATIO = 0.4; // min. 40 % poklesu příjmu pokrývá komerční pojištění
-
-function formatMoney(value: number): string {
-  if (!Number.isFinite(value)) return "0 Kč";
-  return (
-    value.toLocaleString("cs-CZ", {
-      maximumFractionDigits: 0,
-    }) + " Kč"
-  );
-}
 
 export default function PracovniNeschopenkaPage() {
   const [netIncome, setNetIncome] = useState(30000);

@@ -56,6 +56,13 @@ import { parseFlexiPdf } from "../lib/parseFlexiPdf";
 import { parseDomexPdf } from "../lib/parseDomexPdf";
 import { parseComfortPdf } from "../lib/parseComfortPdf";
 import {
+  LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
+  PRODUCT_OPTIONS,
+  isAutoProduct as isAutoProductFromCatalog,
+  productIcon as productIconFromCatalog,
+  productLabel as productLabelFromCatalog,
+} from "@/app/lib/productCatalog";
+import {
   addDoc,
   collection,
   collectionGroup,
@@ -71,11 +78,12 @@ import {
   where,
 } from "firebase/firestore";
 import { AppLayout } from "@/components/AppLayout";
+import { formatMoney, positionLabel, toDate } from "@/app/lib/formatters";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
 // ---------- Pomocné ----------
 
-const LIFE_PRODUCTS: Product[] = ["neon", "flexi", "pillowInjury", "maximaMaxEfekt"];
+const LIFE_PRODUCTS = LIFE_PRODUCTS_LIST;
 const SETTINGS_KEYS = {
   position: "settings.position",
   mode: "settings.mode",
@@ -91,15 +99,6 @@ const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   pillowAuto: "/provize/pillowauto.jpg",
   kooperativaAuto: "/provize/koopauto.jpg",
 };
-
-function formatMoney(value: number): string {
-  if (Number.isNaN(value)) return "0 Kč";
-  return (
-    value.toLocaleString("cs-CZ", {
-      maximumFractionDigits: 0,
-    }) + " Kč"
-  );
-}
 
 function formatCoefficientNumber(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
@@ -122,38 +121,6 @@ const frequencyLabel = (f: PaymentFrequency) => {
   }
 };
 
-const PRODUCT_OPTIONS: { id: Product; label: string }[] = [
-  { id: "neon", label: "ČPP - Životní pojištění NEON Life / Risk" },
-  { id: "flexi", label: "Kooperativa ŽP FLEXI" },
-  { id: "maximaMaxEfekt", label: "MAXIMA ŽP MaxEfekt" },
-  { id: "pillowInjury", label: "Pillow Úraz / Nemoc" },
-  { id: "zamex", label: "ČPP ZAMEX" },
-  { id: "domex", label: "ČPP DOMEX" },
-  {
-    id: "koopmajetekobcan",
-    label: "Kooperativa Pojištění majetku a odpovědnosti občanů a právní ochrany",
-  },
-  { id: "maxdomov", label: "Maxima MAXDOMOV" },
-  { id: "cppsimplex", label: "ČPP Simplex" },
-  { id: "cppAuto", label: "ČPP Auto" },
-  {
-    id: "cppPPRs",
-    label: "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS",
-  },
-  {
-    id: "cppPPRbez",
-    label: "ČPP Pojištění majetku a odpovědnosti podnikatelů",
-  },
-  { id: "allianzAuto", label: "Allianz Auto" },
-  { id: "csobAuto", label: "ČSOB Auto" },
-  { id: "uniqaAuto", label: "UNIQA Auto" },
-  { id: "pillowAuto", label: "Pillow Auto" },
-  { id: "kooperativaAuto", label: "Kooperativa Auto" },
-  { id: "cppcestovko", label: "ČPP Cestovko" },
-  { id: "axacestovko", label: "AXA Cestovko" },
-  { id: "comfortcc", label: "Comfort Commodity" },
-];
-
 const REPLACEMENT_ELIGIBLE_PRODUCTS: Product[] = [
   "zamex",
   "domex",
@@ -170,7 +137,7 @@ const REPLACEMENT_ELIGIBLE_PRODUCTS: Product[] = [
 ];
 
 const productLabel = (p: Product | null) =>
-  PRODUCT_OPTIONS.find((o) => o.id === p)?.label ?? (p ?? "—");
+  productLabelFromCatalog(p, p ?? "—");
 
 const POSITION_ORDER: Position[] = [
   "poradce1",
@@ -191,29 +158,6 @@ const POSITION_ORDER: Position[] = [
   "manazer9",
   "manazer10",
 ];
-
-function positionLabel(pos: Position): string {
-  const map: Record<Position, string> = {
-    poradce1: "Poradce 1",
-    poradce2: "Poradce 2",
-    poradce3: "Poradce 3",
-    poradce4: "Poradce 4",
-    poradce5: "Poradce 5",
-    poradce6: "Poradce 6",
-    poradce7: "Poradce 7",
-    poradce8: "Poradce 8",
-    poradce9: "Poradce 9",
-    poradce10: "Poradce 10",
-    manazer4: "Manažer 4",
-    manazer5: "Manažer 5",
-    manazer6: "Manažer 6",
-    manazer7: "Manažer 7",
-    manazer8: "Manažer 8",
-    manazer9: "Manažer 9",
-    manazer10: "Manažer 10",
-  };
-  return map[pos] ?? pos;
-}
 
 function normalizeTitleKey(title: string): string {
   const t = title.toLowerCase();
@@ -262,73 +206,23 @@ function allowedPositionsForUser(base: Position | null): Position[] {
 }
 
 function productIcon(product: Product): string {
-  if (
-    product === "neon" ||
-    product === "flexi" ||
-    product === "maximaMaxEfekt" ||
-    product === "pillowInjury"
-  ) {
-    return "/icons/zivot.png";
-  }
-
-  if (
-    product === "cppAuto" ||
-    product === "allianzAuto" ||
-    product === "csobAuto" ||
-    product === "uniqaAuto" ||
-    product === "pillowAuto" ||
-    product === "kooperativaAuto"
-  ) {
-    return "/icons/icon_auto.png";
-  }
-
-  if (product === "zamex") {
-    return "/icons/icon_zamex.png";
-  }
-
-  if (
-    product === "domex" ||
-    product === "koopmajetekobcan" ||
-    product === "maxdomov" ||
-    product === "cppPPRbez" ||
-    product === "cppsimplex"
-  ) {
-    return "/icons/icon_domex.png";
-  }
-  if (product === "cppPPRs") {
-    return "/icons/icon_domex.png";
-  }
-
-  if (product === "cppcestovko" || product === "axacestovko") {
-    return "/icons/icon_cestovko.png";
-  }
-
-  if (product === "comfortcc") {
-    return "/icons/trezor.png";
-  }
-
-  return "/icons/produkt.png";
+  return productIconFromCatalog(product);
 }
 
 function isAutoProduct(product: Product | null): product is Product {
-  return (
-    product === "cppAuto" ||
-    product === "allianzAuto" ||
-    product === "csobAuto" ||
-    product === "uniqaAuto" ||
-    product === "pillowAuto" ||
-    product === "kooperativaAuto"
-  );
+  return Boolean(product) && isAutoProductFromCatalog(product);
 }
 
 function shouldShowDuration(product: Product): boolean {
-  return product === "neon" || product === "maximaMaxEfekt";
+  return product === "neon" || product === "flexi" || product === "maximaMaxEfekt";
 }
 
 function durationRange(product: Product): [number, number] {
   switch (product) {
     case "neon":
-      return [1, 15];
+      return [1, 99];
+    case "flexi":
+      return [1, 80];
     case "maximaMaxEfekt":
       return [1, 20];
     default:
@@ -344,8 +238,9 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "maximaMaxEfekt":
       return ["monthly"];
     case "domex":
-    case "koopmajetekobcan":
       return ["quarterly", "semiannual", "annual"];
+    case "koopmajetekobcan":
+      return ["monthly", "quarterly", "semiannual", "annual"];
     case "pillowAuto":
     case "maxdomov":
     case "kooperativaAuto":
@@ -422,7 +317,10 @@ function placeholderForAmount(
 
 function durationTooltip(product: Product): string | null {
   if (product === "neon") {
-    return "Zadej dobu trvání smlouvy, maximálně však 15 let. Pokud je smlouva uzavřena na déle než 15 let, zadej 15.";
+    return "Zadej celkovou dobu trvání smlouvy v letech. Pro výpočet provize se u NEON automaticky použije maximálně 15 let (pokud je doba kratší, použije se skutečná hodnota).";
+  }
+  if (product === "flexi") {
+    return "Zadej dobu trvání smlouvy v letech (např. do roku 2050). Následná provize od 6. roku se počítá ročně do konce zadané doby.";
   }
   if (product === "maximaMaxEfekt") {
     return "Zadej dobu trvání smlouvy, maximálně však 20 let. Pokud je smlouva uzavřena na déle než 20 let, zadej 20.";
@@ -495,6 +393,65 @@ function isImmediateCommissionTitle(title: string): boolean {
   return t.includes("okamžitá provize") || t.includes("získatelská provize");
 }
 
+type ContractEntryType = "contract" | "endorsement";
+type EndorsementChangeType = "increase" | "decrease" | "same";
+
+type EndorsementSourceEntry = {
+  id: string;
+  path: string;
+  productKey: Product | null;
+  rootContractEntryId: string | null;
+  effectiveInputAmount: number;
+  policyStartDate: Date | null;
+  contractSignedDate: Date | null;
+  createdAt: Date | null;
+};
+
+type EndorsementDraft = {
+  productKey: Product;
+  contractNumber: string;
+  sourceEntryId: string;
+  sourceEntryPath: string;
+  rootContractEntryId: string;
+  previousPremiumAmount: number;
+  newPremiumAmount: number;
+  deltaAmount: number;
+  calculationAmount: number;
+  changeType: EndorsementChangeType;
+  items: CommissionResultItemDTO[];
+  total: number;
+};
+
+function toNonNegativeNumber(value: unknown): number {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, num);
+}
+
+function compareSourceEntriesByRecency(
+  a: EndorsementSourceEntry,
+  b: EndorsementSourceEntry
+): number {
+  const createdDiff = (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
+  if (createdDiff !== 0) return createdDiff;
+
+  const signedDiff =
+    (b.contractSignedDate?.getTime() ?? 0) - (a.contractSignedDate?.getTime() ?? 0);
+  if (signedDiff !== 0) return signedDiff;
+
+  const policyDiff =
+    (b.policyStartDate?.getTime() ?? 0) - (a.policyStartDate?.getTime() ?? 0);
+  if (policyDiff !== 0) return policyDiff;
+
+  return b.id.localeCompare(a.id);
+}
+
+function resolveEffectivePremium(data: any): number {
+  return toNonNegativeNumber(
+    data?.effectiveInputAmount ?? data?.newInputAmount ?? data?.inputAmount
+  );
+}
+
 // ---------- Kalkulačka ----------
 
 export default function CalculatorPage() {
@@ -543,6 +500,7 @@ export default function CalculatorPage() {
     count: number;
     entries: { id: string; path: string }[];
   } | null>(null);
+  const [endorsementDraft, setEndorsementDraft] = useState<EndorsementDraft | null>(null);
   const [saveSuccessFlash, setSaveSuccessFlash] = useState<{
     contractNumber: string | null;
     clientName: string | null;
@@ -598,6 +556,7 @@ export default function CalculatorPage() {
   const [userCommissionMode, setUserCommissionMode] = useState<CommissionMode | null>(null);
   const [baseUserPosition, setBaseUserPosition] = useState<Position | null>(null);
   const [showCoefModal, setShowCoefModal] = useState(false);
+  const isLifeProduct = useMemo(() => LIFE_PRODUCTS.includes(product), [product]);
   const replacementEligible = useMemo(
     () => REPLACEMENT_ELIGIBLE_PRODUCTS.includes(product),
     [product]
@@ -625,7 +584,7 @@ export default function CalculatorPage() {
       case "neon":
         return "Výpočet: měsíční pojistné × 12 × doba trvání × koeficient. Následné provize jsou roční: roční pojistné × koeficient (2.–5. rok a 5.–10. rok).";
       case "flexi":
-        return "Výpočet: roční pojistné (měsíční × 12) × koeficient/100 pro každou položku; následná se vyplácí ročně od 6. roku.";
+        return "Výpočet: roční pojistné (měsíční × 12) × koeficient/100 pro okamžitou/po 3/po 4 letech. Následná: roční pojistné × koeficient ročně od 6. roku do konce zadané doby.";
       case "maximaMaxEfekt":
         return "Výpočet: roční pojistné × doba trvání × koeficient pro okamžitou/po 3/po 4 letech. Následná: roční pojistné × koeficient ročně od 5. roku.";
       case "pillowInjury":
@@ -862,9 +821,7 @@ export default function CalculatorPage() {
 
     const [min, max] = durationRange(product);
     if (durationYears < min || durationYears > max) {
-      if (product === "neon") setDurationYears(15);
-      else if (product === "maximaMaxEfekt") setDurationYears(20);
-      else setDurationYears(min);
+      setDurationYears(Math.min(max, Math.max(min, durationYears)));
     }
 
     // pokud uživatel má zrychlený režim, dovolíme přepnout pro konkrétní smlouvu
@@ -1041,7 +998,7 @@ export default function CalculatorPage() {
 
     if (product === "neon") {
       const [min, max] = durationRange("neon");
-      const y = Math.min(max, Math.max(min, durationYears));
+      const y = Math.min(15, Math.min(max, Math.max(min, durationYears)));
       const dto = calculateNeon(val, position, y, mode);
       setItems(dto.items);
       setTotal(dto.total);
@@ -1050,7 +1007,9 @@ export default function CalculatorPage() {
     }
 
     if (product === "flexi") {
-      const dto = calculateFlexi(val, position, mode);
+      const [min, max] = durationRange("flexi");
+      const y = Math.min(max, Math.max(min, durationYears));
+      const dto = calculateFlexi(val, position, mode, y);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -1237,6 +1196,384 @@ export default function CalculatorPage() {
   useEffect(() => {
     setDurationHelpOpen(false);
   }, [product]);
+
+  useEffect(() => {
+    if (!endorsementDraft) return;
+    if (!isLifeProduct || endorsementDraft.productKey !== product) {
+      setEndorsementDraft(null);
+    }
+  }, [endorsementDraft, isLifeProduct, product]);
+
+  const handlePrepareEndorsement = async () => {
+    if (!user) return;
+
+    if (tipsterModeEnabled) {
+      setSaveMessage("V režimu TIPAŘSKÉ spolupráce se smlouvy neukládají.");
+      return;
+    }
+
+    if (!isLifeProduct) {
+      setValidationError("Změnu zatím umíme jen pro ŽP produkty.");
+      return;
+    }
+
+    const trimmedContractNumber = contractNumber.trim();
+    const newPremiumAmount = parseNumber(amountText);
+
+    const missing: string[] = [];
+    if (!trimmedContractNumber) missing.push("číslo smlouvy");
+    if (newPremiumAmount <= 0) missing.push("částku");
+
+    if (missing.length > 0) {
+      const msg = `Pro změnu doplň: ${missing.join(", ")}.`;
+      setSaveMessage(msg);
+      setValidationError(msg);
+      setMissingFields((prev) => Array.from(new Set([...prev, ...missing])));
+      return;
+    }
+
+    try {
+      const email = (user.email ?? "").toLowerCase();
+      const userRef = doc(db, "users", email);
+      const entriesRef = collection(userRef, "entries");
+      const contractSnap = await getDocs(
+        query(entriesRef, where("contractNumber", "==", trimmedContractNumber))
+      );
+
+      if (contractSnap.empty) {
+        setValidationError(
+          `Smlouvu č. ${trimmedContractNumber} jsem nenašel. Nejdřív musí být uložená jako původní smlouva.`
+        );
+        return;
+      }
+
+      const productMatches: EndorsementSourceEntry[] = contractSnap.docs
+        .map((entryDoc) => {
+          const data = entryDoc.data() as any;
+          return {
+            id: entryDoc.id,
+            path: entryDoc.ref.path,
+            productKey: (data?.productKey as Product | undefined) ?? null,
+            rootContractEntryId:
+              (data?.rootContractEntryId as string | undefined) ?? null,
+            effectiveInputAmount: resolveEffectivePremium(data),
+            policyStartDate: toDate(data?.policyStartDate),
+            contractSignedDate: toDate(data?.contractSignedDate),
+            createdAt: toDate(data?.createdAt),
+          };
+        })
+        .filter((entry) => entry.productKey === product);
+
+      if (productMatches.length === 0) {
+        setValidationError(
+          `Pro smlouvu č. ${trimmedContractNumber} není uložený produkt ${productLabel(product)}.`
+        );
+        return;
+      }
+
+      productMatches.sort(compareSourceEntriesByRecency);
+
+      const latestEntry = productMatches[0];
+      const previousPremiumAmount = latestEntry.effectiveInputAmount;
+      const deltaAmount = newPremiumAmount - previousPremiumAmount;
+
+      if (Math.abs(deltaAmount) < 0.01) {
+        setValidationError(
+          `Nové pojistné je stejné jako poslední uložená hodnota (${formatMoney(previousPremiumAmount)}).`
+        );
+        return;
+      }
+
+      const changeType: EndorsementChangeType =
+        deltaAmount > 0 ? "increase" : deltaAmount < 0 ? "decrease" : "same";
+      const calculationAmount = deltaAmount > 0 ? deltaAmount : 0;
+
+      let endorsementItems: CommissionResultItemDTO[] = [];
+      let endorsementTotal = 0;
+      if (calculationAmount > 0) {
+        const result = computeItemsForPositionAndMode(position, mode, calculationAmount);
+        endorsementItems = result?.items ?? [];
+        endorsementTotal = result?.total ?? 0;
+      }
+
+      setEndorsementDraft({
+        productKey: product,
+        contractNumber: trimmedContractNumber,
+        sourceEntryId: latestEntry.id,
+        sourceEntryPath: latestEntry.path,
+        rootContractEntryId: latestEntry.rootContractEntryId ?? latestEntry.id,
+        previousPremiumAmount,
+        newPremiumAmount,
+        deltaAmount,
+        calculationAmount,
+        changeType,
+        items: endorsementItems,
+        total: endorsementTotal,
+      });
+      setValidationError(null);
+      setSaveMessage(null);
+    } catch (error) {
+      console.error("Chyba při přípravě dodatku", error);
+      setValidationError("Nepodařilo se připravit změnu smlouvy. Zkus to prosím znovu.");
+    }
+  };
+
+  const handleSaveEndorsement = async () => {
+    if (!user || !endorsementDraft) return;
+
+    if (tipsterModeEnabled) {
+      setSaveMessage("V režimu TIPAŘSKÉ spolupráce se smlouvy neukládají.");
+      return;
+    }
+
+    const missing: string[] = [];
+    if (!clientName.trim()) missing.push("jméno klienta");
+    if (!contractNumber.trim()) missing.push("číslo smlouvy");
+    if (!contractSignedDate.trim()) missing.push("datum sjednání");
+    if (!policyStartDate.trim()) missing.push("datum počátku");
+
+    if (missing.length > 0) {
+      const msg = `Doplň: ${missing.join(", ")}.`;
+      setSaveMessage(msg);
+      setValidationError(msg);
+      setMissingFields((prev) => Array.from(new Set([...prev, ...missing])));
+      return;
+    }
+
+    const trimmedContractNumber = contractNumber.trim();
+    if (endorsementDraft.productKey !== product) {
+      setValidationError(
+        "Produkt se od otevření okna změnil. Klikni prosím na Změna znovu."
+      );
+      setEndorsementDraft(null);
+      return;
+    }
+
+    if (trimmedContractNumber !== endorsementDraft.contractNumber) {
+      setValidationError(
+        "Číslo smlouvy se od otevření okna změnilo. Klikni prosím na Změna znovu."
+      );
+      setEndorsementDraft(null);
+      return;
+    }
+
+    const currentPremiumAmount = parseNumber(amountText);
+    if (Math.abs(currentPremiumAmount - endorsementDraft.newPremiumAmount) > 0.01) {
+      setValidationError(
+        "Částka se od otevření okna změnila. Klikni prosím na Změna znovu."
+      );
+      setEndorsementDraft(null);
+      return;
+    }
+
+    setSaving(true);
+    setSaveMessage(null);
+    setValidationError(null);
+    setMissingFields([]);
+
+    const email = (user.email ?? "").toLowerCase();
+    const uid = user.uid ?? null;
+    const userRef = doc(db, "users", email);
+    const entriesRef = collection(userRef, "entries");
+
+    try {
+      const signed =
+        contractSignedDate.trim().length > 0
+          ? new Date(contractSignedDate)
+          : null;
+      const start =
+        policyStartDate.trim().length > 0 ? new Date(policyStartDate) : null;
+
+      let mgrEmail = managerEmailSnapshot;
+      let mgrPos = managerPositionSnapshot;
+      let mgrMode = managerModeSnapshot;
+      let overridesForChain: ManagerOverrideSnapshot[] = [];
+      try {
+        const userSnap = await getDoc(userRef);
+        const data = userSnap.data() as any;
+        mgrEmail =
+          (data?.managerEmail as string | undefined)?.toLowerCase() ??
+          mgrEmail ??
+          null;
+        if (mgrEmail) {
+          const mgrSnap = await getDoc(doc(db, "users", mgrEmail));
+          if (mgrSnap.exists()) {
+            const md = mgrSnap.data() as any;
+            mgrPos = (md.position as Position | undefined) ?? mgrPos ?? null;
+            mgrMode =
+              (md.commissionMode as CommissionMode | undefined) ??
+              mgrMode ??
+              null;
+          }
+        }
+      } catch (snapshotErr) {
+        console.error("Failed to snapshot manager info", snapshotErr);
+      }
+
+      const diffs: ManagerOverrideSnapshot[] = [];
+      let childPositionForBaseline: Position | null = position;
+
+      managerChainSnapshot.forEach((mgr) => {
+        if (!mgr.position) return;
+        const mgrCommissionMode = mgr.commissionMode ?? mode;
+
+        const mgrRes = computeItemsForPositionAndMode(
+          mgr.position,
+          mgrCommissionMode,
+          endorsementDraft.calculationAmount
+        );
+        const baselineRes = childPositionForBaseline
+          ? computeItemsForPositionAndMode(
+              childPositionForBaseline,
+              mgrCommissionMode,
+              endorsementDraft.calculationAmount
+            )
+          : null;
+
+        if (!mgrRes || !baselineRes) {
+          childPositionForBaseline = mgr.position;
+          return;
+        }
+
+        const mgrItems = stripTotalRows(mgrRes.items);
+        const baselineItems = stripTotalRows(baselineRes.items);
+
+        const mgrMap = new Map<string, { title: string; amount: number }>();
+        mgrItems.forEach((it) => {
+          const key = normalizeTitleKey(it.title ?? "");
+          const prev = mgrMap.get(key);
+          mgrMap.set(key, {
+            title: it.title ?? prev?.title ?? key,
+            amount: (prev?.amount ?? 0) + (it.amount ?? 0),
+          });
+        });
+
+        const diffItems: CommissionResultItemDTO[] = [];
+
+        baselineItems.forEach((it) => {
+          const key = normalizeTitleKey(it.title ?? "");
+          const mgrVal = mgrMap.get(key);
+          const mgrAmt = mgrVal?.amount ?? 0;
+          const subAmt = it.amount ?? 0;
+          const rem = mgrAmt - subAmt;
+          if (rem > 0) {
+            diffItems.push({ title: mgrVal?.title ?? it.title, amount: rem });
+          }
+          mgrMap.delete(key);
+        });
+
+        mgrMap.forEach((val) => {
+          if (val.amount > 0) {
+            diffItems.push({ title: val.title, amount: val.amount });
+          }
+        });
+
+        const diffTotal = totalWithMultipliers(diffItems);
+
+        if (diffItems.length > 0 && diffTotal > 0) {
+          diffs.push({
+            email: mgr.email ?? null,
+            position: mgr.position,
+            commissionMode: mgrCommissionMode,
+            items: diffItems,
+            total: diffTotal,
+          });
+        }
+
+        childPositionForBaseline = mgr.position;
+      });
+
+      overridesForChain = diffs;
+
+      const allowedEmails = (() => {
+        const s = new Set<string>();
+        const push = (val: string | null | undefined) => {
+          const v = (val ?? "").trim().toLowerCase();
+          if (v) s.add(v);
+        };
+
+        push(email);
+        push(mgrEmail);
+        managerChainSnapshot.forEach((mgr) => push(mgr.email));
+        overridesForChain.forEach((ov) =>
+          push(ov.email as string | null | undefined)
+        );
+
+        return Array.from(s);
+      })();
+
+      await addDoc(entriesRef, {
+        productKey: endorsementDraft.productKey,
+        entryType: "endorsement" as ContractEntryType,
+        rootContractEntryId: endorsementDraft.rootContractEntryId,
+        parentContractEntryId: endorsementDraft.sourceEntryId,
+        parentContractEntryPath: endorsementDraft.sourceEntryPath,
+        createdAt: serverTimestamp(),
+        position,
+        commissionMode: mode,
+        inputAmount: endorsementDraft.calculationAmount,
+        calculationInputAmount: endorsementDraft.calculationAmount,
+        previousInputAmount: endorsementDraft.previousPremiumAmount,
+        newInputAmount: endorsementDraft.newPremiumAmount,
+        effectiveInputAmount: endorsementDraft.newPremiumAmount,
+        premiumDelta: endorsementDraft.deltaAmount,
+        premiumIncreaseAmount:
+          endorsementDraft.deltaAmount > 0 ? endorsementDraft.deltaAmount : 0,
+        premiumDecreaseAmount:
+          endorsementDraft.deltaAmount < 0 ? Math.abs(endorsementDraft.deltaAmount) : 0,
+        changeType: endorsementDraft.changeType,
+        frequencyRaw: frequency,
+        items: endorsementDraft.items,
+        total: endorsementDraft.total,
+        result: {
+          items: endorsementDraft.items,
+          total: endorsementDraft.total,
+        },
+        clientName: clientName || null,
+        userId: uid,
+        contractSignedDate: signed,
+        policyStartDate: start,
+        durationYears: shouldShowDuration(endorsementDraft.productKey) ? durationYears : null,
+        userEmail: email,
+        contractNumber: endorsementDraft.contractNumber,
+        paid: false,
+        managerEmailSnapshot: mgrEmail ?? null,
+        managerPositionSnapshot: mgrPos ?? null,
+        managerModeSnapshot: mgrMode ?? null,
+        managerChain: managerChainSnapshot,
+        managerOverrides: overridesForChain,
+        allowedEmails,
+      });
+
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.removeItem("contracts_cache_v2");
+          localStorage.setItem("contracts_last_updated", String(Date.now()));
+          window.dispatchEvent(new Event("contracts:updated"));
+        } catch {
+          // best effort cache invalidation
+        }
+      }
+
+      setSaveMessage(
+        endorsementDraft.changeType === "increase"
+          ? "Dodatek byl uložen mezi sepsané."
+          : "Dodatek (ponížení) byl uložen. Provize je zatím 0 Kč."
+      );
+      setSaveSuccessFlash({
+        contractNumber: endorsementDraft.contractNumber,
+        clientName: clientName.trim() || null,
+      });
+      setEndorsementDraft(null);
+    } catch (error) {
+      console.error("Chyba při ukládání dodatku", error);
+      setSaveMessage(
+        "Nepodařilo se uložit dodatek. Zkus to prosím za chvíli znovu."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleSaveContract = async (skipDuplicateCheck = false) => {
     if (!user) return;
@@ -1446,10 +1783,12 @@ export default function CalculatorPage() {
 
       await addDoc(entriesRef, {
         productKey: product,
+        entryType: "contract" as ContractEntryType,
         createdAt: serverTimestamp(),
         position,
         commissionMode: mode,
         inputAmount: product === "comfortcc" ? value : value,
+        effectiveInputAmount: value,
         comfortPayment:
           product === "comfortcc" && comfortPayment > 0 ? comfortPayment : null,
         comfortGradual: product === "comfortcc" ? comfortGradual : null,
@@ -1475,7 +1814,7 @@ export default function CalculatorPage() {
         policyStartDate: start,
         durationYears: shouldShowDuration(product) ? durationYears : null,
         userEmail: email,
-        contractNumber: contractNumber || null,
+        contractNumber: trimmedContractNumber || null,
         paid: false,
         managerEmailSnapshot: mgrEmail ?? null,
         managerPositionSnapshot: mgrPos ?? null,
@@ -1545,14 +1884,16 @@ export default function CalculatorPage() {
   const hasFrequencyPicker = allowed.length > 1;
   const currentProduct = PRODUCT_OPTIONS.find((p) => p.id === product)!;
   const durationHelp = durationTooltip(product);
-  const canChooseMode = LIFE_PRODUCTS.includes(product) && userCommissionMode === "accelerated";
+  const canChooseMode = isLifeProduct && userCommissionMode === "accelerated";
 
   const computeItemsForPositionAndMode = (
     pos: Position | null,
-    customMode?: CommissionMode | null
+    customMode?: CommissionMode | null,
+    amountOverride?: number | null
   ): { items: CommissionResultItemDTO[]; total: number } | null => {
     if (!pos) return null;
-    const val = parseNumber(amountText);
+    const val =
+      amountOverride == null ? parseNumber(amountText) : toNonNegativeNumber(amountOverride);
     const freq = frequency;
     const years = durationYears;
     const usedMode = (customMode ?? mode) as CommissionMode;
@@ -1560,11 +1901,15 @@ export default function CalculatorPage() {
     switch (product) {
       case "neon": {
         const [min, max] = durationRange("neon");
-        const y = Math.min(max, Math.max(min, years));
+        const y = Math.min(15, Math.min(max, Math.max(min, years)));
         return calculateNeon(val, pos, y, usedMode);
       }
       case "flexi":
-        return calculateFlexi(val, pos, usedMode);
+      {
+        const [min, max] = durationRange("flexi");
+        const y = Math.min(max, Math.max(min, years));
+        return calculateFlexi(val, pos, usedMode, y);
+      }
       case "maximaMaxEfekt": {
         const [min, max] = durationRange("maximaMaxEfekt");
         const y = Math.min(max, Math.max(min, years));
@@ -1701,7 +2046,7 @@ export default function CalculatorPage() {
               <p>
                 Smlouva s číslem <strong>{duplicateModal.contractNumber}</strong> už existuje ({duplicateModal.count}×).
               </p>
-              <p>Chceš ji přepsat, nebo uložit jako novou?</p>
+              <p>Můžeš ji přepsat, nebo akci zrušit.</p>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
               <button
@@ -1737,15 +2082,84 @@ export default function CalculatorPage() {
               >
                 Přepsat
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {endorsementDraft && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setEndorsementDraft(null)}
+          />
+          <div className="relative w-full max-w-lg rounded-2xl border border-slate-300 bg-white shadow-[0_20px_70px_rgba(0,0,0,0.35)] p-5 space-y-4">
+            <div className="space-y-2 text-sm text-slate-900">
+              <p>
+                Připravena změna ke smlouvě <strong>{endorsementDraft.contractNumber}</strong>.
+              </p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 space-y-1.5 text-sm">
+                <p className="flex items-center justify-between gap-3">
+                  <span className="text-slate-600">Původní pojistné</span>
+                  <span className="font-semibold text-slate-900">
+                    {formatMoney(endorsementDraft.previousPremiumAmount)}
+                  </span>
+                </p>
+                <p className="flex items-center justify-between gap-3">
+                  <span className="text-slate-600">Nové pojistné</span>
+                  <span className="font-semibold text-slate-900">
+                    {formatMoney(endorsementDraft.newPremiumAmount)}
+                  </span>
+                </p>
+                <p className="flex items-center justify-between gap-3">
+                  <span className="text-slate-600">
+                    {endorsementDraft.changeType === "increase"
+                      ? "Navýšení"
+                      : endorsementDraft.changeType === "decrease"
+                        ? "Ponížení"
+                        : "Rozdíl"}
+                  </span>
+                  <span
+                    className={`font-semibold ${
+                      endorsementDraft.deltaAmount >= 0
+                        ? "text-emerald-700"
+                        : "text-rose-700"
+                    }`}
+                  >
+                    {endorsementDraft.deltaAmount >= 0 ? "+" : "−"}
+                    {formatMoney(Math.abs(endorsementDraft.deltaAmount))}
+                  </span>
+                </p>
+                <p className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2">
+                  <span className="text-slate-600">Provize k dodatku</span>
+                  <span className="font-semibold text-slate-900">
+                    {formatMoney(endorsementDraft.total)}
+                  </span>
+                </p>
+              </div>
+              {endorsementDraft.changeType === "decrease" && (
+                <p className="text-xs text-amber-700">
+                  Ponížení zatím neřešíme výpočtem. Dodatek se uloží s provizí 0 Kč.
+                </p>
+              )}
+              <p className="text-xs text-slate-500">
+                Dodatek bude uložen zvlášť a navázán na původní smlouvu.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                onClick={async () => {
-                  setDuplicateModal(null);
-                  await handleSaveContract(true);
-                }}
-                className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100 transition"
+                onClick={() => setEndorsementDraft(null)}
+                className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-900 hover:bg-slate-100 transition"
               >
-                Uložit novou
+                Zrušit
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEndorsement}
+                disabled={saving}
+                className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? "Ukládám…" : "Uložit změnu"}
               </button>
             </div>
           </div>
@@ -2069,18 +2483,30 @@ export default function CalculatorPage() {
                 </div>
               )}
 
-              {!tipsterModeEnabled && product === "neon" && (
+              {!tipsterModeEnabled && isLifeProduct && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
+                    {product === "neon" && (
+                      <button
+                        type="button"
+                        onClick={() => setRefreshOriginalOpen((v) => !v)}
+                        className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm"
+                      >
+                        <RefreshCcw size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                        Refresh smlouvy
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => setRefreshOriginalOpen((v) => !v)}
+                      onClick={() => {
+                        void handlePrepareEndorsement();
+                      }}
                       className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm"
                     >
-                      <RefreshCcw size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                      Refresh smlouvy
+                      <Repeat2 size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                      Změna
                     </button>
-                    {refreshOriginalOpen && (
+                    {product === "neon" && refreshOriginalOpen && (
                       <input
                         type="text"
                         autoComplete="off"
@@ -2092,11 +2518,14 @@ export default function CalculatorPage() {
                       />
                     )}
                   </div>
-                  {refreshOriginalOpen && (
+                  {product === "neon" && refreshOriginalOpen && (
                     <p className="text-[11px] text-slate-600">
                       Při uložení nahradíme původní smlouvu se stejným číslem (smažeme starý záznam).
                     </p>
                   )}
+                  <p className="text-[11px] text-slate-600">
+                    Změna vytvoří dodatek k existující ŽP smlouvě. Navýšení se zprovizuje jen z rozdílu, ponížení je zatím 0 Kč.
+                  </p>
                 </div>
               )}
 

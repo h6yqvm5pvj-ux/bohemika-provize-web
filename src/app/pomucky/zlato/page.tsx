@@ -283,29 +283,25 @@ function GoldChart({ points }: { points: Point[] }) {
     return rawCandles.length ? rawCandles : null;
   }, [points]);
 
-  useEffect(() => {
-    if (!baseCandles || !baseCandles.length) {
-      setViewRange(null);
-      setHover(null);
-      return;
-    }
-    setViewRange((prev) => {
-      const total = baseCandles.length;
-      if (!prev) return { start: 0, end: total - 1 };
-      const count = Math.max(1, Math.min(total, prev.end - prev.start + 1));
-      const start = Math.min(Math.max(0, prev.start), Math.max(0, total - count));
-      return { start, end: start + count - 1 };
-    });
-    setHover(null);
-  }, [baseCandles?.length]);
+  const normalizedViewRange = useMemo(() => {
+    if (!baseCandles || !baseCandles.length) return null;
+    const total = baseCandles.length;
+    if (!viewRange) return { start: 0, end: total - 1 };
+    const count = Math.max(1, Math.min(total, viewRange.end - viewRange.start + 1));
+    const start = Math.min(Math.max(0, viewRange.start), Math.max(0, total - count));
+    return { start, end: start + count - 1 };
+  }, [baseCandles, viewRange]);
 
   const prepared = useMemo(() => {
     if (!baseCandles || !baseCandles.length) return null;
 
     const totalCandles = baseCandles.length;
-    const clampedStart = Math.min(Math.max(0, viewRange?.start ?? 0), totalCandles - 1);
+    const clampedStart = Math.min(
+      Math.max(0, normalizedViewRange?.start ?? 0),
+      totalCandles - 1
+    );
     const clampedEnd = Math.min(
-      Math.max(clampedStart, viewRange?.end ?? totalCandles - 1),
+      Math.max(clampedStart, normalizedViewRange?.end ?? totalCandles - 1),
       totalCandles - 1
     );
     const visible = baseCandles.slice(clampedStart, clampedEnd + 1);
@@ -405,7 +401,7 @@ function GoldChart({ points }: { points: Point[] }) {
       windowEnd: clampedEnd,
       totalCandles,
     };
-  }, [baseCandles, viewRange, pad.b, pad.l, pad.r, pad.t, w, h]);
+  }, [baseCandles, normalizedViewRange, pad.b, pad.l, pad.r, pad.t, w, h]);
 
   const minVisibleCandles = prepared ? Math.min(MIN_VISIBLE_CANDLES, prepared.totalCandles) : MIN_VISIBLE_CANDLES;
   const visibleCount = prepared ? prepared.windowEnd - prepared.windowStart + 1 : 0;
@@ -518,8 +514,10 @@ function GoldChart({ points }: { points: Point[] }) {
     );
   }
 
-  const hp = hover ? prepared.pts[hover.idx] : null;
-  const hoveredCandle = hover ? prepared.candles[hover.idx] : null;
+  const safeHover =
+    hover && hover.idx >= 0 && hover.idx < prepared.pts.length ? hover : null;
+  const hp = safeHover ? prepared.pts[safeHover.idx] : null;
+  const hoveredCandle = safeHover ? prepared.candles[safeHover.idx] : null;
   const candleDelta = hoveredCandle ? hoveredCandle.close - hoveredCandle.open : null;
   const candleDeltaPct =
     hoveredCandle && hoveredCandle.open > 0
@@ -644,10 +642,10 @@ function GoldChart({ points }: { points: Point[] }) {
           })}
         </g>
 
-        {hover ? (
+        {safeHover ? (
           <g>
-            <line x1={hover.x} y1={pad.t} x2={hover.x} y2={h - pad.b} stroke="rgba(226,232,240,0.28)" strokeWidth="1" />
-            <line x1={pad.l} y1={hover.y} x2={w - pad.r} y2={hover.y} stroke="rgba(226,232,240,0.2)" strokeWidth="1" />
+            <line x1={safeHover.x} y1={pad.t} x2={safeHover.x} y2={h - pad.b} stroke="rgba(226,232,240,0.28)" strokeWidth="1" />
+            <line x1={pad.l} y1={safeHover.y} x2={w - pad.r} y2={safeHover.y} stroke="rgba(226,232,240,0.2)" strokeWidth="1" />
             {hp ? (
               <circle cx={hp.x} cy={hp.y} r={4} fill="#f8fafc" stroke="rgba(226,232,240,0.6)" />
             ) : null}

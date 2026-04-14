@@ -618,23 +618,26 @@ function flexiCoefficients(position: Position, mode: CommissionMode): FlexiK {
 export function calculateFlexi(
   monthly: number,
   position: Position,
-  mode: CommissionMode = "accelerated"
+  mode: CommissionMode = "accelerated",
+  years = 6
 ): CommissionResultDTO {
   const k = flexiCoefficients(position, mode);
+  const y = Math.max(1, Math.min(80, years));
   const annual = monthly * 12;
 
   const okamzita = annual * pct(k.okamzita);
   const po3 = annual * pct(k.po3);
   const po4 = annual * pct(k.po4);
   const n6 = annual * pct(k.naslednaOd6);
+  const tailYears = Math.max(0, y - 5);
 
-  const total = okamzita + po3 + po4 + n6;
+  const total = okamzita + po3 + po4 + n6 * tailYears;
 
   const items: CommissionResultItemDTO[] = [
     { title: "💸 Okamžitá provize", amount: okamzita },
     { title: "📅 Provize po 3 letech", amount: po3 },
     { title: "📅 Provize po 4 letech", amount: po4 },
-    { title: "🔁 Následná provize (od 6. roku)", amount: n6, note: "ročně" },
+    { title: "🔁 Následná provize (od 6. roku)", amount: n6, note: `ročně × ${tailYears}` },
     { title: "💰 Celkem", amount: total },
   ];
 

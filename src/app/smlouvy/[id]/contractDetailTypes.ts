@@ -15,6 +15,12 @@ export type ContractDoc = {
   id: string;
   note?: string | null;
   paid?: boolean | null;
+  status?: "active" | "storno" | string | null;
+  stornoDate?: FirestoreTimestamp | Date | string | number | null;
+  entryType?: "contract" | "endorsement" | string | null;
+  rootContractEntryId?: string | null;
+  parentContractEntryId?: string | null;
+  parentContractEntryPath?: string | null;
   managerEmailSnapshot?: string | null;
   managerPositionSnapshot?: Position | null;
   managerModeSnapshot?: CommissionMode | null;
@@ -34,6 +40,14 @@ export type ContractDoc = {
   productKey?: Product;
   position?: Position;
   inputAmount?: number;
+  calculationInputAmount?: number | null;
+  previousInputAmount?: number | null;
+  newInputAmount?: number | null;
+  effectiveInputAmount?: number | null;
+  premiumDelta?: number | null;
+  premiumIncreaseAmount?: number | null;
+  premiumDecreaseAmount?: number | null;
+  changeType?: "increase" | "decrease" | "same" | string | null;
   frequencyRaw?: PaymentFrequency | null;
   comfortPayment?: number | null;
   comfortGradual?: boolean | null;

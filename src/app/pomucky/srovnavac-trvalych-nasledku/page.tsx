@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
+import { formatMoney } from "@/app/lib/formatters";
 import SplitTitle from "../plan-produkce/SplitTitle";
 
 let html2pdfPromise: Promise<any> | null = null;
@@ -102,15 +103,6 @@ const splitInsurerAndProduct = (value: string): { insurerName: string; productNa
 
 const formatKcInput = (value: number): string =>
   Math.round(value).toLocaleString("cs-CZ", { maximumFractionDigits: 0 });
-
-const formatMoney = (value: number): string => {
-  if (!Number.isFinite(value)) return "0 Kč";
-  return (
-    Math.round(value).toLocaleString("cs-CZ", {
-      maximumFractionDigits: 0,
-    }) + " Kč"
-  );
-};
 
 const getMultiplierForRange = (percent: number): number => {
   if (percent <= 10) return 1;

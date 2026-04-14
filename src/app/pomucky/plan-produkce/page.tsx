@@ -8,6 +8,10 @@ import Link from "next/link";
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
 import {
+  formatMoney,
+  positionLabel as positionLabelValue,
+} from "@/app/lib/formatters";
+import {
   calculateNeon,
   calculateKooperativaAuto,
   calculateDomex,
@@ -73,29 +77,8 @@ function temporarilyDisableGlobalStyles(exceptNodes: Set<Node>): () => void {
   };
 }
 
-const POSITION_LABELS: Record<Position, string> = {
-  poradce1: "Poradce 1",
-  poradce2: "Poradce 2",
-  poradce3: "Poradce 3",
-  poradce4: "Poradce 4",
-  poradce5: "Poradce 5",
-  poradce6: "Poradce 6",
-  poradce7: "Poradce 7",
-  poradce8: "Poradce 8",
-  poradce9: "Poradce 9",
-  poradce10: "Poradce 10",
-  manazer4: "Manažer 4",
-  manazer5: "Manažer 5",
-  manazer6: "Manažer 6",
-  manazer7: "Manažer 7",
-  manazer8: "Manažer 8",
-  manazer9: "Manažer 9",
-  manazer10: "Manažer 10",
-};
-
 function positionLabel(pos?: Position | null): string {
-  if (!pos) return "neznámá";
-  return POSITION_LABELS[pos] ?? pos;
+  return positionLabelValue(pos, { emptyLabel: "neznámá" });
 }
 
 function nameFromEmail(email: string | null | undefined): string {
@@ -115,16 +98,6 @@ type BlockEstimate = {
   immediatePerContract: number;
   totalImmediate: number;
 };
-
-function formatMoney(value: number): string {
-  if (!Number.isFinite(value)) return "0 Kč";
-  return (
-    value.toLocaleString("cs-CZ", {
-      maximumFractionDigits: 0,
-    }) + " Kč"
-  );
-}
-
 
 export default function PlanProdukcePage() {
   const [user, setUser] = useState<User | null>(null);

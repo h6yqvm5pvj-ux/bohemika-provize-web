@@ -19,7 +19,16 @@ import {
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { deleteDoc, doc, getDoc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 
 import {
   type Product,
@@ -64,9 +73,21 @@ import {
   productLabel,
   resultIconForTitle,
   stripTotalRows,
+  toDate,
   toDateInputValue,
 } from "./contractDetailHelpers";
 import { useToasts } from "./useToasts";
+import {
+  contractLifecycleStatus,
+  contractMaturityDate,
+} from "@/app/lib/contractLifecycle";
+
+const LIFE_PRODUCT_KEYS = new Set<Product>([
+  "neon",
+  "flexi",
+  "maximaMaxEfekt",
+  "pillowInjury",
+]);
 
 export default function ContractDetailPage() {
   const router = useRouter();
@@ -100,6 +121,9 @@ export default function ContractDetailPage() {
   const [contract, setContract] = useState<ContractDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [contractTimeline, setContractTimeline] = useState<ContractDoc[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
 
   const [overrideItems, setOverrideItems] = useState<
     CommissionResultItemDTO[] | null
@@ -128,7 +152,11 @@ export default function ContractDetailPage() {
   const [noteSaved, setNoteSaved] = useState(false);
   const [updatingPaid, setUpdatingPaid] = useState(false);
   const [paidError, setPaidError] = useState<string | null>(null);
+  const [updatingStorno, setUpdatingStorno] = useState(false);
+  const [stornoError, setStornoError] = useState<string | null>(null);
+  const [stornoDateInput, setStornoDateInput] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showStornoModal, setShowStornoModal] = useState(false);
   const { toasts, pushToast, dismissToast } = useToasts();
   const [unauthorized, setUnauthorized] = useState(false);
 
@@ -136,15 +164,16 @@ export default function ContractDetailPage() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setShowDeleteModal(false);
+        setShowStornoModal(false);
       }
     };
-    if (showDeleteModal) {
+    if (showDeleteModal || showStornoModal) {
       window.addEventListener("keydown", onKey);
     }
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  }, [showDeleteModal]);
+  }, [showDeleteModal, showStornoModal]);
 
   // auth
   useEffect(() => {
@@ -226,6 +255,15 @@ export default function ContractDetailPage() {
     preloadFormulaModule(contract?.productKey ?? null);
   }, [contract?.productKey]);
 
+  useEffect(() => {
+    const existing = toDateInputValue(contract?.stornoDate ?? null);
+    if (existing) {
+      setStornoDateInput(existing);
+      return;
+    }
+    setStornoDateInput(toDateInputValue(new Date()) ?? "");
+  }, [contract?.stornoDate]);
+
   // načtení smlouvy – users/{email}/entries/{entryId}
   useEffect(() => {
     const load = async () => {
@@ -293,10 +331,226 @@ export default function ContractDetailPage() {
     load();
   }, [ownerEmail, entryId]);
 
-  const premium = contract?.inputAmount ?? 0;
+  useEffect(() => {
+    let cancelled = false;
+
+    const timelineSortMs = (entry: ContractDoc): number => {
+      return (
+        toDate(entry.policyStartDate)?.getTime() ??
+        toDate(entry.contractSignedDate)?.getTime() ??
+        toDate(entry.createdAt)?.getTime() ??
+        0
+      );
+    };
+
+    const loadTimeline = async () => {
+      if (!ownerEmail || !contract) {
+        setContractTimeline([]);
+        setTimelineError(null);
+        setTimelineLoading(false);
+        return;
+      }
+
+      const productKey = contract.productKey as Product | undefined;
+      if (!productKey || !LIFE_PRODUCT_KEYS.has(productKey)) {
+        setContractTimeline([]);
+        setTimelineError(null);
+        setTimelineLoading(false);
+        return;
+      }
+
+      const trimmedContractNumber = (contract.contractNumber ?? "").trim();
+      if (!trimmedContractNumber) {
+        setContractTimeline([contract]);
+        setTimelineError(null);
+        setTimelineLoading(false);
+        return;
+      }
+
+      setTimelineLoading(true);
+      setTimelineError(null);
+      try {
+        const entriesRef = collection(db, "users", ownerEmail, "entries");
+        const timelineSnap = await getDocs(
+          query(entriesRef, where("contractNumber", "==", trimmedContractNumber))
+        );
+
+        const timelineEntries = timelineSnap.docs.map((snap) => {
+          return {
+            id: snap.id,
+            ...(snap.data() as any),
+          } as ContractDoc;
+        });
+
+        const normalizeRootId = (entry: ContractDoc): string => {
+          const raw =
+            entry.rootContractEntryId ??
+            (entry.entryType === "endorsement" ? entry.parentContractEntryId : entry.id) ??
+            entry.id;
+          return typeof raw === "string" ? raw.trim() : "";
+        };
+
+        const targetRootId = normalizeRootId(contract);
+        const sameProductEntries = timelineEntries.filter(
+          (entry) => entry.productKey === productKey
+        );
+        const hasExplicitChainIds =
+          Boolean((contract.rootContractEntryId ?? "").trim()) ||
+          sameProductEntries.some((entry) =>
+            Boolean((entry.rootContractEntryId ?? "").trim())
+          );
+        let scopedTimeline = sameProductEntries;
+        if (hasExplicitChainIds && targetRootId) {
+          scopedTimeline = sameProductEntries.filter(
+            (entry) => normalizeRootId(entry) === targetRootId
+          );
+        }
+
+        if (!scopedTimeline.some((entry) => entry.id === contract.id)) {
+          scopedTimeline.push(contract);
+        }
+        if (scopedTimeline.length === 0) {
+          scopedTimeline = [contract];
+        }
+
+        scopedTimeline.sort((a, b) => {
+          const byDate = timelineSortMs(a) - timelineSortMs(b);
+          if (byDate !== 0) return byDate;
+          return a.id.localeCompare(b.id, "cs");
+        });
+
+        if (cancelled) return;
+        setContractTimeline(scopedTimeline);
+      } catch (e) {
+        console.error("Chyba při načítání timeline smlouvy:", e);
+        if (cancelled) return;
+        setContractTimeline(contract ? [contract] : []);
+        setTimelineError("Timeline změn se nepodařilo načíst.");
+      } finally {
+        if (!cancelled) {
+          setTimelineLoading(false);
+        }
+      }
+    };
+
+    void loadTimeline();
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerEmail, contract]);
+
+  const isEndorsement = contract?.entryType === "endorsement";
+  const lifecycleInput = {
+    status: contract?.status,
+    productKey: contract?.productKey,
+    policyStartDate: contract?.policyStartDate,
+    durationYears:
+      typeof contract?.durationYears === "number" && !Number.isNaN(contract.durationYears)
+        ? contract.durationYears
+        : null,
+  };
+  const lifecycleStatus = contractLifecycleStatus(lifecycleInput);
+  const isStornoContract = lifecycleStatus === "storno";
+  const isDozitaContract = lifecycleStatus === "dozita";
+  const stornoDateLabel = contract?.stornoDate
+    ? formatDate(contract.stornoDate)
+    : "—";
+  const maturityDate = contractMaturityDate(lifecycleInput);
+  const maturityDateLabel = maturityDate ? formatDate(maturityDate) : "—";
+  const premium = isEndorsement
+    ? Number(
+        contract?.newInputAmount ??
+          contract?.effectiveInputAmount ??
+          contract?.inputAmount ??
+          0
+      )
+    : Number(contract?.inputAmount ?? 0);
+  const endorsementDelta = (() => {
+    if (!isEndorsement) return null;
+    const explicit = Number(contract?.premiumDelta ?? Number.NaN);
+    if (Number.isFinite(explicit)) return explicit;
+    const prev = Number(contract?.previousInputAmount ?? Number.NaN);
+    const next = Number(
+      contract?.newInputAmount ??
+        contract?.effectiveInputAmount ??
+        contract?.inputAmount ??
+        Number.NaN
+    );
+    if (Number.isFinite(prev) && Number.isFinite(next)) return next - prev;
+    return null;
+  })();
+  const modeLabel = (value?: CommissionMode | null) => {
+    if (value === "accelerated") return "Zrychlený";
+    if (value === "standard") return "Běžný";
+    return "—";
+  };
+  const timelineRows = useMemo(() => {
+    const normalizedOwner = normalizeEmail(ownerEmail);
+    const encodedFromList =
+      searchParams?.get("from") === "list" ? "?from=list" : "";
+
+    const premiumForEntry = (entry: ContractDoc): number => {
+      const isEntryEndorsement = entry.entryType === "endorsement";
+      const value = isEntryEndorsement
+        ? Number(
+            entry.newInputAmount ??
+              entry.effectiveInputAmount ??
+              entry.inputAmount ??
+              0
+          )
+        : Number(entry.inputAmount ?? 0);
+      return Number.isFinite(value) ? value : 0;
+    };
+
+    const deltaForEntry = (entry: ContractDoc): number | null => {
+      if (entry.entryType !== "endorsement") return null;
+      const explicit = Number(entry.premiumDelta ?? Number.NaN);
+      if (Number.isFinite(explicit)) return explicit;
+      const prev = Number(entry.previousInputAmount ?? Number.NaN);
+      const next = Number(
+        entry.newInputAmount ??
+          entry.effectiveInputAmount ??
+          entry.inputAmount ??
+          Number.NaN
+      );
+      if (Number.isFinite(prev) && Number.isFinite(next)) return next - prev;
+      return null;
+    };
+
+    return contractTimeline.map((entry, index) => {
+      const isCurrent = entry.id === contract?.id;
+      const isEntryEndorsement = entry.entryType === "endorsement";
+      const delta = deltaForEntry(entry);
+      const premiumAmount = premiumForEntry(entry);
+      const dateForOrder =
+        toDate(entry.policyStartDate) ??
+        toDate(entry.contractSignedDate) ??
+        toDate(entry.createdAt) ??
+        null;
+
+      return {
+        id: entry.id,
+        href: normalizedOwner
+          ? `/smlouvy/${encodeURIComponent(`${normalizedOwner}___${entry.id}`)}${encodedFromList}`
+          : null,
+        isCurrent,
+        step: index + 1,
+        label: isEntryEndorsement ? "Dodatek" : "Původní smlouva",
+        premiumAmount,
+        delta,
+        contractSignedText: formatDate(entry.contractSignedDate ?? entry.createdAt),
+        policyStartText: formatDate(entry.policyStartDate),
+        positionText: positionLabel(entry.position ?? null),
+        modeText: modeLabel(entry.commissionMode ?? null),
+        total: Number(entry.total ?? 0),
+        orderDateText: dateForOrder ? dateForOrder.toLocaleDateString("cs-CZ") : "—",
+      };
+    });
+  }, [contract?.id, contractTimeline, ownerEmail, searchParams]);
   const contractTotal = contract?.total ?? 0;
   const freq = (contract?.frequencyRaw as PaymentFrequency | null | undefined) ?? null;
   const prod = contract?.productKey as Product | undefined;
+  const isLifeInsuranceContract = Boolean(prod && LIFE_PRODUCT_KEYS.has(prod));
   const isPaymentBasedProduct =
     prod === "domex" || prod === "koopmajetekobcan" || prod === "maxdomov";
   const paymentMultiplier = isPaymentBasedProduct ? paymentsPerYear(freq) : 1;
@@ -304,7 +558,15 @@ export default function ContractDetailPage() {
     typeof contract?.durationYears === "number" && !Number.isNaN(contract.durationYears)
       ? contract.durationYears
       : null;
-  const showDurationForNeon = prod === "neon" && durationYears;
+  const durationBounds: [number, number] | null =
+    prod === "neon"
+      ? [1, 99]
+      : prod === "maximaMaxEfekt"
+      ? [1, 20]
+      : prod === "flexi"
+      ? [1, 80]
+      : null;
+  const showDurationForProduct = durationBounds != null;
   const normalizedUserEmail = useMemo(
     () => normalizeEmail(user?.email ?? null),
     [user?.email]
@@ -1527,8 +1789,13 @@ export default function ContractDetailPage() {
       const signedDate = editContractSigned ? new Date(editContractSigned) : null;
       const startDate = editPolicyStart ? new Date(editPolicyStart) : null;
       const durationVal =
-        prod === "neon" && typeof editDuration === "number" && !Number.isNaN(editDuration)
-          ? Math.max(1, Math.min(40, editDuration))
+        durationBounds != null &&
+        typeof editDuration === "number" &&
+        !Number.isNaN(editDuration)
+          ? Math.max(
+              durationBounds[0],
+              Math.min(durationBounds[1], Math.floor(editDuration))
+            )
           : null;
 
       const autoFields =
@@ -1720,7 +1987,7 @@ export default function ContractDetailPage() {
         ...flexiUpdate,
         ...domexUpdate,
       };
-      if (prod === "neon") {
+      if (showDurationForProduct) {
         updates.durationYears = durationVal ?? null;
       }
 
@@ -1738,7 +2005,7 @@ export default function ContractDetailPage() {
               contractSignedDate: signedDate ?? null,
               policyStartDate: startDate ?? null,
               durationYears:
-                prod === "neon"
+                showDurationForProduct
                   ? durationVal ?? prev.durationYears ?? null
                   : prev.durationYears ?? null,
               ...(isAutoProduct(prod ?? null)
@@ -1848,12 +2115,130 @@ export default function ContractDetailPage() {
         nextValue ? "Smlouva označena jako zaplacená." : "Platba označena jako neuhrazená.",
         "success"
       );
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.removeItem("contracts_cache_v2");
+          localStorage.setItem("contracts_last_updated", String(Date.now()));
+          window.dispatchEvent(new Event("contracts:updated"));
+        } catch {
+          // best effort cache invalidation
+        }
+      }
     } catch (e) {
       console.error("Chyba při ukládání stavu platby:", e);
       setPaidError("Nepodařilo se uložit stav platby. Zkus to prosím znovu.");
       pushToast("Nepodařilo se uložit stav platby. Zkus to prosím znovu.", "error");
     } finally {
       setUpdatingPaid(false);
+    }
+  };
+
+  const handleSetStorno = async () => {
+    if (!ownerEmail || !entryId || !isOwnContract) return;
+    const parsed = stornoDateInput ? new Date(stornoDateInput) : null;
+    if (!parsed || Number.isNaN(parsed.getTime())) {
+      setStornoError("Zadej platné datum storna.");
+      return;
+    }
+
+    setUpdatingStorno(true);
+    setStornoError(null);
+
+    try {
+      const targetIds = Array.from(
+        new Set(
+          (contractTimeline.length > 0
+            ? contractTimeline.map((entry) => entry.id)
+            : [entryId]).filter(Boolean)
+        )
+      ) as string[];
+
+      await Promise.all(
+        targetIds.map((id) =>
+          updateDoc(doc(db, "users", ownerEmail, "entries", id), {
+            status: "storno",
+            stornoDate: parsed,
+          })
+        )
+      );
+
+      setContract((prev) =>
+        prev ? { ...prev, status: "storno", stornoDate: parsed } : prev
+      );
+      setContractTimeline((prev) =>
+        prev.map((entry) => ({ ...entry, status: "storno", stornoDate: parsed }))
+      );
+      setShowStornoModal(false);
+
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.removeItem("contracts_cache_v2");
+          localStorage.setItem("contracts_last_updated", String(Date.now()));
+          window.dispatchEvent(new Event("contracts:updated"));
+        } catch {
+          // best effort cache invalidation
+        }
+      }
+
+      pushToast("Smlouva byla označena jako storno.", "success");
+    } catch (e) {
+      console.error("Chyba při ukládání storna:", e);
+      setStornoError("Nepodařilo se uložit storno. Zkus to prosím znovu.");
+      pushToast("Nepodařilo se uložit storno. Zkus to prosím znovu.", "error");
+    } finally {
+      setUpdatingStorno(false);
+    }
+  };
+
+  const handleClearStorno = async () => {
+    if (!ownerEmail || !entryId || !isOwnContract) return;
+
+    setUpdatingStorno(true);
+    setStornoError(null);
+
+    try {
+      const targetIds = Array.from(
+        new Set(
+          (contractTimeline.length > 0
+            ? contractTimeline.map((entry) => entry.id)
+            : [entryId]).filter(Boolean)
+        )
+      ) as string[];
+
+      await Promise.all(
+        targetIds.map((id) =>
+          updateDoc(doc(db, "users", ownerEmail, "entries", id), {
+            status: "active",
+            stornoDate: null,
+          })
+        )
+      );
+
+      setContract((prev) =>
+        prev ? { ...prev, status: "active", stornoDate: null } : prev
+      );
+      setContractTimeline((prev) =>
+        prev.map((entry) => ({ ...entry, status: "active", stornoDate: null }))
+      );
+      setShowStornoModal(false);
+
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.removeItem("contracts_cache_v2");
+          localStorage.setItem("contracts_last_updated", String(Date.now()));
+          window.dispatchEvent(new Event("contracts:updated"));
+        } catch {
+          // best effort cache invalidation
+        }
+      }
+
+      pushToast("Storno bylo zrušeno.", "success");
+    } catch (e) {
+      console.error("Chyba při rušení storna:", e);
+      setStornoError("Nepodařilo se zrušit storno. Zkus to prosím znovu.");
+      pushToast("Nepodařilo se zrušit storno. Zkus to prosím znovu.", "error");
+    } finally {
+      setUpdatingStorno(false);
     }
   };
 
@@ -2341,8 +2726,26 @@ export default function ContractDetailPage() {
                 <p className="mb-1 text-base uppercase tracking-[0.18em] text-slate-600">
                   Detail smlouvy
                 </p>
-                <h1 className="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
-                  {contract ? productLabel(prod) : "Načítám detail…"}
+                <h1 className="flex flex-wrap items-center gap-3 text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
+                  <span>{contract ? productLabel(prod) : "Načítám detail…"}</span>
+                  {isEndorsement && (
+                    <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-800">
+                      Dodatek
+                    </span>
+                  )}
+                  {isStornoContract ? (
+                    <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                      {stornoDateLabel !== "—" ? `Storno od ${stornoDateLabel}` : "Storno"}
+                    </span>
+                  ) : isDozitaContract ? (
+                    <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-800">
+                      {maturityDateLabel !== "—" ? `Dožitá od ${maturityDateLabel}` : "Dožitá"}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                      Aktivní
+                    </span>
+                  )}
                 </h1>
                 <p className="mt-1 text-base text-slate-600">
                   {contract?.contractNumber
@@ -2550,7 +2953,6 @@ export default function ContractDetailPage() {
                     {paidError}
                   </div>
                 )}
-
                 <div className="space-y-7">
                 {/* ZÁKLADNÍ INFO */}
                 <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -2569,17 +2971,62 @@ export default function ContractDetailPage() {
                         </dd>
                       </div>
                       <div className="flex justify-between gap-2">
-                        <dt className={keyValueLabelClass}>Pojistné</dt>
+                        <dt className={keyValueLabelClass}>
+                          {isEndorsement ? "Nové pojistné" : "Pojistné"}
+                        </dt>
                         <dd className={keyValueValueClass}>
                           {formatMoney(premium)}
                         </dd>
                       </div>
+                      {isEndorsement && (
+                        <div className="flex justify-between gap-2">
+                          <dt className={keyValueLabelClass}>Základ pro provizi dodatku</dt>
+                          <dd className={keyValueValueClass}>
+                            {formatMoney(contract.inputAmount ?? 0)}
+                          </dd>
+                        </div>
+                      )}
+                      {isEndorsement && endorsementDelta != null && (
+                        <div className="flex justify-between gap-2">
+                          <dt className={keyValueLabelClass}>Rozdíl pojistného</dt>
+                          <dd
+                            className={`${keyValueValueClass} ${
+                              endorsementDelta >= 0 ? "text-emerald-700" : "text-rose-700"
+                            }`}
+                          >
+                            {endorsementDelta >= 0 ? "+" : "−"}
+                            {formatMoney(Math.abs(endorsementDelta))}
+                          </dd>
+                        </div>
+                      )}
                       <div className="flex justify-between gap-2">
                         <dt className={keyValueLabelClass}>
                           Frekvence platby
                         </dt>
                         <dd className={keyValueValueClass}>
                           {frequencyText(freq)}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <dt className={keyValueLabelClass}>Stav smlouvy</dt>
+                        <dd
+                          className={`${keyValueValueClass} ${
+                            isStornoContract
+                              ? "text-amber-700"
+                              : isDozitaContract
+                              ? "text-sky-700"
+                              : "text-emerald-700"
+                          }`}
+                        >
+                          {isStornoContract
+                            ? stornoDateLabel !== "—"
+                              ? `Storno (${stornoDateLabel})`
+                              : "Storno"
+                            : isDozitaContract
+                            ? maturityDateLabel !== "—"
+                              ? `Dožitá (${maturityDateLabel})`
+                              : "Dožitá"
+                            : "Aktivní"}
                         </dd>
                       </div>
                     </dl>
@@ -2626,15 +3073,15 @@ export default function ContractDetailPage() {
                           )}
                         </dd>
                       </div>
-                      {showDurationForNeon && (
+                      {showDurationForProduct && (
                         <div className="flex justify-between gap-2">
                           <dt className={keyValueLabelClass}>Doba trvání (provize)</dt>
                           <dd className={keyValueValueClass}>
                             {editMode ? (
                               <input
                                 type="number"
-                                min={1}
-                                max={40}
+                                min={durationBounds?.[0] ?? 1}
+                                max={durationBounds?.[1] ?? 80}
                                 value={editDuration ?? ""}
                                 onChange={(e) =>
                                   setEditDuration(e.target.value ? Number(e.target.value) : null)
@@ -2642,7 +3089,9 @@ export default function ContractDetailPage() {
                                 className={`w-20 ${inputCompactClass}`}
                               />
                             ) : (
-                              `${durationYears} ${durationYears === 1 ? "rok" : "let"}`
+                              durationYears != null
+                                ? `${durationYears} ${durationYears === 1 ? "rok" : "let"}`
+                                : "—"
                             )}
                           </dd>
                         </div>
@@ -2675,6 +3124,123 @@ export default function ContractDetailPage() {
                 </dl>
               </div>
             </section>
+
+            {isLifeInsuranceContract && (
+              <section className={sectionPanelClass}>
+                <h3 className={`mb-3 flex items-center gap-2 text-xl font-semibold ${monoHeadingClass}`}>
+                  <span className={monoChipDarkClass}>
+                    <CalendarDays size={14} strokeWidth={2} aria-hidden="true" />
+                    <span>Timeline smlouvy</span>
+                  </span>
+                </h3>
+
+                {timelineLoading && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    Načítám historii změn…
+                  </div>
+                )}
+                {timelineError && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    {timelineError}
+                  </div>
+                )}
+
+                {!timelineLoading && !timelineError && timelineRows.length > 0 && (
+                  <div className="space-y-2">
+                    {timelineRows.map((row) => {
+                      const rowContent = (
+                        <div
+                          className={`rounded-xl border px-4 py-3 transition ${
+                            row.isCurrent
+                              ? "border-slate-900 bg-slate-100"
+                              : "border-slate-200 bg-slate-50 hover:bg-white"
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                                Krok {row.step}
+                              </span>
+                              <span
+                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                  row.label === "Dodatek"
+                                    ? "border-sky-300 bg-sky-100 text-sky-800"
+                                    : "border-slate-300 bg-slate-200 text-slate-800"
+                                }`}
+                              >
+                                {row.label}
+                              </span>
+                              {row.isCurrent && (
+                                <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                                  Otevřeno
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-sm font-semibold text-slate-900">
+                              {formatMoney(row.total)}
+                            </div>
+                          </div>
+
+                          <div className="mt-2 grid grid-cols-1 gap-1.5 text-xs text-slate-600 sm:grid-cols-2">
+                            <p>
+                              Počátek: <span className="font-semibold text-slate-800">{row.policyStartText}</span>
+                            </p>
+                            <p>
+                              Sjednáno:{" "}
+                              <span className="font-semibold text-slate-800">
+                                {row.contractSignedText}
+                              </span>
+                            </p>
+                            <p>
+                              Pozice: <span className="font-semibold text-slate-800">{row.positionText}</span>
+                            </p>
+                            <p>
+                              Režim: <span className="font-semibold text-slate-800">{row.modeText}</span>
+                            </p>
+                            <p>
+                              Pojistné:{" "}
+                              <span className="font-semibold text-slate-800">
+                                {formatMoney(row.premiumAmount)}
+                              </span>
+                            </p>
+                            {row.delta != null ? (
+                              <p>
+                                Změna:{" "}
+                                <span
+                                  className={`font-semibold ${
+                                    row.delta >= 0 ? "text-emerald-700" : "text-rose-700"
+                                  }`}
+                                >
+                                  {row.delta >= 0 ? "+" : "−"}
+                                  {formatMoney(Math.abs(row.delta))}
+                                </span>
+                              </p>
+                            ) : (
+                              <p>
+                                Datum kroku:{" "}
+                                <span className="font-semibold text-slate-800">
+                                  {row.orderDateText}
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+
+                      if (row.href && !row.isCurrent) {
+                        return (
+                          <Link key={row.id} href={row.href} className="block">
+                            {rowContent}
+                          </Link>
+                        );
+                      }
+
+                      return <div key={row.id}>{rowContent}</div>;
+                    })}
+                  </div>
+                )}
+              </section>
+            )}
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
               <div className="space-y-5">
@@ -3045,11 +3611,42 @@ export default function ContractDetailPage() {
                         {deleteError}
                       </p>
                     )}
-                    <div className="flex justify-end">
+                    {stornoError && (
+                      <p className="mb-2 text-base text-slate-700">
+                        {stornoError}
+                      </p>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStornoError(null);
+                          setShowDeleteModal(false);
+                          setShowStornoModal(true);
+                        }}
+                        disabled={updatingStorno}
+                        className="inline-flex items-center gap-2 rounded-xl border border-amber-700 bg-amber-600 px-6 py-3 text-base sm:text-lg font-medium font-mono text-white shadow-[0_8px_20px_rgba(180,83,9,0.25)] transition hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {updatingStorno && (
+                          <Spinner className="h-5 w-5 border-amber-200/70 border-t-white" />
+                        )}
+                        <span>{isStornoContract ? "Upravit storno" : "Stornovat smlouvu"}</span>
+                      </button>
+                      {isStornoContract && (
+                        <button
+                          type="button"
+                          onClick={handleClearStorno}
+                          disabled={updatingStorno}
+                          className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-700 px-6 py-3 text-base sm:text-lg font-medium font-mono text-white transition hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          Zrušit storno
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
                           setDeleteError(null);
+                          setShowStornoModal(false);
                           setShowDeleteModal(true);
                         }}
                         disabled={deleting}
@@ -3132,6 +3729,91 @@ export default function ContractDetailPage() {
           </div>
         </div>
       </div>
+
+      {canDelete && showStornoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+            aria-label="Zavřít potvrzení storna"
+            onClick={() => {
+              setStornoError(null);
+              setShowStornoModal(false);
+            }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Potvrzení storna smlouvy"
+            className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-300 bg-white p-7 shadow-2xl shadow-slate-300/40"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xl font-semibold tracking-tight text-slate-900">
+                  {isStornoContract ? "Upravit storno smlouvy" : "Stornovat smlouvu?"}
+                </h3>
+                <p className="mt-1 text-base text-slate-700">
+                  Zadej datum storna a potvrď akci.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setStornoError(null);
+                  setShowStornoModal(false);
+                }}
+                className="rounded-full px-2 text-slate-700 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                aria-label="Zavřít"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Datum storna
+              </label>
+              <input
+                type="date"
+                value={stornoDateInput}
+                onChange={(e) => setStornoDateInput(e.target.value)}
+                disabled={updatingStorno}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
+              />
+            </div>
+
+            {stornoError && (
+              <p className="mt-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                {stornoError}
+              </p>
+            )}
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setStornoError(null);
+                  setShowStornoModal(false);
+                }}
+                className={ghostButtonClass}
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                onClick={handleSetStorno}
+                disabled={updatingStorno}
+                className="inline-flex items-center gap-2 rounded-xl border border-amber-700 bg-amber-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(180,83,9,0.25)] transition hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-60 sm:text-base"
+              >
+                {updatingStorno && (
+                  <Spinner className="h-5 w-5 border-amber-200/70 border-t-white" />
+                )}
+                <span>{isStornoContract ? "Uložit storno" : "Potvrdit storno"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {canDelete && showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">

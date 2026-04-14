@@ -11,6 +11,7 @@ import {
   buildChildrenByManager,
   collectSubordinateHierarchy,
 } from "@/app/lib/teamHierarchy";
+import { toDate } from "@/app/lib/formatters";
 
 type FirestoreTimestamp = {
   seconds: number;
@@ -21,6 +22,8 @@ type FirestoreTimestamp = {
 type ContractDoc = {
   id: string;
   paid?: boolean | null;
+  status?: "active" | "storno" | string | null;
+  stornoDate?: FirestoreTimestamp | Date | string | number | null;
 
   productKey?: Product;
   position?: Position | null;
@@ -65,32 +68,6 @@ const PAGE_SIZE_MAX = 50;
 
 const isManagerPosition = (pos: Position | null | undefined): boolean =>
   Boolean(pos) && (pos as Position).startsWith("manazer");
-
-function toDate(value: any): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value === "string") {
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  if (typeof value === "object" && "toDate" in value && typeof value.toDate === "function") {
-    const d = (value as any).toDate();
-    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
-  }
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "seconds" in value &&
-    typeof (value as any).seconds === "number"
-  ) {
-    const v = value as FirestoreTimestamp;
-    const ms = v.seconds * 1000 + Math.floor((v.nanoseconds ?? 0) / 1_000_000);
-    const d = new Date(ms);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  const d = new Date(value as any);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
 
 const toMillis = (value: any): number | null => {
   const d = toDate(value);
@@ -226,6 +203,7 @@ async function fetchContractsForOwners(
       contractSignedDate: toMillis(data.contractSignedDate),
       createdAt: toMillis(data.createdAt),
       policyStartDate: toMillis((data as any).policyStartDate),
+      stornoDate: toMillis((data as any).stornoDate),
       id: docId,
       adviserEmail: ownerEmail,
       userEmail: data.userEmail ?? ownerEmail,

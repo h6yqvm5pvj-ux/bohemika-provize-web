@@ -19,6 +19,15 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
 import {
+  formatMoney as formatMoneyValue,
+  positionLabel as positionLabelValue,
+} from "@/app/lib/formatters";
+import {
+  PRODUCT_OPTIONS as PRODUCT_OPTIONS_FROM_CATALOG,
+  isLifeProduct,
+  isTravelProduct,
+} from "@/app/lib/productCatalog";
+import {
   calculateAllianzAuto,
   calculateAxaCestovko,
   calculateComfortCC,
@@ -60,58 +69,16 @@ type DayEntry = {
   contracts: ContractEntry[];
 };
 
-const LIFE_PRODUCTS: Product[] = ["neon", "flexi", "maximaMaxEfekt", "pillowInjury"];
-const TRAVEL_PRODUCTS: Product[] = ["cppcestovko", "axacestovko"];
 const DEFAULT_POSITION: Position = "poradce1";
 const DEFAULT_MODE: CommissionMode = "accelerated";
 const DEFAULT_PRODUCT: Product = "neon";
 
-const PRODUCT_OPTIONS: { value: Product; label: string }[] = [
-  { value: "neon", label: "ČPP ŽP NEON" },
-  { value: "flexi", label: "Kooperativa ŽP FLEXI" },
-  { value: "maximaMaxEfekt", label: "MAXIMA ŽP MaxEfekt" },
-  { value: "pillowInjury", label: "Pillow Úraz / Nemoc" },
-  { value: "domex", label: "ČPP DOMEX" },
-  {
-    value: "koopmajetekobcan",
-    label: "Kooperativa Pojištění majetku a odpovědnosti občanů a právní ochrany",
-  },
-  { value: "maxdomov", label: "Maxima MAXDOMOV" },
-  { value: "cppsimplex", label: "ČPP Simplex" },
-  { value: "zamex", label: "ČPP ZAMEX" },
-  { value: "cppPPRbez", label: "ČPP Pojištění majetku a odpovědnosti podnikatelů" },
-  { value: "cppPPRs", label: "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS" },
-  { value: "cppAuto", label: "ČPP Auto" },
-  { value: "allianzAuto", label: "Allianz Auto" },
-  { value: "csobAuto", label: "ČSOB Auto" },
-  { value: "uniqaAuto", label: "UNIQA Auto" },
-  { value: "pillowAuto", label: "Pillow Auto" },
-  { value: "kooperativaAuto", label: "Kooperativa Auto" },
-  { value: "cppcestovko", label: "ČPP Cestovko" },
-  { value: "axacestovko", label: "AXA Cestovko" },
-  { value: "comfortcc", label: "Comfort Commodity" },
-];
+const PRODUCT_OPTIONS: { value: Product; label: string }[] =
+  PRODUCT_OPTIONS_FROM_CATALOG.map((item) => ({
+    value: item.id,
+    label: item.label,
+  }));
 const PRODUCT_SET = new Set(PRODUCT_OPTIONS.map((p) => p.value));
-
-const POSITION_LABELS: Record<Position, string> = {
-  poradce1: "Poradce 1",
-  poradce2: "Poradce 2",
-  poradce3: "Poradce 3",
-  poradce4: "Poradce 4",
-  poradce5: "Poradce 5",
-  poradce6: "Poradce 6",
-  poradce7: "Poradce 7",
-  poradce8: "Poradce 8",
-  poradce9: "Poradce 9",
-  poradce10: "Poradce 10",
-  manazer4: "Manažer 4",
-  manazer5: "Manažer 5",
-  manazer6: "Manažer 6",
-  manazer7: "Manažer 7",
-  manazer8: "Manažer 8",
-  manazer9: "Manažer 9",
-  manazer10: "Manažer 10",
-};
 
 function parseNumberSafe(value: string): number {
   if (!value) return 0;
@@ -121,18 +88,13 @@ function parseNumberSafe(value: string): number {
 }
 
 function formatMoney(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "0 Kč";
-  return (
-    value.toLocaleString("cs-CZ", {
-      maximumFractionDigits: 0,
-    }) + " Kč"
-  );
+  return formatMoneyValue(value, { nonPositiveAsEmpty: true });
 }
 
 function premiumLabel(product: Product): string {
-  if (TRAVEL_PRODUCTS.includes(product)) return "Jednorázové pojistné";
+  if (isTravelProduct(product)) return "Jednorázové pojistné";
   if (product === "comfortcc") return "Poplatek v 1. platbě";
-  return LIFE_PRODUCTS.includes(product) ? "Měsíční pojistné" : "Roční pojistné";
+  return isLifeProduct(product) ? "Měsíční pojistné" : "Roční pojistné";
 }
 
 function immediateCommission(dto: CommissionResultDTO | null | undefined): number {
@@ -143,8 +105,7 @@ function immediateCommission(dto: CommissionResultDTO | null | undefined): numbe
 }
 
 function positionLabel(pos: Position | null): string {
-  if (!pos) return "Poradce 1 (výchozí)";
-  return POSITION_LABELS[pos] ?? pos;
+  return positionLabelValue(pos, { emptyLabel: "Poradce 1 (výchozí)" });
 }
 
 function modeLabel(mode: CommissionMode | null): string {

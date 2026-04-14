@@ -118,7 +118,7 @@ function commissionItemsForPosition(
     case "neon":
       return calculateNeon(amount, position, duration, mode).items;
     case "flexi":
-      return calculateFlexi(amount, position, mode).items;
+      return calculateFlexi(amount, position, mode, duration).items;
     case "maximaMaxEfekt":
       return calculateMaxEfekt(amount, duration, position, mode).items;
     case "pillowInjury":

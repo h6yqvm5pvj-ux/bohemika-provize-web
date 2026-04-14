@@ -54,6 +54,10 @@ export function generateCashflow(
     const normalizedOwnerEmail = ownerEmail
       ? ownerEmail.toLowerCase()
       : null;
+    const status = (entry.status ?? "").toString().trim().toLowerCase();
+    const isStorno = status === "storno";
+    const parsedStornoDate = toDate(entry.stornoDate);
+    const stornoCutoffDate = isStorno ? parsedStornoDate ?? now : null;
 
     const start =
       toDate(entry.policyStartDate) ??
@@ -93,9 +97,15 @@ export function generateCashflow(
       item.title.includes("následná provize (z platby)")
     );
 
-    const pushItem = (amount: number, date: Date, note?: string) => {
+    const pushItem = (
+      amount: number,
+      date: Date,
+      note?: string,
+      horizonLimit: Date = horizonEnd
+    ) => {
       if (!Number.isFinite(amount) || amount === 0) return;
-      if (date > horizonEnd) return;
+      if (date > horizonLimit) return;
+      if (stornoCutoffDate && date.getTime() > stornoCutoffDate.getTime()) return;
 
       out.push({
         id: `${entry.id}-${date.getTime()}-${note ?? ""}-${globalItemSequence++}`,
@@ -177,21 +187,37 @@ export function generateCashflow(
       }
 
       case "flexi": {
+        const hasDuration =
+          typeof entry.durationYears === "number" &&
+          Number.isFinite(entry.durationYears);
+        const maxYears = hasDuration
+          ? Math.max(1, Math.floor(entry.durationYears as number))
+          : null;
+        const flexiContractEnd =
+          maxYears != null ? annPlusYears(maxYears) : horizonEnd;
+        const flexiHorizonEnd =
+          flexiContractEnd.getTime() < horizonEnd.getTime()
+            ? flexiContractEnd
+            : horizonEnd;
+
         if (immediate) {
           pushItem(
             immediate.amount,
-            estimatePayoutDate(start, agreement)
+            estimatePayoutDate(start, agreement),
+            undefined,
+            flexiHorizonEnd
           );
         }
-        if (po3) pushItem(po3.amount, annPlusYears(3));
-        if (po4) pushItem(po4.amount, annPlusYears(4));
+        if (po3) pushItem(po3.amount, annPlusYears(3), undefined, flexiHorizonEnd);
+        if (po4) pushItem(po4.amount, annPlusYears(4), undefined, flexiHorizonEnd);
 
         if (naslOd6) {
           let year = 6;
           while (true) {
+            if (maxYears != null && year > maxYears) break;
             const date = annPlusYears(year);
-            if (date > horizonEnd) break;
-            pushItem(naslOd6.amount, date, "ročně");
+            if (date > flexiHorizonEnd) break;
+            pushItem(naslOd6.amount, date, "ročně", flexiHorizonEnd);
             year += 1;
           }
         }

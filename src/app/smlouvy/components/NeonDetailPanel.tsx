@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import type { Product } from "@/app/types/domain";
 import { parseNeonPdf } from "@/app/lib/parseNeonPdf";
+import { formatMoney as formatMoneyValue } from "@/app/lib/formatters";
 
 export type NeonFields = {
   version: string;
@@ -122,9 +123,7 @@ type Props = {
 };
 
 const formatMoney = (value: number | undefined | null) =>
-  value != null && Number.isFinite(value)
-    ? `${value.toLocaleString("cs-CZ", { maximumFractionDigits: 0 })} Kč`
-    : "—";
+  formatMoneyValue(value, { emptyValueLabel: "—" });
 
 const versionLabel = (val?: string | null) => {
   const map: Record<string, string> = {

@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
+import { formatMoney as formatMoneyValue } from "@/app/lib/formatters";
 import SplitTitle from "../plan-produkce/SplitTitle";
 
 type Compounding = "monthly" | "annual";
@@ -21,13 +22,11 @@ function parseNumber(text: string): number {
 }
 
 function formatMoney(value: number): string {
-  if (!Number.isFinite(value)) return "0 CZK";
-  return (
-    value.toLocaleString("cs-CZ", {
-      maximumFractionDigits: 2,
-      minimumFractionDigits: 2,
-    }) + " CZK"
-  );
+  return formatMoneyValue(value, {
+    currencyLabel: "CZK",
+    minFractionDigits: 2,
+    maxFractionDigits: 2,
+  });
 }
 
 // jednoduchý count-up efekt

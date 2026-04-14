@@ -5,7 +5,17 @@ import {
   type CommissionResultItemDTO,
   type CommissionMode,
 } from "../../types/domain";
-import { type ContractDoc, type FirestoreTimestamp } from "./contractDetailTypes";
+import {
+  formatMoney as formatMoneyValue,
+  positionLabel as positionLabelValue,
+  toDate as toDateValue,
+} from "@/app/lib/formatters";
+import {
+  isAutoProduct as isAutoProductFromCatalog,
+  productIcon as productIconFromCatalog,
+  productLabel as productLabelFromCatalog,
+} from "@/app/lib/productCatalog";
+import { type ContractDoc } from "./contractDetailTypes";
 
 export function nameFromEmail(email?: string | null): string {
   if (!email) return "Neznámý poradce";
@@ -87,33 +97,7 @@ export function preloadFormulaModule(product?: Product | null) {
 }
 
 export function toDate(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "toDate" in value &&
-    typeof (value as any).toDate === "function"
-  ) {
-    const d = (value as any).toDate();
-    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
-  }
-
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "seconds" in value &&
-    typeof (value as any).seconds === "number"
-  ) {
-    const v = value as FirestoreTimestamp;
-    const ms = v.seconds * 1000 + Math.floor((v.nanoseconds ?? 0) / 1_000_000);
-    const d = new Date(ms);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  const d = new Date(value as any);
-  return Number.isNaN(d.getTime()) ? null : d;
+  return toDateValue(value);
 }
 
 export function formatDate(value: unknown): string {
@@ -123,140 +107,23 @@ export function formatDate(value: unknown): string {
 }
 
 export function formatMoney(value: number | undefined | null): string {
-  if (value == null || !Number.isFinite(value)) return "0 Kč";
-  return (
-    value.toLocaleString("cs-CZ", {
-      maximumFractionDigits: 0,
-    }) + " Kč"
-  );
+  return formatMoneyValue(value);
 }
 
 export function productLabel(p?: Product): string {
-  switch (p) {
-    case "neon":
-      return "ČPP ŽP NEON";
-    case "flexi":
-      return "Kooperativa ŽP FLEXI";
-    case "maximaMaxEfekt":
-      return "MAXIMA ŽP MaxEfekt";
-    case "pillowInjury":
-      return "Pillow Úraz / Nemoc";
-    case "zamex":
-      return "ČPP ZAMEX";
-    case "domex":
-      return "ČPP DOMEX";
-    case "koopmajetekobcan":
-      return "Kooperativa Pojištění majetku a odpovědnosti občanů a právní ochrany";
-    case "cppsimplex":
-      return "ČPP Simplex";
-    case "cppPPRbez":
-      return "ČPP Pojištění majetku a odpovědnosti podnikatelů";
-    case "maxdomov":
-      return "Maxima MAXDOMOV";
-    case "cppAuto":
-      return "ČPP Auto";
-    case "cppPPRs":
-      return "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS";
-    case "allianzAuto":
-      return "Allianz Auto";
-    case "csobAuto":
-      return "ČSOB Auto";
-    case "uniqaAuto":
-      return "UNIQA Auto";
-    case "pillowAuto":
-      return "Pillow Auto";
-    case "kooperativaAuto":
-      return "Kooperativa Auto";
-    case "cppcestovko":
-      return "ČPP Cestovko";
-    case "axacestovko":
-      return "AXA Cestovko";
-    case "comfortcc":
-      return "Comfort Commodity";
-    default:
-      return "Neznámý produkt";
-  }
+  return productLabelFromCatalog(p, "Neznámý produkt");
 }
 
 export function isAutoProduct(p?: Product | null): boolean {
-  return (
-    p === "cppAuto" ||
-    p === "allianzAuto" ||
-    p === "csobAuto" ||
-    p === "uniqaAuto" ||
-    p === "pillowAuto" ||
-    p === "kooperativaAuto"
-  );
+  return isAutoProductFromCatalog(p);
 }
 
 export function productIcon(p?: Product): string {
-  if (
-    p === "neon" ||
-    p === "flexi" ||
-    p === "maximaMaxEfekt" ||
-    p === "pillowInjury"
-  ) {
-    return "/icons/zivot.png";
-  }
-
-  if (
-    p === "cppAuto" ||
-    p === "allianzAuto" ||
-    p === "csobAuto" ||
-    p === "uniqaAuto" ||
-    p === "pillowAuto" ||
-    p === "kooperativaAuto"
-  ) {
-    return "/icons/icon_auto.png";
-  }
-
-  if (p === "zamex") {
-    return "/icons/icon_zamex.png";
-  }
-
-  if (
-    p === "domex" ||
-    p === "koopmajetekobcan" ||
-    p === "maxdomov" ||
-    p === "cppPPRs" ||
-    p === "cppPPRbez" ||
-    p === "cppsimplex"
-  ) {
-    return "/icons/icon_domex.png";
-  }
-
-  if (p === "cppcestovko" || p === "axacestovko") {
-    return "/icons/icon_cestovko.png";
-  }
-
-  if (p === "comfortcc") {
-    return "/icons/trezor.png";
-  }
-
-  return "/icons/produkt.png";
+  return productIconFromCatalog(p);
 }
 
 export function positionLabel(pos?: Position | null): string {
-  const map: Record<Position, string> = {
-    poradce1: "Poradce 1",
-    poradce2: "Poradce 2",
-    poradce3: "Poradce 3",
-    poradce4: "Poradce 4",
-    poradce5: "Poradce 5",
-    poradce6: "Poradce 6",
-    poradce7: "Poradce 7",
-    poradce8: "Poradce 8",
-    poradce9: "Poradce 9",
-    poradce10: "Poradce 10",
-    manazer4: "Manažer 4",
-    manazer5: "Manažer 5",
-    manazer6: "Manažer 6",
-    manazer7: "Manažer 7",
-    manazer8: "Manažer 8",
-    manazer9: "Manažer 9",
-    manazer10: "Manažer 10",
-  };
-  return pos ? map[pos] ?? pos : "—";
+  return positionLabelValue(pos);
 }
 
 export function frequencyText(raw?: PaymentFrequency | null): string {
@@ -489,7 +356,7 @@ export async function calculateResultForPosition(
     }
     case "flexi": {
       const { calculateFlexi } = await import("../../lib/productFormulas/flexi");
-      return calculateFlexi(amount, position, usedMode);
+      return calculateFlexi(amount, position, usedMode, years);
     }
     case "maximaMaxEfekt": {
       const { calculateMaxEfekt } = await import(
