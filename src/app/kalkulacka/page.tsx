@@ -159,6 +159,90 @@ const POSITION_ORDER: Position[] = [
   "manazer10",
 ];
 
+type PositionTimelineEntry = {
+  id: string;
+  position: Position;
+  validFrom: string;
+  validTo: string | null;
+};
+
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isIsoDay(value: string): boolean {
+  if (!ISO_DAY_RE.test(value)) return false;
+  const d = new Date(`${value}T00:00:00`);
+  return !Number.isNaN(d.getTime());
+}
+
+function parsePositionTimeline(raw: unknown): PositionTimelineEntry[] {
+  if (!Array.isArray(raw)) return [];
+
+  const rows: PositionTimelineEntry[] = [];
+  raw.forEach((item, index) => {
+    if (!item || typeof item !== "object") return;
+    const row = item as Record<string, unknown>;
+    const position = row.position as Position;
+    if (!POSITION_ORDER.includes(position)) return;
+
+    const validFrom = typeof row.validFrom === "string" ? row.validFrom.trim() : "";
+    const validToRaw = typeof row.validTo === "string" ? row.validTo.trim() : "";
+    const validTo = validToRaw || null;
+    if (!isIsoDay(validFrom)) return;
+    if (validTo && !isIsoDay(validTo)) return;
+    if (validTo && validTo < validFrom) return;
+
+    rows.push({
+      id:
+        typeof row.id === "string" && row.id.trim().length > 0
+          ? row.id.trim()
+          : `timeline_${index}`,
+      position,
+      validFrom,
+      validTo,
+    });
+  });
+
+  rows.sort((a, b) => {
+    if (a.validFrom !== b.validFrom) return a.validFrom.localeCompare(b.validFrom);
+    const aTo = a.validTo ?? "9999-12-31";
+    const bTo = b.validTo ?? "9999-12-31";
+    return aTo.localeCompare(bTo);
+  });
+
+  return rows;
+}
+
+function resolvePositionTimelineMatch(
+  signedDate: string,
+  timeline: PositionTimelineEntry[]
+): PositionTimelineEntry | null {
+  if (!isIsoDay(signedDate) || timeline.length === 0) return null;
+
+  const candidates = timeline.filter((row) => {
+    if (row.validFrom > signedDate) return false;
+    // validTo je hranice intervalu (nevčetně), aby řádky mohly navazovat stejným datem
+    if (row.validTo && signedDate >= row.validTo) return false;
+    return true;
+  });
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => {
+    if (a.validFrom !== b.validFrom) return b.validFrom.localeCompare(a.validFrom);
+    const aTo = a.validTo ?? "9999-12-31";
+    const bTo = b.validTo ?? "9999-12-31";
+    return bTo.localeCompare(aTo);
+  });
+
+  return candidates[0] ?? null;
+}
+
+function formatIsoDay(value: string | null): string {
+  if (!value || !isIsoDay(value)) return "—";
+  const d = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("cs-CZ");
+}
+
 function normalizeTitleKey(title: string): string {
   const t = title.toLowerCase();
   if (t.includes("z platby")) return `payment-${t}`;
@@ -578,6 +662,13 @@ export default function CalculatorPage() {
   >([]);
   const [userCommissionMode, setUserCommissionMode] = useState<CommissionMode | null>(null);
   const [baseUserPosition, setBaseUserPosition] = useState<Position | null>(null);
+  const [positionTimeline, setPositionTimeline] = useState<PositionTimelineEntry[]>([]);
+  const [timelineMatchedPosition, setTimelineMatchedPosition] = useState<{
+    position: Position;
+    validFrom: string;
+    validTo: string | null;
+    unavailable: boolean;
+  } | null>(null);
   const [showCoefModal, setShowCoefModal] = useState(false);
   const isLifeProduct = useMemo(() => LIFE_PRODUCTS.includes(product), [product]);
   const replacementEligible = useMemo(
@@ -727,6 +818,8 @@ export default function CalculatorPage() {
         const email = user.email.toLowerCase();
         const userSnap = await getDoc(doc(db, "users", email));
         const data = userSnap.data() as any;
+        const parsedPositionTimeline = parsePositionTimeline(data?.positionTimeline);
+        setPositionTimeline(parsedPositionTimeline);
         const pos = (data?.position as Position | undefined) ?? null;
         if (pos) {
           setPosition(pos);
@@ -824,11 +917,41 @@ export default function CalculatorPage() {
         setManagerChainSnapshot(chain);
       } catch (err) {
         console.error("Failed to load user position", err);
+        setPositionTimeline([]);
       }
     };
 
     loadUserPosition();
   }, [user]);
+
+  useEffect(() => {
+    if (!contractSignedDate.trim() || positionTimeline.length === 0) {
+      setTimelineMatchedPosition(null);
+      return;
+    }
+
+    const match = resolvePositionTimelineMatch(contractSignedDate.trim(), positionTimeline);
+    if (!match) {
+      setTimelineMatchedPosition(null);
+      return;
+    }
+
+    const allowed = baseUserPosition
+      ? allowedPositionsForUser(baseUserPosition)
+      : POSITION_ORDER;
+    const unavailable = !allowed.includes(match.position);
+
+    setTimelineMatchedPosition({
+      position: match.position,
+      validFrom: match.validFrom,
+      validTo: match.validTo,
+      unavailable,
+    });
+
+    if (!unavailable) {
+      setPosition((prev) => (prev === match.position ? prev : match.position));
+    }
+  }, [contractSignedDate, positionTimeline, baseUserPosition]);
 
   useEffect(() => {
     const allowed = allowedFrequencies(product);
@@ -1640,13 +1763,24 @@ export default function CalculatorPage() {
     // kontrola duplicitního čísla smlouvy
     const trimmedContractNumber = contractNumber.trim();
     const trimmedOriginalContractNumber = originalContractNumber.trim();
+    const trimmedReplacementContractNumber = replacementContractNumber.trim();
     const shouldRefreshOriginalNeon =
       product === "neon" &&
       refreshOriginalOpen &&
       trimmedOriginalContractNumber.length > 0;
+    const shouldReplacementStorno =
+      replacementEligible &&
+      replacementOpen &&
+      trimmedReplacementContractNumber.length > 0;
 
     if (product === "neon" && refreshOriginalOpen && !trimmedOriginalContractNumber) {
       const msg = "Pro refresh doplň číslo původní smlouvy.";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return;
+    }
+    if (replacementEligible && replacementOpen && !trimmedReplacementContractNumber) {
+      const msg = "Pro náhradu doplň číslo původní smlouvy.";
       setSaveMessage(msg);
       setValidationError(msg);
       return;
@@ -1674,22 +1808,6 @@ export default function CalculatorPage() {
         }
       } catch (dupErr) {
         console.error("Kontrola duplicitních smluv selhala", dupErr);
-      }
-    }
-
-    if (replacementEligible) {
-      const trimmedReplacement = replacementContractNumber.trim();
-      if (trimmedReplacement) {
-        try {
-          const toDelete = await getDocs(
-            query(entriesRef, where("contractNumber", "==", trimmedReplacement))
-          );
-          if (!toDelete.empty) {
-            await Promise.all(toDelete.docs.map((d) => deleteDoc(d.ref)));
-          }
-        } catch (delErr) {
-          console.error("Smazání nahrazované smlouvy selhalo", delErr);
-        }
       }
     }
 
@@ -1926,6 +2044,67 @@ export default function CalculatorPage() {
           );
         }
       }
+      let replacementStornoFailed = false;
+      let replacementStornoUpdated = 0;
+      if (shouldReplacementStorno) {
+        const stornoDate = start ?? new Date();
+        const replacementSignedDate = signed ?? new Date();
+        try {
+          const token = await user.getIdToken();
+          const replacementRes = await fetch("/api/contracts", {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action: "replacementStorno",
+              originalContractNumber: trimmedReplacementContractNumber,
+              newEntryId: savedContractRef.id,
+              stornoDateMs: stornoDate.getTime(),
+              replacementSignedDateMs: replacementSignedDate.getTime(),
+            }),
+          });
+          const replacementRaw = await replacementRes.text();
+          let replacementData:
+            | { ok: true; updated?: number }
+            | { ok: false; error?: string }
+            | null = null;
+          if (replacementRaw) {
+            try {
+              replacementData = JSON.parse(replacementRaw) as
+                | { ok: true; updated?: number }
+                | { ok: false; error?: string };
+            } catch {
+              replacementData = null;
+            }
+          }
+
+          if (!replacementRes.ok) {
+            const apiError =
+              replacementData && replacementData.ok === false
+                ? replacementData.error
+                : null;
+            throw new Error(
+              apiError ||
+                `Náhrada storno selhala (HTTP ${replacementRes.status}).`
+            );
+          }
+
+          if (!replacementData || replacementData.ok !== true) {
+            const apiError =
+              replacementData && replacementData.ok === false
+                ? replacementData.error
+                : null;
+            throw new Error(apiError || "Náhradu storna se nepodařilo uložit.");
+          }
+
+          replacementStornoUpdated = Number(replacementData.updated ?? 0);
+        } catch (replacementErr) {
+          replacementStornoFailed = true;
+          console.warn("Označení nahrazované smlouvy jako stornované selhalo", replacementErr);
+        }
+      }
 
       if (typeof window !== "undefined") {
         try {
@@ -1955,6 +2134,24 @@ export default function CalculatorPage() {
             `Smlouva byla uložena. Původní smlouva (${trimmedOriginalContractNumber}) nebyla nalezena k označení storna.`
           );
         }
+      } else if (shouldReplacementStorno) {
+        const stornoDateLabel =
+          start && Number.isFinite(start.getTime())
+            ? start.toLocaleDateString("cs-CZ")
+            : policyStartDate.trim();
+        if (replacementStornoFailed) {
+          setSaveMessage(
+            "Smlouva byla uložena, ale původní smlouvu se nepodařilo označit jako stornovanou."
+          );
+        } else if (replacementStornoUpdated > 0) {
+          setSaveMessage(
+            `Smlouva byla uložena. Nahrazovaná smlouva (${trimmedReplacementContractNumber}) byla označena jako stornovaná k ${stornoDateLabel}.`
+          );
+        } else {
+          setSaveMessage(
+            `Smlouva byla uložena. Nahrazovaná smlouva (${trimmedReplacementContractNumber}) nebyla nalezena k označení storna.`
+          );
+        }
       } else {
         setSaveMessage("Smlouva byla uložena mezi sepsané.");
       }
@@ -1964,6 +2161,8 @@ export default function CalculatorPage() {
       });
       setOriginalContractNumber("");
       setRefreshOriginalOpen(false);
+      setReplacementContractNumber("");
+      setReplacementOpen(false);
     } catch (error) {
       console.error("Chyba při ukládání smlouvy", error);
       setSaveMessage(
@@ -2683,7 +2882,7 @@ export default function CalculatorPage() {
                   </div>
                   {replacementOpen && (
                     <p className="text-[11px] text-slate-600">
-                      Při uložení smažeme nahrazovanou smlouvu se stejným číslem.
+                      Při uložení označíme nahrazovanou smlouvu jako stornovanou k datu počátku nové smlouvy.
                     </p>
                   )}
                 </div>
@@ -2804,6 +3003,31 @@ export default function CalculatorPage() {
                       </option>
                     ))}
                   </select>
+                  {contractSignedDate.trim() && positionTimeline.length > 0 && (
+                    <p
+                      className={`text-[11px] ${
+                        timelineMatchedPosition?.unavailable
+                          ? "text-amber-700"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      {timelineMatchedPosition
+                        ? timelineMatchedPosition.unavailable
+                          ? `Timeline pro ${formatIsoDay(
+                              contractSignedDate.trim()
+                            )} ukazuje pozici ${positionLabel(
+                              timelineMatchedPosition.position
+                            )}, ale není v povoleném rozsahu tvé aktuální role.`
+                          : `Pozice byla předvyplněná z timeline: ${positionLabel(
+                              timelineMatchedPosition.position
+                            )} (${formatIsoDay(timelineMatchedPosition.validFrom)} - ${
+                              timelineMatchedPosition.validTo
+                                ? formatIsoDay(timelineMatchedPosition.validTo)
+                                : "otevřeno"
+                            }).`
+                        : "Pro zadané datum sjednání nemáš v timeline nastavenou pozici."}
+                    </p>
+                  )}
                 </div>
 
                 {canChooseMode && (

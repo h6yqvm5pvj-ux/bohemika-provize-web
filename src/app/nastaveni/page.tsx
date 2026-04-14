@@ -62,6 +62,73 @@ const COMMISSION_MODES: { id: CommissionMode; label: string }[] = [
   { id: "standard", label: "Běžný" },
 ];
 
+type PositionTimelineItem = {
+  id: string;
+  position: Position;
+  validFrom: string;
+  validTo: string;
+};
+
+const POSITION_SET = new Set<Position>(POSITIONS.map((p) => p.id));
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const createTimelineRowId = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `row_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+};
+
+const isIsoDay = (value: string): boolean => {
+  if (!ISO_DAY_RE.test(value)) return false;
+  const date = new Date(`${value}T00:00:00`);
+  return !Number.isNaN(date.getTime());
+};
+
+const hasInvalidRangeOrder = (validFrom: string, validTo: string): boolean => {
+  if (!validFrom || !validTo) return false;
+  if (!isIsoDay(validFrom) || !isIsoDay(validTo)) return false;
+  return validTo < validFrom;
+};
+
+const parsePositionTimeline = (value: unknown): PositionTimelineItem[] => {
+  if (!Array.isArray(value)) return [];
+  const rows: PositionTimelineItem[] = [];
+
+  value.forEach((raw) => {
+    if (!raw || typeof raw !== "object") return;
+    const row = raw as Record<string, unknown>;
+    const position = row.position as Position;
+    const validFrom = typeof row.validFrom === "string" ? row.validFrom.trim() : "";
+    const validToRaw = typeof row.validTo === "string" ? row.validTo.trim() : "";
+    const validTo = validToRaw || "";
+
+    if (!POSITION_SET.has(position)) return;
+    if (!isIsoDay(validFrom)) return;
+    if (validTo && !isIsoDay(validTo)) return;
+    if (validTo && validTo < validFrom) return;
+
+    rows.push({
+      id:
+        typeof row.id === "string" && row.id.trim().length > 0
+          ? row.id.trim()
+          : createTimelineRowId(),
+      position,
+      validFrom,
+      validTo,
+    });
+  });
+
+  rows.sort((a, b) => {
+    if (a.validFrom !== b.validFrom) return a.validFrom.localeCompare(b.validFrom);
+    const aTo = a.validTo || "9999-12-31";
+    const bTo = b.validTo || "9999-12-31";
+    return aTo.localeCompare(bTo);
+  });
+
+  return rows;
+};
+
 type NotificationSettings = {
   types: {
     newContract: boolean;
@@ -98,6 +165,15 @@ const SETTINGS_KEYS = {
   reduceMotion: "settings.reduceMotion",
   tipsterMode: "settings.tipsterMode",
 };
+
+type SettingsTab = "account" | "career" | "notifications" | "design";
+
+const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
+  { id: "account", label: "Účet" },
+  { id: "career", label: "Kariéra" },
+  { id: "notifications", label: "Notifikace" },
+  { id: "design", label: "Design" },
+];
 
 const normalizeEmail = (email?: string | null) =>
   (email ?? "").trim().toLowerCase();
@@ -156,6 +232,11 @@ export default function SettingsPage() {
   const [boxTheme, setBoxTheme] = useState<BoxTheme>(DEFAULT_BOX_THEME);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [tipsterMode, setTipsterMode] = useState(false);
+  const [positionTimelineDraft, setPositionTimelineDraft] = useState<PositionTimelineItem[]>([]);
+  const [positionTimelineSaving, setPositionTimelineSaving] = useState(false);
+  const [positionTimelineSaved, setPositionTimelineSaved] = useState(false);
+  const [positionTimelineError, setPositionTimelineError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<SettingsTab>("career");
 
   const applyMotionPreference = (off: boolean) => {
     if (typeof document === "undefined") return;
@@ -346,8 +427,10 @@ export default function SettingsPage() {
           setCanChangePosition(
             data.canChangePosition === false ? false : true
           );
+          setPositionTimelineDraft(parsePositionTimeline(data.positionTimeline));
         } else {
           // user dokument neexistuje → zkusíme aspoň natáhnout z localStorage
+          setPositionTimelineDraft([]);
           if (typeof window !== "undefined") {
             const storedPos = window.localStorage.getItem(
               SETTINGS_KEYS.position
@@ -421,6 +504,150 @@ export default function SettingsPage() {
       window.localStorage.setItem(SETTINGS_KEYS.position, value);
     }
     await saveUserFields({ position: value });
+  };
+
+  const addPositionTimelineRow = () => {
+    setPositionTimelineSaved(false);
+    setPositionTimelineError(null);
+    setPositionTimelineDraft((prev) => [
+      ...prev,
+      {
+        id: createTimelineRowId(),
+        position,
+        validFrom: "",
+        validTo: "",
+      },
+    ]);
+  };
+
+  const updatePositionTimelineRow = (
+    rowId: string,
+    patch: Partial<PositionTimelineItem>
+  ) => {
+    setPositionTimelineSaved(false);
+    setPositionTimelineError(null);
+    setPositionTimelineDraft((prev) =>
+      prev.map((row) => (row.id === rowId ? { ...row, ...patch } : row))
+    );
+  };
+
+  const removePositionTimelineRow = (rowId: string) => {
+    setPositionTimelineSaved(false);
+    setPositionTimelineError(null);
+    setPositionTimelineDraft((prev) => prev.filter((row) => row.id !== rowId));
+  };
+
+  const savePositionTimeline = async () => {
+    if (!canChangePosition) return;
+
+    setPositionTimelineSaving(true);
+    setPositionTimelineSaved(false);
+    setPositionTimelineError(null);
+
+    try {
+      const normalized = positionTimelineDraft
+        .map((row) => ({
+          ...row,
+          validFrom: row.validFrom.trim(),
+          validTo: row.validTo.trim(),
+        }))
+        .filter(
+          (row) =>
+            row.position ||
+            row.validFrom.length > 0 ||
+            row.validTo.length > 0
+        );
+
+      for (let i = 0; i < normalized.length; i += 1) {
+        const row = normalized[i];
+        const rowNo = i + 1;
+        if (!POSITION_SET.has(row.position)) {
+          setPositionTimelineError(`Řádek ${rowNo}: vyber platnou pozici v timeline.`);
+          return;
+        }
+        if (!row.validFrom) {
+          setPositionTimelineError(`Řádek ${rowNo}: vyplň datum OD.`);
+          return;
+        }
+        if (!isIsoDay(row.validFrom)) {
+          setPositionTimelineError(`Řádek ${rowNo}: datum OD musí být platné.`);
+          return;
+        }
+        if (row.validTo && !isIsoDay(row.validTo)) {
+          setPositionTimelineError(`Řádek ${rowNo}: datum DO musí být platné.`);
+          return;
+        }
+        if (hasInvalidRangeOrder(row.validFrom, row.validTo)) {
+          setPositionTimelineError(`Řádek ${rowNo}: datum DO nemůže být dřív než datum OD.`);
+          return;
+        }
+      }
+
+      const sorted = [...normalized].sort((a, b) => {
+        if (a.validFrom !== b.validFrom) {
+          return a.validFrom.localeCompare(b.validFrom);
+        }
+        const aTo = a.validTo || "9999-12-31";
+        const bTo = b.validTo || "9999-12-31";
+        return aTo.localeCompare(bTo);
+      });
+
+      const openEndedIndexes = sorted
+        .map((row, index) => (!row.validTo ? index : -1))
+        .filter((index) => index >= 0);
+
+      if (openEndedIndexes.length > 1) {
+        setPositionTimelineError(
+          "Současnost (prázdné datum DO) může být jen u jedné poslední pozice."
+        );
+        return;
+      }
+
+      if (
+        openEndedIndexes.length === 1 &&
+        openEndedIndexes[0] !== sorted.length - 1
+      ) {
+        setPositionTimelineError(
+          "Současnost (prázdné datum DO) je povolena jen u poslední aktuální pozice."
+        );
+        return;
+      }
+
+      for (let i = 1; i < sorted.length; i += 1) {
+        const prev = sorted[i - 1];
+        const current = sorted[i];
+        const prevTo = prev.validTo || "9999-12-31";
+        if (prevTo > current.validFrom) {
+          setPositionTimelineError(
+            `Rozsahy se překrývají mezi řádky ${i} a ${i + 1}. Uprav datum OD/DO.`
+          );
+          return;
+        }
+      }
+
+      const payload = sorted.map((row) => ({
+        id: row.id,
+        position: row.position,
+        validFrom: row.validFrom,
+        validTo: row.validTo || null,
+      }));
+
+      await saveUserFields({ positionTimeline: payload });
+      setPositionTimelineDraft(
+        payload.map((row) => ({
+          id: row.id,
+          position: row.position,
+          validFrom: row.validFrom,
+          validTo: row.validTo ?? "",
+        }))
+      );
+      setPositionTimelineSaved(true);
+    } catch (e) {
+      console.error("Chyba při ukládání timeline pozic:", e);
+      setPositionTimelineError("Timeline pozic se nepodařilo uložit.");
+    } finally {
+      setPositionTimelineSaving(false);
+    }
   };
 
   const handleModeChange = async (value: CommissionMode) => {
@@ -664,7 +891,28 @@ export default function SettingsPage() {
               </span>
             </div>
 
+            <div className="inline-flex w-full flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2">
+              {SETTINGS_TABS.map((tab) => {
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                      active
+                        ? "border border-slate-900 bg-slate-900 text-white"
+                        : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+              {activeTab === "career" && (
               <section className={`h-full space-y-4 ${panelClass}`}>
                 <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
                   <Calculator size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
@@ -672,82 +920,85 @@ export default function SettingsPage() {
                 </h2>
 
                 {canChangePosition ? (
-                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                        Výchozí pozice
-                      </label>
-                      <select
-                        className={fieldClass}
-                        value={position}
-                        onChange={(e) =>
-                          handlePositionChange(e.target.value as Position)
-                        }
-                      >
-                        {POSITIONS.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.label}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-slate-500">
-                        Tahle pozice se použije jako výchozí v kalkulačce.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                        Výchozí režim provizí
-                      </label>
-                      <div
-                        className="inline-flex w-full max-w-md rounded-2xl border border-slate-300 bg-slate-100 p-1"
-                        role="radiogroup"
-                        aria-label="Výchozí režim provizí"
-                      >
-                        {COMMISSION_MODES.map((m) => {
-                          const active = mode === m.id;
-                          const isAccelerated = m.id === "accelerated";
-                          const isStandard = m.id === "standard";
-
-                          return (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={() => void handleModeChange(m.id)}
-                              className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                                active
-                                  ? "border border-slate-900 bg-white text-slate-900 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
-                                  : "border border-transparent text-slate-600 hover:text-slate-900"
-                              }`}
-                              role="radio"
-                              aria-checked={active}
-                            >
-                              {isAccelerated && (
-                                <Zap
-                                  size={14}
-                                  strokeWidth={2.2}
-                                  className={active ? "text-amber-500" : "text-amber-600"}
-                                  aria-hidden="true"
-                                />
-                              )}
-                              {isStandard && (
-                                <Snail
-                                  size={14}
-                                  strokeWidth={2.2}
-                                  className={active ? "text-slate-600" : "text-slate-500"}
-                                  aria-hidden="true"
-                                />
-                              )}
-                              {m.label}
-                            </button>
-                          );
-                        })}
+                  <>
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                          Výchozí pozice
+                        </label>
+                        <select
+                          className={fieldClass}
+                          value={position}
+                          onChange={(e) =>
+                            handlePositionChange(e.target.value as Position)
+                          }
+                        >
+                          {POSITIONS.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-slate-500">
+                          Tahle pozice se použije jako výchozí v kalkulačce.
+                        </p>
                       </div>
-                      <p className="text-xs text-slate-500">
-                        Zrychlený / běžný režim se používá u životního pojištění.
-                      </p>
+
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                          Výchozí režim provizí
+                        </label>
+                        <div
+                          className="inline-flex w-full max-w-md rounded-2xl border border-slate-300 bg-slate-100 p-1"
+                          role="radiogroup"
+                          aria-label="Výchozí režim provizí"
+                        >
+                          {COMMISSION_MODES.map((m) => {
+                            const active = mode === m.id;
+                            const isAccelerated = m.id === "accelerated";
+                            const isStandard = m.id === "standard";
+
+                            return (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => void handleModeChange(m.id)}
+                                className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                                  active
+                                    ? "border border-slate-900 bg-white text-slate-900 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
+                                    : "border border-transparent text-slate-600 hover:text-slate-900"
+                                }`}
+                                role="radio"
+                                aria-checked={active}
+                              >
+                                {isAccelerated && (
+                                  <Zap
+                                    size={14}
+                                    strokeWidth={2.2}
+                                    className={active ? "text-amber-500" : "text-amber-600"}
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                {isStandard && (
+                                  <Snail
+                                    size={14}
+                                    strokeWidth={2.2}
+                                    className={active ? "text-slate-600" : "text-slate-500"}
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                {m.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Zrychlený / běžný režim se používá u životního pojištění.
+                        </p>
+                      </div>
                     </div>
-                  </div>
+
+                  </>
                 ) : (
                   <p className="text-xs text-slate-500">
                     Pozice je nastavena administrátorem.
@@ -780,7 +1031,161 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </section>
+              )}
 
+              {activeTab === "career" && (
+              <section className="h-full space-y-4 rounded-[24px] border border-slate-300 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_55%)] px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:px-6 sm:py-6">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
+                      <Sparkles size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                      <span>Timeline Pozic</span>
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Nastav období od-do. Kalkulačka pak sama předvyplní pozici podle data sjednání.
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Navázání je povolené: datum DO může být stejné jako datum OD dalšího řádku.
+                    </p>
+                  </div>
+                  {canChangePosition && (
+                    <button
+                      type="button"
+                      onClick={addPositionTimelineRow}
+                      className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+                    >
+                      Přidat řádek
+                    </button>
+                  )}
+                </div>
+
+                {!canChangePosition ? (
+                  <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-xs text-slate-600">
+                    Timeline pozic je nastavena administrátorem.
+                  </div>
+                ) : positionTimelineDraft.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">
+                    Timeline zatím nemáš nastavenou. Přidej první řádek a ulož.
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                          {positionTimelineDraft.map((row, rowIndex) => {
+                            const rowRangeError = hasInvalidRangeOrder(
+                              row.validFrom.trim(),
+                              row.validTo.trim()
+                            );
+                            const isLastDraftRow =
+                              rowIndex === positionTimelineDraft.length - 1;
+                            const rowOpenEndedNotLast =
+                              !row.validTo.trim() && !isLastDraftRow;
+                            return (
+                            <div
+                              key={row.id}
+                              className={`rounded-2xl border bg-white px-3 py-3 shadow-[0_6px_16px_rgba(15,23,42,0.05)] ${
+                                rowRangeError || rowOpenEndedNotLast
+                                  ? "border-rose-300"
+                                  : "border-slate-300"
+                              }`}
+                            >
+                              <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_150px_150px_auto]">
+                          <select
+                            value={row.position}
+                            onChange={(e) =>
+                              updatePositionTimelineRow(row.id, {
+                                position: e.target.value as Position,
+                              })
+                            }
+                            className={fieldClass}
+                          >
+                            {POSITIONS.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.label}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="date"
+                            value={row.validFrom}
+                            onChange={(e) =>
+                              updatePositionTimelineRow(row.id, { validFrom: e.target.value })
+                            }
+                            className={fieldClass}
+                            title="Platí od"
+                          />
+                          <input
+                            type="date"
+                            value={row.validTo}
+                            onChange={(e) =>
+                              updatePositionTimelineRow(row.id, { validTo: e.target.value })
+                            }
+                            className={fieldClass}
+                            title="Platí do"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removePositionTimelineRow(row.id)}
+                            className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                          >
+                            Smazat
+                              </button>
+                              </div>
+                              {rowRangeError && (
+                                <p className="mt-2 text-xs font-medium text-rose-700">
+                                  Datum DO nemůže být dřív než datum OD.
+                                </p>
+                              )}
+                              {rowOpenEndedNotLast && (
+                                <p className="mt-2 text-xs font-medium text-rose-700">
+                                  Současnost (prázdné DO) může být jen u posledního řádku.
+                                </p>
+                              )}
+                              {isLastDraftRow && (
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  {row.validTo.trim() ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updatePositionTimelineRow(row.id, { validTo: "" })
+                                      }
+                                      className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200"
+                                    >
+                                      Nastavit DO: současnost
+                                    </button>
+                                  ) : (
+                                    <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                                      Poslední pozice běží do současnosti
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )})}
+                        </div>
+                      )}
+
+                {positionTimelineError ? (
+                  <p className="text-xs font-medium text-rose-700">{positionTimelineError}</p>
+                ) : null}
+
+                {canChangePosition && (
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {positionTimelineSaved ? (
+                      <span className="text-xs font-semibold text-emerald-700">Uloženo</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => void savePositionTimeline()}
+                      disabled={positionTimelineSaving}
+                      className="rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {positionTimelineSaving ? "Ukládám..." : "Uložit timeline"}
+                    </button>
+                  </div>
+                )}
+              </section>
+              )}
+
+              {activeTab === "notifications" && (
               <section className={`h-full space-y-3 ${compactPanelClass}`}>
                 <div className="flex flex-col gap-2.5">
                   <div className="flex items-center justify-between">
@@ -876,8 +1281,10 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </section>
+              )}
             </div>
 
+            {activeTab === "design" && (
             <section className={`space-y-3 ${compactPanelClass}`}>
                 <div className="space-y-2.5">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -993,8 +1400,10 @@ export default function SettingsPage() {
                   </div>
                 </div>
             </section>
+            )}
 
             {/* Účet */}
+            {activeTab === "account" && (
             <section className={`space-y-4 ${panelClass}`}>
               <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
                 <UserRound size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
@@ -1098,6 +1507,7 @@ export default function SettingsPage() {
                 </div>
               </div>
             </section>
+            )}
           </>
         )}
         </div>

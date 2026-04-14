@@ -65,6 +65,20 @@ type ErrorResponse = { ok: false; error: string };
 
 const PAGE_SIZE_DEFAULT = 30;
 const PAGE_SIZE_MAX = 50;
+const REPLACEMENT_STORNO_PRODUCTS = new Set<Product>([
+  "zamex",
+  "domex",
+  "koopmajetekobcan",
+  "maxdomov",
+  "cppsimplex",
+  "cppPPRbez",
+  "cppAuto",
+  "allianzAuto",
+  "csobAuto",
+  "uniqaAuto",
+  "pillowAuto",
+  "kooperativaAuto",
+]);
 
 const isManagerPosition = (pos: Position | null | undefined): boolean =>
   Boolean(pos) && (pos as Position).startsWith("manazer");
@@ -605,6 +619,112 @@ export async function PATCH(req: NextRequest) {
       console.error("PATCH /api/contracts refreshNeonStorno selhal:", refreshErr);
       return NextResponse.json(
         { ok: false, error: `Refresh storno selhalo: ${message}` },
+        { status: 500 }
+      );
+    }
+  }
+
+  if (action === "replacementStorno") {
+    try {
+      const originalContractNumber =
+        typeof body?.originalContractNumber === "string"
+          ? body.originalContractNumber.trim()
+          : "";
+      const newEntryId =
+        typeof body?.newEntryId === "string" ? body.newEntryId.trim() : "";
+      const stornoDateMs = Number(body?.stornoDateMs);
+      const replacementSignedDateMs = Number(body?.replacementSignedDateMs);
+
+      if (!originalContractNumber) {
+        return NextResponse.json(
+          { ok: false, error: "Chybí číslo nahrazované smlouvy." },
+          { status: 400 }
+        );
+      }
+      if (!newEntryId) {
+        return NextResponse.json(
+          { ok: false, error: "Chybí ID nové smlouvy." },
+          { status: 400 }
+        );
+      }
+      if (!Number.isFinite(stornoDateMs) || !Number.isFinite(replacementSignedDateMs)) {
+        return NextResponse.json(
+          { ok: false, error: "Chybí validní data náhrady." },
+          { status: 400 }
+        );
+      }
+
+      const stornoDate = new Date(stornoDateMs);
+      const replacementSignedDate = new Date(replacementSignedDateMs);
+      if (
+        Number.isNaN(stornoDate.getTime()) ||
+        Number.isNaN(replacementSignedDate.getTime())
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "Neplatné datum storna nebo sjednání náhrady." },
+          { status: 400 }
+        );
+      }
+
+      const newEntryRef = adminDb
+        ?.collection("users")
+        .doc(email)
+        .collection("entries")
+        .doc(newEntryId);
+      const newEntrySnap = await newEntryRef?.get();
+      if (!newEntrySnap?.exists) {
+        return NextResponse.json(
+          { ok: false, error: "Nová smlouva pro náhradu nebyla nalezena." },
+          { status: 404 }
+        );
+      }
+
+      const newEntryData = newEntrySnap.data() as ContractDoc | undefined;
+      const newEntryProduct = newEntryData?.productKey as Product | undefined;
+      if (!newEntryProduct || !REPLACEMENT_STORNO_PRODUCTS.has(newEntryProduct)) {
+        return NextResponse.json(
+          { ok: false, error: "Náhrada storno není pro tento produkt podporovaná." },
+          { status: 400 }
+        );
+      }
+
+      const replacementTargets = await findEntriesByContractNumberAcrossUsers(
+        originalContractNumber
+      );
+
+      let updated = 0;
+      for (const snap of replacementTargets) {
+        const data = snap.data() as ContractDoc;
+        if ((data.productKey as Product | undefined) !== newEntryProduct) continue;
+
+        const owner = normalizeEmail(
+          (snap.ref.parent.parent?.id as string | undefined) ??
+            (data.userEmail as string | undefined)
+        );
+        if (owner === email && snap.id === newEntryId) continue;
+
+        await snap.ref.set(
+          {
+            status: "storno",
+            stornoDate,
+            replacementReplacedByEntryId: newEntryId,
+            replacementReplacedByOwnerEmail: email,
+            replacementReplacedBySignedDate: replacementSignedDate,
+          },
+          { merge: true }
+        );
+        updated += 1;
+      }
+
+      return NextResponse.json({ ok: true, updated });
+    } catch (replacementErr: any) {
+      const message =
+        typeof replacementErr?.message === "string" && replacementErr.message.trim()
+          ? replacementErr.message.trim()
+          : "Neznámá chyba při náhradě storno.";
+      console.error("PATCH /api/contracts replacementStorno selhal:", replacementErr);
+      return NextResponse.json(
+        { ok: false, error: `Náhrada storno selhala: ${message}` },
         { status: 500 }
       );
     }
