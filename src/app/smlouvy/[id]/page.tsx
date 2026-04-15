@@ -2697,6 +2697,8 @@ export default function ContractDetailPage() {
     "flex items-baseline justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3";
   const commissionTotalClass =
     "mt-4 rounded-xl border border-slate-300 bg-slate-100 px-4 py-3";
+  const commissionTotalHighlightClass =
+    "mt-4 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-white shadow-[0_10px_20px_rgba(15,23,42,0.28)]";
   const noteCardClass =
     "rounded-[22px] border border-slate-300 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_100%)] px-5 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]";
   const monoHeadingClass = "font-mono tracking-tight text-slate-900";
@@ -3407,14 +3409,14 @@ export default function ContractDetailPage() {
                               </div>
                             </div>
                           ) : (
-                            <>
+                            <div className="flex w-full items-center justify-between gap-4">
                               <span className="text-lg font-semibold">
                                 Celkem meziprovize
                               </span>
                               <span className="text-2xl font-bold text-slate-900">
                                 {formatMoney(managerTotalDisplay)}
                               </span>
-                            </>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -3479,14 +3481,14 @@ export default function ContractDetailPage() {
                                 </div>
                               </div>
                             ) : (
-                              <>
+                              <div className="flex w-full items-center justify-between gap-4">
                                 <span className="text-lg font-semibold">
                                   Celkem meziprovize
                                 </span>
                                 <span className="text-2xl font-bold text-slate-900">
                                   {formatMoney(childManagerTotalDisplay)}
                                 </span>
-                              </>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -3533,31 +3535,31 @@ export default function ContractDetailPage() {
                         })}
                       </div>
 
-                      <div className={commissionTotalClass}>
+                      <div className={commissionTotalHighlightClass}>
                         {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
                           <div className="w-full space-y-2 text-lg">
                             <div className="flex items-center justify-between">
                               <span className="font-semibold">Celkem v 1. roce</span>
-                              <span className="text-2xl font-bold">
+                              <span className="text-2xl font-bold text-emerald-300">
                                 {formatMoney(paymentBasedAdviserTotals.immediate)}
                               </span>
                             </div>
                             <div className="flex items-center justify-between">
                               <span className="font-semibold">Celkem ročně následně</span>
-                              <span className="text-2xl font-bold">
+                              <span className="text-2xl font-bold text-emerald-300">
                                 {formatMoney(paymentBasedAdviserTotals.subsequent)}
                               </span>
                             </div>
                           </div>
                         ) : (
-                          <>
+                          <div className="flex w-full items-center justify-between gap-4">
                             <span className="text-lg font-semibold">
                               Celkem
                             </span>
-                            <span className="text-2xl font-bold text-slate-900">
+                            <span className="text-2xl font-bold text-emerald-300">
                               {formatMoney(adviserTotalDisplay)}
                             </span>
-                          </>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -3613,31 +3615,31 @@ export default function ContractDetailPage() {
                           })}
                         </div>
 
-                        <div className={commissionTotalClass}>
+                        <div className={commissionTotalHighlightClass}>
                           {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
                             <div className="w-full space-y-2 text-lg">
                               <div className="flex items-center justify-between">
                                 <span className="font-semibold">Celkem v 1. roce</span>
-                                <span className="text-2xl font-bold">
+                                <span className="text-2xl font-bold text-emerald-300">
                                   {formatMoney(paymentBasedAdviserTotals.immediate)}
                                 </span>
                               </div>
                               <div className="flex items-center justify-between">
                                 <span className="font-semibold">Celkem ročně následně</span>
-                                <span className="text-2xl font-bold">
+                                <span className="text-2xl font-bold text-emerald-300">
                                   {formatMoney(paymentBasedAdviserTotals.subsequent)}
                                 </span>
                               </div>
                             </div>
                           ) : (
-                            <>
+                            <div className="flex w-full items-center justify-between gap-4">
                               <span className="text-lg font-semibold">
                                 Celkem
                               </span>
-                              <span className="text-2xl font-bold text-slate-900">
+                              <span className="text-2xl font-bold text-emerald-300">
                                 {formatMoney(adviserTotalDisplay)}
                               </span>
-                            </>
+                            </div>
                           )}
                         </div>
                       </div>

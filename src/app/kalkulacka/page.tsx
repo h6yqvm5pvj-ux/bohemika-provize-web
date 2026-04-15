@@ -69,6 +69,7 @@ import {
   doc,
   deleteDoc,
   getDoc,
+  getDocFromServer,
   getDocs,
   limit,
   orderBy,
@@ -815,9 +816,56 @@ export default function CalculatorPage() {
     const loadUserPosition = async () => {
       if (!user?.email) return;
       try {
-        const email = user.email.toLowerCase();
-        const userSnap = await getDoc(doc(db, "users", email));
-        const data = userSnap.data() as any;
+        const readUserDoc = async (docId: string) => {
+          const userRef = doc(db, "users", docId);
+          try {
+            return await getDocFromServer(userRef);
+          } catch {
+            return await getDoc(userRef);
+          }
+        };
+
+        const emailRaw = user.email;
+        const email = emailRaw.toLowerCase();
+        const userRef = doc(db, "users", email);
+        const userSnap = await readUserDoc(email);
+        let data = userSnap.data() as any;
+
+        if (emailRaw !== email) {
+          const rawSnap = await readUserDoc(emailRaw);
+          const rawData = rawSnap.exists() ? (rawSnap.data() as any) : null;
+
+          if (!userSnap.exists() && rawData) {
+            data = rawData;
+            try {
+              await setDoc(userRef, rawData, { merge: true });
+            } catch (migrationError) {
+              console.warn("Failed to migrate legacy user doc ID", migrationError);
+            }
+          } else if (data && rawData) {
+            const normalizedTimeline = parsePositionTimeline(data.positionTimeline);
+            const rawTimeline = parsePositionTimeline(rawData.positionTimeline);
+            if (normalizedTimeline.length === 0 && rawTimeline.length > 0) {
+              data = {
+                ...data,
+                positionTimeline: rawData.positionTimeline,
+              };
+              try {
+                await setDoc(
+                  userRef,
+                  { positionTimeline: rawData.positionTimeline },
+                  { merge: true }
+                );
+              } catch (timelineSyncError) {
+                console.warn(
+                  "Failed to sync legacy position timeline to lowercase user doc",
+                  timelineSyncError
+                );
+              }
+            }
+          }
+        }
+
         const parsedPositionTimeline = parsePositionTimeline(data?.positionTimeline);
         setPositionTimeline(parsedPositionTimeline);
         const pos = (data?.position as Position | undefined) ?? null;

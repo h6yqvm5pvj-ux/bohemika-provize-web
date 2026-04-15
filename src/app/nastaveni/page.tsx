@@ -2,26 +2,37 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import {
   AtSign,
   BellRing,
   Calculator,
+  CircleHelp,
+  ExternalLink,
   KeyRound,
   Palette,
+  ShieldCheck,
   Snail,
   Sparkles,
   UserRound,
+  X,
   Zap,
 } from "lucide-react";
 
 import type { User as FirebaseUser } from "firebase/auth";
 import {
   EmailAuthProvider,
+  FactorId,
+  multiFactor,
   onAuthStateChanged,
   reauthenticateWithCredential,
+  sendEmailVerification,
+  TotpMultiFactorGenerator,
+  type TotpSecret,
   updatePassword,
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, getDocFromServer, setDoc } from "firebase/firestore";
+import QRCode from "qrcode";
 
 import { auth, db } from "../firebase";
 import { AppLayout } from "@/components/AppLayout";
@@ -206,6 +217,67 @@ const hasAnyPushToken = (data: Record<string, unknown>): boolean => {
   return false;
 };
 
+type InlineStatus = {
+  type: "success" | "error" | "info";
+  message: string;
+};
+
+const EXPECTED_MFA_ERROR_CODES = new Set<string>([
+  "auth/wrong-password",
+  "auth/invalid-credential",
+  "auth/invalid-login-credentials",
+  "auth/invalid-verification-code",
+  "auth/code-expired",
+  "auth/requires-recent-login",
+  "auth/too-many-requests",
+  "auth/operation-not-allowed",
+  "auth/unverified-email",
+]);
+
+const isExpectedMfaError = (error: unknown): boolean => {
+  const code = (error as { code?: string })?.code;
+  return typeof code === "string" && EXPECTED_MFA_ERROR_CODES.has(code);
+};
+
+const logMfaIssue = (context: string, error: unknown) => {
+  const code = (error as { code?: string })?.code;
+  if (isExpectedMfaError(error)) {
+    console.warn(`[MFA] ${context}: ${code ?? "unknown"}`);
+    return;
+  }
+  console.error(`[MFA] ${context}:`, error);
+};
+
+const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
+  const err = error as { code?: string };
+  if (
+    err?.code === "auth/wrong-password" ||
+    err?.code === "auth/invalid-credential" ||
+    err?.code === "auth/invalid-login-credentials"
+  ) {
+    return "Aktuální heslo není správné.";
+  }
+  if (err?.code === "auth/invalid-verification-code") {
+    return "Neplatný 2FA kód. Zadej aktuální kód z aplikace.";
+  }
+  if (err?.code === "auth/code-expired") {
+    return "2FA kód vypršel. Zadej nový aktuální kód.";
+  }
+  if (err?.code === "auth/requires-recent-login") {
+    return "Pro tuto změnu je potřeba znovu ověřit heslo.";
+  }
+  if (err?.code === "auth/too-many-requests") {
+    return "Příliš mnoho pokusů. Zkus to prosím později.";
+  }
+  if (err?.code === "auth/operation-not-allowed") {
+    return "TOTP MFA není zapnuté ve Firebase Console (Authentication > Multi-factor).";
+  }
+  if (err?.code === "auth/unverified-email") {
+    return "Nejdřív ověř e-mail účtu. Pak půjde 2FA zapnout.";
+  }
+  return fallback;
+};
+
 export default function SettingsPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
@@ -223,6 +295,18 @@ export default function SettingsPage() {
   >(null);
   const [changingPassword, setChangingPassword] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [mfaPassword, setMfaPassword] = useState("");
+  const [mfaStatus, setMfaStatus] = useState<InlineStatus | null>(null);
+  const [mfaBusy, setMfaBusy] = useState(false);
+  const [mfaForceVerifyingEmail, setMfaForceVerifyingEmail] = useState(false);
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaTotpUid, setMfaTotpUid] = useState<string | null>(null);
+  const [mfaTotpLabel, setMfaTotpLabel] = useState<string | null>(null);
+  const [mfaEnrollmentSecret, setMfaEnrollmentSecret] = useState<TotpSecret | null>(null);
+  const [mfaEnrollmentCode, setMfaEnrollmentCode] = useState("");
+  const [mfaQrCodeDataUrl, setMfaQrCodeDataUrl] = useState("");
+  const [mfaQrCodeLoading, setMfaQrCodeLoading] = useState(false);
+  const [mfaQrCodeError, setMfaQrCodeError] = useState<string | null>(null);
   const [fcmActive, setFcmActive] = useState<boolean | null>(null);
   const [notifyMinutes, setNotifyMinutes] = useState<number>(60);
   const [notificationSettings, setNotificationSettings] =
@@ -236,7 +320,9 @@ export default function SettingsPage() {
   const [positionTimelineSaving, setPositionTimelineSaving] = useState(false);
   const [positionTimelineSaved, setPositionTimelineSaved] = useState(false);
   const [positionTimelineError, setPositionTimelineError] = useState<string | null>(null);
+  const [timelineSaveFlashVisible, setTimelineSaveFlashVisible] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>("career");
+  const [showCareerTimelineHelp, setShowCareerTimelineHelp] = useState(false);
 
   const applyMotionPreference = (off: boolean) => {
     if (typeof document === "undefined") return;
@@ -270,6 +356,107 @@ export default function SettingsPage() {
     return () => unsub();
   }, []);
 
+  const clearMfaDraft = () => {
+    setMfaEnrollmentSecret(null);
+    setMfaEnrollmentCode("");
+    setMfaQrCodeDataUrl("");
+    setMfaQrCodeLoading(false);
+    setMfaQrCodeError(null);
+  };
+
+  const syncMfaState = async (targetUser: FirebaseUser) => {
+    await targetUser.reload();
+    const activeUser = auth.currentUser ?? targetUser;
+    const totpFactor =
+      multiFactor(activeUser).enrolledFactors.find(
+        (factor) => factor.factorId === FactorId.TOTP
+      ) ?? null;
+
+    setMfaEnabled(Boolean(totpFactor));
+    setMfaTotpUid(totpFactor?.uid ?? null);
+    setMfaTotpLabel(totpFactor?.displayName ?? null);
+  };
+
+  useEffect(() => {
+    if (!user) {
+      setMfaEnabled(false);
+      setMfaTotpUid(null);
+      setMfaTotpLabel(null);
+      setMfaStatus(null);
+      setMfaPassword("");
+      clearMfaDraft();
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadMfaState = async () => {
+      try {
+        await syncMfaState(user);
+      } catch (error) {
+        if (!isCancelled) {
+          console.error("Chyba při načítání stavu 2FA:", error);
+          setMfaStatus({
+            type: "error",
+            message: resolveMfaErrorMessage(
+              error,
+              "Nepodařilo se načíst stav 2FA."
+            ),
+          });
+        }
+      }
+    };
+
+    void loadMfaState();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!mfaEnrollmentSecret) {
+      setMfaQrCodeDataUrl("");
+      setMfaQrCodeLoading(false);
+      setMfaQrCodeError(null);
+      return;
+    }
+
+    let isCancelled = false;
+    setMfaQrCodeLoading(true);
+    setMfaQrCodeError(null);
+
+    const accountName =
+      normalizeEmail(user?.email) || user?.email || "bohemika-user";
+    const qrUri = mfaEnrollmentSecret.generateQrCodeUrl(
+      accountName,
+      "Bohemka.App"
+    );
+
+    void QRCode.toDataURL(qrUri, {
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: "M",
+    })
+      .then((dataUrl) => {
+        if (isCancelled) return;
+        setMfaQrCodeDataUrl(dataUrl);
+      })
+      .catch((error) => {
+        console.error("Chyba při generování QR kódu:", error);
+        if (isCancelled) return;
+        setMfaQrCodeError("QR kód se nepodařilo vygenerovat.");
+      })
+      .finally(() => {
+        if (isCancelled) return;
+        setMfaQrCodeLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [mfaEnrollmentSecret, user]);
+
   // načtení metadat uživatele z Firestore
   useEffect(() => {
     const loadMeta = async () => {
@@ -282,24 +469,59 @@ export default function SettingsPage() {
       setLoadingMeta(true);
 
       try {
-        const ref = doc(db, "users", email);
-        let snap = await getDoc(ref);
+        const readUserDoc = async (docId: string) => {
+          const userRef = doc(db, "users", docId);
+          try {
+            return await getDocFromServer(userRef);
+          } catch {
+            return await getDoc(userRef);
+          }
+        };
 
-        if (!snap.exists() && emailRaw && emailRaw !== email) {
-          const rawRef = doc(db, "users", emailRaw);
-          const rawSnap = await getDoc(rawRef);
-          if (rawSnap.exists()) {
+        const ref = doc(db, "users", email);
+        let snap = await readUserDoc(email);
+        let resolvedData = snap.exists() ? (snap.data() as any) : null;
+
+        if (emailRaw && emailRaw !== email) {
+          const rawSnap = await readUserDoc(emailRaw);
+          const rawData = rawSnap.exists() ? (rawSnap.data() as any) : null;
+
+          if (!snap.exists() && rawData) {
             snap = rawSnap;
+            resolvedData = rawData;
             try {
-              await setDoc(ref, rawSnap.data(), { merge: true });
+              await setDoc(ref, rawData, { merge: true });
             } catch (e) {
               console.warn("Chyba při migraci uživatele na lowercase ID:", e);
+            }
+          } else if (resolvedData && rawData) {
+            const normalizedTimeline = parsePositionTimeline(
+              resolvedData.positionTimeline
+            );
+            const rawTimeline = parsePositionTimeline(rawData.positionTimeline);
+            if (normalizedTimeline.length === 0 && rawTimeline.length > 0) {
+              resolvedData = {
+                ...resolvedData,
+                positionTimeline: rawData.positionTimeline,
+              };
+              try {
+                await setDoc(
+                  ref,
+                  { positionTimeline: rawData.positionTimeline },
+                  { merge: true }
+                );
+              } catch (e) {
+                console.warn(
+                  "Chyba při dorovnání timeline z legacy user ID:",
+                  e
+                );
+              }
             }
           }
         }
 
-        if (snap.exists()) {
-          const data = snap.data() as any;
+        if (resolvedData) {
+          const data = resolvedData;
 
           if (data.position) {
             setPosition(data.position as Position);
@@ -486,6 +708,14 @@ export default function SettingsPage() {
     applyMotionPreference(reduceMotion);
   }, [reduceMotion]);
 
+  useEffect(() => {
+    if (!timelineSaveFlashVisible) return;
+    const timeoutId = window.setTimeout(() => {
+      setTimelineSaveFlashVisible(false);
+    }, 2600);
+    return () => window.clearTimeout(timeoutId);
+  }, [timelineSaveFlashVisible]);
+
   async function saveUserFields(partial: Record<string, any>) {
     const email = normalizeEmail(user?.email);
     if (!email) return;
@@ -508,6 +738,7 @@ export default function SettingsPage() {
 
   const addPositionTimelineRow = () => {
     setPositionTimelineSaved(false);
+    setTimelineSaveFlashVisible(false);
     setPositionTimelineError(null);
     setPositionTimelineDraft((prev) => [
       ...prev,
@@ -525,6 +756,7 @@ export default function SettingsPage() {
     patch: Partial<PositionTimelineItem>
   ) => {
     setPositionTimelineSaved(false);
+    setTimelineSaveFlashVisible(false);
     setPositionTimelineError(null);
     setPositionTimelineDraft((prev) =>
       prev.map((row) => (row.id === rowId ? { ...row, ...patch } : row))
@@ -533,15 +765,15 @@ export default function SettingsPage() {
 
   const removePositionTimelineRow = (rowId: string) => {
     setPositionTimelineSaved(false);
+    setTimelineSaveFlashVisible(false);
     setPositionTimelineError(null);
     setPositionTimelineDraft((prev) => prev.filter((row) => row.id !== rowId));
   };
 
   const savePositionTimeline = async () => {
-    if (!canChangePosition) return;
-
     setPositionTimelineSaving(true);
     setPositionTimelineSaved(false);
+    setTimelineSaveFlashVisible(false);
     setPositionTimelineError(null);
 
     try {
@@ -642,9 +874,10 @@ export default function SettingsPage() {
         }))
       );
       setPositionTimelineSaved(true);
+      setTimelineSaveFlashVisible(true);
     } catch (e) {
       console.error("Chyba při ukládání timeline pozic:", e);
-      setPositionTimelineError("Timeline pozic se nepodařilo uložit.");
+      setPositionTimelineError("Historii kariéry se nepodařilo uložit.");
     } finally {
       setPositionTimelineSaving(false);
     }
@@ -835,12 +1068,254 @@ export default function SettingsPage() {
     }
   };
 
+  const reauthenticateForMfaChange = async (
+    targetUser: FirebaseUser | null
+  ): Promise<boolean> => {
+    if (!targetUser || !targetUser.email) {
+      setMfaStatus({ type: "error", message: "Uživatel není přihlášen." });
+      return false;
+    }
+
+    if (!mfaPassword.trim()) {
+      setMfaStatus({
+        type: "error",
+        message: "Zadej aktuální heslo pro potvrzení změny 2FA.",
+      });
+      return false;
+    }
+
+    const credential = EmailAuthProvider.credential(
+      targetUser.email.trim(),
+      mfaPassword
+    );
+    try {
+      await reauthenticateWithCredential(targetUser, credential);
+      return true;
+    } catch (error) {
+      logMfaIssue("reauthenticateForMfaChange", error);
+      setMfaStatus({
+        type: "error",
+        message: resolveMfaErrorMessage(
+          error,
+          "Nepodařilo se ověřit aktuální heslo pro změnu 2FA."
+        ),
+      });
+      return false;
+    }
+  };
+
+  const handleForceVerifyMfaEmail = async () => {
+    if (!user) return;
+    setMfaForceVerifyingEmail(true);
+    setMfaStatus(null);
+    try {
+      await user.reload();
+      const currentUser = auth.currentUser ?? user;
+      setUser(currentUser);
+
+      if (currentUser.emailVerified) {
+        setMfaStatus({
+          type: "success",
+          message: "E-mail je ověřený. Teď můžeš kliknout na Zapnout 2FA.",
+        });
+        return;
+      }
+
+      const idToken = await currentUser.getIdToken(true);
+      const response = await fetch("/api/auth/force-email-verified", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || payload?.ok !== true) {
+        await sendEmailVerification(currentUser);
+        setMfaStatus({
+          type: "info",
+          message:
+            "Automatické ověření se nepodařilo. Poslal jsem ověřovací e-mail, po potvrzení klikni znovu na stejné tlačítko.",
+        });
+        return;
+      }
+
+      await currentUser.reload();
+      const refreshedUser = auth.currentUser ?? currentUser;
+      setUser(refreshedUser);
+      if (refreshedUser.emailVerified) {
+        setMfaStatus({
+          type: "success",
+          message: "E-mail je ověřený. Teď můžeš kliknout na Zapnout 2FA.",
+        });
+        return;
+      }
+
+      await sendEmailVerification(refreshedUser);
+      setMfaStatus({
+        type: "info",
+        message:
+          "Nepodařilo se potvrdit stav e-mailu. Poslal jsem ověřovací e-mail, po potvrzení klikni znovu na stejné tlačítko.",
+      });
+    } catch (error) {
+      logMfaIssue("handleForceVerifyMfaEmail", error);
+      setMfaStatus({
+        type: "error",
+        message: resolveMfaErrorMessage(
+          error,
+          "Nepodařilo se připravit ověření e-mailu pro 2FA."
+        ),
+      });
+    } finally {
+      setMfaForceVerifyingEmail(false);
+    }
+  };
+
+  const handleStartMfaEnrollment = async () => {
+    if (!user) return;
+
+    setMfaBusy(true);
+    setMfaStatus(null);
+
+    try {
+      await user.reload();
+      const activeUser = auth.currentUser ?? user;
+      setUser(activeUser);
+
+      if (!activeUser.emailVerified) {
+        setMfaStatus({
+          type: "error",
+          message:
+            "Nejdřív ověř e-mail účtu. Pak půjde 2FA zapnout.",
+        });
+        return;
+      }
+
+      const reauthenticated = await reauthenticateForMfaChange(activeUser);
+      if (!reauthenticated) return;
+
+      const session = await multiFactor(activeUser).getSession();
+      const secret = await TotpMultiFactorGenerator.generateSecret(session);
+
+      setMfaEnrollmentSecret(secret);
+      setMfaEnrollmentCode("");
+      setMfaStatus({
+        type: "info",
+        message:
+          "Otevři Microsoft Authenticator, přidej účet pomocí setup key a zadej ověřovací kód.",
+      });
+    } catch (error) {
+      logMfaIssue("handleStartMfaEnrollment", error);
+      setMfaStatus({
+        type: "error",
+        message: resolveMfaErrorMessage(
+          error,
+          "Nepodařilo se spustit nastavení 2FA."
+        ),
+      });
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const handleConfirmMfaEnrollment = async () => {
+    if (!user || !mfaEnrollmentSecret) return;
+
+    const otp = mfaEnrollmentCode.trim();
+    if (!otp) {
+      setMfaStatus({
+        type: "error",
+        message: "Zadej jednorázový kód z aplikace Microsoft Authenticator.",
+      });
+      return;
+    }
+
+    setMfaBusy(true);
+    setMfaStatus(null);
+
+    try {
+      const assertion = TotpMultiFactorGenerator.assertionForEnrollment(
+        mfaEnrollmentSecret,
+        otp
+      );
+      await multiFactor(user).enroll(assertion, "Microsoft Authenticator");
+      await syncMfaState(user);
+
+      setMfaPassword("");
+      clearMfaDraft();
+      setMfaStatus({
+        type: "success",
+        message: "2FA bylo úspěšně zapnuto.",
+      });
+    } catch (error) {
+      logMfaIssue("handleConfirmMfaEnrollment", error);
+      setMfaStatus({
+        type: "error",
+        message: resolveMfaErrorMessage(
+          error,
+          "2FA se nepodařilo dokončit. Zkus to prosím znovu."
+        ),
+      });
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const handleDisableMfa = async () => {
+    if (!user) return;
+    if (!mfaTotpUid) {
+      setMfaStatus({
+        type: "error",
+        message: "Aktivní TOTP faktor nebyl nalezen.",
+      });
+      return;
+    }
+
+    setMfaBusy(true);
+    setMfaStatus(null);
+
+    try {
+      const reauthenticated = await reauthenticateForMfaChange(user);
+      if (!reauthenticated) return;
+
+      await multiFactor(user).unenroll(mfaTotpUid);
+      await syncMfaState(user);
+
+      setMfaPassword("");
+      clearMfaDraft();
+      setMfaStatus({
+        type: "success",
+        message: "2FA bylo vypnuto.",
+      });
+    } catch (error) {
+      logMfaIssue("handleDisableMfa", error);
+      setMfaStatus({
+        type: "error",
+        message: resolveMfaErrorMessage(
+          error,
+          "2FA se nepodařilo vypnout. Zkus to prosím znovu."
+        ),
+      });
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
   if (!user) {
     // redirect už běží, tady jen nic nerenderujeme
     return null;
   }
 
   const userEmail = user.email ?? "Neznámý e-mail";
+  const normalizedUserEmail = normalizeEmail(user.email);
+  const mfaIssuer = "Bohemka.App";
+  const mfaAccountName = normalizedUserEmail || userEmail;
+  const mfaQrCodeUri = mfaEnrollmentSecret
+    ? mfaEnrollmentSecret.generateQrCodeUrl(mfaAccountName, mfaIssuer)
+    : "";
   const positionDisplay = POSITIONS.find((p) => p.id === position)?.label ?? position;
   const modeDisplay = COMMISSION_MODES.find((m) => m.id === mode)?.label ?? mode;
   const enabledNotificationTypes = Object.values(notificationSettings.types).filter(Boolean).length;
@@ -857,6 +1332,24 @@ export default function SettingsPage() {
     <AppLayout active="settings">
       <div className="w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
+        {timelineSaveFlashVisible && (
+          <div aria-live="polite" className="fixed bottom-6 right-6 z-50 pointer-events-none">
+            <div className="relative flex items-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.18)]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-white">
+                <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+                  <path
+                    fill="currentColor"
+                    d="M9.5 15.6 6.4 12.5a1 1 0 0 0-1.4 1.4l3.8 3.8a1 1 0 0 0 1.45-.05l8-9a1 1 0 1 0-1.5-1.3l-7.25 8.2Z"
+                  />
+                </svg>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-sm font-semibold text-slate-900">Uloženo!</p>
+                <p className="text-[11px] text-slate-600">Historie kariéry byla uložena.</p>
+              </div>
+            </div>
+          </div>
+        )}
         {/* HEADER */}
         <header className="mb-2">
           <SplitTitle text="Nastavení" className="font-mono !text-slate-900" />
@@ -913,7 +1406,7 @@ export default function SettingsPage() {
 
             <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
               {activeTab === "career" && (
-              <section className={`h-full space-y-4 ${panelClass}`}>
+              <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
                 <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
                   <Calculator size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                   <span>Výchozí kalkulačka</span>
@@ -1034,38 +1527,93 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "career" && (
-              <section className="h-full space-y-4 rounded-[24px] border border-slate-300 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_55%)] px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:px-6 sm:py-6">
+              <section
+                id="timeline-kariery"
+                className="h-full space-y-4 scroll-mt-24 lg:col-span-2 rounded-[24px] border border-slate-300 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_55%)] px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:px-6 sm:py-6"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
                     <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
                       <Sparkles size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                      <span>Timeline Pozic</span>
+                      <span>Historie Kariéry</span>
                     </h2>
                     <p className="text-xs text-slate-500">
                       Nastav období od-do. Kalkulačka pak sama předvyplní pozici podle data sjednání.
                     </p>
-                    <p className="text-xs text-slate-500">
-                      Navázání je povolené: datum DO může být stejné jako datum OD dalšího řádku.
-                    </p>
                   </div>
-                  {canChangePosition && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCareerTimelineHelp(true)}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      <CircleHelp size={13} strokeWidth={2.2} aria-hidden="true" />
+                      Nápověda
+                    </button>
                     <button
                       type="button"
                       onClick={addPositionTimelineRow}
                       className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
                     >
-                      Přidat řádek
+                      Přidat pozici
                     </button>
-                  )}
+                  </div>
                 </div>
 
-                {!canChangePosition ? (
-                  <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-xs text-slate-600">
-                    Timeline pozic je nastavena administrátorem.
+                {showCareerTimelineHelp && (
+                  <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 px-4"
+                    onClick={() => setShowCareerTimelineHelp(false)}
+                  >
+                    <div
+                      className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_20px_50px_rgba(15,23,42,0.3)] sm:px-6"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.16em] text-slate-900">
+                          <CircleHelp size={14} strokeWidth={2.2} className="text-slate-600" />
+                          Nápověda
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => setShowCareerTimelineHelp(false)}
+                          className="rounded-full border border-slate-300 p-1.5 text-slate-600 transition hover:bg-slate-100"
+                          aria-label="Zavřít nápovědu"
+                        >
+                          <X size={14} strokeWidth={2.4} />
+                        </button>
+                      </div>
+
+                      <p className="text-sm leading-relaxed text-slate-700">
+                        Zadej historii své kariéry, najdeš ji v Maxxu pod odkazem{" "}
+                        <a
+                          href="https://sjednatel.bohemiaservis.cz/broker-card"
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="inline-flex items-center gap-1 font-semibold text-slate-900 underline underline-offset-2"
+                        >
+                          https://sjednatel.bohemiaservis.cz/broker-card
+                          <ExternalLink size={13} strokeWidth={2.2} aria-hidden="true" />
+                        </a>
+                        . Záložka kariéra.
+                      </p>
+                    </div>
                   </div>
-                ) : positionTimelineDraft.length === 0 ? (
+                )}
+
+                {positionTimelineDraft.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">
-                    Timeline zatím nemáš nastavenou. Přidej první řádek a ulož.
+                    Historii kariéry zatím nemáš nastavenou. Najdeš ji v Maxxu pod odkazem{" "}
+                    <a
+                      href="https://sjednatel.bohemiaservis.cz/broker-card"
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="font-semibold text-slate-900 underline underline-offset-2"
+                    >
+                      https://sjednatel.bohemiaservis.cz/broker-card
+                    </a>
+                    . Záložka kariéra. Přidej stupně kliknutím na tlačítko Přidat pozici, přidávej od
+                    nejstarší po aktuální tak jako v Maxxu.
                   </div>
                 ) : (
                   <div className="space-y-2.5">
@@ -1167,21 +1715,19 @@ export default function SettingsPage() {
                   <p className="text-xs font-medium text-rose-700">{positionTimelineError}</p>
                 ) : null}
 
-                {canChangePosition && (
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    {positionTimelineSaved ? (
-                      <span className="text-xs font-semibold text-emerald-700">Uloženo</span>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => void savePositionTimeline()}
-                      disabled={positionTimelineSaving}
-                      className="rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {positionTimelineSaving ? "Ukládám..." : "Uložit timeline"}
-                    </button>
-                  </div>
-                )}
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {positionTimelineSaved ? (
+                    <span className="text-xs font-semibold text-emerald-700">Uloženo</span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void savePositionTimeline()}
+                    disabled={positionTimelineSaving}
+                    className="rounded-xl border border-emerald-700 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {positionTimelineSaving ? "Ukládám..." : "Uložit timeline"}
+                  </button>
+                </div>
               </section>
               )}
 
@@ -1504,6 +2050,186 @@ export default function SettingsPage() {
                       )}
                     </div>
                   )}
+
+                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
+                        <ShieldCheck size={12} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
+                        <span>2FA (Microsoft Authenticator)</span>
+                      </div>
+                      <span
+                        className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                          mfaEnabled
+                            ? "border-emerald-700 bg-emerald-600 text-white"
+                            : "border-slate-300 bg-white text-slate-700"
+                        }`}
+                      >
+                        {mfaEnabled ? "Zapnuto" : "Vypnuto"}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-500">
+                      Po zadání hesla budete při přihlášení potvrzovat ještě jednorázový kód z aplikace Microsoft Authenticator.
+                    </p>
+
+                    {!user.emailVerified && !mfaEnabled && (
+                      <div className="space-y-2 rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2.5">
+                        <p className="text-xs text-amber-900">
+                          Pro zapnutí 2FA je potřeba ověřit e-mail účtu. Klikni na hlavní tlačítko níže.
+                        </p>
+                      </div>
+                    )}
+
+                    <input
+                      type="password"
+                      autoComplete="current-password"
+                      className={fieldClass}
+                      placeholder="Aktuální heslo pro potvrzení"
+                      value={mfaPassword}
+                      onChange={(e) => setMfaPassword(e.target.value)}
+                    />
+
+                    {!mfaEnabled && !mfaEnrollmentSecret && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void (
+                            user.emailVerified
+                              ? handleStartMfaEnrollment()
+                              : handleForceVerifyMfaEmail()
+                          )
+                        }
+                        disabled={
+                          mfaBusy ||
+                          mfaForceVerifyingEmail
+                        }
+                        className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {mfaForceVerifyingEmail
+                          ? "Ověřuji e-mail…"
+                          : mfaBusy
+                            ? "Spouštím 2FA…"
+                            : user.emailVerified
+                              ? "Zapnout 2FA"
+                              : "Ověřit e-mail a pokračovat"}
+                      </button>
+                    )}
+
+                    {mfaEnrollmentSecret && (
+                      <div className="space-y-3 rounded-xl border border-slate-300 bg-white p-3">
+                        <p className="text-xs text-slate-600">
+                          V Microsoft Authenticator zvol Přidat účet a naskenuj QR kód.
+                        </p>
+
+                        <div className="flex flex-col items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                          {mfaQrCodeLoading && (
+                            <p className="text-xs text-slate-500">Generuji QR kód…</p>
+                          )}
+                          {!mfaQrCodeLoading && mfaQrCodeDataUrl && (
+                            <Image
+                              src={mfaQrCodeDataUrl}
+                              alt="QR kód pro Microsoft Authenticator"
+                              width={220}
+                              height={220}
+                              unoptimized
+                              className="rounded-lg border border-slate-300 bg-white p-1"
+                            />
+                          )}
+                          {mfaQrCodeError && (
+                            <p className="text-xs text-rose-700">{mfaQrCodeError}</p>
+                          )}
+                          <p className="text-[11px] text-slate-500">
+                            Pokud skenování nefunguje, použij setup key níže.
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                            Setup key
+                          </div>
+                          <div className="mt-1 break-all text-xs font-semibold text-slate-900">
+                            {mfaEnrollmentSecret.secretKey}
+                          </div>
+                        </div>
+
+                        <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <summary className="cursor-pointer text-[11px] font-semibold text-slate-700">
+                            Zobrazit QR URI (pokročilé)
+                          </summary>
+                          <p className="mt-2 break-all text-[10px] text-slate-600">
+                            {mfaQrCodeUri}
+                          </p>
+                        </details>
+
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          className={fieldClass}
+                          placeholder="6místný kód z aplikace"
+                          value={mfaEnrollmentCode}
+                          onChange={(e) =>
+                            setMfaEnrollmentCode(
+                              e.target.value.replace(/\D/g, "").slice(0, 8)
+                            )
+                          }
+                        />
+
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleConfirmMfaEnrollment()}
+                            disabled={mfaBusy}
+                            className="inline-flex items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {mfaBusy ? "Potvrzuji…" : "Potvrdit a zapnout"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              clearMfaDraft();
+                              setMfaStatus(null);
+                            }}
+                            className="text-xs text-slate-500 hover:text-slate-900"
+                          >
+                            Zrušit
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {mfaEnabled && !mfaEnrollmentSecret && (
+                      <div className="space-y-2">
+                        <p className="text-[11px] text-slate-500">
+                          {mfaTotpLabel
+                            ? `Aktivní faktor: ${mfaTotpLabel}`
+                            : "Aktivní faktor: Microsoft Authenticator"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void handleDisableMfa()}
+                          disabled={mfaBusy}
+                          className="inline-flex w-full items-center justify-center rounded-2xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {mfaBusy ? "Vypínám 2FA…" : "Vypnout 2FA"}
+                        </button>
+                      </div>
+                    )}
+
+                    {mfaStatus && (
+                      <div
+                        className={`text-xs ${
+                          mfaStatus.type === "success"
+                            ? "text-emerald-700"
+                            : mfaStatus.type === "info"
+                              ? "text-slate-700"
+                              : "text-rose-700"
+                        }`}
+                      >
+                        {mfaStatus.message}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </section>

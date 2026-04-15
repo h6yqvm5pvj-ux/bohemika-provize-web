@@ -13,6 +13,8 @@ import {
 } from "firebase/auth";
 import type { LucideIcon } from "lucide-react";
 import {
+  ArrowRight,
+  BriefcaseBusiness,
   Calculator,
   CalendarDays,
   FileText,
@@ -53,6 +55,18 @@ const loadFirestore = () => {
   return firestorePromise;
 };
 
+const hasCareerTimelineConfigured = (data: Record<string, unknown>): boolean => {
+  const raw = data.positionTimeline;
+  if (!Array.isArray(raw)) return false;
+  return raw.some((item) => {
+    if (!item || typeof item !== "object") return false;
+    const row = item as Record<string, unknown>;
+    const position = typeof row.position === "string" ? row.position.trim() : "";
+    const validFrom = typeof row.validFrom === "string" ? row.validFrom.trim() : "";
+    return position.length > 0 && validFrom.length > 0;
+  });
+};
+
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -72,6 +86,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     useState<SubscriptionStatusWeb>("none");
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [authReady, setAuthReady] = useState(false);
+  const [needsCareerTimelineSetup, setNeedsCareerTimelineSetup] = useState(false);
+  const [showCareerTimelinePrompt, setShowCareerTimelinePrompt] = useState(false);
   const [hasTeam, setHasTeam] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     const cached = window.sessionStorage.getItem("app.hasTeam");
@@ -87,6 +103,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       if (!u) {
         setSubscriptionStatus("none");
         setLoadingProfile(false);
+        setNeedsCareerTimelineSetup(false);
+        setShowCareerTimelinePrompt(false);
         setHasTeam(false);
       } else {
         setLoadingProfile(true);
@@ -230,29 +248,73 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const emailRaw = currentUser?.email;
     if (!emailRaw) {
       setSubscriptionStatus("none");
+      setNeedsCareerTimelineSetup(false);
       setLoadingProfile(false);
       return;
     }
 
-    const { getFirestore, doc, getDoc } = await loadFirestore();
+    const { getFirestore, doc, getDoc, getDocFromServer, setDoc } =
+      await loadFirestore();
     const db = getFirestore(firebaseApp);
     const email = emailRaw.trim().toLowerCase();
 
     setLoadingProfile(true);
     try {
-      let snap = await getDoc(doc(db, "users", email));
+      const readUserDoc = async (docId: string) => {
+        const userRef = doc(db, "users", docId);
+        try {
+          return await getDocFromServer(userRef);
+        } catch {
+          return await getDoc(userRef);
+        }
+      };
 
-      // fallback: pokud existuje dokument s původním e-mailem (např. s velkými písmeny), zkus ho
-      if (!snap.exists() && emailRaw && emailRaw !== email) {
-        snap = await getDoc(doc(db, "users", emailRaw));
+      let snap = await readUserDoc(email);
+      let resolvedData = snap.exists()
+        ? (snap.data() as Record<string, unknown>)
+        : null;
+
+      if (emailRaw && emailRaw !== email) {
+        const rawSnap = await readUserDoc(emailRaw);
+        const rawData = rawSnap.exists()
+          ? (rawSnap.data() as Record<string, unknown>)
+          : null;
+
+        // fallback: pokud existuje dokument s původním e-mailem (např. s velkými písmeny), zkus ho
+        if (!resolvedData && rawData) {
+          snap = rawSnap;
+          resolvedData = rawData;
+        } else if (resolvedData && rawData) {
+          const normalizedHasTimeline = hasCareerTimelineConfigured(resolvedData);
+          const rawHasTimeline = hasCareerTimelineConfigured(rawData);
+          if (!normalizedHasTimeline && rawHasTimeline) {
+            resolvedData = {
+              ...resolvedData,
+              positionTimeline: rawData.positionTimeline,
+            };
+            try {
+              await setDoc(
+                doc(db, "users", email),
+                { positionTimeline: rawData.positionTimeline },
+                { merge: true }
+              );
+            } catch (e) {
+              console.warn(
+                "Chyba při dorovnání timeline z legacy user ID:",
+                e
+              );
+            }
+          }
+        }
       }
 
-      if (!snap.exists()) {
+      if (!resolvedData) {
         setSubscriptionStatus("none");
+        setNeedsCareerTimelineSetup(false);
         return;
       }
 
-      const data = snap.data() as any;
+      const data = resolvedData;
       const statusRaw = (data.subscriptionStatus as string | undefined)?.trim().toLowerCase();
       let status: SubscriptionStatusWeb = "none";
 
@@ -265,9 +327,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       }
 
       setSubscriptionStatus(status);
+      setNeedsCareerTimelineSetup(!hasCareerTimelineConfigured(data as Record<string, unknown>));
     } catch (e) {
       console.error("Chyba při načítání subscription profilu:", e);
       setSubscriptionStatus("none");
+      setNeedsCareerTimelineSetup(false);
     } finally {
       setLoadingProfile(false);
     }
@@ -278,6 +342,38 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     if (!user) return;
     void loadSubscriptionProfileForUser(user);
   }, [user]);
+
+  useEffect(() => {
+    if (!user?.email) return;
+    if (loadingProfile || subscriptionStatus === "expired") return;
+    if (!needsCareerTimelineSetup) {
+      setShowCareerTimelinePrompt(false);
+      return;
+    }
+    if (pathname === "/nastaveni") {
+      setShowCareerTimelinePrompt(false);
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    const key = `app.careerTimelinePromptDismissed:${user.email.toLowerCase()}`;
+    const dismissed = window.sessionStorage.getItem(key) === "1";
+    if (!dismissed) {
+      setShowCareerTimelinePrompt(true);
+    }
+  }, [user?.email, loadingProfile, subscriptionStatus, needsCareerTimelineSetup, pathname]);
+
+  const markCareerTimelinePromptDismissed = () => {
+    if (!user?.email || typeof window === "undefined") return;
+    const key = `app.careerTimelinePromptDismissed:${user.email.toLowerCase()}`;
+    window.sessionStorage.setItem(key, "1");
+  };
+
+  const handleCareerTimelineSetup = () => {
+    markCareerTimelinePromptDismissed();
+    setShowCareerTimelinePrompt(false);
+    router.push("/nastaveni#timeline-kariery");
+  };
 
   // Zapsat lastActive do Firestore při přihlášení + periodické obnovení
   useEffect(() => {
@@ -462,6 +558,31 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       />
 
       <div className="relative flex min-h-screen">
+        {showCareerTimelinePrompt && !showPaywall && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 px-4">
+            <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.35)] sm:p-7">
+              <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-300 bg-emerald-50 text-emerald-700">
+                <BriefcaseBusiness size={22} strokeWidth={2.1} aria-hidden="true" />
+              </div>
+              <h2 className="text-xl font-semibold text-slate-900">
+                Nutnost vyplnit historii kariéry
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                Pro správné předvyplnění pozice a přesné výpočty je potřeba doplnit Historii
+                kariéry. Pokračuj kliknutím na tlačítko níže.
+              </p>
+              <button
+                type="button"
+                onClick={handleCareerTimelineSetup}
+                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              >
+                Nastavit kariéru
+                <ArrowRight size={16} strokeWidth={2.2} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* SIDEBAR */}
         <aside className="hidden w-56 flex-col border-r border-slate-200 bg-white/95 font-mono shadow-[8px_0_30px_rgba(15,23,42,0.08)] backdrop-blur-sm lg:flex">
           <div className="border-b border-slate-200 px-5 py-5">
