@@ -1,0 +1,1 @@
+export { calculateSlaviaAuto } from "../productFormulas";

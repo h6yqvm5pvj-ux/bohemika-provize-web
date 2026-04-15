@@ -34,6 +34,7 @@ import {
   calculateKoopMajetekObcan,
   calculateMaxdomov,
   calculateCppAuto,
+  calculateSlaviaAuto,
   calculateCppPPRbez,
   calculateCppPPRs,
   calculateCppSimplex,
@@ -94,6 +95,7 @@ const SETTINGS_KEYS = {
 const TIPSTER_PERCENT_PRESETS = [10, 20, 30, 40, 50, 75, 100];
 const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   cppAuto: "/provize/cppauto.jpg",
+  slaviaauto: "/provize/slaviaauto.jpg",
   allianzAuto: "/provize/allianzauto.jpg",
   csobAuto: "/provize/csobauto.jpg",
   uniqaAuto: "/provize/uniqaauto.jpg",
@@ -130,6 +132,7 @@ const REPLACEMENT_ELIGIBLE_PRODUCTS: Product[] = [
   "maxdomov",
   "cppsimplex",
   "cppAuto",
+  "slaviaauto",
   "allianzAuto",
   "csobAuto",
   "uniqaAuto",
@@ -355,6 +358,7 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "allianzAuto":
       return ["monthly", "quarterly", "semiannual", "annual"];
     case "cppAuto":
+    case "slaviaauto":
     case "csobAuto":
     case "uniqaAuto":
     case "zamex":
@@ -710,6 +714,7 @@ export default function CalculatorPage() {
       case "maxdomov":
         return `Výpočet: platba (${payLabel}) × koeficient (získatelská i následná). Roční částka = × počet plateb (${payPerYear}).`;
       case "cppAuto":
+      case "slaviaauto":
       case "cppsimplex":
       case "allianzAuto":
       case "csobAuto":
@@ -1259,6 +1264,14 @@ export default function CalculatorPage() {
 
     if (product === "cppAuto") {
       const dto = calculateCppAuto(val, frequency, position);
+      setItems(dto.items);
+      setTotal(dto.total);
+      setUnsupported(false);
+      return;
+    }
+
+    if (product === "slaviaauto") {
+      const dto = calculateSlaviaAuto(val, frequency, position);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2306,6 +2319,8 @@ export default function CalculatorPage() {
       }
       case "cppAuto":
         return calculateCppAuto(val, freq, pos);
+      case "slaviaauto":
+        return calculateSlaviaAuto(val, freq, pos);
       case "cppPPRbez": {
         const dto = calculateCppPPRbez(val, freq, pos);
         const filtered = dto.items.filter((i) =>

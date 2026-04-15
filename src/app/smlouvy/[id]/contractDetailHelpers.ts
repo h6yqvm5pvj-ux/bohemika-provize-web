@@ -61,6 +61,9 @@ export function preloadFormulaModule(product?: Product | null) {
     case "cppAuto":
       import("../../lib/productFormulas/cppAuto");
       break;
+    case "slaviaauto":
+      import("../../lib/productFormulas/slaviaAuto");
+      break;
     case "cppPPRs":
       import("../../lib/productFormulas/cppPPRs");
       break;
@@ -401,6 +404,12 @@ export async function calculateResultForPosition(
     case "cppAuto": {
       const { calculateCppAuto } = await import("../../lib/productFormulas/cppAuto");
       return calculateCppAuto(amount, freq, position);
+    }
+    case "slaviaauto": {
+      const { calculateSlaviaAuto } = await import(
+        "../../lib/productFormulas/slaviaAuto"
+      );
+      return calculateSlaviaAuto(amount, freq, position);
     }
     case "cppPPRs": {
       const { calculateCppPPRs } = await import("../../lib/productFormulas/cppPPRs");

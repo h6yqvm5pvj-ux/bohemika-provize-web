@@ -1309,6 +1309,28 @@ export function calculateCppAuto(
   return { items, total: annualTotal };
 }
 
+// ---------- SLAVIA Auto ----------
+
+function slaviaAutoCoefficient(position: Position): number {
+  return cppAutoCoefficient(position);
+}
+
+export function calculateSlaviaAuto(
+  amount: number,
+  frequency: PaymentFrequency,
+  position: Position
+): CommissionResultDTO {
+  const coef = slaviaAutoCoefficient(position);
+  const perPayment = amount * coef;
+  const annualTotal = perPayment * periodsPerYear(frequency);
+
+  const items: CommissionResultItemDTO[] = [
+    { title: "🚗 Okamžitá provize", amount: perPayment },
+    { title: "📅 Provize za rok", amount: annualTotal },
+  ];
+  return { items, total: annualTotal };
+}
+
 // ---------- ČPP Simplex ----------
 
 function cppSimplexCoefficient(position: Position): number {
@@ -2023,6 +2045,7 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "maxdomov",
   "cppsimplex",
   "cppAuto",
+  "slaviaauto",
   "allianzAuto",
   "csobAuto",
   "uniqaAuto",
@@ -2109,6 +2132,8 @@ export function getCoefficientSummary(
       return [{ label: "Koeficient (z platby)", value: cppSimplexCoefficient(position) }];
     case "cppAuto":
       return [{ label: "Koeficient (z platby)", value: cppAutoCoefficient(position) }];
+    case "slaviaauto":
+      return [{ label: "Koeficient (z platby)", value: slaviaAutoCoefficient(position) }];
     case "cppPPRbez":
       return [
         { label: "Okamžitá provize (z platby)", value: cppPPRbezImmediateCoefficient(position) },

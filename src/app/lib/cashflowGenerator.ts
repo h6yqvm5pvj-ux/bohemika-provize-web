@@ -360,6 +360,7 @@ export const CashflowGenerator = {
 
         // ============= OSTATNÍ AUTO – podle frekvence (ČPP, ČSOB, Kooperativa) =============
         case "cppAuto":
+        case "slaviaauto":
         case "cppPPRs":
         case "csobAuto":
         case "kooperativaAuto":

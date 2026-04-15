@@ -11,6 +11,7 @@ export type Product =
   | "maxdomov"
   | "cppsimplex"
   | "cppAuto"
+  | "slaviaauto"
   | "allianzAuto"
   | "csobAuto"
   | "uniqaAuto"

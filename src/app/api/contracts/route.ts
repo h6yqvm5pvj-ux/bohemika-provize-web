@@ -73,6 +73,7 @@ const REPLACEMENT_STORNO_PRODUCTS = new Set<Product>([
   "cppsimplex",
   "cppPPRbez",
   "cppAuto",
+  "slaviaauto",
   "allianzAuto",
   "csobAuto",
   "uniqaAuto",

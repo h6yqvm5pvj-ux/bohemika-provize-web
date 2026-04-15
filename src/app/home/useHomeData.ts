@@ -6,6 +6,7 @@ import {
   calculateAxaCestovko,
   calculateComfortCC,
   calculateCppAuto,
+  calculateSlaviaAuto,
   calculateCppCestovko,
   calculateCppPPRbez,
   calculateCppPPRs,
@@ -199,6 +200,8 @@ function commissionItemsForPosition(
       return calculateMaxdomov(amount, freq, pos).items;
     case "cppAuto":
       return calculateCppAuto(amount, freq, pos).items;
+    case "slaviaauto":
+      return calculateSlaviaAuto(amount, freq, pos).items;
     case "cppsimplex":
       return calculateCppSimplex(amount, freq, pos).items;
     case "allianzAuto":

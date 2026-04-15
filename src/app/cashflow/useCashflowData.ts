@@ -23,6 +23,7 @@ import {
   calculateAxaCestovko,
   calculateComfortCC,
   calculateCppAuto,
+  calculateSlaviaAuto,
   calculateCppCestovko,
   calculateCppPPRbez,
   calculateCppPPRs,
@@ -133,6 +134,8 @@ function commissionItemsForPosition(
       return calculateMaxdomov(amount, frequency, position).items;
     case "cppAuto":
       return calculateCppAuto(amount, frequency, position).items;
+    case "slaviaauto":
+      return calculateSlaviaAuto(amount, frequency, position).items;
     case "cppsimplex":
       return calculateCppSimplex(amount, frequency, position).items;
     case "allianzAuto":
@@ -559,6 +562,7 @@ export function useCashflowData({
             if (productFilter === "auto") {
               return (
                 product === "cppAuto" ||
+                product === "slaviaauto" ||
                 product === "allianzAuto" ||
                 product === "csobAuto" ||
                 product === "uniqaAuto" ||

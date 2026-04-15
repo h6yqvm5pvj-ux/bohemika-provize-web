@@ -5,6 +5,7 @@ export type ProductInstitutionId =
   | "kooperativa"
   | "maxima"
   | "allianz"
+  | "slavia"
   | "uniqa"
   | "csob"
   | "pillow"
@@ -50,6 +51,7 @@ const INSTITUTIONS: Record<ProductInstitutionId, ProductInstitutionMeta> = {
   kooperativa: { id: "kooperativa", label: "Kooperativa", logoPath: "/icons/koop.png" },
   maxima: { id: "maxima", label: "Maxima", logoPath: "/icons/maxima.png" },
   allianz: { id: "allianz", label: "Allianz", logoPath: "/icons/allianz.png" },
+  slavia: { id: "slavia", label: "SLAVIA", logoPath: "/icons/produkt.png" },
   uniqa: { id: "uniqa", label: "UNIQA", logoPath: "/icons/uniqa.png" },
   csob: { id: "csob", label: "ČSOB", logoPath: "/icons/csob.png" },
   pillow: { id: "pillow", label: "Pillow", logoPath: "/icons/pillow.png" },
@@ -70,6 +72,7 @@ export const PRODUCT_ORDER: Product[] = [
   "maxdomov",
   "cppsimplex",
   "cppAuto",
+  "slaviaauto",
   "cppPPRs",
   "cppPPRbez",
   "allianzAuto",
@@ -143,6 +146,12 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
     label: "ČPP Auto",
     icon: "/icons/icon_auto.png",
     institutionId: "cpp",
+    category: "auto",
+  },
+  slaviaauto: {
+    label: "SLAVIA Auto",
+    icon: "/icons/icon_auto.png",
+    institutionId: "slavia",
     category: "auto",
   },
   cppPPRs: {

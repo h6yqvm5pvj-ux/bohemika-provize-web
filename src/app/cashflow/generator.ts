@@ -359,6 +359,7 @@ export function generateCashflow(
       }
 
       case "cppAuto":
+      case "slaviaauto":
       case "cppsimplex":
       case "cppPPRs":
       case "csobAuto":

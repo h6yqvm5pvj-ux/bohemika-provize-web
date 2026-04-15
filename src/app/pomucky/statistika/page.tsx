@@ -32,6 +32,7 @@ import {
   calculateAxaCestovko,
   calculateComfortCC,
   calculateCppAuto,
+  calculateSlaviaAuto,
   calculateCppCestovko,
   calculateCppPPRbez,
   calculateCppPPRs,
@@ -153,6 +154,8 @@ function calculateCommission(
       return immediateCommission(calculateMaxdomov(premium, "annual", pos));
     case "cppAuto":
       return immediateCommission(calculateCppAuto(premium, "annual", pos));
+    case "slaviaauto":
+      return immediateCommission(calculateSlaviaAuto(premium, "annual", pos));
     case "cppsimplex":
       return immediateCommission(calculateCppSimplex(premium, "annual", pos));
     case "allianzAuto":
