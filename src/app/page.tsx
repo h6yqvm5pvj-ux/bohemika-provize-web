@@ -833,7 +833,7 @@ export default function HomePage() {
 
   const sectionSpan: Record<HomeSection, string> = {
     gold: "md:col-span-1",
-    summary: "md:col-span-2",
+    summary: showTeamBox ? "md:col-span-2" : "md:col-span-1",
     goal:
       showLeaderboardSection && showGoldWidget
         ? "md:col-span-1 md:col-start-2"

@@ -33,30 +33,28 @@ export function ProductionSummarySection({
   if (!showTeamBox) {
     return (
       <section className={compactSummaryCardClass}>
-        <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-8">
-          <h2 className="text-center text-2xl font-semibold text-white sm:text-left sm:text-3xl">
-            Produkce
+        <div className="flex min-h-[190px] flex-col items-center justify-center gap-5 text-center sm:min-h-[210px]">
+          <h2 className="text-4xl font-semibold text-white sm:text-5xl">
+            Vlastní produkce
           </h2>
           {loading ? (
-            <p className="text-center text-base text-slate-300 sm:col-span-2 sm:text-left">
-              Načítám…
-            </p>
+            <p className="text-base text-slate-300">Načítám…</p>
           ) : (
             <>
-              <dl className="space-y-2 text-center sm:pr-4">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <dl className="space-y-1.5">
+                <dt className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
                   Počet smluv
                 </dt>
-                <dd className="text-4xl font-semibold text-emerald-400 sm:text-5xl">
-                  <AnimatedNumber value={totalContractsCount} />
+                <dd className="text-6xl font-semibold text-white sm:text-7xl">
+                  <AnimatedNumber value={myContractsCount} />
                 </dd>
               </dl>
-              <dl className="space-y-2 text-center sm:pl-4">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <dl className="space-y-1.5">
+                <dt className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
                   Provize
                 </dt>
-                <dd className="text-4xl font-semibold text-emerald-400 sm:text-5xl">
-                  <AnimatedMoney value={totalWithTeam} />
+                <dd className="text-5xl font-semibold text-white sm:text-6xl">
+                  <AnimatedMoney value={myImmediateSum} />
                 </dd>
               </dl>
             </>
