@@ -499,7 +499,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       href: "/muj-tym",
       label: "Můj tým",
       icon: UsersRound,
-      requiresTeam: true,
     },
     { key: "calc", href: "/kalkulacka", label: "Kalkulačka", icon: Calculator },
     { key: "contracts", href: "/smlouvy", label: "Smlouvy", icon: FileText },

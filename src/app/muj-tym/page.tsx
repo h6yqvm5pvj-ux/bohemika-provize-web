@@ -23,6 +23,7 @@ import {
   getDocFromServer,
   getDocs,
   query,
+  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -54,6 +55,13 @@ type Member = {
   docId?: string;
 };
 
+type PositionTimelineItem = {
+  id: string;
+  position: Position;
+  validFrom: string;
+  validTo: string;
+};
+
 function nameFromEmail(email: string | null | undefined): string {
   if (!email) return "Neznámý uživatel";
   const local = email.split("@")[0] ?? "";
@@ -82,6 +90,66 @@ const POSITION_OPTIONS: { id: Position; label: string }[] = [
   { id: "manazer9", label: "Manažer 9" },
   { id: "manazer10", label: "Manažer 10" },
 ];
+
+const POSITION_SET = new Set<Position>(POSITION_OPTIONS.map((p) => p.id));
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const createTimelineRowId = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `row_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+};
+
+const isIsoDay = (value: string): boolean => {
+  if (!ISO_DAY_RE.test(value)) return false;
+  const date = new Date(`${value}T00:00:00`);
+  return !Number.isNaN(date.getTime());
+};
+
+const hasInvalidRangeOrder = (validFrom: string, validTo: string): boolean => {
+  if (!validFrom || !validTo) return false;
+  if (!isIsoDay(validFrom) || !isIsoDay(validTo)) return false;
+  return validTo < validFrom;
+};
+
+const parsePositionTimeline = (value: unknown): PositionTimelineItem[] => {
+  if (!Array.isArray(value)) return [];
+  const rows: PositionTimelineItem[] = [];
+
+  value.forEach((raw) => {
+    if (!raw || typeof raw !== "object") return;
+    const row = raw as Record<string, unknown>;
+    const position = row.position as Position;
+    const validFrom = typeof row.validFrom === "string" ? row.validFrom.trim() : "";
+    const validToRaw = typeof row.validTo === "string" ? row.validTo.trim() : "";
+    const validTo = validToRaw || "";
+
+    if (!POSITION_SET.has(position)) return;
+    if (!isIsoDay(validFrom)) return;
+    if (validTo && !isIsoDay(validTo)) return;
+    if (validTo && validTo < validFrom) return;
+
+    rows.push({
+      id:
+        typeof row.id === "string" && row.id.trim().length > 0
+          ? row.id.trim()
+          : createTimelineRowId(),
+      position,
+      validFrom,
+      validTo,
+    });
+  });
+
+  rows.sort((a, b) => {
+    if (a.validFrom !== b.validFrom) return a.validFrom.localeCompare(b.validFrom);
+    const aTo = a.validTo || "9999-12-31";
+    const bTo = b.validTo || "9999-12-31";
+    return aTo.localeCompare(bTo);
+  });
+
+  return rows;
+};
 
 function isManagerPosition(pos?: Position | null): boolean {
   if (!pos) return false;
@@ -271,7 +339,7 @@ export default function TeamPage() {
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
   const [sortBy, setSortBy] = useState<SortKey>("activity");
   const [productionCategory, setProductionCategory] = useState<ProductionCategory>("life");
-  const [detailTab, setDetailTab] = useState<"overview" | "subordinates">("overview");
+  const [detailTab, setDetailTab] = useState<"overview" | "subordinates" | "career">("overview");
   const [showMembersPanel, setShowMembersPanel] = useState(true);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [positionModalOpen, setPositionModalOpen] = useState(false);
@@ -279,8 +347,15 @@ export default function TeamPage() {
   const [savingPosition, setSavingPosition] = useState(false);
   const [positionSaveError, setPositionSaveError] = useState<string | null>(null);
   const [positionSaveSuccess, setPositionSaveSuccess] = useState(false);
+  const [careerTimelineDraft, setCareerTimelineDraft] = useState<PositionTimelineItem[]>([]);
+  const [careerTimelineLoading, setCareerTimelineLoading] = useState(false);
+  const [careerTimelineSaving, setCareerTimelineSaving] = useState(false);
+  const [careerTimelineError, setCareerTimelineError] = useState<string | null>(null);
+  const [careerTimelineSaved, setCareerTimelineSaved] = useState(false);
+  const [careerTimelineDocId, setCareerTimelineDocId] = useState<string | null>(null);
   const copyEmailTimerRef = useRef<number | null>(null);
   const positionSaveTimerRef = useRef<number | null>(null);
+  const careerSaveTimerRef = useRef<number | null>(null);
   const membersListRef = useRef<HTMLDivElement | null>(null);
   const usedCacheRef = useRef(false);
   const lastActiveRef = useRef<Record<string, number | null>>({});
@@ -816,12 +891,17 @@ export default function TeamPage() {
     setPositionModalOpen(false);
     setPositionSaveError(null);
     setPositionSaveSuccess(false);
+    setCareerTimelineDraft([]);
+    setCareerTimelineError(null);
+    setCareerTimelineSaved(false);
+    setCareerTimelineDocId(null);
   }, [selectedEmail]);
 
   useEffect(() => {
     return () => {
       if (copyEmailTimerRef.current) window.clearTimeout(copyEmailTimerRef.current);
       if (positionSaveTimerRef.current) window.clearTimeout(positionSaveTimerRef.current);
+      if (careerSaveTimerRef.current) window.clearTimeout(careerSaveTimerRef.current);
     };
   }, []);
 
@@ -852,15 +932,135 @@ export default function TeamPage() {
       ),
     [selectedProductionRows]
   );
-  const subordinatesOfSelected = useMemo(
-    () => (selected ? members.filter((m) => (m.managerEmail ?? "").toLowerCase() === selected.email) : []),
-    [selected, members]
-  );
+  const subordinatesOfSelected = useMemo(() => {
+    if (!selected) {
+      return [] as Array<Member & { depth: number; managerName: string | null }>;
+    }
+
+    const selectedEmailKey = selected.email.toLowerCase();
+    const membersByEmail = new Map<string, Member>();
+    const childrenByManager = new Map<string, Member[]>();
+
+    members.forEach((member) => {
+      const emailKey = member.email.toLowerCase();
+      if (!membersByEmail.has(emailKey)) {
+        membersByEmail.set(emailKey, member);
+      }
+
+      const managerKey = (member.managerEmail ?? "").trim().toLowerCase();
+      if (!managerKey) return;
+      const existing = childrenByManager.get(managerKey) ?? [];
+      existing.push(member);
+      childrenByManager.set(managerKey, existing);
+    });
+    membersByEmail.set(selectedEmailKey, selected);
+
+    const queue: Array<{ email: string; depth: number }> = [
+      { email: selectedEmailKey, depth: 0 },
+    ];
+    const visited = new Set<string>([selectedEmailKey]);
+    const allSubordinates: Array<Member & { depth: number; managerName: string | null }> = [];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current) continue;
+
+      const children = [...(childrenByManager.get(current.email) ?? [])].sort((a, b) =>
+        a.name.localeCompare(b.name, "cs")
+      );
+
+      children.forEach((child) => {
+        const childEmailKey = child.email.toLowerCase();
+        if (visited.has(childEmailKey)) return;
+        visited.add(childEmailKey);
+
+        const managerKey = (child.managerEmail ?? "").trim().toLowerCase();
+        const managerFromMap = managerKey ? membersByEmail.get(managerKey) : null;
+        const managerName = managerKey
+          ? managerFromMap?.name ?? nameFromEmail(managerKey)
+          : null;
+
+        allSubordinates.push({
+          ...child,
+          depth: current.depth + 1,
+          managerName,
+        });
+
+        queue.push({
+          email: childEmailKey,
+          depth: current.depth + 1,
+        });
+      });
+    }
+
+    return allSubordinates;
+  }, [selected, members]);
   const isSelectedSubordinate = useMemo(
     () => !!selected?.email && !!userEmail && selected.email.toLowerCase() !== userEmail.toLowerCase(),
     [selected, userEmail]
   );
   const canEditSelectedPosition = canManagePositions && isSelectedSubordinate;
+  const canEditSelectedCareer = canManagePositions && isSelectedSubordinate;
+
+  useEffect(() => {
+    const loadSelectedCareerTimeline = async () => {
+      if (!selected) {
+        setCareerTimelineDraft([]);
+        setCareerTimelineDocId(null);
+        setCareerTimelineLoading(false);
+        return;
+      }
+
+      setCareerTimelineLoading(true);
+      setCareerTimelineError(null);
+
+      try {
+        const candidateIds = Array.from(
+          new Set([selected.docId, selected.email].filter(Boolean))
+        ) as string[];
+        let resolvedDocId = candidateIds[0] ?? selected.email;
+        let resolvedTimeline: PositionTimelineItem[] = [];
+        let timelineFound = false;
+
+        for (const docIdCandidate of candidateIds) {
+          const ref = doc(db, "users", docIdCandidate);
+          let snap = await getDoc(ref);
+          if (!snap.exists()) {
+            try {
+              snap = await getDocFromServer(ref);
+            } catch {
+              // fallback na cache už proběhl přes getDoc
+            }
+          }
+          if (!snap.exists()) continue;
+
+          const data = snap.data() as Record<string, unknown>;
+          const parsed = parsePositionTimeline(data.positionTimeline);
+          if (parsed.length > 0) {
+            resolvedDocId = docIdCandidate;
+            resolvedTimeline = parsed;
+            timelineFound = true;
+            break;
+          }
+
+          if (!timelineFound) {
+            resolvedDocId = docIdCandidate;
+            resolvedTimeline = parsed;
+          }
+        }
+
+        setCareerTimelineDocId(resolvedDocId);
+        setCareerTimelineDraft(resolvedTimeline);
+      } catch (error) {
+        console.error("Chyba při načítání timeline kariéry člena týmu:", error);
+        setCareerTimelineError("Nepodařilo se načíst kariéru vybraného člena.");
+      } finally {
+        setCareerTimelineLoading(false);
+      }
+    };
+
+    void loadSelectedCareerTimeline();
+  }, [selected]);
 
   const handleCopySelectedEmail = async () => {
     if (!selected?.email) return;
@@ -934,6 +1134,7 @@ export default function TeamPage() {
   };
 
   const canSendTeamMessage = isManagerPosition(userPosition) && members.length > 0;
+  const showTeamSidebar = isManagerPosition(userPosition);
 
   const openPositionModal = () => {
     if (!selected || !canEditSelectedPosition) return;
@@ -1001,6 +1202,170 @@ export default function TeamPage() {
     }
   };
 
+  const addCareerTimelineRow = () => {
+    if (!selected) return;
+    setCareerTimelineError(null);
+    setCareerTimelineSaved(false);
+    setCareerTimelineDraft((prev) => [
+      ...prev,
+      {
+        id: createTimelineRowId(),
+        position: selected.position ?? "poradce1",
+        validFrom: "",
+        validTo: "",
+      },
+    ]);
+  };
+
+  const updateCareerTimelineRow = (
+    rowId: string,
+    patch: Partial<PositionTimelineItem>
+  ) => {
+    setCareerTimelineError(null);
+    setCareerTimelineSaved(false);
+    setCareerTimelineDraft((prev) =>
+      prev.map((row) => (row.id === rowId ? { ...row, ...patch } : row))
+    );
+  };
+
+  const removeCareerTimelineRow = (rowId: string) => {
+    setCareerTimelineError(null);
+    setCareerTimelineSaved(false);
+    setCareerTimelineDraft((prev) => prev.filter((row) => row.id !== rowId));
+  };
+
+  const saveCareerTimeline = async () => {
+    if (!selected) return;
+    if (!canEditSelectedCareer) {
+      setCareerTimelineError("Nemáš oprávnění upravovat kariéru tohoto uživatele.");
+      return;
+    }
+
+    setCareerTimelineSaving(true);
+    setCareerTimelineError(null);
+    setCareerTimelineSaved(false);
+
+    try {
+      const normalized = careerTimelineDraft
+        .map((row) => ({
+          ...row,
+          validFrom: row.validFrom.trim(),
+          validTo: row.validTo.trim(),
+        }))
+        .filter(
+          (row) =>
+            row.position ||
+            row.validFrom.length > 0 ||
+            row.validTo.length > 0
+        );
+
+      for (let i = 0; i < normalized.length; i += 1) {
+        const row = normalized[i];
+        const rowNo = i + 1;
+        if (!POSITION_SET.has(row.position)) {
+          setCareerTimelineError(`Řádek ${rowNo}: vyber platnou pozici v timeline.`);
+          return;
+        }
+        if (!row.validFrom) {
+          setCareerTimelineError(`Řádek ${rowNo}: vyplň datum OD.`);
+          return;
+        }
+        if (!isIsoDay(row.validFrom)) {
+          setCareerTimelineError(`Řádek ${rowNo}: datum OD musí být platné.`);
+          return;
+        }
+        if (row.validTo && !isIsoDay(row.validTo)) {
+          setCareerTimelineError(`Řádek ${rowNo}: datum DO musí být platné.`);
+          return;
+        }
+        if (hasInvalidRangeOrder(row.validFrom, row.validTo)) {
+          setCareerTimelineError(`Řádek ${rowNo}: datum DO nemůže být dřív než datum OD.`);
+          return;
+        }
+      }
+
+      const sorted = [...normalized].sort((a, b) => {
+        if (a.validFrom !== b.validFrom) {
+          return a.validFrom.localeCompare(b.validFrom);
+        }
+        const aTo = a.validTo || "9999-12-31";
+        const bTo = b.validTo || "9999-12-31";
+        return aTo.localeCompare(bTo);
+      });
+
+      const openEndedIndexes = sorted
+        .map((row, index) => (!row.validTo ? index : -1))
+        .filter((index) => index >= 0);
+
+      if (openEndedIndexes.length > 1) {
+        setCareerTimelineError(
+          "Současnost (prázdné datum DO) může být jen u jedné poslední pozice."
+        );
+        return;
+      }
+
+      if (
+        openEndedIndexes.length === 1 &&
+        openEndedIndexes[0] !== sorted.length - 1
+      ) {
+        setCareerTimelineError(
+          "Současnost (prázdné datum DO) je povolena jen u poslední aktuální pozice."
+        );
+        return;
+      }
+
+      for (let i = 1; i < sorted.length; i += 1) {
+        const prev = sorted[i - 1];
+        const current = sorted[i];
+        const prevTo = prev.validTo || "9999-12-31";
+        if (prevTo > current.validFrom) {
+          setCareerTimelineError(
+            `Rozsahy se překrývají mezi řádky ${i} a ${i + 1}. Uprav datum OD/DO.`
+          );
+          return;
+        }
+      }
+
+      const payload = sorted.map((row) => ({
+        id: row.id,
+        position: row.position,
+        validFrom: row.validFrom,
+        validTo: row.validTo || null,
+      }));
+
+      const targetDocId = careerTimelineDocId ?? selected.docId ?? selected.email;
+      await setDoc(
+        doc(db, "users", targetDocId),
+        { positionTimeline: payload },
+        { merge: true }
+      );
+
+      setCareerTimelineDraft(
+        payload.map((row) => ({
+          id: row.id,
+          position: row.position,
+          validFrom: row.validFrom,
+          validTo: row.validTo ?? "",
+        }))
+      );
+      setCareerTimelineSaved(true);
+      if (careerSaveTimerRef.current) window.clearTimeout(careerSaveTimerRef.current);
+      careerSaveTimerRef.current = window.setTimeout(
+        () => setCareerTimelineSaved(false),
+        3000
+      );
+    } catch (e: any) {
+      if (e?.code === "permission-denied") {
+        setCareerTimelineError("Nemáš oprávnění měnit kariéru tohoto uživatele.");
+      } else {
+        console.error("Chyba při ukládání kariéry člena týmu:", e);
+        setCareerTimelineError("Uložení kariéry se nepovedlo. Zkus to prosím znovu.");
+      }
+    } finally {
+      setCareerTimelineSaving(false);
+    }
+  };
+
   return (
     <AppLayout active="team">
       <div className="w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
@@ -1014,7 +1379,12 @@ export default function TeamPage() {
           <p className="text-sm text-slate-600">Nemáš nastavené žádné podřízené.</p>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)] lg:items-stretch">
+            <div
+              className={`grid grid-cols-1 gap-4 ${
+                showTeamSidebar ? "lg:grid-cols-[340px_minmax(0,1fr)] lg:items-stretch" : ""
+              }`}
+            >
+              {showTeamSidebar ? (
               <aside className="ui-card rounded-3xl p-3 h-full">
                 <div className="flex h-full flex-col gap-3">
                   <div className="flex min-w-[220px] items-center gap-2 rounded-xl border border-slate-900 bg-white px-3 py-2">
@@ -1158,6 +1528,7 @@ export default function TeamPage() {
                   )}
                 </div>
               </aside>
+              ) : null}
 
               <div className="ui-card space-y-4 rounded-3xl p-4 sm:p-5">
                   {selected ? (
@@ -1222,6 +1593,13 @@ export default function TeamPage() {
                               className={`ui-chip ui-focus px-3 py-1 text-xs ${detailTab === "subordinates" ? "ui-chip-active" : ""}`}
                             >
                               Podřízení ({subordinatesOfSelected.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDetailTab("career")}
+                              className={`ui-chip ui-focus px-3 py-1 text-xs ${detailTab === "career" ? "ui-chip-active" : ""}`}
+                            >
+                              Kariéra
                             </button>
                           </div>
                         </div>
@@ -1317,7 +1695,7 @@ export default function TeamPage() {
                             </div>
                           </div>
                         </>
-                      ) : (
+                      ) : detailTab === "subordinates" ? (
                         <div className="space-y-2 pt-2">
                           <div className="flex items-center justify-between">
                             <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
@@ -1327,7 +1705,7 @@ export default function TeamPage() {
                           </div>
                           {subordinatesOfSelected.length === 0 ? (
                             <div className="text-sm text-slate-500 rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2">
-                              Nemá podřízené.
+                              Nemá podřízené ani v dalších úrovních.
                             </div>
                           ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1339,12 +1717,189 @@ export default function TeamPage() {
                                   <div className="text-sm font-semibold text-slate-900">{sub.name}</div>
                                   <div className="text-xs text-slate-500">{sub.email}</div>
                                   <div className="text-xs text-slate-500">
+                                    Úroveň {sub.depth}
+                                    {sub.managerName ? ` · Nadřízený: ${sub.managerName}` : ""}
+                                  </div>
+                                  <div className="text-xs text-slate-500">
                                     {positionLabel(sub.position)} · Celkem: {contractCountLabel(sub.email, "total")} · Tento měsíc:{" "}
                                     {contractCountLabel(sub.email, "month")}
                                   </div>
                                 </div>
                               ))}
                             </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-3 pt-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                              Historie kariéry
+                            </div>
+                            {canEditSelectedCareer ? (
+                              <button
+                                type="button"
+                                onClick={addCareerTimelineRow}
+                                className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
+                              >
+                                Přidat pozici
+                              </button>
+                            ) : null}
+                          </div>
+
+                          {careerTimelineLoading ? (
+                            <div className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                              Načítám kariéru…
+                            </div>
+                          ) : careerTimelineDraft.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                              Vybraný člen zatím nemá vyplněnou historii kariéry.
+                            </div>
+                          ) : canEditSelectedCareer ? (
+                            <div className="space-y-2.5">
+                              {careerTimelineDraft.map((row, rowIndex) => {
+                                const rowRangeError = hasInvalidRangeOrder(
+                                  row.validFrom.trim(),
+                                  row.validTo.trim()
+                                );
+                                const isLastDraftRow =
+                                  rowIndex === careerTimelineDraft.length - 1;
+                                const rowOpenEndedNotLast =
+                                  !row.validTo.trim() && !isLastDraftRow;
+
+                                return (
+                                  <div
+                                    key={row.id}
+                                    className={`rounded-2xl border bg-white px-3 py-3 shadow-[0_6px_16px_rgba(15,23,42,0.05)] ${
+                                      rowRangeError || rowOpenEndedNotLast
+                                        ? "border-rose-300"
+                                        : "border-slate-300"
+                                    }`}
+                                  >
+                                    <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_150px_150px_auto]">
+                                      <select
+                                        value={row.position}
+                                        onChange={(e) =>
+                                          updateCareerTimelineRow(row.id, {
+                                            position: e.target.value as Position,
+                                          })
+                                        }
+                                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+                                      >
+                                        {POSITION_OPTIONS.map((p) => (
+                                          <option key={p.id} value={p.id}>
+                                            {p.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <input
+                                        type="date"
+                                        value={row.validFrom}
+                                        onChange={(e) =>
+                                          updateCareerTimelineRow(row.id, {
+                                            validFrom: e.target.value,
+                                          })
+                                        }
+                                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+                                        title="Platí od"
+                                      />
+                                      <input
+                                        type="date"
+                                        value={row.validTo}
+                                        onChange={(e) =>
+                                          updateCareerTimelineRow(row.id, {
+                                            validTo: e.target.value,
+                                          })
+                                        }
+                                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+                                        title="Platí do"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => removeCareerTimelineRow(row.id)}
+                                        className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                                      >
+                                        Smazat
+                                      </button>
+                                    </div>
+                                    {rowRangeError ? (
+                                      <p className="mt-2 text-xs font-medium text-rose-700">
+                                        Datum DO nemůže být dřív než datum OD.
+                                      </p>
+                                    ) : null}
+                                    {rowOpenEndedNotLast ? (
+                                      <p className="mt-2 text-xs font-medium text-rose-700">
+                                        Současnost (prázdné DO) může být jen u posledního řádku.
+                                      </p>
+                                    ) : null}
+                                    {isLastDraftRow ? (
+                                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        {row.validTo.trim() ? (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              updateCareerTimelineRow(row.id, {
+                                                validTo: "",
+                                              })
+                                            }
+                                            className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200"
+                                          >
+                                            Nastavit DO: současnost
+                                          </button>
+                                        ) : (
+                                          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                                            Poslední pozice běží do současnosti
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="space-y-2.5">
+                              {careerTimelineDraft.map((row) => (
+                                <div
+                                  key={row.id}
+                                  className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-3"
+                                >
+                                  <div className="text-sm font-semibold text-slate-900">
+                                    {positionLabel(row.position)}
+                                  </div>
+                                  <div className="text-xs text-slate-600">
+                                    {row.validFrom} — {row.validTo || "současnost"}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {careerTimelineError ? (
+                            <p className="text-xs font-medium text-rose-700">
+                              {careerTimelineError}
+                            </p>
+                          ) : null}
+
+                          {canEditSelectedCareer ? (
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              {careerTimelineSaved ? (
+                                <span className="text-xs font-semibold text-emerald-700">
+                                  Uloženo
+                                </span>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => void saveCareerTimeline()}
+                                disabled={careerTimelineSaving}
+                                className="rounded-xl border border-emerald-700 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {careerTimelineSaving ? "Ukládám..." : "Uložit kariéru"}
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-500">
+                              Tento profil můžeš jen zobrazit.
+                            </p>
                           )}
                         </div>
                       )}

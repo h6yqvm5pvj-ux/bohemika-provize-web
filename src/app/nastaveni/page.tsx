@@ -23,7 +23,9 @@ import type { User as FirebaseUser } from "firebase/auth";
 import {
   EmailAuthProvider,
   FactorId,
+  getMultiFactorResolver,
   multiFactor,
+  type MultiFactorError,
   onAuthStateChanged,
   reauthenticateWithCredential,
   sendEmailVerification,
@@ -226,6 +228,7 @@ const EXPECTED_MFA_ERROR_CODES = new Set<string>([
   "auth/wrong-password",
   "auth/invalid-credential",
   "auth/invalid-login-credentials",
+  "auth/multi-factor-auth-required",
   "auth/invalid-verification-code",
   "auth/code-expired",
   "auth/requires-recent-login",
@@ -256,6 +259,9 @@ const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
     err?.code === "auth/invalid-login-credentials"
   ) {
     return "Aktuální heslo není správné.";
+  }
+  if (err?.code === "auth/multi-factor-auth-required") {
+    return "Pro tuto změnu zadej i aktuální kód z Microsoft Authenticator.";
   }
   if (err?.code === "auth/invalid-verification-code") {
     return "Neplatný 2FA kód. Zadej aktuální kód z aplikace.";
@@ -302,6 +308,7 @@ export default function SettingsPage() {
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [mfaTotpUid, setMfaTotpUid] = useState<string | null>(null);
   const [mfaTotpLabel, setMfaTotpLabel] = useState<string | null>(null);
+  const [mfaReauthCode, setMfaReauthCode] = useState("");
   const [mfaEnrollmentSecret, setMfaEnrollmentSecret] = useState<TotpSecret | null>(null);
   const [mfaEnrollmentCode, setMfaEnrollmentCode] = useState("");
   const [mfaQrCodeDataUrl, setMfaQrCodeDataUrl] = useState("");
@@ -384,6 +391,7 @@ export default function SettingsPage() {
       setMfaTotpLabel(null);
       setMfaStatus(null);
       setMfaPassword("");
+      setMfaReauthCode("");
       clearMfaDraft();
       return;
     }
@@ -1092,6 +1100,52 @@ export default function SettingsPage() {
       await reauthenticateWithCredential(targetUser, credential);
       return true;
     } catch (error) {
+      const authError = error as { code?: string };
+      if (authError?.code === "auth/multi-factor-auth-required") {
+        const otp = mfaReauthCode.trim();
+        if (!otp) {
+          setMfaStatus({
+            type: "error",
+            message:
+              "Pro potvrzení změny 2FA zadej i aktuální kód z Microsoft Authenticator.",
+          });
+          return false;
+        }
+
+        try {
+          const resolver = getMultiFactorResolver(auth, error as MultiFactorError);
+          const totpHint = resolver.hints.find(
+            (hint) => hint.factorId === FactorId.TOTP
+          );
+
+          if (!totpHint) {
+            setMfaStatus({
+              type: "error",
+              message:
+                "Účet vyžaduje 2FA, ale nebyl nalezen TOTP faktor. Zkus to znovu po přihlášení.",
+            });
+            return false;
+          }
+
+          const assertion = TotpMultiFactorGenerator.assertionForSignIn(
+            totpHint.uid,
+            otp
+          );
+          await resolver.resolveSignIn(assertion);
+          return true;
+        } catch (resolverError) {
+          logMfaIssue("reauthenticateForMfaChangeResolver", resolverError);
+          setMfaStatus({
+            type: "error",
+            message: resolveMfaErrorMessage(
+              resolverError,
+              "Nepodařilo se ověřit 2FA kód pro potvrzení změny."
+            ),
+          });
+          return false;
+        }
+      }
+
       logMfaIssue("reauthenticateForMfaChange", error);
       setMfaStatus({
         type: "error",
@@ -1121,44 +1175,11 @@ export default function SettingsPage() {
         return;
       }
 
-      const idToken = await currentUser.getIdToken(true);
-      const response = await fetch("/api/auth/force-email-verified", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-        },
-      });
-      const payload = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-      };
-
-      if (!response.ok || payload?.ok !== true) {
-        await sendEmailVerification(currentUser);
-        setMfaStatus({
-          type: "info",
-          message:
-            "Automatické ověření se nepodařilo. Poslal jsem ověřovací e-mail, po potvrzení klikni znovu na stejné tlačítko.",
-        });
-        return;
-      }
-
-      await currentUser.reload();
-      const refreshedUser = auth.currentUser ?? currentUser;
-      setUser(refreshedUser);
-      if (refreshedUser.emailVerified) {
-        setMfaStatus({
-          type: "success",
-          message: "E-mail je ověřený. Teď můžeš kliknout na Zapnout 2FA.",
-        });
-        return;
-      }
-
-      await sendEmailVerification(refreshedUser);
+      await sendEmailVerification(currentUser);
       setMfaStatus({
         type: "info",
         message:
-          "Nepodařilo se potvrdit stav e-mailu. Poslal jsem ověřovací e-mail, po potvrzení klikni znovu na stejné tlačítko.",
+          "Poslal jsem ověřovací e-mail. Otevři odkaz v e-mailu a potom klikni znovu na stejné tlačítko.",
       });
     } catch (error) {
       logMfaIssue("handleForceVerifyMfaEmail", error);
@@ -1245,6 +1266,7 @@ export default function SettingsPage() {
       await syncMfaState(user);
 
       setMfaPassword("");
+      setMfaReauthCode("");
       clearMfaDraft();
       setMfaStatus({
         type: "success",
@@ -1285,6 +1307,7 @@ export default function SettingsPage() {
       await syncMfaState(user);
 
       setMfaPassword("");
+      setMfaReauthCode("");
       clearMfaDraft();
       setMfaStatus({
         type: "success",
@@ -2089,6 +2112,20 @@ export default function SettingsPage() {
                       onChange={(e) => setMfaPassword(e.target.value)}
                     />
 
+                    {mfaEnabled && !mfaEnrollmentSecret && (
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        className={fieldClass}
+                        placeholder="Aktuální 2FA kód (pro vypnutí)"
+                        value={mfaReauthCode}
+                        onChange={(e) =>
+                          setMfaReauthCode(e.target.value.replace(/\D/g, "").slice(0, 8))
+                        }
+                      />
+                    )}
+
                     {!mfaEnabled && !mfaEnrollmentSecret && (
                       <button
                         type="button"
@@ -2106,7 +2143,7 @@ export default function SettingsPage() {
                         className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {mfaForceVerifyingEmail
-                          ? "Ověřuji e-mail…"
+                          ? "Posílám ověření…"
                           : mfaBusy
                             ? "Spouštím 2FA…"
                             : user.emailVerified
