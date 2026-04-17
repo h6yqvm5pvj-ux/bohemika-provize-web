@@ -741,6 +741,22 @@ function resolveEffectivePremium(data: any): number {
   );
 }
 
+function normalizeClientNameForDuplicate(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function normalizeContractEntryType(value: unknown): ContractEntryType {
+  if (typeof value !== "string") return "contract";
+  const normalized = value.trim().toLowerCase();
+  return normalized === "endorsement" ? "endorsement" : "contract";
+}
+
+function isoDayFromUnknown(value: unknown): string | null {
+  const d = toDate(value);
+  if (!d) return null;
+  return d.toISOString().slice(0, 10);
+}
+
 // ---------- Kalkulačka ----------
 
 export default function CalculatorPage() {
@@ -785,9 +801,11 @@ export default function CalculatorPage() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [missingFields, setMissingFields] = useState<string[]>([]);
   const [duplicateModal, setDuplicateModal] = useState<{
-    contractNumber: string;
+    mode: "overwrite" | "saveAnyway";
+    description: string;
+    contractNumber: string | null;
     count: number;
-    entries: { id: string; path: string }[];
+    entries: { id: string; path: string; contractNumber: string | null }[];
   } | null>(null);
   const [endorsementDraft, setEndorsementDraft] = useState<EndorsementDraft | null>(null);
   const [saveSuccessFlash, setSaveSuccessFlash] = useState<{
@@ -2053,6 +2071,8 @@ export default function CalculatorPage() {
 
     // kontrola duplicitního čísla smlouvy
     const trimmedContractNumber = contractNumber.trim();
+    const trimmedClientName = clientName.trim();
+    const signedDateIsoDay = contractSignedDate.trim();
     const trimmedOriginalContractNumber = originalContractNumber.trim();
     const trimmedReplacementContractNumber = replacementContractNumber.trim();
     const shouldRefreshOriginalNeon =
@@ -2087,10 +2107,55 @@ export default function CalculatorPage() {
             const entries = dupSnap.docs.map((d) => ({
               id: d.id,
               path: d.ref.path,
+              contractNumber: trimmedContractNumber,
             }));
             setDuplicateModal({
+              mode: "overwrite",
+              description: `Smlouva s číslem ${trimmedContractNumber} už existuje (${dupSnap.size}×).`,
               contractNumber: trimmedContractNumber,
               count: dupSnap.size,
+              entries,
+            });
+            setSaving(false);
+            return;
+          }
+        }
+
+        const normalizedClientName = normalizeClientNameForDuplicate(trimmedClientName);
+        if (product && signedDateIsoDay && normalizedClientName) {
+          const productSnap = await getDocs(
+            query(entriesRef, where("productKey", "==", product))
+          );
+          const similarEntries = productSnap.docs.filter((docSnap) => {
+            const data = docSnap.data() as any;
+            if (normalizeContractEntryType(data?.entryType) !== "contract") return false;
+            const clientNameNormalized = normalizeClientNameForDuplicate(data?.clientName);
+            if (clientNameNormalized !== normalizedClientName) return false;
+            const entrySignedDay = isoDayFromUnknown(data?.contractSignedDate);
+            return entrySignedDay === signedDateIsoDay;
+          });
+
+          if (similarEntries.length > 0) {
+            const entries = similarEntries.map((d) => {
+              const data = d.data() as any;
+              const existingNumber =
+                typeof data?.contractNumber === "string"
+                  ? data.contractNumber.trim()
+                  : null;
+              return {
+                id: d.id,
+                path: d.ref.path,
+                contractNumber: existingNumber || null,
+              };
+            });
+            const displayDate = formatIsoDay(signedDateIsoDay);
+            setDuplicateModal({
+              mode: "saveAnyway",
+              description: `Pro klienta ${trimmedClientName} už existuje produkt ${productLabel(
+                product
+              )} se stejným datem sjednání ${displayDate} (${similarEntries.length}×).`,
+              contractNumber: trimmedContractNumber || null,
+              count: similarEntries.length,
               entries,
             });
             setSaving(false);
@@ -2666,10 +2731,12 @@ export default function CalculatorPage() {
           />
           <div className="relative w-full max-w-md rounded-2xl border border-slate-300 bg-white shadow-[0_20px_70px_rgba(0,0,0,0.35)] p-5 space-y-4">
             <div className="text-sm text-slate-900 space-y-2">
+              <p>{duplicateModal.description}</p>
               <p>
-                Smlouva s číslem <strong>{duplicateModal.contractNumber}</strong> už existuje ({duplicateModal.count}×).
+                {duplicateModal.mode === "overwrite"
+                  ? "Můžeš ji přepsat, nebo akci zrušit."
+                  : "Může jít o duplicitu. Můžeš pokračovat uložením, nebo akci zrušit."}
               </p>
-              <p>Můžeš ji přepsat, nebo akci zrušit.</p>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
               <button
@@ -2683,16 +2750,14 @@ export default function CalculatorPage() {
                 type="button"
                 onClick={async () => {
                   if (!user || !duplicateModal) return;
+                  const modal = duplicateModal;
                   setDuplicateModal(null);
                   try {
-                    const email = (user.email ?? "").toLowerCase();
-                    const userRef = doc(db, "users", email);
-                    const entriesRef = collection(userRef, "entries");
-                    // smaž existující s tímto číslem
-                    const dupSnap = await getDocs(
-                      query(entriesRef, where("contractNumber", "==", duplicateModal.contractNumber))
-                    );
-                    await Promise.all(dupSnap.docs.map((d) => deleteDoc(d.ref)));
+                    if (modal.mode === "overwrite") {
+                      await Promise.all(
+                        modal.entries.map((entry) => deleteDoc(doc(db, entry.path)))
+                      );
+                    }
                     // ulož znovu bez další kontroly duplicit
                     await handleSaveContract(true);
                   } catch (err) {
@@ -2703,7 +2768,7 @@ export default function CalculatorPage() {
                 }}
                 className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition"
               >
-                Přepsat
+                {duplicateModal.mode === "overwrite" ? "Přepsat" : "Uložit i tak"}
               </button>
             </div>
           </div>

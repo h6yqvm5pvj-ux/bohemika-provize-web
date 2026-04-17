@@ -226,6 +226,66 @@ service cloud.firestore {
              (resource == null || resource.data.canChangePosition != true);
     }
 
+    function isNonEmptyText(value) {
+      return value is string && value.matches(".*\\S.*");
+    }
+
+    function isValidEntryType(value) {
+      return value is string && (value == "contract" || value == "endorsement");
+    }
+
+    function isValidContractNumber(value) {
+      return value is string
+        && value.matches("^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$");
+    }
+
+    function isReasonableContractTimestamp(value) {
+      return value is timestamp
+        && value >= timestamp.date(2000, 1, 1)
+        && value < timestamp.date(2101, 1, 1);
+    }
+
+    function hasValidContractCore(data) {
+      return data is map
+        && isValidEntryType(data.entryType)
+        && data.productKey is string
+        && isNonEmptyText(data.clientName)
+        && isValidContractNumber(data.contractNumber)
+        && isReasonableContractTimestamp(data.contractSignedDate)
+        && isReasonableContractTimestamp(data.policyStartDate)
+        && data.policyStartDate >= data.contractSignedDate;
+    }
+
+    function contractCoreFieldsChanged() {
+      return request.resource.data.diff(resource.data).changedKeys().hasAny([
+        "entryType",
+        "productKey",
+        "clientName",
+        "contractNumber",
+        "contractSignedDate",
+        "policyStartDate"
+      ]);
+    }
+
+    function changedKey(key) {
+      return request.resource.data.diff(resource.data).changedKeys().hasAny([key]);
+    }
+
+    function hasValidContractCoreUpdate() {
+      return (!changedKey("entryType") || isValidEntryType(request.resource.data.entryType))
+        && (!changedKey("productKey") || (request.resource.data.productKey is string && isNonEmptyText(request.resource.data.productKey)))
+        && (!changedKey("clientName") || isNonEmptyText(request.resource.data.clientName))
+        && (!changedKey("contractNumber") || isValidContractNumber(request.resource.data.contractNumber))
+        && (
+          !(changedKey("contractSignedDate") || changedKey("policyStartDate"))
+          || (
+            isReasonableContractTimestamp(request.resource.data.contractSignedDate)
+            && isReasonableContractTimestamp(request.resource.data.policyStartDate)
+            && request.resource.data.policyStartDate >= request.resource.data.contractSignedDate
+          )
+        );
+    }
+
     // ---------- entries (collectionGroup fallback) ----------
     match /{path=**}/entries/{entryId} {
       allow read: if canReadEntryDoc(resource.data) || isAdmin();
@@ -253,7 +313,20 @@ service cloud.firestore {
                     || canReadEntryDoc(resource.data)
                     || isAdmin();
         // zapisuje jen vlastník a musí souhlasit userEmail; admin může opravovat/importovat
-        allow create, update: if (isOwner(userEmail) && entryUserMatches(userEmail)) || isAdmin();
+        // validace dat smlouvy je vynucena na backendu (rules), aby nešla obejít frontend
+        allow create: if (
+            isOwner(userEmail)
+            && entryUserMatches(userEmail)
+            && hasValidContractCore(request.resource.data)
+          ) || isAdmin();
+        allow update: if (
+            isOwner(userEmail)
+            && entryUserMatches(userEmail)
+            && (
+              !contractCoreFieldsChanged()
+              || hasValidContractCoreUpdate()
+            )
+          ) || isAdmin();
         allow delete: if isOwner(userEmail) || isAdmin();
       }
 

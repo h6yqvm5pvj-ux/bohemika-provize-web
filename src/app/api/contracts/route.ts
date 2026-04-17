@@ -65,6 +65,7 @@ type ErrorResponse = { ok: false; error: string };
 
 const PAGE_SIZE_DEFAULT = 30;
 const PAGE_SIZE_MAX = 50;
+const CONTRACT_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
 const REPLACEMENT_STORNO_PRODUCTS = new Set<Product>([
   "zamex",
   "domex",
@@ -149,6 +150,9 @@ const parseCursor = (search: URLSearchParams): ParsedCursor | null => {
 
 const normalizeEmail = (email: string | null | undefined) =>
   (email ?? "").trim().toLowerCase();
+
+const isValidContractNumber = (value: string) =>
+  CONTRACT_NUMBER_RE.test(value);
 
 const buildUserTree = async () => {
   if (!adminDb) {
@@ -537,6 +541,12 @@ export async function PATCH(req: NextRequest) {
           { status: 400 }
         );
       }
+      if (!isValidContractNumber(originalContractNumber)) {
+        return NextResponse.json(
+          { ok: false, error: "Číslo původní smlouvy má neplatný formát." },
+          { status: 400 }
+        );
+      }
       if (!newEntryId) {
         return NextResponse.json(
           { ok: false, error: "Chybí ID nové smlouvy." },
@@ -639,6 +649,12 @@ export async function PATCH(req: NextRequest) {
       if (!originalContractNumber) {
         return NextResponse.json(
           { ok: false, error: "Chybí číslo nahrazované smlouvy." },
+          { status: 400 }
+        );
+      }
+      if (!isValidContractNumber(originalContractNumber)) {
+        return NextResponse.json(
+          { ok: false, error: "Číslo nahrazované smlouvy má neplatný formát." },
           { status: 400 }
         );
       }

@@ -906,6 +906,10 @@ export default function TeamPage() {
   }, []);
 
   const selected = members.find((m) => m.email === selectedEmail) ?? null;
+  const showMonthlyPremiumInProduction = productionCategory === "life";
+  const productionGridColsClass = showMonthlyPremiumInProduction
+    ? "sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px]"
+    : "sm:grid-cols-[minmax(180px,1fr)_110px_150px]";
   const selectedProductionRows = useMemo(() => {
     if (!selected) return [] as { name: string; contracts: number; annualPremium: number; monthlyPremium: number }[];
     const stats = contractCounts[selected.email];
@@ -1630,7 +1634,11 @@ export default function TeamPage() {
                           <div className="relative space-y-3 border-b border-slate-200 py-4">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Produkce</div>
-                              <div className="text-xs font-semibold text-slate-500">Pojišťovna / počet smluv / měsíční / roční</div>
+                              <div className="text-xs font-semibold text-slate-500">
+                                {showMonthlyPremiumInProduction
+                                  ? "Pojišťovna / počet smluv / měsíční / roční"
+                                  : "Pojišťovna / počet smluv / roční"}
+                              </div>
                             </div>
 
                             <div className="ui-chip-group flex w-fit flex-wrap gap-2">
@@ -1654,16 +1662,23 @@ export default function TeamPage() {
                                 <div className="text-sm text-slate-500">V této kategorii zatím nejsou smlouvy.</div>
                               ) : (
                                 <div className="space-y-1.5">
-                                  <div className="hidden sm:grid sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] items-center gap-3 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                  <div
+                                    className={`hidden sm:grid ${productionGridColsClass} items-center gap-3 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500`}
+                                  >
                                     <div>Pojišťovna</div>
                                     <div className="text-right">Smluv</div>
-                                    <div className="text-right">Měsíční</div>
+                                    {showMonthlyPremiumInProduction ? (
+                                      <div className="text-right">Měsíční</div>
+                                    ) : null}
                                     <div className="text-right">Roční</div>
                                   </div>
                                   {selectedProductionRows.map((row) => {
                                     const logo = insurerLogoPath(row.name);
                                     return (
-                                    <div key={row.name} className="grid grid-cols-1 gap-1 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] sm:items-center sm:gap-3">
+                                    <div
+                                      key={row.name}
+                                      className={`grid grid-cols-1 gap-1 rounded-xl border border-slate-200 bg-white px-4 py-3 ${productionGridColsClass} sm:items-center sm:gap-3`}
+                                    >
                                       <div className="min-w-0 flex items-center gap-2">
                                         {logo ? (
                                           <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -1679,15 +1694,21 @@ export default function TeamPage() {
                                         <span className="min-w-0 text-base font-bold text-slate-900 sm:text-lg">{row.name}</span>
                                       </div>
                                       <div className="text-sm font-semibold text-slate-700 sm:text-right sm:text-base">{row.contracts}x smluv</div>
-                                      <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.monthlyPremium)}</div>
+                                      {showMonthlyPremiumInProduction ? (
+                                        <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.monthlyPremium)}</div>
+                                      ) : null}
                                       <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.annualPremium)}</div>
                                     </div>
                                   );
                                   })}
-                                  <div className="grid grid-cols-1 gap-1 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-white sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px] sm:items-center sm:gap-3">
+                                  <div
+                                    className={`grid grid-cols-1 gap-1 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-white ${productionGridColsClass} sm:items-center sm:gap-3`}
+                                  >
                                     <div className="text-base font-bold sm:text-lg">Celkem</div>
                                     <div className="text-sm font-semibold sm:text-right sm:text-base">{selectedProductionTotals.contracts}x smluv</div>
-                                    <div className="text-base font-bold text-emerald-300 sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
+                                    {showMonthlyPremiumInProduction ? (
+                                      <div className="text-base font-bold text-emerald-300 sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
+                                    ) : null}
                                     <div className="text-base font-bold text-emerald-300 sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.annualPremium)}</div>
                                   </div>
                                 </div>

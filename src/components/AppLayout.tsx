@@ -246,6 +246,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     currentUser: FirebaseUser | null
   ) => {
     const emailRaw = currentUser?.email;
+    const uidRaw = currentUser?.uid?.trim() ?? "";
     if (!emailRaw) {
       setSubscriptionStatus("none");
       setNeedsCareerTimelineSetup(false);
@@ -253,7 +254,18 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       return;
     }
 
-    const { getFirestore, doc, getDoc, getDocFromServer, setDoc } =
+    const {
+      getFirestore,
+      doc,
+      getDoc,
+      getDocFromServer,
+      setDoc,
+      collection,
+      query,
+      where,
+      limit,
+      getDocs,
+    } =
       await loadFirestore();
     const db = getFirestore(firebaseApp);
     const email = emailRaw.trim().toLowerCase();
@@ -269,10 +281,41 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         }
       };
 
+      const syncTimelineToCanonicalDoc = async (timeline: unknown) => {
+        try {
+          await setDoc(
+            doc(db, "users", email),
+            { positionTimeline: timeline },
+            { merge: true }
+          );
+        } catch (e) {
+          console.warn("Chyba při dorovnání timeline z legacy user ID:", e);
+        }
+      };
+
       let snap = await readUserDoc(email);
       let resolvedData = snap.exists()
         ? (snap.data() as Record<string, unknown>)
         : null;
+
+      const mergeTimelineCandidate = async (
+        candidateData: Record<string, unknown> | null
+      ) => {
+        if (!candidateData) return;
+        if (!resolvedData) {
+          resolvedData = candidateData;
+          return;
+        }
+        const normalizedHasTimeline = hasCareerTimelineConfigured(resolvedData);
+        const candidateHasTimeline = hasCareerTimelineConfigured(candidateData);
+        if (!normalizedHasTimeline && candidateHasTimeline) {
+          resolvedData = {
+            ...resolvedData,
+            positionTimeline: candidateData.positionTimeline,
+          };
+          await syncTimelineToCanonicalDoc(candidateData.positionTimeline);
+        }
+      };
 
       if (emailRaw && emailRaw !== email) {
         const rawSnap = await readUserDoc(emailRaw);
@@ -285,26 +328,42 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           snap = rawSnap;
           resolvedData = rawData;
         } else if (resolvedData && rawData) {
-          const normalizedHasTimeline = hasCareerTimelineConfigured(resolvedData);
-          const rawHasTimeline = hasCareerTimelineConfigured(rawData);
-          if (!normalizedHasTimeline && rawHasTimeline) {
-            resolvedData = {
-              ...resolvedData,
-              positionTimeline: rawData.positionTimeline,
-            };
-            try {
-              await setDoc(
-                doc(db, "users", email),
-                { positionTimeline: rawData.positionTimeline },
-                { merge: true }
-              );
-            } catch (e) {
-              console.warn(
-                "Chyba při dorovnání timeline z legacy user ID:",
-                e
-              );
+          await mergeTimelineCandidate(rawData);
+        }
+      }
+
+      // fallback: některé legacy účty měly users doc pod UID místo e-mailu
+      if (uidRaw && uidRaw !== email && (!emailRaw || uidRaw !== emailRaw)) {
+        const uidSnap = await readUserDoc(uidRaw);
+        const uidData = uidSnap.exists()
+          ? (uidSnap.data() as Record<string, unknown>)
+          : null;
+        await mergeTimelineCandidate(uidData);
+      }
+
+      // fallback: hledej i podle pole users.email (pro atypické legacy docId)
+      if (!resolvedData || !hasCareerTimelineConfigured(resolvedData)) {
+        try {
+          const usersCol = collection(db, "users");
+          const emailCandidates = Array.from(
+            new Set(
+              [email, emailRaw ?? ""]
+                .map((value) => value.trim())
+                .filter((value) => value.length > 0)
+            )
+          );
+
+          for (const candidateEmail of emailCandidates) {
+            const snapByEmail = await getDocs(
+              query(usersCol, where("email", "==", candidateEmail), limit(5))
+            );
+            for (const docSnap of snapByEmail.docs) {
+              const candidateData = docSnap.data() as Record<string, unknown>;
+              await mergeTimelineCandidate(candidateData);
             }
           }
+        } catch (legacyLookupErr) {
+          console.warn("Chyba při fallback lookupu users.email:", legacyLookupErr);
         }
       }
 
