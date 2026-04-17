@@ -110,7 +110,10 @@ export function formatDate(value: unknown): string {
 }
 
 export function formatMoney(value: number | undefined | null): string {
-  return formatMoneyValue(value);
+  return formatMoneyValue(value, {
+    minFractionDigits: 2,
+    maxFractionDigits: 2,
+  });
 }
 
 export function productLabel(p?: Product): string {

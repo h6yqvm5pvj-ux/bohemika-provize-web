@@ -328,6 +328,7 @@ export default function SettingsPage() {
   const [positionTimelineSaved, setPositionTimelineSaved] = useState(false);
   const [positionTimelineError, setPositionTimelineError] = useState<string | null>(null);
   const [timelineSaveFlashVisible, setTimelineSaveFlashVisible] = useState(false);
+  const [positionTimelineLocked, setPositionTimelineLocked] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>("career");
   const [showCareerTimelineHelp, setShowCareerTimelineHelp] = useState(false);
 
@@ -657,10 +658,13 @@ export default function SettingsPage() {
           setCanChangePosition(
             data.canChangePosition === false ? false : true
           );
-          setPositionTimelineDraft(parsePositionTimeline(data.positionTimeline));
+          const parsedTimeline = parsePositionTimeline(data.positionTimeline);
+          setPositionTimelineDraft(parsedTimeline);
+          setPositionTimelineLocked(parsedTimeline.length > 0);
         } else {
           // user dokument neexistuje → zkusíme aspoň natáhnout z localStorage
           setPositionTimelineDraft([]);
+          setPositionTimelineLocked(false);
           if (typeof window !== "undefined") {
             const storedPos = window.localStorage.getItem(
               SETTINGS_KEYS.position
@@ -757,6 +761,13 @@ export default function SettingsPage() {
         validTo: "",
       },
     ]);
+  };
+
+  const unlockPositionTimeline = () => {
+    setPositionTimelineLocked(false);
+    setPositionTimelineSaved(false);
+    setTimelineSaveFlashVisible(false);
+    setPositionTimelineError(null);
   };
 
   const updatePositionTimelineRow = (
@@ -881,6 +892,7 @@ export default function SettingsPage() {
           validTo: row.validTo ?? "",
         }))
       );
+      setPositionTimelineLocked(true);
       setPositionTimelineSaved(true);
       setTimelineSaveFlashVisible(true);
     } catch (e) {
@@ -1358,7 +1370,7 @@ export default function SettingsPage() {
         {timelineSaveFlashVisible && (
           <div aria-live="polite" className="fixed bottom-6 right-6 z-50 pointer-events-none">
             <div className="relative flex items-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.18)]">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-white">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-white">
                 <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
                   <path
                     fill="currentColor"
@@ -1573,13 +1585,23 @@ export default function SettingsPage() {
                       <CircleHelp size={13} strokeWidth={2.2} aria-hidden="true" />
                       Nápověda
                     </button>
-                    <button
-                      type="button"
-                      onClick={addPositionTimelineRow}
-                      className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
-                    >
-                      Přidat pozici
-                    </button>
+                    {positionTimelineLocked ? (
+                      <button
+                        type="button"
+                        onClick={unlockPositionTimeline}
+                        className="rounded-full border border-slate-900 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:bg-slate-100"
+                      >
+                        Změna
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={addPositionTimelineRow}
+                        className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+                      >
+                        Přidat pozici
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1666,7 +1688,12 @@ export default function SettingsPage() {
                                 position: e.target.value as Position,
                               })
                             }
-                            className={fieldClass}
+                            disabled={positionTimelineLocked}
+                            className={`${fieldClass} ${
+                              positionTimelineLocked
+                                ? "cursor-not-allowed bg-slate-100 text-slate-500"
+                                : ""
+                            }`}
                           >
                             {POSITIONS.map((p) => (
                               <option key={p.id} value={p.id}>
@@ -1680,7 +1707,12 @@ export default function SettingsPage() {
                             onChange={(e) =>
                               updatePositionTimelineRow(row.id, { validFrom: e.target.value })
                             }
-                            className={fieldClass}
+                            disabled={positionTimelineLocked}
+                            className={`${fieldClass} ${
+                              positionTimelineLocked
+                                ? "cursor-not-allowed bg-slate-100 text-slate-500"
+                                : ""
+                            }`}
                             title="Platí od"
                           />
                           <input
@@ -1689,13 +1721,19 @@ export default function SettingsPage() {
                             onChange={(e) =>
                               updatePositionTimelineRow(row.id, { validTo: e.target.value })
                             }
-                            className={fieldClass}
+                            disabled={positionTimelineLocked}
+                            className={`${fieldClass} ${
+                              positionTimelineLocked
+                                ? "cursor-not-allowed bg-slate-100 text-slate-500"
+                                : ""
+                            }`}
                             title="Platí do"
                           />
                           <button
                             type="button"
                             onClick={() => removePositionTimelineRow(row.id)}
-                            className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                            disabled={positionTimelineLocked}
+                            className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                           >
                             Smazat
                               </button>
@@ -1710,9 +1748,11 @@ export default function SettingsPage() {
                                   Současnost (prázdné DO) může být jen u posledního řádku.
                                 </p>
                               )}
-                              {isLastDraftRow && (
+                              {isLastDraftRow &&
+                                (!row.validTo.trim() || !positionTimelineLocked) && (
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                   {row.validTo.trim() ? (
+                                    positionTimelineLocked ? null : (
                                     <button
                                       type="button"
                                       onClick={() =>
@@ -1722,6 +1762,7 @@ export default function SettingsPage() {
                                     >
                                       Nastavit DO: současnost
                                     </button>
+                                    )
                                   ) : (
                                     <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
                                       Poslední pozice běží do současnosti
@@ -1742,14 +1783,24 @@ export default function SettingsPage() {
                   {positionTimelineSaved ? (
                     <span className="text-xs font-semibold text-emerald-700">Uloženo</span>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => void savePositionTimeline()}
-                    disabled={positionTimelineSaving}
-                    className="rounded-xl border border-emerald-700 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {positionTimelineSaving ? "Ukládám..." : "Uložit timeline"}
-                  </button>
+                  {positionTimelineLocked ? (
+                    <button
+                      type="button"
+                      onClick={unlockPositionTimeline}
+                      className="rounded-xl border border-slate-900 bg-white px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-100"
+                    >
+                      Změna
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void savePositionTimeline()}
+                      disabled={positionTimelineSaving}
+                      className="rounded-xl border border-emerald-700 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {positionTimelineSaving ? "Ukládám..." : "Uložit timeline"}
+                    </button>
+                  )}
                 </div>
               </section>
               )}

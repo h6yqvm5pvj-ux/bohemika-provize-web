@@ -123,7 +123,11 @@ type Props = {
 };
 
 const formatMoney = (value: number | undefined | null) =>
-  formatMoneyValue(value, { emptyValueLabel: "—" });
+  formatMoneyValue(value, {
+    emptyValueLabel: "—",
+    minFractionDigits: 2,
+    maxFractionDigits: 2,
+  });
 
 const versionLabel = (val?: string | null) => {
   const map: Record<string, string> = {

@@ -13,34 +13,8 @@ import {
 
 import { db } from "../firebase";
 import {
-  type CommissionMode,
-  type CommissionResultItemDTO,
-  type PaymentFrequency,
   type Position,
 } from "../types/domain";
-import {
-  calculateAllianzAuto,
-  calculateAxaCestovko,
-  calculateComfortCC,
-  calculateCppAuto,
-  calculateSlaviaAuto,
-  calculateCppCestovko,
-  calculateCppPPRbez,
-  calculateCppPPRs,
-  calculateCppSimplex,
-  calculateCsobAuto,
-  calculateDomex,
-  calculateFlexi,
-  calculateKoopMajetekObcan,
-  calculateKooperativaAuto,
-  calculateMaxEfekt,
-  calculateMaxdomov,
-  calculateNeon,
-  calculatePillowAuto,
-  calculatePillowInjury,
-  calculateUniqaAuto,
-  calculateZamex,
-} from "../lib/productFormulas";
 import { totalWithMultipliers } from "../lib/commissionTotals";
 import {
   buildChildrenByManager,
@@ -48,7 +22,6 @@ import {
 } from "../lib/teamHierarchy";
 import { generateCashflow } from "./generator";
 import {
-  normalizeTitleKey,
   stripTotalRows,
 } from "./helpers";
 import type {
@@ -98,78 +71,6 @@ function stableHash(parts: string[]): string {
   return (hash >>> 0).toString(16);
 }
 
-function commissionItemsForPosition(
-  entry: EntryDoc,
-  position: Position,
-  forcedMode?: CommissionMode | null
-): CommissionResultItemDTO[] {
-  const product = entry.productKey;
-  const amount = entry.inputAmount ?? 0;
-  const frequency = (entry.frequencyRaw ?? "annual") as PaymentFrequency;
-  const duration =
-    typeof entry.durationYears === "number" && !Number.isNaN(entry.durationYears)
-      ? entry.durationYears
-      : 15;
-  const mode = (forcedMode ??
-    entry.commissionMode ??
-    entry.mode ??
-    "accelerated") as CommissionMode;
-
-  switch (product) {
-    case "neon":
-      return calculateNeon(amount, position, duration, mode).items;
-    case "flexi":
-      return calculateFlexi(amount, position, mode, duration).items;
-    case "maximaMaxEfekt":
-      return calculateMaxEfekt(amount, duration, position, mode).items;
-    case "pillowInjury":
-      return calculatePillowInjury(amount, position, mode).items;
-    case "domex":
-      return calculateDomex(amount, frequency, position).items;
-    case "koopmajetekobcan":
-      return calculateKoopMajetekObcan(amount, frequency, position).items;
-    case "cppPPRbez":
-      return calculateCppPPRbez(amount, frequency, position).items;
-    case "maxdomov":
-      return calculateMaxdomov(amount, frequency, position).items;
-    case "cppAuto":
-      return calculateCppAuto(amount, frequency, position).items;
-    case "slaviaauto":
-      return calculateSlaviaAuto(amount, frequency, position).items;
-    case "cppsimplex":
-      return calculateCppSimplex(amount, frequency, position).items;
-    case "allianzAuto":
-      return calculateAllianzAuto(amount, frequency, position).items;
-    case "csobAuto":
-      return calculateCsobAuto(amount, frequency, position).items;
-    case "uniqaAuto":
-      return calculateUniqaAuto(amount, frequency, position).items;
-    case "cppPPRs":
-      return calculateCppPPRs(amount, frequency, position).items;
-    case "pillowAuto":
-      return calculatePillowAuto(amount, frequency, position).items;
-    case "kooperativaAuto":
-      return calculateKooperativaAuto(amount, frequency, position).items;
-    case "zamex":
-      return calculateZamex(amount, frequency, position).items;
-    case "cppcestovko":
-      return calculateCppCestovko(amount, position).items;
-    case "axacestovko":
-      return calculateAxaCestovko(amount, position).items;
-    case "comfortcc":
-      return calculateComfortCC({
-        fee: amount,
-        payment: entry.comfortPayment ?? 0,
-        targetAmount: !!entry.comfortGradual ? entry.comfortTargetAmount ?? 0 : 0,
-        isSavings: !!entry.comfortGradual,
-        isGradualFee: !!entry.comfortGradual,
-        position,
-      }).items;
-    default:
-      return [];
-  }
-}
-
 export function useCashflowData({
   userEmail,
   scopeFilter,
@@ -204,7 +105,6 @@ export function useCashflowData({
         let myPosition = (meSnap.data() as UserDoc | undefined)?.position ?? null;
 
         const usersCollection = collection(db, "users");
-        const subordinatePositions: Record<string, Position | null> = {};
 
         // Case-insensitive strom uživatelů (managerEmail může být v DB uložený s různým casingem).
         const allUsersSnap = await getDocsFromServer(usersCollection);
@@ -255,9 +155,6 @@ export function useCashflowData({
 
         const childrenByManager = buildChildrenByManager(usersByEmail.values());
         const hierarchy = collectSubordinateHierarchy(email, childrenByManager);
-        hierarchy.subordinateByEmail.forEach((subordinate, subordinateEmail) => {
-          subordinatePositions[subordinateEmail] = subordinate.position ?? null;
-        });
         const subordinateEmails = hierarchy.subordinateEmails;
         const entriesGroup = collectionGroup(db, "entries");
         let managerLinkedDocs: Array<{
@@ -387,152 +284,35 @@ export function useCashflowData({
         const overrides: EntryDoc[] = [];
         if (teamRaw.length > 0) {
           for (const entry of teamRaw) {
-            const ownerEmail = (entry.userEmail ?? "").toLowerCase();
-            const chain =
-              (entry.managerChain as EntryDoc["managerChain"]) ?? [];
-            const managerIndex = chain.findIndex(
-              (node) => (node.email ?? "").toLowerCase() === email
-            );
-            const chainSubordinatePosition =
-              managerIndex > 0
-                ? (chain[managerIndex - 1]?.position as Position | null | undefined) ??
-                  null
-                : null;
-            const subordinatePosition =
-              (entry.position as Position | undefined) ??
-              subordinatePositions[ownerEmail] ??
-              chainSubordinatePosition ??
-              null;
-            if (!subordinatePosition) continue;
-
             const storedOverride =
               (entry.managerOverrides as EntryDoc["managerOverrides"])?.find(
                 (override) => (override.email ?? "").toLowerCase() === email
               ) ?? null;
 
-            if (storedOverride) {
-              const storedOverrideItems = stripTotalRows(storedOverride.items ?? []);
-              const storedOverrideTotal = totalWithMultipliers(storedOverrideItems);
+            if (!storedOverride) continue;
 
-              overrides.push({
-                ...entry,
-                originalEntryId: entry.id,
-                id: `${entry.id}-override`,
-                items: storedOverrideItems,
-                total: storedOverrideTotal,
-                source: "manager",
-                position: storedOverride.position ?? myPosition,
-                managerPositionSnapshot: storedOverride.position ?? myPosition,
-                managerModeSnapshot:
-                  storedOverride.commissionMode ??
-                  entry.managerModeSnapshot ??
-                  entry.commissionMode ??
-                  entry.mode ??
-                  null,
-                clientName: entry.clientName ?? null,
-              });
-              continue;
-            }
+            const storedOverrideItems = stripTotalRows(storedOverride.items ?? []);
+            const storedOverrideTotal = totalWithMultipliers(storedOverrideItems);
+            if (storedOverrideItems.length === 0 || storedOverrideTotal <= 0) continue;
 
-            const managerSnapshot = managerIndex >= 0 ? chain[managerIndex] : null;
-            const childSnapshot =
-              managerIndex > 0
-                ? chain[managerIndex - 1]
-                : {
-                    email: ownerEmail,
-                    position: subordinatePosition,
-                    commissionMode:
-                      (entry.commissionMode as CommissionMode | null | undefined) ??
-                      (entry.mode as CommissionMode | null | undefined) ??
-                      null,
-                  };
-
-            const effectiveManagerPosition =
-              (managerSnapshot?.position as Position | null | undefined) ??
-              myPosition;
-            if (!effectiveManagerPosition) continue;
-
-            const effectiveManagerMode =
-              (managerSnapshot?.commissionMode as
-                | CommissionMode
-                | null
-                | undefined) ??
-              (entry.managerModeSnapshot as
-                | CommissionMode
-                | null
-                | undefined) ??
-              (entry.commissionMode as CommissionMode | null | undefined) ??
-              (entry.mode as CommissionMode | null | undefined) ??
+            const storedOverridePosition =
+              (storedOverride.position as Position | null | undefined) ??
+              (entry.managerPositionSnapshot as Position | null | undefined) ??
               null;
-            const managerModeForOverride =
-              (effectiveManagerMode as CommissionMode | null) ?? "standard";
-
-            const baselinePosition = childSnapshot?.position ?? subordinatePosition;
-
-            const managerItems = stripTotalRows(
-              commissionItemsForPosition(
-                entry,
-                effectiveManagerPosition,
-                managerModeForOverride
-              )
-            );
-            const baselineItems = stripTotalRows(
-              commissionItemsForPosition(
-                entry,
-                baselinePosition as Position,
-                managerModeForOverride
-              )
-            );
-
-            const managerMap = new Map<string, { title: string; amount: number }>();
-            managerItems.forEach((item) => {
-              const key = normalizeTitleKey(item.title ?? "");
-              const previous = managerMap.get(key);
-              managerMap.set(key, {
-                title: item.title ?? previous?.title ?? key,
-                amount: (previous?.amount ?? 0) + (item.amount ?? 0),
-              });
-            });
-
-            const diffItems: CommissionResultItemDTO[] = [];
-
-            baselineItems.forEach((item) => {
-              const key = normalizeTitleKey(item.title ?? "");
-              const managerItem = managerMap.get(key);
-              const managerAmount = managerItem?.amount ?? 0;
-              const subordinateAmount = item.amount ?? 0;
-              const remaining = managerAmount - subordinateAmount;
-
-              if (remaining > 0) {
-                diffItems.push({
-                  title: managerItem?.title ?? item.title,
-                  amount: remaining,
-                });
-              }
-
-              managerMap.delete(key);
-            });
-
-            managerMap.forEach((value) => {
-              if (value.amount > 0) {
-                diffItems.push({ title: value.title, amount: value.amount });
-              }
-            });
-
-            const diffTotalWithMultipliers = totalWithMultipliers(diffItems);
-            if (diffItems.length === 0 || diffTotalWithMultipliers <= 0) continue;
 
             overrides.push({
               ...entry,
               originalEntryId: entry.id,
               id: `${entry.id}-override`,
-              items: diffItems,
-              total: diffTotalWithMultipliers,
+              items: storedOverrideItems,
+              total: storedOverrideTotal,
               source: "manager",
-              position: effectiveManagerPosition,
-              managerPositionSnapshot: effectiveManagerPosition,
-              managerModeSnapshot: effectiveManagerMode,
-              managerChain: chain,
+              position: storedOverridePosition ?? null,
+              managerPositionSnapshot: storedOverridePosition ?? null,
+              managerModeSnapshot:
+                (storedOverride.commissionMode as EntryDoc["managerModeSnapshot"]) ??
+                (entry.managerModeSnapshot as EntryDoc["managerModeSnapshot"]) ??
+                null,
               clientName: entry.clientName ?? null,
             });
           }

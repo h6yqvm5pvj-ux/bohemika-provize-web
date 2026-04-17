@@ -59,7 +59,11 @@ export type AutoDetail = {
 } | null;
 
 const formatMoney = (value: number | undefined | null) =>
-  formatMoneyValue(value, { emptyValueLabel: "—" });
+  formatMoneyValue(value, {
+    emptyValueLabel: "—",
+    minFractionDigits: 2,
+    maxFractionDigits: 2,
+  });
 
 const formatLimitLabel = (val: string): string => {
   if (!val) return "—";

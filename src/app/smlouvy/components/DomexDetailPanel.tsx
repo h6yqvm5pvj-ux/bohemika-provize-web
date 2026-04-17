@@ -7,6 +7,7 @@ import {
   Sofa,
 } from "lucide-react";
 import type { Product } from "@/app/types/domain";
+import { formatMoney as formatMoneyValue } from "@/app/lib/formatters";
 
 type DomexDetail = {
   address?: string | null;
@@ -95,7 +96,11 @@ const ToggleRow = ({
 };
 
 const formatKc = (val?: number | null) =>
-  val != null && Number.isFinite(val) ? `${val.toLocaleString("cs-CZ")} Kč` : "—";
+  formatMoneyValue(val, {
+    emptyValueLabel: "—",
+    minFractionDigits: 2,
+    maxFractionDigits: 2,
+  });
 
 export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange }: Props) {
   if (prod !== "domex") return null;

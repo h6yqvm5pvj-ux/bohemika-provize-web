@@ -7,6 +7,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CalendarDays,
+  ExternalLink,
   FileText,
   Package,
   PencilLine,
@@ -52,10 +53,8 @@ import {
 import { Spinner, Skeleton, Toasts } from "./ContractDetailUi";
 import { type ContractDoc } from "./contractDetailTypes";
 import {
-  calculateResultForPosition,
   cleanResultTitle,
   computeTotalWithMultipliers,
-  diffItemsByTitle,
   formatDate,
   formatMoney,
   frequencyText,
@@ -89,6 +88,17 @@ const LIFE_PRODUCT_KEYS = new Set<Product>([
   "pillowInjury",
 ]);
 
+const ALLIANZ_PAYMENT_CHECK_URL =
+  "https://www.allianz.cz/cs_CZ/apps/zaplacenost-pojistky.html";
+const SLAVIA_PAYMENT_CHECK_URL = "https://www.slavia-pojistovna.cz/over-ps/";
+const KOOPERATIVA_PAYMENT_CHECK_URL =
+  "https://insure.koop.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml";
+const KOOPERATIVA_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
+  "flexi",
+  "koopmajetekobcan",
+  "kooperativaAuto",
+]);
+
 export default function ContractDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -113,9 +123,6 @@ export default function ContractDetailPage() {
 
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [managerPosition, setManagerPosition] = useState<Position | null>(
-    null
-  );
-  const [managerMode, setManagerMode] = useState<CommissionMode | null>(
     null
   );
 
@@ -204,9 +211,6 @@ export default function ContractDetailPage() {
           const data = snap.data() as any;
           if (data.position) {
             setManagerPosition(data.position as Position);
-          }
-          if (data.commissionMode) {
-            setManagerMode(data.commissionMode as CommissionMode);
           }
         }
       } catch (e) {
@@ -572,6 +576,14 @@ export default function ContractDetailPage() {
   const contractTotal = contract?.total ?? 0;
   const freq = (contract?.frequencyRaw as PaymentFrequency | null | undefined) ?? null;
   const prod = contract?.productKey as Product | undefined;
+  const paymentVerificationUrl =
+    prod === "allianzAuto"
+      ? ALLIANZ_PAYMENT_CHECK_URL
+      : prod === "slaviaauto"
+      ? SLAVIA_PAYMENT_CHECK_URL
+      : prod && KOOPERATIVA_PAYMENT_CHECK_PRODUCTS.has(prod)
+      ? KOOPERATIVA_PAYMENT_CHECK_URL
+      : null;
   const isLifeInsuranceContract = Boolean(prod && LIFE_PRODUCT_KEYS.has(prod));
   const showTimelineSection = isLifeInsuranceContract && hasTimelineChange;
   const isPaymentBasedProduct =
@@ -678,10 +690,31 @@ export default function ContractDetailPage() {
     refreshReplacementEntryId,
   ]);
 
-  const effectiveManagerPosition =
-    managerPosition ?? ((contract as any)?.managerPositionSnapshot as Position | null | undefined) ?? null;
-  const effectiveManagerMode =
-    managerMode ?? ((contract as any)?.managerModeSnapshot as CommissionMode | null | undefined) ?? null;
+  const effectiveManagerPosition = useMemo(() => {
+    if (!contract) return managerPosition ?? null;
+
+    const snapshotPosition =
+      (contract.managerPositionSnapshot as Position | null | undefined) ?? null;
+    const viewerEmail = normalizedUserEmail;
+    if (!viewerEmail) return snapshotPosition ?? managerPosition ?? null;
+
+    const overrides = (contract.managerOverrides as ContractDoc["managerOverrides"]) ?? [];
+    const overridePosition =
+      overrides.find((o) => normalizeEmail(o.email) === viewerEmail)?.position ?? null;
+    if (overridePosition) return overridePosition;
+
+    const chain = (contract.managerChain as ContractDoc["managerChain"]) ?? [];
+    const chainPosition =
+      chain.find((node) => normalizeEmail(node.email) === viewerEmail)?.position ?? null;
+    if (chainPosition) return chainPosition;
+
+    const snapshotManagerEmail = normalizeEmail(contract.managerEmailSnapshot ?? null);
+    if (snapshotManagerEmail === viewerEmail && snapshotPosition) {
+      return snapshotPosition;
+    }
+
+    return snapshotPosition ?? managerPosition ?? null;
+  }, [contract, managerPosition, normalizedUserEmail]);
 
   const [editMode, setEditMode] = useState(false);
   const [editClientName, setEditClientName] = useState("");
@@ -2319,242 +2352,92 @@ export default function ContractDetailPage() {
     }
   };
 
-  // výpočet meziprovize
+  // meziprovize: pouze uložený snapshot při sepsání smlouvy (bez live přepočtu)
   useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      const managerModeForOverride: CommissionMode =
-        (effectiveManagerMode as CommissionMode | null) ??
-        (managerMode as CommissionMode | null) ??
-        "standard";
+    if (!contract || !isManagerViewingSubordinate) {
+      setOverrideItems(null);
+      setOverrideTotal(null);
+      setChildOverrideItems(null);
+      setChildOverrideTotal(null);
+      setChildOverrideLabel(null);
+      setChildOverrideName(null);
+      setChildOverridePosition(null);
+      return;
+    }
 
-      if (!contract || !effectiveManagerPosition || !isManagerViewingSubordinate) {
-        if (cancelled) return;
-        setOverrideItems(null);
-        setOverrideTotal(null);
-        setChildOverrideItems(null);
-        setChildOverrideTotal(null);
-        setChildOverrideLabel(null);
-        return;
-      }
+    const normalizedUserEmail = (user?.email ?? "").toLowerCase();
+    const managerOverrides = (contract.managerOverrides as ContractDoc["managerOverrides"]) ?? [];
 
-      // nejprve zkus použít uloženou meziprovizi pro aktuálního manažera
-      const storedOverride =
-        (contract?.managerOverrides as ContractDoc["managerOverrides"])?.find(
-          (o) => o.email?.toLowerCase() === user?.email?.toLowerCase()
-        ) ?? null;
+    const storedOverride =
+      managerOverrides.find((o) => (o.email ?? "").toLowerCase() === normalizedUserEmail) ?? null;
+    const storedOverrideItems = stripTotalRows(storedOverride?.items);
+    const storedOverrideTotal = computeTotalWithMultipliers(storedOverrideItems);
+    const hasStoredOverride =
+      !!storedOverride && storedOverrideItems.length > 0 && storedOverrideTotal > 0;
 
-      let resolvedOverrideItems: CommissionResultItemDTO[] | null = null;
-      let resolvedOverrideTotal: number | null = null;
+    setOverrideItems(hasStoredOverride ? storedOverrideItems : null);
+    setOverrideTotal(hasStoredOverride ? storedOverrideTotal : null);
 
-      if (storedOverride) {
-        const sanitizedAdvisorItems = stripTotalRows(contract.items);
-        const sanitizedOverrideItems = stripTotalRows(storedOverride.items);
+    const chain = (contract.managerChain as ContractDoc["managerChain"]) ?? [];
+    const idxByEmail = chain.findIndex(
+      (c) => (c.email ?? "").toLowerCase() === normalizedUserEmail
+    );
+    const idxByPosition =
+      idxByEmail < 0 && effectiveManagerPosition
+        ? chain.findIndex((c) => c.position === effectiveManagerPosition)
+        : -1;
+    const resolvedIdx = idxByEmail >= 0 ? idxByEmail : idxByPosition;
+    const fallbackChild =
+      resolvedIdx < 0 && chain.length > 0 ? chain[chain.length - 1] : null;
 
-        const advisorTitles = new Set(
-          sanitizedAdvisorItems.map((it) => normalizeTitleForCompare(it.title as string))
-        );
-        const overrideTitles = sanitizedOverrideItems.map((it) =>
-          normalizeTitleForCompare(it.title as string)
-        );
+    const childSnap =
+      resolvedIdx > 0
+        ? chain[resolvedIdx - 1]
+        : resolvedIdx < 0
+          ? fallbackChild ??
+            (ownerManagerPosition
+              ? {
+                  email: ownerManagerEmail,
+                  position: ownerManagerPosition,
+                  commissionMode:
+                    (contract.managerModeSnapshot as CommissionMode | null | undefined) ??
+                    null,
+                }
+              : null)
+          : null;
 
-        const hasSameCount = overrideTitles.length === advisorTitles.size;
-        const allTitlesMatch =
-          overrideTitles.length > 0 &&
-          overrideTitles.every((t) => t && advisorTitles.has(t));
+    const childEmail =
+      (childSnap?.email as string | null | undefined)?.toLowerCase() ?? null;
+    const storedChildOverride =
+      managerOverrides.find((o) => (o.email ?? "").toLowerCase() === (childEmail ?? "")) ??
+      null;
+    const storedChildItems = stripTotalRows(storedChildOverride?.items);
+    const storedChildTotal = computeTotalWithMultipliers(storedChildItems);
+    const hasStoredChildOverride =
+      !!storedChildOverride && storedChildItems.length > 0 && storedChildTotal > 0;
 
-        const overrideTotalFromItems = computeTotalWithMultipliers(
-          sanitizedOverrideItems
-        );
-        const overrideTotalValid = overrideTotalFromItems > 0;
-
-        if (hasSameCount && allTitlesMatch && overrideTotalValid) {
-          resolvedOverrideItems = sanitizedOverrideItems ?? null;
-          resolvedOverrideTotal = overrideTotalFromItems;
-        }
-      }
-
-      const chain = (contract.managerChain as ContractDoc["managerChain"]) ?? [];
-      const normalizedUserEmail = user?.email?.toLowerCase() ?? null;
-
-      const idxByEmail = chain.findIndex(
-        (c) => (c.email ?? "").toLowerCase() === normalizedUserEmail
+    if (childSnap && childEmail && hasStoredChildOverride) {
+      setChildOverrideItems(storedChildItems);
+      setChildOverrideTotal(storedChildTotal);
+      setChildOverrideLabel(
+        (childSnap.position as Position | null | undefined) ??
+          normalizeTitleForCompare(childSnap.email ?? childEmail)
       );
-      const idxByPosition =
-        idxByEmail < 0 && effectiveManagerPosition
-          ? chain.findIndex((c) => c.position === effectiveManagerPosition)
-          : -1;
-      const resolvedIdx = idxByEmail >= 0 ? idxByEmail : idxByPosition;
+      setChildOverrideName(nameFromEmail(childSnap.email ?? childEmail));
+      setChildOverridePosition((childSnap.position as Position | null | undefined) ?? null);
+      return;
+    }
 
-      const fallbackChild =
-        resolvedIdx < 0 && chain.length > 0 ? chain[chain.length - 1] : null;
-
-      // pro přímého nadřízeného (index 0) žádného "podřízeného manažera" neukazujeme
-      const childSnap =
-        resolvedIdx > 0
-          ? chain[resolvedIdx - 1]
-          : resolvedIdx < 0
-            ? fallbackChild ??
-              (ownerManagerPosition
-                ? {
-                    email: ownerManagerEmail,
-                    position: ownerManagerPosition,
-                    commissionMode:
-                      (contract.managerModeSnapshot as CommissionMode | null | undefined) ??
-                      null,
-                  }
-                : null)
-            : null;
-
-      const baselinePosCurrent =
-        (childSnap?.position as Position | null | undefined) ??
-        ownerPosition ??
-        ((contract.position as Position | null) ?? null);
-
-      // pro rozdíl vůči aktuálnímu manažerovi použijeme jeho režim (typicky běžný),
-      // i když podřízený má zrychlený.
-      const baselineModeCurrent = managerModeForOverride;
-
-      const advisorPos =
-        ownerPosition ?? ((contract.position as Position | null) ?? null);
-      const advisorMode =
-        (contract.commissionMode as CommissionMode | null | undefined) ??
-        (contract as any)?.mode ??
-        "standard";
-
-      // pokud není validní snapshot, dopočítej meziprovizi
-      if (!resolvedOverrideItems) {
-        const managerResult = await calculateResultForPosition(
-          contract,
-          effectiveManagerPosition,
-          managerModeForOverride
-        );
-        if (cancelled || !managerResult) {
-          setOverrideItems(null);
-          setOverrideTotal(null);
-          setChildOverrideItems(null);
-          setChildOverrideTotal(null);
-          setChildOverrideLabel(null);
-          return;
-        }
-
-        const baselineResultMain =
-          baselinePosCurrent != null
-            ? await calculateResultForPosition(contract, baselinePosCurrent, baselineModeCurrent)
-            : null;
-
-        const subItemsMain = baselineResultMain?.items ?? contract.items ?? [];
-        const mainDiff = diffItemsByTitle(managerResult.items, subItemsMain);
-
-        resolvedOverrideItems = mainDiff.items;
-        resolvedOverrideTotal = mainDiff.total;
-      }
-
-      if (cancelled) return;
-      setOverrideItems(resolvedOverrideItems ?? null);
-      setOverrideTotal(resolvedOverrideTotal ?? null);
-
-      const childEmail =
-        (childSnap?.email as string | null | undefined)?.toLowerCase() ?? null;
-
-      const storedChildOverride =
-        (contract?.managerOverrides as ContractDoc["managerOverrides"])?.find(
-          (o) => (o.email ?? "").toLowerCase() === (childEmail ?? "")
-        ) ?? null;
-      const storedChildItems = stripTotalRows(storedChildOverride?.items);
-      const storedChildTotal = computeTotalWithMultipliers(storedChildItems);
-
-      // meziprovize pro přímého manažera pod sjednavatelem (např. manazer7)
-      if (childSnap && childEmail && advisorPos) {
-        const childMode =
-          (childSnap?.commissionMode as CommissionMode | null | undefined) ??
-          (contract.managerModeSnapshot as CommissionMode | null | undefined) ??
-          (contract.commissionMode as CommissionMode | null | undefined) ??
-          (contract as any)?.mode ??
-          "accelerated";
-
-        const childSnapshotValid =
-          storedChildOverride &&
-          storedChildItems.length > 0 &&
-          storedChildTotal > 0;
-
-        const childCalcUpper = await calculateResultForPosition(
-          contract,
-          childSnap.position as Position,
-          childMode
-        );
-        const childCalcLower = await calculateResultForPosition(contract, advisorPos, advisorMode);
-
-        const childComputed =
-          childCalcUpper && childCalcLower
-            ? diffItemsByTitle(childCalcUpper.items, childCalcLower.items)
-            : null;
-
-        if (childSnapshotValid) {
-          const items = storedChildItems ?? null;
-          const totalFromItems = storedChildTotal ?? null;
-          const useSnapshot =
-            totalFromItems != null &&
-            totalFromItems > 0 &&
-            (!childComputed || Math.abs((childComputed.total ?? 0) - totalFromItems) < 1e-6);
-
-          if (useSnapshot) {
-            setChildOverrideItems(items);
-            setChildOverrideTotal(totalFromItems);
-            setChildOverrideName(nameFromEmail(childSnap.email ?? childEmail));
-            setChildOverridePosition((childSnap.position as Position | null | undefined) ?? null);
-          } else if (childComputed && childComputed.total > 0) {
-            setChildOverrideItems(childComputed.items);
-            setChildOverrideTotal(childComputed.total);
-            setChildOverrideName(nameFromEmail(childSnap.email ?? childEmail));
-            setChildOverridePosition((childSnap.position as Position | null | undefined) ?? null);
-          } else {
-            setChildOverrideItems(null);
-            setChildOverrideTotal(null);
-            setChildOverrideName(null);
-            setChildOverridePosition(null);
-          }
-          setChildOverrideLabel(
-            (childSnap.position as Position | null | undefined) ??
-              normalizeTitleForCompare(childSnap.email ?? childEmail)
-          );
-        } else if (childComputed && childComputed.total > 0) {
-          setChildOverrideItems(childComputed.items);
-          setChildOverrideTotal(childComputed.total);
-          setChildOverrideLabel(
-            (childSnap.position as Position | null | undefined) ??
-              normalizeTitleForCompare(childSnap.email ?? childEmail)
-          );
-          setChildOverrideName(nameFromEmail(childSnap.email ?? childEmail));
-          setChildOverridePosition((childSnap.position as Position | null | undefined) ?? null);
-        } else {
-          setChildOverrideItems(null);
-          setChildOverrideTotal(null);
-          setChildOverrideLabel(null);
-          setChildOverrideName(null);
-          setChildOverridePosition(null);
-        }
-      } else {
-        setChildOverrideItems(null);
-        setChildOverrideTotal(null);
-        setChildOverrideLabel(null);
-        setChildOverrideName(null);
-        setChildOverridePosition(null);
-      }
-    };
-
-    run();
-    return () => {
-      cancelled = true;
-    };
+    setChildOverrideItems(null);
+    setChildOverrideTotal(null);
+    setChildOverrideLabel(null);
+    setChildOverrideName(null);
+    setChildOverridePosition(null);
   }, [
     contract,
-    effectiveManagerMode,
     effectiveManagerPosition,
-    managerMode,
     isManagerViewingSubordinate,
     ownerManagerPosition,
-    ownerPosition,
     ownerManagerEmail,
     user?.email,
   ]);
@@ -2605,6 +2488,42 @@ export default function ContractDetailPage() {
       (it) =>
         !normalizeTitleForCompare(it.title).includes("provize za rok")
     );
+  };
+
+  const handlePaymentVerificationClick = async () => {
+    const contractNo = (contract?.contractNumber ?? "").trim();
+    if (!contractNo) {
+      pushToast("Číslo smlouvy není k dispozici pro zkopírování.", "error");
+      return;
+    }
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(contractNo);
+        pushToast(`Číslo smlouvy ${contractNo} bylo zkopírováno.`, "success");
+        return;
+      }
+
+      if (typeof document !== "undefined") {
+        const textarea = document.createElement("textarea");
+        textarea.value = contractNo;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        if (copied) {
+          pushToast(`Číslo smlouvy ${contractNo} bylo zkopírováno.`, "success");
+          return;
+        }
+      }
+
+      pushToast("Nepodařilo se zkopírovat číslo smlouvy.", "error");
+    } catch {
+      pushToast("Nepodařilo se zkopírovat číslo smlouvy.", "error");
+    }
   };
 
   const adviserItems =
@@ -2708,6 +2627,8 @@ export default function ContractDetailPage() {
     "inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-base font-mono tracking-tight text-white";
   const ghostButtonClass =
     "rounded-xl border border-slate-900 bg-slate-900 px-5 py-3 text-base sm:text-lg font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
+  const headerActionButtonClass =
+    "rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm sm:text-base font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
   const saveButtonClass =
     "inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-5 py-3 text-base sm:text-lg font-semibold font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
   const inputClass =
@@ -2857,11 +2778,24 @@ export default function ContractDetailPage() {
                       setDetailsSaved(false);
                       setEditMode(true);
                     }}
-                    className={`${ghostButtonClass} inline-flex items-center gap-2`}
+                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
                   >
                     <PencilLine size={16} strokeWidth={2} aria-hidden="true" />
                     <span>Upravit údaje</span>
                   </button>
+                )}
+
+                {paymentVerificationUrl && (
+                  <a
+                    href={paymentVerificationUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={handlePaymentVerificationClick}
+                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
+                  >
+                    <ExternalLink size={16} strokeWidth={2} aria-hidden="true" />
+                    <span>Ověřit zaplacení</span>
+                  </a>
                 )}
 
                 {isOwnContract && editMode && (
@@ -2893,7 +2827,7 @@ export default function ContractDetailPage() {
 
                 <Link
                   href={backToContractsHref}
-                  className={`${ghostButtonClass} inline-flex items-center gap-2`}
+                  className={`${headerActionButtonClass} inline-flex items-center gap-2`}
                 >
                   <ArrowLeft size={16} strokeWidth={2} aria-hidden="true" />
                   <span>Zpět na smlouvy</span>

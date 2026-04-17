@@ -108,6 +108,13 @@ function formatCoefficientNumber(value: number | null | undefined): string {
   return value.toLocaleString("cs-CZ", { maximumFractionDigits: 6 });
 }
 
+function formatMoneyResult(value: number | undefined | null): string {
+  return formatMoney(value, {
+    minFractionDigits: 2,
+    maxFractionDigits: 2,
+  });
+}
+
 const paymentsPerYear = (f: PaymentFrequency) =>
   f === "monthly" ? 12 : f === "quarterly" ? 4 : f === "semiannual" ? 2 : 1;
 
@@ -170,12 +177,109 @@ type PositionTimelineEntry = {
   validTo: string | null;
 };
 
+type ManagerChainSnapshotEntry = {
+  email: string | null;
+  position: Position | null;
+  commissionMode: CommissionMode | null;
+};
+
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MIN_REASONABLE_CONTRACT_YEAR = 2000;
+const MAX_REASONABLE_CONTRACT_YEAR = 2100;
+const MAX_POLICY_START_AFTER_SIGNED_DAYS = 365;
+
+type ContractDateIssue = {
+  severity: "error" | "warning";
+  message: string;
+};
 
 function isIsoDay(value: string): boolean {
   if (!ISO_DAY_RE.test(value)) return false;
   const d = new Date(`${value}T00:00:00`);
   return !Number.isNaN(d.getTime());
+}
+
+function parseIsoDayUtc(value: string): Date | null {
+  const normalized = value.trim();
+  if (!ISO_DAY_RE.test(normalized)) return null;
+  const d = new Date(`${normalized}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.toISOString().slice(0, 10) !== normalized) return null;
+  return d;
+}
+
+function collectContractDateIssues(
+  signedDateIsoRaw: string,
+  policyStartDateIsoRaw: string
+): ContractDateIssue[] {
+  const signedDateIso = signedDateIsoRaw.trim();
+  const policyStartDateIso = policyStartDateIsoRaw.trim();
+  const issues: ContractDateIssue[] = [];
+
+  const signedDate = signedDateIso ? parseIsoDayUtc(signedDateIso) : null;
+  const policyStartDate = policyStartDateIso ? parseIsoDayUtc(policyStartDateIso) : null;
+
+  if (signedDateIso && !signedDate) {
+    issues.push({
+      severity: "error",
+      message: "Datum sjednání má neplatný formát.",
+    });
+  }
+
+  if (policyStartDateIso && !policyStartDate) {
+    issues.push({
+      severity: "error",
+      message: "Datum počátku má neplatný formát.",
+    });
+  }
+
+  if (signedDate) {
+    const signedYear = signedDate.getUTCFullYear();
+    if (
+      signedYear < MIN_REASONABLE_CONTRACT_YEAR ||
+      signedYear > MAX_REASONABLE_CONTRACT_YEAR
+    ) {
+      issues.push({
+        severity: "error",
+        message: `Datum sjednání má podezřelý rok ${signedYear}.`,
+      });
+    }
+  }
+
+  if (policyStartDate) {
+    const startYear = policyStartDate.getUTCFullYear();
+    if (
+      startYear < MIN_REASONABLE_CONTRACT_YEAR ||
+      startYear > MAX_REASONABLE_CONTRACT_YEAR
+    ) {
+      issues.push({
+        severity: "error",
+        message: `Datum počátku má podezřelý rok ${startYear}.`,
+      });
+    }
+  }
+
+  if (signedDate && policyStartDate) {
+    const diffDays = Math.round(
+      (policyStartDate.getTime() - signedDate.getTime()) / 86400000
+    );
+
+    if (diffDays < 0) {
+      issues.push({
+        severity: "error",
+        message: "Datum počátku nesmí být před datem sjednání.",
+      });
+    }
+
+    if (diffDays > MAX_POLICY_START_AFTER_SIGNED_DAYS) {
+      issues.push({
+        severity: "warning",
+        message: `Počátek je ${diffDays} dní po sjednání (zkontroluj, jestli je to záměr).`,
+      });
+    }
+  }
+
+  return issues;
 }
 
 function parsePositionTimeline(raw: unknown): PositionTimelineEntry[] {
@@ -238,6 +342,79 @@ function resolvePositionTimelineMatch(
   });
 
   return candidates[0] ?? null;
+}
+
+function resolvePositionForSignedDate(
+  userData: any,
+  signedDateIso: string | null,
+  fallbackPosition: Position | null
+): Position | null {
+  const timeline = parsePositionTimeline(userData?.positionTimeline);
+  const timelineMatch =
+    signedDateIso && isIsoDay(signedDateIso)
+      ? resolvePositionTimelineMatch(signedDateIso, timeline)
+      : null;
+
+  return (
+    (timelineMatch?.position as Position | undefined) ??
+    (userData?.position as Position | undefined) ??
+    fallbackPosition ??
+    null
+  );
+}
+
+async function buildManagerChainSnapshotForSignedDate(
+  directManagerEmailRaw: string | null | undefined,
+  signedDateIso: string | null
+): Promise<ManagerChainSnapshotEntry[]> {
+  const directManagerEmail = (directManagerEmailRaw ?? "").trim().toLowerCase();
+  if (!directManagerEmail) return [];
+
+  const chain: ManagerChainSnapshotEntry[] = [];
+  const visited = new Set<string>();
+  let currentEmail: string | null = directManagerEmail;
+  let depth = 0;
+
+  while (currentEmail && depth < 9 && !visited.has(currentEmail)) {
+    visited.add(currentEmail);
+
+    const snap = await getDoc(doc(db, "users", currentEmail));
+    if (!snap.exists()) break;
+
+    const data = snap.data() as any;
+    const resolvedPosition = resolvePositionForSignedDate(data, signedDateIso, null);
+    const resolvedMode = (data?.commissionMode as CommissionMode | undefined) ?? null;
+
+    chain.push({
+      email: currentEmail,
+      position: resolvedPosition,
+      commissionMode: resolvedMode,
+    });
+
+    currentEmail =
+      ((data?.managerEmail as string | undefined) ?? "").trim().toLowerCase() || null;
+    depth += 1;
+  }
+
+  return chain;
+}
+
+function ensureManagerChainWithDirectManager(
+  chain: ManagerChainSnapshotEntry[],
+  managerEmail: string | null | undefined,
+  managerPosition: Position | null,
+  managerMode: CommissionMode | null
+): ManagerChainSnapshotEntry[] {
+  if (chain.length > 0) return chain;
+  const normalizedEmail = (managerEmail ?? "").trim().toLowerCase();
+  if (!normalizedEmail) return chain;
+  return [
+    {
+      email: normalizedEmail,
+      position: managerPosition ?? null,
+      commissionMode: managerMode ?? null,
+    },
+  ];
 }
 
 function formatIsoDay(value: string | null): string {
@@ -618,6 +795,46 @@ export default function CalculatorPage() {
     clientName: string | null;
   } | null>(null);
 
+  const contractDateIssues = useMemo(
+    () => collectContractDateIssues(contractSignedDate, policyStartDate),
+    [contractSignedDate, policyStartDate]
+  );
+  const contractDateErrors = useMemo(
+    () => contractDateIssues.filter((issue) => issue.severity === "error"),
+    [contractDateIssues]
+  );
+  const contractDateWarnings = useMemo(
+    () => contractDateIssues.filter((issue) => issue.severity === "warning"),
+    [contractDateIssues]
+  );
+
+  const validateContractDatesBeforeSave = (): boolean => {
+    if (contractDateErrors.length > 0) {
+      const msg = `Zkontroluj datumy: ${contractDateErrors
+        .map((issue) => issue.message)
+        .join(" ")}`;
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return false;
+    }
+
+    if (contractDateWarnings.length === 0) return true;
+    if (typeof window === "undefined") return true;
+
+    const warningText = contractDateWarnings
+      .map((issue) => `• ${issue.message}`)
+      .join("\n");
+    const proceed = window.confirm(
+      `Pozor, datumy vypadají neobvykle:\n${warningText}\n\nChceš i přesto uložit?`
+    );
+    if (!proceed) {
+      setSaveMessage("Uložení zrušeno. Zkontroluj datumy.");
+      return false;
+    }
+
+    return true;
+  };
+
   const paymentBasedTotalsMemo = useMemo(() => {
     if (
       (product !== "domex" &&
@@ -663,7 +880,7 @@ export default function CalculatorPage() {
   const [managerPositionSnapshot, setManagerPositionSnapshot] = useState<Position | null>(null);
   const [managerModeSnapshot, setManagerModeSnapshot] = useState<CommissionMode | null>(null);
   const [managerChainSnapshot, setManagerChainSnapshot] = useState<
-    { email: string | null; position: Position | null; commissionMode: CommissionMode | null }[]
+    ManagerChainSnapshotEntry[]
   >([]);
   const [userCommissionMode, setUserCommissionMode] = useState<CommissionMode | null>(null);
   const [baseUserPosition, setBaseUserPosition] = useState<Position | null>(null);
@@ -921,7 +1138,7 @@ export default function CalculatorPage() {
           }
         }
 
-        const chain: { email: string | null; position: Position | null; commissionMode: CommissionMode | null }[] = [];
+        const chain: ManagerChainSnapshotEntry[] = [];
 
         if (mgrEmail) {
           try {
@@ -1548,6 +1765,7 @@ export default function CalculatorPage() {
       setMissingFields((prev) => Array.from(new Set([...prev, ...missing])));
       return;
     }
+    if (!validateContractDatesBeforeSave()) return;
 
     const trimmedContractNumber = contractNumber.trim();
     if (endorsementDraft.productKey !== product) {
@@ -1590,12 +1808,14 @@ export default function CalculatorPage() {
         contractSignedDate.trim().length > 0
           ? new Date(contractSignedDate)
           : null;
+      const signedDateIso = contractSignedDate.trim() || null;
       const start =
         policyStartDate.trim().length > 0 ? new Date(policyStartDate) : null;
 
       let mgrEmail = managerEmailSnapshot;
       let mgrPos = managerPositionSnapshot;
       let mgrMode = managerModeSnapshot;
+      let managerChainForSave: ManagerChainSnapshotEntry[] = managerChainSnapshot;
       let overridesForChain: ManagerOverrideSnapshot[] = [];
       try {
         const userSnap = await getDoc(userRef);
@@ -1605,24 +1825,33 @@ export default function CalculatorPage() {
           mgrEmail ??
           null;
         if (mgrEmail) {
-          const mgrSnap = await getDoc(doc(db, "users", mgrEmail));
-          if (mgrSnap.exists()) {
-            const md = mgrSnap.data() as any;
-            mgrPos = (md.position as Position | undefined) ?? mgrPos ?? null;
-            mgrMode =
-              (md.commissionMode as CommissionMode | undefined) ??
-              mgrMode ??
-              null;
+          const resolvedChain = await buildManagerChainSnapshotForSignedDate(
+            mgrEmail,
+            signedDateIso
+          );
+          if (resolvedChain.length > 0) {
+            managerChainForSave = resolvedChain;
           }
+        }
+        if (managerChainForSave.length > 0) {
+          mgrPos = managerChainForSave[0]?.position ?? mgrPos ?? null;
+          mgrMode = managerChainForSave[0]?.commissionMode ?? mgrMode ?? null;
         }
       } catch (snapshotErr) {
         console.error("Failed to snapshot manager info", snapshotErr);
       }
 
+      managerChainForSave = ensureManagerChainWithDirectManager(
+        managerChainForSave,
+        mgrEmail,
+        mgrPos ?? null,
+        mgrMode ?? null
+      );
+
       const diffs: ManagerOverrideSnapshot[] = [];
       let childPositionForBaseline: Position | null = position;
 
-      managerChainSnapshot.forEach((mgr) => {
+      managerChainForSave.forEach((mgr) => {
         if (!mgr.position) return;
         const mgrCommissionMode = mgr.commissionMode ?? mode;
 
@@ -1703,7 +1932,7 @@ export default function CalculatorPage() {
 
         push(email);
         push(mgrEmail);
-        managerChainSnapshot.forEach((mgr) => push(mgr.email));
+        managerChainForSave.forEach((mgr) => push(mgr.email));
         overridesForChain.forEach((ov) =>
           push(ov.email as string | null | undefined)
         );
@@ -1749,7 +1978,7 @@ export default function CalculatorPage() {
         managerEmailSnapshot: mgrEmail ?? null,
         managerPositionSnapshot: mgrPos ?? null,
         managerModeSnapshot: mgrMode ?? null,
-        managerChain: managerChainSnapshot,
+        managerChain: managerChainForSave,
         managerOverrides: overridesForChain,
         allowedEmails,
       });
@@ -1815,6 +2044,7 @@ export default function CalculatorPage() {
       setMissingFields(missing);
       return;
     }
+    if (!validateContractDatesBeforeSave()) return;
 
     const email = (user.email ?? "").toLowerCase();
     const uid = user.uid ?? null;
@@ -1882,13 +2112,15 @@ export default function CalculatorPage() {
         contractSignedDate.trim().length > 0
           ? new Date(contractSignedDate)
           : null;
+      const signedDateIso = contractSignedDate.trim() || null;
       const start =
         policyStartDate.trim().length > 0 ? new Date(policyStartDate) : null;
 
-      // Snapshot aktuálního nadřízeného a jeho pozice/režimu – uložíme k záznamu
+      // Snapshot chainu nadřízených k datu sjednání (timeline) – uložíme k záznamu
       let mgrEmail = managerEmailSnapshot;
       let mgrPos = managerPositionSnapshot;
       let mgrMode = managerModeSnapshot;
+      let managerChainForSave: ManagerChainSnapshotEntry[] = managerChainSnapshot;
       let overridesForChain: ManagerOverrideSnapshot[] = [];
       try {
         const userSnap = await getDoc(userRef);
@@ -1898,25 +2130,34 @@ export default function CalculatorPage() {
           mgrEmail ??
           null;
         if (mgrEmail) {
-          const mgrSnap = await getDoc(doc(db, "users", mgrEmail));
-          if (mgrSnap.exists()) {
-            const md = mgrSnap.data() as any;
-            mgrPos = (md.position as Position | undefined) ?? mgrPos ?? null;
-            mgrMode =
-              (md.commissionMode as CommissionMode | undefined) ??
-              mgrMode ??
-              null;
+          const resolvedChain = await buildManagerChainSnapshotForSignedDate(
+            mgrEmail,
+            signedDateIso
+          );
+          if (resolvedChain.length > 0) {
+            managerChainForSave = resolvedChain;
           }
+        }
+        if (managerChainForSave.length > 0) {
+          mgrPos = managerChainForSave[0]?.position ?? mgrPos ?? null;
+          mgrMode = managerChainForSave[0]?.commissionMode ?? mgrMode ?? null;
         }
       } catch (snapshotErr) {
         console.error("Failed to snapshot manager info", snapshotErr);
       }
 
+      managerChainForSave = ensureManagerChainWithDirectManager(
+        managerChainForSave,
+        mgrEmail,
+        mgrPos ?? null,
+        mgrMode ?? null
+      );
+
       // předpočítej meziprovize pro celý chain (od poradce výš)
       const diffs: ManagerOverrideSnapshot[] = [];
       let childPositionForBaseline: Position | null = position;
 
-      managerChainSnapshot.forEach((mgr) => {
+      managerChainForSave.forEach((mgr) => {
         if (!mgr.position) return;
         const mgrMode = mgr.commissionMode ?? mode;
 
@@ -1992,7 +2233,7 @@ export default function CalculatorPage() {
 
         push(email);
         push(mgrEmail);
-        managerChainSnapshot.forEach((mgr) => push(mgr.email));
+        managerChainForSave.forEach((mgr) => push(mgr.email));
         overridesForChain.forEach((ov) => push(ov.email as string | null | undefined));
 
         return Array.from(s);
@@ -2036,7 +2277,7 @@ export default function CalculatorPage() {
         managerEmailSnapshot: mgrEmail ?? null,
         managerPositionSnapshot: mgrPos ?? null,
         managerModeSnapshot: mgrMode ?? null,
-        managerChain: managerChainSnapshot,
+        managerChain: managerChainForSave,
         managerOverrides: overridesForChain,
         allowedEmails,
       });
@@ -2371,7 +2612,7 @@ export default function CalculatorPage() {
           className="fixed bottom-6 right-6 z-50 pointer-events-none"
         >
           <div className="relative flex items-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.18)]">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-white">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-white">
               <svg
                 viewBox="0 0 24 24"
                 aria-hidden="true"
@@ -3043,6 +3284,16 @@ export default function CalculatorPage() {
                   value={policyStartDate}
                   onChange={(e) => setPolicyStartDate(e.target.value)}
                 />
+                {contractDateErrors.length > 0 && (
+                  <p className="text-[11px] text-rose-700">
+                    {contractDateErrors.map((issue) => issue.message).join(" ")}
+                  </p>
+                )}
+                {contractDateWarnings.length > 0 && contractDateErrors.length === 0 && (
+                  <p className="text-[11px] text-amber-700">
+                    {contractDateWarnings.map((issue) => issue.message).join(" ")}
+                  </p>
+                )}
               </div>
             </div>
             </section>
@@ -3287,14 +3538,14 @@ export default function CalculatorPage() {
                         <span>Okamžitá provize ({tipsterPercent} %)</span>
                       </span>
                       <span className="text-lg sm:text-2xl font-semibold text-slate-900">
-                        {formatMoney(tipsterImmediateCommission)}
+                        {formatMoneyResult(tipsterImmediateCommission)}
                       </span>
                     </div>
 
                     <div className="pt-2 flex items-center justify-between">
                       <span className="font-semibold text-slate-900">Celkem</span>
                       <span className="text-2xl sm:text-3xl font-bold text-slate-900">
-                        {formatMoney(tipsterImmediateCommission)}
+                        {formatMoneyResult(tipsterImmediateCommission)}
                       </span>
                     </div>
                   </div>
@@ -3334,7 +3585,7 @@ export default function CalculatorPage() {
                           <span>{title}</span>
                         </span>
                         <span className="text-lg sm:text-2xl font-semibold text-slate-900">
-                          {formatMoney(item.amount)}
+                          {formatMoneyResult(item.amount)}
                         </span>
                       </div>
                     );
@@ -3349,13 +3600,13 @@ export default function CalculatorPage() {
                         <div className="flex items-center justify-between">
                           <span className="font-semibold">Celkem v 1. roce</span>
                           <span className="text-2xl sm:text-3xl font-bold text-slate-900">
-                            {formatMoney(paymentBasedTotalsMemo.immediate)}
+                            {formatMoneyResult(paymentBasedTotalsMemo.immediate)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="font-semibold">Celkem ročně následně</span>
                           <span className="text-2xl sm:text-3xl font-bold text-slate-900">
-                            {formatMoney(paymentBasedTotalsMemo.subsequent)}
+                            {formatMoneyResult(paymentBasedTotalsMemo.subsequent)}
                           </span>
                         </div>
                       </div>
@@ -3363,7 +3614,7 @@ export default function CalculatorPage() {
                       <>
                         <span className="font-semibold text-slate-900">Celkem</span>
                         <span className="text-2xl sm:text-3xl font-bold text-slate-900">
-                          {formatMoney(total)}
+                          {formatMoneyResult(total)}
                         </span>
                       </>
                     )}

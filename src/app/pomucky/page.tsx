@@ -170,6 +170,15 @@ export default function ToolsPage() {
         external: true,
       },
       {
+        key: "pillow-nahrat-tachometr",
+        category: "Pojištění vozidel",
+        title: "Pillow Nahrát tachometr",
+        description: "Nahraj stav tachometru do portálu Pillow.",
+        icon: Gauge,
+        href: "https://portal.pillow.cz/nahrat_kilometry/step1",
+        external: true,
+      },
+      {
         key: "projekce-vykonu",
         category: "Finance",
         title: "Projekce výkonu",

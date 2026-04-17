@@ -2,29 +2,6 @@ import { useEffect, useState } from "react";
 
 import { db } from "@/app/firebase";
 import {
-  calculateAllianzAuto,
-  calculateAxaCestovko,
-  calculateComfortCC,
-  calculateCppAuto,
-  calculateSlaviaAuto,
-  calculateCppCestovko,
-  calculateCppPPRbez,
-  calculateCppPPRs,
-  calculateCppSimplex,
-  calculateDomex,
-  calculateFlexi,
-  calculateKoopMajetekObcan,
-  calculateKooperativaAuto,
-  calculateMaxEfekt,
-  calculateMaxdomov,
-  calculateNeon,
-  calculateCsobAuto,
-  calculatePillowAuto,
-  calculatePillowInjury,
-  calculateUniqaAuto,
-  calculateZamex,
-} from "@/app/lib/productFormulas";
-import {
   type CommissionMode,
   type CommissionResultItemDTO,
   type PaymentFrequency,
@@ -169,75 +146,6 @@ const writePersistedHomeCache = (cacheKey: string, payload: HomeCachePayload) =>
   }
 };
 
-function commissionItemsForPosition(
-  entry: EntryDoc,
-  pos: Position,
-  modeOverride?: CommissionMode | null
-): CommissionResultItemDTO[] {
-  const product = entry.productKey;
-  const amount = entry.inputAmount ?? 0;
-  const freq = (entry.frequencyRaw ?? "annual") as PaymentFrequency;
-  const duration =
-    typeof entry.durationYears === "number" && !Number.isNaN(entry.durationYears)
-      ? entry.durationYears
-      : 15;
-  const mode = (modeOverride ?? entry.commissionMode ?? "accelerated") as CommissionMode;
-
-  switch (product) {
-    case "neon":
-      return calculateNeon(amount, pos, duration, mode).items;
-    case "flexi":
-      return calculateFlexi(amount, pos, mode, duration).items;
-    case "maximaMaxEfekt":
-      return calculateMaxEfekt(amount, duration, pos, mode).items;
-    case "pillowInjury":
-      return calculatePillowInjury(amount, pos, mode).items;
-    case "domex":
-      return calculateDomex(amount, freq, pos).items;
-    case "koopmajetekobcan":
-      return calculateKoopMajetekObcan(amount, freq, pos).items;
-    case "maxdomov":
-      return calculateMaxdomov(amount, freq, pos).items;
-    case "cppAuto":
-      return calculateCppAuto(amount, freq, pos).items;
-    case "slaviaauto":
-      return calculateSlaviaAuto(amount, freq, pos).items;
-    case "cppsimplex":
-      return calculateCppSimplex(amount, freq, pos).items;
-    case "allianzAuto":
-      return calculateAllianzAuto(amount, freq, pos).items;
-    case "csobAuto":
-      return calculateCsobAuto(amount, freq, pos).items;
-    case "uniqaAuto":
-      return calculateUniqaAuto(amount, freq, pos).items;
-    case "cppPPRs":
-      return calculateCppPPRs(amount, freq, pos).items;
-    case "cppPPRbez":
-      return calculateCppPPRbez(amount, freq, pos).items;
-    case "pillowAuto":
-      return calculatePillowAuto(amount, freq, pos).items;
-    case "kooperativaAuto":
-      return calculateKooperativaAuto(amount, freq, pos).items;
-    case "zamex":
-      return calculateZamex(amount, freq, pos).items;
-    case "cppcestovko":
-      return calculateCppCestovko(amount, pos).items;
-    case "axacestovko":
-      return calculateAxaCestovko(amount, pos).items;
-    case "comfortcc":
-      return calculateComfortCC({
-        fee: amount,
-        payment: entry.comfortPayment ?? 0,
-        targetAmount: !!entry.comfortGradual ? entry.comfortTargetAmount ?? 0 : 0,
-        isSavings: !!entry.comfortGradual,
-        isGradualFee: !!entry.comfortGradual,
-        position: pos,
-      }).items;
-    default:
-      return [];
-  }
-}
-
 export function useHomeData({
   email,
   loadPersonalHistory,
@@ -326,7 +234,6 @@ export function useHomeData({
           myMode = (d.commissionMode as CommissionMode | undefined) ?? null;
         }
 
-        const managerMode = (myMode as CommissionMode | null) ?? null;
         if (!cancelled) {
           setUserMeta({
             position,
@@ -444,11 +351,6 @@ export function useHomeData({
         const childrenByManager = buildChildrenByManager(allUsers);
         const hierarchy = collectSubordinateHierarchy(email, childrenByManager);
         const subEmails = hierarchy.subordinateEmails;
-        const subPositionMap = new Map<string, Position | undefined>();
-        hierarchy.subordinateByEmail.forEach((node, subEmail) => {
-          subPositionMap.set(subEmail, node.position);
-        });
-        const managerOf = hierarchy.managerOf;
 
         if (!cancelled) {
           setHasTeam(subEmails.length > 0);
@@ -494,12 +396,6 @@ export function useHomeData({
 
           teamCount += 1;
 
-          const items = (data.items ?? []) as CommissionResultItemDTO[];
-          const immediate = items.find((it) =>
-            (it.title ?? "").toLowerCase().includes("okamžitá provize")
-          );
-          const baseImmediate = immediate?.amount ?? 0;
-
           const override = (data.managerOverrides as ManagerOverrideSnapshot[] | undefined)?.find(
             (o) => (o.email ?? "").toLowerCase() === email
           );
@@ -511,28 +407,7 @@ export function useHomeData({
               )?.amount ?? (Number.isFinite(override.total) ? (override.total as number) : null);
             if (overrideImmediate != null) {
               teamImmediate += overrideImmediate;
-              return;
             }
-          }
-
-          const mgrPos = position;
-          const subPos = subPositionMap.get(ownerEmail) ?? (data.position as Position | undefined) ?? null;
-          const ownerManagerEmail = managerOf.get(ownerEmail) ?? null;
-          const ownerManagerPos = ownerManagerEmail ? subPositionMap.get(ownerManagerEmail) ?? null : null;
-          const comparePos = ownerManagerPos ?? subPos;
-          if (mgrPos && subPos) {
-            const mgrImmediate =
-              commissionItemsForPosition(data, mgrPos, managerMode).find((i) =>
-                (i.title ?? "").toLowerCase().includes("okamžitá")
-              )?.amount ?? baseImmediate;
-            const subImmediate =
-              commissionItemsForPosition(data, comparePos ?? subPos, managerMode).find((i) =>
-                (i.title ?? "").toLowerCase().includes("okamžitá")
-              )?.amount ?? baseImmediate;
-            const diff = Math.max(0, mgrImmediate - subImmediate);
-            teamImmediate += diff;
-          } else {
-            teamImmediate += baseImmediate;
           }
         };
 
