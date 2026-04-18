@@ -379,7 +379,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       let privateData: Record<string, unknown> | null = null;
       const privateDocIds = Array.from(
         new Set(
-          [email, emailRaw ?? "", uidRaw]
+          [email, emailRaw ?? ""]
             .map((value) => value.trim())
             .filter((value) => value.length > 0)
         )
