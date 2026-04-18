@@ -87,13 +87,26 @@ service cloud.firestore {
       let me = authEmail();
       let clean = (me is string) ? me : "";
       let safe = clean == "" ? "__missing__" : clean;
-      let ref = /databases/$(database)/documents/users/$(safe);
+      let privateRef = /databases/$(database)/documents/usersPrivate/$(safe);
+      let publicRef = /databases/$(database)/documents/users/$(safe);
       return clean != ""
-        && exists(ref)
-        && get(ref).data is map
         && (
-          get(ref).data.adminFunction == true
-          || get(ref).data.adminfunction == true
+          (
+            exists(privateRef)
+            && get(privateRef).data is map
+            && (
+              get(privateRef).data.adminFunction == true
+              || get(privateRef).data.adminfunction == true
+            )
+          )
+          || (
+            exists(publicRef)
+            && get(publicRef).data is map
+            && (
+              get(publicRef).data.adminFunction == true
+              || get(publicRef).data.adminfunction == true
+            )
+          )
         );
     }
 
@@ -234,6 +247,33 @@ service cloud.firestore {
       return value is string && (value == "contract" || value == "endorsement");
     }
 
+    function isValidProductKey(value) {
+      return value is string && value in [
+        "neon",
+        "flexi",
+        "maximaMaxEfekt",
+        "pillowInjury",
+        "zamex",
+        "domex",
+        "koopmajetekobcan",
+        "maxdomov",
+        "cppsimplex",
+        "cppAuto",
+        "slaviaauto",
+        "allianzAuto",
+        "csobAuto",
+        "uniqaAuto",
+        "uniqaflotila",
+        "pillowAuto",
+        "kooperativaAuto",
+        "cppcestovko",
+        "axacestovko",
+        "comfortcc",
+        "cppPPRs",
+        "cppPPRbez"
+      ];
+    }
+
     function isValidContractNumber(value) {
       return value is string
         && value.matches("^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$");
@@ -248,7 +288,7 @@ service cloud.firestore {
     function hasValidContractCore(data) {
       return data is map
         && isValidEntryType(data.entryType)
-        && data.productKey is string
+        && isValidProductKey(data.productKey)
         && isNonEmptyText(data.clientName)
         && isValidContractNumber(data.contractNumber)
         && isReasonableContractTimestamp(data.contractSignedDate)
@@ -273,7 +313,7 @@ service cloud.firestore {
 
     function hasValidContractCoreUpdate() {
       return (!changedKey("entryType") || isValidEntryType(request.resource.data.entryType))
-        && (!changedKey("productKey") || (request.resource.data.productKey is string && isNonEmptyText(request.resource.data.productKey)))
+        && (!changedKey("productKey") || isValidProductKey(request.resource.data.productKey))
         && (!changedKey("clientName") || isNonEmptyText(request.resource.data.clientName))
         && (!changedKey("contractNumber") || isValidContractNumber(request.resource.data.contractNumber))
         && (
@@ -334,6 +374,12 @@ service cloud.firestore {
       match /calendarEvents/{eventId} {
         allow read, write: if isOwner(userEmail) || isAdmin();
       }
+    }
+
+    // ---------- usersPrivate ----------
+    match /usersPrivate/{userEmail} {
+      // citlivá profilová data (subscription/admin flags/push tokeny apod.)
+      allow read, create, update, delete: if isOwner(userEmail) || isAdmin();
     }
 
     // ---------- userStats ----------

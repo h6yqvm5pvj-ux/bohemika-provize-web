@@ -99,6 +99,7 @@ const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   allianzAuto: "/provize/allianzauto.jpg",
   csobAuto: "/provize/csobauto.jpg",
   uniqaAuto: "/provize/uniqaauto.jpg",
+  uniqaflotila: "/provize/uniqaflotila.jpg",
   pillowAuto: "/provize/pillowauto.jpg",
   kooperativaAuto: "/provize/koopauto.jpg",
 };
@@ -143,6 +144,7 @@ const REPLACEMENT_ELIGIBLE_PRODUCTS: Product[] = [
   "allianzAuto",
   "csobAuto",
   "uniqaAuto",
+  "uniqaflotila",
   "pillowAuto",
   "kooperativaAuto",
 ];
@@ -538,6 +540,7 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "slaviaauto":
     case "csobAuto":
     case "uniqaAuto":
+    case "uniqaflotila":
     case "zamex":
     case "cppsimplex":
     case "cppPPRbez":
@@ -954,6 +957,7 @@ export default function CalculatorPage() {
       case "allianzAuto":
       case "csobAuto":
       case "uniqaAuto":
+      case "uniqaflotila":
       case "pillowAuto":
       case "kooperativaAuto":
       case "zamex":
@@ -1557,7 +1561,7 @@ export default function CalculatorPage() {
       return;
     }
 
-    if (product === "uniqaAuto") {
+    if (product === "uniqaAuto" || product === "uniqaflotila") {
       const dto = calculateUniqaAuto(val, frequency, position);
       setItems(dto.items);
       setTotal(dto.total);
@@ -2642,6 +2646,7 @@ export default function CalculatorPage() {
       case "csobAuto":
         return calculateCsobAuto(val, freq, pos);
       case "uniqaAuto":
+      case "uniqaflotila":
         return calculateUniqaAuto(val, freq, pos);
       case "pillowAuto":
         return calculatePillowAuto(val, freq, pos);
@@ -3333,7 +3338,7 @@ export default function CalculatorPage() {
                   }`}
                   value={contractNumber}
                   onChange={(e) => setContractNumber(e.target.value)}
-                  placeholder="Např. 7503027088"
+                  placeholder=""
                 />
               </div>
 

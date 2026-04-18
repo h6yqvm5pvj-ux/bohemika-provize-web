@@ -318,7 +318,8 @@ export function generateCashflow(
 
       case "allianzAuto":
       case "pillowAuto":
-      case "uniqaAuto": {
+      case "uniqaAuto":
+      case "uniqaflotila": {
         if (!immediate) break;
 
         const first = estimatePayoutDate(start, agreement);

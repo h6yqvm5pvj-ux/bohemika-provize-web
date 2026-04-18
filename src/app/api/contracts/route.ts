@@ -12,6 +12,7 @@ import {
   collectSubordinateHierarchy,
 } from "@/app/lib/teamHierarchy";
 import { toDate } from "@/app/lib/formatters";
+import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
 type FirestoreTimestamp = {
   seconds: number;
@@ -65,6 +66,8 @@ type ErrorResponse = { ok: false; error: string };
 
 const PAGE_SIZE_DEFAULT = 30;
 const PAGE_SIZE_MAX = 50;
+const CONTRACTS_MUTATION_RATE_LIMIT = 60;
+const CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
 const CONTRACT_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
 const REPLACEMENT_STORNO_PRODUCTS = new Set<Product>([
   "zamex",
@@ -81,6 +84,18 @@ const REPLACEMENT_STORNO_PRODUCTS = new Set<Product>([
   "pillowAuto",
   "kooperativaAuto",
 ]);
+const CPP_STATUS_SYNC_PRODUCTS = new Set<Product>([
+  "neon",
+  "zamex",
+  "domex",
+  "cppsimplex",
+  "cppAuto",
+  "cppPPRs",
+  "cppPPRbez",
+  "cppcestovko",
+]);
+const CPP_WSEXTRA_URL = "https://wsextra.cpp.cz/extranet/extranet.asmx";
+const CPP_SOAP_ACTION_STAV_SMLOUVY_ZP = "https://extranet.cpp.cz/StavSmlouvyZP";
 
 const isManagerPosition = (pos: Position | null | undefined): boolean =>
   Boolean(pos) && (pos as Position).startsWith("manazer");
@@ -153,6 +168,175 @@ const normalizeEmail = (email: string | null | undefined) =>
 
 const isValidContractNumber = (value: string) =>
   CONTRACT_NUMBER_RE.test(value);
+
+type CppStavSmlouvyItem = {
+  contractNumber: string;
+  status: string;
+  endDate: string | null;
+};
+
+const normalizeContractNumber = (value: string | null | undefined): string =>
+  (value ?? "").replace(/\s+/g, "").trim();
+
+const normalizeContractNumberLoose = (value: string | null | undefined): string =>
+  normalizeContractNumber(value).replace(/^0+/, "");
+
+const decodeXmlEntities = (value: string): string =>
+  value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+
+const extractXmlBlocks = (xml: string, tag: string): string[] => {
+  const pattern = new RegExp(
+    `<(?:\\w+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?${tag}>`,
+    "gi"
+  );
+  const out: string[] = [];
+  let match = pattern.exec(xml);
+  while (match) {
+    out.push(decodeXmlEntities((match[1] ?? "").trim()));
+    match = pattern.exec(xml);
+  }
+  return out;
+};
+
+const extractXmlFirst = (xml: string, tag: string): string | null => {
+  const values = extractXmlBlocks(xml, tag);
+  return values.length > 0 ? values[0] : null;
+};
+
+const parseSoapBool = (value: string | null): boolean | null => {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") return true;
+  if (normalized === "false" || normalized === "0") return false;
+  return null;
+};
+
+const parseCzechDate = (value: string | null | undefined): Date | null => {
+  const raw = (value ?? "").trim();
+  if (!raw) return null;
+
+  const m = raw.match(
+    /^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?)?$/
+  );
+  if (m) {
+    const day = Number(m[1]);
+    const month = Number(m[2]);
+    const year = Number(m[3]);
+    const hour = Number(m[4] ?? "0");
+    const minute = Number(m[5] ?? "0");
+    const second = Number(m[6] ?? "0");
+    const parsed = new Date(year, month - 1, day, hour, minute, second);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  const fallback = new Date(raw);
+  if (!Number.isNaN(fallback.getTime())) return fallback;
+  return null;
+};
+
+const normalizeCppContractState = (value: string | null | undefined): string =>
+  (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+
+async function fetchCppStavSmlouvyZp({
+  idPartner,
+  dateFrom,
+}: {
+  idPartner: string;
+  dateFrom: string;
+}): Promise<{ items: CppStavSmlouvyItem[]; errors: string[] }> {
+  const envelope = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <StavSmlouvyZP xmlns="https://extranet.cpp.cz/">
+      <IDpartner>${idPartner}</IDpartner>
+      <DatumPodpisuOd>${dateFrom}</DatumPodpisuOd>
+      <stavSmlouvy>VSE</stavSmlouvy>
+      <list>true</list>
+    </StavSmlouvyZP>
+  </soap:Body>
+</soap:Envelope>`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+
+  try {
+    const response = await fetch(CPP_WSEXTRA_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/xml; charset=utf-8",
+        SOAPAction: `"${CPP_SOAP_ACTION_STAV_SMLOUVY_ZP}"`,
+      },
+      body: envelope,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    const xml = await response.text();
+    if (!response.ok) {
+      throw new Error(`ČPP WS HTTP ${response.status}.`);
+    }
+
+    const statusDetails = extractXmlBlocks(xml, "StatusDetail");
+    const errors: string[] = [];
+    for (const statusDetail of statusDetails) {
+      const ok = parseSoapBool(extractXmlFirst(statusDetail, "PrubehOK"));
+      if (ok !== false) continue;
+      const popis = extractXmlFirst(statusDetail, "Popis");
+      errors.push(popis || "ČPP WS vrátila chybu bez detailu.");
+    }
+    if (errors.length > 0) {
+      return { items: [], errors };
+    }
+
+    const itemBlocks = extractXmlBlocks(xml, "StavSmlZPItem");
+    const items = itemBlocks
+      .map((block) => {
+        const contractNumber = normalizeContractNumber(
+          extractXmlFirst(block, "CISLO_SMLOUVY")
+        );
+        const status = (extractXmlFirst(block, "STAV_SMLOUVY") ?? "").trim();
+        const endDate = extractXmlFirst(block, "DATUM_KONCE");
+        return {
+          contractNumber,
+          status,
+          endDate: endDate ? endDate.trim() : null,
+        };
+      })
+      .filter((item) => item.contractNumber.length > 0);
+
+    return { items, errors: [] };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function findCppStatusItemByContractNumber(
+  items: CppStavSmlouvyItem[],
+  contractNumber: string
+): CppStavSmlouvyItem | null {
+  const exact = normalizeContractNumber(contractNumber);
+  if (!exact) return null;
+
+  const exactMatch = items.find((item) => normalizeContractNumber(item.contractNumber) === exact);
+  if (exactMatch) return exactMatch;
+
+  const loose = normalizeContractNumberLoose(contractNumber);
+  if (!loose) return null;
+  return (
+    items.find(
+      (item) => normalizeContractNumberLoose(item.contractNumber) === loose
+    ) ?? null
+  );
+}
 
 const buildUserTree = async () => {
   if (!adminDb) {
@@ -515,6 +699,21 @@ export async function PATCH(req: NextRequest) {
   }
   const { email, teamEmails } = ctx;
 
+  const rateLimitResult = consumeRateLimit({
+    namespace: "api:contracts:patch",
+    key: email,
+    limit: CONTRACTS_MUTATION_RATE_LIMIT,
+    windowMs: CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!rateLimitResult.allowed) {
+    const response = NextResponse.json(
+      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
+      { status: 429 }
+    );
+    applyRateLimitHeaders(response.headers, rateLimitResult);
+    return response;
+  }
+
   let body: any;
   try {
     body = await req.json();
@@ -747,6 +946,225 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  if (action === "syncCppStatus") {
+    try {
+      const ownerEmail = normalizeEmail(
+        typeof body?.ownerEmail === "string" ? body.ownerEmail : ""
+      );
+      const entryId =
+        typeof body?.entryId === "string" ? body.entryId.trim() : "";
+
+      if (!ownerEmail || !entryId) {
+        return NextResponse.json(
+          { ok: false, error: "Chybí ownerEmail nebo entryId." },
+          { status: 400 }
+        );
+      }
+
+      const allowedOwners = new Set<string>([email, ...teamEmails]);
+      if (!allowedOwners.has(ownerEmail)) {
+        return NextResponse.json(
+          { ok: false, error: "Nemáš oprávnění pro tuto smlouvu." },
+          { status: 403 }
+        );
+      }
+
+      const cppIdPartner =
+        process.env.CPP_WSEXTRA_IDPARTNER?.trim() ??
+        process.env.CPP_IDPARTNER?.trim() ??
+        "";
+      if (!cppIdPartner) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Chybí konfigurace ČPP WS (CPP_WSEXTRA_IDPARTNER / CPP_IDPARTNER).",
+          },
+          { status: 500 }
+        );
+      }
+
+      const entryRef = adminDb
+        ?.collection("users")
+        .doc(ownerEmail)
+        .collection("entries")
+        .doc(entryId);
+      const entrySnap = await entryRef?.get();
+      if (!entrySnap?.exists) {
+        return NextResponse.json(
+          { ok: false, error: "Smlouva nebyla nalezena." },
+          { status: 404 }
+        );
+      }
+
+      const entryData = entrySnap.data() as ContractDoc | undefined;
+      const productKey = entryData?.productKey as Product | undefined;
+      if (!productKey || !CPP_STATUS_SYNC_PRODUCTS.has(productKey)) {
+        return NextResponse.json({
+          ok: true,
+          skipped: true,
+          reason: "unsupported-product",
+        });
+      }
+
+      const contractNumberRaw =
+        typeof entryData?.contractNumber === "string"
+          ? entryData.contractNumber.trim()
+          : "";
+      const contractNumber = normalizeContractNumber(contractNumberRaw);
+      if (!contractNumber) {
+        return NextResponse.json(
+          { ok: false, error: "Smlouva nemá vyplněné číslo smlouvy." },
+          { status: 400 }
+        );
+      }
+
+      const signedDate =
+        toDate(entryData?.contractSignedDate) ?? toDate(entryData?.createdAt);
+      const primaryDateFrom = signedDate
+        ? `01.01.${signedDate.getFullYear()}`
+        : "01.01.2000";
+      const fallbackDateFrom =
+        primaryDateFrom === "01.01.2000" ? null : "01.01.2000";
+
+      let wsResult = await fetchCppStavSmlouvyZp({
+        idPartner: cppIdPartner,
+        dateFrom: primaryDateFrom,
+      });
+      if (wsResult.errors.length > 0) {
+        return NextResponse.json(
+          { ok: false, error: wsResult.errors[0] },
+          { status: 502 }
+        );
+      }
+
+      let matched = findCppStatusItemByContractNumber(
+        wsResult.items,
+        contractNumber
+      );
+
+      if (!matched && fallbackDateFrom) {
+        wsResult = await fetchCppStavSmlouvyZp({
+          idPartner: cppIdPartner,
+          dateFrom: fallbackDateFrom,
+        });
+        if (wsResult.errors.length > 0) {
+          return NextResponse.json(
+            { ok: false, error: wsResult.errors[0] },
+            { status: 502 }
+          );
+        }
+        matched = findCppStatusItemByContractNumber(wsResult.items, contractNumber);
+      }
+
+      if (!matched) {
+        return NextResponse.json({
+          ok: true,
+          matched: false,
+          contractNumber,
+          dateFrom: fallbackDateFrom ?? primaryDateFrom,
+        });
+      }
+
+      const remoteStatus = normalizeCppContractState(matched.status);
+      const appliedStatus: "active" | "storno" = remoteStatus.includes("STORN")
+        ? "storno"
+        : "active";
+
+      const parsedRemoteStornoDate =
+        appliedStatus === "storno" ? parseCzechDate(matched.endDate) : null;
+      const stornoDateValue =
+        appliedStatus === "storno"
+          ? parsedRemoteStornoDate ?? toDate(entryData?.stornoDate) ?? new Date()
+          : null;
+
+      const ownerEntriesRef = adminDb
+        ?.collection("users")
+        .doc(ownerEmail)
+        .collection("entries");
+      let targetDocs = await ownerEntriesRef
+        ?.where("contractNumber", "==", contractNumberRaw)
+        .get();
+
+      if ((targetDocs?.docs.length ?? 0) === 0) {
+        targetDocs = await ownerEntriesRef
+          ?.where("contractNumber", "==", contractNumber)
+          .get();
+      }
+
+      const targetRefs = new Map<
+        string,
+        FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>
+      >();
+      for (const docSnap of targetDocs?.docs ?? []) {
+        const data = docSnap.data() as ContractDoc;
+        const docProduct = data.productKey as Product | undefined;
+        if (!docProduct || !CPP_STATUS_SYNC_PRODUCTS.has(docProduct)) continue;
+        targetRefs.set(docSnap.ref.path, docSnap.ref);
+      }
+
+      if (targetRefs.size === 0 && ownerEntriesRef) {
+        const allOwnerEntries = await ownerEntriesRef.get();
+        for (const docSnap of allOwnerEntries.docs) {
+          const data = docSnap.data() as ContractDoc;
+          const docProduct = data.productKey as Product | undefined;
+          if (!docProduct || !CPP_STATUS_SYNC_PRODUCTS.has(docProduct)) continue;
+          if (
+            normalizeContractNumber(data.contractNumber ?? null) !== contractNumber
+          ) {
+            continue;
+          }
+          targetRefs.set(docSnap.ref.path, docSnap.ref);
+        }
+      }
+
+      if (targetRefs.size === 0) {
+        targetRefs.set(entrySnap.ref.path, entrySnap.ref);
+      }
+
+      const updatePayload =
+        appliedStatus === "storno"
+          ? {
+              status: "storno",
+              stornoDate: stornoDateValue,
+              cppRemoteStatus: remoteStatus,
+              cppStatusUpdatedAt: new Date(),
+            }
+          : {
+              status: "active",
+              stornoDate: null,
+              cppRemoteStatus: remoteStatus,
+              cppStatusUpdatedAt: new Date(),
+            };
+
+      let updated = 0;
+      for (const ref of targetRefs.values()) {
+        await ref.set(updatePayload, { merge: true });
+        updated += 1;
+      }
+
+      return NextResponse.json({
+        ok: true,
+        matched: true,
+        contractNumber,
+        remoteStatus,
+        appliedStatus,
+        stornoDateMs: stornoDateValue ? stornoDateValue.getTime() : null,
+        updated,
+      });
+    } catch (cppSyncErr: any) {
+      const message =
+        typeof cppSyncErr?.message === "string" && cppSyncErr.message.trim()
+          ? cppSyncErr.message.trim()
+          : "Neznámá chyba při synchronizaci ČPP stavu smlouvy.";
+      console.error("PATCH /api/contracts syncCppStatus selhal:", cppSyncErr);
+      return NextResponse.json(
+        { ok: false, error: `Synchronizace ČPP selhala: ${message}` },
+        { status: 500 }
+      );
+    }
+  }
+
   const entries = Array.isArray(body.entries) ? body.entries : [];
   const paid = body.paid === true;
 
@@ -780,6 +1198,21 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
   }
   const { email, teamEmails } = ctx;
+
+  const rateLimitResult = consumeRateLimit({
+    namespace: "api:contracts:delete",
+    key: email,
+    limit: CONTRACTS_MUTATION_RATE_LIMIT,
+    windowMs: CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!rateLimitResult.allowed) {
+    const response = NextResponse.json(
+      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
+      { status: 429 }
+    );
+    applyRateLimitHeaders(response.headers, rateLimitResult);
+    return response;
+  }
 
   let body: any;
   try {

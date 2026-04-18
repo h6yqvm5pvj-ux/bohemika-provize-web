@@ -16,6 +16,7 @@ export type Product =
   | "allianzAuto"
   | "csobAuto"
   | "uniqaAuto"
+  | "uniqaflotila"
   | "pillowAuto"
   | "kooperativaAuto"
   | "cppcestovko"

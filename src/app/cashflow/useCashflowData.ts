@@ -346,6 +346,7 @@ export function useCashflowData({
                 product === "allianzAuto" ||
                 product === "csobAuto" ||
                 product === "uniqaAuto" ||
+                product === "uniqaflotila" ||
                 product === "pillowAuto" ||
                 product === "kooperativaAuto"
               );

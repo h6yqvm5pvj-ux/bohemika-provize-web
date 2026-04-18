@@ -72,6 +72,7 @@ const PRODUCT_SET = new Set<Product>([
   "allianzAuto",
   "csobAuto",
   "uniqaAuto",
+  "uniqaflotila",
   "pillowAuto",
   "kooperativaAuto",
   "cppcestovko",
@@ -431,6 +432,7 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "slaviaauto":
     case "csobAuto":
     case "uniqaAuto":
+    case "uniqaflotila":
     case "zamex":
     case "cppsimplex":
     case "cppPPRbez":
@@ -568,6 +570,7 @@ function computeItemsForEntry(
     case "csobAuto":
       return calculateCsobAuto(val, freq, pos);
     case "uniqaAuto":
+    case "uniqaflotila":
       return calculateUniqaAuto(val, freq, pos);
     case "pillowAuto":
       return calculatePillowAuto(val, freq, pos);

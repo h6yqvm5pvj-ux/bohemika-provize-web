@@ -443,7 +443,15 @@ export default function TeamPage() {
           meData = meSnap.exists() ? (meSnap.data() as any) : null;
           meDocId = meSnap.id;
           pos = (meData?.position as Position | undefined) ?? null;
-          canManage = meData?.adminFunction === true || meData?.adminfunction === true;
+          const mePrivateSnap = await getDoc(doc(db, "usersPrivate", userEmail));
+          const mePrivateData = mePrivateSnap.exists()
+            ? (mePrivateSnap.data() as any)
+            : null;
+          canManage =
+            mePrivateData?.adminFunction === true ||
+            mePrivateData?.adminfunction === true ||
+            meData?.adminFunction === true ||
+            meData?.adminfunction === true;
           setUserPosition(pos);
           setCanManagePositions(canManage);
         } catch (err) {

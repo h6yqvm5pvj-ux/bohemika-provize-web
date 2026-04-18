@@ -163,6 +163,7 @@ function calculateCommission(
     case "csobAuto":
       return immediateCommission(calculateCsobAuto(premium, "annual", pos));
     case "uniqaAuto":
+    case "uniqaflotila":
       return immediateCommission(calculateUniqaAuto(premium, "annual", pos));
     case "pillowAuto":
       return immediateCommission(calculatePillowAuto(premium, "annual", pos));

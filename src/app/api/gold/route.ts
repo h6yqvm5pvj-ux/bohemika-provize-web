@@ -1,8 +1,15 @@
 // src/app/api/gold/route.ts
 import { NextResponse } from "next/server";
+import {
+  applyRateLimitHeaders,
+  consumeRateLimit,
+  getRequestIp,
+} from "@/lib/server/rateLimit";
 
 export const revalidate = 60;
 export const runtime = "nodejs";
+const GOLD_RATE_LIMIT = 120;
+const GOLD_RATE_LIMIT_WINDOW_MS = 60_000;
 
 // jednoduchá in-memory poslední známá hodnota (přežije v rámci jedné instance)
 let lastOk: { usdPerOz: number; usdCzk: number; czkPerOz: number; ts: number } | null = null;
@@ -709,6 +716,21 @@ async function fetchUsdCzk(): Promise<number> {
 }
 
 export async function GET(req: Request) {
+  const rateLimitResult = consumeRateLimit({
+    namespace: "api:gold:get",
+    key: getRequestIp(req),
+    limit: GOLD_RATE_LIMIT,
+    windowMs: GOLD_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!rateLimitResult.allowed) {
+    const response = NextResponse.json(
+      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
+      { status: 429 }
+    );
+    applyRateLimitHeaders(response.headers, rateLimitResult);
+    return response;
+  }
+
   try {
     const url = new URL(req.url);
     const daysParam = url.searchParams.get("days");

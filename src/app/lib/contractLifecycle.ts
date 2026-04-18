@@ -49,7 +49,13 @@ export function contractLifecycleStatus(
   now: Date = new Date()
 ): ContractLifecycleStatus {
   const rawStatus = (contract?.status ?? "").toString().trim().toLowerCase();
-  if (rawStatus === "storno") return "storno";
+  if (
+    rawStatus === "storno" ||
+    rawStatus === "stornovana" ||
+    rawStatus === "stornována"
+  ) {
+    return "storno";
+  }
   if (isContractDozita(contract, now)) return "dozita";
   return "active";
 }

@@ -21,6 +21,7 @@ import {
   Landmark,
   PenTool,
   Scale,
+  Search,
   TrendingUp,
   Trophy,
   WalletCards,
@@ -28,6 +29,14 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "./plan-produkce/SplitTitle";
+
+function normalizeSearchValue(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
 
 export default function ToolsPage() {
   const FILTERS = [
@@ -41,6 +50,7 @@ export default function ToolsPage() {
   ] as const;
 
   const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>("Všechny");
+  const [searchQuery, setSearchQuery] = useState("");
 
   type Tool = {
     key: string;
@@ -179,6 +189,15 @@ export default function ToolsPage() {
         external: true,
       },
       {
+        key: "allianz-nahrat-tachometr",
+        category: "Pojištění vozidel",
+        title: "Allianz Nahrát tachometr",
+        description: "Nahraj stav tachometru do portálu Allianz.",
+        icon: Gauge,
+        href: "https://www.allianz.cz/cs_CZ/apps/kilometry-nahrani.html",
+        external: true,
+      },
+      {
         key: "projekce-vykonu",
         category: "Finance",
         title: "Projekce výkonu",
@@ -215,11 +234,20 @@ export default function ToolsPage() {
   );
 
   const filteredTools = useMemo(
-    () =>
-      tools.filter(
-        (tool) => activeFilter === "Všechny" || tool.category === activeFilter
-      ),
-    [activeFilter, tools]
+    () => {
+      const q = normalizeSearchValue(searchQuery);
+      return tools.filter((tool) => {
+        const categoryMatch =
+          activeFilter === "Všechny" || tool.category === activeFilter;
+        if (!categoryMatch) return false;
+        if (!q) return true;
+
+        return [tool.title, tool.description, tool.category]
+          .map(normalizeSearchValue)
+          .some((value) => value.includes(q));
+      });
+    },
+    [activeFilter, searchQuery, tools]
   );
 
   return (
@@ -231,6 +259,23 @@ export default function ToolsPage() {
             Rychlé nástroje pro efektivnější práci.
           </p>
         </header>
+
+        <div className="mb-4 max-w-xl">
+          <label htmlFor="tools-search" className="mb-1 block text-sm text-slate-600">
+            Hledat pomůcku
+          </label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <input
+              id="tools-search"
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Název, kategorie nebo klíčové slovo…"
+              className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300"
+            />
+          </div>
+        </div>
 
         <div className="mb-6 flex flex-wrap gap-2.5">
           {FILTERS.map((filter) => {
@@ -250,6 +295,12 @@ export default function ToolsPage() {
             );
           })}
         </div>
+
+        {filteredTools.length === 0 && (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            Pro zadaný filtr a hledání nebyla nalezena žádná pomůcka.
+          </div>
+        )}
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {filteredTools.map((tool) => {

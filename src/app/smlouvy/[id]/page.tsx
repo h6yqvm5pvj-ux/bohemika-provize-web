@@ -1,7 +1,7 @@
 // src/app/smlouvy/[id]/page.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -91,8 +91,20 @@ const LIFE_PRODUCT_KEYS = new Set<Product>([
 const ALLIANZ_PAYMENT_CHECK_URL =
   "https://www.allianz.cz/cs_CZ/apps/zaplacenost-pojistky.html";
 const SLAVIA_PAYMENT_CHECK_URL = "https://www.slavia-pojistovna.cz/over-ps/";
+const CPP_PAYMENT_CHECK_URL =
+  "https://insure.cpp.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml#kotva";
 const KOOPERATIVA_PAYMENT_CHECK_URL =
   "https://insure.koop.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml";
+const CPP_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
+  "neon",
+  "zamex",
+  "domex",
+  "cppsimplex",
+  "cppAuto",
+  "cppPPRs",
+  "cppPPRbez",
+  "cppcestovko",
+]);
 const KOOPERATIVA_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
   "flexi",
   "koopmajetekobcan",
@@ -165,24 +177,28 @@ export default function ContractDetailPage() {
   const [stornoDateInput, setStornoDateInput] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showStornoModal, setShowStornoModal] = useState(false);
+  const [showPaymentVerificationModal, setShowPaymentVerificationModal] =
+    useState(false);
   const [canOpenRefreshReplacement, setCanOpenRefreshReplacement] = useState(false);
   const { toasts, pushToast, dismissToast } = useToasts();
   const [unauthorized, setUnauthorized] = useState(false);
+  const cppStatusSyncKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setShowDeleteModal(false);
         setShowStornoModal(false);
+        setShowPaymentVerificationModal(false);
       }
     };
-    if (showDeleteModal || showStornoModal) {
+    if (showDeleteModal || showStornoModal || showPaymentVerificationModal) {
       window.addEventListener("keydown", onKey);
     }
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  }, [showDeleteModal, showStornoModal]);
+  }, [showDeleteModal, showStornoModal, showPaymentVerificationModal]);
 
   // auth
   useEffect(() => {
@@ -581,9 +597,14 @@ export default function ContractDetailPage() {
       ? ALLIANZ_PAYMENT_CHECK_URL
       : prod === "slaviaauto"
       ? SLAVIA_PAYMENT_CHECK_URL
+      : prod && CPP_PAYMENT_CHECK_PRODUCTS.has(prod)
+      ? CPP_PAYMENT_CHECK_URL
       : prod && KOOPERATIVA_PAYMENT_CHECK_PRODUCTS.has(prod)
       ? KOOPERATIVA_PAYMENT_CHECK_URL
       : null;
+  const canEmbedPaymentVerification =
+    paymentVerificationUrl === KOOPERATIVA_PAYMENT_CHECK_URL ||
+    paymentVerificationUrl === CPP_PAYMENT_CHECK_URL;
   const isLifeInsuranceContract = Boolean(prod && LIFE_PRODUCT_KEYS.has(prod));
   const showTimelineSection = isLifeInsuranceContract && hasTimelineChange;
   const isPaymentBasedProduct =
@@ -635,6 +656,115 @@ export default function ContractDetailPage() {
     return isManagerOnChain || isManagerOnCurrentChain;
   }, [managerPosition, isManagerOnChain, isManagerOnCurrentChain]);
   const canViewContract = isOwnContract || isManagerOnChain || isManagerOnCurrentChain;
+
+  useEffect(() => {
+    const owner = normalizeEmail(ownerEmail);
+    const entryKey = contract?.id ?? "";
+    const contractNumber = (contract?.contractNumber ?? "").trim();
+    const product = contract?.productKey as Product | undefined;
+
+    if (!user || !owner || !entryKey || !contractNumber || !product) return;
+    if (!CPP_PAYMENT_CHECK_PRODUCTS.has(product)) return;
+    if (!canViewContract) return;
+
+    const syncKey = `${owner}___${entryKey}`;
+    if (cppStatusSyncKeyRef.current === syncKey) return;
+    cppStatusSyncKeyRef.current = syncKey;
+
+    let cancelled = false;
+
+    const requestWithToken = async (token: string) =>
+      fetch("/api/contracts", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "syncCppStatus",
+          ownerEmail: owner,
+          entryId: entryKey,
+        }),
+      });
+
+    const syncCppStatus = async () => {
+      try {
+        let token = await user.getIdToken();
+        let res = await requestWithToken(token);
+        let data = (await res.json()) as any;
+
+        if (res.status === 401) {
+          token = await user.getIdToken(true);
+          res = await requestWithToken(token);
+          data = (await res.json()) as any;
+        }
+
+        if (!res.ok || data?.ok === false) {
+          console.warn("ČPP sync status selhal:", data?.error ?? res.statusText);
+          return;
+        }
+
+        if (cancelled) return;
+        const appliedStatus =
+          data?.appliedStatus === "storno"
+            ? "storno"
+            : data?.appliedStatus === "active"
+            ? "active"
+            : null;
+        if (!appliedStatus) return;
+
+        const stornoDateMs = Number(data?.stornoDateMs);
+        const stornoDate =
+          appliedStatus === "storno"
+            ? Number.isFinite(stornoDateMs)
+              ? new Date(stornoDateMs)
+              : toDate(contract?.stornoDate ?? null)
+            : null;
+
+        setContract((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: appliedStatus,
+                stornoDate,
+              }
+            : prev
+        );
+        setContractTimeline((prev) =>
+          prev.map((entry) => ({
+            ...entry,
+            status: appliedStatus,
+            stornoDate,
+          }))
+        );
+
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.removeItem("contracts_cache_v2");
+            localStorage.setItem("contracts_last_updated", String(Date.now()));
+            window.dispatchEvent(new Event("contracts:updated"));
+          } catch {
+            // best effort cache invalidation
+          }
+        }
+      } catch (err) {
+        console.warn("Automatická synchronizace ČPP stavu selhala:", err);
+      }
+    };
+
+    void syncCppStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    canViewContract,
+    contract?.contractNumber,
+    contract?.id,
+    contract?.productKey,
+    contract?.stornoDate,
+    ownerEmail,
+    user,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2497,10 +2627,22 @@ export default function ContractDetailPage() {
       return;
     }
 
+    const pasteShortcut =
+      typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent)
+        ? "⌘+V"
+        : "Ctrl+V";
+    const targetFieldHint =
+      prod === "allianzAuto"
+        ? "v Allianz do pole „Zadejte číslo pojistné smlouvy“"
+        : prod && CPP_PAYMENT_CHECK_PRODUCTS.has(prod)
+        ? "v ČPP do pole „Číslo pojistné smlouvy“"
+        : "do pole čísla smlouvy";
+    const copiedMessage = `Číslo smlouvy ${contractNo} bylo zkopírováno. Vlož ho ${targetFieldHint} (${pasteShortcut}).`;
+
     try {
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(contractNo);
-        pushToast(`Číslo smlouvy ${contractNo} bylo zkopírováno.`, "success");
+        pushToast(copiedMessage, "success");
         return;
       }
 
@@ -2515,7 +2657,7 @@ export default function ContractDetailPage() {
         const copied = document.execCommand("copy");
         document.body.removeChild(textarea);
         if (copied) {
-          pushToast(`Číslo smlouvy ${contractNo} bylo zkopírováno.`, "success");
+          pushToast(copiedMessage, "success");
           return;
         }
       }
@@ -2524,6 +2666,11 @@ export default function ContractDetailPage() {
     } catch {
       pushToast("Nepodařilo se zkopírovat číslo smlouvy.", "error");
     }
+  };
+
+  const handleOpenEmbeddedPaymentVerification = async () => {
+    await handlePaymentVerificationClick();
+    setShowPaymentVerificationModal(true);
   };
 
   const adviserItems =
@@ -2727,7 +2874,11 @@ export default function ContractDetailPage() {
                   Detail smlouvy
                 </p>
                 <h1 className="flex flex-wrap items-center gap-3 text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
-                  <span>{contract ? productLabel(prod) : "Načítám detail…"}</span>
+                  <span>
+                    {contract?.contractNumber?.trim()
+                      ? contract.contractNumber.trim()
+                      : "Číslo smlouvy není uvedené"}
+                  </span>
                   {isEndorsement && (
                     <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-800">
                       Dodatek
@@ -2747,11 +2898,6 @@ export default function ContractDetailPage() {
                     </span>
                   )}
                 </h1>
-                <p className="mt-1 text-base text-slate-600">
-                  {contract?.contractNumber
-                    ? `Číslo smlouvy: ${contract.contractNumber}`
-                    : "Číslo smlouvy není uvedené"}
-                </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
@@ -2785,7 +2931,7 @@ export default function ContractDetailPage() {
                   </button>
                 )}
 
-                {paymentVerificationUrl && (
+                {paymentVerificationUrl && !canEmbedPaymentVerification && (
                   <a
                     href={paymentVerificationUrl}
                     target="_blank"
@@ -2796,6 +2942,17 @@ export default function ContractDetailPage() {
                     <ExternalLink size={16} strokeWidth={2} aria-hidden="true" />
                     <span>Ověřit zaplacení</span>
                   </a>
+                )}
+
+                {paymentVerificationUrl && canEmbedPaymentVerification && (
+                  <button
+                    type="button"
+                    onClick={handleOpenEmbeddedPaymentVerification}
+                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
+                  >
+                    <ExternalLink size={16} strokeWidth={2} aria-hidden="true" />
+                    <span>Ověřit zaplacení</span>
+                  </button>
                 )}
 
                 {isOwnContract && editMode && (
@@ -3853,6 +4010,60 @@ export default function ContractDetailPage() {
           </div>
         </div>
       )}
+
+      {showPaymentVerificationModal &&
+        canEmbedPaymentVerification &&
+        paymentVerificationUrl && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+            <button
+              type="button"
+              className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+              aria-label="Zavřít okno ověření zaplacení"
+              onClick={() => setShowPaymentVerificationModal(false)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Ověření zaplacení smlouvy"
+              className="relative z-10 flex h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-2xl shadow-slate-300/40"
+            >
+              <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+                <div>
+                  <h3 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
+                    Ověření zaplacení
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-600 sm:text-base">
+                    Číslo smlouvy je zkopírované. Vlož ho do formuláře
+                    pomocí ⌘+V / Ctrl+V.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={paymentVerificationUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+                  >
+                    Otevřít v nové kartě
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setShowPaymentVerificationModal(false)}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+                  >
+                    Zavřít
+                  </button>
+                </div>
+              </div>
+
+              <iframe
+                src={paymentVerificationUrl}
+                title="Kooperativa – Ověření zaplacení"
+                className="h-full min-h-0 w-full flex-1 bg-white"
+              />
+            </div>
+          </div>
+        )}
 
       {canDelete && showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">

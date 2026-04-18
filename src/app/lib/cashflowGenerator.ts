@@ -292,7 +292,8 @@ export const CashflowGenerator = {
         // ============= Allianz / Pillow / UNIQA Auto – okamžitá + ročně k výročí =============
         case "allianzAuto":
         case "pillowAuto":
-        case "uniqaAuto": {
+        case "uniqaAuto":
+        case "uniqaflotila": {
           if (!immediate) break;
 
           const firstPayout = estimatePayoutDate(start, agreement);

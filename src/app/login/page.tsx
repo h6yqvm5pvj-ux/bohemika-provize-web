@@ -90,14 +90,22 @@ export default function LoginPage() {
           snap = await getDoc(doc(db, "users", rawEmail));
         }
 
-        if (!snap.exists()) {
+        let privateSnap = await getDoc(doc(db, "usersPrivate", normalizedEmail));
+        if (!privateSnap.exists() && rawEmail !== normalizedEmail) {
+          privateSnap = await getDoc(doc(db, "usersPrivate", rawEmail));
+        }
+
+        if (!snap.exists() && !privateSnap.exists()) {
           // nemáme user dok → bereme jako bez předplatného
           await signOut(auth);
           setError("Tento účet nemá aktivní předplatné.");
           return;
         }
 
-        const data = snap.data();
+        const data = {
+          ...(snap.exists() ? snap.data() : {}),
+          ...(privateSnap.exists() ? privateSnap.data() : {}),
+        };
         const hasActive = evaluateSubscription(data);
 
         if (hasActive) {

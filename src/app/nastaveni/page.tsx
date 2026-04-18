@@ -487,6 +487,15 @@ export default function SettingsPage() {
           }
         };
 
+        const readPrivateUserDoc = async (docId: string) => {
+          const userRef = doc(db, "usersPrivate", docId);
+          try {
+            return await getDocFromServer(userRef);
+          } catch {
+            return await getDoc(userRef);
+          }
+        };
+
         const ref = doc(db, "users", email);
         let snap = await readUserDoc(email);
         let resolvedData = snap.exists() ? (snap.data() as any) : null;
@@ -529,8 +538,28 @@ export default function SettingsPage() {
           }
         }
 
-        if (resolvedData) {
-          const data = resolvedData;
+        let privateData: Record<string, unknown> | null = null;
+        const privateDocIds = Array.from(
+          new Set(
+            [email, emailRaw ?? ""]
+              .map((value) => value.trim())
+              .filter((value) => value.length > 0)
+          )
+        );
+        for (const privateDocId of privateDocIds) {
+          const privateSnap = await readPrivateUserDoc(privateDocId);
+          if (!privateSnap.exists()) continue;
+          privateData = {
+            ...(privateData ?? {}),
+            ...(privateSnap.data() as Record<string, unknown>),
+          };
+        }
+
+        if (resolvedData || privateData) {
+          const data = {
+            ...(resolvedData ?? {}),
+            ...(privateData ?? {}),
+          };
 
           if (data.position) {
             setPosition(data.position as Position);

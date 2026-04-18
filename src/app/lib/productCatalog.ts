@@ -78,6 +78,7 @@ export const PRODUCT_ORDER: Product[] = [
   "allianzAuto",
   "csobAuto",
   "uniqaAuto",
+  "uniqaflotila",
   "pillowAuto",
   "kooperativaAuto",
   "cppcestovko",
@@ -182,6 +183,12 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
   },
   uniqaAuto: {
     label: "UNIQA Auto",
+    icon: "/icons/icon_auto.png",
+    institutionId: "uniqa",
+    category: "auto",
+  },
+  uniqaflotila: {
+    label: "UNIQA Auto Flotila",
     icon: "/icons/icon_auto.png",
     institutionId: "uniqa",
     category: "auto",

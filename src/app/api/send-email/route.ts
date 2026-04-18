@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { adminAuth } from "@/lib/server/firebaseAdmin";
+import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,8 @@ type RequestBody = {
 };
 
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024; // 8 MB
+const SEND_EMAIL_RATE_LIMIT = 5;
+const SEND_EMAIL_RATE_LIMIT_WINDOW_MS = 60_000;
 
 function getBearerToken(req: Request): string | null {
   const authHeader = req.headers.get("authorization") ?? "";
@@ -50,6 +53,21 @@ export async function POST(req: Request) {
     const senderEmail = decoded.email?.trim().toLowerCase();
     if (!senderEmail) {
       return NextResponse.json({ error: "User e-mail missing in token" }, { status: 401 });
+    }
+
+    const rateLimitResult = consumeRateLimit({
+      namespace: "api:send-email:post",
+      key: senderEmail,
+      limit: SEND_EMAIL_RATE_LIMIT,
+      windowMs: SEND_EMAIL_RATE_LIMIT_WINDOW_MS,
+    });
+    if (!rateLimitResult.allowed) {
+      const response = NextResponse.json(
+        { error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
+        { status: 429 }
+      );
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
     }
 
     let body: RequestBody;

@@ -74,6 +74,7 @@ export function preloadFormulaModule(product?: Product | null) {
       import("../../lib/productFormulas/csobAuto");
       break;
     case "uniqaAuto":
+    case "uniqaflotila":
       import("../../lib/productFormulas/uniqaAuto");
       break;
     case "pillowAuto":
@@ -428,7 +429,8 @@ export async function calculateResultForPosition(
       const { calculateCsobAuto } = await import("../../lib/productFormulas/csobAuto");
       return calculateCsobAuto(amount, freq, position);
     }
-    case "uniqaAuto": {
+    case "uniqaAuto":
+    case "uniqaflotila": {
       const { calculateUniqaAuto } = await import(
         "../../lib/productFormulas/uniqaAuto"
       );

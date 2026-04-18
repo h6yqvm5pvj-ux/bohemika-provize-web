@@ -2049,6 +2049,7 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "allianzAuto",
   "csobAuto",
   "uniqaAuto",
+  "uniqaflotila",
   "pillowAuto",
   "kooperativaAuto",
   "zamex",
@@ -2146,6 +2147,7 @@ export function getCoefficientSummary(
     case "csobAuto":
       return [{ label: "Koeficient (z platby)", value: csobAutoCoefficient(position) }];
     case "uniqaAuto":
+    case "uniqaflotila":
       return [{ label: "Koeficient (z platby)", value: uniqaAutoCoefficient(position) }];
     case "pillowAuto":
       return [{ label: "Koeficient (z platby)", value: pillowAutoCoefficient(position) }];

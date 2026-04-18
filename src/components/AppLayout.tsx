@@ -281,6 +281,15 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         }
       };
 
+      const readPrivateUserDoc = async (docId: string) => {
+        const userRef = doc(db, "usersPrivate", docId);
+        try {
+          return await getDocFromServer(userRef);
+        } catch {
+          return await getDoc(userRef);
+        }
+      };
+
       const syncTimelineToCanonicalDoc = async (timeline: unknown) => {
         try {
           await setDoc(
@@ -367,13 +376,33 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         }
       }
 
-      if (!resolvedData) {
+      let privateData: Record<string, unknown> | null = null;
+      const privateDocIds = Array.from(
+        new Set(
+          [email, emailRaw ?? "", uidRaw]
+            .map((value) => value.trim())
+            .filter((value) => value.length > 0)
+        )
+      );
+      for (const privateDocId of privateDocIds) {
+        const privateSnap = await readPrivateUserDoc(privateDocId);
+        if (!privateSnap.exists()) continue;
+        privateData = {
+          ...(privateData ?? {}),
+          ...(privateSnap.data() as Record<string, unknown>),
+        };
+      }
+
+      if (!resolvedData && !privateData) {
         setSubscriptionStatus("none");
         setNeedsCareerTimelineSetup(false);
         return;
       }
 
-      const data = resolvedData;
+      const data = {
+        ...(resolvedData ?? {}),
+        ...(privateData ?? {}),
+      };
       const statusRaw = (data.subscriptionStatus as string | undefined)?.trim().toLowerCase();
       let status: SubscriptionStatusWeb = "none";
 
@@ -386,7 +415,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       }
 
       setSubscriptionStatus(status);
-      setNeedsCareerTimelineSetup(!hasCareerTimelineConfigured(data as Record<string, unknown>));
+      setNeedsCareerTimelineSetup(
+        resolvedData ? !hasCareerTimelineConfigured(resolvedData) : false
+      );
     } catch (e) {
       console.error("Chyba při načítání subscription profilu:", e);
       setSubscriptionStatus("none");
