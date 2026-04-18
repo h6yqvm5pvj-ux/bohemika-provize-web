@@ -7,8 +7,12 @@ import { positionLabel as positionLabelValue } from "@/app/lib/formatters";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import { auth, db } from "../../firebase";
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
+  query,
+  where,
 } from "firebase/firestore";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import type { Position } from "../../types/domain";
@@ -84,6 +88,88 @@ function buildTree(
   return { ...node, children };
 }
 
+async function loadStructureFallback(email: string): Promise<Map<string, UserNode>> {
+  const map = new Map<string, UserNode>();
+
+  const toNode = (docId: string, data: any): UserNode => {
+    const resolvedEmail = normalizeEmail((data?.email as string | undefined) ?? docId);
+    return {
+      email: resolvedEmail,
+      name: data?.name ?? nameFromEmail(resolvedEmail),
+      position: (data?.position as Position | undefined) ?? null,
+      managerEmail: normalizeEmail(data?.managerEmail as string | undefined) || null,
+    };
+  };
+
+  try {
+    const meSnap = await getDoc(doc(db, "users", email));
+    if (meSnap.exists()) {
+      map.set(email, toNode(email, meSnap.data()));
+    } else {
+      map.set(email, {
+        email,
+        name: nameFromEmail(email),
+        position: null,
+        managerEmail: null,
+      });
+    }
+  } catch {
+    map.set(email, {
+      email,
+      name: nameFromEmail(email),
+      position: null,
+      managerEmail: null,
+    });
+  }
+
+  // ancestor chain
+  let currentMgr = map.get(email)?.managerEmail ?? null;
+  const seenAncestors = new Set<string>();
+  let depth = 0;
+  while (currentMgr && !seenAncestors.has(currentMgr) && depth < 10) {
+    seenAncestors.add(currentMgr);
+    try {
+      const mgrSnap = await getDoc(doc(db, "users", currentMgr));
+      if (!mgrSnap.exists()) break;
+      const node = toNode(currentMgr, mgrSnap.data());
+      map.set(node.email, node);
+      currentMgr = node.managerEmail;
+    } catch {
+      break;
+    }
+    depth += 1;
+  }
+
+  // subordinate tree (best-effort)
+  const managerQueue: string[] = [email];
+  const visitedManagers = new Set<string>();
+  let guard = 0;
+  while (managerQueue.length > 0 && guard < 200) {
+    guard += 1;
+    const managerEmail = managerQueue.shift();
+    if (!managerEmail) continue;
+    const normalizedManager = normalizeEmail(managerEmail);
+    if (!normalizedManager || visitedManagers.has(normalizedManager)) continue;
+    visitedManagers.add(normalizedManager);
+
+    try {
+      const subsSnap = await getDocs(
+        query(collection(db, "users"), where("managerEmail", "==", normalizedManager))
+      );
+      subsSnap.forEach((docSnap) => {
+        const node = toNode(docSnap.id, docSnap.data());
+        if (!node.email) return;
+        map.set(node.email, node);
+        managerQueue.push(node.email);
+      });
+    } catch {
+      // ignore one broken branch
+    }
+  }
+
+  return map;
+}
+
 export default function StructurePage() {
   const treeScrollRef = useRef<HTMLDivElement | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -109,51 +195,56 @@ export default function StructurePage() {
       try {
         const email = normalizeEmail(user.email);
 
-        let bearerToken = await user.getIdToken();
-        const requestWithToken = async (token: string) =>
-          fetch("/api/team-overview", {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            cache: "no-store",
-          });
-
-        let teamRes = await requestWithToken(bearerToken);
-        if (teamRes.status === 401) {
-          bearerToken = await user.getIdToken(true);
-          teamRes = await requestWithToken(bearerToken);
-        }
-        const teamPayload = (await teamRes.json()) as TeamOverviewApiResponse;
-        if (!teamRes.ok || teamPayload?.ok === false) {
-          throw new Error(teamPayload?.error || "Nepodařilo se načíst strukturu týmu.");
-        }
-
         const map = new Map<string, UserNode>();
-        const members = Array.isArray(teamPayload.members) ? teamPayload.members : [];
-        members.forEach((member) => {
-          const em = normalizeEmail(member.email);
-          if (!em) return;
-          map.set(em, {
-            email: em,
-            name:
-              typeof member.name === "string" && member.name.trim()
-                ? member.name.trim()
-                : nameFromEmail(em),
-            position: (member.position as Position | null | undefined) ?? null,
-            managerEmail: normalizeEmail(member.managerEmail) || null,
-          });
-        });
+        let usedApi = false;
+        try {
+          let bearerToken = await user.getIdToken();
+          const requestWithToken = async (token: string) =>
+            fetch("/api/team-overview", {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+              cache: "no-store",
+            });
 
-        // doplň se o vlastní dokument, pokud chybí
-        if (!map.has(email)) {
-          const meSnap = await getDoc(doc(db, "users", email));
-          const d = meSnap.data() as any;
-          map.set(email, {
-            email,
-            name: d?.name ?? nameFromEmail(email),
-            position: (d?.position as Position | undefined) ?? null,
-            managerEmail: (d?.managerEmail as string | undefined)?.toLowerCase() ?? null,
+          let teamRes = await requestWithToken(bearerToken);
+          if (teamRes.status === 401) {
+            bearerToken = await user.getIdToken(true);
+            teamRes = await requestWithToken(bearerToken);
+          }
+
+          let teamPayload: TeamOverviewApiResponse = {};
+          try {
+            teamPayload = (await teamRes.json()) as TeamOverviewApiResponse;
+          } catch {
+            teamPayload = {};
+          }
+          if (!teamRes.ok || teamPayload?.ok === false) {
+            throw new Error(teamPayload?.error || `API team-overview selhalo (${teamRes.status}).`);
+          }
+
+          const members = Array.isArray(teamPayload.members) ? teamPayload.members : [];
+          members.forEach((member) => {
+            const em = normalizeEmail(member.email);
+            if (!em) return;
+            map.set(em, {
+              email: em,
+              name:
+                typeof member.name === "string" && member.name.trim()
+                  ? member.name.trim()
+                  : nameFromEmail(em),
+              position: (member.position as Position | null | undefined) ?? null,
+              managerEmail: normalizeEmail(member.managerEmail) || null,
+            });
           });
+          usedApi = map.size > 0;
+        } catch (apiErr) {
+          console.warn("Načtení struktury přes API selhalo, přepínám na fallback:", apiErr);
+        }
+
+        if (!usedApi || map.size === 0) {
+          const fallbackMap = await loadStructureFallback(email);
+          fallbackMap.forEach((node, key) => map.set(key, node));
         }
 
         // viditelné e-maily: vlastní + tým (z API) + předci
