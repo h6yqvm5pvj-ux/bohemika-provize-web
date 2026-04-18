@@ -239,6 +239,30 @@ service cloud.firestore {
              (resource == null || resource.data.canChangePosition != true);
     }
 
+    function isChangingSensitivePublicUserFields() {
+      return resource == null
+        ? request.resource.data.keys().hasAny([
+            "subscriptionStatus",
+            "adminFunction",
+            "adminfunction",
+            "fcmTokens",
+            "pushTokens",
+            "notificationTokens",
+            "fcmTokensByDevice",
+            "pushTokensByDevice"
+          ])
+        : request.resource.data.diff(resource.data).changedKeys().hasAny([
+            "subscriptionStatus",
+            "adminFunction",
+            "adminfunction",
+            "fcmTokens",
+            "pushTokens",
+            "notificationTokens",
+            "fcmTokensByDevice",
+            "pushTokensByDevice"
+          ]);
+    }
+
     function isNonEmptyText(value) {
       return value is string && value.matches(".*\\S.*");
     }
@@ -337,9 +361,13 @@ service cloud.firestore {
       // čtení profilu umožníme všem přihlášeným, aby fungovaly managerChain lookupy
       allow read: if isSignedIn();
       // zapisuje majitel nebo admin
-      allow create: if (isOwner(userEmail) || isAdmin()) && !isSettingCanChangeToTrue();
+      allow create: if ((isOwner(userEmail) && !isChangingSensitivePublicUserFields()) || isAdmin())
+        && !isSettingCanChangeToTrue();
       allow update: if (
-          (isOwner(userEmail) || isAdmin())
+          (
+            (isOwner(userEmail) && !isChangingSensitivePublicUserFields())
+            || isAdmin()
+          )
           && !isSettingCanChangeToTrue()
           && (!isChangingPositionOrMode() || canEditPositionFields(userEmail) || isAdmin())
         )
