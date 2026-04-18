@@ -266,32 +266,35 @@ export default function StructurePage() {
         let depth = 0;
         while (current && !visitedAncestors.has(current) && depth < 10) {
           visitedAncestors.add(current);
-          visible.add(current);
-          if (!map.has(current)) {
-            try {
-              const ancestorSnap = await getDoc(doc(db, "users", current));
-              if (ancestorSnap.exists()) {
-                const data = ancestorSnap.data() as any;
-                const resolvedEmail = normalizeEmail(
-                  (data?.email as string | undefined) ?? current
-                );
-                const managerEmail =
-                  normalizeEmail(data?.managerEmail as string | undefined) || null;
-                map.set(resolvedEmail, {
-                  email: resolvedEmail,
-                  name: data?.name ?? nameFromEmail(resolvedEmail),
-                  position: (data?.position as Position | undefined) ?? null,
-                  managerEmail,
-                });
-                current = managerEmail;
-              } else {
-                break;
-              }
-            } catch {
+
+          if (map.has(current)) {
+            visible.add(current);
+            current = map.get(current)?.managerEmail ?? null;
+            depth += 1;
+            continue;
+          }
+
+          try {
+            const ancestorSnap = await getDoc(doc(db, "users", current));
+            if (!ancestorSnap.exists()) {
               break;
             }
-          } else {
-            current = map.get(current)?.managerEmail ?? null;
+            const data = ancestorSnap.data() as any;
+            const resolvedEmail = normalizeEmail(
+              (data?.email as string | undefined) ?? current
+            );
+            const managerEmail =
+              normalizeEmail(data?.managerEmail as string | undefined) || null;
+            map.set(resolvedEmail, {
+              email: resolvedEmail,
+              name: data?.name ?? nameFromEmail(resolvedEmail),
+              position: (data?.position as Position | undefined) ?? null,
+              managerEmail,
+            });
+            visible.add(resolvedEmail);
+            current = managerEmail;
+          } catch {
+            break;
           }
           depth += 1;
         }
@@ -328,7 +331,7 @@ export default function StructurePage() {
     let rootEmail = email;
     let current = nodes.get(email)?.managerEmail ?? null;
     let depth = 0;
-    while (current && visibleEmails.has(current) && depth < 10) {
+    while (current && visibleEmails.has(current) && nodes.has(current) && depth < 10) {
       rootEmail = current;
       current = nodes.get(current)?.managerEmail ?? null;
       depth += 1;
