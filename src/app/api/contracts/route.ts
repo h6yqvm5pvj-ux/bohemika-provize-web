@@ -96,6 +96,7 @@ const PAGE_SIZE_DEFAULT = 30;
 const PAGE_SIZE_MAX = 50;
 const CONTRACTS_MUTATION_RATE_LIMIT = 60;
 const CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
+const UPDATE_FIELDS_MAX_ENTRY_IDS = 50;
 const CONTRACT_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
 const REPLACEMENT_STORNO_PRODUCTS = new Set<Product>([
   "zamex",
@@ -136,6 +137,199 @@ const UPDATE_DATE_FIELDS = new Set<string>([
   "refreshReplacedBySignedDate",
   "replacementReplacedBySignedDate",
 ]);
+const UPDATE_FIELDS_ALLOWED_DATE_FIELDS = new Set<string>([
+  "contractSignedDate",
+  "policyStartDate",
+  "stornoDate",
+]);
+const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
+  "clientName",
+  "clientEmail",
+  "clientPhone",
+  "clientAddress",
+  "contractNumber",
+  "contractSignedDate",
+  "policyStartDate",
+  "carMake",
+  "carPlate",
+  "carVin",
+  "carTp",
+  "carLiabilityLimit",
+  "carHullSumInsured",
+  "carHullDeductible",
+  "carAssistancePlan",
+  "carAddonGlass",
+  "carAddonAnimalCollision",
+  "carAddonAnimalDamage",
+  "carAddonVandalism",
+  "carAddonTheft",
+  "carAddonNatural",
+  "carAddonOwnDamage",
+  "carAddonGap",
+  "carAddonSmartGap",
+  "carAddonServisPro",
+  "carAddonReplacementCar",
+  "carAddonLuggage",
+  "carAddonPassengerInjury",
+  "neonDetail",
+  "flexiDetail",
+  "domexDetail",
+  "durationYears",
+  "note",
+  "status",
+  "stornoDate",
+]);
+const UPDATE_FIELDS_REQUIRED_TEXT_FIELDS = new Set<string>([
+  "clientName",
+]);
+const UPDATE_FIELDS_OPTIONAL_TEXT_FIELDS = new Set<string>([
+  "clientEmail",
+  "clientPhone",
+  "clientAddress",
+  "carMake",
+  "carPlate",
+  "carVin",
+  "carTp",
+  "carAssistancePlan",
+  "note",
+]);
+const UPDATE_FIELDS_OPTIONAL_NUMBER_FIELDS = new Set<string>([
+  "carLiabilityLimit",
+  "carHullSumInsured",
+  "carHullDeductible",
+]);
+const UPDATE_FIELDS_OPTIONAL_BOOLEAN_FIELDS = new Set<string>([
+  "carAddonGlass",
+  "carAddonAnimalCollision",
+  "carAddonAnimalDamage",
+  "carAddonVandalism",
+  "carAddonTheft",
+  "carAddonNatural",
+  "carAddonOwnDamage",
+  "carAddonGap",
+  "carAddonSmartGap",
+  "carAddonServisPro",
+  "carAddonReplacementCar",
+  "carAddonLuggage",
+  "carAddonPassengerInjury",
+]);
+const UPDATE_FIELDS_CONTRACT_CORE_KEYS = new Set<string>([
+  "clientName",
+  "contractNumber",
+  "contractSignedDate",
+  "policyStartDate",
+]);
+const NEON_DETAIL_ALLOWED_KEYS = new Set<string>([
+  "version",
+  "deathType",
+  "deathAmount",
+  "death2Type",
+  "death2Amount",
+  "deathTerminalAmount",
+  "waiverInvalidity",
+  "waiverUnemployment",
+  "invalidityAType",
+  "invalidityA1",
+  "invalidityA2",
+  "invalidityA3",
+  "invalidityBType",
+  "invalidityB1",
+  "invalidityB2",
+  "invalidityB3",
+  "invalidityPension",
+  "criticalIllnessType",
+  "criticalIllnessAmount",
+  "childSurgeryAmount",
+  "vaccinationCompAmount",
+  "accidentDailyBenefit",
+  "diabetesAmount",
+  "deathAccidentAmount",
+  "injuryPermanentAmount",
+  "hospitalizationAmount",
+  "hospitalizationIllnessAmount",
+  "hospitalizationInjuryAmount",
+  "workIncapacityStart",
+  "workIncapacityBackpay",
+  "workIncapacityAmount",
+  "workIncapacityInjury",
+  "workIncapacityIllness",
+  "careDependencyAmount",
+  "specialAidAmount",
+  "caregivingAmount",
+  "reproductionCostAmount",
+  "cppHelp",
+  "liabilityCitizenLimit",
+  "liabilityEmployeeLimit",
+  "travelInsurance",
+  "neonPdfRisks",
+]);
+const FLEXI_DETAIL_ALLOWED_KEYS = new Set<string>([
+  "deathAmount",
+  "deathTypedType",
+  "deathTypedAmount",
+  "deathAccidentAmount",
+  "seriousIllnessType",
+  "seriousIllnessAmount",
+  "seriousIllnessForHim",
+  "seriousIllnessForHer",
+  "permanentIllnessAmount",
+  "invalidityIllnessType",
+  "invalidityIllness1",
+  "invalidityIllness2",
+  "invalidityIllness3",
+  "hospitalGeneralAmount",
+  "workIncapacityStart",
+  "workIncapacityBackpay",
+  "workIncapacityAmount",
+  "caregivingAmount",
+  "permanentAccidentAmount",
+  "injuryDamageAmount",
+  "accidentDailyBenefit",
+  "hospitalAccidentAmount",
+  "invalidityAccidentType",
+  "invalidityAccident1",
+  "invalidityAccident2",
+  "invalidityAccident3",
+  "trafficDeathAccidentAmount",
+  "trafficPermanentAccidentAmount",
+  "trafficInjuryDamageAmount",
+  "trafficAccidentDailyBenefit",
+  "trafficHospitalAccidentAmount",
+  "trafficWorkIncapacityAmount",
+  "trafficInvalidityAmount",
+  "loanDeathAmount",
+  "loanInvalidityType",
+  "loanInvalidity1",
+  "loanInvalidity2",
+  "loanInvalidity3",
+  "loanIllnessAmount",
+  "loanWorkIncapacityAmount",
+  "addonMajakBasic",
+  "addonMajakPlus",
+  "addonLiabilityCitizen",
+  "addonTravel",
+]);
+const DOMEX_DETAIL_ALLOWED_KEYS = new Set<string>([
+  "address",
+  "propertyType",
+  "propertyCoverage",
+  "sumInsured",
+  "deductible",
+  "householdType",
+  "householdCoverage",
+  "householdSumInsured",
+  "householdDeductible",
+  "outbuildingSumInsured",
+  "liabilitySumInsured",
+  "liabilityDeductible",
+  "liabilityMobile",
+  "liabilityTenant",
+  "liabilityLandlord",
+  "assistancePlus",
+  "note",
+]);
+const MIN_REASONABLE_CONTRACT_DATE = new Date("2000-01-01T00:00:00.000Z");
+const MAX_REASONABLE_CONTRACT_DATE = new Date("2101-01-01T00:00:00.000Z");
 const CPP_WSEXTRA_URL = "https://wsextra.cpp.cz/extranet/extranet.asmx";
 const CPP_SOAP_ACTION_STAV_SMLOUVY_ZP = "https://extranet.cpp.cz/StavSmlouvyZP";
 
@@ -281,6 +475,222 @@ const normalizeRootEntryId = (entry: ContractDoc): string => {
   return typeof raw === "string" ? raw.trim() : "";
 };
 
+type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
+const hasOwn = (obj: Record<string, unknown>, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(obj, key);
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  value != null && typeof value === "object" && !Array.isArray(value);
+
+const parseRequiredTrimmedText = (
+  value: unknown,
+  field: string,
+  maxLen: number
+): ParseResult<string> => {
+  if (typeof value !== "string") {
+    return { ok: false, error: `Pole ${field} musí být text.` };
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { ok: false, error: `Pole ${field} nesmí být prázdné.` };
+  }
+  if (trimmed.length > maxLen) {
+    return { ok: false, error: `Pole ${field} je příliš dlouhé.` };
+  }
+  return { ok: true, value: trimmed };
+};
+
+const parseOptionalTrimmedText = (
+  value: unknown,
+  field: string,
+  maxLen: number
+): ParseResult<string | null> => {
+  if (value == null) return { ok: true, value: null };
+  if (typeof value !== "string") {
+    return { ok: false, error: `Pole ${field} musí být text nebo null.` };
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return { ok: true, value: null };
+  if (trimmed.length > maxLen) {
+    return { ok: false, error: `Pole ${field} je příliš dlouhé.` };
+  }
+  return { ok: true, value: trimmed };
+};
+
+const parseOptionalFiniteNumber = (
+  value: unknown,
+  field: string,
+  {
+    min = 0,
+    max = 1_000_000_000,
+  }: { min?: number; max?: number } = {}
+): ParseResult<number | null> => {
+  if (value == null) return { ok: true, value: null };
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return { ok: false, error: `Pole ${field} musí být číslo nebo null.` };
+  }
+  if (value < min || value > max) {
+    return { ok: false, error: `Pole ${field} je mimo povolený rozsah.` };
+  }
+  return { ok: true, value };
+};
+
+const parseOptionalBoolean = (
+  value: unknown,
+  field: string
+): ParseResult<boolean | null> => {
+  if (value == null) return { ok: true, value: null };
+  if (typeof value !== "boolean") {
+    return { ok: false, error: `Pole ${field} musí být boolean nebo null.` };
+  }
+  return { ok: true, value };
+};
+
+const parseOptionalInteger = (
+  value: unknown,
+  field: string,
+  { min, max }: { min: number; max: number }
+): ParseResult<number | null> => {
+  if (value == null) return { ok: true, value: null };
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) {
+    return { ok: false, error: `Pole ${field} musí být celé číslo nebo null.` };
+  }
+  if (value < min || value > max) {
+    return { ok: false, error: `Pole ${field} je mimo povolený rozsah.` };
+  }
+  return { ok: true, value };
+};
+
+const parseContractStatus = (value: unknown): ParseResult<"active" | "storno"> => {
+  if (typeof value !== "string") {
+    return { ok: false, error: "Pole status musí být text." };
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized !== "active" && normalized !== "storno") {
+    return { ok: false, error: "Pole status má nepodporovanou hodnotu." };
+  }
+  return { ok: true, value: normalized as "active" | "storno" };
+};
+
+const sanitizeDetailObject = (
+  value: unknown,
+  field: "neonDetail" | "flexiDetail" | "domexDetail",
+  allowedKeys: Set<string>
+): ParseResult<Record<string, string | number | boolean | null> | null> => {
+  if (value == null) return { ok: true, value: null };
+  if (!isPlainObject(value)) {
+    return { ok: false, error: `Pole ${field} musí být objekt nebo null.` };
+  }
+
+  const output: Record<string, string | number | boolean | null> = {};
+  const keys = Object.keys(value);
+  for (const key of keys) {
+    if (!allowedKeys.has(key)) {
+      return {
+        ok: false,
+        error: `Pole ${field}.${key} není povolené.`,
+      };
+    }
+  }
+
+  for (const key of keys) {
+    const raw = value[key];
+    if (raw == null) {
+      output[key] = null;
+      continue;
+    }
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      const maxLen = key === "note" ? 2_000 : 200;
+      if (trimmed.length > maxLen) {
+        return {
+          ok: false,
+          error: `Pole ${field}.${key} je příliš dlouhé.`,
+        };
+      }
+      output[key] = trimmed || null;
+      continue;
+    }
+    if (typeof raw === "number") {
+      if (!Number.isFinite(raw) || raw < 0 || raw > 1_000_000_000) {
+        return {
+          ok: false,
+          error: `Pole ${field}.${key} má neplatnou číselnou hodnotu.`,
+        };
+      }
+      output[key] = raw;
+      continue;
+    }
+    if (typeof raw === "boolean") {
+      output[key] = raw;
+      continue;
+    }
+    return {
+      ok: false,
+      error: `Pole ${field}.${key} má nepodporovaný datový typ.`,
+    };
+  }
+
+  return { ok: true, value: output };
+};
+
+const isReasonableContractDate = (value: Date): boolean =>
+  value >= MIN_REASONABLE_CONTRACT_DATE && value < MAX_REASONABLE_CONTRACT_DATE;
+
+const validateContractCoreInvariants = (
+  existing: ContractDoc,
+  patch: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } => {
+  const shouldValidate = [...UPDATE_FIELDS_CONTRACT_CORE_KEYS].some((key) =>
+    hasOwn(patch, key)
+  );
+  if (!shouldValidate) return { ok: true };
+
+  const finalClientName = hasOwn(patch, "clientName")
+    ? patch.clientName
+    : existing.clientName;
+  if (typeof finalClientName !== "string" || !finalClientName.trim()) {
+    return { ok: false, error: "Pole clientName nesmí být prázdné." };
+  }
+
+  const finalContractNumber = hasOwn(patch, "contractNumber")
+    ? patch.contractNumber
+    : existing.contractNumber;
+  if (
+    typeof finalContractNumber !== "string" ||
+    !isValidContractNumber(finalContractNumber.trim())
+  ) {
+    return { ok: false, error: "Pole contractNumber má neplatný formát." };
+  }
+
+  const finalSignedDate = toDate(
+    hasOwn(patch, "contractSignedDate")
+      ? patch.contractSignedDate
+      : existing.contractSignedDate
+  );
+  const finalPolicyStartDate = toDate(
+    hasOwn(patch, "policyStartDate")
+      ? patch.policyStartDate
+      : existing.policyStartDate
+  );
+
+  if (!finalSignedDate || !isReasonableContractDate(finalSignedDate)) {
+    return { ok: false, error: "Pole contractSignedDate má neplatnou hodnotu." };
+  }
+  if (!finalPolicyStartDate || !isReasonableContractDate(finalPolicyStartDate)) {
+    return { ok: false, error: "Pole policyStartDate má neplatnou hodnotu." };
+  }
+  if (finalPolicyStartDate.getTime() < finalSignedDate.getTime()) {
+    return {
+      ok: false,
+      error: "Pole policyStartDate nemůže být dřív než contractSignedDate.",
+    };
+  }
+
+  return { ok: true };
+};
+
 const toDateForUpdateField = (
   field: string,
   value: unknown
@@ -312,16 +722,100 @@ const toDateForUpdateField = (
 const normalizePatchUpdates = (
   updates: Record<string, unknown>
 ): { ok: true; payload: Record<string, unknown> } | { ok: false; error: string } => {
+  const unknownFields = Object.keys(updates).filter(
+    (field) => !UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS.has(field)
+  );
+  if (unknownFields.length > 0) {
+    return {
+      ok: false,
+      error: `Nepovolená pole v updates: ${unknownFields.join(", ")}.`,
+    };
+  }
+
   const normalized: Record<string, unknown> = {};
   for (const [field, rawValue] of Object.entries(updates)) {
-    if (!UPDATE_DATE_FIELDS.has(field)) {
-      normalized[field] = rawValue;
+    if (UPDATE_FIELDS_ALLOWED_DATE_FIELDS.has(field)) {
+      const parsedDate = toDateForUpdateField(field, rawValue);
+      if (!parsedDate.ok) return parsedDate;
+      normalized[field] = parsedDate.value;
       continue;
     }
 
-    const parsed = toDateForUpdateField(field, rawValue);
-    if (!parsed.ok) return parsed;
-    normalized[field] = parsed.value;
+    if (field === "contractNumber") {
+      const parsed = parseRequiredTrimmedText(rawValue, field, 120);
+      if (!parsed.ok) return parsed;
+      if (!isValidContractNumber(parsed.value)) {
+        return { ok: false, error: "Pole contractNumber má neplatný formát." };
+      }
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (UPDATE_FIELDS_REQUIRED_TEXT_FIELDS.has(field)) {
+      const parsed = parseRequiredTrimmedText(rawValue, field, 200);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (UPDATE_FIELDS_OPTIONAL_TEXT_FIELDS.has(field)) {
+      const maxLen = field === "note" ? 2_000 : 200;
+      const parsed = parseOptionalTrimmedText(rawValue, field, maxLen);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (UPDATE_FIELDS_OPTIONAL_NUMBER_FIELDS.has(field)) {
+      const parsed = parseOptionalFiniteNumber(rawValue, field);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (UPDATE_FIELDS_OPTIONAL_BOOLEAN_FIELDS.has(field)) {
+      const parsed = parseOptionalBoolean(rawValue, field);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (field === "durationYears") {
+      const parsed = parseOptionalInteger(rawValue, field, { min: 1, max: 120 });
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (field === "status") {
+      const parsed = parseContractStatus(rawValue);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (field === "neonDetail") {
+      const parsed = sanitizeDetailObject(rawValue, field, NEON_DETAIL_ALLOWED_KEYS);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (field === "flexiDetail") {
+      const parsed = sanitizeDetailObject(rawValue, field, FLEXI_DETAIL_ALLOWED_KEYS);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (field === "domexDetail") {
+      const parsed = sanitizeDetailObject(rawValue, field, DOMEX_DETAIL_ALLOWED_KEYS);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    return { ok: false, error: `Pole ${field} není podporované.` };
   }
   return { ok: true, payload: normalized };
 };
@@ -1503,6 +1997,15 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (entryIds.length > UPDATE_FIELDS_MAX_ENTRY_IDS) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Najednou můžeš upravit maximálně ${UPDATE_FIELDS_MAX_ENTRY_IDS} smluv.`,
+        },
+        { status: 400 }
+      );
+    }
     if (!updatesRaw) {
       return NextResponse.json(
         { ok: false, error: "Chybí objekt updates." },
@@ -1534,18 +2037,54 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    let updated = 0;
-    for (const entryId of entryIds) {
-      await adminDb
-        ?.collection("users")
-        .doc(ownerEmail)
-        .collection("entries")
-        .doc(entryId)
-        .set(payload, { merge: true });
-      updated += 1;
+    if (!adminDb) {
+      return NextResponse.json(
+        { ok: false, error: "Server není správně nakonfigurován." },
+        { status: 500 }
+      );
+    }
+    const db = adminDb;
+
+    const entryRefs = entryIds.map((entryId) =>
+      db.collection("users").doc(ownerEmail).collection("entries").doc(entryId)
+    );
+    const entrySnaps = await Promise.all(entryRefs.map((ref) => ref.get()));
+
+    const missingEntryIds = entrySnaps
+      .map((snap, idx) => (!snap.exists ? entryIds[idx] : null))
+      .filter((value): value is string => value != null);
+    if (missingEntryIds.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Některé smlouvy nebyly nalezeny: ${missingEntryIds.join(", ")}`,
+        },
+        { status: 404 }
+      );
     }
 
-    return NextResponse.json({ ok: true, updated });
+    for (let i = 0; i < entrySnaps.length; i += 1) {
+      const snap = entrySnaps[i];
+      const currentData = (snap.data() ?? {}) as ContractDoc;
+      const coreValidation = validateContractCoreInvariants(currentData, payload);
+      if (!coreValidation.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Neplatná data pro entryId ${entryIds[i]}: ${coreValidation.error}`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const batch = db.batch();
+    entryRefs.forEach((ref) => {
+      batch.update(ref, payload);
+    });
+    await batch.commit();
+
+    return NextResponse.json({ ok: true, updated: entryRefs.length });
   }
 
   const entries = Array.isArray(body.entries) ? body.entries : [];
