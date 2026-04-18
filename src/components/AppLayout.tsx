@@ -281,6 +281,16 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         }
       };
 
+      const tryReadUserDoc = async (docId: string) => {
+        try {
+          return await readUserDoc(docId);
+        } catch (err: any) {
+          const code = String(err?.code ?? "");
+          if (code.includes("permission-denied")) return null;
+          throw err;
+        }
+      };
+
       const readPrivateUserDoc = async (docId: string) => {
         const userRef = doc(db, "usersPrivate", docId);
         try {
@@ -302,10 +312,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         }
       };
 
-      let snap = await readUserDoc(email);
-      let resolvedData = snap.exists()
-        ? (snap.data() as Record<string, unknown>)
-        : null;
+      const canonicalSnap = await tryReadUserDoc(email);
+      let resolvedData =
+        canonicalSnap && canonicalSnap.exists()
+          ? (canonicalSnap.data() as Record<string, unknown>)
+          : null;
 
       const mergeTimelineCandidate = async (
         candidateData: Record<string, unknown> | null
@@ -327,27 +338,34 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       };
 
       if (emailRaw && emailRaw !== email) {
-        const rawSnap = await readUserDoc(emailRaw);
-        const rawData = rawSnap.exists()
-          ? (rawSnap.data() as Record<string, unknown>)
-          : null;
+        const rawSnap = await tryReadUserDoc(emailRaw);
+        const rawData =
+          rawSnap && rawSnap.exists()
+            ? (rawSnap.data() as Record<string, unknown>)
+            : null;
 
         // fallback: pokud existuje dokument s původním e-mailem (např. s velkými písmeny), zkus ho
         if (!resolvedData && rawData) {
-          snap = rawSnap;
           resolvedData = rawData;
         } else if (resolvedData && rawData) {
           await mergeTimelineCandidate(rawData);
         }
       }
 
-      // fallback: některé legacy účty měly users doc pod UID místo e-mailu
-      if (uidRaw && uidRaw !== email && (!emailRaw || uidRaw !== emailRaw)) {
-        const uidSnap = await readUserDoc(uidRaw);
-        const uidData = uidSnap.exists()
-          ? (uidSnap.data() as Record<string, unknown>)
-          : null;
-        await mergeTimelineCandidate(uidData);
+      // fallback: některé legacy účty měly users doc pod atypickým docId, ale se stejným userId
+      if (uidRaw && (!resolvedData || !hasCareerTimelineConfigured(resolvedData))) {
+        try {
+          const usersCol = collection(db, "users");
+          const snapByUid = await getDocs(
+            query(usersCol, where("userId", "==", uidRaw), limit(5))
+          );
+          for (const docSnap of snapByUid.docs) {
+            const candidateData = docSnap.data() as Record<string, unknown>;
+            await mergeTimelineCandidate(candidateData);
+          }
+        } catch (uidLookupErr) {
+          console.warn("Chyba při fallback lookupu users.userId:", uidLookupErr);
+        }
       }
 
       // fallback: hledej i podle pole users.email (pro atypické legacy docId)

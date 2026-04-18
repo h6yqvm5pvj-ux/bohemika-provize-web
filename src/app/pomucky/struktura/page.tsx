@@ -247,6 +247,15 @@ export default function StructurePage() {
           fallbackMap.forEach((node, key) => map.set(key, node));
         }
 
+        if (!map.has(email)) {
+          map.set(email, {
+            email,
+            name: nameFromEmail(email),
+            position: null,
+            managerEmail: null,
+          });
+        }
+
         // viditelné e-maily: vlastní + tým (z API) + předci
         const visible = new Set<string>();
         map.forEach((node) => visible.add(node.email));
@@ -291,6 +300,18 @@ export default function StructurePage() {
         setVisibleEmails(visible);
       } catch (e) {
         console.error("Chyba při načítání struktury:", e);
+        const fallbackEmail = normalizeEmail(user.email);
+        if (fallbackEmail) {
+          const fallbackMap = new Map<string, UserNode>();
+          fallbackMap.set(fallbackEmail, {
+            email: fallbackEmail,
+            name: nameFromEmail(fallbackEmail),
+            position: null,
+            managerEmail: null,
+          });
+          setNodes(fallbackMap);
+          setVisibleEmails(new Set([fallbackEmail]));
+        }
       } finally {
         setLoading(false);
       }

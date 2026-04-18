@@ -97,6 +97,15 @@ service cloud.firestore {
         );
     }
 
+    function isAuthUsersLegacyProfileDoc() {
+      return resource != null
+        && resource.data is map
+        && (
+          isAuthEmail(resource.data.email)
+          || isOwnerUid(resource.data.userId)
+        );
+    }
+
     // Ověří, jestli je přihlášený uživatel v manažerském řetězci - používá pre-computed managerChain z dokumentu
     function isManagerInChain(doc) {
       let me = authEmail();
@@ -407,6 +416,7 @@ service cloud.firestore {
     match /users/{userEmail} {
       // čtení profilu: já / moji nadřízení / moji podřízení
       allow read: if isOwner(userEmail)
+                  || isAuthUsersLegacyProfileDoc()
                   || isAdmin()
                   || isDirectManagerOfUserResource()
                   || isManagerOfUserResource(userEmail)
