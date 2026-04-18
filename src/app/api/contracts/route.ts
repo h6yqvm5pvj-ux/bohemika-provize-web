@@ -25,6 +25,16 @@ type ContractDoc = {
   paid?: boolean | null;
   status?: "active" | "storno" | string | null;
   stornoDate?: FirestoreTimestamp | Date | string | number | null;
+  note?: string | null;
+  managerEmailSnapshot?: string | null;
+  managerPositionSnapshot?: Position | null;
+  managerModeSnapshot?: string | null;
+  managerChain?: { email?: string | null; position?: Position | null; commissionMode?: string | null }[];
+  managerOverrides?: { email?: string | null; position?: Position | null; commissionMode?: string | null; items?: any[]; total?: number | null }[];
+  entryType?: "contract" | "endorsement" | string | null;
+  rootContractEntryId?: string | null;
+  parentContractEntryId?: string | null;
+  parentContractEntryPath?: string | null;
 
   productKey?: Product;
   position?: Position | null;
@@ -45,6 +55,24 @@ type ContractDoc = {
 };
 
 type ContractResponseItem = ContractDoc & { adviserEmail: string | null };
+
+type ContractOwnerMeta = {
+  position: Position | null;
+  managerEmail: string | null;
+  managerPosition: Position | null;
+  currentChainEmails: string[];
+};
+
+type ContractDetailResponse = {
+  ok: true;
+  mode: "detail";
+  position: Position | null;
+  hasTeam: boolean;
+  teamEmails: string[];
+  contract: ContractResponseItem;
+  timeline: ContractResponseItem[];
+  ownerMeta: ContractOwnerMeta;
+};
 
 type ContractsResponse = {
   ok: true;
@@ -94,6 +122,20 @@ const CPP_STATUS_SYNC_PRODUCTS = new Set<Product>([
   "cppPPRbez",
   "cppcestovko",
 ]);
+const LIFE_TIMELINE_PRODUCTS = new Set<Product>([
+  "neon",
+  "flexi",
+  "maximaMaxEfekt",
+  "pillowInjury",
+]);
+const UPDATE_DATE_FIELDS = new Set<string>([
+  "createdAt",
+  "contractSignedDate",
+  "policyStartDate",
+  "stornoDate",
+  "refreshReplacedBySignedDate",
+  "replacementReplacedBySignedDate",
+]);
 const CPP_WSEXTRA_URL = "https://wsextra.cpp.cz/extranet/extranet.asmx";
 const CPP_SOAP_ACTION_STAV_SMLOUVY_ZP = "https://extranet.cpp.cz/StavSmlouvyZP";
 
@@ -107,6 +149,9 @@ const toMillis = (value: any): number | null => {
 
 const contractSortDate = (data: ContractDoc): Date | null =>
   toDate(data.contractSignedDate) ?? toDate(data.createdAt);
+
+const timelineSortDate = (data: ContractDoc): Date | null =>
+  toDate(data.policyStartDate) ?? toDate(data.contractSignedDate) ?? toDate(data.createdAt);
 
 type ParsedCursor = {
   date: Date;
@@ -168,6 +213,118 @@ const normalizeEmail = (email: string | null | undefined) =>
 
 const isValidContractNumber = (value: string) =>
   CONTRACT_NUMBER_RE.test(value);
+
+const extractEmailFromUnknown = (value: unknown): string => {
+  if (typeof value === "string") return normalizeEmail(value);
+  if (value && typeof value === "object") {
+    const nested = (value as { email?: string | null }).email;
+    return normalizeEmail(nested);
+  }
+  return "";
+};
+
+const includesEmailInCollection = (value: unknown, targetEmail: string): boolean => {
+  if (!Array.isArray(value) || !targetEmail) return false;
+  return value.some((item) => extractEmailFromUnknown(item) === targetEmail);
+};
+
+const hasContractAccess = ({
+  viewerEmail,
+  teamEmails,
+  ownerEmail,
+  contract,
+}: {
+  viewerEmail: string;
+  teamEmails: string[];
+  ownerEmail: string;
+  contract: ContractDoc;
+}): boolean => {
+  if (!viewerEmail || !ownerEmail) return false;
+  if (viewerEmail === ownerEmail) return true;
+  if (teamEmails.includes(ownerEmail)) return true;
+
+  const contractOwnerEmail = normalizeEmail(contract.userEmail);
+  if (contractOwnerEmail && contractOwnerEmail === viewerEmail) return true;
+
+  const managerEmailSnapshot = normalizeEmail(contract.managerEmailSnapshot as string | null);
+  if (managerEmailSnapshot && managerEmailSnapshot === viewerEmail) return true;
+
+  if (includesEmailInCollection(contract.managerChain, viewerEmail)) return true;
+  if (includesEmailInCollection(contract.managerOverrides, viewerEmail)) return true;
+
+  return false;
+};
+
+const toContractResponseItem = (
+  docId: string,
+  ownerEmail: string,
+  data: ContractDoc
+): ContractResponseItem => {
+  const normalizedOwner = normalizeEmail(ownerEmail);
+  return {
+    ...data,
+    contractSignedDate: toMillis(data.contractSignedDate),
+    createdAt: toMillis(data.createdAt),
+    policyStartDate: toMillis((data as any).policyStartDate),
+    stornoDate: toMillis((data as any).stornoDate),
+    id: docId,
+    adviserEmail: normalizedOwner,
+    userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
+  };
+};
+
+const normalizeRootEntryId = (entry: ContractDoc): string => {
+  const raw =
+    entry.rootContractEntryId ??
+    (entry.entryType === "endorsement" ? entry.parentContractEntryId : entry.id) ??
+    entry.id;
+  return typeof raw === "string" ? raw.trim() : "";
+};
+
+const toDateForUpdateField = (
+  field: string,
+  value: unknown
+): { ok: true; value: Date | null } | { ok: false; error: string } => {
+  if (!UPDATE_DATE_FIELDS.has(field)) {
+    return { ok: true, value: null };
+  }
+
+  if (value == null || value === "") {
+    return { ok: true, value: null };
+  }
+
+  const tryDate =
+    value instanceof Date
+      ? value
+      : typeof value === "number"
+      ? new Date(value)
+      : typeof value === "string"
+      ? parseCzechDate(value) ?? new Date(value)
+      : null;
+
+  if (!tryDate || Number.isNaN(tryDate.getTime())) {
+    return { ok: false, error: `Pole ${field} má neplatné datum.` };
+  }
+
+  return { ok: true, value: tryDate };
+};
+
+const normalizePatchUpdates = (
+  updates: Record<string, unknown>
+): { ok: true; payload: Record<string, unknown> } | { ok: false; error: string } => {
+  const normalized: Record<string, unknown> = {};
+  for (const [field, rawValue] of Object.entries(updates)) {
+    if (!UPDATE_DATE_FIELDS.has(field)) {
+      normalized[field] = rawValue;
+      continue;
+    }
+
+    const parsed = toDateForUpdateField(field, rawValue);
+    if (!parsed.ok) return parsed;
+    normalized[field] = parsed.value;
+  }
+  return { ok: true, payload: normalized };
+};
 
 type CppStavSmlouvyItem = {
   contractNumber: string;
@@ -626,6 +783,8 @@ async function getAuthContext(req: NextRequest) {
     email,
     position,
     teamEmails,
+    users,
+    childrenByManager,
   };
 }
 
@@ -635,8 +794,155 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
   }
 
-  const { email, position, teamEmails } = ctx;
+  const { email, position, teamEmails, users } = ctx;
   const search = req.nextUrl.searchParams;
+  const detailOwnerEmail = normalizeEmail(search.get("ownerEmail"));
+  const detailEntryId = (search.get("entryId") ?? "").trim();
+
+  if (detailOwnerEmail && detailEntryId) {
+    const detailRef = adminDb
+      ?.collection("users")
+      .doc(detailOwnerEmail)
+      .collection("entries")
+      .doc(detailEntryId);
+    const detailSnap = await detailRef?.get();
+    if (!detailSnap?.exists) {
+      return NextResponse.json(
+        { ok: false, error: "Smlouva nebyla nalezena." } satisfies ErrorResponse,
+        { status: 404 }
+      );
+    }
+
+    const contractRaw = detailSnap.data() as ContractDoc;
+    const canAccess = hasContractAccess({
+      viewerEmail: email,
+      teamEmails,
+      ownerEmail: detailOwnerEmail,
+      contract: contractRaw,
+    });
+    if (!canAccess) {
+      return NextResponse.json(
+        { ok: false, error: "Nemáš oprávnění pro tuto smlouvu." } satisfies ErrorResponse,
+        { status: 403 }
+      );
+    }
+
+    const contract = toContractResponseItem(
+      detailSnap.id,
+      detailOwnerEmail,
+      contractRaw
+    );
+
+    const includeTimeline =
+      search.get("includeTimeline") !== "0" && search.get("includeTimeline") !== "false";
+
+    let timeline: ContractResponseItem[] = [contract];
+    const productKey = contract.productKey as Product | undefined;
+    const contractNumber = (contract.contractNumber ?? "").trim();
+    if (
+      includeTimeline &&
+      productKey &&
+      LIFE_TIMELINE_PRODUCTS.has(productKey) &&
+      contractNumber
+    ) {
+      try {
+        const timelineSnap = await adminDb
+          ?.collection("users")
+          .doc(detailOwnerEmail)
+          .collection("entries")
+          .where("contractNumber", "==", contractNumber)
+          .get();
+        const timelineEntries = (timelineSnap?.docs ?? []).map((snap) =>
+          toContractResponseItem(
+            snap.id,
+            detailOwnerEmail,
+            snap.data() as ContractDoc
+          )
+        );
+
+        const targetRootId = normalizeRootEntryId(contract);
+        const sameProductEntries = timelineEntries.filter(
+          (entry) => entry.productKey === productKey
+        );
+        const hasExplicitChainIds =
+          Boolean((contract.rootContractEntryId ?? "").trim()) ||
+          sameProductEntries.some((entry) =>
+            Boolean((entry.rootContractEntryId ?? "").trim())
+          );
+        let scopedTimeline = sameProductEntries;
+        if (hasExplicitChainIds && targetRootId) {
+          scopedTimeline = sameProductEntries.filter(
+            (entry) => normalizeRootEntryId(entry) === targetRootId
+          );
+        }
+
+        if (!scopedTimeline.some((entry) => entry.id === contract.id)) {
+          scopedTimeline.push(contract);
+        }
+        if (scopedTimeline.length === 0) {
+          scopedTimeline = [contract];
+        }
+
+        scopedTimeline.sort((a, b) => {
+          const byDate =
+            (timelineSortDate(a)?.getTime() ?? 0) -
+            (timelineSortDate(b)?.getTime() ?? 0);
+          if (byDate !== 0) return byDate;
+          return a.id.localeCompare(b.id, "cs");
+        });
+        timeline = scopedTimeline;
+      } catch (timelineErr) {
+        console.warn("GET /api/contracts detail timeline selhalo:", timelineErr);
+        timeline = [contract];
+      }
+    }
+
+    const usersByEmail = new Map(users.map((item) => [item.email, item]));
+    const ownerNode = usersByEmail.get(detailOwnerEmail) ?? null;
+    const ownerPosition = ownerNode?.position ?? null;
+    let managerEmail = normalizeEmail(ownerNode?.managerEmail ?? null);
+
+    const currentChainEmails: string[] = [];
+    const seen = new Set<string>();
+    let cursor = detailOwnerEmail;
+    let depth = 0;
+    while (cursor && depth < 12) {
+      const node = usersByEmail.get(cursor) ?? null;
+      const mgr = normalizeEmail(node?.managerEmail ?? null);
+      if (!mgr || seen.has(mgr)) break;
+      currentChainEmails.push(mgr);
+      seen.add(mgr);
+      cursor = mgr;
+      depth += 1;
+    }
+    if (!managerEmail && currentChainEmails.length > 0) {
+      managerEmail = currentChainEmails[0] ?? "";
+    }
+    if (!managerEmail) {
+      managerEmail = normalizeEmail(contract.managerEmailSnapshot ?? null);
+    }
+    const managerPosition =
+      (managerEmail ? usersByEmail.get(managerEmail)?.position : null) ?? null;
+
+    const response: ContractDetailResponse = {
+      ok: true,
+      mode: "detail",
+      position,
+      hasTeam: teamEmails.length > 0,
+      teamEmails,
+      contract,
+      timeline,
+      ownerMeta: {
+        position: ownerPosition,
+        managerEmail: managerEmail || null,
+        managerPosition,
+        currentChainEmails,
+      },
+    };
+
+    return NextResponse.json(response);
+  }
+
   const scopeParam = search.get("scope") === "team" ? "team" : "my";
   const includeTeam = search.get("includeTeam") === "1" || search.get("includeTeam") === "true";
   const cursor = parseCursor(search);
@@ -1163,6 +1469,83 @@ export async function PATCH(req: NextRequest) {
         { status: 500 }
       );
     }
+  }
+
+  if (action === "updateFields") {
+    const ownerEmail = normalizeEmail(
+      typeof body?.ownerEmail === "string" ? body.ownerEmail : ""
+    );
+    const singleEntryId =
+      typeof body?.entryId === "string" ? body.entryId.trim() : "";
+    const entryIds = Array.from(
+      new Set(
+        [
+          singleEntryId,
+          ...(Array.isArray(body?.entryIds)
+            ? body.entryIds
+                .map((item: unknown) =>
+                  typeof item === "string" ? item.trim() : ""
+                )
+                .filter(Boolean)
+            : []),
+        ].filter(Boolean)
+      )
+    ) as string[];
+
+    const updatesRaw =
+      body?.updates && typeof body.updates === "object" && !Array.isArray(body.updates)
+        ? (body.updates as Record<string, unknown>)
+        : null;
+
+    if (!ownerEmail || entryIds.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Chybí ownerEmail nebo entryId." },
+        { status: 400 }
+      );
+    }
+    if (!updatesRaw) {
+      return NextResponse.json(
+        { ok: false, error: "Chybí objekt updates." },
+        { status: 400 }
+      );
+    }
+
+    const allowedOwners = new Set<string>([email, ...teamEmails]);
+    if (!allowedOwners.has(ownerEmail)) {
+      return NextResponse.json(
+        { ok: false, error: "Nemáš oprávnění upravit tuto smlouvu." },
+        { status: 403 }
+      );
+    }
+
+    const normalizedUpdates = normalizePatchUpdates(updatesRaw);
+    if (!normalizedUpdates.ok) {
+      return NextResponse.json(
+        { ok: false, error: normalizedUpdates.error },
+        { status: 400 }
+      );
+    }
+
+    const payload = normalizedUpdates.payload;
+    if (Object.keys(payload).length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Updates neobsahují žádná pole." },
+        { status: 400 }
+      );
+    }
+
+    let updated = 0;
+    for (const entryId of entryIds) {
+      await adminDb
+        ?.collection("users")
+        .doc(ownerEmail)
+        .collection("entries")
+        .doc(entryId)
+        .set(payload, { merge: true });
+      updated += 1;
+    }
+
+    return NextResponse.json({ ok: true, updated });
   }
 
   const entries = Array.isArray(body.entries) ? body.entries : [];

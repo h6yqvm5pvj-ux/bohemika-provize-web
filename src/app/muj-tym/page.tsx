@@ -16,16 +16,11 @@ import {
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
-  collection,
-  collectionGroup,
   doc,
   getDoc,
   getDocFromServer,
-  getDocs,
-  query,
   setDoc,
   updateDoc,
-  where,
 } from "firebase/firestore";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -33,18 +28,8 @@ import { auth, db } from "@/app/firebase";
 import {
   formatMoney as formatMoneyValue,
   positionLabel,
-  toDate,
 } from "@/app/lib/formatters";
-import {
-  isLifeProduct,
-  productCategory as productCategoryFromCatalog,
-  productInstitutionLabel,
-} from "@/app/lib/productCatalog";
-import {
-  buildChildrenByManager,
-  collectSubordinateHierarchy,
-} from "@/app/lib/teamHierarchy";
-import { type Position, type Product, type PaymentFrequency } from "@/app/types/domain";
+import { type Position } from "@/app/types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
 type Member = {
@@ -178,27 +163,6 @@ const PRODUCTION_CATEGORY_TABS: { key: ProductionCategory; label: string }[] = [
   { key: "travel", label: "Cestovko" },
 ];
 
-function categorizeProduct(p?: Product | null): Category {
-  switch (productCategoryFromCatalog(p)) {
-    case "life":
-      return "life";
-    case "auto":
-      return "auto";
-    case "property":
-      return "property";
-    case "travel":
-      return "travel";
-    case "comfort":
-      return "comfort";
-    default:
-      return "other";
-  }
-}
-
-function institutionLabelForProduct(product?: Product | null): string {
-  return productInstitutionLabel(product, "Ostatní") ?? "Ostatní";
-}
-
 function insurerLogoPath(insurer: string): string | null {
   const normalized = insurer.toLowerCase();
   if (normalized.includes("čpp") || normalized.includes("cpp")) return "/icons/cpp.png";
@@ -214,67 +178,8 @@ function insurerLogoPath(insurer: string): string | null {
   return null;
 }
 
-function paymentsPerYear(freq?: PaymentFrequency | null): number {
-  switch (freq) {
-    case "monthly":
-      return 12;
-    case "quarterly":
-      return 4;
-    case "semiannual":
-      return 2;
-    default:
-      return 1;
-  }
-}
-
-function annualPremiumFromEntry(data: any, category: Category): number {
-  const raw = Number(data?.inputAmount ?? 0);
-  if (!Number.isFinite(raw) || raw <= 0) return 0;
-  const product = data?.productKey as Product | undefined;
-  if (isLifeProduct(product)) {
-    return raw * 12;
-  }
-  if (category === "comfort") {
-    return raw;
-  }
-  return raw * paymentsPerYear((data?.frequencyRaw ?? "annual") as PaymentFrequency);
-}
-
 function formatMoney(value: number): string {
   return formatMoneyValue(value, { nonPositiveAsEmpty: true });
-}
-
-function emptyCategoryCounts(): Record<Category, number> {
-  return {
-    life: 0,
-    auto: 0,
-    property: 0,
-    travel: 0,
-    comfort: 0,
-    other: 0,
-  };
-}
-
-function emptyCategoryMetrics(): Record<Category, AggregateMetrics> {
-  return {
-    life: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    auto: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    property: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    travel: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    comfort: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    other: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-  };
-}
-
-function emptyInstitutionByCategory(): Record<Category, Record<string, AggregateMetrics>> {
-  return {
-    life: {},
-    auto: {},
-    property: {},
-    travel: {},
-    comfort: {},
-    other: {},
-  };
 }
 
 const formatRelative = (ts: number | null | undefined): string => {
@@ -298,6 +203,26 @@ type TeamCachePayload = {
   contractsError: boolean;
   userPosition: Position | null;
   canManagePositions: boolean;
+};
+
+type TeamOverviewApiSuccess = {
+  ok: true;
+  position?: Position | null;
+  canManagePositions?: boolean;
+  members?: Array<{
+    email?: string | null;
+    name?: string | null;
+    position?: Position | null;
+    managerEmail?: string | null;
+    docId?: string | null;
+  }>;
+  lastActive?: Record<string, number | null>;
+  contractCounts?: Record<string, ContractStats>;
+};
+
+type TeamOverviewApiError = {
+  ok: false;
+  error?: string;
 };
 
 const TEAM_CACHE_TTL_MS = 60 * 1000;
@@ -332,7 +257,6 @@ export default function TeamPage() {
   const [lastActive, setLastActive] = useState<Record<string, number | null>>({});
   const [contractCounts, setContractCounts] = useState<Record<string, ContractStats>>({});
   const [contractsLoaded, setContractsLoaded] = useState(false);
-  const [, setContractsRefreshing] = useState(false);
   const [contractsError, setContractsError] = useState(false);
   const [userPosition, setUserPosition] = useState<Position | null>(null);
   const [canManagePositions, setCanManagePositions] = useState(false);
@@ -357,19 +281,8 @@ export default function TeamPage() {
   const positionSaveTimerRef = useRef<number | null>(null);
   const careerSaveTimerRef = useRef<number | null>(null);
   const membersListRef = useRef<HTMLDivElement | null>(null);
-  const usedCacheRef = useRef(false);
-  const lastActiveRef = useRef<Record<string, number | null>>({});
   const [membersScrollTop, setMembersScrollTop] = useState(0);
   const [membersViewportHeight, setMembersViewportHeight] = useState(0);
-  const cacheStateRef = useRef<{
-    contractCounts: Record<string, ContractStats>;
-    contractsLoaded: boolean;
-    contractsError: boolean;
-  }>({
-    contractCounts: {},
-    contractsLoaded: false,
-    contractsError: false,
-  });
 
   const cacheKey = useMemo(() => (userEmail ? `team:${userEmail}` : null), [userEmail]);
 
@@ -382,18 +295,6 @@ export default function TeamPage() {
     setUserPosition(payload.userPosition);
     setCanManagePositions(payload.canManagePositions);
   };
-
-  useEffect(() => {
-    cacheStateRef.current = {
-      contractCounts,
-      contractsLoaded,
-      contractsError,
-    };
-  }, [contractCounts, contractsLoaded, contractsError]);
-
-  useEffect(() => {
-    lastActiveRef.current = lastActive;
-  }, [lastActive]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -411,6 +312,10 @@ export default function TeamPage() {
     const loadTeam = async () => {
       if (!userEmail) {
         setMembers([]);
+        setLastActive({});
+        setContractCounts({});
+        setContractsLoaded(true);
+        setContractsError(false);
         setUserPosition(null);
         setCanManagePositions(false);
         setLoading(false);
@@ -421,202 +326,140 @@ export default function TeamPage() {
       let canManage = false;
       let lastActiveMap: Record<string, number | null> = {};
       let all: Member[] = [];
+      let stats: Record<string, ContractStats> = {};
+      let nextContractsLoaded = true;
+      let nextContractsError = false;
+      const fallbackPayload = cacheKey ? teamDataCache[cacheKey]?.payload ?? null : null;
 
       if (cacheKey) {
         const cached = teamDataCache[cacheKey];
         if (cached && Date.now() - cached.ts < TEAM_CACHE_TTL_MS) {
           applyCachedTeamState(cached.payload);
           setLoading(false);
-          usedCacheRef.current = true;
           return;
         }
       }
 
       setLoading(true);
+      setContractsLoaded(false);
+      setContractsError(false);
       try {
-        const usersCol = collection(db, "users");
-        // načtení vlastního profilu
-        let meData: any = null;
-        let meDocId = userEmail;
-        try {
-          const meSnap = await getDoc(doc(usersCol, userEmail));
-          meData = meSnap.exists() ? (meSnap.data() as any) : null;
-          meDocId = meSnap.id;
-          pos = (meData?.position as Position | undefined) ?? null;
-          const mePrivateSnap = await getDoc(doc(db, "usersPrivate", userEmail));
-          const mePrivateData = mePrivateSnap.exists()
-            ? (mePrivateSnap.data() as any)
-            : null;
-          canManage =
-            mePrivateData?.adminFunction === true ||
-            mePrivateData?.adminfunction === true ||
-            meData?.adminFunction === true ||
-            meData?.adminfunction === true;
-          setUserPosition(pos);
-          setCanManagePositions(canManage);
-        } catch (err) {
-          console.error("Chyba při načítání pozice uživatele", err);
-          setUserPosition(null);
-          setCanManagePositions(false);
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          throw new Error("Nejsi přihlášený.");
         }
-        const ownEmail = ((meData?.email as string | undefined)?.trim() || userEmail).toLowerCase();
-        all = [];
-        const seededLastActive: Record<string, number | null> = {};
 
-        type TeamUserNode = {
-          email: string;
-          name: string;
-          position: Position | null;
-          managerEmail: string | null;
-          docId: string;
-          lastActiveTs: number | null;
-        };
-
-        const allUsersSnap = await getDocs(usersCol);
-        const candidatesByEmail = new Map<string, TeamUserNode[]>();
-        allUsersSnap.forEach((docSnap) => {
-          const data = docSnap.data() as any;
-          const rawEmail = ((data.email as string | undefined)?.trim() || docSnap.id).toLowerCase();
-          if (!rawEmail) return;
-
-          const node: TeamUserNode = {
-            email: rawEmail,
-            name: nameFromEmail(rawEmail),
-            position: (data.position as Position | undefined) ?? null,
-            managerEmail: ((data.managerEmail as string | undefined)?.toLowerCase() ?? null),
-            docId: docSnap.id,
-            lastActiveTs: (() => {
-              const ts = toDate(data.lastActive)?.getTime();
-              return Number.isFinite(ts) ? Number(ts) : null;
-            })(),
-          };
-
-          const current = candidatesByEmail.get(rawEmail) ?? [];
-          current.push(node);
-          candidatesByEmail.set(rawEmail, current);
-        });
-
-        const pickBestCandidate = (
-          items: TeamUserNode[],
-          emailKey: string
-        ): TeamUserNode => {
-          return [...items].sort((a, b) => {
-            const aDoc = a.docId.trim().toLowerCase();
-            const bDoc = b.docId.trim().toLowerCase();
-            const aCanonical = aDoc === emailKey ? 0 : 1;
-            const bCanonical = bDoc === emailKey ? 0 : 1;
-            if (aCanonical !== bCanonical) return aCanonical - bCanonical;
-
-            const aHasPosition = a.position ? 0 : 1;
-            const bHasPosition = b.position ? 0 : 1;
-            if (aHasPosition !== bHasPosition) return aHasPosition - bHasPosition;
-
-            const aHasManager = a.managerEmail ? 0 : 1;
-            const bHasManager = b.managerEmail ? 0 : 1;
-            if (aHasManager !== bHasManager) return aHasManager - bHasManager;
-
-            return aDoc.localeCompare(bDoc, "cs");
-          })[0];
-        };
-
-        const usersByEmail = new Map<string, TeamUserNode>();
-        candidatesByEmail.forEach((items, emailKey) => {
-          usersByEmail.set(emailKey, pickBestCandidate(items, emailKey));
-        });
-
-        const ownExisting = usersByEmail.get(ownEmail);
-        if (!ownExisting) {
-          usersByEmail.set(ownEmail, {
-            email: ownEmail,
-            name: nameFromEmail(ownEmail),
-            position: (meData?.position as Position | undefined) ?? null,
-            managerEmail: ((meData?.managerEmail as string | undefined)?.toLowerCase() ?? null),
-            docId: meDocId,
-            lastActiveTs: (() => {
-              const ts = toDate(meData?.lastActive)?.getTime();
-              return Number.isFinite(ts) ? Number(ts) : null;
-            })(),
+        let bearerToken = await currentUser.getIdToken();
+        const requestWithToken = async (token: string) =>
+          fetch("/api/team-overview", {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
           });
+
+        let response = await requestWithToken(bearerToken);
+        if (response.status === 401) {
+          bearerToken = await currentUser.getIdToken(true);
+          response = await requestWithToken(bearerToken);
         }
 
-        const ownNode = usersByEmail.get(ownEmail)!;
-        if (!pos && ownNode.position) {
-          pos = ownNode.position;
-          setUserPosition(pos);
+        const responseData = (await response.json()) as
+          | TeamOverviewApiSuccess
+          | TeamOverviewApiError;
+
+        if (!response.ok) {
+          const message =
+            "error" in responseData && typeof responseData.error === "string"
+              ? responseData.error
+              : "Nepodařilo se načíst tým.";
+          throw new Error(message);
+        }
+        if (responseData.ok === false) {
+          throw new Error(responseData.error || "Nepodařilo se načíst tým.");
         }
 
-        // aktuálně přihlášený uživatel musí být v seznamu vždy
-        seededLastActive[ownEmail] = ownNode.lastActiveTs;
-        all.push({
-          email: ownEmail,
-          name: nameFromEmail(ownEmail),
-          position: ownNode.position,
-          managerEmail: ownNode.managerEmail,
-          docId: ownNode.docId,
-        });
+        pos = responseData.position ?? null;
+        canManage = responseData.canManagePositions === true;
 
-        const childrenByManager = buildChildrenByManager(usersByEmail.values());
-        const hierarchy = collectSubordinateHierarchy(ownEmail, childrenByManager);
-        hierarchy.subordinateEmails.forEach((subEmail) => {
-          const node = hierarchy.subordinateByEmail.get(subEmail);
-          if (!node) return;
-          seededLastActive[subEmail] = node.lastActiveTs;
-          all.push({
-            email: subEmail,
-            name: node.name,
-            position: node.position,
-            managerEmail: node.managerEmail,
-            docId: node.docId,
+        const rawMembers = Array.isArray(responseData.members)
+          ? responseData.members
+          : [];
+        const membersByEmail = new Map<string, Member>();
+        rawMembers.forEach((raw) => {
+          const email = (raw.email ?? "").trim().toLowerCase();
+          if (!email) return;
+          membersByEmail.set(email, {
+            email,
+            name: (raw.name ?? "").trim() || nameFromEmail(email),
+            position: (raw.position as Position | null | undefined) ?? null,
+            managerEmail: (raw.managerEmail ?? "").trim().toLowerCase() || null,
+            docId: (raw.docId ?? "").trim() || email,
           });
         });
 
+        if (!membersByEmail.has(userEmail)) {
+          membersByEmail.set(userEmail, {
+            email: userEmail,
+            name: nameFromEmail(userEmail),
+            position: null,
+            managerEmail: null,
+            docId: userEmail,
+          });
+        }
+
+        all = Array.from(membersByEmail.values());
+        all.sort((a, b) => {
+          if (a.email === userEmail) return -1;
+          if (b.email === userEmail) return 1;
+          return a.name.localeCompare(b.name, "cs");
+        });
+
+        const rawLastActive =
+          responseData.lastActive && typeof responseData.lastActive === "object"
+            ? responseData.lastActive
+            : {};
+        lastActiveMap = {};
+        all.forEach((member) => {
+          const value = rawLastActive[member.email];
+          lastActiveMap[member.email] =
+            typeof value === "number" && Number.isFinite(value) ? value : null;
+        });
+
+        stats = responseData.contractCounts ?? {};
+        nextContractsLoaded = true;
+        nextContractsError = false;
+
+        setUserPosition(pos);
+        setCanManagePositions(canManage);
         setMembers(all);
+        setLastActive(lastActiveMap);
+        setContractCounts(stats);
+        setContractsLoaded(true);
+        setContractsError(false);
         if (all.length) {
           setSelectedEmail((prev) => prev ?? all[0]?.email ?? null);
         }
-
-        // načti poslední aktivitu (uložená statistika) pro každého
-        const entries = await Promise.all(
-          all.map(async (m) => {
-            const seeded = seededLastActive[m.email];
-            if (typeof seeded === "number" && Number.isFinite(seeded)) {
-              return [m.email, seeded] as const;
-            }
-
-            const candidateIds = Array.from(new Set([m.docId, m.email].filter(Boolean))) as string[];
-            for (const id of candidateIds) {
-              const userRef = doc(db, "users", id);
-              try {
-                let userDoc = await getDoc(userRef);
-                let lastActiveUser = toDate((userDoc.data() as any)?.lastActive);
-                if (!lastActiveUser) {
-                  try {
-                    userDoc = await getDocFromServer(userRef);
-                    lastActiveUser = toDate((userDoc.data() as any)?.lastActive);
-                  } catch (err) {
-                    if (process.env.NODE_ENV !== "production") {
-                      console.info("[lastActive] server read failed", { email: m.email, id, err });
-                    }
-                  }
-                }
-                if (lastActiveUser) {
-                  return [m.email, lastActiveUser.getTime()] as const;
-                }
-              } catch (err) {
-                if (process.env.NODE_ENV !== "production") {
-                  console.info("[lastActive] read failed", { email: m.email, id, err });
-                }
-              }
-            }
-
-            return [m.email, null] as const;
-          })
-        );
-        lastActiveMap = Object.fromEntries(entries);
-        setLastActive(lastActiveMap);
       } catch (e) {
         console.error("Chyba při načítání týmu", e);
-        setMembers([]);
+        if (fallbackPayload) {
+          applyCachedTeamState(fallbackPayload);
+          pos = fallbackPayload.userPosition;
+          canManage = fallbackPayload.canManagePositions;
+          all = fallbackPayload.members;
+          lastActiveMap = fallbackPayload.lastActive;
+          stats = fallbackPayload.contractCounts;
+          nextContractsLoaded = fallbackPayload.contractsLoaded;
+          nextContractsError = fallbackPayload.contractsError;
+        } else {
+          setMembers([]);
+          setLastActive({});
+          setContractCounts({});
+          setContractsLoaded(true);
+          setContractsError(true);
+          setUserPosition(null);
+          setCanManagePositions(false);
+          nextContractsLoaded = true;
+          nextContractsError = true;
+        }
       } finally {
         setLoading(false);
 
@@ -626,9 +469,9 @@ export default function TeamPage() {
             payload: {
               members: all,
               lastActive: lastActiveMap,
-              contractCounts: cacheStateRef.current.contractCounts,
-              contractsLoaded: cacheStateRef.current.contractsLoaded,
-              contractsError: cacheStateRef.current.contractsError,
+              contractCounts: stats,
+              contractsLoaded: nextContractsLoaded,
+              contractsError: nextContractsError,
               userPosition: pos,
               canManagePositions: canManage,
             },
@@ -637,143 +480,9 @@ export default function TeamPage() {
       }
     };
 
-    loadTeam();
+    void loadTeam();
     // only depends on signed-in user; selection should not retrigger fetch
   }, [userEmail, cacheKey]);
-
-  useEffect(() => {
-    const loadContractCounts = async () => {
-      let nextContractsError = false;
-      // použij cache jen jako skeleton, ale vždy načti čerstvá data
-      if (cacheKey) {
-        const cached = teamDataCache[cacheKey];
-        if (cached && Date.now() - cached.ts < TEAM_CACHE_TTL_MS && cached.payload.contractsLoaded) {
-          applyCachedTeamState(cached.payload);
-        }
-      }
-
-      if (members.length === 0) {
-        setContractCounts({});
-        setContractsLoaded(true);
-        setContractsError(false);
-        return;
-      }
-      if (Object.keys(cacheStateRef.current.contractCounts).length === 0) {
-        setContractsLoaded(false);
-      }
-      setContractsRefreshing(true);
-      setContractsError(false);
-      const stats: Record<string, ContractStats> = {};
-      try {
-        const emails = Array.from(new Set(members.map((m) => m.email.toLowerCase()))); // dedupe
-        const now = new Date();
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-        const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
-        const entries = collectionGroup(db, "entries");
-        const chunkSize = 10;
-        const consumeEntry = (data: any, fallbackEmail?: string | null) => {
-          const email = ((data.userEmail as string | undefined) ?? fallbackEmail ?? "").toLowerCase();
-          if (!email) return;
-          const current =
-            stats[email] ?? {
-              total: 0,
-              month: 0,
-              categories: emptyCategoryCounts(),
-              categoryMetrics: emptyCategoryMetrics(),
-              institutionMetrics: {},
-              institutionByCategory: emptyInstitutionByCategory(),
-            };
-          current.total += 1;
-          const category = categorizeProduct(data.productKey as Product | undefined);
-          current.categories[category] = (current.categories[category] ?? 0) + 1;
-          const annualPremium = annualPremiumFromEntry(data, category);
-          const monthlyPremium = annualPremium / 12;
-          const byCategory = current.categoryMetrics[category] ?? { contracts: 0, annualPremium: 0, monthlyPremium: 0 };
-          byCategory.contracts += 1;
-          byCategory.annualPremium += annualPremium;
-          byCategory.monthlyPremium += monthlyPremium;
-          current.categoryMetrics[category] = byCategory;
-
-          const institution = institutionLabelForProduct(data.productKey as Product | undefined);
-          const byInstitution = current.institutionMetrics[institution] ?? { contracts: 0, annualPremium: 0, monthlyPremium: 0 };
-          byInstitution.contracts += 1;
-          byInstitution.annualPremium += annualPremium;
-          byInstitution.monthlyPremium += monthlyPremium;
-          current.institutionMetrics[institution] = byInstitution;
-          const byInstitutionForCategory = current.institutionByCategory[category][institution] ?? {
-            contracts: 0,
-            annualPremium: 0,
-            monthlyPremium: 0,
-          };
-          byInstitutionForCategory.contracts += 1;
-          byInstitutionForCategory.annualPremium += annualPremium;
-          byInstitutionForCategory.monthlyPremium += monthlyPremium;
-          current.institutionByCategory[category][institution] = byInstitutionForCategory;
-
-          const date = toDate((data as any).contractSignedDate ?? data.createdAt);
-          const ts = date?.getTime();
-          if (ts != null && ts >= monthStart && ts < nextMonthStart) {
-            current.month += 1;
-          }
-          stats[email] = current;
-        };
-
-        for (let i = 0; i < emails.length; i += chunkSize) {
-          const chunk = emails.slice(i, i + chunkSize);
-          try {
-            const snap = await getDocs(query(entries, where("userEmail", "in", chunk)));
-            snap.docs.forEach((docSnap) => {
-              consumeEntry(docSnap.data() as any);
-            });
-          } catch {
-            // Na striktnějších rules může collectionGroup selhat; fallback na podkolekce user entries.
-            await Promise.all(
-              chunk.map(async (chunkEmail) => {
-                try {
-                  const ownerEntriesRef = collection(db, "users", chunkEmail, "entries");
-                  const ownerSnap = await getDocs(ownerEntriesRef);
-                  ownerSnap.docs.forEach((docSnap) => {
-                    consumeEntry(docSnap.data() as any, chunkEmail);
-                  });
-                } catch {
-                  // Pokud konkrétní uživatel nejde načíst, pokračuj dál.
-                }
-              })
-            );
-          }
-        }
-
-        setContractCounts(stats);
-      } catch (e) {
-        console.error("Chyba při načítání počtu smluv", e);
-        setContractCounts({});
-        nextContractsError = true;
-      } finally {
-        setContractsLoaded(true);
-        setContractsRefreshing(false);
-        setContractsError(nextContractsError);
-
-        if (cacheKey) {
-          teamDataCache[cacheKey] = {
-            ts: Date.now(),
-            payload: {
-              members,
-              lastActive: lastActiveRef.current,
-              contractCounts: stats ?? {},
-              contractsLoaded: true,
-              contractsError: nextContractsError,
-              userPosition,
-              canManagePositions,
-            },
-          };
-        }
-      }
-    };
-
-    if (usedCacheRef.current && contractsLoaded) return;
-
-    void loadContractCounts();
-  }, [members, cacheKey, userPosition, canManagePositions, contractsLoaded, contractsError]);
 
   const filteredMembers = useMemo(() => {
     const term = search.trim().toLowerCase();

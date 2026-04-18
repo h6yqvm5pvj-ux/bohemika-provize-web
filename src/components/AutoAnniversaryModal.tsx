@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "@/app/firebase";
+import { auth } from "@/app/firebase";
 import { toDate } from "@/app/lib/formatters";
 import {
   isAutoProduct,
@@ -36,6 +35,18 @@ type AnniversaryRow = {
   daysToAnniversary: number;
 };
 
+type ContractsApiResponse = {
+  ok?: boolean;
+  error?: string;
+  contracts?: (EntryDoc & { adviserEmail?: string | null })[];
+  hasMore?: boolean;
+  nextCursorToken?: string | null;
+  nextCursor?: number | null;
+};
+
+const CONTRACTS_PAGE_LIMIT = 50;
+const CONTRACTS_MAX_PAGES = 80;
+
 function nextAnniversary(start: Date, now: Date): Date {
   const ann = new Date(start);
   ann.setFullYear(ann.getFullYear() + 1);
@@ -46,6 +57,18 @@ function nextAnniversary(start: Date, now: Date): Date {
 }
 
 const normalizeEmail = (email?: string | null) => (email ?? "").trim().toLowerCase();
+const normalizeCursorToken = (
+  token: string | null | undefined,
+  legacyCursor: number | null | undefined
+): string | null => {
+  if (typeof token === "string" && token.trim()) {
+    return token.trim();
+  }
+  if (typeof legacyCursor === "number" && Number.isFinite(legacyCursor)) {
+    return String(legacyCursor);
+  }
+  return null;
+};
 
 export function AutoAnniversaryModal({
   userEmail,
@@ -68,32 +91,68 @@ export function AutoAnniversaryModal({
     const load = async () => {
       setLoading(true);
       try {
-        const rawEmail = (userEmail ?? "").trim();
-        const ownerIds = Array.from(
-          new Set([
-            normalizedEmail,
-            rawEmail && rawEmail !== normalizedEmail ? rawEmail : null,
-          ].filter(Boolean) as string[])
-        );
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          setRows([]);
+          setOpen(false);
+          return;
+        }
+
+        let bearerToken = await currentUser.getIdToken();
+        const requestContracts = async (cursor?: string | null) => {
+          const params = new URLSearchParams({
+            scope: "my",
+            limit: String(CONTRACTS_PAGE_LIMIT),
+          });
+          if (cursor) params.set("cursor", cursor);
+
+          const requestWithToken = async (token: string) =>
+            fetch(`/api/contracts?${params.toString()}`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+              cache: "no-store",
+            });
+
+          let res = await requestWithToken(bearerToken);
+          if (res.status === 401) {
+            bearerToken = await currentUser.getIdToken(true);
+            res = await requestWithToken(bearerToken);
+          }
+          const payload = (await res.json()) as ContractsApiResponse;
+          if (!res.ok || payload?.ok === false) {
+            throw new Error(payload?.error || "Nepodařilo se načíst smlouvy.");
+          }
+          return payload;
+        };
 
         const byEntryKey = new Map<string, EntryDoc>();
+        let cursor: string | null = null;
+        let hasMore = true;
+        let page = 0;
+        while (hasMore && page < CONTRACTS_MAX_PAGES) {
+          page += 1;
+          const payload = await requestContracts(cursor);
+          const items = (payload.contracts ?? []) as (EntryDoc & {
+            adviserEmail?: string | null;
+          })[];
+          items.forEach((item) => {
+            const owner = normalizeEmail(
+              item.adviserEmail ?? item.userEmail ?? normalizedEmail
+            );
+            const id = String(item.id ?? "").trim();
+            if (!owner || !id) return;
+            const key = `${owner}___${id}`;
+            byEntryKey.set(key, {
+              ...(item as Omit<EntryDoc, "id">),
+              id: key,
+              userEmail: owner,
+            });
+          });
 
-        await Promise.all(
-          ownerIds.map(async (owner) => {
-            try {
-              const ownerSnap = await getDocs(collection(db, "users", owner, "entries"));
-              ownerSnap.forEach((docSnap) => {
-                const key = `${owner.toLowerCase()}___${docSnap.id}`;
-                byEntryKey.set(key, {
-                  ...(docSnap.data() as Omit<EntryDoc, "id">),
-                  id: key,
-                });
-              });
-            } catch {
-              // U striktnějších rules může některý fallback ownerId selhat.
-            }
-          })
-        );
+          cursor = normalizeCursorToken(payload.nextCursorToken, payload.nextCursor);
+          hasMore = Boolean(payload.hasMore) && Boolean(cursor);
+        }
 
         const now = new Date();
 

@@ -15,21 +15,11 @@ import {
   UserRound,
 } from "lucide-react";
 
-import { auth, db } from "../../firebase";
+import { auth } from "../../firebase";
 import {
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  updateDoc,
-  where,
-} from "firebase/firestore";
 
 import {
   type Product,
@@ -110,6 +100,30 @@ const KOOPERATIVA_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
   "koopmajetekobcan",
   "kooperativaAuto",
 ]);
+
+type ContractsApiError = Error & { status?: number };
+
+type ContractsApiResponseBase = {
+  ok?: boolean;
+  error?: string;
+};
+
+type ContractOwnerMetaApi = {
+  position?: Position | null;
+  managerEmail?: string | null;
+  managerPosition?: Position | null;
+  currentChainEmails?: string[];
+};
+
+type ContractDetailApiResponse = ContractsApiResponseBase & {
+  mode?: "detail";
+  position?: Position | null;
+  hasTeam?: boolean;
+  teamEmails?: string[];
+  contract?: ContractDoc;
+  timeline?: ContractDoc[];
+  ownerMeta?: ContractOwnerMetaApi | null;
+};
 
 export default function ContractDetailPage() {
   const router = useRouter();
@@ -206,72 +220,44 @@ export default function ContractDetailPage() {
     return () => unsub();
   }, []);
 
-  // metadata přihlášeného usera
-  useEffect(() => {
-    const loadUserMeta = async () => {
-      const emailRaw = user?.email ?? null;
-      const email = normalizeEmail(emailRaw);
-      if (!email) return;
-
-      try {
-        const ref = doc(db, "users", email);
-        let snap = await getDoc(ref);
-        if (!snap.exists() && emailRaw && emailRaw !== email) {
-          const rawRef = doc(db, "users", emailRaw);
-          const rawSnap = await getDoc(rawRef);
-          if (rawSnap.exists()) {
-            snap = rawSnap;
-          }
-        }
-        if (snap.exists()) {
-          const data = snap.data() as any;
-          if (data.position) {
-            setManagerPosition(data.position as Position);
-          }
-        }
-      } catch (e) {
-        console.error("Chyba při načítání uživatele:", e);
-      }
-    };
-
-    loadUserMeta();
-  }, [user]);
-
-  useEffect(() => {
-    const loadCurrentChain = async () => {
-      const start = normalizeEmail(ownerEmail);
-      if (!start) {
-        setCurrentChainEmails([]);
-        return;
+  const requestContractsApi = useCallback(
+    async <T,>(path: string, init?: RequestInit): Promise<T> => {
+      if (!user) {
+        const err = new Error("Nejsi přihlášený.") as ContractsApiError;
+        err.status = 401;
+        throw err;
       }
 
-      try {
-        const chain: string[] = [];
-        const visited = new Set<string>();
-        let current = start;
-        let depth = 0;
+      const doRequest = async (token: string) => {
+        const headers = new Headers(init?.headers ?? {});
+        headers.set("Authorization", `Bearer ${token}`);
+        return fetch(path, {
+          ...(init ?? {}),
+          headers,
+          cache: init?.cache ?? "no-store",
+        });
+      };
 
-        while (current && depth < 9) {
-          const snap = await getDoc(doc(db, "users", current));
-          if (!snap.exists()) break;
-          const data = snap.data() as any;
-          const mgr = normalizeEmail(data?.managerEmail ?? null);
-          if (!mgr || visited.has(mgr)) break;
-          chain.push(mgr);
-          visited.add(mgr);
-          current = mgr;
-          depth += 1;
-        }
-
-        setCurrentChainEmails(chain);
-      } catch (e) {
-        console.error("Chyba při načítání aktuálního manager chainu:", e);
-        setCurrentChainEmails([]);
+      let token = await user.getIdToken();
+      let res = await doRequest(token);
+      if (res.status === 401) {
+        token = await user.getIdToken(true);
+        res = await doRequest(token);
       }
-    };
 
-    void loadCurrentChain();
-  }, [ownerEmail]);
+      const payload = (await res.json().catch(() => ({}))) as ContractsApiResponseBase;
+      if (!res.ok || payload?.ok === false) {
+        const err = new Error(
+          payload?.error || "Požadavek na API smluv selhal."
+        ) as ContractsApiError;
+        err.status = res.status;
+        throw err;
+      }
+
+      return payload as T;
+    },
+    [user]
+  );
 
   useEffect(() => {
     preloadFormulaModule(contract?.productKey ?? null);
@@ -286,180 +272,104 @@ export default function ContractDetailPage() {
     setStornoDateInput(toDateInputValue(new Date()) ?? "");
   }, [contract?.stornoDate]);
 
-  // načtení smlouvy – users/{email}/entries/{entryId}
   useEffect(() => {
+    let cancelled = false;
+
     const load = async () => {
       if (!ownerEmail || !entryId) {
         setError("Neplatný odkaz na smlouvu.");
         setLoading(false);
+        setTimelineLoading(false);
         return;
       }
+      if (!user) return;
 
       setLoading(true);
+      setTimelineLoading(true);
       setError(null);
+      setTimelineError(null);
+      setUnauthorized(false);
 
       try {
-        const ref = doc(db, "users", ownerEmail, "entries", entryId);
-        const snap = await getDoc(ref);
+        const params = new URLSearchParams({
+          ownerEmail,
+          entryId,
+        });
+        const payload = await requestContractsApi<ContractDetailApiResponse>(
+          `/api/contracts?${params.toString()}`
+        );
+        if (cancelled) return;
 
-        if (!snap.exists()) {
+        if (!payload.contract) {
           setError("Smlouva nebyla nalezena.");
           setContract(null);
+          setContractTimeline([]);
+          setOwnerPosition(null);
+          setOwnerManagerEmail(null);
+          setOwnerManagerPosition(null);
+          setCurrentChainEmails([]);
+          setManagerPosition(null);
+          return;
+        }
+
+        setContract(payload.contract);
+        setNoteDraft((payload.contract.note as string | undefined) ?? "");
+        const timeline =
+          Array.isArray(payload.timeline) && payload.timeline.length > 0
+            ? payload.timeline
+            : [payload.contract];
+        setContractTimeline(timeline);
+        setOwnerPosition((payload.ownerMeta?.position as Position | null | undefined) ?? null);
+        setOwnerManagerEmail(
+          normalizeEmail(payload.ownerMeta?.managerEmail ?? null) || null
+        );
+        setOwnerManagerPosition(
+          (payload.ownerMeta?.managerPosition as Position | null | undefined) ?? null
+        );
+        setCurrentChainEmails(
+          Array.isArray(payload.ownerMeta?.currentChainEmails)
+            ? payload.ownerMeta?.currentChainEmails
+                .map((item) => normalizeEmail(item))
+                .filter((item): item is string => Boolean(item))
+            : []
+        );
+        setManagerPosition((payload.position as Position | null | undefined) ?? null);
+      } catch (e) {
+        console.error("Chyba při načítání detailu smlouvy:", e);
+        if (cancelled) return;
+
+        const status = (e as ContractsApiError).status;
+        if (status === 403) {
+          setUnauthorized(true);
+          setError("Nemáš oprávnění zobrazit tuto smlouvu.");
+        } else if (status === 404) {
+          setError("Smlouva nebyla nalezena.");
+        } else if (status === 401) {
+          setUnauthorized(true);
+          setError("Přihlášení vypršelo. Přihlas se prosím znovu.");
         } else {
-          const data = snap.data() as any;
-          const c: ContractDoc = {
-            id: snap.id,
-            ...data,
-          };
-          setContract(c);
-          setNoteDraft((data.note as string | undefined) ?? "");
-
-          // meta o poradci
-          try {
-            const userRef = doc(db, "users", ownerEmail);
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-              const d = userSnap.data() as any;
-              const pos = (d.position ?? null) as Position | null;
-              const mgrEmail =
-                ((d.managerEmail as string | undefined) ?? null)?.toLowerCase() ??
-                null;
-              setOwnerPosition(pos);
-              setOwnerManagerEmail(mgrEmail);
-
-              if (mgrEmail) {
-                const mgrSnap = await getDoc(doc(db, "users", mgrEmail));
-                if (mgrSnap.exists()) {
-                  const md = mgrSnap.data() as any;
-                  setOwnerManagerPosition(
-                    (md.position ?? null) as Position | null
-                  );
-                }
-              }
-            }
-          } catch (metaErr) {
-            console.error("Chyba při načítání uživatele smlouvy:", metaErr);
-          }
+          setError("Při načítání smlouvy došlo k chybě.");
         }
-      } catch (e) {
-        console.error(e);
-        setError("Při načítání smlouvy došlo k chybě.");
         setContract(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, [ownerEmail, entryId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const timelineSortMs = (entry: ContractDoc): number => {
-      return (
-        toDate(entry.policyStartDate)?.getTime() ??
-        toDate(entry.contractSignedDate)?.getTime() ??
-        toDate(entry.createdAt)?.getTime() ??
-        0
-      );
-    };
-
-    const loadTimeline = async () => {
-      if (!ownerEmail || !contract) {
         setContractTimeline([]);
-        setTimelineError(null);
-        setTimelineLoading(false);
-        return;
-      }
-
-      const productKey = contract.productKey as Product | undefined;
-      if (!productKey || !LIFE_PRODUCT_KEYS.has(productKey)) {
-        setContractTimeline([]);
-        setTimelineError(null);
-        setTimelineLoading(false);
-        return;
-      }
-
-      const trimmedContractNumber = (contract.contractNumber ?? "").trim();
-      if (!trimmedContractNumber) {
-        setContractTimeline([contract]);
-        setTimelineError(null);
-        setTimelineLoading(false);
-        return;
-      }
-
-      setTimelineLoading(true);
-      setTimelineError(null);
-      try {
-        const entriesRef = collection(db, "users", ownerEmail, "entries");
-        const timelineSnap = await getDocs(
-          query(entriesRef, where("contractNumber", "==", trimmedContractNumber))
-        );
-
-        const timelineEntries = timelineSnap.docs.map((snap) => {
-          return {
-            id: snap.id,
-            ...(snap.data() as any),
-          } as ContractDoc;
-        });
-
-        const normalizeRootId = (entry: ContractDoc): string => {
-          const raw =
-            entry.rootContractEntryId ??
-            (entry.entryType === "endorsement" ? entry.parentContractEntryId : entry.id) ??
-            entry.id;
-          return typeof raw === "string" ? raw.trim() : "";
-        };
-
-        const targetRootId = normalizeRootId(contract);
-        const sameProductEntries = timelineEntries.filter(
-          (entry) => entry.productKey === productKey
-        );
-        const hasExplicitChainIds =
-          Boolean((contract.rootContractEntryId ?? "").trim()) ||
-          sameProductEntries.some((entry) =>
-            Boolean((entry.rootContractEntryId ?? "").trim())
-          );
-        let scopedTimeline = sameProductEntries;
-        if (hasExplicitChainIds && targetRootId) {
-          scopedTimeline = sameProductEntries.filter(
-            (entry) => normalizeRootId(entry) === targetRootId
-          );
-        }
-
-        if (!scopedTimeline.some((entry) => entry.id === contract.id)) {
-          scopedTimeline.push(contract);
-        }
-        if (scopedTimeline.length === 0) {
-          scopedTimeline = [contract];
-        }
-
-        scopedTimeline.sort((a, b) => {
-          const byDate = timelineSortMs(a) - timelineSortMs(b);
-          if (byDate !== 0) return byDate;
-          return a.id.localeCompare(b.id, "cs");
-        });
-
-        if (cancelled) return;
-        setContractTimeline(scopedTimeline);
-      } catch (e) {
-        console.error("Chyba při načítání timeline smlouvy:", e);
-        if (cancelled) return;
-        setContractTimeline(contract ? [contract] : []);
+        setOwnerPosition(null);
+        setOwnerManagerEmail(null);
+        setOwnerManagerPosition(null);
+        setCurrentChainEmails([]);
         setTimelineError("Timeline změn se nepodařilo načíst.");
       } finally {
         if (!cancelled) {
+          setLoading(false);
           setTimelineLoading(false);
         }
       }
     };
 
-    void loadTimeline();
+    void load();
     return () => {
       cancelled = true;
     };
-  }, [ownerEmail, contract]);
+  }, [entryId, ownerEmail, requestContractsApi, user]);
 
   const isEndorsement = contract?.entryType === "endorsement";
   const lifecycleInput = {
@@ -781,30 +691,23 @@ export default function ContractDetailPage() {
       }
 
       try {
-        const linkedRef = doc(
-          db,
-          "users",
-          refreshReplacementOwnerEmail,
-          "entries",
-          refreshReplacementEntryId
+        const params = new URLSearchParams({
+          ownerEmail: refreshReplacementOwnerEmail,
+          entryId: refreshReplacementEntryId,
+          includeTimeline: "0",
+        });
+        await requestContractsApi<ContractDetailApiResponse>(
+          `/api/contracts?${params.toString()}`
         );
-        const linkedSnap = await getDoc(linkedRef);
-        if (!linkedSnap.exists()) {
-          if (!cancelled) setCanOpenRefreshReplacement(false);
-          return;
-        }
-
-        const linked = linkedSnap.data() as any;
-        const canOpen =
-          normalizeEmail(linked.userEmail ?? refreshReplacementOwnerEmail) ===
-            normalizedUserEmail ||
-          normalizeEmail(linked.managerEmailSnapshot) === normalizedUserEmail ||
-          isEmailInChain(normalizedUserEmail, linked.managerChain ?? null) ||
-          isEmailInChain(normalizedUserEmail, linked.managerOverrides ?? null);
-
-        if (!cancelled) setCanOpenRefreshReplacement(canOpen);
+        if (!cancelled) setCanOpenRefreshReplacement(true);
       } catch (refreshAccessErr) {
-        console.error("Chyba při ověřování přístupu na refresh smlouvu:", refreshAccessErr);
+        const status = (refreshAccessErr as ContractsApiError).status;
+        if (status !== 403 && status !== 404) {
+          console.error(
+            "Chyba při ověřování přístupu na refresh smlouvu:",
+            refreshAccessErr
+          );
+        }
         if (!cancelled) setCanOpenRefreshReplacement(false);
       }
     };
@@ -816,6 +719,7 @@ export default function ContractDetailPage() {
   }, [
     hasRefreshReplacement,
     normalizedUserEmail,
+    requestContractsApi,
     refreshReplacementOwnerEmail,
     refreshReplacementEntryId,
   ]);
@@ -2020,7 +1924,6 @@ export default function ContractDetailPage() {
         return Number.isFinite(n) ? n : null;
       };
 
-      const ref = doc(db, "users", ownerEmail, "entries", entryId);
       const trimmedName = editClientName.trim();
       const trimmedEmail = editClientEmail.trim();
       const trimmedPhone = editClientPhone.trim();
@@ -2231,7 +2134,18 @@ export default function ContractDetailPage() {
         updates.durationYears = durationVal ?? null;
       }
 
-      await updateDoc(ref, updates);
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "updateFields",
+          ownerEmail,
+          entryId,
+          updates,
+        }),
+      });
 
       setContract((prev) =>
         prev
@@ -2328,8 +2242,18 @@ export default function ContractDetailPage() {
     setNoteSaved(false);
 
     try {
-      const ref = doc(db, "users", ownerEmail, "entries", entryId);
-      await updateDoc(ref, { note: noteDraft.trim() });
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "updateFields",
+          ownerEmail,
+          entryId,
+          updates: { note: noteDraft.trim() },
+        }),
+      });
       setContract((prev) => (prev ? { ...prev, note: noteDraft.trim() } : prev));
       setNoteSaved(true);
       pushToast("Poznámka byla uložena.", "success");
@@ -2348,8 +2272,16 @@ export default function ContractDetailPage() {
     setUpdatingPaid(true);
     setPaidError(null);
     try {
-      const ref = doc(db, "users", ownerEmail, "entries", entryId);
-      await updateDoc(ref, { paid: nextValue });
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          entries: [{ ownerEmail, entryId }],
+          paid: nextValue,
+        }),
+      });
       setContract((prev) => (prev ? { ...prev, paid: nextValue } : prev));
       pushToast(
         nextValue ? "Smlouva označena jako zaplacená." : "Platba označena jako neuhrazená.",
@@ -2393,14 +2325,21 @@ export default function ContractDetailPage() {
         )
       ) as string[];
 
-      await Promise.all(
-        targetIds.map((id) =>
-          updateDoc(doc(db, "users", ownerEmail, "entries", id), {
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "updateFields",
+          ownerEmail,
+          entryIds: targetIds,
+          updates: {
             status: "storno",
             stornoDate: parsed,
-          })
-        )
-      );
+          },
+        }),
+      });
 
       setContract((prev) =>
         prev ? { ...prev, status: "storno", stornoDate: parsed } : prev
@@ -2445,14 +2384,21 @@ export default function ContractDetailPage() {
         )
       ) as string[];
 
-      await Promise.all(
-        targetIds.map((id) =>
-          updateDoc(doc(db, "users", ownerEmail, "entries", id), {
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "updateFields",
+          ownerEmail,
+          entryIds: targetIds,
+          updates: {
             status: "active",
             stornoDate: null,
-          })
-        )
-      );
+          },
+        }),
+      });
 
       setContract((prev) =>
         prev ? { ...prev, status: "active", stornoDate: null } : prev
@@ -2582,8 +2528,15 @@ export default function ContractDetailPage() {
     setDeleteError(null);
 
     try {
-      const ref = doc(db, "users", ownerEmail, "entries", entryId);
-      await deleteDoc(ref);
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          entries: [{ ownerEmail, entryId }],
+        }),
+      });
       setShowDeleteModal(false);
       pushToast("Smlouva byla smazána.", "success");
       window.location.href = "/smlouvy";

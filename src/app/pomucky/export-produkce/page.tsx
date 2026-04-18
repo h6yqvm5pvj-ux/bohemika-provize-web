@@ -35,10 +35,7 @@ import {
 
 import {
   collection,
-  collectionGroup,
   getDocs,
-  query,
-  where,
 } from "firebase/firestore";
 import { type Position, type Product } from "../../types/domain";
 import SplitTitle from "../plan-produkce/SplitTitle";
@@ -81,6 +78,15 @@ type EntryDoc = {
   productKey?: Product;
   inputAmount?: number | null;
   frequencyRaw?: string | null;
+};
+
+type ContractsApiResponse = {
+  ok?: boolean;
+  error?: string;
+  contracts?: (EntryDoc & { adviserEmail?: string | null })[];
+  hasMore?: boolean;
+  nextCursorToken?: string | null;
+  nextCursor?: number | null;
 };
 
 type Subordinate = {
@@ -244,6 +250,19 @@ function normalizeForSearch(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+function normalizeCursorToken(
+  token: string | null | undefined,
+  legacyCursor: number | null | undefined
+): string | null {
+  if (typeof token === "string" && token.trim()) {
+    return token.trim();
+  }
+  if (typeof legacyCursor === "number" && Number.isFinite(legacyCursor)) {
+    return String(legacyCursor);
+  }
+  return null;
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -664,24 +683,102 @@ export default function ExportProductionPage() {
 
     emailsToLoad = Array.from(new Set(emailsToLoad));
 
-    // načíst smlouvy (entries)
-    const allEntries: EntryDoc[] = [];
+    // načíst smlouvy (entries) přes API
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error("Uživatel není přihlášený.");
+    }
 
-    await Promise.all(
-      emailsToLoad.map(async (e) => {
-        const qEntries = query(
-          collectionGroup(db, "entries"),
-          where("userEmail", "==", e)
-        );
-        const snap = await getDocs(qEntries);
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() as any;
-          allEntries.push({
-            ...(data as any),
-            id: docSnap.id,
+    let bearerToken = await currentUser.getIdToken();
+    const fetchContractsPage = async (
+      scope: "my" | "team",
+      cursor?: string | null
+    ): Promise<ContractsApiResponse> => {
+      const params = new URLSearchParams({
+        scope,
+        limit: "50",
+      });
+      if (cursor) params.set("cursor", cursor);
+
+      const requestWithToken = async (token: string) =>
+        fetch(`/api/contracts?${params.toString()}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        });
+
+      let res = await requestWithToken(bearerToken);
+      if (res.status === 401) {
+        bearerToken = await currentUser.getIdToken(true);
+        res = await requestWithToken(bearerToken);
+      }
+      const payload = (await res.json()) as ContractsApiResponse;
+      if (res.status === 403 && scope === "team") {
+        return {
+          ok: true,
+          contracts: [],
+          hasMore: false,
+          nextCursorToken: null,
+          nextCursor: null,
+        };
+      }
+      if (!res.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Nepodařilo se načíst smlouvy.");
+      }
+      return payload;
+    };
+
+    const fetchContractsScope = async (scope: "my" | "team"): Promise<EntryDoc[]> => {
+      const collected: EntryDoc[] = [];
+      const seen = new Set<string>();
+      let cursor: string | null = null;
+      let hasMore = true;
+      let pages = 0;
+
+      while (hasMore && pages < 120) {
+        pages += 1;
+        const payload = await fetchContractsPage(scope, cursor);
+        const contracts = (payload.contracts ?? []) as (EntryDoc & {
+          adviserEmail?: string | null;
+        })[];
+        contracts.forEach((item) => {
+          const owner = (
+            item.adviserEmail ??
+            item.userEmail ??
+            email
+          )
+            .toString()
+            .trim()
+            .toLowerCase();
+          const id = String(item.id ?? "").trim();
+          if (!owner || !id) return;
+          const key = `${owner}___${id}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          collected.push({
+            ...(item as EntryDoc),
+            id,
+            userEmail: owner,
           });
         });
-      })
+        cursor = normalizeCursorToken(payload.nextCursorToken, payload.nextCursor);
+        hasMore = Boolean(payload.hasMore) && Boolean(cursor);
+      }
+      return collected;
+    };
+
+    const scopeNeedsOwn = scopeOption === "own" || scopeOption === "team";
+    const scopeNeedsTeam = scopeOption === "team" || scopeOption === "selected";
+
+    const [ownEntries, teamEntries] = await Promise.all([
+      scopeNeedsOwn ? fetchContractsScope("my") : Promise.resolve([]),
+      scopeNeedsTeam ? fetchContractsScope("team") : Promise.resolve([]),
+    ]);
+
+    const allowedEmails = new Set(emailsToLoad.map((item) => item.toLowerCase()));
+    const allEntries = [...ownEntries, ...teamEntries].filter((entry) =>
+      allowedEmails.has((entry.userEmail ?? "").toLowerCase())
     );
 
     // filtrovat podle období

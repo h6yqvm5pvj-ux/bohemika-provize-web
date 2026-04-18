@@ -66,14 +66,11 @@ import {
 import {
   addDoc,
   collection,
-  collectionGroup,
   doc,
   deleteDoc,
   getDoc,
   getDocFromServer,
   getDocs,
-  limit,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -148,6 +145,12 @@ const REPLACEMENT_ELIGIBLE_PRODUCTS: Product[] = [
   "pillowAuto",
   "kooperativaAuto",
 ];
+
+type ContractsApiResponse = {
+  ok?: boolean;
+  error?: string;
+  contracts?: { clientName?: string | null }[];
+};
 
 const productLabel = (p: Product | null) =>
   productLabelFromCatalog(p, p ?? "—");
@@ -1002,16 +1005,28 @@ export default function CalculatorPage() {
       }
 
       try {
-        const entries = collectionGroup(db, "entries");
-        const q = query(
-          entries,
-          where("userEmail", "==", user.email.toLowerCase()),
-          orderBy("createdAt", "desc"),
-          limit(200)
-        );
-        const snap = await getDocs(q);
-        const names = snap.docs
-          .map((d) => (d.data() as any).clientName as string | undefined)
+        let bearerToken = await user.getIdToken();
+        const requestWithToken = async (token: string) =>
+          fetch("/api/contracts?scope=my&limit=200", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+          });
+
+        let res = await requestWithToken(bearerToken);
+        if (res.status === 401) {
+          bearerToken = await user.getIdToken(true);
+          res = await requestWithToken(bearerToken);
+        }
+
+        const payload = (await res.json()) as ContractsApiResponse;
+        if (!res.ok || payload?.ok === false) {
+          throw new Error(payload?.error || "Nepodařilo se načíst smlouvy.");
+        }
+
+        const names = (payload.contracts ?? [])
+          .map((d) => d.clientName as string | undefined)
           .filter((n) => typeof n === "string" && n.trim().length > 0)
           .map((n) => n!.trim());
         const unique = Array.from(new Set(names));
