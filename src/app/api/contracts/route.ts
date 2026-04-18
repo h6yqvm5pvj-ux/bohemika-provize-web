@@ -91,12 +91,22 @@ type ContractsResponse = {
 };
 
 type ErrorResponse = { ok: false; error: string };
+type UserNode = {
+  email: string;
+  managerEmail: string | null;
+  position: Position | null;
+};
+type UserTreeResult = {
+  users: UserNode[];
+  childrenByManager: Map<string, UserNode[]>;
+};
 
 const PAGE_SIZE_DEFAULT = 30;
 const PAGE_SIZE_MAX = 50;
 const CONTRACTS_MUTATION_RATE_LIMIT = 60;
 const CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
 const UPDATE_FIELDS_MAX_ENTRY_IDS = 50;
+const USER_TREE_CACHE_TTL_MS = 30_000;
 const CONTRACT_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
 const REPLACEMENT_STORNO_PRODUCTS = new Set<Product>([
   "zamex",
@@ -332,6 +342,9 @@ const MIN_REASONABLE_CONTRACT_DATE = new Date("2000-01-01T00:00:00.000Z");
 const MAX_REASONABLE_CONTRACT_DATE = new Date("2101-01-01T00:00:00.000Z");
 const CPP_WSEXTRA_URL = "https://wsextra.cpp.cz/extranet/extranet.asmx";
 const CPP_SOAP_ACTION_STAV_SMLOUVY_ZP = "https://extranet.cpp.cz/StavSmlouvyZP";
+
+let cachedUserTree: { value: UserTreeResult; expiresAtMs: number } | null = null;
+let cachedUserTreePromise: Promise<UserTreeResult> | null = null;
 
 const isManagerPosition = (pos: Position | null | undefined): boolean =>
   Boolean(pos) && (pos as Position).startsWith("manazer");
@@ -989,12 +1002,11 @@ function findCppStatusItemByContractNumber(
   );
 }
 
-const buildUserTree = async () => {
+const buildUserTree = async (): Promise<UserTreeResult> => {
   if (!adminDb) {
     throw new Error("Firebase Admin credentials are not configured.");
   }
   const snap = await adminDb.collection("users").get();
-  type UserNode = { email: string; managerEmail: string | null; position: Position | null };
   const users: UserNode[] = [];
 
   snap.forEach((doc) => {
@@ -1008,6 +1020,31 @@ const buildUserTree = async () => {
 
   const childrenByManager = buildChildrenByManager(users);
   return { users, childrenByManager };
+};
+
+const getCachedUserTree = async (): Promise<UserTreeResult> => {
+  const now = Date.now();
+  if (cachedUserTree && cachedUserTree.expiresAtMs > now) {
+    return cachedUserTree.value;
+  }
+
+  if (cachedUserTreePromise) {
+    return cachedUserTreePromise;
+  }
+
+  cachedUserTreePromise = buildUserTree()
+    .then((value) => {
+      cachedUserTree = {
+        value,
+        expiresAtMs: Date.now() + USER_TREE_CACHE_TTL_MS,
+      };
+      return value;
+    })
+    .finally(() => {
+      cachedUserTreePromise = null;
+    });
+
+  return cachedUserTreePromise;
 };
 
 async function fetchContractsForOwners(
@@ -1025,9 +1062,11 @@ async function fetchContractsForOwners(
   if (!adminDb) {
     throw new Error("Firebase Admin credentials are not configured.");
   }
+  const db = adminDb;
   const collected: ContractResponseItem[] = [];
   const seen = new Set<string>();
   let collectionGroupFailed = false;
+  const shouldUseCollectionGroup = owners.length > 1;
   const cursorTs = cursor?.ts ?? null;
   const cursorKey = cursor?.key ?? null;
 
@@ -1066,45 +1105,47 @@ async function fetchContractsForOwners(
 
   // collectionGroup queries (userEmail stored)
   // Pull by both date fields so records without contractSignedDate are still included.
-  for (let i = 0; i < owners.length; i += 10) {
-    const chunk = owners.slice(i, i + 10);
-    try {
-      let qBySigned = adminDb
-        .collectionGroup("entries")
-        .where("userEmail", "in", chunk)
-        .orderBy("contractSignedDate", "desc");
-      let qByCreated = adminDb
-        .collectionGroup("entries")
-        .where("userEmail", "in", chunk)
-        .orderBy("createdAt", "desc");
-      if (cursor) {
-        qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
-        qByCreated = qByCreated.where("createdAt", "<=", cursor.date);
+  if (shouldUseCollectionGroup) {
+    for (let i = 0; i < owners.length; i += 10) {
+      const chunk = owners.slice(i, i + 10);
+      try {
+        let qBySigned = db
+          .collectionGroup("entries")
+          .where("userEmail", "in", chunk)
+          .orderBy("contractSignedDate", "desc");
+        let qByCreated = db
+          .collectionGroup("entries")
+          .where("userEmail", "in", chunk)
+          .orderBy("createdAt", "desc");
+        if (cursor) {
+          qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
+          qByCreated = qByCreated.where("createdAt", "<=", cursor.date);
+        }
+
+        const [signedSnap, createdSnap] = await Promise.all([
+          qBySigned.limit(pageLimit).get(),
+          qByCreated.limit(pageLimit).get(),
+        ]);
+
+        const consumeSnap = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
+          snap.docs.forEach((doc) => {
+            const data = doc.data() as any as ContractDoc;
+            const ownerEmail = normalizeEmail(
+              (data.userEmail as string | undefined) ??
+                doc.ref.parent.parent?.id ??
+                chunk[0]
+            );
+            pushCollected(doc.id, ownerEmail, data);
+          });
+        };
+
+        consumeSnap(signedSnap);
+        consumeSnap(createdSnap);
+      } catch {
+        // Keep the endpoint functional even when collectionGroup index is missing/misconfigured.
+        collectionGroupFailed = true;
+        break;
       }
-
-      const [signedSnap, createdSnap] = await Promise.all([
-        qBySigned.limit(pageLimit).get(),
-        qByCreated.limit(pageLimit).get(),
-      ]);
-
-      const consumeSnap = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
-        snap.docs.forEach((doc) => {
-          const data = doc.data() as any as ContractDoc;
-          const ownerEmail = normalizeEmail(
-            (data.userEmail as string | undefined) ??
-              doc.ref.parent.parent?.id ??
-              chunk[0]
-          );
-          pushCollected(doc.id, ownerEmail, data);
-        });
-      };
-
-      consumeSnap(signedSnap);
-      consumeSnap(createdSnap);
-    } catch {
-      // Keep the endpoint functional even when collectionGroup index is missing/misconfigured.
-      collectionGroupFailed = true;
-      break;
     }
   }
 
@@ -1114,40 +1155,52 @@ async function fetchContractsForOwners(
   }
 
   // fallback: per-user path (covers records without userEmail)
-  for (const owner of owners) {
-    try {
-      let qBySigned = adminDb
-        .collection("users")
-        .doc(owner)
-        .collection("entries")
-        .orderBy("contractSignedDate", "desc");
-      let qByCreated = adminDb
-        .collection("users")
-        .doc(owner)
-        .collection("entries")
-        .orderBy("createdAt", "desc");
-      if (cursor) {
-        qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
-        qByCreated = qByCreated.where("createdAt", "<=", cursor.date);
-      }
+  for (let i = 0; i < owners.length; i += 10) {
+    const ownerChunk = owners.slice(i, i + 10);
+    const chunkResults = await Promise.all(
+      ownerChunk.map(async (owner) => {
+        try {
+          let qBySigned = db
+            .collection("users")
+            .doc(owner)
+            .collection("entries")
+            .orderBy("contractSignedDate", "desc");
+          let qByCreated = db
+            .collection("users")
+            .doc(owner)
+            .collection("entries")
+            .orderBy("createdAt", "desc");
+          if (cursor) {
+            qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
+            qByCreated = qByCreated.where("createdAt", "<=", cursor.date);
+          }
 
-      const [signedSnap, createdSnap] = await Promise.all([
-        qBySigned.limit(pageLimit).get(),
-        qByCreated.limit(pageLimit).get(),
-      ]);
+          const [signedSnap, createdSnap] = await Promise.all([
+            qBySigned.limit(pageLimit).get(),
+            qByCreated.limit(pageLimit).get(),
+          ]);
+
+          return { owner, signedSnap, createdSnap };
+        } catch {
+          // Ignore one broken owner branch instead of failing the whole response.
+          return null;
+        }
+      })
+    );
+
+    chunkResults.forEach((result) => {
+      if (!result) return;
 
       const consumeSnap = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
         snap.docs.forEach((doc) => {
           const data = doc.data() as any as ContractDoc;
-          pushCollected(doc.id, owner, data);
+          pushCollected(doc.id, result.owner, data);
         });
       };
 
-      consumeSnap(signedSnap);
-      consumeSnap(createdSnap);
-    } catch {
-      // Ignore one broken owner branch instead of failing the whole response.
-    }
+      consumeSnap(result.signedSnap);
+      consumeSnap(result.createdSnap);
+    });
   }
 
   collected.sort((a, b) => {
@@ -1264,7 +1317,7 @@ async function getAuthContext(req: NextRequest) {
     return { error: "User e-mail missing in token", status: 401 } as const;
   }
 
-  const { users, childrenByManager } = await buildUserTree();
+  const { users, childrenByManager } = await getCachedUserTree();
   const me = users.find((u) => u.email === email) ?? null;
   const position = (me?.position as Position | null | undefined) ?? null;
   const hasDirectSubs = (childrenByManager.get(email) ?? []).length > 0;
@@ -1454,24 +1507,29 @@ export async function GET(req: NextRequest) {
   }
 
   const owners = scopeParam === "team" ? teamEmails : [email];
-  const { list, hasMore, nextCursor, nextCursorToken } =
-    await fetchContractsForOwners(
-    owners,
-    cursor,
-    pageSize
-  );
+  const shouldFetchTeamInParallel =
+    scopeParam === "my" && includeTeam && teamEmails.length > 0;
 
-  let teamContracts: ContractResponseItem[] | undefined;
-  let teamHasMore: boolean | undefined;
-  let teamNextCursor: number | null | undefined;
-  let teamNextCursorToken: string | null | undefined;
-  if (includeTeam && teamEmails.length > 0) {
-    const teamRes = await fetchContractsForOwners(teamEmails, null, pageSize);
-    teamContracts = teamRes.list;
-    teamHasMore = teamRes.hasMore;
-    teamNextCursor = teamRes.nextCursor;
-    teamNextCursorToken = teamRes.nextCursorToken;
+  let primaryRes: Awaited<ReturnType<typeof fetchContractsForOwners>>;
+  let teamRes: Awaited<ReturnType<typeof fetchContractsForOwners>> | null = null;
+
+  if (shouldFetchTeamInParallel) {
+    [primaryRes, teamRes] = await Promise.all([
+      fetchContractsForOwners(owners, cursor, pageSize),
+      fetchContractsForOwners(teamEmails, null, pageSize),
+    ]);
+  } else {
+    primaryRes = await fetchContractsForOwners(owners, cursor, pageSize);
+    if (includeTeam && teamEmails.length > 0) {
+      teamRes = await fetchContractsForOwners(teamEmails, null, pageSize);
+    }
   }
+
+  const { list, hasMore, nextCursor, nextCursorToken } = primaryRes;
+  const teamContracts = teamRes?.list;
+  const teamHasMore = teamRes?.hasMore;
+  const teamNextCursor = teamRes?.nextCursor;
+  const teamNextCursorToken = teamRes?.nextCursorToken;
 
   const response: ContractsResponse = {
     ok: true,
