@@ -3,16 +3,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
-import {
-  buildChildrenByManager,
-  collectSubordinateHierarchy,
-} from "@/app/lib/teamHierarchy";
 import { positionLabel as positionLabelValue } from "@/app/lib/formatters";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import { auth, db } from "../../firebase";
 import {
-  collection,
-  getDocs,
   doc,
   getDoc,
 } from "firebase/firestore";
@@ -24,6 +18,20 @@ type UserNode = {
   name: string;
   position: Position | null;
   managerEmail: string | null;
+};
+
+type TeamOverviewMember = {
+  email: string;
+  name?: string | null;
+  position?: Position | null;
+  managerEmail?: string | null;
+};
+
+type TeamOverviewApiResponse = {
+  ok?: boolean;
+  error?: string;
+  members?: TeamOverviewMember[];
+  position?: Position | null;
 };
 
 type TreeNode = UserNode & { children: TreeNode[] };
@@ -56,6 +64,9 @@ function truncateText(value: string, max: number): string {
   if (value.length <= max) return value;
   return `${value.slice(0, max - 1)}…`;
 }
+
+const normalizeEmail = (value: string | null | undefined): string =>
+  (value ?? "").trim().toLowerCase();
 
 function buildTree(
   rootEmail: string,
@@ -96,19 +107,40 @@ export default function StructurePage() {
       if (!user?.email) return;
       setLoading(true);
       try {
-        const email = user.email.toLowerCase();
+        const email = normalizeEmail(user.email);
 
-        // načti všechny uživatele (strom)
-        const usersSnap = await getDocs(collection(db, "users"));
+        let bearerToken = await user.getIdToken();
+        const requestWithToken = async (token: string) =>
+          fetch("/api/team-overview", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+          });
+
+        let teamRes = await requestWithToken(bearerToken);
+        if (teamRes.status === 401) {
+          bearerToken = await user.getIdToken(true);
+          teamRes = await requestWithToken(bearerToken);
+        }
+        const teamPayload = (await teamRes.json()) as TeamOverviewApiResponse;
+        if (!teamRes.ok || teamPayload?.ok === false) {
+          throw new Error(teamPayload?.error || "Nepodařilo se načíst strukturu týmu.");
+        }
+
         const map = new Map<string, UserNode>();
-        usersSnap.docs.forEach((d) => {
-          const data = d.data() as any;
-          const em = (data.email as string | undefined)?.toLowerCase() ?? d.id.toLowerCase();
+        const members = Array.isArray(teamPayload.members) ? teamPayload.members : [];
+        members.forEach((member) => {
+          const em = normalizeEmail(member.email);
+          if (!em) return;
           map.set(em, {
             email: em,
-            name: data.name ?? nameFromEmail(em),
-            position: (data.position as Position | undefined) ?? null,
-            managerEmail: (data.managerEmail as string | undefined)?.toLowerCase() ?? null,
+            name:
+              typeof member.name === "string" && member.name.trim()
+                ? member.name.trim()
+                : nameFromEmail(em),
+            position: (member.position as Position | null | undefined) ?? null,
+            managerEmail: normalizeEmail(member.managerEmail) || null,
           });
         });
 
@@ -124,22 +156,45 @@ export default function StructurePage() {
           });
         }
 
-        // zjisti viditelné e-maily: vlastní + předci + potomci
+        // viditelné e-maily: vlastní + tým (z API) + předci
         const visible = new Set<string>();
+        map.forEach((node) => visible.add(node.email));
         visible.add(email);
 
-        // předci
+        const visitedAncestors = new Set<string>();
         let current = map.get(email)?.managerEmail ?? null;
         let depth = 0;
-        while (current && !visible.has(current) && depth < 10) {
+        while (current && !visitedAncestors.has(current) && depth < 10) {
+          visitedAncestors.add(current);
           visible.add(current);
-          current = map.get(current)?.managerEmail ?? null;
+          if (!map.has(current)) {
+            try {
+              const ancestorSnap = await getDoc(doc(db, "users", current));
+              if (ancestorSnap.exists()) {
+                const data = ancestorSnap.data() as any;
+                const resolvedEmail = normalizeEmail(
+                  (data?.email as string | undefined) ?? current
+                );
+                const managerEmail =
+                  normalizeEmail(data?.managerEmail as string | undefined) || null;
+                map.set(resolvedEmail, {
+                  email: resolvedEmail,
+                  name: data?.name ?? nameFromEmail(resolvedEmail),
+                  position: (data?.position as Position | undefined) ?? null,
+                  managerEmail,
+                });
+                current = managerEmail;
+              } else {
+                break;
+              }
+            } catch {
+              break;
+            }
+          } else {
+            current = map.get(current)?.managerEmail ?? null;
+          }
           depth += 1;
         }
-
-        const childrenByManager = buildChildrenByManager(map.values());
-        const hierarchy = collectSubordinateHierarchy(email, childrenByManager);
-        hierarchy.subordinateEmails.forEach((subEmail) => visible.add(subEmail));
 
         setNodes(map);
         setVisibleEmails(visible);

@@ -50,6 +50,53 @@ service cloud.firestore {
         : "";
     }
 
+    function isDirectManagerOfUserResource() {
+      let me = authEmail();
+      return me != null
+        && me != ""
+        && resource != null
+        && resource.data is map
+        && normEmail(resource.data.managerEmail) == me;
+    }
+
+    function isManagerOfUserResource(userEmail) {
+      let me = authEmail();
+      let m1 = resource != null && resource.data is map
+        ? normEmail(resource.data.managerEmail)
+        : managerEmailOf(userEmail);
+      return me != null
+        && me != ""
+        && (
+          m1 == me ||
+          managerEmailOf(m1) == me ||
+          managerEmailOf(managerEmailOf(m1)) == me ||
+          managerEmailOf(managerEmailOf(managerEmailOf(m1))) == me ||
+          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1)))) == me ||
+          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1))))) == me ||
+          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1)))))) == me ||
+          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1))))))) == me
+        );
+    }
+
+    function isMyManager(userEmail) {
+      let me = authEmail();
+      let target = normEmail(userEmail);
+      let m1 = managerEmailOf(me);
+      return me != null
+        && me != ""
+        && target != ""
+        && (
+          m1 == target ||
+          managerEmailOf(m1) == target ||
+          managerEmailOf(managerEmailOf(m1)) == target ||
+          managerEmailOf(managerEmailOf(managerEmailOf(m1))) == target ||
+          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1)))) == target ||
+          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1))))) == target ||
+          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1)))))) == target ||
+          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1))))))) == target
+        );
+    }
+
     // Ověří, jestli je přihlášený uživatel v manažerském řetězci - používá pre-computed managerChain z dokumentu
     function isManagerInChain(doc) {
       let me = authEmail();
@@ -358,8 +405,12 @@ service cloud.firestore {
 
     // ---------- users ----------
     match /users/{userEmail} {
-      // čtení profilu umožníme všem přihlášeným, aby fungovaly managerChain lookupy
-      allow read: if isSignedIn();
+      // čtení profilu: já / moji nadřízení / moji podřízení
+      allow read: if isOwner(userEmail)
+                  || isAdmin()
+                  || isDirectManagerOfUserResource()
+                  || isManagerOfUserResource(userEmail)
+                  || isMyManager(userEmail);
       // zapisuje majitel nebo admin
       allow create: if ((isOwner(userEmail) && !isChangingSensitivePublicUserFields()) || isAdmin())
         && !isSettingCanChangeToTrue();

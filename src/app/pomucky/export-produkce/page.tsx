@@ -6,10 +6,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AppLayout } from "@/components/AppLayout";
 import {
-  buildChildrenByManager,
-  collectSubordinateHierarchy,
-} from "@/app/lib/teamHierarchy";
-import {
   POSITION_LABELS,
   formatMoney,
   toDate,
@@ -26,17 +22,13 @@ import {
   productInstitutionLogo,
   productLabel as productLabelFromCatalog,
 } from "@/app/lib/productCatalog";
-import { auth, db } from "../../firebase";
+import { auth } from "../../firebase";
 
 import {
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
 
-import {
-  collection,
-  getDocs,
-} from "firebase/firestore";
 import { type Position, type Product } from "../../types/domain";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import { CalendarDays, Search, Tags, UsersRound } from "lucide-react";
@@ -87,6 +79,21 @@ type ContractsApiResponse = {
   hasMore?: boolean;
   nextCursorToken?: string | null;
   nextCursor?: number | null;
+};
+
+type TeamOverviewMember = {
+  email: string;
+  name?: string | null;
+  position?: Position | null;
+  managerEmail?: string | null;
+  docId?: string;
+};
+
+type TeamOverviewApiResponse = {
+  ok?: boolean;
+  error?: string;
+  position?: Position | null;
+  members?: TeamOverviewMember[];
 };
 
 type Subordinate = {
@@ -264,6 +271,9 @@ function normalizeCursorToken(
   }
   return null;
 }
+
+const normalizeEmail = (value: string | null | undefined): string =>
+  (value ?? "").trim().toLowerCase();
 
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -443,83 +453,59 @@ export default function ExportProductionPage() {
     const loadSubs = async () => {
       if (!user?.email) return;
 
-      const email = user.email.trim().toLowerCase();
+      const email = normalizeEmail(user.email);
 
       setLoadingSubs(true);
       setErrorText(null);
 
       try {
-        const usersRef = collection(db, "users");
-        const usersSnap = await getDocs(usersRef);
-        type UserNode = {
-          email: string;
-          managerEmail: string | null;
-          position: Position | null;
-          fullName?: string | null;
-          docId: string;
-        };
-
-        const candidatesByEmail = new Map<string, UserNode[]>();
-        usersSnap.forEach((docSnap) => {
-          const data = docSnap.data() as any;
-          const rawEmail = ((data.email as string | undefined) ?? docSnap.id)
-            .trim()
-            .toLowerCase();
-          if (!rawEmail) return;
-
-          const current = candidatesByEmail.get(rawEmail) ?? [];
-          current.push({
-            email: rawEmail,
-            managerEmail:
-              ((data.managerEmail as string | undefined)?.trim().toLowerCase() ??
-                null),
-            position: (data.position as Position | undefined) ?? null,
-            fullName: (data.fullName as string | undefined) ?? null,
-            docId: docSnap.id,
+        let bearerToken = await user.getIdToken();
+        const requestWithToken = async (token: string) =>
+          fetch("/api/team-overview", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
           });
-          candidatesByEmail.set(rawEmail, current);
-        });
 
-        const pickBestCandidate = (items: UserNode[], emailKey: string): UserNode => {
-          return [...items].sort((a, b) => {
-            const aDoc = a.docId.trim().toLowerCase();
-            const bDoc = b.docId.trim().toLowerCase();
-            const aCanonical = aDoc === emailKey ? 0 : 1;
-            const bCanonical = bDoc === emailKey ? 0 : 1;
-            if (aCanonical !== bCanonical) return aCanonical - bCanonical;
+        let res = await requestWithToken(bearerToken);
+        if (res.status === 401) {
+          bearerToken = await user.getIdToken(true);
+          res = await requestWithToken(bearerToken);
+        }
 
-            const aHasPosition = a.position ? 0 : 1;
-            const bHasPosition = b.position ? 0 : 1;
-            if (aHasPosition !== bHasPosition) return aHasPosition - bHasPosition;
+        const payload = (await res.json()) as TeamOverviewApiResponse;
+        if (!res.ok || payload?.ok === false) {
+          throw new Error(payload?.error || "Nepodařilo se načíst tým.");
+        }
 
-            const aHasManager = a.managerEmail ? 0 : 1;
-            const bHasManager = b.managerEmail ? 0 : 1;
-            if (aHasManager !== bHasManager) return aHasManager - bHasManager;
+        const membersRaw = Array.isArray(payload.members) ? payload.members : [];
+        const members = membersRaw
+          .map((member) => {
+            const memberEmail = normalizeEmail(member.email);
+            if (!memberEmail) return null;
+            return {
+              email: memberEmail,
+              name:
+                typeof member.name === "string" && member.name.trim()
+                  ? member.name.trim()
+                  : nameFromEmail(memberEmail),
+              position: (member.position as Position | null | undefined) ?? null,
+            };
+          })
+          .filter((member): member is { email: string; name: string; position: Position | null } =>
+            Boolean(member)
+          );
 
-            return aDoc.localeCompare(bDoc, "cs");
-          })[0];
-        };
+        setCurrentUserPosition((payload.position as Position | null | undefined) ?? null);
 
-        const usersByEmail = new Map<string, UserNode>();
-        candidatesByEmail.forEach((items, emailKey) => {
-          usersByEmail.set(emailKey, pickBestCandidate(items, emailKey));
-        });
-
-        const me = usersByEmail.get(email) ?? null;
-        setCurrentUserPosition(me?.position ?? null);
-
-        const childrenByManager = buildChildrenByManager(usersByEmail.values());
-        const hierarchy = collectSubordinateHierarchy(email, childrenByManager);
-        const list: Subordinate[] = [];
-        hierarchy.subordinateEmails.forEach((subEmail) => {
-          const node = hierarchy.subordinateByEmail.get(subEmail);
-          if (!node) return;
-          list.push({
-            email: node.email,
-            name: node.fullName ?? nameFromEmail(node.email),
-            position: node.position,
-          });
-        });
+        const list: Subordinate[] = members
+          .filter((member) => member.email !== email)
+          .map((member) => ({
+            email: member.email,
+            name: member.name,
+            position: member.position,
+          }));
 
         list.sort((a, b) => a.name.localeCompare(b.name, "cs"));
         setSubordinates(list);
