@@ -17,7 +17,6 @@ import {
 } from "@/app/lib/teamHierarchy";
 import {
   collection,
-  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -223,15 +222,21 @@ export function useHomeData({
         const needPersonalHistory = loadPersonalHistory;
         const needTeamHistory = loadTeamHistory;
 
-        const meSnap = await getDoc(doc(usersRef, email));
         let position: Position | undefined;
         let monthlyGoal: number | null | undefined;
         let myMode: CommissionMode | null = null;
-        if (meSnap.exists()) {
-          const d = meSnap.data() as any;
-          position = d.position as Position | undefined;
-          monthlyGoal = (d.monthlyGoal as number | undefined) ?? null;
-          myMode = (d.commissionMode as CommissionMode | undefined) ?? null;
+        try {
+          const meSnap = await getDoc(doc(usersRef, email));
+          if (meSnap.exists()) {
+            const d = meSnap.data() as any;
+            position = d.position as Position | undefined;
+            monthlyGoal = (d.monthlyGoal as number | undefined) ?? null;
+            myMode = (d.commissionMode as CommissionMode | undefined) ?? null;
+          }
+        } catch (err) {
+          if (process.env.NODE_ENV !== "production") {
+            console.info("[home] profile read failed", err);
+          }
         }
 
         if (!cancelled) {
@@ -260,32 +265,8 @@ export function useHomeData({
           });
         };
 
-        const personalQueryBase = query(
-          collectionGroup(db, "entries"),
-          where("userEmail", "==", email)
-        );
-
         const personalEntriesRef = collection(db, "users", email, "entries");
-        const [
-          myGroupContractSnap,
-          myGroupCreatedSnap,
-          myPathContractSnap,
-          myPathCreatedSnap,
-        ] = await Promise.all([
-          getDocs(
-            query(
-              personalQueryBase,
-              where("contractSignedDate", ">=", personalRangeStart),
-              where("contractSignedDate", "<", personalRangeEnd)
-            )
-          ),
-          getDocs(
-            query(
-              personalQueryBase,
-              where("createdAt", ">=", personalRangeStart),
-              where("createdAt", "<", personalRangeEnd)
-            )
-          ),
+        const [myPathContractSnap, myPathCreatedSnap] = await Promise.all([
           getDocs(
             query(
               personalEntriesRef,
@@ -301,8 +282,6 @@ export function useHomeData({
             )
           ),
         ]);
-        myGroupContractSnap.forEach(collectPersonalEntry);
-        myGroupCreatedSnap.forEach(collectPersonalEntry);
         myPathContractSnap.forEach(collectPersonalEntry);
         myPathCreatedSnap.forEach(collectPersonalEntry);
 
@@ -332,25 +311,34 @@ export function useHomeData({
           setMyEntries(needPersonalHistory ? myEntriesList : []);
         }
 
-        // Načíst všechny uživatele a postavit strom case-insensitive (managerEmail může být uložen s velkými písmeny)
-        const allUsersSnap = await getDocs(usersRef);
         type UserNode = { email: string; managerEmail: string | null; position?: Position };
-        const allUsers: UserNode[] = [];
-        allUsersSnap.forEach((d) => {
-          const data = d.data() as any;
-          const em = ((data.email as string | undefined) ?? d.id ?? "").toLowerCase();
-          if (!em) return;
-          const mgr = (data.managerEmail as string | undefined)?.toLowerCase() ?? null;
-          allUsers.push({
-            email: em,
-            managerEmail: mgr,
-            position: (data.position as Position | undefined) ?? undefined,
+        let subEmails: string[] = [];
+        try {
+          // Načíst všechny uživatele a postavit strom case-insensitive
+          // (managerEmail může být uložen s velkými písmeny).
+          const allUsersSnap = await getDocs(usersRef);
+          const allUsers: UserNode[] = [];
+          allUsersSnap.forEach((d) => {
+            const data = d.data() as any;
+            const em = ((data.email as string | undefined) ?? d.id ?? "").toLowerCase();
+            if (!em) return;
+            const mgr = (data.managerEmail as string | undefined)?.toLowerCase() ?? null;
+            allUsers.push({
+              email: em,
+              managerEmail: mgr,
+              position: (data.position as Position | undefined) ?? undefined,
+            });
           });
-        });
 
-        const childrenByManager = buildChildrenByManager(allUsers);
-        const hierarchy = collectSubordinateHierarchy(email, childrenByManager);
-        const subEmails = hierarchy.subordinateEmails;
+          const childrenByManager = buildChildrenByManager(allUsers);
+          const hierarchy = collectSubordinateHierarchy(email, childrenByManager);
+          subEmails = hierarchy.subordinateEmails;
+        } catch (err) {
+          if (process.env.NODE_ENV !== "production") {
+            console.info("[home] users hierarchy read failed", err);
+          }
+          subEmails = [];
+        }
 
         if (!cancelled) {
           setHasTeam(subEmails.length > 0);
@@ -411,79 +399,34 @@ export function useHomeData({
           }
         };
 
-        const chunks: string[][] = [];
-        for (let i = 0; i < subEmails.length; i += 10) {
-          chunks.push(subEmails.slice(i, i + 10));
-        }
-
-        await Promise.all(
-          chunks.map(async (chunk) => {
-            const chunkBase = query(
-              collectionGroup(db, "entries"),
-              where("userEmail", "in", chunk)
-            );
-
-            const [teamContractSnap, teamCreatedSnap] = await Promise.all([
-              getDocs(
-                query(
-                  chunkBase,
-                  where("contractSignedDate", ">=", teamRangeStart),
-                  where("contractSignedDate", "<", teamRangeEnd)
-                )
-              ),
-              getDocs(
-                query(
-                  chunkBase,
-                  where("createdAt", ">=", teamRangeStart),
-                  where("createdAt", "<", teamRangeEnd)
-                )
-              ),
-            ]);
-
-            teamContractSnap.forEach((docSnap) => {
-              const data = docSnap.data() as any as EntryDoc;
-              const ownerEmail = (
-                (data.userEmail as string | undefined) ??
-                docSnap.ref.parent.parent?.id ??
-                ""
-              ).toLowerCase();
-              collectTeamEntry(docSnap, ownerEmail);
-            });
-
-            teamCreatedSnap.forEach((docSnap) => {
-              const data = docSnap.data() as any as EntryDoc;
-              const ownerEmail = (
-                (data.userEmail as string | undefined) ??
-                docSnap.ref.parent.parent?.id ??
-                ""
-              ).toLowerCase();
-              collectTeamEntry(docSnap, ownerEmail);
-            });
-          })
-        );
-
         await Promise.all(
           subEmails.map(async (sub) => {
-            const subEntriesRef = collection(db, "users", sub, "entries");
-            const [snapContract, snapCreated] = await Promise.all([
-              getDocs(
-                query(
-                  subEntriesRef,
-                  where("contractSignedDate", ">=", teamRangeStart),
-                  where("contractSignedDate", "<", teamRangeEnd)
-                )
-              ),
-              getDocs(
-                query(
-                  subEntriesRef,
-                  where("createdAt", ">=", teamRangeStart),
-                  where("createdAt", "<", teamRangeEnd)
-                )
-              ),
-            ]);
+            try {
+              const subEntriesRef = collection(db, "users", sub, "entries");
+              const [snapContract, snapCreated] = await Promise.all([
+                getDocs(
+                  query(
+                    subEntriesRef,
+                    where("contractSignedDate", ">=", teamRangeStart),
+                    where("contractSignedDate", "<", teamRangeEnd)
+                  )
+                ),
+                getDocs(
+                  query(
+                    subEntriesRef,
+                    where("createdAt", ">=", teamRangeStart),
+                    where("createdAt", "<", teamRangeEnd)
+                  )
+                ),
+              ]);
 
-            snapContract.forEach((docSnap) => collectTeamEntry(docSnap, sub));
-            snapCreated.forEach((docSnap) => collectTeamEntry(docSnap, sub));
+              snapContract.forEach((docSnap) => collectTeamEntry(docSnap, sub));
+              snapCreated.forEach((docSnap) => collectTeamEntry(docSnap, sub));
+            } catch (err) {
+              if (process.env.NODE_ENV !== "production") {
+                console.info("[home] team entries read failed", { sub, err });
+              }
+            }
           })
         );
 

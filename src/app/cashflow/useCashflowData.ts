@@ -105,57 +105,63 @@ export function useCashflowData({
         let myPosition = (meSnap.data() as UserDoc | undefined)?.position ?? null;
 
         const usersCollection = collection(db, "users");
-
-        // Case-insensitive strom uživatelů (managerEmail může být v DB uložený s různým casingem).
-        const allUsersSnap = await getDocsFromServer(usersCollection);
-        const candidatesByEmail = new Map<string, CanonicalUser[]>();
-        allUsersSnap.forEach((docSnap) => {
-          const data = docSnap.data() as UserDoc;
-          const userEmail = ((data.email ?? docSnap.id ?? "") as string).trim().toLowerCase();
-          if (!userEmail) return;
-          const managerEmail = ((data.managerEmail ?? "") as string).trim().toLowerCase() || null;
-          const current = candidatesByEmail.get(userEmail) ?? [];
-          current.push({
-            email: userEmail,
-            managerEmail,
-            position: data.position ?? null,
-            docId: String(docSnap.id ?? ""),
+        let subordinateEmails: string[] = [];
+        try {
+          // Case-insensitive strom uživatelů (managerEmail může být v DB uložený s různým casingem).
+          const allUsersSnap = await getDocsFromServer(usersCollection);
+          const candidatesByEmail = new Map<string, CanonicalUser[]>();
+          allUsersSnap.forEach((docSnap) => {
+            const data = docSnap.data() as UserDoc;
+            const userEmail = ((data.email ?? docSnap.id ?? "") as string).trim().toLowerCase();
+            if (!userEmail) return;
+            const managerEmail = ((data.managerEmail ?? "") as string).trim().toLowerCase() || null;
+            const current = candidatesByEmail.get(userEmail) ?? [];
+            current.push({
+              email: userEmail,
+              managerEmail,
+              position: data.position ?? null,
+              docId: String(docSnap.id ?? ""),
+            });
+            candidatesByEmail.set(userEmail, current);
           });
-          candidatesByEmail.set(userEmail, current);
-        });
 
-        const usersByEmail = new Map<string, CanonicalUser>();
-        const pickBestCandidate = (items: CanonicalUser[], emailKey: string): CanonicalUser => {
-          return [...items].sort((a, b) => {
-            const aDoc = (a.docId ?? "").trim().toLowerCase();
-            const bDoc = (b.docId ?? "").trim().toLowerCase();
-            const aCanonical = aDoc === emailKey ? 0 : 1;
-            const bCanonical = bDoc === emailKey ? 0 : 1;
-            if (aCanonical !== bCanonical) return aCanonical - bCanonical;
+          const usersByEmail = new Map<string, CanonicalUser>();
+          const pickBestCandidate = (items: CanonicalUser[], emailKey: string): CanonicalUser => {
+            return [...items].sort((a, b) => {
+              const aDoc = (a.docId ?? "").trim().toLowerCase();
+              const bDoc = (b.docId ?? "").trim().toLowerCase();
+              const aCanonical = aDoc === emailKey ? 0 : 1;
+              const bCanonical = bDoc === emailKey ? 0 : 1;
+              if (aCanonical !== bCanonical) return aCanonical - bCanonical;
 
-            const aHasPosition = a.position ? 0 : 1;
-            const bHasPosition = b.position ? 0 : 1;
-            if (aHasPosition !== bHasPosition) return aHasPosition - bHasPosition;
+              const aHasPosition = a.position ? 0 : 1;
+              const bHasPosition = b.position ? 0 : 1;
+              if (aHasPosition !== bHasPosition) return aHasPosition - bHasPosition;
 
-            const aHasManager = a.managerEmail ? 0 : 1;
-            const bHasManager = b.managerEmail ? 0 : 1;
-            if (aHasManager !== bHasManager) return aHasManager - bHasManager;
+              const aHasManager = a.managerEmail ? 0 : 1;
+              const bHasManager = b.managerEmail ? 0 : 1;
+              if (aHasManager !== bHasManager) return aHasManager - bHasManager;
 
-            return aDoc.localeCompare(bDoc, "cs");
-          })[0];
-        };
+              return aDoc.localeCompare(bDoc, "cs");
+            })[0];
+          };
 
-        candidatesByEmail.forEach((items, emailKey) => {
-          usersByEmail.set(emailKey, pickBestCandidate(items, emailKey));
-        });
+          candidatesByEmail.forEach((items, emailKey) => {
+            usersByEmail.set(emailKey, pickBestCandidate(items, emailKey));
+          });
 
-        if (!myPosition) {
-          myPosition = usersByEmail.get(email)?.position ?? null;
+          if (!myPosition) {
+            myPosition = usersByEmail.get(email)?.position ?? null;
+          }
+
+          const childrenByManager = buildChildrenByManager(usersByEmail.values());
+          const hierarchy = collectSubordinateHierarchy(email, childrenByManager);
+          subordinateEmails = hierarchy.subordinateEmails;
+        } catch (err) {
+          if (process.env.NODE_ENV !== "production") {
+            console.info("[cashflow] users hierarchy read failed", err);
+          }
         }
-
-        const childrenByManager = buildChildrenByManager(usersByEmail.values());
-        const hierarchy = collectSubordinateHierarchy(email, childrenByManager);
-        const subordinateEmails = hierarchy.subordinateEmails;
         const entriesGroup = collectionGroup(db, "entries");
         let managerLinkedDocs: Array<{
           id: string;
@@ -226,27 +232,35 @@ export function useCashflowData({
 
         // Fast path: modern records with userEmail.
         for (const chunk of chunks) {
-          const snap = await getDocsFromServer(
-            query(entriesGroup, where("userEmail", "in", chunk))
-          );
+          try {
+            const snap = await getDocsFromServer(
+              query(entriesGroup, where("userEmail", "in", chunk))
+            );
 
-          snap.docs.forEach((docSnap) => {
-            const data = docSnap.data() as Record<string, unknown>;
-            const ownerEmail =
-              docSnap.ref.parent.parent?.id ??
-              (typeof data.userEmail === "string" ? data.userEmail : null) ??
-              null;
-            pushEntry(docSnap.id, ownerEmail, data);
-          });
+            snap.docs.forEach((docSnap) => {
+              const data = docSnap.data() as Record<string, unknown>;
+              const ownerEmail =
+                docSnap.ref.parent.parent?.id ??
+                (typeof data.userEmail === "string" ? data.userEmail : null) ??
+                null;
+              pushEntry(docSnap.id, ownerEmail, data);
+            });
+          } catch {
+            // Na striktnějších rules může collectionGroup spadnout; pokračujeme path fallbackem.
+          }
         }
 
         // Fallback: historical records where userEmail is missing.
         for (const ownerEmail of allowedEmails) {
-          const ownerEntriesRef = collection(db, "users", ownerEmail, "entries");
-          const ownerSnap = await getDocsFromServer(ownerEntriesRef);
-          ownerSnap.docs.forEach((docSnap) => {
-            pushEntry(docSnap.id, ownerEmail, docSnap.data() as Record<string, unknown>);
-          });
+          try {
+            const ownerEntriesRef = collection(db, "users", ownerEmail, "entries");
+            const ownerSnap = await getDocsFromServer(ownerEntriesRef);
+            ownerSnap.docs.forEach((docSnap) => {
+              pushEntry(docSnap.id, ownerEmail, docSnap.data() as Record<string, unknown>);
+            });
+          } catch {
+            // Jednotlivý týmový uživatel může být nedostupný; zbytek dat nechceme shodit.
+          }
         }
 
         // Include entries explicitly linked to me as manager (already fetched above).

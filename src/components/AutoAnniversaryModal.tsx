@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, collectionGroup, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/app/firebase";
 import { toDate } from "@/app/lib/formatters";
 import {
@@ -78,34 +78,22 @@ export function AutoAnniversaryModal({
 
         const byEntryKey = new Map<string, EntryDoc>();
 
-        const ownerSnaps = await Promise.all(
-          ownerIds.map((owner) => getDocs(collection(db, "users", owner, "entries")))
+        await Promise.all(
+          ownerIds.map(async (owner) => {
+            try {
+              const ownerSnap = await getDocs(collection(db, "users", owner, "entries"));
+              ownerSnap.forEach((docSnap) => {
+                const key = `${owner.toLowerCase()}___${docSnap.id}`;
+                byEntryKey.set(key, {
+                  ...(docSnap.data() as Omit<EntryDoc, "id">),
+                  id: key,
+                });
+              });
+            } catch {
+              // U striktnějších rules může některý fallback ownerId selhat.
+            }
+          })
         );
-        ownerSnaps.forEach((ownerSnap, index) => {
-          const owner = ownerIds[index];
-          ownerSnap.forEach((docSnap) => {
-            const key = `${owner.toLowerCase()}___${docSnap.id}`;
-            byEntryKey.set(key, {
-              ...(docSnap.data() as Omit<EntryDoc, "id">),
-              id: key,
-            });
-          });
-        });
-
-        const groupSnap = await getDocs(
-          query(collectionGroup(db, "entries"), where("userEmail", "==", normalizedEmail))
-        );
-        groupSnap.forEach((docSnap) => {
-          const data = docSnap.data() as Omit<EntryDoc, "id">;
-          const owner =
-            normalizeEmail(data.userEmail) ||
-            normalizeEmail(docSnap.ref.parent.parent?.id) ||
-            normalizedEmail;
-          const key = `${owner}___${docSnap.id}`;
-          if (!byEntryKey.has(key)) {
-            byEntryKey.set(key, { ...data, id: key });
-          }
-        });
 
         const now = new Date();
 

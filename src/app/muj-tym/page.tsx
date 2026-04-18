@@ -671,57 +671,76 @@ export default function TeamPage() {
         const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
         const entries = collectionGroup(db, "entries");
         const chunkSize = 10;
+        const consumeEntry = (data: any, fallbackEmail?: string | null) => {
+          const email = ((data.userEmail as string | undefined) ?? fallbackEmail ?? "").toLowerCase();
+          if (!email) return;
+          const current =
+            stats[email] ?? {
+              total: 0,
+              month: 0,
+              categories: emptyCategoryCounts(),
+              categoryMetrics: emptyCategoryMetrics(),
+              institutionMetrics: {},
+              institutionByCategory: emptyInstitutionByCategory(),
+            };
+          current.total += 1;
+          const category = categorizeProduct(data.productKey as Product | undefined);
+          current.categories[category] = (current.categories[category] ?? 0) + 1;
+          const annualPremium = annualPremiumFromEntry(data, category);
+          const monthlyPremium = annualPremium / 12;
+          const byCategory = current.categoryMetrics[category] ?? { contracts: 0, annualPremium: 0, monthlyPremium: 0 };
+          byCategory.contracts += 1;
+          byCategory.annualPremium += annualPremium;
+          byCategory.monthlyPremium += monthlyPremium;
+          current.categoryMetrics[category] = byCategory;
+
+          const institution = institutionLabelForProduct(data.productKey as Product | undefined);
+          const byInstitution = current.institutionMetrics[institution] ?? { contracts: 0, annualPremium: 0, monthlyPremium: 0 };
+          byInstitution.contracts += 1;
+          byInstitution.annualPremium += annualPremium;
+          byInstitution.monthlyPremium += monthlyPremium;
+          current.institutionMetrics[institution] = byInstitution;
+          const byInstitutionForCategory = current.institutionByCategory[category][institution] ?? {
+            contracts: 0,
+            annualPremium: 0,
+            monthlyPremium: 0,
+          };
+          byInstitutionForCategory.contracts += 1;
+          byInstitutionForCategory.annualPremium += annualPremium;
+          byInstitutionForCategory.monthlyPremium += monthlyPremium;
+          current.institutionByCategory[category][institution] = byInstitutionForCategory;
+
+          const date = toDate((data as any).contractSignedDate ?? data.createdAt);
+          const ts = date?.getTime();
+          if (ts != null && ts >= monthStart && ts < nextMonthStart) {
+            current.month += 1;
+          }
+          stats[email] = current;
+        };
 
         for (let i = 0; i < emails.length; i += chunkSize) {
           const chunk = emails.slice(i, i + chunkSize);
-          const snap = await getDocs(query(entries, where("userEmail", "in", chunk)));
-          snap.docs.forEach((docSnap) => {
-            const data = docSnap.data() as any;
-            const email = (data.userEmail as string | undefined)?.toLowerCase();
-            if (!email) return;
-            const current =
-              stats[email] ?? {
-                total: 0,
-                month: 0,
-                categories: emptyCategoryCounts(),
-                categoryMetrics: emptyCategoryMetrics(),
-                institutionMetrics: {},
-                institutionByCategory: emptyInstitutionByCategory(),
-              };
-            current.total += 1;
-            const category = categorizeProduct(data.productKey as Product | undefined);
-            current.categories[category] = (current.categories[category] ?? 0) + 1;
-            const annualPremium = annualPremiumFromEntry(data, category);
-            const monthlyPremium = annualPremium / 12;
-            const byCategory = current.categoryMetrics[category] ?? { contracts: 0, annualPremium: 0, monthlyPremium: 0 };
-            byCategory.contracts += 1;
-            byCategory.annualPremium += annualPremium;
-            byCategory.monthlyPremium += monthlyPremium;
-            current.categoryMetrics[category] = byCategory;
-
-            const institution = institutionLabelForProduct(data.productKey as Product | undefined);
-            const byInstitution = current.institutionMetrics[institution] ?? { contracts: 0, annualPremium: 0, monthlyPremium: 0 };
-            byInstitution.contracts += 1;
-            byInstitution.annualPremium += annualPremium;
-            byInstitution.monthlyPremium += monthlyPremium;
-            current.institutionMetrics[institution] = byInstitution;
-            const byInstitutionForCategory = current.institutionByCategory[category][institution] ?? {
-              contracts: 0,
-              annualPremium: 0,
-              monthlyPremium: 0,
-            };
-            byInstitutionForCategory.contracts += 1;
-            byInstitutionForCategory.annualPremium += annualPremium;
-            byInstitutionForCategory.monthlyPremium += monthlyPremium;
-            current.institutionByCategory[category][institution] = byInstitutionForCategory;
-
-            const date = toDate((data as any).contractSignedDate ?? data.createdAt);
-            const ts = date?.getTime();
-            if (ts != null && ts >= monthStart && ts < nextMonthStart) {
-              current.month += 1;
-            }
-            stats[email] = current;
-          });
+          try {
+            const snap = await getDocs(query(entries, where("userEmail", "in", chunk)));
+            snap.docs.forEach((docSnap) => {
+              consumeEntry(docSnap.data() as any);
+            });
+          } catch {
+            // Na striktnějších rules může collectionGroup selhat; fallback na podkolekce user entries.
+            await Promise.all(
+              chunk.map(async (chunkEmail) => {
+                try {
+                  const ownerEntriesRef = collection(db, "users", chunkEmail, "entries");
+                  const ownerSnap = await getDocs(ownerEntriesRef);
+                  ownerSnap.docs.forEach((docSnap) => {
+                    consumeEntry(docSnap.data() as any, chunkEmail);
+                  });
+                } catch {
+                  // Pokud konkrétní uživatel nejde načíst, pokračuj dál.
+                }
+              })
+            );
+          }
         }
 
         setContractCounts(stats);
