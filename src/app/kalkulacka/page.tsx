@@ -67,7 +67,6 @@ import {
   addDoc,
   collection,
   doc,
-  deleteDoc,
   getDoc,
   getDocFromServer,
   getDocs,
@@ -151,6 +150,80 @@ type ContractsApiResponse = {
   error?: string;
   contracts?: { clientName?: string | null }[];
 };
+
+type ContractsMutationResponse = {
+  ok?: boolean;
+  error?: string;
+  [key: string]: unknown;
+};
+
+async function requestContractsMutationWithAuth({
+  user,
+  path,
+  method,
+  payload,
+}: {
+  user: User;
+  path: string;
+  method: "PATCH" | "DELETE";
+  payload: unknown;
+}): Promise<{
+  response: Response;
+  data: ContractsMutationResponse | null;
+}> {
+  let token = await user.getIdToken();
+  const request = async (idToken: string) =>
+    fetch(path, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+  let response = await request(token);
+  if (response.status === 401) {
+    token = await user.getIdToken(true);
+    response = await request(token);
+  }
+
+  const raw = await response.text();
+  let data: ContractsMutationResponse | null = null;
+  if (raw) {
+    try {
+      data = JSON.parse(raw) as ContractsMutationResponse;
+    } catch {
+      data = null;
+    }
+  }
+
+  return { response, data };
+}
+
+function getContractsMutationError({
+  response,
+  data,
+  fallback,
+}: {
+  response: Response;
+  data: ContractsMutationResponse | null;
+  fallback: string;
+}): string | null {
+  if (!response.ok) {
+    const apiError =
+      data && data.ok === false && typeof data.error === "string" && data.error.trim()
+        ? data.error.trim()
+        : "";
+    return apiError || `${fallback} (HTTP ${response.status}).`;
+  }
+  if (data && data.ok === false) {
+    return typeof data.error === "string" && data.error.trim()
+      ? data.error.trim()
+      : fallback;
+  }
+  return null;
+}
 
 const productLabel = (p: Product | null) =>
   productLabelFromCatalog(p, p ?? "—");
@@ -1007,7 +1080,7 @@ export default function CalculatorPage() {
       try {
         let bearerToken = await user.getIdToken();
         const requestWithToken = async (token: string) =>
-          fetch("/api/contracts?scope=my&limit=200", {
+          fetch("/api/contracts/list?scope=my&limit=200", {
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -1667,6 +1740,31 @@ export default function CalculatorPage() {
     }
   }, [endorsementDraft, isLifeProduct, product]);
 
+  const syncEntryIndexesBestEffort = async (ownerEmail: string, entryId: string) => {
+    if (!user) return;
+    try {
+      const { response, data } = await requestContractsMutationWithAuth({
+        user,
+        path: "/api/contracts/sync-entry-index",
+        method: "PATCH",
+        payload: { ownerEmail, entryId },
+      });
+      const apiError = getContractsMutationError({
+        response,
+        data,
+        fallback: "Synchronizace indexu smlouvy selhala.",
+      });
+      if (apiError) {
+        throw new Error(apiError);
+      }
+    } catch (err) {
+      console.warn(
+        `Best-effort synchronizace indexu pro ${ownerEmail}/${entryId} selhala:`,
+        err
+      );
+    }
+  };
+
   const handlePrepareEndorsement = async () => {
     if (!user) return;
 
@@ -1977,7 +2075,7 @@ export default function CalculatorPage() {
         return Array.from(s);
       })();
 
-      await addDoc(entriesRef, {
+      const savedEndorsementRef = await addDoc(entriesRef, {
         productKey: endorsementDraft.productKey,
         entryType: "endorsement" as ContractEntryType,
         rootContractEntryId: endorsementDraft.rootContractEntryId,
@@ -2019,6 +2117,7 @@ export default function CalculatorPage() {
         managerOverrides: overridesForChain,
         allowedEmails,
       });
+      await syncEntryIndexesBestEffort(email, savedEndorsementRef.id);
 
       if (typeof window !== "undefined") {
         try {
@@ -2365,6 +2464,7 @@ export default function CalculatorPage() {
         managerOverrides: overridesForChain,
         allowedEmails,
       });
+      await syncEntryIndexesBestEffort(email, savedContractRef.id);
 
       let refreshStornoFailed = false;
       let refreshStornoUpdated = 0;
@@ -2373,14 +2473,13 @@ export default function CalculatorPage() {
         const refreshSignedDate = signed ?? new Date();
         try {
           const token = await user.getIdToken();
-          const refreshRes = await fetch("/api/contracts", {
+          const refreshRes = await fetch("/api/contracts/refresh-neon-storno", {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-              action: "refreshNeonStorno",
               originalContractNumber: trimmedOriginalContractNumber,
               newEntryId: savedContractRef.id,
               stornoDateMs: stornoDate.getTime(),
@@ -2437,14 +2536,13 @@ export default function CalculatorPage() {
         const replacementSignedDate = signed ?? new Date();
         try {
           const token = await user.getIdToken();
-          const replacementRes = await fetch("/api/contracts", {
+          const replacementRes = await fetch("/api/contracts/replacement-storno", {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-              action: "replacementStorno",
               originalContractNumber: trimmedReplacementContractNumber,
               newEntryId: savedContractRef.id,
               stornoDateMs: stornoDate.getTime(),
@@ -2774,9 +2872,32 @@ export default function CalculatorPage() {
                   setDuplicateModal(null);
                   try {
                     if (modal.mode === "overwrite") {
-                      await Promise.all(
-                        modal.entries.map((entry) => deleteDoc(doc(db, entry.path)))
-                      );
+                      const ownerEmail = (user.email ?? "").trim().toLowerCase();
+                      if (!ownerEmail) {
+                        throw new Error("Chybí přihlášený e-mail uživatele.");
+                      }
+                      const entriesToDelete = modal.entries
+                        .map((entry) => ({
+                          ownerEmail,
+                          entryId: entry.id,
+                        }))
+                        .filter((entry) => entry.entryId.trim().length > 0);
+                      if (entriesToDelete.length > 0) {
+                        const { response, data } = await requestContractsMutationWithAuth({
+                          user,
+                          path: "/api/contracts/bulk-delete",
+                          method: "DELETE",
+                          payload: { entries: entriesToDelete },
+                        });
+                        const apiError = getContractsMutationError({
+                          response,
+                          data,
+                          fallback: "Smazání původních smluv selhalo.",
+                        });
+                        if (apiError) {
+                          throw new Error(apiError);
+                        }
+                      }
                     }
                     // ulož znovu bez další kontroly duplicit
                     await handleSaveContract(true);

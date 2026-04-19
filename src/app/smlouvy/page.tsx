@@ -626,7 +626,7 @@ function ContractsPageContent() {
       if (includeTeam) params.set("includeTeam", "1");
 
       const requestWithToken = async (token: string) =>
-        fetch(`/api/contracts?${params.toString()}`, {
+        fetch(`/api/contracts/list?${params.toString()}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -1334,7 +1334,7 @@ function ContractsPageContent() {
         .filter((e) => e.ownerEmail && e.entryId);
 
       const token = await user.getIdToken();
-      const res = await fetch("/api/contracts", {
+      const res = await fetch("/api/contracts/bulk-delete", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -1389,7 +1389,7 @@ function ContractsPageContent() {
         .filter((e) => e.ownerEmail && e.entryId);
 
       const token = await user.getIdToken();
-      const res = await fetch("/api/contracts", {
+      const res = await fetch("/api/contracts/set-paid", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

@@ -687,7 +687,7 @@ export default function ExportProductionPage() {
       if (cursor) params.set("cursor", cursor);
 
       const requestWithToken = async (token: string) =>
-        fetch(`/api/contracts?${params.toString()}`, {
+        fetch(`/api/contracts/list?${params.toString()}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },

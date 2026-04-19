@@ -296,7 +296,7 @@ export default function ContractDetailPage() {
           entryId,
         });
         const payload = await requestContractsApi<ContractDetailApiResponse>(
-          `/api/contracts?${params.toString()}`
+          `/api/contracts/detail?${params.toString()}`
         );
         if (cancelled) return;
 
@@ -584,14 +584,13 @@ export default function ContractDetailPage() {
     let cancelled = false;
 
     const requestWithToken = async (token: string) =>
-      fetch("/api/contracts", {
+      fetch("/api/contracts/sync-cpp-status", {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          action: "syncCppStatus",
           ownerEmail: owner,
           entryId: entryKey,
         }),
@@ -697,7 +696,7 @@ export default function ContractDetailPage() {
           includeTimeline: "0",
         });
         await requestContractsApi<ContractDetailApiResponse>(
-          `/api/contracts?${params.toString()}`
+          `/api/contracts/detail?${params.toString()}`
         );
         if (!cancelled) setCanOpenRefreshReplacement(true);
       } catch (refreshAccessErr) {
@@ -2134,13 +2133,12 @@ export default function ContractDetailPage() {
         updates.durationYears = durationVal ?? null;
       }
 
-      await requestContractsApi<ContractsApiResponseBase>("/api/contracts", {
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts/update-fields", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          action: "updateFields",
           ownerEmail,
           entryId,
           updates,
@@ -2242,13 +2240,12 @@ export default function ContractDetailPage() {
     setNoteSaved(false);
 
     try {
-      await requestContractsApi<ContractsApiResponseBase>("/api/contracts", {
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts/update-fields", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          action: "updateFields",
           ownerEmail,
           entryId,
           updates: { note: noteDraft.trim() },
@@ -2272,7 +2269,7 @@ export default function ContractDetailPage() {
     setUpdatingPaid(true);
     setPaidError(null);
     try {
-      await requestContractsApi<ContractsApiResponseBase>("/api/contracts", {
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts/set-paid", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -2325,13 +2322,12 @@ export default function ContractDetailPage() {
         )
       ) as string[];
 
-      await requestContractsApi<ContractsApiResponseBase>("/api/contracts", {
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts/update-fields", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          action: "updateFields",
           ownerEmail,
           entryIds: targetIds,
           updates: {
@@ -2384,13 +2380,12 @@ export default function ContractDetailPage() {
         )
       ) as string[];
 
-      await requestContractsApi<ContractsApiResponseBase>("/api/contracts", {
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts/update-fields", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          action: "updateFields",
           ownerEmail,
           entryIds: targetIds,
           updates: {
@@ -2528,7 +2523,7 @@ export default function ContractDetailPage() {
     setDeleteError(null);
 
     try {
-      await requestContractsApi<ContractsApiResponseBase>("/api/contracts", {
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts/bulk-delete", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
