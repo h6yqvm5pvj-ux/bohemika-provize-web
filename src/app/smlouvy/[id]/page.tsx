@@ -99,6 +99,7 @@ const KOOPERATIVA_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
   "flexi",
   "koopmajetekobcan",
   "kooperativaAuto",
+  "koopcestovko",
 ]);
 
 type ContractsApiError = Error & { status?: number };
@@ -123,6 +124,174 @@ type ContractDetailApiResponse = ContractsApiResponseBase & {
   contract?: ContractDoc;
   timeline?: ContractDoc[];
   ownerMeta?: ContractOwnerMetaApi | null;
+};
+
+type NeonImmediateBreakdownPart = {
+  label: string;
+  amount: number;
+};
+
+type NeonImmediateBreakdown = {
+  position: Position;
+  totalCoefficient: number;
+  a101Coefficient: number;
+  b0301Coefficient: number;
+  b3601HalfCoefficient: number;
+  includeB3601: boolean;
+  parts: NeonImmediateBreakdownPart[];
+  total: number;
+};
+
+const NEON_IMMEDIATE_TOTAL_COEFFICIENTS: Record<Position, number> = {
+  poradce1: 1.2,
+  poradce2: 1.38,
+  poradce3: 1.502,
+  poradce4: 2.16,
+  poradce5: 2.4,
+  poradce6: 2.58,
+  poradce7: 2.702,
+  poradce8: 2.881,
+  poradce9: 3.002,
+  poradce10: 3.122,
+  manazer4: 2.404,
+  manazer5: 2.683,
+  manazer6: 2.962,
+  manazer7: 3.243,
+  manazer8: 3.522,
+  manazer9: 3.802,
+  manazer10: 4.083,
+};
+
+const NEON_IMMEDIATE_B0301_COEFFICIENTS: Record<Position, number> = {
+  poradce1: 0.444,
+  poradce2: 0.489,
+  poradce3: 0.533,
+  poradce4: 0.622,
+  poradce5: 0.645,
+  poradce6: 0.665,
+  poradce7: 0.687,
+  poradce8: 0.71,
+  poradce9: 0.73,
+  poradce10: 0.752,
+  manazer4: 0.633,
+  manazer5: 0.69,
+  manazer6: 0.747,
+  manazer7: 0.807,
+  manazer8: 0.863,
+  manazer9: 0.92,
+  manazer10: 0.987,
+};
+
+const NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS: Record<Position, number> = {
+  poradce1: 0.4445,
+  poradce2: 0.489,
+  poradce3: 0.5335,
+  poradce4: 0.689,
+  poradce5: 0.761,
+  poradce6: 0.8,
+  poradce7: 0.8385,
+  poradce8: 0.877,
+  poradce9: 0.9165,
+  poradce10: 0.955,
+  manazer4: 0.7575,
+  manazer5: 0.8395,
+  manazer6: 0.9205,
+  manazer7: 1.0015,
+  manazer8: 1.083,
+  manazer9: 1.1635,
+  manazer10: 1.2445,
+};
+
+const roundToCents = (value: number): number => Math.round(value * 100) / 100;
+const toCents = (value: number): number => Math.round(value * 100);
+const fromCents = (value: number): number => value / 100;
+const toCommissionMode = (value: unknown): CommissionMode | null =>
+  value === "accelerated" || value === "standard" ? value : null;
+const isAcceleratedMode = (mode: CommissionMode | null | undefined): boolean =>
+  mode === "accelerated";
+
+const isImmediateCommissionTitle = (title: string): boolean =>
+  normalizeTitleForCompare(title).includes("okamžitá provize");
+
+const hasNeonImmediateCoefficient = (
+  position: Position | null | undefined
+): position is Position =>
+  !!position &&
+  Number.isFinite(NEON_IMMEDIATE_TOTAL_COEFFICIENTS[position]) &&
+  Number.isFinite(NEON_IMMEDIATE_B0301_COEFFICIENTS[position]) &&
+  Number.isFinite(NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS[position]);
+
+const buildNeonImmediateBreakdown = (
+  amount: number,
+  position: Position | null | undefined,
+  mode: CommissionMode | null | undefined
+): NeonImmediateBreakdown | null => {
+  if (!hasNeonImmediateCoefficient(position)) return null;
+
+  const includeB3601 = isAcceleratedMode(mode);
+  const totalCoefficient = NEON_IMMEDIATE_TOTAL_COEFFICIENTS[position];
+  const b0301Coefficient = NEON_IMMEDIATE_B0301_COEFFICIENTS[position];
+  const b3601HalfCoefficient = includeB3601
+    ? NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS[position]
+    : 0;
+  const a101Coefficient =
+    totalCoefficient - b0301Coefficient - b3601HalfCoefficient;
+  if (!Number.isFinite(totalCoefficient) || totalCoefficient <= 0) return null;
+  if (!Number.isFinite(b0301Coefficient) || b0301Coefficient < 0) return null;
+  if (!Number.isFinite(b3601HalfCoefficient) || b3601HalfCoefficient < 0) return null;
+  if (a101Coefficient < -0.000001) return null;
+
+  const total = Number(amount);
+  if (!Number.isFinite(total) || total <= 0) return null;
+
+  const baseAmount = total / totalCoefficient;
+  const partDefs: { label: string; raw: number }[] = [
+    { label: "Provize 101A", raw: baseAmount * Math.max(0, a101Coefficient) },
+    { label: "Provize B0301", raw: baseAmount * b0301Coefficient },
+    ...(includeB3601
+      ? [
+          {
+            label: "Provize 50% z B3601",
+            raw: baseAmount * b3601HalfCoefficient,
+          },
+        ]
+      : []),
+  ];
+  if (partDefs.length === 0) return null;
+
+  const partCents = partDefs.map((part) => ({
+    label: part.label,
+    cents: Math.max(0, toCents(part.raw)),
+  }));
+  const totalCents = toCents(total);
+  const lastIdx = partCents.length - 1;
+  const roundedSumCents = partCents.reduce((sum, part) => sum + part.cents, 0);
+  partCents[lastIdx].cents += totalCents - roundedSumCents;
+
+  if (partCents[lastIdx].cents < 0) {
+    let deficit = -partCents[lastIdx].cents;
+    partCents[lastIdx].cents = 0;
+    for (let idx = lastIdx - 1; idx >= 0 && deficit > 0; idx -= 1) {
+      const reduceBy = Math.min(partCents[idx].cents, deficit);
+      partCents[idx].cents -= reduceBy;
+      deficit -= reduceBy;
+    }
+    if (deficit > 0) return null;
+  }
+
+  return {
+    position,
+    totalCoefficient,
+    a101Coefficient: Math.max(0, a101Coefficient),
+    b0301Coefficient,
+    b3601HalfCoefficient,
+    includeB3601,
+    total,
+    parts: partCents.map((part) => ({
+      label: part.label,
+      amount: roundToCents(fromCents(part.cents)),
+    })),
+  };
 };
 
 export default function ContractDetailPage() {
@@ -163,10 +332,12 @@ export default function ContractDetailPage() {
     CommissionResultItemDTO[] | null
   >(null);
   const [overrideTotal, setOverrideTotal] = useState<number | null>(null);
+  const [overrideMode, setOverrideMode] = useState<CommissionMode | null>(null);
   const [childOverrideItems, setChildOverrideItems] = useState<
     CommissionResultItemDTO[] | null
   >(null);
   const [childOverrideTotal, setChildOverrideTotal] = useState<number | null>(null);
+  const [childOverrideMode, setChildOverrideMode] = useState<CommissionMode | null>(null);
   const [childOverrideLabel, setChildOverrideLabel] = useState<string | null>(null);
   const [childOverrideName, setChildOverrideName] = useState<string | null>(null);
   const [childOverridePosition, setChildOverridePosition] = useState<Position | null>(null);
@@ -193,10 +364,13 @@ export default function ContractDetailPage() {
   const [showStornoModal, setShowStornoModal] = useState(false);
   const [showPaymentVerificationModal, setShowPaymentVerificationModal] =
     useState(false);
+  const [neonImmediateBreakdown, setNeonImmediateBreakdown] =
+    useState<NeonImmediateBreakdown | null>(null);
   const [canOpenRefreshReplacement, setCanOpenRefreshReplacement] = useState(false);
   const { toasts, pushToast, dismissToast } = useToasts();
   const [unauthorized, setUnauthorized] = useState(false);
   const cppStatusSyncKeyRef = useRef<string | null>(null);
+  const isNeonImmediateBreakdownOpen = neonImmediateBreakdown != null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -204,15 +378,26 @@ export default function ContractDetailPage() {
         setShowDeleteModal(false);
         setShowStornoModal(false);
         setShowPaymentVerificationModal(false);
+        setNeonImmediateBreakdown(null);
       }
     };
-    if (showDeleteModal || showStornoModal || showPaymentVerificationModal) {
+    if (
+      showDeleteModal ||
+      showStornoModal ||
+      showPaymentVerificationModal ||
+      isNeonImmediateBreakdownOpen
+    ) {
       window.addEventListener("keydown", onKey);
     }
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  }, [showDeleteModal, showStornoModal, showPaymentVerificationModal]);
+  }, [
+    showDeleteModal,
+    showStornoModal,
+    showPaymentVerificationModal,
+    isNeonImmediateBreakdownOpen,
+  ]);
 
   // auth
   useEffect(() => {
@@ -503,7 +688,7 @@ export default function ContractDetailPage() {
   const freq = (contract?.frequencyRaw as PaymentFrequency | null | undefined) ?? null;
   const prod = contract?.productKey as Product | undefined;
   const paymentVerificationUrl =
-    prod === "allianzAuto"
+    prod === "allianzAuto" || prod === "allianzmujdomov"
       ? ALLIANZ_PAYMENT_CHECK_URL
       : prod === "slaviaauto"
       ? SLAVIA_PAYMENT_CHECK_URL
@@ -2428,8 +2613,10 @@ export default function ContractDetailPage() {
     if (!contract || !isManagerViewingSubordinate) {
       setOverrideItems(null);
       setOverrideTotal(null);
+      setOverrideMode(null);
       setChildOverrideItems(null);
       setChildOverrideTotal(null);
+      setChildOverrideMode(null);
       setChildOverrideLabel(null);
       setChildOverrideName(null);
       setChildOverridePosition(null);
@@ -2448,6 +2635,13 @@ export default function ContractDetailPage() {
 
     setOverrideItems(hasStoredOverride ? storedOverrideItems : null);
     setOverrideTotal(hasStoredOverride ? storedOverrideTotal : null);
+    setOverrideMode(
+      hasStoredOverride
+        ? toCommissionMode(storedOverride?.commissionMode) ??
+            toCommissionMode(contract.managerModeSnapshot) ??
+            toCommissionMode(contract.commissionMode)
+        : null
+    );
 
     const chain = (contract.managerChain as ContractDoc["managerChain"]) ?? [];
     const idxByEmail = chain.findIndex(
@@ -2490,6 +2684,11 @@ export default function ContractDetailPage() {
     if (childSnap && childEmail && hasStoredChildOverride) {
       setChildOverrideItems(storedChildItems);
       setChildOverrideTotal(storedChildTotal);
+      setChildOverrideMode(
+        toCommissionMode(storedChildOverride?.commissionMode) ??
+          toCommissionMode(childSnap.commissionMode) ??
+          toCommissionMode(contract.commissionMode)
+      );
       setChildOverrideLabel(
         (childSnap.position as Position | null | undefined) ??
           normalizeTitleForCompare(childSnap.email ?? childEmail)
@@ -2501,6 +2700,7 @@ export default function ContractDetailPage() {
 
     setChildOverrideItems(null);
     setChildOverrideTotal(null);
+    setChildOverrideMode(null);
     setChildOverrideLabel(null);
     setChildOverrideName(null);
     setChildOverridePosition(null);
@@ -2580,7 +2780,7 @@ export default function ContractDetailPage() {
         ? "⌘+V"
         : "Ctrl+V";
     const targetFieldHint =
-      prod === "allianzAuto"
+      prod === "allianzAuto" || prod === "allianzmujdomov"
         ? "v Allianz do pole „Zadejte číslo pojistné smlouvy“"
         : prod && CPP_PAYMENT_CHECK_PRODUCTS.has(prod)
         ? "v ČPP do pole „Číslo pojistné smlouvy“"
@@ -2739,6 +2939,87 @@ export default function ContractDetailPage() {
   const destructiveButtonClass =
     "inline-flex items-center rounded-xl border border-rose-700 bg-rose-700 px-6 py-3 text-base sm:text-lg font-medium font-mono text-white shadow-[0_8px_20px_rgba(190,24,93,0.28)] transition hover:bg-rose-800 disabled:opacity-60 disabled:cursor-not-allowed";
   const productPanelClass = "w-[400px] space-y-4 p-2 font-mono";
+  const adviserBreakdownPosition =
+    ((contract?.position as Position | null | undefined) ?? ownerPosition ?? null);
+  const adviserBreakdownMode = toCommissionMode(contract?.commissionMode);
+
+  const handleOpenNeonImmediateBreakdown = useCallback(
+    (
+      item: CommissionResultItemDTO,
+      position: Position | null | undefined,
+      commissionMode: CommissionMode | null | undefined
+    ) => {
+      const breakdown = buildNeonImmediateBreakdown(
+        item.amount ?? 0,
+        position,
+        commissionMode
+      );
+      if (!breakdown) {
+        pushToast("Rozpad okamžité provize pro tuto pozici zatím není dostupný.", "error");
+        return;
+      }
+      setNeonImmediateBreakdown(breakdown);
+    },
+    [pushToast]
+  );
+
+  const renderCommissionRow = (
+    item: CommissionResultItemDTO,
+    position: Position | null | undefined,
+    commissionMode: CommissionMode | null | undefined,
+    key: string
+  ) => {
+    const icon = resultIconForTitle(item.title);
+    const clickable =
+      prod === "neon" &&
+      isImmediateCommissionTitle(item.title) &&
+      hasNeonImmediateCoefficient(position);
+    const rowClass = clickable
+      ? `${commissionRowClass} w-full text-left transition hover:border-slate-400 hover:bg-slate-100`
+      : commissionRowClass;
+
+    const content = (
+      <>
+        <span className="flex items-center gap-3 text-lg text-slate-900 font-medium">
+          {icon && (
+            <span className="relative h-5 w-5 flex-shrink-0">
+              <Image
+                src={icon}
+                alt=""
+                fill
+                className="object-contain"
+              />
+            </span>
+          )}
+          <span>{cleanResultTitle(item.title)}</span>
+        </span>
+        <span className="text-lg font-semibold text-slate-900">
+          {formatMoney(item.amount)}
+        </span>
+      </>
+    );
+
+    if (!clickable) {
+      return (
+        <div key={key} className={rowClass}>
+          {content}
+        </div>
+      );
+    }
+
+    return (
+      <button
+        key={key}
+        type="button"
+        className={rowClass}
+        onClick={() =>
+          handleOpenNeonImmediateBreakdown(item, position, commissionMode)
+        }
+      >
+        {content}
+      </button>
+    );
+  };
 
   const renderLoadingSkeleton = () => (
     <div className="space-y-6">
@@ -3403,32 +3684,14 @@ export default function ContractDetailPage() {
           </h3>
           <div className={commissionPanelClass}>
             <div className="space-y-1">
-              {managerItems.map((item) => {
-                const icon = resultIconForTitle(item.title);
-                return (
-                  <div
-                    key={item.title}
-                    className={commissionRowClass}
-                  >
-                    <span className="flex items-center gap-3 text-lg text-slate-900 font-medium">
-                      {icon && (
-                        <span className="relative h-5 w-5 flex-shrink-0">
-                          <Image
-                            src={icon}
-                            alt=""
-                            fill
-                            className="object-contain"
-                          />
-                        </span>
-                      )}
-                      <span>{cleanResultTitle(item.title)}</span>
-                    </span>
-                    <span className="text-lg font-semibold text-slate-900">
-                      {formatMoney(item.amount)}
-                    </span>
-                  </div>
-                );
-              })}
+              {managerItems.map((item, idx) =>
+                renderCommissionRow(
+                  item,
+                  effectiveManagerPosition,
+                  overrideMode,
+                  `manager-${idx}-${item.title}`
+                )
+              )}
             </div>
 
                         <div className={commissionTotalClass}>
@@ -3475,32 +3738,14 @@ export default function ContractDetailPage() {
                         </h4>
                         <div className={commissionPanelClass}>
                           <div className="space-y-1">
-                            {childManagerItems.map((item) => {
-                              const icon = resultIconForTitle(item.title);
-                              return (
-                                <div
-                                  key={item.title}
-                                  className={commissionRowClass}
-                                >
-                                  <span className="flex items-center gap-3 text-lg text-slate-900 font-medium">
-                                    {icon && (
-                                      <span className="relative h-5 w-5 flex-shrink-0">
-                                        <Image
-                                          src={icon}
-                                          alt=""
-                                          fill
-                                          className="object-contain"
-                                        />
-                                      </span>
-                                    )}
-                                    <span>{cleanResultTitle(item.title)}</span>
-                                  </span>
-                                  <span className="text-lg font-semibold text-slate-900">
-                                    {formatMoney(item.amount)}
-                                  </span>
-                                </div>
-                              );
-                            })}
+                            {childManagerItems.map((item, idx) =>
+                              renderCommissionRow(
+                                item,
+                                childOverridePosition,
+                                childOverrideMode,
+                                `child-manager-${idx}-${item.title}`
+                              )
+                            )}
                           </div>
 
                           <div className={commissionTotalClass}>
@@ -3546,32 +3791,14 @@ export default function ContractDetailPage() {
                     </h3>
                     <div className={commissionPanelClass}>
                       <div className="space-y-1">
-                        {adviserItems.map((item) => {
-                          const icon = resultIconForTitle(item.title);
-                          return (
-                            <div
-                              key={item.title}
-                              className={commissionRowClass}
-                            >
-                              <span className="flex items-center gap-3 text-lg text-slate-900 font-medium">
-                                {icon && (
-                                  <span className="relative h-5 w-5 flex-shrink-0">
-                                    <Image
-                                      src={icon}
-                                      alt=""
-                                      fill
-                                      className="object-contain"
-                                    />
-                                  </span>
-                                )}
-                                <span>{cleanResultTitle(item.title)}</span>
-                              </span>
-                              <span className="text-lg font-semibold text-slate-900">
-                                {formatMoney(item.amount)}
-                              </span>
-                            </div>
-                          );
-                        })}
+                        {adviserItems.map((item, idx) =>
+                          renderCommissionRow(
+                            item,
+                            adviserBreakdownPosition,
+                            adviserBreakdownMode,
+                            `adviser-own-${idx}-${item.title}`
+                          )
+                        )}
                       </div>
 
                       <div className={commissionTotalHighlightClass}>
@@ -3626,32 +3853,14 @@ export default function ContractDetailPage() {
                         {showAdvisorDetails && (
                       <div className={commissionPanelClass}>
                         <div className="space-y-1">
-                          {adviserItems.map((item) => {
-                            const icon = resultIconForTitle(item.title);
-                            return (
-                              <div
-                                key={item.title}
-                                className={commissionRowClass}
-                              >
-                                <span className="flex items-center gap-3 text-lg text-slate-900 font-medium">
-                                  {icon && (
-                                    <span className="relative h-5 w-5 flex-shrink-0">
-                                      <Image
-                                        src={icon}
-                                        alt=""
-                                        fill
-                                        className="object-contain"
-                                      />
-                                    </span>
-                                  )}
-                                  <span>{cleanResultTitle(item.title)}</span>
-                                </span>
-                                <span className="text-lg font-semibold text-slate-900">
-                                  {formatMoney(item.amount)}
-                                </span>
-                              </div>
-                            );
-                          })}
+                          {adviserItems.map((item, idx) =>
+                            renderCommissionRow(
+                              item,
+                              adviserBreakdownPosition,
+                              adviserBreakdownMode,
+                              `adviser-team-${idx}-${item.title}`
+                            )
+                          )}
                         </div>
 
                         <div className={commissionTotalHighlightClass}>
@@ -3873,6 +4082,107 @@ export default function ContractDetailPage() {
           </div>
         </div>
       </div>
+
+      {neonImmediateBreakdown && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-black/60 backdrop-blur-sm"
+            aria-label="Zavřít rozpis okamžité provize"
+            onClick={() => setNeonImmediateBreakdown(null)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Rozpis okamžité provize"
+            className="relative z-10 w-full max-w-md rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-slate-300/40"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xl font-semibold tracking-tight text-slate-900">
+                  Rozpis okamžité provize
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  ČPP ŽP NEON • {positionLabel(neonImmediateBreakdown.position)}
+                </p>
+                <p className="text-sm text-slate-600">
+                  Režim:{" "}
+                  <span className="font-semibold text-slate-800">
+                    {neonImmediateBreakdown.includeB3601 ? "Zrychlený" : "Běžný"}
+                  </span>
+                </p>
+                <p className="text-sm text-slate-600">
+                  Koeficient (okamžitá):{" "}
+                  <span className="font-semibold text-slate-800">
+                    {neonImmediateBreakdown.totalCoefficient.toLocaleString("cs-CZ", {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 3,
+                    })}
+                  </span>
+                </p>
+                <p className="text-sm text-slate-600">
+                  Koeficient (101A):{" "}
+                  <span className="font-semibold text-slate-800">
+                    {neonImmediateBreakdown.a101Coefficient.toLocaleString("cs-CZ", {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 4,
+                    })}
+                  </span>
+                </p>
+                <p className="text-sm text-slate-600">
+                  Koeficient (B0301):{" "}
+                  <span className="font-semibold text-slate-800">
+                    {neonImmediateBreakdown.b0301Coefficient.toLocaleString("cs-CZ", {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 3,
+                    })}
+                  </span>
+                </p>
+                {neonImmediateBreakdown.includeB3601 && (
+                  <p className="text-sm text-slate-600">
+                    Koeficient (50% z B3601):{" "}
+                    <span className="font-semibold text-slate-800">
+                      {neonImmediateBreakdown.b3601HalfCoefficient.toLocaleString("cs-CZ", {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 4,
+                      })}
+                    </span>
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setNeonImmediateBreakdown(null)}
+                className="rounded-full px-2 text-slate-700 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                aria-label="Zavřít"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {neonImmediateBreakdown.parts.map((part) => (
+                <div
+                  key={part.label}
+                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                >
+                  <span className="text-sm font-medium text-slate-800">{part.label}</span>
+                  <span className="text-base font-semibold text-slate-900">
+                    {formatMoney(part.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-900 bg-slate-900 px-3 py-2">
+              <span className="text-sm font-semibold text-white">Celkem okamžitá provize</span>
+              <span className="text-xl font-bold text-emerald-300">
+                {formatMoney(neonImmediateBreakdown.total)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {canDelete && showStornoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">

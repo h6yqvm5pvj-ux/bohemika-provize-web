@@ -46,6 +46,9 @@ export function preloadFormulaModule(product?: Product | null) {
     case "domex":
       import("../../lib/productFormulas/domex");
       break;
+    case "pillowmajetek":
+      import("../../lib/productFormulas/pillowMajetek");
+      break;
     case "koopmajetekobcan":
       import("../../lib/productFormulas/koopmajetekobcan");
       break;
@@ -70,6 +73,9 @@ export function preloadFormulaModule(product?: Product | null) {
     case "allianzAuto":
       import("../../lib/productFormulas/allianzAuto");
       break;
+    case "allianzmujdomov":
+      import("../../lib/productFormulas/allianzMujDomov");
+      break;
     case "csobAuto":
       import("../../lib/productFormulas/csobAuto");
       break;
@@ -91,6 +97,9 @@ export function preloadFormulaModule(product?: Product | null) {
       break;
     case "axacestovko":
       import("../../lib/productFormulas/axacestovko");
+      break;
+    case "koopcestovko":
+      import("../../lib/productFormulas/koopcestovko");
       break;
     case "comfortcc":
       import("../../lib/productFormulas/comfortcc");
@@ -381,6 +390,12 @@ export async function calculateResultForPosition(
       const { calculateDomex } = await import("../../lib/productFormulas/domex");
       return calculateDomex(amount, freq, position);
     }
+    case "pillowmajetek": {
+      const { calculatePillowMajetek } = await import(
+        "../../lib/productFormulas/pillowMajetek"
+      );
+      return calculatePillowMajetek(amount, freq, position);
+    }
     case "koopmajetekobcan": {
       const { calculateKoopMajetekObcan } = await import(
         "../../lib/productFormulas/koopmajetekobcan"
@@ -425,6 +440,12 @@ export async function calculateResultForPosition(
       );
       return calculateAllianzAuto(amount, freq, position);
     }
+    case "allianzmujdomov": {
+      const { calculateAllianzMujDomov } = await import(
+        "../../lib/productFormulas/allianzMujDomov"
+      );
+      return calculateAllianzMujDomov(amount, freq, position);
+    }
     case "csobAuto": {
       const { calculateCsobAuto } = await import("../../lib/productFormulas/csobAuto");
       return calculateCsobAuto(amount, freq, position);
@@ -463,6 +484,12 @@ export async function calculateResultForPosition(
         "../../lib/productFormulas/axacestovko"
       );
       return calculateAxaCestovko(amount, position);
+    }
+    case "koopcestovko": {
+      const { calculateKoopCestovko } = await import(
+        "../../lib/productFormulas/koopcestovko"
+      );
+      return calculateKoopCestovko(amount, position);
     }
     case "comfortcc": {
       const { calculateComfortCC } = await import(

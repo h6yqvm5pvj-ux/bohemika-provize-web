@@ -161,6 +161,15 @@ export const CashflowGenerator = {
       const naslMaxdomov = items.find((i) =>
         i.titleLower.includes("následná provize (z platby)")
       ); // MAXDOMOV
+      const naslGeneric = items.find(
+        (i) =>
+          i.titleLower.includes("následná provize") &&
+          !i.titleLower.includes("(2.–5. rok)") &&
+          !i.titleLower.includes("(5.–10. rok)") &&
+          !i.titleLower.includes("(od 6. roku)") &&
+          !i.titleLower.includes("(od 5. roku)") &&
+          !i.titleLower.includes("(z platby)")
+      );
 
       const addItem = (amount: number, date: Date, note?: string) => {
         out.push({
@@ -285,6 +294,29 @@ export const CashflowGenerator = {
 
             const next = addMonths(payout, stepMonths);
             payout = next;
+          }
+          break;
+        }
+
+        // ============= Pillow Majetek / Allianz MůjDomov – roční okamžitá + roční následná (bez vlivu frekvence) =============
+        case "pillowmajetek":
+        case "allianzmujdomov": {
+          if (immediate) {
+            addItem(
+              immediate.amount,
+              estimatePayoutDate(start, agreement),
+              "roční provize"
+            );
+          }
+
+          if (naslGeneric) {
+            let y = 1;
+            while (true) {
+              const payout = anniversaryPlusYears(y);
+              if (payout > horizonEnd) break;
+              addItem(naslGeneric.amount, payout, "roční následná provize");
+              y += 1;
+            }
           }
           break;
         }

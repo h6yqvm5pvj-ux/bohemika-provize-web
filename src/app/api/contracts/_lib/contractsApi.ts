@@ -120,8 +120,10 @@ const CONTRACT_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
 const REPLACEMENT_STORNO_PRODUCTS = new Set<Product>([
   "zamex",
   "domex",
+  "pillowmajetek",
   "koopmajetekobcan",
   "maxdomov",
+  "allianzmujdomov",
   "cppsimplex",
   "cppPPRbez",
   "cppAuto",

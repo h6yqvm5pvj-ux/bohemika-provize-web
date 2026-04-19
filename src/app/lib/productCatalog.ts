@@ -68,8 +68,10 @@ export const PRODUCT_ORDER: Product[] = [
   "pillowInjury",
   "zamex",
   "domex",
+  "pillowmajetek",
   "koopmajetekobcan",
   "maxdomov",
+  "allianzmujdomov",
   "cppsimplex",
   "cppAuto",
   "slaviaauto",
@@ -81,6 +83,7 @@ export const PRODUCT_ORDER: Product[] = [
   "uniqaflotila",
   "pillowAuto",
   "kooperativaAuto",
+  "koopcestovko",
   "cppcestovko",
   "axacestovko",
   "comfortcc",
@@ -125,6 +128,12 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
     category: "property",
     extraGroups: ["liability"],
   },
+  pillowmajetek: {
+    label: "Pillow Majetek",
+    icon: "/icons/icon_domex.png",
+    institutionId: "pillow",
+    category: "property",
+  },
   koopmajetekobcan: {
     label: "Kooperativa Pojištění majetku a odpovědnosti občanů a právní ochrany",
     icon: "/icons/icon_domex.png",
@@ -135,6 +144,12 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
     label: "Maxima MAXDOMOV",
     icon: "/icons/icon_domex.png",
     institutionId: "maxima",
+    category: "property",
+  },
+  allianzmujdomov: {
+    label: "Allianz MůjDomov",
+    icon: "/icons/icon_domex.png",
+    institutionId: "allianz",
     category: "property",
   },
   cppsimplex: {
@@ -204,6 +219,12 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
     icon: "/icons/icon_auto.png",
     institutionId: "kooperativa",
     category: "auto",
+  },
+  koopcestovko: {
+    label: "Kooperativa Cestovko",
+    icon: "/icons/icon_cestovko.png",
+    institutionId: "kooperativa",
+    category: "travel",
   },
   cppcestovko: {
     label: "ČPP Cestovko",

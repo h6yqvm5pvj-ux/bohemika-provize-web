@@ -330,13 +330,16 @@ export function useCashflowData({
             if (productFilter === "property") {
               return (
                 product === "domex" ||
+                product === "pillowmajetek" ||
                 product === "koopmajetekobcan" ||
                 product === "maxdomov" ||
+                product === "allianzmujdomov" ||
                 product === "cppsimplex" ||
                 product === "cppPPRs" ||
                 product === "cppPPRbez" ||
                 product === "cppcestovko" ||
                 product === "axacestovko" ||
+                product === "koopcestovko" ||
                 product === "zamex"
               );
             }

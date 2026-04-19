@@ -13,6 +13,7 @@ import {
   Repeat2,
   Sigma,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { auth, db } from "../firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
@@ -31,6 +32,7 @@ import {
   calculateMaxEfekt,
   calculatePillowInjury,
   calculateDomex,
+  calculatePillowMajetek,
   calculateKoopMajetekObcan,
   calculateMaxdomov,
   calculateCppAuto,
@@ -39,6 +41,7 @@ import {
   calculateCppPPRs,
   calculateCppSimplex,
   calculateAllianzAuto,
+  calculateAllianzMujDomov,
   calculateCsobAuto,
   calculateUniqaAuto,
   calculatePillowAuto,
@@ -46,6 +49,7 @@ import {
   calculateZamex,
   calculateCppCestovko,
   calculateAxaCestovko,
+  calculateKoopCestovko,
   calculateComfortCC,
   SUPPORTED_PRODUCTS,
   getCoefficientSummary,
@@ -61,6 +65,7 @@ import {
   PRODUCT_OPTIONS,
   isAutoProduct as isAutoProductFromCatalog,
   productIcon as productIconFromCatalog,
+  productInstitutionLogo as productInstitutionLogoFromCatalog,
   productLabel as productLabelFromCatalog,
 } from "@/app/lib/productCatalog";
 import {
@@ -131,6 +136,7 @@ const frequencyLabel = (f: PaymentFrequency) => {
 const REPLACEMENT_ELIGIBLE_PRODUCTS: Product[] = [
   "zamex",
   "domex",
+  "pillowmajetek",
   "koopmajetekobcan",
   "cppPPRbez",
   "maxdomov",
@@ -138,12 +144,79 @@ const REPLACEMENT_ELIGIBLE_PRODUCTS: Product[] = [
   "cppAuto",
   "slaviaauto",
   "allianzAuto",
+  "allianzmujdomov",
   "csobAuto",
   "uniqaAuto",
   "uniqaflotila",
   "pillowAuto",
   "kooperativaAuto",
 ];
+
+type ProductPickerColumn = {
+  key: string;
+  title: string;
+  products: Product[];
+  emptyText?: string;
+};
+
+const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
+  {
+    key: "life",
+    title: "Život",
+    products: ["neon", "flexi", "maximaMaxEfekt", "pillowInjury"],
+  },
+  {
+    key: "property",
+    title: "Majetek",
+    products: [
+      "domex",
+      "pillowmajetek",
+      "koopmajetekobcan",
+      "maxdomov",
+      "allianzmujdomov",
+      "cppsimplex",
+    ],
+  },
+  {
+    key: "auto",
+    title: "Auto",
+    products: [
+      "cppAuto",
+      "slaviaauto",
+      "allianzAuto",
+      "csobAuto",
+      "uniqaAuto",
+      "uniqaflotila",
+      "pillowAuto",
+      "kooperativaAuto",
+    ],
+  },
+  {
+    key: "entrepreneurs",
+    title: "Podnikatele",
+    products: ["zamex", "cppPPRbez", "cppPPRs"],
+  },
+  {
+    key: "travel",
+    title: "Cestovko",
+    products: ["cppcestovko", "axacestovko", "koopcestovko"],
+  },
+  {
+    key: "investments",
+    title: "Investice",
+    products: [],
+    emptyText: "Zatím bez produktů.",
+  },
+  {
+    key: "gold",
+    title: "Zlato",
+    products: ["comfortcc"],
+  },
+];
+
+const PRODUCT_OPTION_BY_ID = new Map<Product, { id: Product; label: string }>(
+  PRODUCT_OPTIONS.map((option) => [option.id, option] as const)
+);
 
 type ContractsApiResponse = {
   ok?: boolean;
@@ -552,6 +625,10 @@ function productIcon(product: Product): string {
   return productIconFromCatalog(product);
 }
 
+function productInstitutionLogo(product: Product): string {
+  return productInstitutionLogoFromCatalog(product) ?? "/icons/produkt.png";
+}
+
 function isAutoProduct(product: Product | null): product is Product {
   return Boolean(product) && isAutoProductFromCatalog(product);
 }
@@ -605,10 +682,13 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
       return ["monthly"];
     case "domex":
       return ["quarterly", "semiannual", "annual"];
+    case "pillowmajetek":
+      return ["monthly", "quarterly", "semiannual", "annual"];
     case "koopmajetekobcan":
       return ["monthly", "quarterly", "semiannual", "annual"];
     case "pillowAuto":
     case "maxdomov":
+    case "allianzmujdomov":
     case "kooperativaAuto":
     case "allianzAuto":
       return ["monthly", "quarterly", "semiannual", "annual"];
@@ -624,6 +704,7 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
       return ["quarterly", "semiannual", "annual"];
     case "cppcestovko":
     case "axacestovko":
+    case "koopcestovko":
     case "comfortcc":
       return ["annual"];
   }
@@ -651,6 +732,7 @@ function defaultFrequencyText(product: Product): string {
       return "Frekvence: měsíční";
     case "cppcestovko":
     case "axacestovko":
+    case "koopcestovko":
     case "comfortcc":
       return "Frekvence: jednorázově";
     default:
@@ -665,7 +747,11 @@ function placeholderForAmount(
   if (product === "comfortcc") {
     return "Zadejte výši poplatku / platby";
   }
-  if (product === "cppcestovko" || product === "axacestovko") {
+  if (
+    product === "cppcestovko" ||
+    product === "axacestovko" ||
+    product === "koopcestovko"
+  ) {
     return "Zadejte jednorázové pojistné";
   }
   if (
@@ -1025,8 +1111,12 @@ export default function CalculatorPage() {
       case "domex":
       case "koopmajetekobcan":
         return `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}).`;
+      case "pillowmajetek":
+        return `Výpočet: částka za zvolenou frekvenci (${payLabel}) se přepočte na roční pojistné (${payPerYear}×) a z něj se počítá okamžitá i následná provize. Koeficienty platné od 01.10.2023.`;
       case "maxdomov":
         return `Výpočet: platba (${payLabel}) × koeficient (získatelská i následná). Roční částka = × počet plateb (${payPerYear}).`;
+      case "allianzmujdomov":
+        return `Výpočet: částka za zvolenou frekvenci (${payLabel}) se přepočte na roční pojistné (${payPerYear}×) a z něj se počítá okamžitá i následná provize. Koeficienty platné od 01.06.2020.`;
       case "cppAuto":
       case "slaviaauto":
       case "cppsimplex":
@@ -1043,6 +1133,7 @@ export default function CalculatorPage() {
         return `Výpočet: platba (${payLabel}) × koeficient (získatelská / následná). Roční varianta = × počet plateb (${payPerYear}).`;
       case "cppcestovko":
       case "axacestovko":
+      case "koopcestovko":
         return "Výpočet: pojistné × koeficient (jednorázově).";
       case "comfortcc":
         return "Výpočet: následná provize z platby = pravidelná platba × koeficient. U postupného poplatku je tato částka započtená i do okamžité provize. Pokud zadáš cílovou částku, Celkem dopočítá celý součet za všechny výplaty následné.";
@@ -1577,6 +1668,14 @@ export default function CalculatorPage() {
       return;
     }
 
+    if (product === "pillowmajetek") {
+      const dto = calculatePillowMajetek(val, frequency, position);
+      setItems(dto.items);
+      setTotal(dto.total);
+      setUnsupported(false);
+      return;
+    }
+
     if (product === "maxdomov") {
       const dto = calculateMaxdomov(val, frequency, position);
       const filtered = dto.items.filter((i) =>
@@ -1585,6 +1684,14 @@ export default function CalculatorPage() {
       const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
       setItems(filtered);
       setTotal(totals.immediate + totals.subsequent);
+      setUnsupported(false);
+      return;
+    }
+
+    if (product === "allianzmujdomov") {
+      const dto = calculateAllianzMujDomov(val, frequency, position);
+      setItems(dto.items);
+      setTotal(dto.total);
       setUnsupported(false);
       return;
     }
@@ -1697,6 +1804,14 @@ export default function CalculatorPage() {
       return;
     }
 
+    if (product === "koopcestovko") {
+      const dto = calculateKoopCestovko(val, position);
+      setItems(dto.items);
+      setTotal(dto.total);
+      setUnsupported(false);
+      return;
+    }
+
     if (product === "comfortcc") {
       const dto = calculateComfortCC({
         fee: val,
@@ -1728,6 +1843,21 @@ export default function CalculatorPage() {
       setOriginalContractNumber("");
     }
   }, [product]);
+
+  useEffect(() => {
+    if (!productOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setProductOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [productOpen]);
 
   useEffect(() => {
     setDurationHelpOpen(false);
@@ -2732,6 +2862,8 @@ export default function CalculatorPage() {
         const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
         return { items: filtered, total: totals.immediate + totals.subsequent };
       }
+      case "pillowmajetek":
+        return calculatePillowMajetek(val, freq, pos);
       case "maxdomov": {
         const dto = calculateMaxdomov(val, freq, pos);
         const filtered = dto.items.filter((i) =>
@@ -2740,6 +2872,8 @@ export default function CalculatorPage() {
         const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
         return { items: filtered, total: totals.immediate + totals.subsequent };
       }
+      case "allianzmujdomov":
+        return calculateAllianzMujDomov(val, freq, pos);
       case "cppAuto":
         return calculateCppAuto(val, freq, pos);
       case "slaviaauto":
@@ -2771,6 +2905,8 @@ export default function CalculatorPage() {
         return calculateCppCestovko(val, pos);
       case "axacestovko":
         return calculateAxaCestovko(val, pos);
+      case "koopcestovko":
+        return calculateKoopCestovko(val, pos);
       case "comfortcc":
         return calculateComfortCC({
           fee: val,
@@ -2995,6 +3131,105 @@ export default function CalculatorPage() {
         </div>
       )}
 
+      {productOpen && (
+        <div className="fixed inset-0 z-[120]">
+          <button
+            type="button"
+            onClick={() => setProductOpen(false)}
+            className="absolute inset-0 bg-transparent"
+            aria-label="Zavřít výběr produktu"
+          />
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 z-[121] -translate-y-1/2">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Výběr produktu"
+              className="pointer-events-auto w-full border-y border-slate-300 bg-white shadow-[0_22px_70px_rgba(2,6,23,0.22)]"
+            >
+              <div className="flex flex-wrap items-start justify-end gap-3 border-b border-slate-200 bg-white px-4 py-4 sm:px-8">
+                <div className="flex items-center gap-2">
+                  <span className="hidden rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700 lg:inline-flex">
+                    {currentProduct.label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setProductOpen(false)}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 hover:bg-slate-100 transition"
+                  >
+                    <X size={14} strokeWidth={2} aria-hidden="true" />
+                    Zavřít
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto overflow-y-hidden pb-3 [scrollbar-gutter:stable_both-edges] [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb:hover]:bg-slate-400">
+                <div className="grid min-w-[2380px] grid-cols-7 divide-x divide-slate-200 bg-white">
+                  {PRODUCT_PICKER_COLUMNS.map((column) => (
+                    <section
+                      key={column.key}
+                      className="min-w-[340px] px-6 py-5"
+                    >
+                      <h3 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+                        {column.title}
+                      </h3>
+                      {column.products.length === 0 ? (
+                        <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
+                          {column.emptyText ?? "Zatím bez produktů."}
+                        </div>
+                      ) : (
+                        <div className="mt-4 max-h-[36vh] space-y-2 overflow-y-auto pr-1">
+                          {column.products.map((productId) => {
+                            const option = PRODUCT_OPTION_BY_ID.get(productId);
+                            if (!option) return null;
+                            const isActive = productId === product;
+                            const unsupportedText = SUPPORTED_PRODUCTS.includes(productId)
+                              ? null
+                              : "zatím bez výpočtu";
+
+                            return (
+                              <button
+                                key={productId}
+                                type="button"
+                                onClick={() => {
+                                  setProduct(productId);
+                                  setProductOpen(false);
+                                }}
+                                className={`group flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition ${
+                                  isActive
+                                    ? "border-slate-900 bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.25)]"
+                                    : "border-slate-200 bg-slate-50 text-slate-900 hover:-translate-y-[1px] hover:border-slate-400 hover:bg-white"
+                                }`}
+                              >
+                                <span className="flex min-w-0 items-center gap-2.5">
+                                  <span className="relative h-5 w-14 flex-shrink-0">
+                                    <Image
+                                      src={productInstitutionLogo(productId)}
+                                      alt=""
+                                      fill
+                                      className="object-contain object-left"
+                                    />
+                                  </span>
+                                  <span className="truncate">{option.label}</span>
+                                </span>
+                                {unsupportedText && (
+                                  <span className="ml-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
+                                    {unsupportedText}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* vnější glassy box je pryč – jen čistý container */}
       <div className="w-full max-w-6xl space-y-6">
         {/* Header */}
@@ -3016,72 +3251,32 @@ export default function CalculatorPage() {
                     <span>Produkt</span>
                   </span>
                 </label>
-                <div className="relative">
+                <div>
                   <button
                     type="button"
                     onClick={() => setProductOpen((v) => !v)}
                     className="flex w-full items-center justify-between rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
                   >
-                    <span className="flex items-center gap-3">
+                    <span className="flex items-center gap-3 min-w-0">
                       <div className="relative h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
                         <Image
-                          src={productIcon(product)}
+                          src={productInstitutionLogo(product)}
                           alt=""
                           fill
                           className="object-contain"
                         />
                       </div>
-                      <span className="font-medium">{currentProduct.label}</span>
+                      <span className="flex min-w-0 flex-col items-start text-left leading-tight">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          Vyber produkt
+                        </span>
+                        <span className="truncate font-medium">{currentProduct.label}</span>
+                      </span>
                     </span>
                     <span className="ml-3 text-xs text-slate-400">
-                      {productOpen ? "▲" : "▼"}
+                      {productOpen ? "Skrýt" : "Otevřít"}
                     </span>
                   </button>
-
-                  {productOpen && (
-                    <div className="absolute z-30 mt-2 w-full rounded-2xl border border-slate-300 bg-white backdrop-blur-2xl shadow-[0_20px_80px_rgba(0,0,0,0.9)] max-h-80 overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {PRODUCT_OPTIONS.map((p) => {
-                        const isActive = p.id === product;
-                        const iconSrc = productIcon(p.id);
-                        const unsupportedText = SUPPORTED_PRODUCTS.includes(p.id)
-                          ? null
-                          : "zatím bez výpočtu";
-
-                        return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => {
-                              setProduct(p.id);
-                              setProductOpen(false);
-                            }}
-                            className={`flex h-full w-full items-center justify-between gap-3 rounded-xl border border-slate-300 px-3 py-2.5 text-left text-sm transition ${
-                              isActive
-                                ? "bg-slate-900 text-white"
-                                : "text-slate-900 hover:bg-slate-100"
-                            }`}
-                          >
-                            <span className="flex items-center gap-3">
-                              <div className="relative h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
-                                <Image
-                                  src={iconSrc}
-                                  alt=""
-                                  fill
-                                  className="object-contain"
-                                />
-                              </div>
-                              <span>{p.label}</span>
-                            </span>
-                            {unsupportedText && (
-                              <span className="ml-2 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
-                                {unsupportedText}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
               </div>
 

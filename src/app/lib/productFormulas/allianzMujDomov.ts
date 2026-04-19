@@ -6,15 +6,17 @@ import {
 } from "../../types/domain";
 import { pct, periodsPerYear } from "./shared";
 
-// ---------- ČPP Pojištění majetku a odpovědnosti podnikatelů (bez ÚPIS) ----------
+export const ALLIANZ_MUJ_DOMOV_COEFFICIENT_VALID_FROM = "2020-06-01";
 
-export function cppPPRbezImmediateCoefficient(position: Position): number {
+// ---------- Allianz MůjDomov ----------
+
+export function allianzMujDomovImmediateCoefficient(position: Position): number {
   switch (position) {
     // Poradci 1–10
     case "poradce1":
       return pct(10.39);
     case "poradce2":
-      return pct(11.6);
+      return pct(11.61);
     case "poradce3":
       return pct(12.6);
     case "poradce4":
@@ -26,7 +28,7 @@ export function cppPPRbezImmediateCoefficient(position: Position): number {
     case "poradce7":
       return pct(21.11);
     case "poradce8":
-      return pct(22.71);
+      return pct(22.37);
     case "poradce9":
       return pct(23.32);
     case "poradce10":
@@ -49,13 +51,13 @@ export function cppPPRbezImmediateCoefficient(position: Position): number {
   }
 }
 
-export function cppPPRbezSubsequentCoefficient(position: Position): number {
+export function allianzMujDomovSubsequentCoefficient(position: Position): number {
   switch (position) {
     // Poradci 1–10
     case "poradce1":
       return pct(3.46);
     case "poradce2":
-      return pct(3.67);
+      return pct(3.87);
     case "poradce3":
       return pct(4.2);
     case "poradce4":
@@ -90,38 +92,22 @@ export function cppPPRbezSubsequentCoefficient(position: Position): number {
   }
 }
 
-export function calculateCppPPRbez(
+export function calculateAllianzMujDomov(
   amount: number,
   frequency: PaymentFrequency,
   position: Position
 ): CommissionResultDTO {
-  const coefImmediate = cppPPRbezImmediateCoefficient(position);
-  const coefSub = cppPPRbezSubsequentCoefficient(position);
-
-  const perPaymentImmediate = amount * coefImmediate;
-  const perPaymentSub = amount * coefSub;
-  const paymentsPerYear = periodsPerYear(frequency);
-
-  const annualImmediate = perPaymentImmediate * paymentsPerYear;
-  const annualSub = perPaymentSub * paymentsPerYear;
+  const annualPremium = amount * periodsPerYear(frequency);
+  const immediate = annualPremium * allianzMujDomovImmediateCoefficient(position);
+  const subsequent = annualPremium * allianzMujDomovSubsequentCoefficient(position);
 
   const items: CommissionResultItemDTO[] = [
-    { title: "💸 Okamžitá provize (z platby)", amount: perPaymentImmediate },
-    { title: "🔁 Následná provize (z platby)", amount: perPaymentSub },
-    {
-      title: "📅 Okamžitá provize za rok",
-      amount: annualImmediate,
-      note: `×${paymentsPerYear} plateb/rok`,
-    },
-    {
-      title: "📅 Následná provize za rok",
-      amount: annualSub,
-      note: `×${paymentsPerYear} plateb/rok`,
-    },
+    { title: "💸 Okamžitá provize", amount: immediate },
+    { title: "🔁 Následná provize", amount: subsequent },
   ];
 
-  const total = annualImmediate + annualSub;
-  return { items, total };
+  return {
+    items,
+    total: immediate + subsequent,
+  };
 }
-
-

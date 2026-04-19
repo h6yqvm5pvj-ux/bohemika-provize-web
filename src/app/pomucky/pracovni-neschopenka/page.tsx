@@ -56,7 +56,7 @@ export default function PracovniNeschopenkaPage() {
           </Link>
         </header>
 
-        <section className="rounded-3xl border border-slate-900 bg-white px-6 py-6 space-y-5">
+        <section className="px-6 py-6 space-y-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1">
               <h2 className="text-xl font-semibold text-slate-900">Vstupní parametry</h2>
@@ -105,22 +105,7 @@ export default function PracovniNeschopenkaPage() {
           </div>
         </section>
 
-        <section
-          className="rounded-3xl border border-slate-900 bg-white px-5 py-5 space-y-4"
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">Výstup</h2>
-              <p className="text-xs text-slate-600">
-                Porovnání státní nemocenské a připojištění PN dávky pro tři období PN.
-              </p>
-            </div>
-            <div className="text-[11px] text-slate-500">
-              Cíl: pokrýt min. 40 % poklesu příjmu (orientačně plné dorovnání
-              1.–30. den).
-            </div>
-          </div>
-
+        <section className="px-5 pt-1 pb-5">
           {disabled ? (
             <div className="rounded-2xl border border-slate-900 bg-white px-4 py-3 text-sm text-slate-800">
               Zadej čistý měsíční příjem.
@@ -136,7 +121,7 @@ export default function PracovniNeschopenkaPage() {
                     <div className="text-sm font-semibold text-white">
                       {period.label}
                     </div>
-                    <div className="text-[11px] text-slate-300">{period.note}</div>
+                    <div className="text-[11px] text-white">{period.note}</div>
                   </div>
 
                   <div className="space-y-3">

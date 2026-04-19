@@ -96,6 +96,15 @@ export function generateCashflow(
     const naslMaxdomov = items.find((item) =>
       item.title.includes("následná provize (z platby)")
     );
+    const naslGeneric = items.find(
+      (item) =>
+        item.title.includes("následná provize") &&
+        !item.title.includes("(2.–5. rok)") &&
+        !item.title.includes("(5.–10. rok)") &&
+        !item.title.includes("(od 6. roku)") &&
+        !item.title.includes("(od 5. roku)") &&
+        !item.title.includes("(z platby)")
+    );
 
     const pushItem = (
       amount: number,
@@ -312,6 +321,28 @@ export function generateCashflow(
             payout.getMonth() + stepMonths,
             payout.getDate()
           );
+        }
+        break;
+      }
+
+      case "pillowmajetek":
+      case "allianzmujdomov": {
+        if (immediate) {
+          pushItem(
+            immediate.amount,
+            estimatePayoutDate(start, agreement),
+            "roční provize"
+          );
+        }
+
+        if (naslGeneric) {
+          let year = 1;
+          while (true) {
+            const date = annPlusYears(year);
+            if (date > horizonEnd) break;
+            pushItem(naslGeneric.amount, date, "roční následná provize");
+            year += 1;
+          }
         }
         break;
       }

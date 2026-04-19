@@ -29,6 +29,7 @@ import {
 } from "@/app/lib/productCatalog";
 import {
   calculateAllianzAuto,
+  calculateAllianzMujDomov,
   calculateAxaCestovko,
   calculateComfortCC,
   calculateCppAuto,
@@ -38,6 +39,7 @@ import {
   calculateCppPPRs,
   calculateCsobAuto,
   calculateDomex,
+  calculatePillowMajetek,
   calculateFlexi,
   calculateKoopMajetekObcan,
   calculateKooperativaAuto,
@@ -46,6 +48,7 @@ import {
   calculateNeon,
   calculatePillowAuto,
   calculatePillowInjury,
+  calculateKoopCestovko,
   calculateCppSimplex,
   calculateUniqaAuto,
   calculateZamex,
@@ -148,6 +151,8 @@ function calculateCommission(
       return immediateCommission(calculatePillowInjury(premium, pos, m));
     case "domex":
       return immediateCommission(calculateDomex(premium, "annual", pos));
+    case "pillowmajetek":
+      return immediateCommission(calculatePillowMajetek(premium, "annual", pos));
     case "koopmajetekobcan":
       return immediateCommission(calculateKoopMajetekObcan(premium, "annual", pos));
     case "maxdomov":
@@ -160,6 +165,8 @@ function calculateCommission(
       return immediateCommission(calculateCppSimplex(premium, "annual", pos));
     case "allianzAuto":
       return immediateCommission(calculateAllianzAuto(premium, "annual", pos));
+    case "allianzmujdomov":
+      return immediateCommission(calculateAllianzMujDomov(premium, "annual", pos));
     case "csobAuto":
       return immediateCommission(calculateCsobAuto(premium, "annual", pos));
     case "uniqaAuto":
@@ -179,6 +186,8 @@ function calculateCommission(
       return immediateCommission(calculateCppCestovko(premium, pos));
     case "axacestovko":
       return immediateCommission(calculateAxaCestovko(premium, pos));
+    case "koopcestovko":
+      return immediateCommission(calculateKoopCestovko(premium, pos));
     case "comfortcc":
       return immediateCommission(
         calculateComfortCC({
