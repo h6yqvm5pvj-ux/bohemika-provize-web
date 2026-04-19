@@ -5,16 +5,25 @@ const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
 });
 
-const cspReportOnlyDirectives = [
+const cspScriptSrc = [
+  "'self'",
+  "'unsafe-inline'",
+  ...(process.env.NODE_ENV !== "production" ? ["'unsafe-eval'"] : []),
+  "https:",
+].join(" ");
+
+const cspDirectives = [
   "default-src 'self'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
   "object-src 'none'",
   "form-action 'self'",
+  "frame-src 'none'",
+  "worker-src 'self' blob:",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data: https:",
   "style-src 'self' 'unsafe-inline' https:",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
+  `script-src ${cspScriptSrc}`,
   [
     "connect-src 'self'",
     "https://*.googleapis.com",
@@ -50,7 +59,7 @@ const securityHeaders = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), browsing-topics=()",
   },
-  { key: "Content-Security-Policy-Report-Only", value: cspReportOnlyDirectives },
+  { key: "Content-Security-Policy", value: cspDirectives },
 ];
 
 const nextConfig: NextConfig = {

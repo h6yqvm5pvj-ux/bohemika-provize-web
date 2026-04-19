@@ -319,6 +319,36 @@ service cloud.firestore {
           ]);
     }
 
+    function isChangingRestrictedPrivateUserFields() {
+      return resource == null
+        ? request.resource.data.keys().hasAny([
+            "subscriptionStatus",
+            "adminFunction",
+            "adminfunction"
+          ])
+        : request.resource.data.diff(resource.data).changedKeys().hasAny([
+            "subscriptionStatus",
+            "adminFunction",
+            "adminfunction"
+          ]);
+    }
+
+    function isOwnerPrivateWriteAllowed() {
+      let ownerWritablePrivateFields = [
+        "fcmTokens",
+        "pushTokens",
+        "notificationTokens",
+        "fcmTokensByDevice",
+        "pushTokensByDevice"
+      ];
+      return !isChangingRestrictedPrivateUserFields()
+        && (
+          resource == null
+            ? request.resource.data.keys().hasOnly(ownerWritablePrivateFields)
+            : request.resource.data.diff(resource.data).changedKeys().hasOnly(ownerWritablePrivateFields)
+        );
+    }
+
     function isNonEmptyText(value) {
       return value is string && value.matches(".*\\S.*");
     }
@@ -469,8 +499,12 @@ service cloud.firestore {
 
     // ---------- usersPrivate ----------
     match /usersPrivate/{userEmail} {
-      // citlivá profilová data (subscription/admin flags/push tokeny apod.)
-      allow read, create, update, delete: if isOwner(userEmail) || isAdmin();
+      // citlivá profilová data:
+      // - subscription/admin flagy mění jen admin/backend
+      // - owner může měnit pouze push tokeny
+      allow read: if isOwner(userEmail) || isAdmin();
+      allow create, update: if (isOwner(userEmail) && isOwnerPrivateWriteAllowed()) || isAdmin();
+      allow delete: if isAdmin();
     }
 
     // ---------- userStats ----------
