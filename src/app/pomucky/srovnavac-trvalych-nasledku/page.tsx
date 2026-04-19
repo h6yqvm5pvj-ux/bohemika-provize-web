@@ -67,6 +67,10 @@ const getInsurerLogoPath = (insurer: string): string | null => {
   if (normalized.includes("generali")) return "/icons/generali.png";
   if (normalized.includes("metlife")) return "/icons/metlife.png";
   if (normalized.includes("allianz")) return "/icons/allianz.png";
+  if (normalized.includes("slavia")) return "/icons/slavialogo.png";
+  if (normalized.includes("comfort") || normalized.includes("commodity")) {
+    return "/icons/cclogo.png";
+  }
   if (normalized.includes("maxima")) return "/icons/maxima.png";
   if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csob.png";
   if (normalized.includes("simplea")) return "/icons/simplea.png";
@@ -84,6 +88,8 @@ const splitInsurerAndProduct = (value: string): { insurerName: string; productNa
     "NN",
     "Maxima",
     "Allianz",
+    "Slavia",
+    "Comfort Commodity",
     "Simplea",
     "Pillow",
   ];

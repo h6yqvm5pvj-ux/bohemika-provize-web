@@ -169,6 +169,10 @@ function insurerLogoPath(insurer: string): string | null {
   if (normalized.includes("kooperativa")) return "/icons/koop.png";
   if (normalized.includes("maxima")) return "/icons/maxima.png";
   if (normalized.includes("allianz")) return "/icons/allianz.png";
+  if (normalized.includes("slavia")) return "/icons/slavialogo.png";
+  if (normalized.includes("comfort") || normalized.includes("commodity")) {
+    return "/icons/cclogo.png";
+  }
   if (normalized.includes("uniqa")) return "/icons/uniqa.png";
   if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csob.png";
   if (normalized.includes("pillow")) return "/icons/pillow.png";

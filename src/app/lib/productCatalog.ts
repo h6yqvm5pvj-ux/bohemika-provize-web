@@ -51,12 +51,12 @@ const INSTITUTIONS: Record<ProductInstitutionId, ProductInstitutionMeta> = {
   kooperativa: { id: "kooperativa", label: "Kooperativa", logoPath: "/icons/koop.png" },
   maxima: { id: "maxima", label: "Maxima", logoPath: "/icons/maxima.png" },
   allianz: { id: "allianz", label: "Allianz", logoPath: "/icons/allianz.png" },
-  slavia: { id: "slavia", label: "SLAVIA", logoPath: "/icons/produkt.png" },
+  slavia: { id: "slavia", label: "SLAVIA", logoPath: "/icons/slavialogo.png" },
   uniqa: { id: "uniqa", label: "UNIQA", logoPath: "/icons/uniqa.png" },
   csob: { id: "csob", label: "ČSOB", logoPath: "/icons/csob.png" },
   pillow: { id: "pillow", label: "Pillow", logoPath: "/icons/pillow.png" },
   axa: { id: "axa", label: "AXA", logoPath: "/icons/axalogo.png" },
-  comfort: { id: "comfort", label: "Comfort Commodity", logoPath: "/icons/gold.png" },
+  comfort: { id: "comfort", label: "Comfort Commodity", logoPath: "/icons/cclogo.png" },
 };
 
 export const INSTITUTION_CATALOG = INSTITUTIONS;
