@@ -25,6 +25,8 @@ type ContractDoc = {
   paid?: boolean | null;
   status?: "active" | "storno" | string | null;
   stornoDate?: FirestoreTimestamp | Date | string | number | null;
+  isRefresh?: boolean | null;
+  refreshOriginalContractNumber?: string | null;
   note?: string | null;
   managerEmailSnapshot?: string | null;
   managerPositionSnapshot?: Position | null;
@@ -103,8 +105,6 @@ type UserTreeResult = {
 
 export type ContractsGetMode = "auto" | "detail" | "list";
 export type ContractsPatchAction =
-  | "refreshNeonStorno"
-  | "replacementStorno"
   | "syncCppStatus"
   | "syncEntryIndex"
   | "updateFields"
@@ -117,23 +117,6 @@ const CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
 const UPDATE_FIELDS_MAX_ENTRY_IDS = 50;
 const USER_TREE_CACHE_TTL_MS = 30_000;
 const CONTRACT_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
-const REPLACEMENT_STORNO_PRODUCTS = new Set<Product>([
-  "zamex",
-  "domex",
-  "pillowmajetek",
-  "koopmajetekobcan",
-  "maxdomov",
-  "allianzmujdomov",
-  "cppsimplex",
-  "cppPPRbez",
-  "cppAuto",
-  "slaviaauto",
-  "allianzAuto",
-  "csobAuto",
-  "uniqaAuto",
-  "pillowAuto",
-  "kooperativaAuto",
-]);
 const CPP_STATUS_SYNC_PRODUCTS = new Set<Product>([
   "neon",
   "zamex",
@@ -1449,15 +1432,6 @@ async function fetchContractsForOwners(
   };
 }
 
-async function findEntriesByContractNumberAcrossUsers(
-  contractNumber: string
-): Promise<FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>[]> {
-  const refs = await resolveEntryRefsByContractNumber(contractNumber);
-  if (refs.length === 0) return [];
-  const snaps = await Promise.all(refs.map((ref) => ref.get()));
-  return snaps.filter((snap) => snap.exists);
-}
-
 async function getAuthContext(req: NextRequest) {
   if (!adminAuth || !adminDb) {
     return { error: "Server není správně nakonfigurován (chybí Firebase Admin credentials).", status: 500 } as const;
@@ -1854,229 +1828,6 @@ export async function handleContractsPatch(
       );
     }
   }
-  if (action === "refreshNeonStorno") {
-    try {
-      const originalContractNumber =
-        typeof body?.originalContractNumber === "string"
-          ? body.originalContractNumber.trim()
-          : "";
-      const newEntryId =
-        typeof body?.newEntryId === "string" ? body.newEntryId.trim() : "";
-      const stornoDateMs = Number(body?.stornoDateMs);
-      const refreshSignedDateMs = Number(body?.refreshSignedDateMs);
-
-      if (!originalContractNumber) {
-        return NextResponse.json(
-          { ok: false, error: "Chybí číslo původní smlouvy." },
-          { status: 400 }
-        );
-      }
-      if (!isValidContractNumber(originalContractNumber)) {
-        return NextResponse.json(
-          { ok: false, error: "Číslo původní smlouvy má neplatný formát." },
-          { status: 400 }
-        );
-      }
-      if (!newEntryId) {
-        return NextResponse.json(
-          { ok: false, error: "Chybí ID nové smlouvy." },
-          { status: 400 }
-        );
-      }
-      if (!Number.isFinite(stornoDateMs) || !Number.isFinite(refreshSignedDateMs)) {
-        return NextResponse.json(
-          { ok: false, error: "Chybí validní data refreshu." },
-          { status: 400 }
-        );
-      }
-
-      const stornoDate = new Date(stornoDateMs);
-      const refreshSignedDate = new Date(refreshSignedDateMs);
-      if (
-        Number.isNaN(stornoDate.getTime()) ||
-        Number.isNaN(refreshSignedDate.getTime())
-      ) {
-        return NextResponse.json(
-          { ok: false, error: "Neplatné datum storna nebo sjednání refreshu." },
-          { status: 400 }
-        );
-      }
-
-      const newEntryRef = adminDb
-        ?.collection("users")
-        .doc(email)
-        .collection("entries")
-        .doc(newEntryId);
-      const newEntrySnap = await newEntryRef?.get();
-      if (!newEntrySnap?.exists) {
-        return NextResponse.json(
-          { ok: false, error: "Nová smlouva pro refresh nebyla nalezena." },
-          { status: 404 }
-        );
-      }
-
-      const newEntryData = newEntrySnap.data() as ContractDoc | undefined;
-      if ((newEntryData?.productKey as Product | undefined) !== "neon") {
-        return NextResponse.json(
-          { ok: false, error: "Refresh storno je dostupné jen pro ČPP ŽP NEON." },
-          { status: 400 }
-        );
-      }
-
-      const refreshTargets = await findEntriesByContractNumberAcrossUsers(
-        originalContractNumber
-      );
-
-      let updated = 0;
-      for (const snap of refreshTargets) {
-        const data = snap.data() as ContractDoc;
-        if ((data.productKey as Product | undefined) !== "neon") continue;
-
-        const owner = normalizeEmail(
-          (snap.ref.parent.parent?.id as string | undefined) ??
-            (data.userEmail as string | undefined)
-        );
-        if (owner === email && snap.id === newEntryId) continue;
-
-        await snap.ref.set(
-          {
-            status: "storno",
-            stornoDate,
-            refreshReplacedByEntryId: newEntryId,
-            refreshReplacedByOwnerEmail: email,
-            refreshReplacedBySignedDate: refreshSignedDate,
-          },
-          { merge: true }
-        );
-        updated += 1;
-      }
-
-      return NextResponse.json({ ok: true, updated });
-    } catch (refreshErr: any) {
-      const message =
-        typeof refreshErr?.message === "string" && refreshErr.message.trim()
-          ? refreshErr.message.trim()
-          : "Neznámá chyba při refresh storno.";
-      console.error("PATCH /api/contracts refreshNeonStorno selhal:", refreshErr);
-      return NextResponse.json(
-        { ok: false, error: `Refresh storno selhalo: ${message}` },
-        { status: 500 }
-      );
-    }
-  }
-
-  if (action === "replacementStorno") {
-    try {
-      const originalContractNumber =
-        typeof body?.originalContractNumber === "string"
-          ? body.originalContractNumber.trim()
-          : "";
-      const newEntryId =
-        typeof body?.newEntryId === "string" ? body.newEntryId.trim() : "";
-      const stornoDateMs = Number(body?.stornoDateMs);
-      const replacementSignedDateMs = Number(body?.replacementSignedDateMs);
-
-      if (!originalContractNumber) {
-        return NextResponse.json(
-          { ok: false, error: "Chybí číslo nahrazované smlouvy." },
-          { status: 400 }
-        );
-      }
-      if (!isValidContractNumber(originalContractNumber)) {
-        return NextResponse.json(
-          { ok: false, error: "Číslo nahrazované smlouvy má neplatný formát." },
-          { status: 400 }
-        );
-      }
-      if (!newEntryId) {
-        return NextResponse.json(
-          { ok: false, error: "Chybí ID nové smlouvy." },
-          { status: 400 }
-        );
-      }
-      if (!Number.isFinite(stornoDateMs) || !Number.isFinite(replacementSignedDateMs)) {
-        return NextResponse.json(
-          { ok: false, error: "Chybí validní data náhrady." },
-          { status: 400 }
-        );
-      }
-
-      const stornoDate = new Date(stornoDateMs);
-      const replacementSignedDate = new Date(replacementSignedDateMs);
-      if (
-        Number.isNaN(stornoDate.getTime()) ||
-        Number.isNaN(replacementSignedDate.getTime())
-      ) {
-        return NextResponse.json(
-          { ok: false, error: "Neplatné datum storna nebo sjednání náhrady." },
-          { status: 400 }
-        );
-      }
-
-      const newEntryRef = adminDb
-        ?.collection("users")
-        .doc(email)
-        .collection("entries")
-        .doc(newEntryId);
-      const newEntrySnap = await newEntryRef?.get();
-      if (!newEntrySnap?.exists) {
-        return NextResponse.json(
-          { ok: false, error: "Nová smlouva pro náhradu nebyla nalezena." },
-          { status: 404 }
-        );
-      }
-
-      const newEntryData = newEntrySnap.data() as ContractDoc | undefined;
-      const newEntryProduct = newEntryData?.productKey as Product | undefined;
-      if (!newEntryProduct || !REPLACEMENT_STORNO_PRODUCTS.has(newEntryProduct)) {
-        return NextResponse.json(
-          { ok: false, error: "Náhrada storno není pro tento produkt podporovaná." },
-          { status: 400 }
-        );
-      }
-
-      const replacementTargets = await findEntriesByContractNumberAcrossUsers(
-        originalContractNumber
-      );
-
-      let updated = 0;
-      for (const snap of replacementTargets) {
-        const data = snap.data() as ContractDoc;
-        if ((data.productKey as Product | undefined) !== newEntryProduct) continue;
-
-        const owner = normalizeEmail(
-          (snap.ref.parent.parent?.id as string | undefined) ??
-            (data.userEmail as string | undefined)
-        );
-        if (owner === email && snap.id === newEntryId) continue;
-
-        await snap.ref.set(
-          {
-            status: "storno",
-            stornoDate,
-            replacementReplacedByEntryId: newEntryId,
-            replacementReplacedByOwnerEmail: email,
-            replacementReplacedBySignedDate: replacementSignedDate,
-          },
-          { merge: true }
-        );
-        updated += 1;
-      }
-
-      return NextResponse.json({ ok: true, updated });
-    } catch (replacementErr: any) {
-      const message =
-        typeof replacementErr?.message === "string" && replacementErr.message.trim()
-          ? replacementErr.message.trim()
-          : "Neznámá chyba při náhradě storno.";
-      console.error("PATCH /api/contracts replacementStorno selhal:", replacementErr);
-      return NextResponse.json(
-        { ok: false, error: `Náhrada storno selhala: ${message}` },
-        { status: 500 }
-      );
-    }
-  }
-
   if (action === "syncCppStatus") {
     try {
       const ownerEmail = normalizeEmail(
@@ -2573,14 +2324,6 @@ export async function handleContractsList(req: NextRequest) {
 
 export async function handleContractDetail(req: NextRequest) {
   return handleContractsGet(req, "detail");
-}
-
-export async function handleContractsRefreshNeonStorno(req: NextRequest) {
-  return handleContractsPatch(req, "refreshNeonStorno");
-}
-
-export async function handleContractsReplacementStorno(req: NextRequest) {
-  return handleContractsPatch(req, "replacementStorno");
 }
 
 export async function handleContractsSyncCppStatus(req: NextRequest) {

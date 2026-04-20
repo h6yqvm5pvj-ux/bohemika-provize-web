@@ -60,6 +60,8 @@ type ContractDoc = {
   paid?: boolean | null;
   status?: "active" | "storno" | string | null;
   stornoDate?: FirestoreTimestamp | Date | string | null;
+  isRefresh?: boolean | null;
+  refreshOriginalContractNumber?: string | null;
   entryType?: "contract" | "endorsement" | string | null;
   rootContractEntryId?: string | null;
   groupedEntryCount?: number;
@@ -1709,6 +1711,12 @@ function ContractsPageContent() {
                     : "";
                 const premiumDisplay = premiumDisplayForContract(c as ContractDoc);
                 const isEndorsement = c.entryType === "endorsement";
+                const isRefreshContract =
+                  (c as ContractDoc).isRefresh === true ||
+                  Boolean(
+                    typeof (c as ContractDoc).refreshOriginalContractNumber === "string" &&
+                      (c as ContractDoc).refreshOriginalContractNumber?.trim()
+                  );
                 const premiumDelta = endorsementDeltaAmount(c as ContractDoc);
                 const lifecycleStatus = contractLifecycleStatus(c as ContractDoc);
                 const isStorno = lifecycleStatus === "storno";
@@ -1785,6 +1793,11 @@ function ContractsPageContent() {
                         {isEndorsement && (
                           <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
                             Dodatek
+                          </span>
+                        )}
+                        {isRefreshContract && (
+                          <span className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-800">
+                            Refresh
                           </span>
                         )}
                         {isStorno && (

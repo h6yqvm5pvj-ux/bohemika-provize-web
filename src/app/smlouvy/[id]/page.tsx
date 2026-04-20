@@ -574,6 +574,12 @@ export default function ContractDetailPage() {
     : "—";
   const maturityDate = contractMaturityDate(lifecycleInput);
   const maturityDateLabel = maturityDate ? formatDate(maturityDate) : "—";
+  const refreshOriginalContractNumber =
+    typeof contract?.refreshOriginalContractNumber === "string"
+      ? contract.refreshOriginalContractNumber.trim()
+      : "";
+  const isRefreshContract =
+    contract?.isRefresh === true || refreshOriginalContractNumber.length > 0;
   const refreshReplacementEntryId =
     typeof contract?.refreshReplacedByEntryId === "string"
       ? contract.refreshReplacedByEntryId.trim()
@@ -3428,9 +3434,22 @@ export default function ContractDetailPage() {
                             : "Aktivní"}
                         </dd>
                       </div>
-                      {(contract?.refreshReplacedBySignedDate || hasRefreshReplacement) && (
+                      {isRefreshContract && (
                         <div className="flex justify-between gap-2">
                           <dt className={keyValueLabelClass}>Refresh</dt>
+                          <dd className={`${keyValueValueClass} max-w-[70%] text-right text-sm leading-snug`}>
+                            <span className="block">Tato smlouva je označena jako Refresh.</span>
+                            {refreshOriginalContractNumber && (
+                              <span className="mt-1 block text-xs text-slate-500">
+                                Původní č. smlouvy: {refreshOriginalContractNumber}
+                              </span>
+                            )}
+                          </dd>
+                        </div>
+                      )}
+                      {(contract?.refreshReplacedBySignedDate || hasRefreshReplacement) && (
+                        <div className="flex justify-between gap-2">
+                          <dt className={keyValueLabelClass}>Navazující refresh</dt>
                           <dd className={`${keyValueValueClass} max-w-[70%] text-right text-sm leading-snug`}>
                             <span className="block">
                               Na tuto smlouvu byl sjednán Refresh dne{" "}

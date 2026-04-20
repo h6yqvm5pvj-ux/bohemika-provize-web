@@ -64,7 +64,6 @@ import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_OPTIONS,
   isAutoProduct as isAutoProductFromCatalog,
-  productIcon as productIconFromCatalog,
   productInstitutionLogo as productInstitutionLogoFromCatalog,
   productLabel as productLabelFromCatalog,
 } from "@/app/lib/productCatalog";
@@ -132,25 +131,6 @@ const frequencyLabel = (f: PaymentFrequency) => {
       return "roční";
   }
 };
-
-const REPLACEMENT_ELIGIBLE_PRODUCTS: Product[] = [
-  "zamex",
-  "domex",
-  "pillowmajetek",
-  "koopmajetekobcan",
-  "cppPPRbez",
-  "maxdomov",
-  "cppsimplex",
-  "cppAuto",
-  "slaviaauto",
-  "allianzAuto",
-  "allianzmujdomov",
-  "csobAuto",
-  "uniqaAuto",
-  "uniqaflotila",
-  "pillowAuto",
-  "kooperativaAuto",
-];
 
 type ProductPickerColumn = {
   key: string;
@@ -621,10 +601,6 @@ function allowedPositionsForUser(base: Position | null): Position[] {
   });
 }
 
-function productIcon(product: Product): string {
-  return productIconFromCatalog(product);
-}
-
 function productInstitutionLogo(product: Product): string {
   return productInstitutionLogoFromCatalog(product) ?? "/icons/produkt.png";
 }
@@ -948,9 +924,6 @@ export default function CalculatorPage() {
   const [policyStartDate, setPolicyStartDate] = useState<string>("");
   const [contractNumber, setContractNumber] = useState<string>("");
   const [refreshOriginalOpen, setRefreshOriginalOpen] = useState(false);
-  const [originalContractNumber, setOriginalContractNumber] = useState<string>("");
-  const [replacementOpen, setReplacementOpen] = useState(false);
-  const [replacementContractNumber, setReplacementContractNumber] = useState<string>("");
   const [durationHelpOpen, setDurationHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pdfImporting, setPdfImporting] = useState(false);
@@ -1076,10 +1049,6 @@ export default function CalculatorPage() {
   } | null>(null);
   const [showCoefModal, setShowCoefModal] = useState(false);
   const isLifeProduct = useMemo(() => LIFE_PRODUCTS.includes(product), [product]);
-  const replacementEligible = useMemo(
-    () => REPLACEMENT_ELIGIBLE_PRODUCTS.includes(product),
-    [product]
-  );
   const canImportFromPdf = useMemo(
     () =>
       !tipsterModeEnabled &&
@@ -1461,13 +1430,6 @@ export default function CalculatorPage() {
   }, [product]);
 
   useEffect(() => {
-    if (!replacementEligible) {
-      setReplacementOpen(false);
-      setReplacementContractNumber("");
-    }
-  }, [product, replacementEligible]);
-
-  useEffect(() => {
     // pokud uživatel začal doplňovat chybějící pole, postupně čistíme chyby
     setMissingFields((prev) =>
       prev.filter((key) => {
@@ -1840,7 +1802,6 @@ export default function CalculatorPage() {
   useEffect(() => {
     if (product !== "neon") {
       setRefreshOriginalOpen(false);
-      setOriginalContractNumber("");
     }
   }, [product]);
 
@@ -2321,29 +2282,9 @@ export default function CalculatorPage() {
     const trimmedContractNumber = contractNumber.trim();
     const trimmedClientName = clientName.trim();
     const signedDateIsoDay = contractSignedDate.trim();
-    const trimmedOriginalContractNumber = originalContractNumber.trim();
-    const trimmedReplacementContractNumber = replacementContractNumber.trim();
     const shouldRefreshOriginalNeon =
       product === "neon" &&
-      refreshOriginalOpen &&
-      trimmedOriginalContractNumber.length > 0;
-    const shouldReplacementStorno =
-      replacementEligible &&
-      replacementOpen &&
-      trimmedReplacementContractNumber.length > 0;
-
-    if (product === "neon" && refreshOriginalOpen && !trimmedOriginalContractNumber) {
-      const msg = "Pro refresh doplň číslo původní smlouvy.";
-      setSaveMessage(msg);
-      setValidationError(msg);
-      return;
-    }
-    if (replacementEligible && replacementOpen && !trimmedReplacementContractNumber) {
-      const msg = "Pro náhradu doplň číslo původní smlouvy.";
-      setSaveMessage(msg);
-      setValidationError(msg);
-      return;
-    }
+      refreshOriginalOpen;
 
     if (!skipDuplicateCheck) {
       try {
@@ -2593,132 +2534,10 @@ export default function CalculatorPage() {
         managerChain: managerChainForSave,
         managerOverrides: overridesForChain,
         allowedEmails,
+        isRefresh: shouldRefreshOriginalNeon,
+        refreshOriginalContractNumber: null,
       });
       await syncEntryIndexesBestEffort(email, savedContractRef.id);
-
-      let refreshStornoFailed = false;
-      let refreshStornoUpdated = 0;
-      if (shouldRefreshOriginalNeon) {
-        const stornoDate = start ?? new Date();
-        const refreshSignedDate = signed ?? new Date();
-        try {
-          const token = await user.getIdToken();
-          const refreshRes = await fetch("/api/contracts/refresh-neon-storno", {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              originalContractNumber: trimmedOriginalContractNumber,
-              newEntryId: savedContractRef.id,
-              stornoDateMs: stornoDate.getTime(),
-              refreshSignedDateMs: refreshSignedDate.getTime(),
-            }),
-          });
-          const refreshRaw = await refreshRes.text();
-          let refreshData:
-            | { ok: true; updated?: number }
-            | { ok: false; error?: string }
-            | null = null;
-          if (refreshRaw) {
-            try {
-              refreshData = JSON.parse(refreshRaw) as
-                | { ok: true; updated?: number }
-                | { ok: false; error?: string };
-            } catch {
-              refreshData = null;
-            }
-          }
-
-          if (!refreshRes.ok) {
-            const apiError =
-              refreshData && refreshData.ok === false
-                ? refreshData.error
-                : null;
-            throw new Error(
-              apiError ||
-                `Refresh storno selhalo (HTTP ${refreshRes.status}).`
-            );
-          }
-
-          if (!refreshData || refreshData.ok !== true) {
-            const apiError =
-              refreshData && refreshData.ok === false
-                ? refreshData.error
-                : null;
-            throw new Error(apiError || "Refresh storno se nepodařilo uložit.");
-          }
-
-          refreshStornoUpdated = Number(refreshData.updated ?? 0);
-        } catch (refreshUpdateErr) {
-          refreshStornoFailed = true;
-          console.warn(
-            "Označení původní NEON smlouvy jako stornované selhalo",
-            refreshUpdateErr
-          );
-        }
-      }
-      let replacementStornoFailed = false;
-      let replacementStornoUpdated = 0;
-      if (shouldReplacementStorno) {
-        const stornoDate = start ?? new Date();
-        const replacementSignedDate = signed ?? new Date();
-        try {
-          const token = await user.getIdToken();
-          const replacementRes = await fetch("/api/contracts/replacement-storno", {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              originalContractNumber: trimmedReplacementContractNumber,
-              newEntryId: savedContractRef.id,
-              stornoDateMs: stornoDate.getTime(),
-              replacementSignedDateMs: replacementSignedDate.getTime(),
-            }),
-          });
-          const replacementRaw = await replacementRes.text();
-          let replacementData:
-            | { ok: true; updated?: number }
-            | { ok: false; error?: string }
-            | null = null;
-          if (replacementRaw) {
-            try {
-              replacementData = JSON.parse(replacementRaw) as
-                | { ok: true; updated?: number }
-                | { ok: false; error?: string };
-            } catch {
-              replacementData = null;
-            }
-          }
-
-          if (!replacementRes.ok) {
-            const apiError =
-              replacementData && replacementData.ok === false
-                ? replacementData.error
-                : null;
-            throw new Error(
-              apiError ||
-                `Náhrada storno selhala (HTTP ${replacementRes.status}).`
-            );
-          }
-
-          if (!replacementData || replacementData.ok !== true) {
-            const apiError =
-              replacementData && replacementData.ok === false
-                ? replacementData.error
-                : null;
-            throw new Error(apiError || "Náhradu storna se nepodařilo uložit.");
-          }
-
-          replacementStornoUpdated = Number(replacementData.updated ?? 0);
-        } catch (replacementErr) {
-          replacementStornoFailed = true;
-          console.warn("Označení nahrazované smlouvy jako stornované selhalo", replacementErr);
-        }
-      }
 
       if (typeof window !== "undefined") {
         try {
@@ -2731,41 +2550,7 @@ export default function CalculatorPage() {
       }
 
       if (shouldRefreshOriginalNeon) {
-        const stornoDateLabel =
-          start && Number.isFinite(start.getTime())
-            ? start.toLocaleDateString("cs-CZ")
-            : policyStartDate.trim();
-        if (refreshStornoFailed) {
-          setSaveMessage(
-            "Smlouva byla uložena, ale původní smlouvu se nepodařilo označit jako stornovanou."
-          );
-        } else if (refreshStornoUpdated > 0) {
-          setSaveMessage(
-            `Smlouva byla uložena. Původní smlouva (${trimmedOriginalContractNumber}) byla označena jako stornovaná k ${stornoDateLabel}.`
-          );
-        } else {
-          setSaveMessage(
-            `Smlouva byla uložena. Původní smlouva (${trimmedOriginalContractNumber}) nebyla nalezena k označení storna.`
-          );
-        }
-      } else if (shouldReplacementStorno) {
-        const stornoDateLabel =
-          start && Number.isFinite(start.getTime())
-            ? start.toLocaleDateString("cs-CZ")
-            : policyStartDate.trim();
-        if (replacementStornoFailed) {
-          setSaveMessage(
-            "Smlouva byla uložena, ale původní smlouvu se nepodařilo označit jako stornovanou."
-          );
-        } else if (replacementStornoUpdated > 0) {
-          setSaveMessage(
-            `Smlouva byla uložena. Nahrazovaná smlouva (${trimmedReplacementContractNumber}) byla označena jako stornovaná k ${stornoDateLabel}.`
-          );
-        } else {
-          setSaveMessage(
-            `Smlouva byla uložena. Nahrazovaná smlouva (${trimmedReplacementContractNumber}) nebyla nalezena k označení storna.`
-          );
-        }
+        setSaveMessage("Smlouva byla uložena a označena jako Refresh.");
       } else {
         setSaveMessage("Smlouva byla uložena mezi sepsané.");
       }
@@ -2773,10 +2558,7 @@ export default function CalculatorPage() {
         contractNumber: contractNumber.trim() || null,
         clientName: clientName.trim() || null,
       });
-      setOriginalContractNumber("");
       setRefreshOriginalOpen(false);
-      setReplacementContractNumber("");
-      setReplacementOpen(false);
     } catch (error) {
       console.error("Chyba při ukládání smlouvy", error);
       setSaveMessage(
@@ -3523,10 +3305,14 @@ export default function CalculatorPage() {
                       <button
                         type="button"
                         onClick={() => setRefreshOriginalOpen((v) => !v)}
-                        className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm"
+                        className={`ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition ${
+                          refreshOriginalOpen
+                            ? "border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700"
+                            : ""
+                        }`}
                       >
                         <RefreshCcw size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                        Refresh smlouvy
+                        {refreshOriginalOpen ? "Refresh zapnutý" : "Refresh smlouvy"}
                       </button>
                     )}
                     <button
@@ -3539,57 +3325,15 @@ export default function CalculatorPage() {
                       <Repeat2 size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                       Změna
                     </button>
-                    {product === "neon" && refreshOriginalOpen && (
-                      <input
-                        type="text"
-                        autoComplete="off"
-                        inputMode="numeric"
-                        placeholder="Číslo původní smlouvy"
-                        value={originalContractNumber}
-                        onChange={(e) => setOriginalContractNumber(e.target.value)}
-                        className="flex-1 min-w-[220px] rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                      />
-                    )}
                   </div>
                   {product === "neon" && refreshOriginalOpen && (
                     <p className="text-[11px] text-slate-600">
-                      Při uložení označíme původní smlouvu jako stornovanou k datu počátku nové smlouvy.
+                      Při uložení se nová smlouva označí jako Refresh.
                     </p>
                   )}
                   <p className="text-[11px] text-slate-600">
                     Změna vytvoří dodatek k existující ŽP smlouvě. Navýšení se zprovizuje jen z rozdílu, ponížení je zatím 0 Kč.
                   </p>
-                </div>
-              )}
-
-              {!tipsterModeEnabled && replacementEligible && (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setReplacementOpen((v) => !v)}
-                      className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm"
-                    >
-                      <Repeat2 size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                      Náhrada smlouvy
-                    </button>
-                    {replacementOpen && (
-                      <input
-                        type="text"
-                        autoComplete="off"
-                        inputMode="numeric"
-                        placeholder="Číslo nahrazované smlouvy"
-                        value={replacementContractNumber}
-                        onChange={(e) => setReplacementContractNumber(e.target.value)}
-                        className="flex-1 min-w-[220px] rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                      />
-                    )}
-                  </div>
-                  {replacementOpen && (
-                    <p className="text-[11px] text-slate-600">
-                      Při uložení označíme nahrazovanou smlouvu jako stornovanou k datu počátku nové smlouvy.
-                    </p>
-                  )}
                 </div>
               )}
             </section>
