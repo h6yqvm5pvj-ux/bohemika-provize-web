@@ -75,14 +75,12 @@ import {
   institutionLogoImageClass,
 } from "@/app/lib/institutionLogoDisplay";
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
   getDocFromServer,
   getDocs,
   query,
-  serverTimestamp,
   setDoc,
   where,
 } from "firebase/firestore";
@@ -269,7 +267,7 @@ async function requestContractsMutationWithAuth({
 }: {
   user: User;
   path: string;
-  method: "PATCH" | "DELETE";
+  method: "POST" | "PATCH" | "DELETE";
   payload: unknown;
 }): Promise<{
   response: Response;
@@ -1929,31 +1927,6 @@ export default function CalculatorPage() {
     }
   }, [endorsementDraft, isLifeProduct, product]);
 
-  const syncEntryIndexesBestEffort = async (ownerEmail: string, entryId: string) => {
-    if (!user) return;
-    try {
-      const { response, data } = await requestContractsMutationWithAuth({
-        user,
-        path: "/api/contracts/sync-entry-index",
-        method: "PATCH",
-        payload: { ownerEmail, entryId },
-      });
-      const apiError = getContractsMutationError({
-        response,
-        data,
-        fallback: "Synchronizace indexu smlouvy selhala.",
-      });
-      if (apiError) {
-        throw new Error(apiError);
-      }
-    } catch (err) {
-      console.warn(
-        `Best-effort synchronizace indexu pro ${ownerEmail}/${entryId} selhala:`,
-        err
-      );
-    }
-  };
-
   const handlePrepareEndorsement = async () => {
     if (!user) return;
 
@@ -2122,19 +2095,8 @@ export default function CalculatorPage() {
     setValidationError(null);
     setMissingFields([]);
 
-    const email = (user.email ?? "").toLowerCase();
-    const uid = user.uid ?? null;
-    const userRef = doc(db, "users", email);
-    const entriesRef = collection(userRef, "entries");
-
     try {
-      const signed =
-        contractSignedDate.trim().length > 0
-          ? new Date(contractSignedDate)
-          : null;
       const signedDateIso = contractSignedDate.trim() || null;
-      const start =
-        policyStartDate.trim().length > 0 ? new Date(policyStartDate) : null;
 
       let mgrEmail = managerEmailSnapshot;
       let mgrPos = managerPositionSnapshot;
@@ -2245,67 +2207,61 @@ export default function CalculatorPage() {
       });
 
       overridesForChain = diffs;
-
-      const allowedEmails = (() => {
-        const s = new Set<string>();
-        const push = (val: string | null | undefined) => {
-          const v = (val ?? "").trim().toLowerCase();
-          if (v) s.add(v);
-        };
-
-        push(email);
-        push(mgrEmail);
-        managerChainForSave.forEach((mgr) => push(mgr.email));
-        overridesForChain.forEach((ov) =>
-          push(ov.email as string | null | undefined)
-        );
-
-        return Array.from(s);
-      })();
-
-      const savedEndorsementRef = await addDoc(entriesRef, {
-        productKey: endorsementDraft.productKey,
-        entryType: "endorsement" as ContractEntryType,
-        rootContractEntryId: endorsementDraft.rootContractEntryId,
-        parentContractEntryId: endorsementDraft.sourceEntryId,
-        parentContractEntryPath: endorsementDraft.sourceEntryPath,
-        createdAt: serverTimestamp(),
-        position,
-        commissionMode: mode,
-        inputAmount: endorsementDraft.calculationAmount,
-        calculationInputAmount: endorsementDraft.calculationAmount,
-        previousInputAmount: endorsementDraft.previousPremiumAmount,
-        newInputAmount: endorsementDraft.newPremiumAmount,
-        effectiveInputAmount: endorsementDraft.newPremiumAmount,
-        premiumDelta: endorsementDraft.deltaAmount,
-        premiumIncreaseAmount:
-          endorsementDraft.deltaAmount > 0 ? endorsementDraft.deltaAmount : 0,
-        premiumDecreaseAmount:
-          endorsementDraft.deltaAmount < 0 ? Math.abs(endorsementDraft.deltaAmount) : 0,
-        changeType: endorsementDraft.changeType,
-        frequencyRaw: frequency,
-        items: endorsementDraft.items,
-        total: endorsementDraft.total,
-        result: {
-          items: endorsementDraft.items,
-          total: endorsementDraft.total,
+      const { response, data } = await requestContractsMutationWithAuth({
+        user,
+        path: "/api/contracts",
+        method: "POST",
+        payload: {
+          entry: {
+            productKey: endorsementDraft.productKey,
+            entryType: "endorsement" as ContractEntryType,
+            rootContractEntryId: endorsementDraft.rootContractEntryId,
+            parentContractEntryId: endorsementDraft.sourceEntryId,
+            parentContractEntryPath: endorsementDraft.sourceEntryPath,
+            position,
+            commissionMode: mode,
+            inputAmount: endorsementDraft.calculationAmount,
+            calculationInputAmount: endorsementDraft.calculationAmount,
+            previousInputAmount: endorsementDraft.previousPremiumAmount,
+            newInputAmount: endorsementDraft.newPremiumAmount,
+            effectiveInputAmount: endorsementDraft.newPremiumAmount,
+            premiumDelta: endorsementDraft.deltaAmount,
+            premiumIncreaseAmount:
+              endorsementDraft.deltaAmount > 0 ? endorsementDraft.deltaAmount : 0,
+            premiumDecreaseAmount:
+              endorsementDraft.deltaAmount < 0 ? Math.abs(endorsementDraft.deltaAmount) : 0,
+            changeType: endorsementDraft.changeType,
+            frequencyRaw: frequency,
+            items: endorsementDraft.items,
+            total: endorsementDraft.total,
+            result: {
+              items: endorsementDraft.items,
+              total: endorsementDraft.total,
+            },
+            clientName: clientName || null,
+            contractSignedDate: contractSignedDate.trim(),
+            policyStartDate: policyStartDate.trim(),
+            durationYears: shouldShowDuration(endorsementDraft.productKey)
+              ? durationYears
+              : null,
+            contractNumber: endorsementDraft.contractNumber,
+            paid: false,
+            managerEmailSnapshot: mgrEmail ?? null,
+            managerPositionSnapshot: mgrPos ?? null,
+            managerModeSnapshot: mgrMode ?? null,
+            managerChain: managerChainForSave,
+            managerOverrides: overridesForChain,
+          },
         },
-        clientName: clientName || null,
-        userId: uid,
-        contractSignedDate: signed,
-        policyStartDate: start,
-        durationYears: shouldShowDuration(endorsementDraft.productKey) ? durationYears : null,
-        userEmail: email,
-        contractNumber: endorsementDraft.contractNumber,
-        paid: false,
-        managerEmailSnapshot: mgrEmail ?? null,
-        managerPositionSnapshot: mgrPos ?? null,
-        managerModeSnapshot: mgrMode ?? null,
-        managerChain: managerChainForSave,
-        managerOverrides: overridesForChain,
-        allowedEmails,
       });
-      await syncEntryIndexesBestEffort(email, savedEndorsementRef.id);
+      const apiError = getContractsMutationError({
+        response,
+        data,
+        fallback: "Uložení dodatku selhalo.",
+      });
+      if (apiError) {
+        throw new Error(apiError);
+      }
 
       if (typeof window !== "undefined") {
         try {
@@ -2371,7 +2327,6 @@ export default function CalculatorPage() {
     if (!validateContractDatesBeforeSave()) return;
 
     const email = (user.email ?? "").toLowerCase();
-    const uid = user.uid ?? null;
     const userRef = doc(db, "users", email);
     const entriesRef = collection(userRef, "entries");
 
@@ -2459,13 +2414,7 @@ export default function CalculatorPage() {
     setMissingFields([]);
 
     try {
-      const signed =
-        contractSignedDate.trim().length > 0
-          ? new Date(contractSignedDate)
-          : null;
       const signedDateIso = contractSignedDate.trim() || null;
-      const start =
-        policyStartDate.trim().length > 0 ? new Date(policyStartDate) : null;
 
       // Snapshot chainu nadřízených k datu sjednání (timeline) – uložíme k záznamu
       let mgrEmail = managerEmailSnapshot;
@@ -2573,67 +2522,56 @@ export default function CalculatorPage() {
       });
 
       overridesForChain = diffs;
-
-      const allowedEmails = (() => {
-        const s = new Set<string>();
-        const push = (val: string | null | undefined) => {
-          const v = (val ?? "").trim().toLowerCase();
-          if (v) s.add(v);
-        };
-
-        push(email);
-        push(mgrEmail);
-        managerChainForSave.forEach((mgr) => push(mgr.email));
-        overridesForChain.forEach((ov) => push(ov.email as string | null | undefined));
-
-        return Array.from(s);
-      })();
-
-      const savedContractRef = await addDoc(entriesRef, {
-        productKey: product,
-        entryType: "contract" as ContractEntryType,
-        createdAt: serverTimestamp(),
-        position,
-        commissionMode: mode,
-        inputAmount: product === "comfortcc" ? value : value,
-        effectiveInputAmount: value,
-        comfortPayment:
-          product === "comfortcc" && comfortPayment > 0 ? comfortPayment : null,
-        comfortGradual: product === "comfortcc" ? comfortGradual : null,
-        comfortTargetAmount:
-          product === "comfortcc" && comfortGradual && comfortTargetAmount > 0
-            ? comfortTargetAmount
-            : null,
-        frequencyRaw: frequency,
-
-        // 🔹 Hlavní data výsledku – stejně jako v mobilní appce
-        items,
-        total,
-
-        // 🔹 Zároveň necháváme i původní objekt result
-        result: {
-          items,
-          total,
+      const { response, data } = await requestContractsMutationWithAuth({
+        user,
+        path: "/api/contracts",
+        method: "POST",
+        payload: {
+          entry: {
+            productKey: product,
+            entryType: "contract" as ContractEntryType,
+            position,
+            commissionMode: mode,
+            inputAmount: product === "comfortcc" ? value : value,
+            effectiveInputAmount: value,
+            comfortPayment:
+              product === "comfortcc" && comfortPayment > 0 ? comfortPayment : null,
+            comfortGradual: product === "comfortcc" ? comfortGradual : null,
+            comfortTargetAmount:
+              product === "comfortcc" && comfortGradual && comfortTargetAmount > 0
+                ? comfortTargetAmount
+                : null,
+            frequencyRaw: frequency,
+            items,
+            total,
+            result: {
+              items,
+              total,
+            },
+            clientName: clientName || null,
+            contractSignedDate: contractSignedDate.trim(),
+            policyStartDate: policyStartDate.trim(),
+            durationYears: shouldShowDuration(product) ? durationYears : null,
+            contractNumber: trimmedContractNumber || null,
+            paid: false,
+            managerEmailSnapshot: mgrEmail ?? null,
+            managerPositionSnapshot: mgrPos ?? null,
+            managerModeSnapshot: mgrMode ?? null,
+            managerChain: managerChainForSave,
+            managerOverrides: overridesForChain,
+            isRefresh: shouldRefreshOriginalNeon,
+            refreshOriginalContractNumber: null,
+          },
         },
-
-        clientName: clientName || null,
-        userId: uid,
-        contractSignedDate: signed,
-        policyStartDate: start,
-        durationYears: shouldShowDuration(product) ? durationYears : null,
-        userEmail: email,
-        contractNumber: trimmedContractNumber || null,
-        paid: false,
-        managerEmailSnapshot: mgrEmail ?? null,
-        managerPositionSnapshot: mgrPos ?? null,
-        managerModeSnapshot: mgrMode ?? null,
-        managerChain: managerChainForSave,
-        managerOverrides: overridesForChain,
-        allowedEmails,
-        isRefresh: shouldRefreshOriginalNeon,
-        refreshOriginalContractNumber: null,
       });
-      await syncEntryIndexesBestEffort(email, savedContractRef.id);
+      const apiError = getContractsMutationError({
+        response,
+        data,
+        fallback: "Uložení smlouvy selhalo.",
+      });
+      if (apiError) {
+        throw new Error(apiError);
+      }
 
       if (typeof window !== "undefined") {
         try {

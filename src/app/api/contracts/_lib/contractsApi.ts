@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import {
+  type CommissionMode,
+  type CommissionResultItemDTO,
   type PaymentFrequency,
   type Position,
   type Product,
@@ -12,6 +14,7 @@ import {
   collectSubordinateHierarchy,
 } from "@/app/lib/teamHierarchy";
 import { toDate } from "@/app/lib/formatters";
+import { totalWithMultipliers } from "@/app/lib/commissionTotals";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
 type FirestoreTimestamp = {
@@ -117,6 +120,108 @@ const CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
 const UPDATE_FIELDS_MAX_ENTRY_IDS = 50;
 const USER_TREE_CACHE_TTL_MS = 30_000;
 const CONTRACT_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
+const CONTRACTS_CREATE_RATE_LIMIT = 30;
+const CONTRACTS_CREATE_RATE_LIMIT_WINDOW_MS = 60_000;
+const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
+  "productKey",
+  "entryType",
+  "position",
+  "commissionMode",
+  "inputAmount",
+  "effectiveInputAmount",
+  "comfortPayment",
+  "comfortGradual",
+  "comfortTargetAmount",
+  "frequencyRaw",
+  "items",
+  "total",
+  "result",
+  "clientName",
+  "contractSignedDate",
+  "policyStartDate",
+  "durationYears",
+  "contractNumber",
+  "managerEmailSnapshot",
+  "managerPositionSnapshot",
+  "managerModeSnapshot",
+  "managerChain",
+  "managerOverrides",
+  "isRefresh",
+  "refreshOriginalContractNumber",
+  "rootContractEntryId",
+  "parentContractEntryId",
+  "parentContractEntryPath",
+  "calculationInputAmount",
+  "previousInputAmount",
+  "newInputAmount",
+  "premiumDelta",
+  "premiumIncreaseAmount",
+  "premiumDecreaseAmount",
+  "changeType",
+  "paid",
+]);
+const SUPPORTED_ENTRY_TYPES = new Set(["contract", "endorsement"] as const);
+const SUPPORTED_PRODUCTS = new Set<Product>([
+  "neon",
+  "flexi",
+  "maximaMaxEfekt",
+  "pillowInjury",
+  "zamex",
+  "domex",
+  "pillowmajetek",
+  "koopmajetekobcan",
+  "maxdomov",
+  "cppsimplex",
+  "cppAuto",
+  "slaviaauto",
+  "allianzAuto",
+  "allianzmujdomov",
+  "csobAuto",
+  "uniqaAuto",
+  "uniqaflotila",
+  "pillowAuto",
+  "kooperativaAuto",
+  "koopcestovko",
+  "cppcestovko",
+  "axacestovko",
+  "comfortcc",
+  "cppPPRs",
+  "cppPPRbez",
+]);
+const SUPPORTED_POSITIONS = new Set<Position>([
+  "poradce1",
+  "poradce2",
+  "poradce3",
+  "poradce4",
+  "poradce5",
+  "poradce6",
+  "poradce7",
+  "poradce8",
+  "poradce9",
+  "poradce10",
+  "manazer4",
+  "manazer5",
+  "manazer6",
+  "manazer7",
+  "manazer8",
+  "manazer9",
+  "manazer10",
+]);
+const SUPPORTED_PAYMENT_FREQUENCIES = new Set<PaymentFrequency>([
+  "monthly",
+  "quarterly",
+  "semiannual",
+  "annual",
+]);
+const SUPPORTED_COMMISSION_MODES = new Set<CommissionMode>([
+  "accelerated",
+  "standard",
+]);
+const SUPPORTED_ENDORSEMENT_CHANGE_TYPES = new Set([
+  "increase",
+  "decrease",
+  "same",
+] as const);
 const CPP_STATUS_SYNC_PRODUCTS = new Set<Product>([
   "neon",
   "zamex",
@@ -576,6 +681,522 @@ const parseOptionalInteger = (
     return { ok: false, error: `Pole ${field} je mimo povolený rozsah.` };
   }
   return { ok: true, value };
+};
+
+const parseEntryType = (
+  value: unknown
+): ParseResult<"contract" | "endorsement"> => {
+  if (typeof value !== "string") {
+    return { ok: false, error: "Pole entryType musí být text." };
+  }
+  const normalized = value.trim() as "contract" | "endorsement";
+  if (!SUPPORTED_ENTRY_TYPES.has(normalized)) {
+    return { ok: false, error: "Pole entryType má nepodporovanou hodnotu." };
+  }
+  return { ok: true, value: normalized };
+};
+
+const parseProductKey = (value: unknown): ParseResult<Product> => {
+  if (typeof value !== "string") {
+    return { ok: false, error: "Pole productKey musí být text." };
+  }
+  const normalized = value.trim() as Product;
+  if (!SUPPORTED_PRODUCTS.has(normalized)) {
+    return { ok: false, error: "Pole productKey má nepodporovanou hodnotu." };
+  }
+  return { ok: true, value: normalized };
+};
+
+const parsePositionField = (value: unknown, field: string): ParseResult<Position> => {
+  if (typeof value !== "string") {
+    return { ok: false, error: `Pole ${field} musí být text.` };
+  }
+  const normalized = value.trim() as Position;
+  if (!SUPPORTED_POSITIONS.has(normalized)) {
+    return { ok: false, error: `Pole ${field} má nepodporovanou hodnotu.` };
+  }
+  return { ok: true, value: normalized };
+};
+
+const parseOptionalPositionField = (
+  value: unknown,
+  field: string
+): ParseResult<Position | null> => {
+  if (value == null || value === "") {
+    return { ok: true, value: null };
+  }
+  return parsePositionField(value, field);
+};
+
+const parseCommissionModeField = (
+  value: unknown,
+  field: string
+): ParseResult<CommissionMode> => {
+  if (typeof value !== "string") {
+    return { ok: false, error: `Pole ${field} musí být text.` };
+  }
+  const normalized = value.trim() as CommissionMode;
+  if (!SUPPORTED_COMMISSION_MODES.has(normalized)) {
+    return { ok: false, error: `Pole ${field} má nepodporovanou hodnotu.` };
+  }
+  return { ok: true, value: normalized };
+};
+
+const parseOptionalCommissionModeField = (
+  value: unknown,
+  field: string
+): ParseResult<CommissionMode | null> => {
+  if (value == null || value === "") {
+    return { ok: true, value: null };
+  }
+  return parseCommissionModeField(value, field);
+};
+
+const parseFrequencyField = (
+  value: unknown
+): ParseResult<PaymentFrequency> => {
+  if (typeof value !== "string") {
+    return { ok: false, error: "Pole frequencyRaw musí být text." };
+  }
+  const normalized = value.trim() as PaymentFrequency;
+  if (!SUPPORTED_PAYMENT_FREQUENCIES.has(normalized)) {
+    return { ok: false, error: "Pole frequencyRaw má nepodporovanou hodnotu." };
+  }
+  return { ok: true, value: normalized };
+};
+
+const parseCommissionItems = (
+  value: unknown,
+  field: string
+): ParseResult<CommissionResultItemDTO[]> => {
+  if (!Array.isArray(value)) {
+    return { ok: false, error: `Pole ${field} musí být pole.` };
+  }
+  if (value.length > 200) {
+    return { ok: false, error: `Pole ${field} je příliš rozsáhlé.` };
+  }
+
+  const out: CommissionResultItemDTO[] = [];
+  for (let i = 0; i < value.length; i += 1) {
+    const row = value[i];
+    if (!isPlainObject(row)) {
+      return { ok: false, error: `Pole ${field}[${i}] musí být objekt.` };
+    }
+    const titleParsed = parseRequiredTrimmedText(row.title, `${field}[${i}].title`, 200);
+    if (!titleParsed.ok) return titleParsed;
+
+    const amount = Number(row.amount);
+    if (!Number.isFinite(amount) || amount < -1_000_000_000 || amount > 1_000_000_000) {
+      return {
+        ok: false,
+        error: `Pole ${field}[${i}].amount musí být platné číslo.`,
+      };
+    }
+
+    out.push({
+      title: titleParsed.value,
+      amount,
+    });
+  }
+
+  return { ok: true, value: out };
+};
+
+type NormalizedManagerChainEntry = {
+  email: string | null;
+  position: Position | null;
+  commissionMode: CommissionMode | null;
+};
+
+const parseManagerChainField = (
+  value: unknown
+): ParseResult<NormalizedManagerChainEntry[]> => {
+  if (value == null) return { ok: true, value: [] };
+  if (!Array.isArray(value)) {
+    return { ok: false, error: "Pole managerChain musí být pole." };
+  }
+  if (value.length > 12) {
+    return { ok: false, error: "Pole managerChain je příliš dlouhé." };
+  }
+
+  const out: NormalizedManagerChainEntry[] = [];
+  for (let i = 0; i < value.length; i += 1) {
+    const row = value[i];
+    if (!isPlainObject(row)) {
+      return { ok: false, error: `Pole managerChain[${i}] musí být objekt.` };
+    }
+    const email = normalizeEmail(typeof row.email === "string" ? row.email : null) || null;
+    const positionParsed = parseOptionalPositionField(row.position, `managerChain[${i}].position`);
+    if (!positionParsed.ok) return positionParsed;
+    const modeParsed = parseOptionalCommissionModeField(
+      row.commissionMode,
+      `managerChain[${i}].commissionMode`
+    );
+    if (!modeParsed.ok) return modeParsed;
+
+    out.push({
+      email,
+      position: positionParsed.value,
+      commissionMode: modeParsed.value,
+    });
+  }
+
+  return { ok: true, value: out };
+};
+
+type NormalizedManagerOverrideEntry = {
+  email: string | null;
+  position: Position | null;
+  commissionMode: CommissionMode | null;
+  items: CommissionResultItemDTO[];
+  total: number;
+};
+
+const parseManagerOverridesField = (
+  value: unknown
+): ParseResult<NormalizedManagerOverrideEntry[]> => {
+  if (value == null) return { ok: true, value: [] };
+  if (!Array.isArray(value)) {
+    return { ok: false, error: "Pole managerOverrides musí být pole." };
+  }
+  if (value.length > 20) {
+    return { ok: false, error: "Pole managerOverrides je příliš dlouhé." };
+  }
+
+  const out: NormalizedManagerOverrideEntry[] = [];
+  for (let i = 0; i < value.length; i += 1) {
+    const row = value[i];
+    if (!isPlainObject(row)) {
+      return { ok: false, error: `Pole managerOverrides[${i}] musí být objekt.` };
+    }
+
+    const itemsParsed = parseCommissionItems(row.items, `managerOverrides[${i}].items`);
+    if (!itemsParsed.ok) return itemsParsed;
+
+    const positionParsed = parseOptionalPositionField(
+      row.position,
+      `managerOverrides[${i}].position`
+    );
+    if (!positionParsed.ok) return positionParsed;
+    const modeParsed = parseOptionalCommissionModeField(
+      row.commissionMode,
+      `managerOverrides[${i}].commissionMode`
+    );
+    if (!modeParsed.ok) return modeParsed;
+
+    const email = normalizeEmail(typeof row.email === "string" ? row.email : null) || null;
+    const total = totalWithMultipliers(itemsParsed.value);
+    if (itemsParsed.value.length === 0 || total <= 0) {
+      continue;
+    }
+
+    out.push({
+      email,
+      position: positionParsed.value,
+      commissionMode: modeParsed.value,
+      items: itemsParsed.value,
+      total,
+    });
+  }
+
+  return { ok: true, value: out };
+};
+
+const parseRequiredDateField = (value: unknown, field: string): ParseResult<Date> => {
+  const parsed = toDate(value);
+  if (!parsed || !isReasonableContractDate(parsed)) {
+    return { ok: false, error: `Pole ${field} má neplatné datum.` };
+  }
+  return { ok: true, value: parsed };
+};
+
+type NormalizedCreateEntryPayload = {
+  productKey: Product;
+  entryType: "contract" | "endorsement";
+  position: Position;
+  commissionMode: CommissionMode;
+  inputAmount: number;
+  effectiveInputAmount: number;
+  comfortPayment: number | null;
+  comfortGradual: boolean | null;
+  comfortTargetAmount: number | null;
+  frequencyRaw: PaymentFrequency;
+  items: CommissionResultItemDTO[];
+  total: number;
+  result: {
+    items: CommissionResultItemDTO[];
+    total: number;
+  };
+  clientName: string;
+  userId: string;
+  contractSignedDate: Date;
+  policyStartDate: Date;
+  durationYears: number | null;
+  userEmail: string;
+  contractNumber: string;
+  paid: boolean;
+  managerEmailSnapshot: string | null;
+  managerPositionSnapshot: Position | null;
+  managerModeSnapshot: CommissionMode | null;
+  managerChain: NormalizedManagerChainEntry[];
+  managerOverrides: NormalizedManagerOverrideEntry[];
+  allowedEmails: string[];
+  createdAt: Date;
+  isRefresh: boolean | null;
+  refreshOriginalContractNumber: string | null;
+  rootContractEntryId: string | null;
+  parentContractEntryId: string | null;
+  parentContractEntryPath: string | null;
+  calculationInputAmount: number | null;
+  previousInputAmount: number | null;
+  newInputAmount: number | null;
+  premiumDelta: number | null;
+  premiumIncreaseAmount: number | null;
+  premiumDecreaseAmount: number | null;
+  changeType: "increase" | "decrease" | "same" | null;
+};
+
+const normalizeCreateEntryPayload = ({
+  raw,
+  ownerEmail,
+  ownerUid,
+}: {
+  raw: unknown;
+  ownerEmail: string;
+  ownerUid: string;
+}): { ok: true; payload: NormalizedCreateEntryPayload } | { ok: false; error: string } => {
+  if (!isPlainObject(raw)) {
+    return { ok: false, error: "Payload musí být objekt." };
+  }
+
+  const unknownFields = Object.keys(raw).filter(
+    (field) => !CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS.has(field)
+  );
+  if (unknownFields.length > 0) {
+    return {
+      ok: false,
+      error: `Nepovolená pole v entry: ${unknownFields.join(", ")}.`,
+    };
+  }
+
+  const entryTypeParsed = parseEntryType(raw.entryType);
+  if (!entryTypeParsed.ok) return entryTypeParsed;
+  const productParsed = parseProductKey(raw.productKey);
+  if (!productParsed.ok) return productParsed;
+  const positionParsed = parsePositionField(raw.position, "position");
+  if (!positionParsed.ok) return positionParsed;
+  const modeParsed = parseCommissionModeField(raw.commissionMode, "commissionMode");
+  if (!modeParsed.ok) return modeParsed;
+  const freqParsed = parseFrequencyField(raw.frequencyRaw);
+  if (!freqParsed.ok) return freqParsed;
+
+  const clientNameParsed = parseRequiredTrimmedText(raw.clientName, "clientName", 200);
+  if (!clientNameParsed.ok) return clientNameParsed;
+  const contractNumberParsed = parseRequiredTrimmedText(raw.contractNumber, "contractNumber", 120);
+  if (!contractNumberParsed.ok) return contractNumberParsed;
+  if (!isValidContractNumber(contractNumberParsed.value)) {
+    return { ok: false, error: "Pole contractNumber má neplatný formát." };
+  }
+
+  const signedDateParsed = parseRequiredDateField(raw.contractSignedDate, "contractSignedDate");
+  if (!signedDateParsed.ok) return signedDateParsed;
+  const policyStartParsed = parseRequiredDateField(raw.policyStartDate, "policyStartDate");
+  if (!policyStartParsed.ok) return policyStartParsed;
+  if (policyStartParsed.value.getTime() < signedDateParsed.value.getTime()) {
+    return {
+      ok: false,
+      error: "Pole policyStartDate nemůže být dřív než contractSignedDate.",
+    };
+  }
+
+  const inputAmountParsed = parseOptionalFiniteNumber(raw.inputAmount, "inputAmount");
+  if (!inputAmountParsed.ok) return inputAmountParsed;
+  const effectiveInputAmountParsed = parseOptionalFiniteNumber(
+    raw.effectiveInputAmount,
+    "effectiveInputAmount"
+  );
+  if (!effectiveInputAmountParsed.ok) return effectiveInputAmountParsed;
+  const comfortPaymentParsed = parseOptionalFiniteNumber(raw.comfortPayment, "comfortPayment");
+  if (!comfortPaymentParsed.ok) return comfortPaymentParsed;
+  const comfortGradualParsed = parseOptionalBoolean(raw.comfortGradual, "comfortGradual");
+  if (!comfortGradualParsed.ok) return comfortGradualParsed;
+  const comfortTargetAmountParsed = parseOptionalFiniteNumber(
+    raw.comfortTargetAmount,
+    "comfortTargetAmount"
+  );
+  if (!comfortTargetAmountParsed.ok) return comfortTargetAmountParsed;
+  const durationYearsParsed = parseOptionalInteger(raw.durationYears, "durationYears", {
+    min: 1,
+    max: 120,
+  });
+  if (!durationYearsParsed.ok) return durationYearsParsed;
+
+  const itemsParsed = parseCommissionItems(raw.items, "items");
+  if (!itemsParsed.ok) return itemsParsed;
+  if (entryTypeParsed.value === "contract" && itemsParsed.value.length === 0) {
+    return { ok: false, error: "Smlouva musí obsahovat alespoň jednu položku provize." };
+  }
+
+  const managerEmailSnapshot = normalizeEmail(
+    typeof raw.managerEmailSnapshot === "string" ? raw.managerEmailSnapshot : null
+  ) || null;
+  const managerPositionParsed = parseOptionalPositionField(
+    raw.managerPositionSnapshot,
+    "managerPositionSnapshot"
+  );
+  if (!managerPositionParsed.ok) return managerPositionParsed;
+  const managerModeParsed = parseOptionalCommissionModeField(
+    raw.managerModeSnapshot,
+    "managerModeSnapshot"
+  );
+  if (!managerModeParsed.ok) return managerModeParsed;
+  const managerChainParsed = parseManagerChainField(raw.managerChain);
+  if (!managerChainParsed.ok) return managerChainParsed;
+  const managerOverridesParsed = parseManagerOverridesField(raw.managerOverrides);
+  if (!managerOverridesParsed.ok) return managerOverridesParsed;
+
+  const isRefreshParsed = parseOptionalBoolean(raw.isRefresh, "isRefresh");
+  if (!isRefreshParsed.ok) return isRefreshParsed;
+  const refreshOriginalParsed = parseOptionalTrimmedText(
+    raw.refreshOriginalContractNumber,
+    "refreshOriginalContractNumber",
+    120
+  );
+  if (!refreshOriginalParsed.ok) return refreshOriginalParsed;
+
+  const rootEntryIdParsed = parseOptionalTrimmedText(
+    raw.rootContractEntryId,
+    "rootContractEntryId",
+    120
+  );
+  if (!rootEntryIdParsed.ok) return rootEntryIdParsed;
+  const parentEntryIdParsed = parseOptionalTrimmedText(
+    raw.parentContractEntryId,
+    "parentContractEntryId",
+    120
+  );
+  if (!parentEntryIdParsed.ok) return parentEntryIdParsed;
+  const parentPathParsed = parseOptionalTrimmedText(
+    raw.parentContractEntryPath,
+    "parentContractEntryPath",
+    400
+  );
+  if (!parentPathParsed.ok) return parentPathParsed;
+
+  const calcInputParsed = parseOptionalFiniteNumber(
+    raw.calculationInputAmount,
+    "calculationInputAmount"
+  );
+  if (!calcInputParsed.ok) return calcInputParsed;
+  const previousInputParsed = parseOptionalFiniteNumber(
+    raw.previousInputAmount,
+    "previousInputAmount"
+  );
+  if (!previousInputParsed.ok) return previousInputParsed;
+  const newInputParsed = parseOptionalFiniteNumber(raw.newInputAmount, "newInputAmount");
+  if (!newInputParsed.ok) return newInputParsed;
+  const premiumDeltaParsed = parseOptionalFiniteNumber(raw.premiumDelta, "premiumDelta", {
+    min: -1_000_000_000,
+    max: 1_000_000_000,
+  });
+  if (!premiumDeltaParsed.ok) return premiumDeltaParsed;
+  const premiumIncreaseParsed = parseOptionalFiniteNumber(
+    raw.premiumIncreaseAmount,
+    "premiumIncreaseAmount"
+  );
+  if (!premiumIncreaseParsed.ok) return premiumIncreaseParsed;
+  const premiumDecreaseParsed = parseOptionalFiniteNumber(
+    raw.premiumDecreaseAmount,
+    "premiumDecreaseAmount"
+  );
+  if (!premiumDecreaseParsed.ok) return premiumDecreaseParsed;
+
+  let changeType: "increase" | "decrease" | "same" | null = null;
+  if (raw.changeType != null && raw.changeType !== "") {
+    if (typeof raw.changeType !== "string") {
+      return { ok: false, error: "Pole changeType musí být text nebo null." };
+    }
+    const normalized = raw.changeType.trim() as "increase" | "decrease" | "same";
+    if (!SUPPORTED_ENDORSEMENT_CHANGE_TYPES.has(normalized)) {
+      return { ok: false, error: "Pole changeType má nepodporovanou hodnotu." };
+    }
+    changeType = normalized;
+  }
+
+  if (entryTypeParsed.value === "endorsement") {
+    if (!rootEntryIdParsed.value || !parentEntryIdParsed.value) {
+      return {
+        ok: false,
+        error: "Dodatek musí obsahovat rootContractEntryId i parentContractEntryId.",
+      };
+    }
+  }
+
+  const total = totalWithMultipliers(itemsParsed.value);
+  const allowedEmailsSet = new Set<string>([ownerEmail]);
+  if (managerEmailSnapshot) allowedEmailsSet.add(managerEmailSnapshot);
+  managerChainParsed.value.forEach((row) => {
+    if (row.email) allowedEmailsSet.add(row.email);
+  });
+  managerOverridesParsed.value.forEach((row) => {
+    if (row.email) allowedEmailsSet.add(row.email);
+  });
+
+  return {
+    ok: true,
+    payload: {
+      productKey: productParsed.value,
+      entryType: entryTypeParsed.value,
+      position: positionParsed.value,
+      commissionMode: modeParsed.value,
+      inputAmount: inputAmountParsed.value ?? 0,
+      effectiveInputAmount: effectiveInputAmountParsed.value ?? inputAmountParsed.value ?? 0,
+      comfortPayment: comfortPaymentParsed.value,
+      comfortGradual: comfortGradualParsed.value,
+      comfortTargetAmount: comfortTargetAmountParsed.value,
+      frequencyRaw: freqParsed.value,
+      items: itemsParsed.value,
+      total,
+      result: {
+        items: itemsParsed.value,
+        total,
+      },
+      clientName: clientNameParsed.value,
+      userId: ownerUid,
+      contractSignedDate: signedDateParsed.value,
+      policyStartDate: policyStartParsed.value,
+      durationYears: durationYearsParsed.value,
+      userEmail: ownerEmail,
+      contractNumber: contractNumberParsed.value,
+      paid: false,
+      managerEmailSnapshot,
+      managerPositionSnapshot: managerPositionParsed.value,
+      managerModeSnapshot: managerModeParsed.value,
+      managerChain: managerChainParsed.value,
+      managerOverrides: managerOverridesParsed.value,
+      allowedEmails: Array.from(allowedEmailsSet),
+      createdAt: new Date(),
+      isRefresh: isRefreshParsed.value,
+      refreshOriginalContractNumber: refreshOriginalParsed.value,
+      rootContractEntryId:
+        entryTypeParsed.value === "endorsement" ? rootEntryIdParsed.value : null,
+      parentContractEntryId:
+        entryTypeParsed.value === "endorsement" ? parentEntryIdParsed.value : null,
+      parentContractEntryPath:
+        entryTypeParsed.value === "endorsement" ? parentPathParsed.value : null,
+      calculationInputAmount:
+        entryTypeParsed.value === "endorsement" ? calcInputParsed.value : null,
+      previousInputAmount:
+        entryTypeParsed.value === "endorsement" ? previousInputParsed.value : null,
+      newInputAmount: entryTypeParsed.value === "endorsement" ? newInputParsed.value : null,
+      premiumDelta: entryTypeParsed.value === "endorsement" ? premiumDeltaParsed.value : null,
+      premiumIncreaseAmount:
+        entryTypeParsed.value === "endorsement" ? premiumIncreaseParsed.value : null,
+      premiumDecreaseAmount:
+        entryTypeParsed.value === "endorsement" ? premiumDecreaseParsed.value : null,
+      changeType: entryTypeParsed.value === "endorsement" ? changeType : null,
+    },
+  };
 };
 
 const parseContractStatus = (value: unknown): ParseResult<"active" | "storno"> => {
@@ -1469,6 +2090,7 @@ async function getAuthContext(req: NextRequest) {
 
   return {
     email,
+    uid: decoded.uid,
     position,
     teamEmails,
     users,
@@ -1702,6 +2324,105 @@ export async function handleContractsGet(
   };
 
   return NextResponse.json(response);
+}
+
+export async function handleContractsCreate(req: NextRequest) {
+  const ctx = await getAuthContext(req);
+  if ("error" in ctx) {
+    return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
+  }
+  const { email, uid } = ctx;
+
+  const rateLimitResult = consumeRateLimit({
+    namespace: "api:contracts:create",
+    key: email,
+    limit: CONTRACTS_CREATE_RATE_LIMIT,
+    windowMs: CONTRACTS_CREATE_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!rateLimitResult.allowed) {
+    const response = NextResponse.json(
+      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
+      { status: 429 }
+    );
+    applyRateLimitHeaders(response.headers, rateLimitResult);
+    return response;
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "Neplatný JSON payload." },
+      { status: 400 }
+    );
+  }
+
+  const entryRaw =
+    isPlainObject(body) && isPlainObject(body.entry)
+      ? body.entry
+      : body;
+
+  const normalizedEntry = normalizeCreateEntryPayload({
+    raw: entryRaw,
+    ownerEmail: email,
+    ownerUid: uid,
+  });
+  if (!normalizedEntry.ok) {
+    return NextResponse.json(
+      { ok: false, error: normalizedEntry.error },
+      { status: 400 }
+    );
+  }
+
+  if (!adminDb) {
+    return NextResponse.json(
+      { ok: false, error: "Server není správně nakonfigurován." },
+      { status: 500 }
+    );
+  }
+
+  try {
+    const db = adminDb;
+    const ownerEntriesRef = db.collection("users").doc(email).collection("entries");
+    const createdRef = await ownerEntriesRef.add(normalizedEntry.payload);
+
+    const batch = db.batch();
+    applyContractRefToBatch({
+      batch,
+      ownerEmail: email,
+      entryId: createdRef.id,
+      contractNumber: normalizedEntry.payload.contractNumber,
+      productKey: normalizedEntry.payload.productKey,
+    });
+    await batch.commit();
+
+    try {
+      await markTeamOverviewOwnersDirty([email]);
+    } catch (markErr) {
+      console.warn(
+        "POST /api/contracts create: team-overview invalidace selhala:",
+        markErr
+      );
+    }
+
+    const response = NextResponse.json({
+      ok: true,
+      entryId: createdRef.id,
+    });
+    applyRateLimitHeaders(response.headers, rateLimitResult);
+    return response;
+  } catch (createErr: any) {
+    const message =
+      typeof createErr?.message === "string" && createErr.message.trim()
+        ? createErr.message.trim()
+        : "Neznámá chyba při ukládání smlouvy.";
+    console.error("POST /api/contracts create selhal:", createErr);
+    return NextResponse.json(
+      { ok: false, error: `Uložení smlouvy selhalo: ${message}` },
+      { status: 500 }
+    );
+  }
 }
 
 export async function handleContractsPatch(

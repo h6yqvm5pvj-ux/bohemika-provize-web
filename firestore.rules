@@ -475,22 +475,8 @@ service cloud.firestore {
         allow read: if isOwner(userEmail)
                     || canReadEntryDoc(resource.data)
                     || isAdmin();
-        // zapisuje jen vlastník a musí souhlasit userEmail; admin může opravovat/importovat
-        // validace dat smlouvy je vynucena na backendu (rules), aby nešla obejít frontend
-        allow create: if (
-            isOwner(userEmail)
-            && entryUserMatches(userEmail)
-            && hasValidContractCore(request.resource.data)
-          ) || isAdmin();
-        allow update: if (
-            isOwner(userEmail)
-            && entryUserMatches(userEmail)
-            && (
-              !contractCoreFieldsChanged()
-              || hasValidContractCoreUpdate()
-            )
-          ) || isAdmin();
-        allow delete: if isOwner(userEmail) || isAdmin();
+        // zápis smluv jen přes backend API (Admin SDK), ne přímo z klienta
+        allow create, update, delete: if isAdmin();
       }
 
       // ---------- calendarEvents ----------
@@ -528,9 +514,7 @@ service cloud.firestore {
     // ---------- contracts ----------
     match /contracts/{contractId} {
       allow read: if canReadContractDoc(resource.data) || isAdmin();
-      allow create: if isContractOwnerData(request.resource.data) || isAdmin();
-      allow update: if (isContractOwnerData(resource.data) && sameContractOwner()) || isAdmin();
-      allow delete: if isContractOwnerData(resource.data) || isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     // ---------- fallback ----------

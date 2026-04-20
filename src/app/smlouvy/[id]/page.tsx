@@ -1,7 +1,7 @@
 // src/app/smlouvy/[id]/page.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -372,7 +372,6 @@ export default function ContractDetailPage() {
   const [canOpenRefreshReplacement, setCanOpenRefreshReplacement] = useState(false);
   const { toasts, pushToast, dismissToast } = useToasts();
   const [unauthorized, setUnauthorized] = useState(false);
-  const cppStatusSyncKeyRef = useRef<string | null>(null);
   const isNeonImmediateBreakdownOpen = neonImmediateBreakdown != null;
 
   useEffect(() => {
@@ -760,114 +759,6 @@ export default function ContractDetailPage() {
     return isManagerOnChain || isManagerOnCurrentChain;
   }, [managerPosition, isManagerOnChain, isManagerOnCurrentChain]);
   const canViewContract = isOwnContract || isManagerOnChain || isManagerOnCurrentChain;
-
-  useEffect(() => {
-    const owner = normalizeEmail(ownerEmail);
-    const entryKey = contract?.id ?? "";
-    const contractNumber = (contract?.contractNumber ?? "").trim();
-    const product = contract?.productKey as Product | undefined;
-
-    if (!user || !owner || !entryKey || !contractNumber || !product) return;
-    if (!CPP_PAYMENT_CHECK_PRODUCTS.has(product)) return;
-    if (!canViewContract) return;
-
-    const syncKey = `${owner}___${entryKey}`;
-    if (cppStatusSyncKeyRef.current === syncKey) return;
-    cppStatusSyncKeyRef.current = syncKey;
-
-    let cancelled = false;
-
-    const requestWithToken = async (token: string) =>
-      fetch("/api/contracts/sync-cpp-status", {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ownerEmail: owner,
-          entryId: entryKey,
-        }),
-      });
-
-    const syncCppStatus = async () => {
-      try {
-        let token = await user.getIdToken();
-        let res = await requestWithToken(token);
-        let data = (await res.json()) as any;
-
-        if (res.status === 401) {
-          token = await user.getIdToken(true);
-          res = await requestWithToken(token);
-          data = (await res.json()) as any;
-        }
-
-        if (!res.ok || data?.ok === false) {
-          console.warn("ČPP sync status selhal:", data?.error ?? res.statusText);
-          return;
-        }
-
-        if (cancelled) return;
-        const appliedStatus =
-          data?.appliedStatus === "storno"
-            ? "storno"
-            : data?.appliedStatus === "active"
-            ? "active"
-            : null;
-        if (!appliedStatus) return;
-
-        const stornoDateMs = Number(data?.stornoDateMs);
-        const stornoDate =
-          appliedStatus === "storno"
-            ? Number.isFinite(stornoDateMs)
-              ? new Date(stornoDateMs)
-              : toDate(contract?.stornoDate ?? null)
-            : null;
-
-        setContract((prev) =>
-          prev
-            ? {
-                ...prev,
-                status: appliedStatus,
-                stornoDate,
-              }
-            : prev
-        );
-        setContractTimeline((prev) =>
-          prev.map((entry) => ({
-            ...entry,
-            status: appliedStatus,
-            stornoDate,
-          }))
-        );
-
-        if (typeof window !== "undefined") {
-          try {
-            sessionStorage.removeItem("contracts_cache_v2");
-            localStorage.setItem("contracts_last_updated", String(Date.now()));
-            window.dispatchEvent(new Event("contracts:updated"));
-          } catch {
-            // best effort cache invalidation
-          }
-        }
-      } catch (err) {
-        console.warn("Automatická synchronizace ČPP stavu selhala:", err);
-      }
-    };
-
-    void syncCppStatus();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    canViewContract,
-    contract?.contractNumber,
-    contract?.id,
-    contract?.productKey,
-    contract?.stornoDate,
-    ownerEmail,
-    user,
-  ]);
 
   useEffect(() => {
     let cancelled = false;
