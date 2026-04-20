@@ -4,12 +4,12 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
 import Link from "next/link";
 
-import { auth, db } from "./firebase";
+import { auth } from "./firebase";
 import {
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 
 import { AppLayout } from "@/components/AppLayout";
 import { AutoAnniversaryModal } from "@/components/AutoAnniversaryModal";
@@ -409,8 +409,15 @@ export default function HomePage() {
       }
 
       try {
-        const snap = await getDoc(doc(db, "users", email));
-        const data = snap.data() as any | undefined;
+        if (!auth.currentUser) {
+          loadFromDevice();
+          return;
+        }
+        const payload = await fetchAuthedJsonOrThrow<{
+          ok?: boolean;
+          profile?: Record<string, unknown>;
+        }>(auth.currentUser, "/api/user/profile", { method: "GET" });
+        const data = (payload?.profile ?? {}) as any;
 
         const cloudLayout = (data?.homeLayout as HomeSection[] | undefined) ?? null;
         const cloudWidgets = (data?.homeWidgets as Partial<HomeWidgets> | undefined) ?? null;
@@ -492,9 +499,13 @@ export default function HomePage() {
     homePerformanceMode?: PerformanceMode;
     homeQuickActions?: QuickAction[];
   }) => {
-    if (!normalizedEmail) return;
+    const currentUser = auth.currentUser;
+    if (!normalizedEmail || !currentUser) return;
     try {
-      await setDoc(doc(db, "users", normalizedEmail), payload, { merge: true });
+      await fetchAuthedJsonOrThrow(currentUser, "/api/user/profile", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
     } catch (e) {
       console.error("Uložení nastavení domova selhalo", e);
     }
@@ -859,11 +870,14 @@ export default function HomePage() {
   };
 
   const saveMonthlyGoal = async (value: number) => {
-    if (!normalizedEmail) return;
+    const currentUser = auth.currentUser;
+    if (!normalizedEmail || !currentUser) return;
     try {
       invalidateHomeCache(normalizedEmail);
-      const ref = doc(db, "users", normalizedEmail);
-      await setDoc(ref, { monthlyGoal: value }, { merge: true });
+      await fetchAuthedJsonOrThrow(currentUser, "/api/user/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ monthlyGoal: value }),
+      });
       setUserMeta((prev) => (prev ? { ...prev, monthlyGoal: value } : prev));
     } catch (e) {
       console.error("Uložení měsíčního cíle selhalo", e);

@@ -19,12 +19,11 @@ import {
   doc,
   getDoc,
   getDocFromServer,
-  setDoc,
-  updateDoc,
 } from "firebase/firestore";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
   formatMoney as formatMoneyValue,
   positionLabel,
@@ -285,7 +284,6 @@ export default function TeamPage() {
   const [careerTimelineSaving, setCareerTimelineSaving] = useState(false);
   const [careerTimelineError, setCareerTimelineError] = useState<string | null>(null);
   const [careerTimelineSaved, setCareerTimelineSaved] = useState(false);
-  const [careerTimelineDocId, setCareerTimelineDocId] = useState<string | null>(null);
   const copyEmailTimerRef = useRef<number | null>(null);
   const positionSaveTimerRef = useRef<number | null>(null);
   const careerSaveTimerRef = useRef<number | null>(null);
@@ -639,7 +637,6 @@ export default function TeamPage() {
     setCareerTimelineDraft([]);
     setCareerTimelineError(null);
     setCareerTimelineSaved(false);
-    setCareerTimelineDocId(null);
   }, [selectedEmail]);
 
   useEffect(() => {
@@ -755,7 +752,6 @@ export default function TeamPage() {
     const loadSelectedCareerTimeline = async () => {
       if (!selected) {
         setCareerTimelineDraft([]);
-        setCareerTimelineDocId(null);
         setCareerTimelineLoading(false);
         return;
       }
@@ -767,7 +763,6 @@ export default function TeamPage() {
         const candidateIds = Array.from(
           new Set([selected.docId, selected.email].filter(Boolean))
         ) as string[];
-        let resolvedDocId = candidateIds[0] ?? selected.email;
         let resolvedTimeline: PositionTimelineItem[] = [];
         let timelineFound = false;
 
@@ -786,19 +781,16 @@ export default function TeamPage() {
           const data = snap.data() as Record<string, unknown>;
           const parsed = parsePositionTimeline(data.positionTimeline);
           if (parsed.length > 0) {
-            resolvedDocId = docIdCandidate;
             resolvedTimeline = parsed;
             timelineFound = true;
             break;
           }
 
           if (!timelineFound) {
-            resolvedDocId = docIdCandidate;
             resolvedTimeline = parsed;
           }
         }
 
-        setCareerTimelineDocId(resolvedDocId);
         setCareerTimelineDraft(resolvedTimeline);
       } catch (error) {
         console.error("Chyba při načítání timeline kariéry člena týmu:", error);
@@ -901,9 +893,14 @@ export default function TeamPage() {
     setSavingPosition(true);
     setPositionSaveError(null);
     try {
-      const targetId = selected.docId ?? selected.email;
-      await updateDoc(doc(db, "users", targetId), {
-        position: positionDraft,
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Nejsi přihlášený.");
+      await fetchAuthedJsonOrThrow(currentUser, "/api/team-overview", {
+        method: "PATCH",
+        body: JSON.stringify({
+          targetEmail: selected.email,
+          position: positionDraft,
+        }),
       });
 
       setMembers((prev) =>
@@ -1082,12 +1079,15 @@ export default function TeamPage() {
         validTo: row.validTo || null,
       }));
 
-      const targetDocId = careerTimelineDocId ?? selected.docId ?? selected.email;
-      await setDoc(
-        doc(db, "users", targetDocId),
-        { positionTimeline: payload },
-        { merge: true }
-      );
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Nejsi přihlášený.");
+      await fetchAuthedJsonOrThrow(currentUser, "/api/team-overview", {
+        method: "PATCH",
+        body: JSON.stringify({
+          targetEmail: selected.email,
+          positionTimeline: payload,
+        }),
+      });
 
       setCareerTimelineDraft(
         payload.map((row) => ({

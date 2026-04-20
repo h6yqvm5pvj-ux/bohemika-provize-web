@@ -5,7 +5,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { auth } from "../app/firebase-auth";
-import { firebaseApp } from "../app/firebase-app";
 import {
   onAuthStateChanged,
   signOut,
@@ -29,6 +28,7 @@ import {
   BOX_THEME_LOCAL_STORAGE_KEY,
   applyBoxThemeToRoot,
 } from "@/lib/boxTheme";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 
 type ActivePage =
   | "home"
@@ -46,13 +46,10 @@ interface AppLayoutProps {
 
 type SubscriptionStatusWeb = "none" | "active" | "expired";
 
-type FirestoreExports = typeof import("firebase/firestore");
-let firestorePromise: Promise<FirestoreExports> | null = null;
-const loadFirestore = () => {
-  if (!firestorePromise) {
-    firestorePromise = import("firebase/firestore");
-  }
-  return firestorePromise;
+type UserProfileResponse = {
+  ok?: boolean;
+  hasTeam?: boolean;
+  profile?: Record<string, unknown>;
 };
 
 const hasCareerTimelineConfigured = (data: Record<string, unknown>): boolean => {
@@ -241,186 +238,27 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     }
   };
 
-  // Načtení subscription profilu z Firestore
+  // Načtení subscription profilu přes API
   const loadSubscriptionProfileForUser = async (
     currentUser: FirebaseUser | null
   ) => {
     const emailRaw = currentUser?.email;
-    const uidRaw = currentUser?.uid?.trim() ?? "";
     if (!emailRaw) {
       setSubscriptionStatus("none");
       setNeedsCareerTimelineSetup(false);
       setLoadingProfile(false);
+      setHasTeam(false);
       return;
     }
 
-    const {
-      getFirestore,
-      doc,
-      getDoc,
-      getDocFromServer,
-      setDoc,
-      collection,
-      query,
-      where,
-      limit,
-      getDocs,
-    } =
-      await loadFirestore();
-    const db = getFirestore(firebaseApp);
-    const email = emailRaw.trim().toLowerCase();
-
     setLoadingProfile(true);
     try {
-      const readUserDoc = async (docId: string) => {
-        const userRef = doc(db, "users", docId);
-        try {
-          return await getDocFromServer(userRef);
-        } catch {
-          return await getDoc(userRef);
-        }
-      };
-
-      const tryReadUserDoc = async (docId: string) => {
-        try {
-          return await readUserDoc(docId);
-        } catch (err: any) {
-          const code = String(err?.code ?? "");
-          if (code.includes("permission-denied")) return null;
-          throw err;
-        }
-      };
-
-      const readPrivateUserDoc = async (docId: string) => {
-        const userRef = doc(db, "usersPrivate", docId);
-        try {
-          return await getDocFromServer(userRef);
-        } catch {
-          return await getDoc(userRef);
-        }
-      };
-
-      const syncTimelineToCanonicalDoc = async (timeline: unknown) => {
-        try {
-          await setDoc(
-            doc(db, "users", email),
-            { positionTimeline: timeline },
-            { merge: true }
-          );
-        } catch (e) {
-          console.warn("Chyba při dorovnání timeline z legacy user ID:", e);
-        }
-      };
-
-      const canonicalSnap = await tryReadUserDoc(email);
-      let resolvedData =
-        canonicalSnap && canonicalSnap.exists()
-          ? (canonicalSnap.data() as Record<string, unknown>)
-          : null;
-
-      const mergeTimelineCandidate = async (
-        candidateData: Record<string, unknown> | null
-      ) => {
-        if (!candidateData) return;
-        if (!resolvedData) {
-          resolvedData = candidateData;
-          return;
-        }
-        const normalizedHasTimeline = hasCareerTimelineConfigured(resolvedData);
-        const candidateHasTimeline = hasCareerTimelineConfigured(candidateData);
-        if (!normalizedHasTimeline && candidateHasTimeline) {
-          resolvedData = {
-            ...resolvedData,
-            positionTimeline: candidateData.positionTimeline,
-          };
-          await syncTimelineToCanonicalDoc(candidateData.positionTimeline);
-        }
-      };
-
-      if (emailRaw && emailRaw !== email) {
-        const rawSnap = await tryReadUserDoc(emailRaw);
-        const rawData =
-          rawSnap && rawSnap.exists()
-            ? (rawSnap.data() as Record<string, unknown>)
-            : null;
-
-        // fallback: pokud existuje dokument s původním e-mailem (např. s velkými písmeny), zkus ho
-        if (!resolvedData && rawData) {
-          resolvedData = rawData;
-        } else if (resolvedData && rawData) {
-          await mergeTimelineCandidate(rawData);
-        }
-      }
-
-      // fallback: některé legacy účty měly users doc pod atypickým docId, ale se stejným userId
-      if (uidRaw && (!resolvedData || !hasCareerTimelineConfigured(resolvedData))) {
-        try {
-          const usersCol = collection(db, "users");
-          const snapByUid = await getDocs(
-            query(usersCol, where("userId", "==", uidRaw), limit(5))
-          );
-          for (const docSnap of snapByUid.docs) {
-            const candidateData = docSnap.data() as Record<string, unknown>;
-            await mergeTimelineCandidate(candidateData);
-          }
-        } catch (uidLookupErr) {
-          console.warn("Chyba při fallback lookupu users.userId:", uidLookupErr);
-        }
-      }
-
-      // fallback: hledej i podle pole users.email (pro atypické legacy docId)
-      if (!resolvedData || !hasCareerTimelineConfigured(resolvedData)) {
-        try {
-          const usersCol = collection(db, "users");
-          const emailCandidates = Array.from(
-            new Set(
-              [email, emailRaw ?? ""]
-                .map((value) => value.trim())
-                .filter((value) => value.length > 0)
-            )
-          );
-
-          for (const candidateEmail of emailCandidates) {
-            const snapByEmail = await getDocs(
-              query(usersCol, where("email", "==", candidateEmail), limit(5))
-            );
-            for (const docSnap of snapByEmail.docs) {
-              const candidateData = docSnap.data() as Record<string, unknown>;
-              await mergeTimelineCandidate(candidateData);
-            }
-          }
-        } catch (legacyLookupErr) {
-          console.warn("Chyba při fallback lookupu users.email:", legacyLookupErr);
-        }
-      }
-
-      let privateData: Record<string, unknown> | null = null;
-      const privateDocIds = Array.from(
-        new Set(
-          [email, emailRaw ?? ""]
-            .map((value) => value.trim())
-            .filter((value) => value.length > 0)
-        )
+      const payload = await fetchAuthedJsonOrThrow<UserProfileResponse>(
+        currentUser,
+        "/api/user/profile",
+        { method: "GET" }
       );
-      for (const privateDocId of privateDocIds) {
-        const privateSnap = await readPrivateUserDoc(privateDocId);
-        if (!privateSnap.exists()) continue;
-        privateData = {
-          ...(privateData ?? {}),
-          ...(privateSnap.data() as Record<string, unknown>),
-        };
-      }
-
-      if (!resolvedData && !privateData) {
-        setSubscriptionStatus("none");
-        setNeedsCareerTimelineSetup(false);
-        return;
-      }
-
-      const data = {
-        ...(resolvedData ?? {}),
-        ...(privateData ?? {}),
-      };
+      const data = payload?.profile ?? {};
       const statusRaw = (data.subscriptionStatus as string | undefined)?.trim().toLowerCase();
       let status: SubscriptionStatusWeb = "none";
 
@@ -433,13 +271,18 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       }
 
       setSubscriptionStatus(status);
-      setNeedsCareerTimelineSetup(
-        resolvedData ? !hasCareerTimelineConfigured(resolvedData) : false
-      );
+      setNeedsCareerTimelineSetup(!hasCareerTimelineConfigured(data));
+      const has = payload?.hasTeam === true;
+      setHasTeam(has);
+      if (typeof window !== "undefined" && currentUser.email) {
+        const cacheKey = `app.hasTeam:${currentUser.email.toLowerCase()}`;
+        window.sessionStorage.setItem(cacheKey, has ? "1" : "0");
+      }
     } catch (e) {
       console.error("Chyba při načítání subscription profilu:", e);
       setSubscriptionStatus("none");
       setNeedsCareerTimelineSetup(false);
+      setHasTeam(false);
     } finally {
       setLoadingProfile(false);
     }
@@ -485,8 +328,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
   // Zapsat lastActive do Firestore při přihlášení + periodické obnovení
   useEffect(() => {
-    const email = user?.email?.toLowerCase();
-    if (!email) return;
+    const currentUser = user;
+    const email = currentUser?.email?.toLowerCase();
+    if (!currentUser || !email) return;
     let cancelled = false;
     const LAST_ACTIVE_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
     const LAST_ACTIVE_THROTTLE_MS = 60 * 1000;
@@ -499,13 +343,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       lastActiveUpdateRef.current = now;
       try {
-        const { getFirestore, doc, setDoc, serverTimestamp } = await loadFirestore();
-        const db = getFirestore(firebaseApp);
-        await setDoc(
-          doc(db, "users", email),
-          { lastActive: serverTimestamp() },
-          { merge: true }
-        );
+        await fetchAuthedJsonOrThrow(currentUser, "/api/user/profile", {
+          method: "PATCH",
+          body: JSON.stringify({ lastActivePing: true }),
+          cache: "no-store",
+        });
         if (shouldLog) {
           console.info("[lastActive] updated", { email, reason });
         }
@@ -538,47 +380,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [user]);
-
-  // Zda má tým
-  useEffect(() => {
-    const loadTeam = async () => {
-      if (!user?.email) return;
-      let cancelled = false;
-      const cacheKey = `app.hasTeam:${user.email.toLowerCase()}`;
-
-      if (typeof window !== "undefined") {
-        const cached = window.sessionStorage.getItem(cacheKey);
-        if (cached !== null) {
-          setHasTeam(cached === "1");
-        }
-      }
-
-      try {
-        const { getFirestore, collection, query, where, getDocs } =
-          await loadFirestore();
-        if (cancelled) return;
-        const db = getFirestore(firebaseApp);
-        const email = user.email.toLowerCase();
-        const usersCol = collection(db, "users");
-        const snap = await getDocs(query(usersCol, where("managerEmail", "==", email)));
-        const has = snap.size > 0;
-        if (cancelled) return;
-        setHasTeam(has);
-        if (typeof window !== "undefined") {
-          window.sessionStorage.setItem(cacheKey, has ? "1" : "0");
-        }
-      } catch (e) {
-        console.error("Chyba při načítání podřízených:", e);
-        // ponecháme předchozí hodnotu, ať nebliká
-      }
-
-      return () => {
-        cancelled = true;
-      };
-    };
-
-    loadTeam();
   }, [user]);
 
   // Ruční reload z paywallu

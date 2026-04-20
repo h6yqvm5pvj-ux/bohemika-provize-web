@@ -77,16 +77,14 @@ import {
 import {
   collection,
   doc,
-  getDoc,
-  getDocFromServer,
   getDocs,
   query,
-  setDoc,
   where,
 } from "firebase/firestore";
 import { AppLayout } from "@/components/AppLayout";
 import { formatMoney, positionLabel, toDate } from "@/app/lib/formatters";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 
 // ---------- Pomocné ----------
 
@@ -1321,55 +1319,11 @@ export default function CalculatorPage() {
     const loadUserPosition = async () => {
       if (!user?.email) return;
       try {
-        const readUserDoc = async (docId: string) => {
-          const userRef = doc(db, "users", docId);
-          try {
-            return await getDocFromServer(userRef);
-          } catch {
-            return await getDoc(userRef);
-          }
-        };
-
-        const emailRaw = user.email;
-        const email = emailRaw.toLowerCase();
-        const userRef = doc(db, "users", email);
-        const userSnap = await readUserDoc(email);
-        let data = userSnap.data() as any;
-
-        if (emailRaw !== email) {
-          const rawSnap = await readUserDoc(emailRaw);
-          const rawData = rawSnap.exists() ? (rawSnap.data() as any) : null;
-
-          if (!userSnap.exists() && rawData) {
-            data = rawData;
-            try {
-              await setDoc(userRef, rawData, { merge: true });
-            } catch (migrationError) {
-              console.warn("Failed to migrate legacy user doc ID", migrationError);
-            }
-          } else if (data && rawData) {
-            const normalizedTimeline = parsePositionTimeline(data.positionTimeline);
-            const rawTimeline = parsePositionTimeline(rawData.positionTimeline);
-            if (normalizedTimeline.length === 0 && rawTimeline.length > 0) {
-              data = {
-                ...data,
-                positionTimeline: rawData.positionTimeline,
-              };
-              try {
-                await setDoc(
-                  userRef,
-                  { positionTimeline: rawData.positionTimeline },
-                  { merge: true }
-                );
-              } catch (timelineSyncError) {
-                console.warn(
-                  "Failed to sync legacy position timeline to lowercase user doc",
-                  timelineSyncError
-                );
-              }
-            }
-          }
-        }
+        const payload = await fetchAuthedJsonOrThrow<{
+          ok?: boolean;
+          profile?: Record<string, unknown>;
+        }>(user, "/api/user/profile", { method: "GET" });
+        const data = (payload?.profile ?? {}) as any;
 
         const parsedPositionTimeline = parsePositionTimeline(data?.positionTimeline);
         setPositionTimeline(parsedPositionTimeline);
@@ -1552,15 +1506,13 @@ export default function CalculatorPage() {
   const persistTipsterPercent = async (value: number) => {
     const next = setTipsterPercentDraft(value);
 
-    const email = (user?.email ?? "").trim().toLowerCase();
-    if (!email) return;
+    if (!user) return;
 
     try {
-      await setDoc(
-        doc(db, "users", email),
-        { tipsterCommissionPercent: next },
-        { merge: true }
-      );
+      await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ tipsterCommissionPercent: next }),
+      });
     } catch (err) {
       console.error("Failed to persist tipster percent", err);
     }

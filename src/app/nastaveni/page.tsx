@@ -33,11 +33,11 @@ import {
   type TotpSecret,
   updatePassword,
 } from "firebase/auth";
-import { doc, getDoc, getDocFromServer, setDoc } from "firebase/firestore";
 import QRCode from "qrcode";
 
-import { auth, db } from "../firebase";
+import { auth } from "../firebase";
 import { AppLayout } from "@/components/AppLayout";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
   BOX_THEME_EVENT,
   BOX_THEME_LOCAL_STORAGE_KEY,
@@ -478,88 +478,14 @@ export default function SettingsPage() {
       setLoadingMeta(true);
 
       try {
-        const readUserDoc = async (docId: string) => {
-          const userRef = doc(db, "users", docId);
-          try {
-            return await getDocFromServer(userRef);
-          } catch {
-            return await getDoc(userRef);
-          }
-        };
+        const payload = await fetchAuthedJsonOrThrow<{
+          ok?: boolean;
+          hasProfile?: boolean;
+          profile?: Record<string, unknown>;
+        }>(user, "/api/user/profile", { method: "GET" });
 
-        const readPrivateUserDoc = async (docId: string) => {
-          const userRef = doc(db, "usersPrivate", docId);
-          try {
-            return await getDocFromServer(userRef);
-          } catch {
-            return await getDoc(userRef);
-          }
-        };
-
-        const ref = doc(db, "users", email);
-        let snap = await readUserDoc(email);
-        let resolvedData = snap.exists() ? (snap.data() as any) : null;
-
-        if (emailRaw && emailRaw !== email) {
-          const rawSnap = await readUserDoc(emailRaw);
-          const rawData = rawSnap.exists() ? (rawSnap.data() as any) : null;
-
-          if (!snap.exists() && rawData) {
-            snap = rawSnap;
-            resolvedData = rawData;
-            try {
-              await setDoc(ref, rawData, { merge: true });
-            } catch (e) {
-              console.warn("Chyba při migraci uživatele na lowercase ID:", e);
-            }
-          } else if (resolvedData && rawData) {
-            const normalizedTimeline = parsePositionTimeline(
-              resolvedData.positionTimeline
-            );
-            const rawTimeline = parsePositionTimeline(rawData.positionTimeline);
-            if (normalizedTimeline.length === 0 && rawTimeline.length > 0) {
-              resolvedData = {
-                ...resolvedData,
-                positionTimeline: rawData.positionTimeline,
-              };
-              try {
-                await setDoc(
-                  ref,
-                  { positionTimeline: rawData.positionTimeline },
-                  { merge: true }
-                );
-              } catch (e) {
-                console.warn(
-                  "Chyba při dorovnání timeline z legacy user ID:",
-                  e
-                );
-              }
-            }
-          }
-        }
-
-        let privateData: Record<string, unknown> | null = null;
-        const privateDocIds = Array.from(
-          new Set(
-            [email, emailRaw ?? ""]
-              .map((value) => value.trim())
-              .filter((value) => value.length > 0)
-          )
-        );
-        for (const privateDocId of privateDocIds) {
-          const privateSnap = await readPrivateUserDoc(privateDocId);
-          if (!privateSnap.exists()) continue;
-          privateData = {
-            ...(privateData ?? {}),
-            ...(privateSnap.data() as Record<string, unknown>),
-          };
-        }
-
-        if (resolvedData || privateData) {
-          const data = {
-            ...(resolvedData ?? {}),
-            ...(privateData ?? {}),
-          };
+        if (payload?.hasProfile) {
+          const data = payload.profile ?? {};
 
           if (data.position) {
             setPosition(data.position as Position);
@@ -758,12 +684,13 @@ export default function SettingsPage() {
   }, [timelineSaveFlashVisible]);
 
   async function saveUserFields(partial: Record<string, any>) {
-    const email = normalizeEmail(user?.email);
-    if (!email) return;
+    if (!user) return;
 
     try {
-      const ref = doc(db, "users", email);
-      await setDoc(ref, partial, { merge: true });
+      await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+        method: "PATCH",
+        body: JSON.stringify(partial),
+      });
     } catch (e) {
       console.error("Chyba při ukládání nastavení:", e);
     }

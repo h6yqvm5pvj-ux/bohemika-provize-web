@@ -67,17 +67,121 @@ type TeamOverviewError = {
   ok: false;
   error: string;
 };
+type TeamOverviewPatchSuccess = {
+  ok: true;
+  targetEmail: string;
+  updated: Array<"position" | "positionTimeline">;
+};
 
 const TEAM_OVERVIEW_RATE_LIMIT = 120;
 const TEAM_OVERVIEW_RATE_LIMIT_WINDOW_MS = 60_000;
+const TEAM_OVERVIEW_PATCH_RATE_LIMIT = 60;
+const TEAM_OVERVIEW_PATCH_RATE_LIMIT_WINDOW_MS = 60_000;
 const TEAM_OVERVIEW_MODEL_VERSION = 1;
 const TEAM_OVERVIEW_MODEL_STALE_MS = 5 * 60 * 1000;
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
 const FIRESTORE_IN_LIMIT = 10;
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_TIMELINE_ROWS = 150;
+const POSITION_VALUES: Position[] = [
+  "poradce1",
+  "poradce2",
+  "poradce3",
+  "poradce4",
+  "poradce5",
+  "poradce6",
+  "poradce7",
+  "poradce8",
+  "poradce9",
+  "poradce10",
+  "manazer4",
+  "manazer5",
+  "manazer6",
+  "manazer7",
+  "manazer8",
+  "manazer9",
+  "manazer10",
+];
+const POSITION_SET = new Set<Position>(POSITION_VALUES);
 
 const normalizeEmail = (value: string | null | undefined): string =>
   (value ?? "").trim().toLowerCase();
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isIsoDay(value: string): boolean {
+  if (!ISO_DAY_RE.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return false;
+  return date.toISOString().slice(0, 10) === value;
+}
+
+function sanitizePositionTimeline(value: unknown): Array<{
+  id: string;
+  position: Position;
+  validFrom: string;
+  validTo: string | null;
+}> | null {
+  if (!Array.isArray(value)) return null;
+  if (value.length > MAX_TIMELINE_ROWS) return null;
+
+  const rows: Array<{
+    id: string;
+    position: Position;
+    validFrom: string;
+    validTo: string | null;
+  }> = [];
+  for (let i = 0; i < value.length; i += 1) {
+    const raw = value[i];
+    if (!isPlainObject(raw)) return null;
+
+    const id = typeof raw.id === "string" ? raw.id.trim() : "";
+    const position = typeof raw.position === "string" ? raw.position.trim() : "";
+    const validFrom = typeof raw.validFrom === "string" ? raw.validFrom.trim() : "";
+    const validToRaw = typeof raw.validTo === "string" ? raw.validTo.trim() : "";
+    const validTo = validToRaw || null;
+
+    if (!id || id.length > 120) return null;
+    if (!POSITION_SET.has(position as Position)) return null;
+    if (!isIsoDay(validFrom)) return null;
+    if (validTo && !isIsoDay(validTo)) return null;
+    if (validTo && validTo < validFrom) return null;
+
+    rows.push({
+      id,
+      position: position as Position,
+      validFrom,
+      validTo,
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (a.validFrom !== b.validFrom) return a.validFrom.localeCompare(b.validFrom);
+    const aTo = a.validTo ?? "9999-12-31";
+    const bTo = b.validTo ?? "9999-12-31";
+    return aTo.localeCompare(bTo);
+  });
+
+  const openEndedIndexes = rows
+    .map((row, index) => (!row.validTo ? index : -1))
+    .filter((index) => index >= 0);
+  if (openEndedIndexes.length > 1) return null;
+  if (openEndedIndexes.length === 1 && openEndedIndexes[0] !== rows.length - 1) {
+    return null;
+  }
+
+  for (let i = 1; i < rows.length; i += 1) {
+    const prev = rows[i - 1];
+    const current = rows[i];
+    const prevTo = prev.validTo ?? "9999-12-31";
+    if (prevTo > current.validFrom) return null;
+  }
+
+  return rows;
+}
 
 function nameFromEmail(email: string | null | undefined): string {
   if (!email) return "Neznámý uživatel";
@@ -780,6 +884,161 @@ async function persistContractStatsToReadModel(
   }
 
   await commit();
+}
+
+function parsePatchPayload(body: unknown):
+  | {
+      targetEmail: string;
+      position?: Position;
+      positionTimeline?: Array<{
+        id: string;
+        position: Position;
+        validFrom: string;
+        validTo: string | null;
+      }>;
+    }
+  | { error: string } {
+  if (!isPlainObject(body)) return { error: "Neplatný payload." };
+
+  const targetEmail = normalizeEmail(body.targetEmail as string | undefined);
+  if (!targetEmail) return { error: "Chybí targetEmail." };
+
+  const output: {
+    targetEmail: string;
+    position?: Position;
+    positionTimeline?: Array<{
+      id: string;
+      position: Position;
+      validFrom: string;
+      validTo: string | null;
+    }>;
+  } = { targetEmail };
+
+  if (body.position != null) {
+    const positionRaw = typeof body.position === "string" ? body.position.trim() : "";
+    if (!POSITION_SET.has(positionRaw as Position)) {
+      return { error: "Pole position má neplatnou hodnotu." };
+    }
+    output.position = positionRaw as Position;
+  }
+
+  if (body.positionTimeline != null) {
+    const timeline = sanitizePositionTimeline(body.positionTimeline);
+    if (!timeline) {
+      return { error: "Pole positionTimeline má neplatný formát." };
+    }
+    output.positionTimeline = timeline;
+  }
+
+  if (output.position == null && output.positionTimeline == null) {
+    return { error: "Není co uložit." };
+  }
+
+  return output;
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    if (!adminDb) {
+      return NextResponse.json(
+        { ok: false, error: "Server není správně nakonfigurován." } satisfies TeamOverviewError,
+        { status: 500 }
+      );
+    }
+
+    const email = await getAuthEmail(req);
+    const rateLimitResult = consumeRateLimit({
+      namespace: "api:team-overview:patch",
+      key: email,
+      limit: TEAM_OVERVIEW_PATCH_RATE_LIMIT,
+      windowMs: TEAM_OVERVIEW_PATCH_RATE_LIMIT_WINDOW_MS,
+    });
+    if (!rateLimitResult.allowed) {
+      const response = NextResponse.json(
+        {
+          ok: false,
+          error: "Příliš mnoho požadavků. Zkus to prosím za chvíli.",
+        } satisfies TeamOverviewError,
+        { status: 429 }
+      );
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
+    }
+
+    const body = await req.json().catch(() => null);
+    const parsed = parsePatchPayload(body);
+    if ("error" in parsed) {
+      return NextResponse.json(
+        { ok: false, error: parsed.error } satisfies TeamOverviewError,
+        { status: 400 }
+      );
+    }
+
+    const context = await loadTeamContext(email);
+    if (!context.canManagePositions) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Nemáš oprávnění upravovat pozice nebo timeline v týmu.",
+        } satisfies TeamOverviewError,
+        { status: 403 }
+      );
+    }
+
+    if (parsed.targetEmail === email) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Vlastní profil měň přes nastavení účtu.",
+        } satisfies TeamOverviewError,
+        { status: 400 }
+      );
+    }
+
+    const target = context.members.find((member) => member.email === parsed.targetEmail);
+    if (!target) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Uživatel není ve tvé týmové struktuře.",
+        } satisfies TeamOverviewError,
+        { status: 404 }
+      );
+    }
+
+    const patch: Record<string, unknown> = {};
+    const updated: Array<"position" | "positionTimeline"> = [];
+    if (parsed.position != null) {
+      patch.position = parsed.position;
+      updated.push("position");
+    }
+    if (parsed.positionTimeline != null) {
+      patch.positionTimeline = parsed.positionTimeline;
+      updated.push("positionTimeline");
+    }
+
+    await adminDb.collection("users").doc(target.docId || target.email).set(patch, {
+      merge: true,
+    });
+
+    const response = NextResponse.json({
+      ok: true,
+      targetEmail: target.email,
+      updated,
+    } satisfies TeamOverviewPatchSuccess);
+    applyRateLimitHeaders(response.headers, rateLimitResult);
+    return response;
+  } catch (err: any) {
+    const status = Number(err?.status) || 500;
+    const message =
+      typeof err?.message === "string" && err.message.trim().length > 0
+        ? err.message
+        : "Nepodařilo se uložit změny člena týmu.";
+    return NextResponse.json(
+      { ok: false, error: message } satisfies TeamOverviewError,
+      { status }
+    );
+  }
 }
 
 export async function GET(req: NextRequest) {

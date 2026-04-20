@@ -16,8 +16,8 @@ import {
   sendPasswordResetEmail,
   TotpMultiFactorGenerator,
 } from "firebase/auth";
-import { auth, db } from "../firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { auth } from "../firebase";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 
 const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
   "auth/multi-factor-auth-required",
@@ -84,28 +84,17 @@ export default function LoginPage() {
       const normalizedEmail = rawEmail.trim().toLowerCase();
 
       try {
-        let snap = await getDoc(doc(db, "users", normalizedEmail));
-
-        if (!snap.exists() && rawEmail !== normalizedEmail) {
-          snap = await getDoc(doc(db, "users", rawEmail));
-        }
-
-        let privateSnap = await getDoc(doc(db, "usersPrivate", normalizedEmail));
-        if (!privateSnap.exists() && rawEmail !== normalizedEmail) {
-          privateSnap = await getDoc(doc(db, "usersPrivate", rawEmail));
-        }
-
-        if (!snap.exists() && !privateSnap.exists()) {
-          // nemáme user dok → bereme jako bez předplatného
+        const response = await fetchAuthedJsonOrThrow<{
+          ok?: boolean;
+          hasProfile?: boolean;
+          profile?: Record<string, unknown>;
+        }>(user, "/api/user/profile", { method: "GET" });
+        if (response?.hasProfile !== true) {
           await signOut(auth);
           setError("Tento účet nemá aktivní předplatné.");
           return;
         }
-
-        const data = {
-          ...(snap.exists() ? snap.data() : {}),
-          ...(privateSnap.exists() ? privateSnap.data() : {}),
-        };
+        const data = response?.profile ?? {};
         const hasActive = evaluateSubscription(data);
 
         if (hasActive) {
