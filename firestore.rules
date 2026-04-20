@@ -78,7 +78,9 @@ service cloud.firestore {
         );
     }
 
-    function isMyManager(userEmail) {
+    // Podřízený může číst veřejný profil svého nadřízeného (a nadřízených nad ním),
+    // aby šlo při ukládání smlouvy dopočítat managerChain / meziprovize.
+    function isSubordinateOfUserResource(userEmail) {
       let me = authEmail();
       let target = normEmail(userEmail);
       let m1 = managerEmailOf(me);
@@ -452,7 +454,7 @@ service cloud.firestore {
                   || isAdmin()
                   || isDirectManagerOfUserResource()
                   || isManagerOfUserResource(userEmail)
-                  || isMyManager(userEmail);
+                  || isSubordinateOfUserResource(userEmail);
       // zapisuje majitel nebo admin
       allow create: if ((isOwner(userEmail) && !isChangingSensitivePublicUserFields()) || isAdmin())
         && !isSettingCanChangeToTrue();

@@ -5,6 +5,11 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { AppLayout } from "@/components/AppLayout";
+import {
+  institutionLogoFrameClass,
+  institutionLogoImageClass,
+  institutionLogoKeyFromPath,
+} from "@/app/lib/institutionLogoDisplay";
 import SplitTitle from "../../plan-produkce/SplitTitle";
 
 type InsurerCard = {
@@ -50,18 +55,24 @@ export default function DokumentyZivotniPojisteniPage() {
 
         <section className="grid gap-4 md:grid-cols-2">
           {INSURERS.map((insurer) => {
+            const logoKey = institutionLogoKeyFromPath(insurer.logo);
             const cardClassName = `rounded-3xl border border-slate-300 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] ${
               insurer.href ? "transition hover:-translate-y-0.5 hover:border-slate-900 hover:shadow-[0_14px_30px_rgba(15,23,42,0.1)]" : ""
             }`;
             const content = (
               <div className="flex items-center gap-3">
-                <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-300 bg-white">
+                <span
+                  className={`relative inline-flex items-center justify-center overflow-hidden rounded-2xl border border-slate-300 bg-white ${institutionLogoFrameClass(
+                    logoKey,
+                    "compact"
+                  )}`}
+                >
                   <Image
                     src={insurer.logo}
                     alt={`${insurer.title} logo`}
-                    width={42}
-                    height={42}
-                    className="h-10 w-10 object-contain"
+                    fill
+                    sizes="64px"
+                    className={institutionLogoImageClass(logoKey)}
                   />
                 </span>
                 <div>

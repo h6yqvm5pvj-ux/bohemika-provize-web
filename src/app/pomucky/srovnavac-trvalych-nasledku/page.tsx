@@ -15,6 +15,11 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import { formatMoney } from "@/app/lib/formatters";
+import {
+  institutionLogoFrameClass,
+  institutionLogoImageClass,
+  institutionLogoKeyFromInsurerName,
+} from "@/app/lib/institutionLogoDisplay";
 import SplitTitle from "../plan-produkce/SplitTitle";
 
 let html2pdfPromise: Promise<any> | null = null;
@@ -1422,12 +1427,15 @@ export default function SrovnavacTrvalychNasledkuPage() {
             .map(
               (card, idx) => {
                 const logoPath = getInsurerLogoPath(card.insurer);
+                const logoKey = institutionLogoKeyFromInsurerName(card.insurer);
                 const logoClass =
-                  logoPath === "/icons/koop.png"
-                    ? " insurer-logo--koop"
-                    : logoPath === "/icons/cpp.png"
-                      ? " insurer-logo--cpp"
-                      : "";
+                  logoKey === "cpp" || logoKey === "kooperativa"
+                    ? " insurer-logo--wide"
+                    : logoKey === "allianz" || logoKey === "axa"
+                      ? " insurer-logo--medium"
+                      : logoKey === "slavia"
+                        ? " insurer-logo--square"
+                        : "";
                 const insurerCell = logoPath
                   ? `<div class="insurer-cell"><span class="insurer-logo-wrap"><img class="insurer-logo${logoClass}" src="${escapeHtml(
                       logoPath
@@ -1620,13 +1628,17 @@ export default function SrovnavacTrvalychNasledkuPage() {
             image-rendering: -webkit-optimize-contrast;
             image-rendering: high-quality;
           }
-          .insurer-logo--koop {
-            max-width: 58px;
-            max-height: 36px;
-          }
-          .insurer-logo--cpp {
+          .insurer-logo--wide {
             max-width: 64px;
             max-height: 40px;
+          }
+          .insurer-logo--medium {
+            max-width: 56px;
+            max-height: 36px;
+          }
+          .insurer-logo--square {
+            max-width: 46px;
+            max-height: 32px;
           }
           thead th:first-child,
           tbody td:first-child { width: 42px; }
@@ -2041,6 +2053,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 ? `${podium.border} border`
                 : "border [border-color:rgba(71,85,105,0.75)]";
               const logoPath = getInsurerLogoPath(card.insurer);
+              const logoKey = institutionLogoKeyFromInsurerName(card.insurer);
               const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
 
               return (
@@ -2065,14 +2078,19 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white">
+                      <span
+                        className={`relative inline-flex shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white ${institutionLogoFrameClass(
+                          logoKey,
+                          "compact"
+                        )}`}
+                      >
                         {logoPath ? (
                           <Image
                             src={logoPath}
                             alt={insurerName}
-                            width={32}
-                            height={28}
-                            className="h-7 w-8 object-contain"
+                            fill
+                            sizes="64px"
+                            className={institutionLogoImageClass(logoKey)}
                           />
                         ) : (
                           <span className="text-[10px] font-semibold text-[#cbd5e1]">LOGO</span>

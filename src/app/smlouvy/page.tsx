@@ -48,6 +48,10 @@ import {
   productLabel as productLabelFromCatalog,
   type ProductInstitutionId,
 } from "@/app/lib/productCatalog";
+import {
+  institutionLogoFrameClass,
+  institutionLogoImageClass,
+} from "@/app/lib/institutionLogoDisplay";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
 type FirestoreTimestamp = {
@@ -1730,18 +1734,6 @@ function ContractsPageContent() {
                 const institutionLabel = institutionLabelForProduct(c.productKey as Product | undefined);
                 const institutionId = institutionForProduct(c.productKey as Product | undefined);
                 const institutionLogo = institutionId ? INSTITUTION_LOGO_BY_ID[institutionId] : null;
-                const institutionLogoClass =
-                  institutionId === "cpp" || institutionId === "kooperativa"
-                    ? "object-contain scale-[1.5] p-0"
-                    : institutionId === "allianz"
-                      ? "object-contain scale-[1.2] p-0"
-                      : institutionId === "axa"
-                        ? "object-contain scale-[1.2] p-0"
-                        : institutionId === "pillow"
-                          ? "object-contain scale-[1.2] p-0"
-                          : institutionId === "maxima"
-                            ? "object-contain scale-[1.2] p-0"
-                    : "object-contain p-1";
 
                 const CardContent = (
                   <article
@@ -1771,14 +1763,19 @@ function ContractsPageContent() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-3">
                         {institutionLabel ? (
-                          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+                          <span
+                            className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white ${institutionLogoFrameClass(
+                              institutionId,
+                              "compact"
+                            )}`}
+                          >
                             {institutionLogo ? (
                               <Image
                                 src={institutionLogo}
                                 alt={`${institutionLabel} logo`}
-                                fill
-                                sizes="40px"
-                                className={institutionLogoClass}
+                                width={72}
+                                height={40}
+                                className={`${institutionLogoImageClass(institutionId)} h-full w-full`}
                               />
                             ) : (
                               <span className="text-[10px] font-semibold tracking-wide text-slate-600">
@@ -2089,14 +2086,19 @@ function ContractsPageContent() {
                       }`}
                     >
                       <span className="flex min-w-0 items-center gap-2.5">
-                        <span className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white">
+                        <span
+                          className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white ${institutionLogoFrameClass(
+                            inst.id,
+                            "chip"
+                          )}`}
+                        >
                           {logoSrc ? (
                             <Image
                               src={logoSrc}
                               alt={`${inst.label} logo`}
-                              fill
-                              sizes="28px"
-                              className="object-contain p-1"
+                              width={36}
+                              height={28}
+                              className={`${institutionLogoImageClass(inst.id)} h-full w-full`}
                             />
                           ) : (
                             <span className="text-[10px] font-semibold tracking-wide text-slate-600">

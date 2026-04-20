@@ -7,6 +7,10 @@ import Link from "next/link";
 import { Download, X } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
+import {
+  institutionLogoFrameClass,
+  institutionLogoImageClass,
+} from "@/app/lib/institutionLogoDisplay";
 import SplitTitle from "../../../plan-produkce/SplitTitle";
 
 const CPP_DOCUMENT_GROUPS = [
@@ -80,13 +84,18 @@ export default function CppLifeDocumentsPage() {
 
         <section className="rounded-3xl border border-slate-300 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
           <div className="flex items-center gap-3">
-            <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-300 bg-white">
+            <span
+              className={`relative inline-flex items-center justify-center overflow-hidden rounded-2xl border border-slate-300 bg-white ${institutionLogoFrameClass(
+                "cpp",
+                "compact"
+              )}`}
+            >
               <Image
                 src="/icons/cpp.png"
                 alt="ČPP logo"
-                width={42}
-                height={42}
-                className="h-10 w-10 object-contain"
+                fill
+                sizes="64px"
+                className={institutionLogoImageClass("cpp")}
               />
             </span>
             <div>

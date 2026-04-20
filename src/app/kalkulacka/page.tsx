@@ -11,6 +11,7 @@ import {
   Package,
   RefreshCcw,
   Repeat2,
+  Search,
   Sigma,
   SlidersHorizontal,
   X,
@@ -64,9 +65,15 @@ import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_OPTIONS,
   isAutoProduct as isAutoProductFromCatalog,
+  productInstitutionId as productInstitutionIdFromCatalog,
+  productInstitutionLabel as productInstitutionLabelFromCatalog,
   productInstitutionLogo as productInstitutionLogoFromCatalog,
   productLabel as productLabelFromCatalog,
 } from "@/app/lib/productCatalog";
+import {
+  institutionLogoFrameClass,
+  institutionLogoImageClass,
+} from "@/app/lib/institutionLogoDisplay";
 import {
   addDoc,
   collection,
@@ -132,8 +139,17 @@ const frequencyLabel = (f: PaymentFrequency) => {
   }
 };
 
+type ProductPickerSectionKey =
+  | "life"
+  | "property"
+  | "auto"
+  | "entrepreneurs"
+  | "travel"
+  | "investments"
+  | "gold";
+
 type ProductPickerColumn = {
-  key: string;
+  key: ProductPickerSectionKey;
   title: string;
   products: Product[];
   emptyText?: string;
@@ -194,6 +210,25 @@ const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
   },
 ];
 
+const PRODUCT_PICKER_COLUMN_BY_KEY = new Map<ProductPickerSectionKey, ProductPickerColumn>(
+  PRODUCT_PICKER_COLUMNS.map((column) => [column.key, column] as const)
+);
+
+function productPickerSectionForProduct(product: Product): ProductPickerSectionKey {
+  for (const column of PRODUCT_PICKER_COLUMNS) {
+    if (column.products.includes(product)) return column.key;
+  }
+  return "life";
+}
+
+function normalizeProductPickerSearch(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 const PRODUCT_OPTION_BY_ID = new Map<Product, { id: Product; label: string }>(
   PRODUCT_OPTIONS.map((option) => [option.id, option] as const)
 );
@@ -208,6 +243,22 @@ type ContractsMutationResponse = {
   ok?: boolean;
   error?: string;
   [key: string]: unknown;
+};
+
+type ManagerSnapshotApiChainEntry = {
+  email?: string | null;
+  position?: Position | null;
+  commissionMode?: CommissionMode | null;
+};
+
+type ManagerSnapshotApiResponse = {
+  ok?: boolean;
+  error?: string;
+  ownerEmail?: string | null;
+  managerEmail?: string | null;
+  managerPosition?: Position | null;
+  managerMode?: CommissionMode | null;
+  managerChain?: ManagerSnapshotApiChainEntry[];
 };
 
 async function requestContractsMutationWithAuth({
@@ -252,6 +303,94 @@ async function requestContractsMutationWithAuth({
   }
 
   return { response, data };
+}
+
+function normalizeManagerChainFromApi(
+  rawChain: ManagerSnapshotApiChainEntry[] | null | undefined
+): ManagerChainSnapshotEntry[] {
+  if (!Array.isArray(rawChain)) return [];
+  return rawChain.map((row) => {
+    const email =
+      typeof row?.email === "string" && row.email.trim().length > 0
+        ? row.email.trim().toLowerCase()
+        : null;
+    const position = POSITION_ORDER.includes(row?.position as Position)
+      ? (row?.position as Position)
+      : null;
+    const commissionMode =
+      row?.commissionMode === "accelerated" || row?.commissionMode === "standard"
+        ? row.commissionMode
+        : null;
+
+    return {
+      email,
+      position,
+      commissionMode,
+    };
+  });
+}
+
+async function requestManagerSnapshotWithAuth({
+  user,
+  signedDateIso,
+}: {
+  user: User;
+  signedDateIso: string | null;
+}): Promise<{
+  managerEmail: string | null;
+  managerPosition: Position | null;
+  managerMode: CommissionMode | null;
+  managerChain: ManagerChainSnapshotEntry[];
+}> {
+  let token = await user.getIdToken();
+  const requestBody = JSON.stringify({ signedDateIso: signedDateIso ?? null });
+
+  const request = async (idToken: string) =>
+    fetch("/api/manager-snapshot", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      cache: "no-store",
+      body: requestBody,
+    });
+
+  let response = await request(token);
+  if (response.status === 401) {
+    token = await user.getIdToken(true);
+    response = await request(token);
+  }
+
+  const payload = (await response.json().catch(() => null)) as ManagerSnapshotApiResponse | null;
+  const apiError =
+    payload?.ok === false && typeof payload.error === "string" ? payload.error.trim() : "";
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(
+      apiError || `Nepodařilo se načíst manager snapshot (HTTP ${response.status}).`
+    );
+  }
+
+  const managerEmail =
+    typeof payload?.managerEmail === "string" && payload.managerEmail.trim().length > 0
+      ? payload.managerEmail.trim().toLowerCase()
+      : null;
+  const managerPosition = POSITION_ORDER.includes(payload?.managerPosition as Position)
+    ? (payload?.managerPosition as Position)
+    : null;
+  const managerMode =
+    payload?.managerMode === "accelerated" || payload?.managerMode === "standard"
+      ? payload.managerMode
+      : null;
+
+  const managerChain = normalizeManagerChainFromApi(payload?.managerChain);
+
+  return {
+    managerEmail,
+    managerPosition,
+    managerMode,
+    managerChain,
+  };
 }
 
 function getContractsMutationError({
@@ -475,61 +614,6 @@ function resolvePositionTimelineMatch(
   return candidates[0] ?? null;
 }
 
-function resolvePositionForSignedDate(
-  userData: any,
-  signedDateIso: string | null,
-  fallbackPosition: Position | null
-): Position | null {
-  const timeline = parsePositionTimeline(userData?.positionTimeline);
-  const timelineMatch =
-    signedDateIso && isIsoDay(signedDateIso)
-      ? resolvePositionTimelineMatch(signedDateIso, timeline)
-      : null;
-
-  return (
-    (timelineMatch?.position as Position | undefined) ??
-    (userData?.position as Position | undefined) ??
-    fallbackPosition ??
-    null
-  );
-}
-
-async function buildManagerChainSnapshotForSignedDate(
-  directManagerEmailRaw: string | null | undefined,
-  signedDateIso: string | null
-): Promise<ManagerChainSnapshotEntry[]> {
-  const directManagerEmail = (directManagerEmailRaw ?? "").trim().toLowerCase();
-  if (!directManagerEmail) return [];
-
-  const chain: ManagerChainSnapshotEntry[] = [];
-  const visited = new Set<string>();
-  let currentEmail: string | null = directManagerEmail;
-  let depth = 0;
-
-  while (currentEmail && depth < 9 && !visited.has(currentEmail)) {
-    visited.add(currentEmail);
-
-    const snap = await getDoc(doc(db, "users", currentEmail));
-    if (!snap.exists()) break;
-
-    const data = snap.data() as any;
-    const resolvedPosition = resolvePositionForSignedDate(data, signedDateIso, null);
-    const resolvedMode = (data?.commissionMode as CommissionMode | undefined) ?? null;
-
-    chain.push({
-      email: currentEmail,
-      position: resolvedPosition,
-      commissionMode: resolvedMode,
-    });
-
-    currentEmail =
-      ((data?.managerEmail as string | undefined) ?? "").trim().toLowerCase() || null;
-    depth += 1;
-  }
-
-  return chain;
-}
-
 function ensureManagerChainWithDirectManager(
   chain: ManagerChainSnapshotEntry[],
   managerEmail: string | null | undefined,
@@ -546,6 +630,21 @@ function ensureManagerChainWithDirectManager(
       commissionMode: managerMode ?? null,
     },
   ];
+}
+
+function hasResolvedTopManagerPosition(
+  chain: ManagerChainSnapshotEntry[],
+  managerEmail: string | null | undefined
+): boolean {
+  const normalizedEmail = (managerEmail ?? "").trim().toLowerCase();
+  if (!normalizedEmail) return true;
+
+  const directManager =
+    chain.find((row) => (row.email ?? "").trim().toLowerCase() === normalizedEmail) ??
+    chain[0] ??
+    null;
+
+  return Boolean(directManager?.position);
 }
 
 function formatIsoDay(value: string | null): string {
@@ -603,6 +702,18 @@ function allowedPositionsForUser(base: Position | null): Position[] {
 
 function productInstitutionLogo(product: Product): string {
   return productInstitutionLogoFromCatalog(product) ?? "/icons/produkt.png";
+}
+
+function productInstitutionLabel(product: Product): string {
+  return productInstitutionLabelFromCatalog(product, "Pojišťovna") ?? "Pojišťovna";
+}
+
+function productLogoFrameClass(product: Product): string {
+  return institutionLogoFrameClass(productInstitutionIdFromCatalog(product), "card");
+}
+
+function productLogoScaleClass(product: Product): string {
+  return institutionLogoImageClass(productInstitutionIdFromCatalog(product));
 }
 
 function isAutoProduct(product: Product | null): product is Product {
@@ -905,6 +1016,10 @@ export default function CalculatorPage() {
 
   const [product, setProduct] = useState<Product>("neon");
   const [productOpen, setProductOpen] = useState(false);
+  const [productPickerSection, setProductPickerSection] = useState<ProductPickerSectionKey>(() =>
+    productPickerSectionForProduct("neon")
+  );
+  const [productSearchText, setProductSearchText] = useState("");
   const [position, setPosition] = useState<Position>("manazer7");
   const [mode, setMode] = useState<CommissionMode>("accelerated");
   const [frequency, setFrequency] = useState<PaymentFrequency>("monthly");
@@ -1269,7 +1384,7 @@ export default function CalculatorPage() {
           }
         }
 
-        const mgrEmail = (data?.managerEmail as string | undefined)?.toLowerCase() ?? null;
+        let mgrEmail = (data?.managerEmail as string | undefined)?.toLowerCase() ?? null;
         setManagerEmailSnapshot(mgrEmail ?? null);
         const userMode = (data?.commissionMode as CommissionMode | undefined) ?? null;
         if (userMode) {
@@ -1308,52 +1423,29 @@ export default function CalculatorPage() {
           }
         }
 
-        const chain: ManagerChainSnapshotEntry[] = [];
-
-        if (mgrEmail) {
-          try {
-            const mgrSnap = await getDoc(doc(db, "users", mgrEmail));
-            if (mgrSnap.exists()) {
-              const mgrData = mgrSnap.data() as any;
-              const mgrPos = (mgrData.position as Position | undefined) ?? null;
-              const mgrMode = (mgrData.commissionMode as CommissionMode | undefined) ?? null;
-              setManagerPositionSnapshot(mgrPos);
-              setManagerModeSnapshot(mgrMode ?? null);
-
-              chain.push({
-                email: mgrEmail,
-                position: mgrPos,
-                commissionMode: mgrMode ?? null,
-              });
-
-              // projít hierarchii výš (max 9 úrovní, proti cyklům)
-              let currentEmail = (mgrData.managerEmail as string | undefined)?.toLowerCase() ?? null;
-              let depth = 0;
-              const visited = new Set<string>();
-              visited.add(mgrEmail);
-              while (currentEmail && depth < 9 && !visited.has(currentEmail)) {
-                visited.add(currentEmail);
-                const upperSnap = await getDoc(doc(db, "users", currentEmail));
-                if (!upperSnap.exists()) break;
-                const upperData = upperSnap.data() as any;
-                const upperPos = (upperData.position as Position | undefined) ?? null;
-                const upperMode =
-                  (upperData.commissionMode as CommissionMode | undefined) ?? null;
-                chain.push({
-                  email: currentEmail,
-                  position: upperPos,
-                  commissionMode: upperMode,
-                });
-                currentEmail =
-                  (upperData.managerEmail as string | undefined)?.toLowerCase() ?? null;
-                depth += 1;
-              }
-            }
-          } catch (mgrErr) {
-            console.error("Failed to load manager snapshot", mgrErr);
+        let chain: ManagerChainSnapshotEntry[] = [];
+        try {
+          const snapshot = await requestManagerSnapshotWithAuth({
+            user,
+            signedDateIso: null,
+          });
+          const snapshotManagerEmail = snapshot.managerEmail ?? null;
+          if (snapshotManagerEmail) {
+            setManagerEmailSnapshot(snapshotManagerEmail);
+            mgrEmail = snapshotManagerEmail;
           }
+          setManagerPositionSnapshot(snapshot.managerPosition ?? null);
+          setManagerModeSnapshot(snapshot.managerMode ?? null);
+          chain = snapshot.managerChain;
+        } catch (mgrErr) {
+          console.error("Failed to load manager snapshot", mgrErr);
+          setManagerPositionSnapshot(null);
+          setManagerModeSnapshot(null);
         }
 
+        if (chain.length === 0 && mgrEmail) {
+          chain = ensureManagerChainWithDirectManager(chain, mgrEmail, null, null);
+        }
         setManagerChainSnapshot(chain);
       } catch (err) {
         console.error("Failed to load user position", err);
@@ -1807,6 +1899,12 @@ export default function CalculatorPage() {
 
   useEffect(() => {
     if (!productOpen) return;
+    setProductPickerSection(productPickerSectionForProduct(product));
+    setProductSearchText("");
+  }, [productOpen, product]);
+
+  useEffect(() => {
+    if (!productOpen) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -2044,24 +2142,15 @@ export default function CalculatorPage() {
       let managerChainForSave: ManagerChainSnapshotEntry[] = managerChainSnapshot;
       let overridesForChain: ManagerOverrideSnapshot[] = [];
       try {
-        const userSnap = await getDoc(userRef);
-        const data = userSnap.data() as any;
-        mgrEmail =
-          (data?.managerEmail as string | undefined)?.toLowerCase() ??
-          mgrEmail ??
-          null;
-        if (mgrEmail) {
-          const resolvedChain = await buildManagerChainSnapshotForSignedDate(
-            mgrEmail,
-            signedDateIso
-          );
-          if (resolvedChain.length > 0) {
-            managerChainForSave = resolvedChain;
-          }
-        }
-        if (managerChainForSave.length > 0) {
-          mgrPos = managerChainForSave[0]?.position ?? mgrPos ?? null;
-          mgrMode = managerChainForSave[0]?.commissionMode ?? mgrMode ?? null;
+        const snapshot = await requestManagerSnapshotWithAuth({
+          user,
+          signedDateIso,
+        });
+        mgrEmail = snapshot.managerEmail ?? mgrEmail ?? null;
+        mgrPos = snapshot.managerPosition ?? mgrPos ?? null;
+        mgrMode = snapshot.managerMode ?? mgrMode ?? null;
+        if (snapshot.managerChain.length > 0) {
+          managerChainForSave = snapshot.managerChain;
         }
       } catch (snapshotErr) {
         console.error("Failed to snapshot manager info", snapshotErr);
@@ -2073,6 +2162,14 @@ export default function CalculatorPage() {
         mgrPos ?? null,
         mgrMode ?? null
       );
+
+      if (!hasResolvedTopManagerPosition(managerChainForSave, mgrEmail)) {
+        const msg =
+          "Nepodařilo se načíst pozici nadřízeného. Dodatek teď neuložím, aby nechyběla meziprovize.";
+        setValidationError(msg);
+        setSaveMessage(msg);
+        return;
+      }
 
       const diffs: ManagerOverrideSnapshot[] = [];
       let childPositionForBaseline: Position | null = position;
@@ -2352,7 +2449,7 @@ export default function CalculatorPage() {
           }
         }
       } catch (dupErr) {
-        console.error("Kontrola duplicitních smluv selhala", dupErr);
+        console.warn("Kontrola duplicitních smluv selhala, pokračuji bez ní", dupErr);
       }
     }
 
@@ -2377,24 +2474,15 @@ export default function CalculatorPage() {
       let managerChainForSave: ManagerChainSnapshotEntry[] = managerChainSnapshot;
       let overridesForChain: ManagerOverrideSnapshot[] = [];
       try {
-        const userSnap = await getDoc(userRef);
-        const data = userSnap.data() as any;
-        mgrEmail =
-          (data?.managerEmail as string | undefined)?.toLowerCase() ??
-          mgrEmail ??
-          null;
-        if (mgrEmail) {
-          const resolvedChain = await buildManagerChainSnapshotForSignedDate(
-            mgrEmail,
-            signedDateIso
-          );
-          if (resolvedChain.length > 0) {
-            managerChainForSave = resolvedChain;
-          }
-        }
-        if (managerChainForSave.length > 0) {
-          mgrPos = managerChainForSave[0]?.position ?? mgrPos ?? null;
-          mgrMode = managerChainForSave[0]?.commissionMode ?? mgrMode ?? null;
+        const snapshot = await requestManagerSnapshotWithAuth({
+          user,
+          signedDateIso,
+        });
+        mgrEmail = snapshot.managerEmail ?? mgrEmail ?? null;
+        mgrPos = snapshot.managerPosition ?? mgrPos ?? null;
+        mgrMode = snapshot.managerMode ?? mgrMode ?? null;
+        if (snapshot.managerChain.length > 0) {
+          managerChainForSave = snapshot.managerChain;
         }
       } catch (snapshotErr) {
         console.error("Failed to snapshot manager info", snapshotErr);
@@ -2406,6 +2494,14 @@ export default function CalculatorPage() {
         mgrPos ?? null,
         mgrMode ?? null
       );
+
+      if (!hasResolvedTopManagerPosition(managerChainForSave, mgrEmail)) {
+        const msg =
+          "Nepodařilo se načíst pozici nadřízeného. Smlouvu teď neuložím, aby nechyběla meziprovize.";
+        setValidationError(msg);
+        setSaveMessage(msg);
+        return;
+      }
 
       // předpočítej meziprovize pro celý chain (od poradce výš)
       const diffs: ManagerOverrideSnapshot[] = [];
@@ -2601,6 +2697,19 @@ export default function CalculatorPage() {
   const allowed = allowedFrequencies(product);
   const hasFrequencyPicker = allowed.length > 1;
   const currentProduct = PRODUCT_OPTIONS.find((p) => p.id === product)!;
+  const currentProductInstitutionId = productInstitutionIdFromCatalog(product);
+  const activeProductPickerColumn =
+    PRODUCT_PICKER_COLUMN_BY_KEY.get(productPickerSection) ?? PRODUCT_PICKER_COLUMNS[0];
+  const filteredSectionProducts = (() => {
+    const query = normalizeProductPickerSearch(productSearchText);
+    if (!query) return activeProductPickerColumn.products;
+
+    return activeProductPickerColumn.products.filter((productId) => {
+      const option = PRODUCT_OPTION_BY_ID.get(productId);
+      const haystack = normalizeProductPickerSearch(option?.label ?? productLabel(productId));
+      return haystack.includes(query);
+    });
+  })();
   const durationHelp = durationTooltip(product);
   const canChooseMode = isLifeProduct && userCommissionMode === "accelerated";
 
@@ -2928,9 +3037,9 @@ export default function CalculatorPage() {
               aria-label="Výběr produktu"
               className="pointer-events-auto w-full border-y border-slate-300 bg-white shadow-[0_22px_70px_rgba(2,6,23,0.22)]"
             >
-              <div className="flex flex-wrap items-start justify-end gap-3 border-b border-slate-200 bg-white px-4 py-4 sm:px-8">
-                <div className="flex items-center gap-2">
-                  <span className="hidden rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700 lg:inline-flex">
+              <div className="space-y-4 border-b border-slate-200 bg-white px-5 py-5 sm:px-10">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="inline-flex rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700">
                     {currentProduct.label}
                   </span>
                   <button
@@ -2942,70 +3051,142 @@ export default function CalculatorPage() {
                     Zavřít
                   </button>
                 </div>
+
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+                  <label className="flex w-full items-center gap-2 rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 lg:w-[230px] lg:flex-none">
+                    <Search size={13} className="text-slate-400" aria-hidden="true" />
+                    <input
+                      type="text"
+                      value={productSearchText}
+                      onChange={(e) => setProductSearchText(e.target.value)}
+                      aria-label="Hledat produkt"
+                      placeholder="Hledat produkt"
+                      className="w-full bg-transparent text-xs text-slate-900 placeholder:text-slate-400 outline-none"
+                    />
+                  </label>
+
+                  <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-gutter:stable_both-edges] [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb:hover]:bg-slate-400">
+                    <div className="flex min-w-max items-center gap-2 pb-1">
+                      {PRODUCT_PICKER_COLUMNS.map((column) => {
+                        const sectionActive = column.key === activeProductPickerColumn.key;
+                        return (
+                          <button
+                            key={column.key}
+                            type="button"
+                            onClick={() => setProductPickerSection(column.key)}
+                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                              sectionActive
+                                ? "border-slate-900 bg-slate-900 text-white"
+                                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                            }`}
+                          >
+                            <span>{column.title}</span>
+                            <span
+                              className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                                sectionActive
+                                  ? "bg-white text-slate-900"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {column.products.length}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="overflow-x-auto overflow-y-hidden pb-3 [scrollbar-gutter:stable_both-edges] [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb:hover]:bg-slate-400">
-                <div className="grid min-w-[2380px] grid-cols-7 divide-x divide-slate-200 bg-white">
-                  {PRODUCT_PICKER_COLUMNS.map((column) => (
-                    <section
-                      key={column.key}
-                      className="min-w-[340px] px-6 py-5"
-                    >
-                      <h3 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-                        {column.title}
-                      </h3>
-                      {column.products.length === 0 ? (
-                        <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
-                          {column.emptyText ?? "Zatím bez produktů."}
-                        </div>
-                      ) : (
-                        <div className="mt-4 max-h-[36vh] space-y-2 overflow-y-auto pr-1">
-                          {column.products.map((productId) => {
-                            const option = PRODUCT_OPTION_BY_ID.get(productId);
-                            if (!option) return null;
-                            const isActive = productId === product;
-                            const unsupportedText = SUPPORTED_PRODUCTS.includes(productId)
-                              ? null
-                              : "zatím bez výpočtu";
+              <div className="px-5 pb-6 pt-5 sm:px-10">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+                    {activeProductPickerColumn.title}
+                  </h3>
+                  <span className="text-xs font-medium text-slate-500">
+                    {filteredSectionProducts.length} / {activeProductPickerColumn.products.length}
+                  </span>
+                </div>
 
-                            return (
-                              <button
-                                key={productId}
-                                type="button"
-                                onClick={() => {
-                                  setProduct(productId);
-                                  setProductOpen(false);
-                                }}
-                                className={`group flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition ${
+                {activeProductPickerColumn.products.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+                    {activeProductPickerColumn.emptyText ?? "Zatím bez produktů."}
+                  </div>
+                ) : filteredSectionProducts.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+                    Pro tento filtr jsme nic nenašli.
+                  </div>
+                ) : (
+                  <div className="max-h-[46vh] overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {filteredSectionProducts.map((productId) => {
+                        const option = PRODUCT_OPTION_BY_ID.get(productId);
+                        if (!option) return null;
+                        const isActive = productId === product;
+                        const unsupportedText = SUPPORTED_PRODUCTS.includes(productId)
+                          ? null
+                          : "zatím bez výpočtu";
+
+                        return (
+                          <button
+                            key={productId}
+                            type="button"
+                            onClick={() => {
+                              setProduct(productId);
+                              setProductOpen(false);
+                            }}
+                            className={`relative rounded-2xl border bg-white px-4 py-3 text-left font-mono shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:bg-slate-50 ${
+                              isActive
+                                ? "border-slate-900 ring-2 ring-slate-900/25"
+                                : "border-slate-200"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="flex min-w-0 items-center gap-3">
+                                <span
+                                  className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white ${productLogoFrameClass(
+                                    productId
+                                  )}`}
+                                >
+                                  <Image
+                                    src={productInstitutionLogo(productId)}
+                                    alt=""
+                                    fill
+                                    className={productLogoScaleClass(productId)}
+                                  />
+                                </span>
+                                <span className="min-w-0">
+                                  <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                    {productInstitutionLabel(productId)}
+                                  </span>
+                                  <span className="block truncate text-sm font-semibold text-slate-900">
+                                    {option.label}
+                                  </span>
+                                </span>
+                              </span>
+                              <span
+                                className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border text-xs ${
                                   isActive
-                                    ? "border-slate-900 bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.25)]"
-                                    : "border-slate-200 bg-slate-50 text-slate-900 hover:-translate-y-[1px] hover:border-slate-400 hover:bg-white"
+                                    ? "border-slate-900 bg-slate-900 text-white"
+                                    : "border-slate-300 bg-white text-transparent"
                                 }`}
                               >
-                                <span className="flex min-w-0 items-center gap-2.5">
-                                  <span className="relative h-5 w-14 flex-shrink-0">
-                                    <Image
-                                      src={productInstitutionLogo(productId)}
-                                      alt=""
-                                      fill
-                                      className="object-contain object-left"
-                                    />
-                                  </span>
-                                  <span className="truncate">{option.label}</span>
+                                ✓
+                              </span>
+                            </div>
+                            {unsupportedText && (
+                              <div className="mt-2">
+                                <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
+                                  {unsupportedText}
                                 </span>
-                                {unsupportedText && (
-                                  <span className="ml-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
-                                    {unsupportedText}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </section>
-                  ))}
-                </div>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -3036,16 +3217,29 @@ export default function CalculatorPage() {
                 <div>
                   <button
                     type="button"
-                    onClick={() => setProductOpen((v) => !v)}
+                    onClick={() => {
+                      if (productOpen) {
+                        setProductOpen(false);
+                        return;
+                      }
+                      setProductPickerSection(productPickerSectionForProduct(product));
+                      setProductSearchText("");
+                      setProductOpen(true);
+                    }}
                     className="flex w-full items-center justify-between rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
                   >
                     <span className="flex items-center gap-3 min-w-0">
-                      <div className="relative h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
+                      <div
+                        className={`relative flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white ${institutionLogoFrameClass(
+                          currentProductInstitutionId,
+                          "chip"
+                        )}`}
+                      >
                         <Image
                           src={productInstitutionLogo(product)}
                           alt=""
                           fill
-                          className="object-contain"
+                          className={institutionLogoImageClass(currentProductInstitutionId)}
                         />
                       </div>
                       <span className="flex min-w-0 flex-col items-start text-left leading-tight">

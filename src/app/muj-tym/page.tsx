@@ -29,6 +29,11 @@ import {
   formatMoney as formatMoneyValue,
   positionLabel,
 } from "@/app/lib/formatters";
+import {
+  institutionLogoFrameClass,
+  institutionLogoImageClass,
+  institutionLogoKeyFromPath,
+} from "@/app/lib/institutionLogoDisplay";
 import { type Position } from "@/app/types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
@@ -1414,6 +1419,7 @@ export default function TeamPage() {
                                   </div>
                                   {selectedProductionRows.map((row) => {
                                     const logo = insurerLogoPath(row.name);
+                                    const logoKey = institutionLogoKeyFromPath(logo);
                                     return (
                                     <div
                                       key={row.name}
@@ -1421,13 +1427,18 @@ export default function TeamPage() {
                                     >
                                       <div className="min-w-0 flex items-center gap-2">
                                         {logo ? (
-                                          <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm">
+                                          <span
+                                            className={`relative inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm ${institutionLogoFrameClass(
+                                              logoKey,
+                                              "compact"
+                                            )}`}
+                                          >
                                             <Image
                                               src={logo}
                                               alt={row.name}
-                                              width={40}
-                                              height={40}
-                                              className="h-9 w-9 object-contain"
+                                              fill
+                                              sizes="64px"
+                                              className={institutionLogoImageClass(logoKey)}
                                             />
                                           </span>
                                         ) : null}

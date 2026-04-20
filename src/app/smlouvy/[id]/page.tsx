@@ -7,6 +7,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CalendarDays,
+  ChevronDown,
   ExternalLink,
   FileText,
   Package,
@@ -339,6 +340,7 @@ export default function ContractDetailPage() {
   const [childOverrideTotal, setChildOverrideTotal] = useState<number | null>(null);
   const [childOverrideMode, setChildOverrideMode] = useState<CommissionMode | null>(null);
   const [childOverrideLabel, setChildOverrideLabel] = useState<string | null>(null);
+  const [childOverrideEmail, setChildOverrideEmail] = useState<string | null>(null);
   const [childOverrideName, setChildOverrideName] = useState<string | null>(null);
   const [childOverridePosition, setChildOverridePosition] = useState<Position | null>(null);
   const [showProductPanel, setShowProductPanel] = useState(false);
@@ -347,6 +349,7 @@ export default function ContractDetailPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [showAdvisorDetails, setShowAdvisorDetails] = useState(false);
+  const [expandedMeziprovisionKeys, setExpandedMeziprovisionKeys] = useState<string[]>([]);
   const [ownerPosition, setOwnerPosition] = useState<Position | null>(null);
   const [ownerManagerEmail, setOwnerManagerEmail] = useState<string | null>(null);
   const [ownerManagerPosition, setOwnerManagerPosition] = useState<Position | null>(null);
@@ -2624,6 +2627,7 @@ export default function ContractDetailPage() {
       setChildOverrideTotal(null);
       setChildOverrideMode(null);
       setChildOverrideLabel(null);
+      setChildOverrideEmail(null);
       setChildOverrideName(null);
       setChildOverridePosition(null);
       return;
@@ -2699,6 +2703,7 @@ export default function ContractDetailPage() {
         (childSnap.position as Position | null | undefined) ??
           normalizeTitleForCompare(childSnap.email ?? childEmail)
       );
+      setChildOverrideEmail(childEmail);
       setChildOverrideName(nameFromEmail(childSnap.email ?? childEmail));
       setChildOverridePosition((childSnap.position as Position | null | undefined) ?? null);
       return;
@@ -2708,6 +2713,7 @@ export default function ContractDetailPage() {
     setChildOverrideTotal(null);
     setChildOverrideMode(null);
     setChildOverrideLabel(null);
+    setChildOverrideEmail(null);
     setChildOverrideName(null);
     setChildOverridePosition(null);
   }, [
@@ -2865,6 +2871,73 @@ export default function ContractDetailPage() {
     isManagerViewingSubordinate &&
     childOverrideLabel;
 
+  const normalizedViewerEmail = (user?.email ?? "").trim().toLowerCase();
+  const otherManagerOverrideCards = (() => {
+    if (!contract || !isManagerViewingSubordinate) return [];
+
+    const overrides = (contract.managerOverrides as ContractDoc["managerOverrides"]) ?? [];
+    const chain = (contract.managerChain as ContractDoc["managerChain"]) ?? [];
+    const chainIdx = new Map<string, number>();
+    chain.forEach((row, idx) => {
+      const email = (row.email ?? "").trim().toLowerCase();
+      if (!email) return;
+      chainIdx.set(email, idx);
+    });
+
+    const excluded = new Set<string>();
+    if (normalizedViewerEmail) excluded.add(normalizedViewerEmail);
+    if (childOverrideEmail) excluded.add(childOverrideEmail);
+
+    return overrides
+      .map((override) => {
+        const email = (override.email ?? "").trim().toLowerCase();
+        if (!email || excluded.has(email)) return null;
+
+        const rawItems = stripTotalRows(override.items);
+        const rawTotal = computeTotalWithMultipliers(rawItems);
+        if (rawItems.length === 0 || rawTotal <= 0) return null;
+
+        const items = filterAnnualYearlyDupes(filterPaymentBasedItems(rawItems));
+        const sum = items.reduce((acc, item) => acc + (item.amount ?? 0), 0);
+        const totals = isPaymentBasedProduct
+          ? paymentBasedTotals(items, paymentMultiplier)
+          : null;
+
+        const chainRow = chain.find(
+          (row) => (row.email ?? "").trim().toLowerCase() === email
+        );
+        const position =
+          (override.position as Position | null | undefined) ??
+          (chainRow?.position as Position | null | undefined) ??
+          null;
+        const mode =
+          toCommissionMode(override.commissionMode) ??
+          toCommissionMode(chainRow?.commissionMode) ??
+          toCommissionMode(contract.commissionMode);
+
+        return {
+          key: email,
+          email,
+          name: nameFromEmail(email),
+          position,
+          mode,
+          items,
+          totals,
+          totalDisplay: isPaymentBasedProduct ? sum * paymentMultiplier : rawTotal,
+          chainIndex: chainIdx.get(email) ?? -1,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => !!row)
+      .sort((a, b) => {
+        if (a.chainIndex !== b.chainIndex) return b.chainIndex - a.chainIndex;
+        return a.name.localeCompare(b.name, "cs");
+      });
+  })();
+
+  const showAnyMeziprovision =
+    isManagerViewingSubordinate &&
+    (showMeziprovision || showChildMeziprovision || otherManagerOverrideCards.length > 0);
+
   const canDelete = isOwnContract;
 
   const adviserSum = adviserItems.reduce((sum, it) => sum + (it.amount ?? 0), 0);
@@ -2890,6 +2963,65 @@ export default function ContractDetailPage() {
     isPaymentBasedProduct ? managerSum * paymentMultiplier : overrideTotal ?? 0;
   const childManagerTotalDisplay =
     isPaymentBasedProduct ? childManagerSum * paymentMultiplier : childOverrideTotal ?? 0;
+  const contractAuthorName = nameFromEmail(contract?.userEmail ?? ownerEmail ?? user?.email);
+
+  type MeziprovisionCard = {
+    key: string;
+    userName: string;
+    position: Position | null;
+    mode: CommissionMode | null;
+    items: CommissionResultItemDTO[];
+    totals: { immediate: number; subsequent: number } | null;
+    totalDisplay: number;
+  };
+
+  const meziprovisionCards: MeziprovisionCard[] = [
+    ...(showMeziprovision
+      ? [
+          {
+            key: `self:${normalizedViewerEmail || "manager"}`,
+            userName: nameFromEmail(user?.email),
+            position: effectiveManagerPosition ?? null,
+            mode: overrideMode ?? null,
+            items: managerItems,
+            totals: paymentBasedManagerTotals,
+            totalDisplay: managerTotalDisplay,
+          },
+        ]
+      : []),
+    ...(showChildMeziprovision
+      ? [
+          {
+            key: `child:${childOverrideEmail || childOverrideName || "manager"}`,
+            userName: childOverrideName ?? nameFromEmail(childOverrideEmail),
+            position: childOverridePosition ?? null,
+            mode: childOverrideMode ?? null,
+            items: childManagerItems,
+            totals: paymentBasedChildManagerTotals,
+            totalDisplay: childManagerTotalDisplay,
+          },
+        ]
+      : []),
+    ...otherManagerOverrideCards.map((card) => ({
+      key: `other:${card.key}`,
+      userName: card.name,
+      position: card.position ?? null,
+      mode: card.mode ?? null,
+      items: card.items,
+      totals: card.totals,
+      totalDisplay: card.totalDisplay,
+    })),
+  ];
+
+  useEffect(() => {
+    setExpandedMeziprovisionKeys([]);
+  }, [contract?.id, user?.email, isManagerViewingSubordinate]);
+
+  const toggleMeziprovisionCard = (key: string) => {
+    setExpandedMeziprovisionKeys((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
+    );
+  };
 
   // pokud je načtený kontrakt a uživatel nemá oprávnění, schovej data a přesměruj
   useEffect(() => {
@@ -2926,6 +3058,8 @@ export default function ContractDetailPage() {
     "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-4 py-2 text-base font-mono tracking-tight text-slate-900";
   const monoChipDarkClass =
     "inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-base font-mono tracking-tight text-white";
+  const collapsibleButtonClass =
+    "flex h-12 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-4 text-base font-semibold font-mono tracking-tight text-slate-900 transition hover:border-slate-400 hover:bg-slate-50";
   const ghostButtonClass =
     "rounded-xl border border-slate-900 bg-slate-900 px-5 py-3 text-base sm:text-lg font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
   const headerActionButtonClass =
@@ -3319,27 +3453,25 @@ export default function ContractDetailPage() {
                 {contract && isManagerViewingSubordinate && (
                   <section className={sectionPanelClass}>
                     <h3 className={`mb-2 flex items-center gap-2 text-lg font-semibold ${monoHeadingClass}`}>
-                      <span className={monoChipClass}>Poradce</span>
+                      <span className={monoChipClass}>Sjednatel</span>
                     </h3>
-                    <dl className="space-y-2 text-lg text-slate-800">
-                      <div className="flex justify-between gap-2">
-                        <dt className={keyValueLabelClass}>Sjednal</dt>
-                        <dd className={keyValueValueClass}>
-                          {nameFromEmail(contract.userEmail)}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <dt className={keyValueLabelClass}>Pozice</dt>
-                        <dd className={keyValueValueClass}>
-                          {positionLabel(
-                            ownerPosition ?? (contract.position as Position | null)
-                          )}
-                        </dd>
-                      </div>
+                    <dl className="grid max-w-[560px] grid-cols-[120px_minmax(0,1fr)] gap-x-6 gap-y-2 text-lg text-slate-800">
+                      <dt className={keyValueLabelClass}>Sjednal</dt>
+                      <dd className="text-lg font-semibold text-slate-900">
+                        {nameFromEmail(contract.userEmail)}
+                      </dd>
+
+                      <dt className={keyValueLabelClass}>Pozice</dt>
+                      <dd className="text-lg font-semibold text-slate-900">
+                        {positionLabel(
+                          ownerPosition ?? (contract.position as Position | null)
+                        )}
+                      </dd>
+
                       {ownerManagerEmail && (
-                        <div className="flex justify-between gap-2">
+                        <>
                           <dt className={keyValueLabelClass}>Nadřízený</dt>
-                          <dd className={keyValueValueClass}>
+                          <dd className="text-lg font-semibold text-slate-900">
                             {nameFromEmail(ownerManagerEmail)}
                             {ownerManagerPosition && (
                               <span className="block text-sm text-slate-600">
@@ -3347,7 +3479,7 @@ export default function ContractDetailPage() {
                               </span>
                             )}
                           </dd>
-                        </div>
+                        </>
                       )}
                     </dl>
                   </section>
@@ -3689,114 +3821,89 @@ export default function ContractDetailPage() {
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
               <div className="space-y-5">
             {/* MEZIPROVIZE – jen když manažer kouká na podřízeného */}
-            {showMeziprovision && (
-              <section className="space-y-5">
-                <div className="space-y-3">
-          <h3 className={`text-xl font-semibold ${monoHeadingClass} flex flex-wrap items-center gap-2`}>
-            <span className={monoChipClass}>Meziprovize</span>
-            <span>pro {nameFromEmail(user?.email)}</span>
-            {effectiveManagerPosition && (
-              <span className="text-base text-slate-700">
-                {positionLabel(effectiveManagerPosition)}
-              </span>
-            )}
-          </h3>
-          <div className={commissionPanelClass}>
-            <div className="space-y-1">
-              {managerItems.map((item, idx) =>
-                renderCommissionRow(
-                  item,
-                  effectiveManagerPosition,
-                  overrideMode,
-                  `manager-${idx}-${item.title}`
-                )
-              )}
-            </div>
+            {showAnyMeziprovision && (
+              <section className="space-y-4">
+                {meziprovisionCards.map((card) => {
+                  const isExpanded = expandedMeziprovisionKeys.includes(card.key);
+                  return (
+                    <div key={card.key} className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleMeziprovisionCard(card.key)}
+                        aria-expanded={isExpanded}
+                        className={`${collapsibleButtonClass} ${
+                          isExpanded ? "border-slate-900 bg-slate-50" : ""
+                        }`}
+                      >
+                        <span className="truncate text-left">
+                          Meziprovize: {card.userName}
+                        </span>
+                        <ChevronDown
+                          size={16}
+                          className={`shrink-0 text-slate-500 transition-transform ${
+                            isExpanded ? "rotate-180" : ""
+                          }`}
+                          aria-hidden="true"
+                        />
+                      </button>
 
-                        <div className={commissionTotalClass}>
-                          {isPaymentBasedProduct && paymentBasedManagerTotals ? (
-                            <div className="w-full space-y-2 text-lg">
-                              <div className="flex items-center justify-between">
-                                <span className="font-semibold">Celkem v 1. roce</span>
-                                <span className="text-2xl font-bold text-slate-900">
-                                  {formatMoney(paymentBasedManagerTotals.immediate)}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <span className="font-semibold">Celkem ročně následně</span>
-                                <span className="text-2xl font-bold text-slate-900">
-                                  {formatMoney(paymentBasedManagerTotals.subsequent)}
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex w-full items-center justify-between gap-4">
-                              <span className="text-lg font-semibold">
-                                Celkem meziprovize
+                      {isExpanded && (
+                        <div className="space-y-3">
+                          <h4 className={`text-lg font-semibold ${monoHeadingClass} flex flex-wrap items-center gap-2`}>
+                            <span className={monoChipClass}>Meziprovize</span>
+                            Meziprovize: {card.userName}
+                            {card.position && (
+                              <span className="ml-1 text-sm text-slate-700">
+                                ({positionLabel(card.position)})
                               </span>
-                              <span className="text-2xl font-bold text-slate-900">
-                                {formatMoney(managerTotalDisplay)}
-                              </span>
+                            )}
+                          </h4>
+
+                          <div className={commissionPanelClass}>
+                            <div className="space-y-1">
+                              {card.items.map((item, idx) =>
+                                renderCommissionRow(
+                                  item,
+                                  card.position,
+                                  card.mode,
+                                  `${card.key}-${idx}-${item.title}`
+                                )
+                              )}
                             </div>
-                          )}
+
+                            <div className={commissionTotalClass}>
+                              {isPaymentBasedProduct && card.totals ? (
+                                <div className="w-full space-y-2 text-lg">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-semibold">Celkem v 1. roce</span>
+                                    <span className="text-2xl font-bold text-slate-900">
+                                      {formatMoney(card.totals.immediate)}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-semibold">Celkem ročně následně</span>
+                                    <span className="text-2xl font-bold text-slate-900">
+                                      {formatMoney(card.totals.subsequent)}
+                                    </span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex w-full items-center justify-between gap-4">
+                                  <span className="text-lg font-semibold">
+                                    Celkem meziprovize
+                                  </span>
+                                  <span className="text-2xl font-bold text-slate-900">
+                                    {formatMoney(card.totalDisplay)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
-
-                    {showChildMeziprovision && (
-                      <div className="space-y-3">
-                        <h4 className={`text-lg font-semibold ${monoHeadingClass} flex flex-wrap items-center gap-2`}>
-                          <span className={monoChipClass}>Meziprovize</span>
-                          Meziprovize pro podřízeného manažera{" "}
-                          {childOverrideName ?? ""}
-                          {childOverridePosition && (
-                            <span className="ml-1 text-sm text-slate-700">
-                              ({positionLabel(childOverridePosition)})
-                            </span>
-                          )}
-                        </h4>
-                        <div className={commissionPanelClass}>
-                          <div className="space-y-1">
-                            {childManagerItems.map((item, idx) =>
-                              renderCommissionRow(
-                                item,
-                                childOverridePosition,
-                                childOverrideMode,
-                                `child-manager-${idx}-${item.title}`
-                              )
-                            )}
-                          </div>
-
-                          <div className={commissionTotalClass}>
-                            {isPaymentBasedProduct && paymentBasedChildManagerTotals ? (
-                              <div className="w-full space-y-2 text-lg">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-semibold">Celkem v 1. roce</span>
-                                  <span className="text-2xl font-bold text-slate-900">
-                                    {formatMoney(paymentBasedChildManagerTotals.immediate)}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                  <span className="font-semibold">Celkem ročně následně</span>
-                                  <span className="text-2xl font-bold text-slate-900">
-                                    {formatMoney(paymentBasedChildManagerTotals.subsequent)}
-                                  </span>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex w-full items-center justify-between gap-4">
-                                <span className="text-lg font-semibold">
-                                  Celkem meziprovize
-                                </span>
-                                <span className="text-2xl font-bold text-slate-900">
-                                  {formatMoney(childManagerTotalDisplay)}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                  );
+                })}
                   </section>
                 )}
 
@@ -3857,16 +3964,21 @@ export default function ContractDetailPage() {
                       onClick={() =>
                         setShowAdvisorDetails((v) => !v)
                       }
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-5 py-2.5 text-lg font-semibold font-mono tracking-tight text-white transition hover:bg-black"
+                      aria-expanded={showAdvisorDetails}
+                      className={`${collapsibleButtonClass} ${
+                        showAdvisorDetails ? "border-slate-900 bg-slate-50" : ""
+                      }`}
                     >
-                      <span>
-                        {showAdvisorDetails
-                          ? "Skrýt provizi poradce"
-                          : "Zobrazit provizi poradce"}
+                      <span className="truncate text-left">
+                        Provize sjednatele: {contractAuthorName}
                       </span>
-                      <span className="text-base text-slate-300">
-                        {showAdvisorDetails ? "▲" : "▼"}
-                      </span>
+                      <ChevronDown
+                        size={16}
+                        className={`shrink-0 text-slate-500 transition-transform ${
+                          showAdvisorDetails ? "rotate-180" : ""
+                        }`}
+                        aria-hidden="true"
+                      />
                     </button>
 
                         {showAdvisorDetails && (
