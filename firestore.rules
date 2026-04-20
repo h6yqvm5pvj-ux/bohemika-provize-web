@@ -321,6 +321,20 @@ service cloud.firestore {
           ]);
     }
 
+    function isChangingIdentityPublicUserFields() {
+      return resource == null
+        ? request.resource.data.keys().hasAny([
+            "email",
+            "managerEmail",
+            "userId"
+          ])
+        : request.resource.data.diff(resource.data).changedKeys().hasAny([
+            "email",
+            "managerEmail",
+            "userId"
+          ]);
+    }
+
     function isChangingRestrictedPrivateUserFields() {
       return resource == null
         ? request.resource.data.keys().hasAny([
@@ -456,11 +470,11 @@ service cloud.firestore {
                   || isManagerOfUserResource(userEmail)
                   || isSubordinateOfUserResource(userEmail);
       // zapisuje majitel nebo admin
-      allow create: if ((isOwner(userEmail) && !isChangingSensitivePublicUserFields()) || isAdmin())
+      allow create: if ((isOwner(userEmail) && !isChangingSensitivePublicUserFields() && !isChangingIdentityPublicUserFields()) || isAdmin())
         && !isSettingCanChangeToTrue();
       allow update: if (
           (
-            (isOwner(userEmail) && !isChangingSensitivePublicUserFields())
+            (isOwner(userEmail) && !isChangingSensitivePublicUserFields() && !isChangingIdentityPublicUserFields())
             || isAdmin()
           )
           && !isSettingCanChangeToTrue()

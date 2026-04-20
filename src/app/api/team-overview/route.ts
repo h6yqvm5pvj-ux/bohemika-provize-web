@@ -480,7 +480,8 @@ function candidateFromDoc(
 ): TeamMember | null {
   if (!docSnap.exists) return null;
   const data = docSnap.data() as Record<string, unknown>;
-  const email = normalizeEmail((data.email as string | undefined) ?? docSnap.id);
+  // Document id is canonical identity. Do not trust mutable data.email here.
+  const email = normalizeEmail(docSnap.id);
   if (!email) return null;
 
   return {

@@ -1826,15 +1826,50 @@ const buildUserTree = async (): Promise<UserTreeResult> => {
     throw new Error("Firebase Admin credentials are not configured.");
   }
   const snap = await adminDb.collection("users").get();
-  const users: UserNode[] = [];
+  const usersByEmail = new Map<string, UserNode>();
 
   snap.forEach((doc) => {
     const data = doc.data() as any;
-    const email = normalizeEmail((data.email as string | undefined) ?? doc.id);
+    // Never trust mutable data.email for authorization graph building.
+    // Document id is the canonical user identity.
+    const email = normalizeEmail(doc.id);
     if (!email) return;
     const managerEmail = normalizeEmail(data.managerEmail as string | undefined);
     const position = (data.position as Position | null | undefined) ?? null;
-    users.push({ email, managerEmail: managerEmail || null, position });
+    const candidate: UserNode = {
+      email,
+      managerEmail: managerEmail || null,
+      position,
+    };
+    const existing = usersByEmail.get(email);
+    if (!existing) {
+      usersByEmail.set(email, candidate);
+      return;
+    }
+
+    // Keep the record that contains more hierarchy information.
+    const existingScore =
+      (existing.position ? 1 : 0) + (existing.managerEmail ? 1 : 0);
+    const candidateScore =
+      (candidate.position ? 1 : 0) + (candidate.managerEmail ? 1 : 0);
+    if (candidateScore > existingScore) {
+      usersByEmail.set(email, candidate);
+    }
+  });
+
+  const knownEmails = new Set<string>(usersByEmail.keys());
+  const users = Array.from(usersByEmail.values()).map((user) => {
+    const managerEmail =
+      user.managerEmail &&
+      user.managerEmail !== user.email &&
+      knownEmails.has(user.managerEmail)
+        ? user.managerEmail
+        : null;
+    return {
+      email: user.email,
+      managerEmail,
+      position: user.position,
+    };
   });
 
   const childrenByManager = buildChildrenByManager(users);
