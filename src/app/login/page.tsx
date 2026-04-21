@@ -174,7 +174,7 @@ export default function LoginPage() {
       );
       await withTimeout(
         mfaResolver.resolveSignIn(assertion),
-        12000,
+        20000,
         "2FA ověření trvá příliš dlouho."
       );
       // dokončení přihlášení + kontrolu subscription řeší onAuthStateChanged
@@ -217,7 +217,7 @@ export default function LoginPage() {
 
       await withTimeout(
         signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword),
-        12000,
+        20000,
         "Přihlášení trvá příliš dlouho."
       );
       // dál už to řeší onAuthStateChanged výše:

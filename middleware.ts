@@ -21,6 +21,12 @@ const CONNECT_SRC = [
   "https://europe-central2-bohemikasmlouvy.cloudfunctions.net",
 ].join(" ");
 
+const FRAME_SRC = [
+  "'self'",
+  "https://*.firebaseapp.com",
+  "https://*.web.app",
+].join(" ");
+
 function createNonce(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
@@ -52,7 +58,7 @@ function buildBaselineCsp(): string {
     "frame-ancestors 'none'",
     "object-src 'none'",
     "form-action 'self'",
-    "frame-src 'none'",
+    `frame-src ${FRAME_SRC}`,
     "worker-src 'self' blob:",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https:",
@@ -77,7 +83,7 @@ function buildStrictNonceCsp(nonce: string): string {
     "frame-ancestors 'none'",
     "object-src 'none'",
     "form-action 'self'",
-    "frame-src 'none'",
+    `frame-src ${FRAME_SRC}`,
     "worker-src 'self' blob:",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https:",
@@ -92,6 +98,7 @@ function buildStrictNonceCsp(nonce: string): string {
 export function middleware(req: NextRequest) {
   const nonce = createNonce();
   const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("x-csp-nonce", nonce);
 
   const res = NextResponse.next({
@@ -101,8 +108,9 @@ export function middleware(req: NextRequest) {
   });
 
   const strictCsp = buildStrictNonceCsp(nonce);
+  const useLegacyReportOnlyMode = process.env.CSP_STRICT_ENFORCE === "0";
 
-  if (process.env.CSP_STRICT_ENFORCE === "1") {
+  if (!useLegacyReportOnlyMode) {
     res.headers.set("Content-Security-Policy", strictCsp);
   } else {
     res.headers.set("Content-Security-Policy", buildBaselineCsp());
