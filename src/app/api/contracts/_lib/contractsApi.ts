@@ -1,5 +1,6 @@
 // src/app/api/contracts/route.ts
 import { NextResponse, type NextRequest } from "next/server";
+import type { DecodedIdToken } from "firebase-admin/auth";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import {
@@ -15,6 +16,32 @@ import {
 } from "@/app/lib/teamHierarchy";
 import { toDate } from "@/app/lib/formatters";
 import { totalWithMultipliers } from "@/app/lib/commissionTotals";
+import {
+  calculateNeon,
+  calculateFlexi,
+  calculateMaxEfekt,
+  calculatePillowInjury,
+  calculateDomex,
+  calculatePillowMajetek,
+  calculateKoopMajetekObcan,
+  calculateMaxdomov,
+  calculateCppAuto,
+  calculateSlaviaAuto,
+  calculateCppSimplex,
+  calculateCppPPRbez,
+  calculateCppPPRs,
+  calculateAllianzAuto,
+  calculateAllianzMujDomov,
+  calculateCsobAuto,
+  calculateUniqaAuto,
+  calculatePillowAuto,
+  calculateKooperativaAuto,
+  calculateZamex,
+  calculateCppCestovko,
+  calculateAxaCestovko,
+  calculateKoopCestovko,
+  calculateComfortCC,
+} from "@/app/lib/productFormulas";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
 type FirestoreTimestamp = {
@@ -105,6 +132,27 @@ type UserTreeResult = {
   users: UserNode[];
   childrenByManager: Map<string, UserNode[]>;
 };
+type PositionTimelineEntry = {
+  id: string;
+  position: Position;
+  validFrom: string;
+  validTo: string | null;
+};
+type UserProfileSnapshot = {
+  docId: string;
+  email: string;
+  managerEmail: string | null;
+  position: Position | null;
+  commissionMode: CommissionMode | null;
+  positionTimeline: unknown;
+};
+type SubscriptionStatus = "active" | "expired" | "none";
+type AuthContextOptions = {
+  requireKnownUser?: boolean;
+  requireVerifiedEmail?: boolean;
+  requireMfa?: boolean;
+  requireActiveSubscription?: boolean;
+};
 
 export type ContractsGetMode = "auto" | "detail" | "list";
 export type ContractsPatchAction =
@@ -117,6 +165,8 @@ const PAGE_SIZE_DEFAULT = 30;
 const PAGE_SIZE_MAX = 50;
 const CONTRACTS_MUTATION_RATE_LIMIT = 60;
 const CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
+const CONTRACTS_GET_RATE_LIMIT = 180;
+const CONTRACTS_GET_RATE_LIMIT_WINDOW_MS = 60_000;
 const UPDATE_FIELDS_MAX_ENTRY_IDS = 50;
 const USER_TREE_CACHE_TTL_MS = 30_000;
 const CONTRACT_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
@@ -125,27 +175,17 @@ const CONTRACTS_CREATE_RATE_LIMIT_WINDOW_MS = 60_000;
 const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "productKey",
   "entryType",
-  "position",
-  "commissionMode",
   "inputAmount",
   "effectiveInputAmount",
   "comfortPayment",
   "comfortGradual",
   "comfortTargetAmount",
   "frequencyRaw",
-  "items",
-  "total",
-  "result",
   "clientName",
   "contractSignedDate",
   "policyStartDate",
   "durationYears",
   "contractNumber",
-  "managerEmailSnapshot",
-  "managerPositionSnapshot",
-  "managerModeSnapshot",
-  "managerChain",
-  "managerOverrides",
   "isRefresh",
   "refreshOriginalContractNumber",
   "rootContractEntryId",
@@ -158,7 +198,6 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "premiumIncreaseAmount",
   "premiumDecreaseAmount",
   "changeType",
-  "paid",
 ]);
 const SUPPORTED_ENTRY_TYPES = new Set(["contract", "endorsement"] as const);
 const SUPPORTED_PRODUCTS = new Set<Product>([
@@ -188,7 +227,7 @@ const SUPPORTED_PRODUCTS = new Set<Product>([
   "cppPPRs",
   "cppPPRbez",
 ]);
-const SUPPORTED_POSITIONS = new Set<Position>([
+const POSITION_ORDER: Position[] = [
   "poradce1",
   "poradce2",
   "poradce3",
@@ -206,16 +245,13 @@ const SUPPORTED_POSITIONS = new Set<Position>([
   "manazer8",
   "manazer9",
   "manazer10",
-]);
+];
+const SUPPORTED_POSITIONS = new Set<Position>(POSITION_ORDER);
 const SUPPORTED_PAYMENT_FREQUENCIES = new Set<PaymentFrequency>([
   "monthly",
   "quarterly",
   "semiannual",
   "annual",
-]);
-const SUPPORTED_COMMISSION_MODES = new Set<CommissionMode>([
-  "accelerated",
-  "standard",
 ]);
 const SUPPORTED_ENDORSEMENT_CHANGE_TYPES = new Set([
   "increase",
@@ -439,8 +475,11 @@ const DOMEX_DETAIL_ALLOWED_KEYS = new Set<string>([
 ]);
 const MIN_REASONABLE_CONTRACT_DATE = new Date("2000-01-01T00:00:00.000Z");
 const MAX_REASONABLE_CONTRACT_DATE = new Date("2101-01-01T00:00:00.000Z");
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_MANAGER_CHAIN_DEPTH = 9;
 const CPP_WSEXTRA_URL = "https://wsextra.cpp.cz/extranet/extranet.asmx";
 const CPP_SOAP_ACTION_STAV_SMLOUVY_ZP = "https://extranet.cpp.cz/StavSmlouvyZP";
+const CPP_STATUS_SYNC_ENABLED = false;
 const CONTRACT_REFS_COLLECTION = "contractRefs";
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
@@ -707,51 +746,6 @@ const parseProductKey = (value: unknown): ParseResult<Product> => {
   return { ok: true, value: normalized };
 };
 
-const parsePositionField = (value: unknown, field: string): ParseResult<Position> => {
-  if (typeof value !== "string") {
-    return { ok: false, error: `Pole ${field} musí být text.` };
-  }
-  const normalized = value.trim() as Position;
-  if (!SUPPORTED_POSITIONS.has(normalized)) {
-    return { ok: false, error: `Pole ${field} má nepodporovanou hodnotu.` };
-  }
-  return { ok: true, value: normalized };
-};
-
-const parseOptionalPositionField = (
-  value: unknown,
-  field: string
-): ParseResult<Position | null> => {
-  if (value == null || value === "") {
-    return { ok: true, value: null };
-  }
-  return parsePositionField(value, field);
-};
-
-const parseCommissionModeField = (
-  value: unknown,
-  field: string
-): ParseResult<CommissionMode> => {
-  if (typeof value !== "string") {
-    return { ok: false, error: `Pole ${field} musí být text.` };
-  }
-  const normalized = value.trim() as CommissionMode;
-  if (!SUPPORTED_COMMISSION_MODES.has(normalized)) {
-    return { ok: false, error: `Pole ${field} má nepodporovanou hodnotu.` };
-  }
-  return { ok: true, value: normalized };
-};
-
-const parseOptionalCommissionModeField = (
-  value: unknown,
-  field: string
-): ParseResult<CommissionMode | null> => {
-  if (value == null || value === "") {
-    return { ok: true, value: null };
-  }
-  return parseCommissionModeField(value, field);
-};
-
 const parseFrequencyField = (
   value: unknown
 ): ParseResult<PaymentFrequency> => {
@@ -765,83 +759,10 @@ const parseFrequencyField = (
   return { ok: true, value: normalized };
 };
 
-const parseCommissionItems = (
-  value: unknown,
-  field: string
-): ParseResult<CommissionResultItemDTO[]> => {
-  if (!Array.isArray(value)) {
-    return { ok: false, error: `Pole ${field} musí být pole.` };
-  }
-  if (value.length > 200) {
-    return { ok: false, error: `Pole ${field} je příliš rozsáhlé.` };
-  }
-
-  const out: CommissionResultItemDTO[] = [];
-  for (let i = 0; i < value.length; i += 1) {
-    const row = value[i];
-    if (!isPlainObject(row)) {
-      return { ok: false, error: `Pole ${field}[${i}] musí být objekt.` };
-    }
-    const titleParsed = parseRequiredTrimmedText(row.title, `${field}[${i}].title`, 200);
-    if (!titleParsed.ok) return titleParsed;
-
-    const amount = Number(row.amount);
-    if (!Number.isFinite(amount) || amount < -1_000_000_000 || amount > 1_000_000_000) {
-      return {
-        ok: false,
-        error: `Pole ${field}[${i}].amount musí být platné číslo.`,
-      };
-    }
-
-    out.push({
-      title: titleParsed.value,
-      amount,
-    });
-  }
-
-  return { ok: true, value: out };
-};
-
 type NormalizedManagerChainEntry = {
   email: string | null;
   position: Position | null;
   commissionMode: CommissionMode | null;
-};
-
-const parseManagerChainField = (
-  value: unknown
-): ParseResult<NormalizedManagerChainEntry[]> => {
-  if (value == null) return { ok: true, value: [] };
-  if (!Array.isArray(value)) {
-    return { ok: false, error: "Pole managerChain musí být pole." };
-  }
-  if (value.length > 12) {
-    return { ok: false, error: "Pole managerChain je příliš dlouhé." };
-  }
-
-  const out: NormalizedManagerChainEntry[] = [];
-  for (let i = 0; i < value.length; i += 1) {
-    const row = value[i];
-    if (!isPlainObject(row)) {
-      return { ok: false, error: `Pole managerChain[${i}] musí být objekt.` };
-    }
-    const email = normalizeEmail(typeof row.email === "string" ? row.email : null) || null;
-    const positionParsed = parseOptionalPositionField(row.position, `managerChain[${i}].position`);
-    if (!positionParsed.ok) return positionParsed;
-    const modeParsed = parseOptionalCommissionModeField(
-      row.commissionMode,
-      `managerChain[${i}].commissionMode`
-    );
-    if (!modeParsed.ok) return modeParsed;
-
-    out.push({
-      email,
-      position: positionParsed.value,
-      commissionMode: modeParsed.value,
-    });
-  }
-
-  return { ok: true, value: out };
 };
 
 type NormalizedManagerOverrideEntry = {
@@ -850,56 +771,6 @@ type NormalizedManagerOverrideEntry = {
   commissionMode: CommissionMode | null;
   items: CommissionResultItemDTO[];
   total: number;
-};
-
-const parseManagerOverridesField = (
-  value: unknown
-): ParseResult<NormalizedManagerOverrideEntry[]> => {
-  if (value == null) return { ok: true, value: [] };
-  if (!Array.isArray(value)) {
-    return { ok: false, error: "Pole managerOverrides musí být pole." };
-  }
-  if (value.length > 20) {
-    return { ok: false, error: "Pole managerOverrides je příliš dlouhé." };
-  }
-
-  const out: NormalizedManagerOverrideEntry[] = [];
-  for (let i = 0; i < value.length; i += 1) {
-    const row = value[i];
-    if (!isPlainObject(row)) {
-      return { ok: false, error: `Pole managerOverrides[${i}] musí být objekt.` };
-    }
-
-    const itemsParsed = parseCommissionItems(row.items, `managerOverrides[${i}].items`);
-    if (!itemsParsed.ok) return itemsParsed;
-
-    const positionParsed = parseOptionalPositionField(
-      row.position,
-      `managerOverrides[${i}].position`
-    );
-    if (!positionParsed.ok) return positionParsed;
-    const modeParsed = parseOptionalCommissionModeField(
-      row.commissionMode,
-      `managerOverrides[${i}].commissionMode`
-    );
-    if (!modeParsed.ok) return modeParsed;
-
-    const email = normalizeEmail(typeof row.email === "string" ? row.email : null) || null;
-    const total = totalWithMultipliers(itemsParsed.value);
-    if (itemsParsed.value.length === 0 || total <= 0) {
-      continue;
-    }
-
-    out.push({
-      email,
-      position: positionParsed.value,
-      commissionMode: modeParsed.value,
-      items: itemsParsed.value,
-      total,
-    });
-  }
-
-  return { ok: true, value: out };
 };
 
 const parseRequiredDateField = (value: unknown, field: string): ParseResult<Date> => {
@@ -983,10 +854,6 @@ const normalizeCreateEntryPayload = ({
   if (!entryTypeParsed.ok) return entryTypeParsed;
   const productParsed = parseProductKey(raw.productKey);
   if (!productParsed.ok) return productParsed;
-  const positionParsed = parsePositionField(raw.position, "position");
-  if (!positionParsed.ok) return positionParsed;
-  const modeParsed = parseCommissionModeField(raw.commissionMode, "commissionMode");
-  if (!modeParsed.ok) return modeParsed;
   const freqParsed = parseFrequencyField(raw.frequencyRaw);
   if (!freqParsed.ok) return freqParsed;
 
@@ -1030,30 +897,6 @@ const normalizeCreateEntryPayload = ({
     max: 120,
   });
   if (!durationYearsParsed.ok) return durationYearsParsed;
-
-  const itemsParsed = parseCommissionItems(raw.items, "items");
-  if (!itemsParsed.ok) return itemsParsed;
-  if (entryTypeParsed.value === "contract" && itemsParsed.value.length === 0) {
-    return { ok: false, error: "Smlouva musí obsahovat alespoň jednu položku provize." };
-  }
-
-  const managerEmailSnapshot = normalizeEmail(
-    typeof raw.managerEmailSnapshot === "string" ? raw.managerEmailSnapshot : null
-  ) || null;
-  const managerPositionParsed = parseOptionalPositionField(
-    raw.managerPositionSnapshot,
-    "managerPositionSnapshot"
-  );
-  if (!managerPositionParsed.ok) return managerPositionParsed;
-  const managerModeParsed = parseOptionalCommissionModeField(
-    raw.managerModeSnapshot,
-    "managerModeSnapshot"
-  );
-  if (!managerModeParsed.ok) return managerModeParsed;
-  const managerChainParsed = parseManagerChainField(raw.managerChain);
-  if (!managerChainParsed.ok) return managerChainParsed;
-  const managerOverridesParsed = parseManagerOverridesField(raw.managerOverrides);
-  if (!managerOverridesParsed.ok) return managerOverridesParsed;
 
   const isRefreshParsed = parseOptionalBoolean(raw.isRefresh, "isRefresh");
   if (!isRefreshParsed.ok) return isRefreshParsed;
@@ -1132,34 +975,24 @@ const normalizeCreateEntryPayload = ({
     }
   }
 
-  const total = totalWithMultipliers(itemsParsed.value);
-  const allowedEmailsSet = new Set<string>([ownerEmail]);
-  if (managerEmailSnapshot) allowedEmailsSet.add(managerEmailSnapshot);
-  managerChainParsed.value.forEach((row) => {
-    if (row.email) allowedEmailsSet.add(row.email);
-  });
-  managerOverridesParsed.value.forEach((row) => {
-    if (row.email) allowedEmailsSet.add(row.email);
-  });
-
   return {
     ok: true,
     payload: {
       productKey: productParsed.value,
       entryType: entryTypeParsed.value,
-      position: positionParsed.value,
-      commissionMode: modeParsed.value,
+      position: "poradce1",
+      commissionMode: "standard",
       inputAmount: inputAmountParsed.value ?? 0,
       effectiveInputAmount: effectiveInputAmountParsed.value ?? inputAmountParsed.value ?? 0,
       comfortPayment: comfortPaymentParsed.value,
       comfortGradual: comfortGradualParsed.value,
       comfortTargetAmount: comfortTargetAmountParsed.value,
       frequencyRaw: freqParsed.value,
-      items: itemsParsed.value,
-      total,
+      items: [],
+      total: 0,
       result: {
-        items: itemsParsed.value,
-        total,
+        items: [],
+        total: 0,
       },
       clientName: clientNameParsed.value,
       userId: ownerUid,
@@ -1169,12 +1002,12 @@ const normalizeCreateEntryPayload = ({
       userEmail: ownerEmail,
       contractNumber: contractNumberParsed.value,
       paid: false,
-      managerEmailSnapshot,
-      managerPositionSnapshot: managerPositionParsed.value,
-      managerModeSnapshot: managerModeParsed.value,
-      managerChain: managerChainParsed.value,
-      managerOverrides: managerOverridesParsed.value,
-      allowedEmails: Array.from(allowedEmailsSet),
+      managerEmailSnapshot: null,
+      managerPositionSnapshot: null,
+      managerModeSnapshot: null,
+      managerChain: [],
+      managerOverrides: [],
+      allowedEmails: [ownerEmail],
       createdAt: new Date(),
       isRefresh: isRefreshParsed.value,
       refreshOriginalContractNumber: refreshOriginalParsed.value,
@@ -1197,6 +1030,668 @@ const normalizeCreateEntryPayload = ({
       changeType: entryTypeParsed.value === "endorsement" ? changeType : null,
     },
   };
+};
+
+const normalizePositionValue = (value: unknown): Position | null => {
+  if (typeof value !== "string") return null;
+  return SUPPORTED_POSITIONS.has(value as Position) ? (value as Position) : null;
+};
+
+const normalizeCommissionModeValue = (value: unknown): CommissionMode | null =>
+  value === "accelerated" || value === "standard" ? value : null;
+
+const isIsoDay = (value: string): boolean => {
+  if (!ISO_DAY_RE.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return false;
+  return date.toISOString().slice(0, 10) === value;
+};
+
+const toIsoDay = (value: Date): string => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const parsePositionTimeline = (raw: unknown): PositionTimelineEntry[] => {
+  if (!Array.isArray(raw)) return [];
+
+  const rows: PositionTimelineEntry[] = [];
+  raw.forEach((item, index) => {
+    if (!isPlainObject(item)) return;
+    const position = normalizePositionValue(item.position);
+    if (!position) return;
+
+    const validFrom =
+      typeof item.validFrom === "string" ? item.validFrom.trim() : "";
+    const validToRaw = typeof item.validTo === "string" ? item.validTo.trim() : "";
+    const validTo = validToRaw || null;
+    if (!isIsoDay(validFrom)) return;
+    if (validTo && !isIsoDay(validTo)) return;
+    if (validTo && validTo < validFrom) return;
+
+    rows.push({
+      id:
+        typeof item.id === "string" && item.id.trim().length > 0
+          ? item.id.trim()
+          : `timeline_${index}`,
+      position,
+      validFrom,
+      validTo,
+    });
+  });
+
+  rows.sort((a, b) => {
+    if (a.validFrom !== b.validFrom) return a.validFrom.localeCompare(b.validFrom);
+    const aTo = a.validTo ?? "9999-12-31";
+    const bTo = b.validTo ?? "9999-12-31";
+    return aTo.localeCompare(bTo);
+  });
+
+  return rows;
+};
+
+const resolvePositionTimelineMatch = (
+  signedDateIso: string,
+  timeline: PositionTimelineEntry[]
+): PositionTimelineEntry | null => {
+  if (!isIsoDay(signedDateIso) || timeline.length === 0) return null;
+
+  const candidates = timeline.filter((row) => {
+    if (row.validFrom > signedDateIso) return false;
+    if (row.validTo && signedDateIso >= row.validTo) return false;
+    return true;
+  });
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => {
+    if (a.validFrom !== b.validFrom) return b.validFrom.localeCompare(a.validFrom);
+    const aTo = a.validTo ?? "9999-12-31";
+    const bTo = b.validTo ?? "9999-12-31";
+    return bTo.localeCompare(aTo);
+  });
+
+  return candidates[0] ?? null;
+};
+
+const resolvePositionForSignedDate = (
+  profile: UserProfileSnapshot,
+  signedDateIso: string | null
+): Position | null => {
+  const timeline = parsePositionTimeline(profile.positionTimeline);
+  const timelineMatch =
+    signedDateIso && isIsoDay(signedDateIso)
+      ? resolvePositionTimelineMatch(signedDateIso, timeline)
+      : null;
+  return timelineMatch?.position ?? profile.position ?? null;
+};
+
+const profileFromRaw = (
+  docId: string,
+  raw: Record<string, unknown> | null
+): UserProfileSnapshot | null => {
+  if (!raw) return null;
+  const email = normalizeEmail(typeof raw.email === "string" ? raw.email : docId);
+  if (!email) return null;
+
+  return {
+    docId,
+    email,
+    managerEmail: normalizeEmail(raw.managerEmail as string | null | undefined) || null,
+    position: normalizePositionValue(raw.position),
+    commissionMode: normalizeCommissionModeValue(raw.commissionMode),
+    positionTimeline: raw.positionTimeline ?? null,
+  };
+};
+
+const pickBetterProfile = (
+  current: UserProfileSnapshot,
+  next: UserProfileSnapshot,
+  emailKey: string
+): UserProfileSnapshot => {
+  const currentDocCanonical = current.docId.toLowerCase() === emailKey ? 0 : 1;
+  const nextDocCanonical = next.docId.toLowerCase() === emailKey ? 0 : 1;
+  if (currentDocCanonical !== nextDocCanonical) {
+    return currentDocCanonical < nextDocCanonical ? current : next;
+  }
+
+  const currentHasPosition = current.position ? 0 : 1;
+  const nextHasPosition = next.position ? 0 : 1;
+  if (currentHasPosition !== nextHasPosition) {
+    return currentHasPosition < nextHasPosition ? current : next;
+  }
+
+  const currentHasManager = current.managerEmail ? 0 : 1;
+  const nextHasManager = next.managerEmail ? 0 : 1;
+  if (currentHasManager !== nextHasManager) {
+    return currentHasManager < nextHasManager ? current : next;
+  }
+
+  return current.docId.localeCompare(next.docId, "cs") <= 0 ? current : next;
+};
+
+const loadUserProfileByEmail = async (email: string): Promise<UserProfileSnapshot | null> => {
+  if (!adminDb) return null;
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return null;
+
+  const usersCol = adminDb.collection("users");
+  const candidates = new Map<string, UserProfileSnapshot>();
+
+  const directSnap = await usersCol.doc(normalizedEmail).get();
+  if (directSnap.exists) {
+    const profile = profileFromRaw(
+      directSnap.id,
+      (directSnap.data() as Record<string, unknown> | undefined) ?? null
+    );
+    if (profile) candidates.set(profile.docId, profile);
+  }
+
+  const byEmailSnap = await usersCol
+    .where("email", "==", normalizedEmail)
+    .limit(5)
+    .get();
+  byEmailSnap.docs.forEach((docSnap) => {
+    const profile = profileFromRaw(
+      docSnap.id,
+      (docSnap.data() as Record<string, unknown> | undefined) ?? null
+    );
+    if (profile) candidates.set(profile.docId, profile);
+  });
+
+  let best: UserProfileSnapshot | null = null;
+  candidates.forEach((candidate) => {
+    best = best ? pickBetterProfile(best, candidate, normalizedEmail) : candidate;
+  });
+  return best;
+};
+
+const loadCallerProfile = async ({
+  uid,
+  tokenEmail,
+}: {
+  uid: string;
+  tokenEmail: string | null;
+}): Promise<UserProfileSnapshot | null> => {
+  if (!adminDb) return null;
+
+  if (tokenEmail) {
+    const byEmail = await loadUserProfileByEmail(tokenEmail);
+    if (byEmail) return byEmail;
+  }
+
+  const usersCol = adminDb.collection("users");
+  const byUidSnap = await usersCol.where("userId", "==", uid).limit(5).get();
+
+  let best: UserProfileSnapshot | null = null;
+  byUidSnap.docs.forEach((docSnap) => {
+    const profile = profileFromRaw(
+      docSnap.id,
+      (docSnap.data() as Record<string, unknown> | undefined) ?? null
+    );
+    if (!profile) return;
+    if (!best) {
+      best = profile;
+      return;
+    }
+    const emailKey = tokenEmail ?? profile.email;
+    best = pickBetterProfile(best, profile, emailKey);
+  });
+
+  return best;
+};
+
+const buildTrustedManagerChainForSignedDate = async ({
+  directManagerEmail,
+  signedDateIso,
+}: {
+  directManagerEmail: string | null;
+  signedDateIso: string | null;
+}): Promise<NormalizedManagerChainEntry[]> => {
+  const startEmail = normalizeEmail(directManagerEmail);
+  if (!startEmail) return [];
+
+  const chain: NormalizedManagerChainEntry[] = [];
+  const visited = new Set<string>();
+  let currentEmail: string | null = startEmail;
+  let depth = 0;
+
+  while (
+    currentEmail &&
+    depth < MAX_MANAGER_CHAIN_DEPTH &&
+    !visited.has(currentEmail)
+  ) {
+    visited.add(currentEmail);
+    const profile = await loadUserProfileByEmail(currentEmail);
+    if (!profile) break;
+
+    chain.push({
+      email: profile.email,
+      position: resolvePositionForSignedDate(profile, signedDateIso),
+      commissionMode: profile.commissionMode,
+    });
+
+    currentEmail = normalizeEmail(profile.managerEmail);
+    depth += 1;
+  }
+
+  return chain;
+};
+
+const ensureManagerChainWithDirectManager = (
+  chain: NormalizedManagerChainEntry[],
+  managerEmail: string | null | undefined,
+  managerPosition: Position | null,
+  managerMode: CommissionMode | null
+): NormalizedManagerChainEntry[] => {
+  if (chain.length > 0) return chain;
+  const normalizedEmail = normalizeEmail(managerEmail);
+  if (!normalizedEmail) return chain;
+  return [
+    {
+      email: normalizedEmail,
+      position: managerPosition ?? null,
+      commissionMode: managerMode ?? null,
+    },
+  ];
+};
+
+const hasResolvedTopManagerPosition = (
+  chain: NormalizedManagerChainEntry[],
+  managerEmail: string | null | undefined
+): boolean => {
+  const normalizedEmail = normalizeEmail(managerEmail);
+  if (!normalizedEmail) return true;
+
+  const directManager =
+    chain.find((row) => normalizeEmail(row.email) === normalizedEmail) ??
+    chain[0] ??
+    null;
+
+  return Boolean(directManager?.position);
+};
+
+const paymentsPerYear = (frequency: PaymentFrequency): number =>
+  frequency === "monthly"
+    ? 12
+    : frequency === "quarterly"
+    ? 4
+    : frequency === "semiannual"
+    ? 2
+    : 1;
+
+const durationRange = (product: Product): [number, number] => {
+  switch (product) {
+    case "neon":
+      return [1, 99];
+    case "flexi":
+      return [1, 80];
+    case "maximaMaxEfekt":
+      return [1, 20];
+    default:
+      return [1, 1];
+  }
+};
+
+const durationFallback = (product: Product): number => {
+  switch (product) {
+    case "neon":
+      return 15;
+    case "flexi":
+      return 30;
+    case "maximaMaxEfekt":
+      return 20;
+    default:
+      return 1;
+  }
+};
+
+const normalizedDurationYears = (
+  product: Product,
+  years: number | null | undefined
+): number => {
+  const [min, max] = durationRange(product);
+  const raw =
+    typeof years === "number" && Number.isFinite(years)
+      ? years
+      : durationFallback(product);
+  const wholeYears = Math.floor(raw);
+  return Math.min(max, Math.max(min, wholeYears));
+};
+
+const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
+  switch (product) {
+    case "neon":
+    case "flexi":
+    case "pillowInjury":
+    case "maximaMaxEfekt":
+      return ["monthly"];
+    case "domex":
+      return ["quarterly", "semiannual", "annual"];
+    case "pillowmajetek":
+    case "koopmajetekobcan":
+    case "pillowAuto":
+    case "maxdomov":
+    case "allianzmujdomov":
+    case "kooperativaAuto":
+    case "allianzAuto":
+      return ["monthly", "quarterly", "semiannual", "annual"];
+    case "cppAuto":
+    case "slaviaauto":
+    case "csobAuto":
+    case "uniqaAuto":
+    case "uniqaflotila":
+    case "zamex":
+    case "cppsimplex":
+    case "cppPPRbez":
+    case "cppPPRs":
+      return ["quarterly", "semiannual", "annual"];
+    case "cppcestovko":
+    case "axacestovko":
+    case "koopcestovko":
+    case "comfortcc":
+      return ["annual"];
+    default:
+      return ["annual"];
+  }
+};
+
+const paymentBasedTotals = (
+  items: CommissionResultItemDTO[],
+  multiplier: number
+): { immediate: number; subsequent: number } => {
+  let immediate = 0;
+  let subsequent = 0;
+
+  items.forEach((it) => {
+    const title = (it.title ?? "").toLowerCase();
+    if (title.includes("okamžitá")) {
+      immediate += it.amount ?? 0;
+    } else if (title.includes("následná")) {
+      subsequent += it.amount ?? 0;
+    }
+  });
+
+  return {
+    immediate: immediate * multiplier,
+    subsequent: subsequent * multiplier,
+  };
+};
+
+const normalizeTitleKey = (title: string): string => {
+  const normalized = title.toLowerCase();
+  if (normalized.includes("z platby")) return `payment-${normalized}`;
+  if (normalized.includes("za rok")) return `annual-${normalized}`;
+  if (normalized.includes("okamžitá")) return "immediate";
+  if (normalized.includes("po 3")) return "po3";
+  if (normalized.includes("po 4")) return "po4";
+  if (normalized.includes("2.–5.")) return "nasl25";
+  if (normalized.includes("5.–10.")) return "nasl510";
+  if (normalized.includes("od 6.")) return "nasl6plus";
+  return normalized;
+};
+
+const stripTotalRows = (
+  items: CommissionResultItemDTO[] = []
+): CommissionResultItemDTO[] =>
+  items.filter((item) => !normalizeTitleKey(item.title ?? "").includes("celkem"));
+
+const computeItemsForProductPositionAndMode = ({
+  productKey,
+  position,
+  commissionMode,
+  inputAmount,
+  frequencyRaw,
+  durationYears,
+  comfortPayment,
+  comfortGradual,
+  comfortTargetAmount,
+}: {
+  productKey: Product;
+  position: Position;
+  commissionMode: CommissionMode;
+  inputAmount: number;
+  frequencyRaw: PaymentFrequency;
+  durationYears: number | null;
+  comfortPayment: number | null;
+  comfortGradual: boolean | null;
+  comfortTargetAmount: number | null;
+}): { items: CommissionResultItemDTO[]; total: number } | null => {
+  const safeAmount = Number.isFinite(inputAmount) ? Math.max(0, inputAmount) : 0;
+  const allowedFrequencies = allowedFrequenciesForProduct(productKey);
+  const usedFrequency = allowedFrequencies.includes(frequencyRaw)
+    ? frequencyRaw
+    : allowedFrequencies[0];
+
+  switch (productKey) {
+    case "neon": {
+      const years = Math.min(15, normalizedDurationYears("neon", durationYears));
+      return calculateNeon(safeAmount, position, years, commissionMode);
+    }
+    case "flexi": {
+      const years = normalizedDurationYears("flexi", durationYears);
+      return calculateFlexi(safeAmount, position, commissionMode, years);
+    }
+    case "maximaMaxEfekt": {
+      const years = normalizedDurationYears("maximaMaxEfekt", durationYears);
+      return calculateMaxEfekt(safeAmount, years, position, commissionMode);
+    }
+    case "pillowInjury":
+      return calculatePillowInjury(safeAmount, position, commissionMode);
+    case "domex":
+    case "koopmajetekobcan": {
+      const dto =
+        productKey === "domex"
+          ? calculateDomex(safeAmount, usedFrequency, position)
+          : calculateKoopMajetekObcan(safeAmount, usedFrequency, position);
+      const filtered = dto.items.filter((item) =>
+        (item.title ?? "").toLowerCase().includes("(z platby)")
+      );
+      const totals = paymentBasedTotals(filtered, paymentsPerYear(usedFrequency));
+      return { items: filtered, total: totals.immediate + totals.subsequent };
+    }
+    case "pillowmajetek":
+      return calculatePillowMajetek(safeAmount, usedFrequency, position);
+    case "maxdomov": {
+      const dto = calculateMaxdomov(safeAmount, usedFrequency, position);
+      const filtered = dto.items.filter((item) =>
+        (item.title ?? "").toLowerCase().includes("(z platby)")
+      );
+      const totals = paymentBasedTotals(filtered, paymentsPerYear(usedFrequency));
+      return { items: filtered, total: totals.immediate + totals.subsequent };
+    }
+    case "allianzmujdomov":
+      return calculateAllianzMujDomov(safeAmount, usedFrequency, position);
+    case "cppsimplex":
+      return calculateCppSimplex(safeAmount, usedFrequency, position);
+    case "cppAuto":
+      return calculateCppAuto(safeAmount, usedFrequency, position);
+    case "slaviaauto":
+      return calculateSlaviaAuto(safeAmount, usedFrequency, position);
+    case "cppPPRbez": {
+      const dto = calculateCppPPRbez(safeAmount, usedFrequency, position);
+      const filtered = dto.items.filter((item) =>
+        (item.title ?? "").toLowerCase().includes("(z platby)")
+      );
+      const total = filtered.reduce((sum, item) => sum + (item.amount ?? 0), 0);
+      return { items: filtered, total };
+    }
+    case "cppPPRs":
+      return calculateCppPPRs(safeAmount, usedFrequency, position);
+    case "allianzAuto":
+      return calculateAllianzAuto(safeAmount, usedFrequency, position);
+    case "csobAuto":
+      return calculateCsobAuto(safeAmount, usedFrequency, position);
+    case "uniqaAuto":
+    case "uniqaflotila":
+      return calculateUniqaAuto(safeAmount, usedFrequency, position);
+    case "pillowAuto":
+      return calculatePillowAuto(safeAmount, usedFrequency, position);
+    case "kooperativaAuto":
+      return calculateKooperativaAuto(safeAmount, usedFrequency, position);
+    case "zamex":
+      return calculateZamex(safeAmount, usedFrequency, position);
+    case "cppcestovko":
+      return calculateCppCestovko(safeAmount, position);
+    case "axacestovko":
+      return calculateAxaCestovko(safeAmount, position);
+    case "koopcestovko":
+      return calculateKoopCestovko(safeAmount, position);
+    case "comfortcc":
+      return calculateComfortCC({
+        fee: safeAmount,
+        payment:
+          typeof comfortPayment === "number" && Number.isFinite(comfortPayment)
+            ? Math.max(0, comfortPayment)
+            : 0,
+        targetAmount:
+          comfortGradual &&
+          typeof comfortTargetAmount === "number" &&
+          Number.isFinite(comfortTargetAmount)
+            ? Math.max(0, comfortTargetAmount)
+            : 0,
+        isSavings: Boolean(comfortGradual),
+        isGradualFee: Boolean(comfortGradual),
+        position,
+      });
+    default:
+      return null;
+  }
+};
+
+const computeManagerOverridesForChain = ({
+  managerChain,
+  adviserPosition,
+  adviserMode,
+  productKey,
+  inputAmount,
+  frequencyRaw,
+  durationYears,
+  comfortPayment,
+  comfortGradual,
+  comfortTargetAmount,
+}: {
+  managerChain: NormalizedManagerChainEntry[];
+  adviserPosition: Position;
+  adviserMode: CommissionMode;
+  productKey: Product;
+  inputAmount: number;
+  frequencyRaw: PaymentFrequency;
+  durationYears: number | null;
+  comfortPayment: number | null;
+  comfortGradual: boolean | null;
+  comfortTargetAmount: number | null;
+}): NormalizedManagerOverrideEntry[] => {
+  const overrides: NormalizedManagerOverrideEntry[] = [];
+  let childPositionForBaseline: Position | null = adviserPosition;
+
+  managerChain.forEach((manager) => {
+    if (!manager.position) return;
+    const managerMode = manager.commissionMode ?? adviserMode;
+
+    const managerResult = computeItemsForProductPositionAndMode({
+      productKey,
+      position: manager.position,
+      commissionMode: managerMode,
+      inputAmount,
+      frequencyRaw,
+      durationYears,
+      comfortPayment,
+      comfortGradual,
+      comfortTargetAmount,
+    });
+    const baselineResult = childPositionForBaseline
+      ? computeItemsForProductPositionAndMode({
+          productKey,
+          position: childPositionForBaseline,
+          commissionMode: managerMode,
+          inputAmount,
+          frequencyRaw,
+          durationYears,
+          comfortPayment,
+          comfortGradual,
+          comfortTargetAmount,
+        })
+      : null;
+
+    if (!managerResult || !baselineResult) {
+      childPositionForBaseline = manager.position;
+      return;
+    }
+
+    const managerItems = stripTotalRows(managerResult.items);
+    const baselineItems = stripTotalRows(baselineResult.items);
+
+    const managerMap = new Map<string, { title: string; amount: number }>();
+    managerItems.forEach((item) => {
+      const key = normalizeTitleKey(item.title ?? "");
+      const prev = managerMap.get(key);
+      managerMap.set(key, {
+        title: item.title ?? prev?.title ?? key,
+        amount: (prev?.amount ?? 0) + (item.amount ?? 0),
+      });
+    });
+
+    const diffItems: CommissionResultItemDTO[] = [];
+    baselineItems.forEach((item) => {
+      const key = normalizeTitleKey(item.title ?? "");
+      const managerValue = managerMap.get(key);
+      const managerAmount = managerValue?.amount ?? 0;
+      const baselineAmount = item.amount ?? 0;
+      const remaining = managerAmount - baselineAmount;
+      if (remaining > 0) {
+        diffItems.push({
+          title: managerValue?.title ?? item.title,
+          amount: remaining,
+        });
+      }
+      managerMap.delete(key);
+    });
+
+    managerMap.forEach((value) => {
+      if (value.amount > 0) {
+        diffItems.push({ title: value.title, amount: value.amount });
+      }
+    });
+
+    const diffTotal = totalWithMultipliers(diffItems);
+    if (diffItems.length > 0 && diffTotal > 0) {
+      overrides.push({
+        email: manager.email ?? null,
+        position: manager.position,
+        commissionMode: managerMode,
+        items: diffItems,
+        total: diffTotal,
+      });
+    }
+
+    childPositionForBaseline = manager.position;
+  });
+
+  return overrides;
+};
+
+const collectAllowedEmailsForCreate = ({
+  ownerEmail,
+  managerEmailSnapshot,
+  managerChain,
+  managerOverrides,
+}: {
+  ownerEmail: string;
+  managerEmailSnapshot: string | null;
+  managerChain: NormalizedManagerChainEntry[];
+  managerOverrides: NormalizedManagerOverrideEntry[];
+}): string[] => {
+  const allowedEmailsSet = new Set<string>([ownerEmail]);
+  if (managerEmailSnapshot) allowedEmailsSet.add(managerEmailSnapshot);
+  managerChain.forEach((row) => {
+    if (row.email) allowedEmailsSet.add(row.email);
+  });
+  managerOverrides.forEach((row) => {
+    if (row.email) allowedEmailsSet.add(row.email);
+  });
+  return Array.from(allowedEmailsSet);
 };
 
 const parseContractStatus = (value: unknown): ParseResult<"active" | "storno"> => {
@@ -2088,7 +2583,134 @@ async function fetchContractsForOwners(
   };
 }
 
-async function getAuthContext(req: NextRequest) {
+const toNonEmptyCandidateValues = (values: Array<string | null | undefined>): string[] =>
+  Array.from(
+    new Set(
+      values
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean)
+    )
+  );
+
+const normalizeSubscriptionStatus = (value: unknown): SubscriptionStatus | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "active") return "active";
+  if (normalized === "expired") return "expired";
+  return "none";
+};
+
+const resolveSubscriptionStatusFromSources = (
+  sources: Array<Record<string, unknown> | null | undefined>
+): SubscriptionStatus | null => {
+  for (const source of sources) {
+    if (!source) continue;
+    const direct = normalizeSubscriptionStatus(source.subscriptionStatus);
+    if (direct) return direct;
+    const legacy = normalizeSubscriptionStatus(source.subscriptionstatus);
+    if (legacy) return legacy;
+  }
+  return null;
+};
+
+const tokenHasMfaClaim = (decoded: DecodedIdToken): boolean => {
+  const firebaseClaim = isPlainObject(decoded.firebase) ? decoded.firebase : null;
+  const signInSecondFactor =
+    firebaseClaim && typeof firebaseClaim.sign_in_second_factor === "string"
+      ? firebaseClaim.sign_in_second_factor.trim()
+      : "";
+  const secondFactorIdentifier =
+    firebaseClaim && typeof firebaseClaim.second_factor_identifier === "string"
+      ? firebaseClaim.second_factor_identifier.trim()
+      : "";
+  const amrValues = Array.isArray(decoded.amr)
+    ? decoded.amr
+        .map((item) => (typeof item === "string" ? item.trim().toLowerCase() : ""))
+        .filter(Boolean)
+    : [];
+
+  return (
+    signInSecondFactor.length > 0 ||
+    secondFactorIdentifier.length > 0 ||
+    amrValues.includes("mfa")
+  );
+};
+
+const loadUserSubscriptionStatus = async ({
+  email,
+  rawTokenEmail,
+  uid,
+}: {
+  email: string;
+  rawTokenEmail: string;
+  uid: string;
+}): Promise<SubscriptionStatus | null> => {
+  if (!adminDb) return null;
+
+  const db = adminDb;
+  const candidateValues = toNonEmptyCandidateValues([
+    email,
+    rawTokenEmail,
+    rawTokenEmail.toLowerCase(),
+  ]);
+
+  const privateSnaps = await Promise.all(
+    candidateValues.map((value) => db.collection("usersPrivate").doc(value).get())
+  );
+  const privateSources = privateSnaps
+    .filter((snap) => snap.exists)
+    .map(
+      (snap) =>
+        (snap.data() as Record<string, unknown> | undefined) ?? ({} as Record<string, unknown>)
+    );
+  const privateStatus = resolveSubscriptionStatusFromSources(privateSources);
+  if (privateStatus) return privateStatus;
+
+  const [directPublicSnaps, byEmailSnaps, byUidSnap] = await Promise.all([
+    Promise.all(candidateValues.map((value) => db.collection("users").doc(value).get())),
+    Promise.all(
+      candidateValues.map((value) =>
+        db.collection("users").where("email", "==", value).limit(5).get()
+      )
+    ),
+    uid ? db.collection("users").where("userId", "==", uid).limit(5).get() : null,
+  ]);
+
+  const publicSources: Record<string, unknown>[] = [];
+  directPublicSnaps.forEach((snap) => {
+    if (!snap.exists) return;
+    publicSources.push(
+      (snap.data() as Record<string, unknown> | undefined) ?? ({} as Record<string, unknown>)
+    );
+  });
+  byEmailSnaps.forEach((querySnap) => {
+    querySnap.docs.forEach((docSnap) => {
+      publicSources.push(
+        (docSnap.data() as Record<string, unknown> | undefined) ?? ({} as Record<string, unknown>)
+      );
+    });
+  });
+  byUidSnap?.docs.forEach((docSnap) => {
+    publicSources.push(
+      (docSnap.data() as Record<string, unknown> | undefined) ?? ({} as Record<string, unknown>)
+    );
+  });
+
+  return resolveSubscriptionStatusFromSources(publicSources);
+};
+
+async function getAuthContext(
+  req: NextRequest,
+  options: AuthContextOptions = {}
+) {
+  const {
+    requireKnownUser = false,
+    requireVerifiedEmail = false,
+    requireMfa = false,
+    requireActiveSubscription = false,
+  } = options;
+
   if (!adminAuth || !adminDb) {
     return { error: "Server není správně nakonfigurován (chybí Firebase Admin credentials).", status: 500 } as const;
   }
@@ -2100,7 +2722,7 @@ async function getAuthContext(req: NextRequest) {
     return { error: "Missing bearer token", status: 401 } as const;
   }
 
-  let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
+  let decoded: DecodedIdToken;
   try {
     decoded = await adminAuth.verifyIdToken(token);
   } catch (err: any) {
@@ -2113,9 +2735,32 @@ async function getAuthContext(req: NextRequest) {
   if (!email) {
     return { error: "User e-mail missing in token", status: 401 } as const;
   }
+  const rawTokenEmail = typeof decoded.email === "string" ? decoded.email.trim() : "";
+
+  if (requireVerifiedEmail && decoded.email_verified !== true) {
+    return { error: "E-mail účtu musí být ověřen.", status: 403 } as const;
+  }
+  if (requireMfa && !tokenHasMfaClaim(decoded)) {
+    return { error: "Pro tuto operaci je vyžadováno 2FA (MFA).", status: 403 } as const;
+  }
 
   const { users, childrenByManager } = await getCachedUserTree();
   const me = users.find((u) => u.email === email) ?? null;
+  if (requireKnownUser && !me) {
+    return { error: "Uživatel nemá interní profil v systému.", status: 403 } as const;
+  }
+
+  if (requireActiveSubscription) {
+    const subscriptionStatus = await loadUserSubscriptionStatus({
+      email,
+      rawTokenEmail,
+      uid: decoded.uid,
+    });
+    if (subscriptionStatus === "expired") {
+      return { error: "Účet má expirované předplatné.", status: 403 } as const;
+    }
+  }
+
   const position = (me?.position as Position | null | undefined) ?? null;
   const hasDirectSubs = (childrenByManager.get(email) ?? []).length > 0;
   const teamEmails =
@@ -2137,12 +2782,36 @@ export async function handleContractsGet(
   req: NextRequest,
   mode: ContractsGetMode = "auto"
 ) {
-  const ctx = await getAuthContext(req);
+  const ctx = await getAuthContext(req, {
+    requireKnownUser: true,
+    requireVerifiedEmail: true,
+    requireMfa: true,
+    requireActiveSubscription: true,
+  });
   if ("error" in ctx) {
     return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
   }
 
   const { email, position, teamEmails, users } = ctx;
+  const rateLimitResult = consumeRateLimit({
+    namespace: "api:contracts:get",
+    key: email,
+    limit: CONTRACTS_GET_RATE_LIMIT,
+    windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!rateLimitResult.allowed) {
+    const response = NextResponse.json(
+      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
+      { status: 429 }
+    );
+    applyRateLimitHeaders(response.headers, rateLimitResult);
+    return response;
+  }
+  const withGetRateLimitHeaders = (response: NextResponse) => {
+    applyRateLimitHeaders(response.headers, rateLimitResult);
+    return response;
+  };
+
   const search = req.nextUrl.searchParams;
   const detailOwnerEmail = normalizeEmail(search.get("ownerEmail"));
   const detailEntryId = (search.get("entryId") ?? "").trim();
@@ -2298,7 +2967,7 @@ export async function handleContractsGet(
       },
     };
 
-    return NextResponse.json(response);
+    return withGetRateLimitHeaders(NextResponse.json(response));
   }
 
   const scopeParam = search.get("scope") === "team" ? "team" : "my";
@@ -2358,11 +3027,16 @@ export async function handleContractsGet(
     teamNextCursorToken,
   };
 
-  return NextResponse.json(response);
+  return withGetRateLimitHeaders(NextResponse.json(response));
 }
 
 export async function handleContractsCreate(req: NextRequest) {
-  const ctx = await getAuthContext(req);
+  const ctx = await getAuthContext(req, {
+    requireKnownUser: true,
+    requireVerifiedEmail: true,
+    requireMfa: true,
+    requireActiveSubscription: true,
+  });
   if ("error" in ctx) {
     return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
   }
@@ -2417,18 +3091,129 @@ export async function handleContractsCreate(req: NextRequest) {
     );
   }
 
+  const signedDateIso = toIsoDay(normalizedEntry.payload.contractSignedDate);
+  const callerProfile = await loadCallerProfile({
+    uid,
+    tokenEmail: email,
+  });
+  if (!callerProfile) {
+    return NextResponse.json(
+      { ok: false, error: "Nepodařilo se načíst profil přihlášeného uživatele." },
+      { status: 403 }
+    );
+  }
+
+  const trustedPosition = resolvePositionForSignedDate(callerProfile, signedDateIso);
+  if (!trustedPosition) {
+    return NextResponse.json(
+      { ok: false, error: "Nelze určit důvěryhodnou pozici uživatele pro výpočet." },
+      { status: 400 }
+    );
+  }
+
+  const trustedMode = callerProfile.commissionMode ?? "standard";
+  const trustedManagerEmail = normalizeEmail(callerProfile.managerEmail) || null;
+  let trustedManagerChain = await buildTrustedManagerChainForSignedDate({
+    directManagerEmail: trustedManagerEmail,
+    signedDateIso,
+  });
+
+  trustedManagerChain = ensureManagerChainWithDirectManager(
+    trustedManagerChain,
+    trustedManagerEmail,
+    trustedManagerChain[0]?.position ?? null,
+    trustedManagerChain[0]?.commissionMode ?? null
+  );
+
+  if (!hasResolvedTopManagerPosition(trustedManagerChain, trustedManagerEmail)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Nepodařilo se načíst pozici nadřízeného. Uložení je zablokované, aby nechyběla meziprovize.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const trustedResult = computeItemsForProductPositionAndMode({
+    productKey: normalizedEntry.payload.productKey,
+    position: trustedPosition,
+    commissionMode: trustedMode,
+    inputAmount: normalizedEntry.payload.inputAmount,
+    frequencyRaw: normalizedEntry.payload.frequencyRaw,
+    durationYears: normalizedEntry.payload.durationYears,
+    comfortPayment: normalizedEntry.payload.comfortPayment,
+    comfortGradual: normalizedEntry.payload.comfortGradual,
+    comfortTargetAmount: normalizedEntry.payload.comfortTargetAmount,
+  });
+  if (!trustedResult) {
+    return NextResponse.json(
+      { ok: false, error: "Nepodařilo se serverově přepočítat provizi pro daný produkt." },
+      { status: 400 }
+    );
+  }
+  if (
+    normalizedEntry.payload.entryType === "contract" &&
+    trustedResult.items.length === 0
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "Smlouva musí obsahovat alespoň jednu položku provize." },
+      { status: 400 }
+    );
+  }
+
+  const trustedManagerOverrides = computeManagerOverridesForChain({
+    managerChain: trustedManagerChain,
+    adviserPosition: trustedPosition,
+    adviserMode: trustedMode,
+    productKey: normalizedEntry.payload.productKey,
+    inputAmount: normalizedEntry.payload.inputAmount,
+    frequencyRaw: normalizedEntry.payload.frequencyRaw,
+    durationYears: normalizedEntry.payload.durationYears,
+    comfortPayment: normalizedEntry.payload.comfortPayment,
+    comfortGradual: normalizedEntry.payload.comfortGradual,
+    comfortTargetAmount: normalizedEntry.payload.comfortTargetAmount,
+  });
+  const trustedManagerPosition = trustedManagerChain[0]?.position ?? null;
+  const trustedManagerMode = trustedManagerChain[0]?.commissionMode ?? null;
+  const trustedAllowedEmails = collectAllowedEmailsForCreate({
+    ownerEmail: email,
+    managerEmailSnapshot: trustedManagerEmail,
+    managerChain: trustedManagerChain,
+    managerOverrides: trustedManagerOverrides,
+  });
+
+  const trustedPayload: NormalizedCreateEntryPayload = {
+    ...normalizedEntry.payload,
+    position: trustedPosition,
+    commissionMode: trustedMode,
+    items: trustedResult.items,
+    total: trustedResult.total,
+    result: {
+      items: trustedResult.items,
+      total: trustedResult.total,
+    },
+    managerEmailSnapshot: trustedManagerEmail,
+    managerPositionSnapshot: trustedManagerPosition,
+    managerModeSnapshot: trustedManagerMode,
+    managerChain: trustedManagerChain,
+    managerOverrides: trustedManagerOverrides,
+    allowedEmails: trustedAllowedEmails,
+  };
+
   try {
     const db = adminDb;
     const ownerEntriesRef = db.collection("users").doc(email).collection("entries");
-    const createdRef = await ownerEntriesRef.add(normalizedEntry.payload);
+    const createdRef = await ownerEntriesRef.add(trustedPayload);
 
     const batch = db.batch();
     applyContractRefToBatch({
       batch,
       ownerEmail: email,
       entryId: createdRef.id,
-      contractNumber: normalizedEntry.payload.contractNumber,
-      productKey: normalizedEntry.payload.productKey,
+      contractNumber: trustedPayload.contractNumber,
+      productKey: trustedPayload.productKey,
     });
     await batch.commit();
 
@@ -2464,7 +3249,12 @@ export async function handleContractsPatch(
   req: NextRequest,
   forcedAction?: ContractsPatchAction
 ) {
-  const ctx = await getAuthContext(req);
+  const ctx = await getAuthContext(req, {
+    requireKnownUser: true,
+    requireVerifiedEmail: true,
+    requireMfa: true,
+    requireActiveSubscription: true,
+  });
   if ("error" in ctx) {
     return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
   }
@@ -2584,6 +3374,14 @@ export async function handleContractsPatch(
       );
     }
   }
+  if (action === "syncCppStatus" && !CPP_STATUS_SYNC_ENABLED) {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: "cpp-sync-disabled",
+    });
+  }
+
   if (action === "syncCppStatus") {
     try {
       const ownerEmail = normalizeEmail(
@@ -2982,7 +3780,12 @@ export async function handleContractsPatch(
 }
 
 export async function handleContractsDelete(req: NextRequest) {
-  const ctx = await getAuthContext(req);
+  const ctx = await getAuthContext(req, {
+    requireKnownUser: true,
+    requireVerifiedEmail: true,
+    requireMfa: true,
+    requireActiveSubscription: true,
+  });
   if ("error" in ctx) {
     return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
   }

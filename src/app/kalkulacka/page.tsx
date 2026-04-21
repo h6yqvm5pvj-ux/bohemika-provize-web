@@ -55,7 +55,6 @@ import {
   SUPPORTED_PRODUCTS,
   getCoefficientSummary,
 } from "../lib/productFormulas";
-import { totalWithMultipliers } from "../lib/commissionTotals";
 import { parseCppAutoPdf } from "../lib/parseCppAutoPdf";
 import { parseNeonPdf } from "../lib/parseNeonPdf";
 import { parseFlexiPdf } from "../lib/parseFlexiPdf";
@@ -650,24 +649,6 @@ function formatIsoDay(value: string | null): string {
   return d.toLocaleDateString("cs-CZ");
 }
 
-function normalizeTitleKey(title: string): string {
-  const t = title.toLowerCase();
-  if (t.includes("z platby")) return `payment-${t}`;
-  if (t.includes("za rok")) return `annual-${t}`;
-  if (t.includes("okamžitá")) return "immediate";
-  if (t.includes("po 3")) return "po3";
-  if (t.includes("po 4")) return "po4";
-  if (t.includes("2.–5.")) return "nasl25";
-  if (t.includes("5.–10.")) return "nasl510";
-  if (t.includes("od 6.")) return "nasl6plus";
-  if (t.includes("z platby")) return "subsequentByPayment";
-  return t;
-}
-
-function stripTotalRows(items: CommissionResultItemDTO[] = []): CommissionResultItemDTO[] {
-  return items.filter((it) => !normalizeTitleKey(it.title ?? "").includes("celkem"));
-}
-
 function allowedPositionsForUser(base: Position | null): Position[] {
   if (!base) return POSITION_ORDER;
 
@@ -1134,14 +1115,6 @@ export default function CalculatorPage() {
     if (payment <= 0 || targetAmount <= 0) return null;
     return Math.max(1, Math.ceil(targetAmount / payment));
   }, [product, comfortGradual, comfortPaymentText, comfortTargetAmountText]);
-
-  type ManagerOverrideSnapshot = {
-    email: string | null;
-    position: Position | null;
-    commissionMode: CommissionMode | null;
-    items: CommissionResultItemDTO[];
-    total: number;
-  };
 
   const [managerEmailSnapshot, setManagerEmailSnapshot] = useState<string | null>(null);
   const [managerPositionSnapshot, setManagerPositionSnapshot] = useState<Position | null>(null);
@@ -2054,7 +2027,6 @@ export default function CalculatorPage() {
       let mgrPos = managerPositionSnapshot;
       let mgrMode = managerModeSnapshot;
       let managerChainForSave: ManagerChainSnapshotEntry[] = managerChainSnapshot;
-      let overridesForChain: ManagerOverrideSnapshot[] = [];
       try {
         const snapshot = await requestManagerSnapshotWithAuth({
           user,
@@ -2085,80 +2057,6 @@ export default function CalculatorPage() {
         return;
       }
 
-      const diffs: ManagerOverrideSnapshot[] = [];
-      let childPositionForBaseline: Position | null = position;
-
-      managerChainForSave.forEach((mgr) => {
-        if (!mgr.position) return;
-        const mgrCommissionMode = mgr.commissionMode ?? mode;
-
-        const mgrRes = computeItemsForPositionAndMode(
-          mgr.position,
-          mgrCommissionMode,
-          endorsementDraft.calculationAmount
-        );
-        const baselineRes = childPositionForBaseline
-          ? computeItemsForPositionAndMode(
-              childPositionForBaseline,
-              mgrCommissionMode,
-              endorsementDraft.calculationAmount
-            )
-          : null;
-
-        if (!mgrRes || !baselineRes) {
-          childPositionForBaseline = mgr.position;
-          return;
-        }
-
-        const mgrItems = stripTotalRows(mgrRes.items);
-        const baselineItems = stripTotalRows(baselineRes.items);
-
-        const mgrMap = new Map<string, { title: string; amount: number }>();
-        mgrItems.forEach((it) => {
-          const key = normalizeTitleKey(it.title ?? "");
-          const prev = mgrMap.get(key);
-          mgrMap.set(key, {
-            title: it.title ?? prev?.title ?? key,
-            amount: (prev?.amount ?? 0) + (it.amount ?? 0),
-          });
-        });
-
-        const diffItems: CommissionResultItemDTO[] = [];
-
-        baselineItems.forEach((it) => {
-          const key = normalizeTitleKey(it.title ?? "");
-          const mgrVal = mgrMap.get(key);
-          const mgrAmt = mgrVal?.amount ?? 0;
-          const subAmt = it.amount ?? 0;
-          const rem = mgrAmt - subAmt;
-          if (rem > 0) {
-            diffItems.push({ title: mgrVal?.title ?? it.title, amount: rem });
-          }
-          mgrMap.delete(key);
-        });
-
-        mgrMap.forEach((val) => {
-          if (val.amount > 0) {
-            diffItems.push({ title: val.title, amount: val.amount });
-          }
-        });
-
-        const diffTotal = totalWithMultipliers(diffItems);
-
-        if (diffItems.length > 0 && diffTotal > 0) {
-          diffs.push({
-            email: mgr.email ?? null,
-            position: mgr.position,
-            commissionMode: mgrCommissionMode,
-            items: diffItems,
-            total: diffTotal,
-          });
-        }
-
-        childPositionForBaseline = mgr.position;
-      });
-
-      overridesForChain = diffs;
       const { response, data } = await requestContractsMutationWithAuth({
         user,
         path: "/api/contracts",
@@ -2170,8 +2068,6 @@ export default function CalculatorPage() {
             rootContractEntryId: endorsementDraft.rootContractEntryId,
             parentContractEntryId: endorsementDraft.sourceEntryId,
             parentContractEntryPath: endorsementDraft.sourceEntryPath,
-            position,
-            commissionMode: mode,
             inputAmount: endorsementDraft.calculationAmount,
             calculationInputAmount: endorsementDraft.calculationAmount,
             previousInputAmount: endorsementDraft.previousPremiumAmount,
@@ -2184,12 +2080,6 @@ export default function CalculatorPage() {
               endorsementDraft.deltaAmount < 0 ? Math.abs(endorsementDraft.deltaAmount) : 0,
             changeType: endorsementDraft.changeType,
             frequencyRaw: frequency,
-            items: endorsementDraft.items,
-            total: endorsementDraft.total,
-            result: {
-              items: endorsementDraft.items,
-              total: endorsementDraft.total,
-            },
             clientName: clientName || null,
             contractSignedDate: contractSignedDate.trim(),
             policyStartDate: policyStartDate.trim(),
@@ -2197,12 +2087,6 @@ export default function CalculatorPage() {
               ? durationYears
               : null,
             contractNumber: endorsementDraft.contractNumber,
-            paid: false,
-            managerEmailSnapshot: mgrEmail ?? null,
-            managerPositionSnapshot: mgrPos ?? null,
-            managerModeSnapshot: mgrMode ?? null,
-            managerChain: managerChainForSave,
-            managerOverrides: overridesForChain,
           },
         },
       });
@@ -2373,7 +2257,6 @@ export default function CalculatorPage() {
       let mgrPos = managerPositionSnapshot;
       let mgrMode = managerModeSnapshot;
       let managerChainForSave: ManagerChainSnapshotEntry[] = managerChainSnapshot;
-      let overridesForChain: ManagerOverrideSnapshot[] = [];
       try {
         const snapshot = await requestManagerSnapshotWithAuth({
           user,
@@ -2404,76 +2287,6 @@ export default function CalculatorPage() {
         return;
       }
 
-      // předpočítej meziprovize pro celý chain (od poradce výš)
-      const diffs: ManagerOverrideSnapshot[] = [];
-      let childPositionForBaseline: Position | null = position;
-
-      managerChainForSave.forEach((mgr) => {
-        if (!mgr.position) return;
-        const mgrMode = mgr.commissionMode ?? mode;
-
-        // Výsledek aktuálního manažera v jeho režimu
-        const mgrRes = computeItemsForPositionAndMode(mgr.position, mgrMode);
-        // Baseline: podřízený (poradce nebo nižší manažer) spočítaný ve stejném režimu, i když má zrychlený
-        const baselineRes = childPositionForBaseline
-          ? computeItemsForPositionAndMode(childPositionForBaseline, mgrMode)
-          : null;
-
-        if (!mgrRes || !baselineRes) {
-          childPositionForBaseline = mgr.position;
-          return;
-        }
-
-        const mgrItems = stripTotalRows(mgrRes.items);
-        const baselineItems = stripTotalRows(baselineRes.items);
-
-        const mgrMap = new Map<string, { title: string; amount: number }>();
-        mgrItems.forEach((it) => {
-          const key = normalizeTitleKey(it.title ?? "");
-          const prev = mgrMap.get(key);
-          mgrMap.set(key, {
-            title: it.title ?? prev?.title ?? key,
-            amount: (prev?.amount ?? 0) + (it.amount ?? 0),
-          });
-        });
-
-        const diffItems: CommissionResultItemDTO[] = [];
-
-        baselineItems.forEach((it) => {
-          const key = normalizeTitleKey(it.title ?? "");
-          const mgrVal = mgrMap.get(key);
-          const mgrAmt = mgrVal?.amount ?? 0;
-          const subAmt = it.amount ?? 0;
-          const rem = mgrAmt - subAmt;
-          if (rem > 0) {
-            diffItems.push({ title: mgrVal?.title ?? it.title, amount: rem });
-          }
-          mgrMap.delete(key);
-        });
-
-        mgrMap.forEach((val) => {
-          if (val.amount > 0) {
-            diffItems.push({ title: val.title, amount: val.amount });
-          }
-        });
-
-        const diffTotal = totalWithMultipliers(diffItems);
-
-        if (diffItems.length > 0 && diffTotal > 0) {
-          diffs.push({
-            email: mgr.email ?? null,
-            position: mgr.position,
-            commissionMode: mgrMode,
-            items: diffItems,
-            total: diffTotal,
-          });
-        }
-
-        // podřízený pro další iteraci je aktuální manažer
-        childPositionForBaseline = mgr.position;
-      });
-
-      overridesForChain = diffs;
       const { response, data } = await requestContractsMutationWithAuth({
         user,
         path: "/api/contracts",
@@ -2482,8 +2295,6 @@ export default function CalculatorPage() {
           entry: {
             productKey: product,
             entryType: "contract" as ContractEntryType,
-            position,
-            commissionMode: mode,
             inputAmount: product === "comfortcc" ? value : value,
             effectiveInputAmount: value,
             comfortPayment:
@@ -2494,23 +2305,11 @@ export default function CalculatorPage() {
                 ? comfortTargetAmount
                 : null,
             frequencyRaw: frequency,
-            items,
-            total,
-            result: {
-              items,
-              total,
-            },
             clientName: clientName || null,
             contractSignedDate: contractSignedDate.trim(),
             policyStartDate: policyStartDate.trim(),
             durationYears: shouldShowDuration(product) ? durationYears : null,
             contractNumber: trimmedContractNumber || null,
-            paid: false,
-            managerEmailSnapshot: mgrEmail ?? null,
-            managerPositionSnapshot: mgrPos ?? null,
-            managerModeSnapshot: mgrMode ?? null,
-            managerChain: managerChainForSave,
-            managerOverrides: overridesForChain,
             isRefresh: shouldRefreshOriginalNeon,
             refreshOriginalContractNumber: null,
           },
