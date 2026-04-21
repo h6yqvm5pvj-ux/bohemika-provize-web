@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { auth } from "../firebase";
 import {
@@ -22,6 +22,7 @@ type UseCashflowDataParams = {
   userEmail: string | null | undefined;
   scopeFilter: ScopeFilter;
   productFilter: ProductFilter;
+  enabled?: boolean;
 };
 
 type UseCashflowDataResult = {
@@ -42,8 +43,22 @@ type ContractsApiResponse = {
   nextCursor?: number | null;
 };
 
+type RawContractsSnapshot = {
+  email: string;
+  myPosition: Position | null;
+  hasAnyTeam: boolean;
+  ownEntries: EntryDoc[];
+  teamEntriesRaw: EntryDoc[];
+};
+
 const CONTRACTS_PAGE_LIMIT = 50;
 const CONTRACTS_MAX_PAGES = 100;
+const CONTRACTS_CACHE_TTL_MS = 2 * 60 * 1000;
+const contractsSnapshotCache: Record<
+  string,
+  { ts: number; payload: RawContractsSnapshot }
+> = {};
+const contractsSnapshotInFlight: Partial<Record<string, Promise<RawContractsSnapshot>>> = {};
 
 const normalizeEmail = (value: string | null | undefined): string =>
   (value ?? "").trim().toLowerCase();
@@ -77,19 +92,181 @@ function stableHash(parts: string[]): string {
   return (hash >>> 0).toString(16);
 }
 
+async function fetchContractsSnapshot(
+  email: string
+): Promise<RawContractsSnapshot> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error("Nejsi přihlášený.");
+
+  let bearerToken = await currentUser.getIdToken();
+
+  const requestContracts = async (
+    scope: "my" | "team",
+    cursor?: string | null
+  ): Promise<ContractsApiResponse> => {
+    const params = new URLSearchParams({
+      scope,
+      limit: String(CONTRACTS_PAGE_LIMIT),
+    });
+    if (cursor) {
+      params.set("cursor", cursor);
+    }
+
+    const requestWithToken = async (token: string) =>
+      fetch(`/api/contracts/list?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+    let res = await requestWithToken(bearerToken);
+    if (res.status === 401) {
+      bearerToken = await currentUser.getIdToken(true);
+      res = await requestWithToken(bearerToken);
+    }
+
+    const data = (await res.json()) as ContractsApiResponse;
+    if (!res.ok || data.ok === false) {
+      const err = new Error(data.error || "Nepodařilo se načíst smlouvy.") as Error & {
+        status?: number;
+      };
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  };
+
+  type ScopeResult = {
+    entries: EntryDoc[];
+    positionHint: Position | null;
+    hasTeamHint: boolean;
+    teamEmailsHint: string[];
+  };
+
+  const collectScope = async (scope: "my" | "team"): Promise<ScopeResult> => {
+    const entries: EntryDoc[] = [];
+    const seen = new Set<string>();
+    let cursor: string | null = null;
+    let hasMore = true;
+    let pages = 0;
+    let positionHint: Position | null = null;
+    let hasTeamHint = false;
+    let teamEmailsHint: string[] = [];
+
+    while (hasMore && pages < CONTRACTS_MAX_PAGES) {
+      const response = await requestContracts(scope, cursor);
+      if (pages === 0) {
+        positionHint = (response.position as Position | null | undefined) ?? null;
+        hasTeamHint = Boolean(response.hasTeam);
+        teamEmailsHint = Array.isArray(response.teamEmails)
+          ? response.teamEmails.map((item) => normalizeEmail(item)).filter(Boolean)
+          : [];
+      }
+      pages += 1;
+
+      const chunk = (response.contracts ?? []) as (EntryDoc & {
+        adviserEmail?: string | null;
+      })[];
+      if (chunk.length === 0) break;
+
+      chunk.forEach((item) => {
+        const ownerEmail = normalizeEmail(
+          (item.adviserEmail as string | undefined) ??
+            (item.userEmail as string | undefined) ??
+            email
+        );
+        const id = String(item.id ?? "").trim();
+        if (!ownerEmail || !id) return;
+
+        const key = `${ownerEmail}___${id}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+
+        entries.push({
+          ...(item as any),
+          id,
+          userEmail: ownerEmail,
+        });
+      });
+
+      cursor = normalizeCursorToken(response.nextCursorToken, response.nextCursor);
+      hasMore = Boolean(response.hasMore) && Boolean(cursor);
+    }
+
+    return {
+      entries,
+      positionHint,
+      hasTeamHint,
+      teamEmailsHint,
+    };
+  };
+
+  const ownResult = await collectScope("my");
+  const myPosition = ownResult.positionHint ?? null;
+  let teamEntriesRaw: EntryDoc[] = [];
+  let hasAnyTeam =
+    ownResult.hasTeamHint || (ownResult.teamEmailsHint?.length ?? 0) > 0;
+
+  if (hasAnyTeam) {
+    try {
+      const teamResult = await collectScope("team");
+      teamEntriesRaw = teamResult.entries;
+      hasAnyTeam = hasAnyTeam || teamEntriesRaw.length > 0;
+    } catch (teamError) {
+      if ((teamError as { status?: number } | null)?.status === 403) {
+        hasAnyTeam = false;
+        teamEntriesRaw = [];
+      } else {
+        throw teamError;
+      }
+    }
+  }
+
+  return {
+    email,
+    myPosition,
+    hasAnyTeam,
+    ownEntries: ownResult.entries,
+    teamEntriesRaw,
+  };
+}
+
+async function getContractsSnapshot(
+  email: string
+): Promise<RawContractsSnapshot> {
+  const cached = contractsSnapshotCache[email];
+  if (cached && Date.now() - cached.ts < CONTRACTS_CACHE_TTL_MS) {
+    return cached.payload;
+  }
+
+  if (contractsSnapshotInFlight[email]) {
+    return contractsSnapshotInFlight[email];
+  }
+
+  contractsSnapshotInFlight[email] = fetchContractsSnapshot(email)
+    .then((payload) => {
+      contractsSnapshotCache[email] = { ts: Date.now(), payload };
+      return payload;
+    })
+    .finally(() => {
+      delete contractsSnapshotInFlight[email];
+    });
+
+  return contractsSnapshotInFlight[email];
+}
+
 export function useCashflowData({
   userEmail,
   scopeFilter,
   productFilter,
+  enabled = true,
 }: UseCashflowDataParams): UseCashflowDataResult {
   const [loading, setLoading] = useState(true);
-  const [cashflowItems, setCashflowItems] = useState<CashflowItem[]>([]);
-  const [, setUserPosition] = useState<Position | null>(null);
+  const [snapshot, setSnapshot] = useState<RawContractsSnapshot | null>(null);
   const [hasTeam, setHasTeam] = useState(false);
 
   useEffect(() => {
-    if (!userEmail) {
-      setCashflowItems([]);
+    if (!enabled || !userEmail) {
+      setSnapshot(null);
       setHasTeam(false);
       setLoading(false);
       return;
@@ -98,298 +275,29 @@ export function useCashflowData({
     let cancelled = false;
 
     const load = async () => {
-      setLoading(true);
+      const normalized = normalizeEmail(userEmail);
+      const cached = contractsSnapshotCache[normalized];
+      const hasCachedPayload = Boolean(cached?.payload);
+      if (cached?.payload) {
+        setSnapshot(cached.payload);
+        setHasTeam(cached.payload.hasAnyTeam);
+      }
+      setLoading(!hasCachedPayload);
+
       try {
         const emailRaw = userEmail.trim();
         const email = emailRaw.toLowerCase();
         if (!email) throw new Error("Chybí e-mail uživatele");
-        const currentUser = auth.currentUser;
-        if (!currentUser) throw new Error("Nejsi přihlášený.");
-
-        let bearerToken = await currentUser.getIdToken();
-
-        const requestContracts = async (
-          scope: "my" | "team",
-          cursor?: string | null
-        ): Promise<ContractsApiResponse> => {
-          const params = new URLSearchParams({
-            scope,
-            limit: String(CONTRACTS_PAGE_LIMIT),
-          });
-          if (cursor) {
-            params.set("cursor", cursor);
-          }
-
-          const requestWithToken = async (token: string) =>
-            fetch(`/api/contracts/list?${params.toString()}`, {
-              headers: { Authorization: `Bearer ${token}` },
-              cache: "no-store",
-            });
-
-          let res = await requestWithToken(bearerToken);
-          if (res.status === 401) {
-            bearerToken = await currentUser.getIdToken(true);
-            res = await requestWithToken(bearerToken);
-          }
-
-          const data = (await res.json()) as ContractsApiResponse;
-          if (!res.ok || data.ok === false) {
-            const err = new Error(data.error || "Nepodařilo se načíst smlouvy.") as Error & {
-              status?: number;
-            };
-            err.status = res.status;
-            throw err;
-          }
-          return data;
-        };
-
-        type ScopeResult = {
-          entries: EntryDoc[];
-          positionHint: Position | null;
-          hasTeamHint: boolean;
-          teamEmailsHint: string[];
-        };
-
-        const collectScope = async (scope: "my" | "team"): Promise<ScopeResult> => {
-          const entries: EntryDoc[] = [];
-          const seen = new Set<string>();
-          let cursor: string | null = null;
-          let hasMore = true;
-          let pages = 0;
-          let positionHint: Position | null = null;
-          let hasTeamHint = false;
-          let teamEmailsHint: string[] = [];
-
-          while (hasMore && pages < CONTRACTS_MAX_PAGES) {
-            const response = await requestContracts(scope, cursor);
-            if (pages === 0) {
-              positionHint = (response.position as Position | null | undefined) ?? null;
-              hasTeamHint = Boolean(response.hasTeam);
-              teamEmailsHint = Array.isArray(response.teamEmails)
-                ? response.teamEmails.map((item) => normalizeEmail(item)).filter(Boolean)
-                : [];
-            }
-            pages += 1;
-
-            const chunk = (response.contracts ?? []) as (EntryDoc & {
-              adviserEmail?: string | null;
-            })[];
-            if (chunk.length === 0) break;
-
-            chunk.forEach((item) => {
-              const ownerEmail = normalizeEmail(
-                (item.adviserEmail as string | undefined) ??
-                  (item.userEmail as string | undefined) ??
-                  email
-              );
-              const id = String(item.id ?? "").trim();
-              if (!ownerEmail || !id) return;
-
-              const key = `${ownerEmail}___${id}`;
-              if (seen.has(key)) return;
-              seen.add(key);
-
-              entries.push({
-                ...(item as any),
-                id,
-                userEmail: ownerEmail,
-              });
-            });
-
-            cursor = normalizeCursorToken(response.nextCursorToken, response.nextCursor);
-            hasMore = Boolean(response.hasMore) && Boolean(cursor);
-          }
-
-          return {
-            entries,
-            positionHint,
-            hasTeamHint,
-            teamEmailsHint,
-          };
-        };
-
-        const ownResult = await collectScope("my");
-        const myPosition = ownResult.positionHint ?? null;
-        let teamEntriesRaw: EntryDoc[] = [];
-        let hasAnyTeam =
-          ownResult.hasTeamHint || (ownResult.teamEmailsHint?.length ?? 0) > 0;
-
-        if (hasAnyTeam) {
-          try {
-            const teamResult = await collectScope("team");
-            teamEntriesRaw = teamResult.entries;
-            hasAnyTeam = hasAnyTeam || teamEntriesRaw.length > 0;
-          } catch (teamError) {
-            if ((teamError as { status?: number } | null)?.status === 403) {
-              hasAnyTeam = false;
-              teamEntriesRaw = [];
-            } else {
-              throw teamError;
-            }
-          }
-        }
-
+        const payload = await getContractsSnapshot(email);
         if (cancelled) return;
-        setUserPosition(myPosition ?? null);
-        setHasTeam(hasAnyTeam);
-
-        const allEntriesByKey = new Map<string, EntryDoc>();
-        const pushEntry = (entry: EntryDoc) => {
-          const ownerEmail = normalizeEmail(entry.userEmail);
-          const docId = String(entry.id ?? "").trim();
-          if (!ownerEmail || !docId) return;
-          const key = `${ownerEmail}___${docId}`;
-          if (allEntriesByKey.has(key)) return;
-          allEntriesByKey.set(key, {
-            ...(entry as any),
-            id: docId,
-            userEmail: ownerEmail,
-          });
-        };
-
-        ownResult.entries.forEach(pushEntry);
-        teamEntriesRaw.forEach(pushEntry);
-
-        const allEntries = Array.from(allEntriesByKey.values());
-
-        const ownEntries = allEntries
-          .filter((entry) => (entry.userEmail ?? "").toLowerCase() === email)
-          .map((entry) => ({ ...entry, source: "own" as const }));
-        const teamRaw = teamEntriesRaw;
-
-        const overrides: EntryDoc[] = [];
-        if (teamRaw.length > 0) {
-          for (const entry of teamRaw) {
-            const storedOverride =
-              (entry.managerOverrides as EntryDoc["managerOverrides"])?.find(
-                (override) => (override.email ?? "").toLowerCase() === email
-              ) ?? null;
-
-            if (!storedOverride) continue;
-
-            const storedOverrideItems = stripTotalRows(storedOverride.items ?? []);
-            const storedOverrideTotal = totalWithMultipliers(storedOverrideItems);
-            if (storedOverrideItems.length === 0 || storedOverrideTotal <= 0) continue;
-
-            const storedOverridePosition =
-              (storedOverride.position as Position | null | undefined) ??
-              (entry.managerPositionSnapshot as Position | null | undefined) ??
-              null;
-
-            overrides.push({
-              ...entry,
-              originalEntryId: entry.id,
-              id: `${entry.id}-override`,
-              items: storedOverrideItems,
-              total: storedOverrideTotal,
-              source: "manager",
-              position: storedOverridePosition ?? null,
-              managerPositionSnapshot: storedOverridePosition ?? null,
-              managerModeSnapshot:
-                (storedOverride.commissionMode as EntryDoc["managerModeSnapshot"]) ??
-                (entry.managerModeSnapshot as EntryDoc["managerModeSnapshot"]) ??
-                null,
-              clientName: entry.clientName ?? null,
-            });
-          }
-        }
-
-        let entriesForCashflow: EntryDoc[] = [];
-        if (scopeFilter === "own") {
-          entriesForCashflow = ownEntries;
-        } else if (scopeFilter === "team") {
-          entriesForCashflow = overrides;
-        } else {
-          entriesForCashflow = [...ownEntries, ...overrides];
-        }
-
-        if (productFilter !== "all") {
-          entriesForCashflow = entriesForCashflow.filter((entry) => {
-            const product = entry.productKey;
-            if (!product) return false;
-            if (productFilter === "life") {
-              return (
-                product === "neon" ||
-                product === "flexi" ||
-                product === "maximaMaxEfekt" ||
-                product === "pillowInjury"
-              );
-            }
-            if (productFilter === "auto") {
-              return (
-                product === "cppAuto" ||
-                product === "slaviaauto" ||
-                product === "allianzAuto" ||
-                product === "csobAuto" ||
-                product === "uniqaAuto" ||
-                product === "uniqaflotila" ||
-                product === "pillowAuto" ||
-                product === "kooperativaAuto"
-              );
-            }
-            if (productFilter === "property") {
-              return (
-                product === "domex" ||
-                product === "pillowmajetek" ||
-                product === "koopmajetekobcan" ||
-                product === "maxdomov" ||
-                product === "allianzmujdomov" ||
-                product === "cppsimplex" ||
-                product === "cppPPRs" ||
-                product === "cppPPRbez" ||
-                product === "cppcestovko" ||
-                product === "axacestovko" ||
-                product === "koopcestovko" ||
-                product === "zamex"
-              );
-            }
-            if (productFilter === "other") {
-              return !(
-                product === "neon" ||
-                product === "flexi" ||
-                product === "maximaMaxEfekt" ||
-                product === "pillowInjury"
-              );
-            }
-            if (productFilter === "gold") {
-              return product === "comfortcc";
-            }
-            return true;
-          });
-        }
-
-        const cashflow = generateCashflow(entriesForCashflow, 10);
-        if (process.env.NODE_ENV !== "production") {
-          const total = cashflow.reduce((sum, item) => sum + item.amount, 0);
-          const entryFingerprint = stableHash(
-            entriesForCashflow
-              .map((entry) =>
-                `${entry.source ?? "na"}:${(entry.userEmail ?? "").toLowerCase()}:${
-                  entry.originalEntryId ?? entry.id
-                }`
-              )
-              .sort((a, b) => a.localeCompare(b, "cs"))
-          );
-          console.info("[cashflow-debug]", {
-            email,
-            scopeFilter,
-            productFilter,
-            myPosition,
-            hasAnyTeam,
-            allEntries: allEntries.length,
-            ownEntries: ownEntries.length,
-            teamRaw: teamRaw.length,
-            overrides: overrides.length,
-            entriesForCashflow: entriesForCashflow.length,
-            cashflowItems: cashflow.length,
-            total,
-            entryFingerprint,
-          });
-        }
-        if (cancelled) return;
-        setCashflowItems(cashflow);
+        setSnapshot(payload);
+        setHasTeam(payload.hasAnyTeam);
       } catch (error) {
         console.error("Chyba při načítání cashflow:", error);
+        if (!hasCachedPayload) {
+          setSnapshot(null);
+          setHasTeam(false);
+        }
       } finally {
         if (cancelled) return;
         setLoading(false);
@@ -400,7 +308,167 @@ export function useCashflowData({
     return () => {
       cancelled = true;
     };
-  }, [userEmail, scopeFilter, productFilter]);
+  }, [userEmail, enabled]);
+
+  const cashflowItems = useMemo<CashflowItem[]>(() => {
+    if (!enabled || !snapshot) return [];
+
+    const email = snapshot.email;
+    const allEntriesByKey = new Map<string, EntryDoc>();
+    const pushEntry = (entry: EntryDoc) => {
+      const ownerEmail = normalizeEmail(entry.userEmail);
+      const docId = String(entry.id ?? "").trim();
+      if (!ownerEmail || !docId) return;
+      const key = `${ownerEmail}___${docId}`;
+      if (allEntriesByKey.has(key)) return;
+      allEntriesByKey.set(key, {
+        ...(entry as any),
+        id: docId,
+        userEmail: ownerEmail,
+      });
+    };
+
+    snapshot.ownEntries.forEach(pushEntry);
+    snapshot.teamEntriesRaw.forEach(pushEntry);
+
+    const allEntries = Array.from(allEntriesByKey.values());
+    const ownEntries = allEntries
+      .filter((entry) => (entry.userEmail ?? "").toLowerCase() === email)
+      .map((entry) => ({ ...entry, source: "own" as const }));
+    const teamRaw = snapshot.teamEntriesRaw;
+
+    const overrides: EntryDoc[] = [];
+    if (teamRaw.length > 0) {
+      for (const entry of teamRaw) {
+        const storedOverride =
+          (entry.managerOverrides as EntryDoc["managerOverrides"])?.find(
+            (override) => (override.email ?? "").toLowerCase() === email
+          ) ?? null;
+
+        if (!storedOverride) continue;
+
+        const storedOverrideItems = stripTotalRows(storedOverride.items ?? []);
+        const storedOverrideTotal = totalWithMultipliers(storedOverrideItems);
+        if (storedOverrideItems.length === 0 || storedOverrideTotal <= 0) continue;
+
+        const storedOverridePosition =
+          (storedOverride.position as Position | null | undefined) ??
+          (entry.managerPositionSnapshot as Position | null | undefined) ??
+          null;
+
+        overrides.push({
+          ...entry,
+          originalEntryId: entry.id,
+          id: `${entry.id}-override`,
+          items: storedOverrideItems,
+          total: storedOverrideTotal,
+          source: "manager",
+          position: storedOverridePosition ?? null,
+          managerPositionSnapshot: storedOverridePosition ?? null,
+          managerModeSnapshot:
+            (storedOverride.commissionMode as EntryDoc["managerModeSnapshot"]) ??
+            (entry.managerModeSnapshot as EntryDoc["managerModeSnapshot"]) ??
+            null,
+          clientName: entry.clientName ?? null,
+        });
+      }
+    }
+
+    let entriesForCashflow: EntryDoc[] = [];
+    if (scopeFilter === "own") {
+      entriesForCashflow = ownEntries;
+    } else if (scopeFilter === "team") {
+      entriesForCashflow = overrides;
+    } else {
+      entriesForCashflow = [...ownEntries, ...overrides];
+    }
+
+    if (productFilter !== "all") {
+      entriesForCashflow = entriesForCashflow.filter((entry) => {
+        const product = entry.productKey;
+        if (!product) return false;
+        if (productFilter === "life") {
+          return (
+            product === "neon" ||
+            product === "flexi" ||
+            product === "maximaMaxEfekt" ||
+            product === "pillowInjury"
+          );
+        }
+        if (productFilter === "auto") {
+          return (
+            product === "cppAuto" ||
+            product === "slaviaauto" ||
+            product === "allianzAuto" ||
+            product === "csobAuto" ||
+            product === "uniqaAuto" ||
+            product === "uniqaflotila" ||
+            product === "pillowAuto" ||
+            product === "kooperativaAuto"
+          );
+        }
+        if (productFilter === "property") {
+          return (
+            product === "domex" ||
+            product === "pillowmajetek" ||
+            product === "koopmajetekobcan" ||
+            product === "maxdomov" ||
+            product === "allianzmujdomov" ||
+            product === "cppsimplex" ||
+            product === "cppPPRs" ||
+            product === "cppPPRbez" ||
+            product === "cppcestovko" ||
+            product === "axacestovko" ||
+            product === "koopcestovko" ||
+            product === "zamex"
+          );
+        }
+        if (productFilter === "other") {
+          return !(
+            product === "neon" ||
+            product === "flexi" ||
+            product === "maximaMaxEfekt" ||
+            product === "pillowInjury"
+          );
+        }
+        if (productFilter === "gold") {
+          return product === "comfortcc";
+        }
+        return true;
+      });
+    }
+
+    const cashflow = generateCashflow(entriesForCashflow, 10);
+    if (process.env.NODE_ENV !== "production") {
+      const total = cashflow.reduce((sum, item) => sum + item.amount, 0);
+      const entryFingerprint = stableHash(
+        entriesForCashflow
+          .map((entry) =>
+            `${entry.source ?? "na"}:${(entry.userEmail ?? "").toLowerCase()}:${
+              entry.originalEntryId ?? entry.id
+            }`
+          )
+          .sort((a, b) => a.localeCompare(b, "cs"))
+      );
+      console.info("[cashflow-debug]", {
+        email,
+        scopeFilter,
+        productFilter,
+        myPosition: snapshot.myPosition,
+        hasAnyTeam: snapshot.hasAnyTeam,
+        allEntries: allEntries.length,
+        ownEntries: ownEntries.length,
+        teamRaw: teamRaw.length,
+        overrides: overrides.length,
+        entriesForCashflow: entriesForCashflow.length,
+        cashflowItems: cashflow.length,
+        total,
+        entryFingerprint,
+      });
+    }
+
+    return cashflow;
+  }, [enabled, snapshot, scopeFilter, productFilter]);
 
   return {
     loading,

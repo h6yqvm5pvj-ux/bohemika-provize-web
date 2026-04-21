@@ -29,6 +29,7 @@ import {
   applyBoxThemeToRoot,
 } from "@/lib/boxTheme";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { getUserProfileCached, type UserProfileResponse } from "@/app/lib/userProfileCache";
 
 type ActivePage =
   | "home"
@@ -45,12 +46,6 @@ interface AppLayoutProps {
 }
 
 type SubscriptionStatusWeb = "none" | "active" | "expired";
-
-type UserProfileResponse = {
-  ok?: boolean;
-  hasTeam?: boolean;
-  profile?: Record<string, unknown>;
-};
 
 const hasCareerTimelineConfigured = (data: Record<string, unknown>): boolean => {
   const raw = data.positionTimeline;
@@ -260,7 +255,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
   // Načtení subscription profilu přes API
   const loadSubscriptionProfileForUser = async (
-    currentUser: FirebaseUser | null
+    currentUser: FirebaseUser | null,
+    options?: { force?: boolean }
   ) => {
     const emailRaw = currentUser?.email;
     if (!emailRaw) {
@@ -273,11 +269,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
     setLoadingProfile(true);
     try {
-      const payload = await fetchAuthedJsonOrThrow<UserProfileResponse>(
-        currentUser,
-        "/api/user/profile",
-        { method: "GET" }
-      );
+      const payload = await getUserProfileCached(currentUser, {
+        maxAgeMs: 60 * 1000,
+        force: options?.force === true,
+      });
       const data = payload?.profile ?? {};
       const statusRaw = (data.subscriptionStatus as string | undefined)?.trim().toLowerCase();
       let status: SubscriptionStatusWeb = "none";
@@ -404,7 +399,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
   // Ruční reload z paywallu
   const handleReloadSubscription = async () => {
-    await loadSubscriptionProfileForUser(user);
+    await loadSubscriptionProfileForUser(user, { force: true });
   };
 
   const navItemBase =

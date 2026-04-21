@@ -15,7 +15,7 @@ import {
   TotpMultiFactorGenerator,
 } from "firebase/auth";
 import { auth } from "../firebase";
-import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { getUserProfileCached } from "@/app/lib/userProfileCache";
 
 const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
   "auth/multi-factor-auth-required",
@@ -113,11 +113,7 @@ export default function LoginPage() {
 
       try {
         const response = await withTimeout(
-          fetchAuthedJsonOrThrow<{
-            ok?: boolean;
-            hasProfile?: boolean;
-            profile?: Record<string, unknown>;
-          }>(user, "/api/user/profile", { method: "GET" }),
+          getUserProfileCached(user, { force: true }),
           10000,
           "Ověření účtu trvá příliš dlouho."
         );
@@ -305,10 +301,15 @@ export default function LoginPage() {
             {!mfaResolver ? (
               <>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-700">
+                  <label
+                    htmlFor="login-email"
+                    className="text-xs font-medium text-slate-700"
+                  >
                     E-mail
                   </label>
                   <input
+                    id="login-email"
+                    name="email"
                     type="email"
                     autoComplete="email"
                     required
@@ -320,10 +321,15 @@ export default function LoginPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-700">
+                  <label
+                    htmlFor="login-password"
+                    className="text-xs font-medium text-slate-700"
+                  >
                     Heslo
                   </label>
                   <input
+                    id="login-password"
+                    name="password"
                     type="password"
                     autoComplete="current-password"
                     required
@@ -353,10 +359,15 @@ export default function LoginPage() {
                     : " Potvrď ho kódem z Microsoft Authenticator."}
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-700">
+                  <label
+                    htmlFor="login-otp"
+                    className="text-xs font-medium text-slate-700"
+                  >
                     Jednorázový kód (2FA)
                   </label>
                   <input
+                    id="login-otp"
+                    name="otp"
                     type="text"
                     inputMode="numeric"
                     autoComplete="one-time-code"

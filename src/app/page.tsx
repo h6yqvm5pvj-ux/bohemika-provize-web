@@ -10,6 +10,10 @@ import {
   type User as FirebaseUser,
 } from "firebase/auth";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import {
+  getUserProfileCached,
+  invalidateUserProfileCache,
+} from "@/app/lib/userProfileCache";
 
 import { AppLayout } from "@/components/AppLayout";
 import { AutoAnniversaryModal } from "@/components/AutoAnniversaryModal";
@@ -259,6 +263,7 @@ export default function HomePage() {
     () => user?.email?.toLowerCase() ?? null,
     [user?.email]
   );
+  const shouldLoadExpectedPayout = homeWidgets.expectedPayout;
 
   const {
     userMeta,
@@ -280,6 +285,7 @@ export default function HomePage() {
     userEmail: normalizedEmail,
     scopeFilter: "combined",
     productFilter: "all",
+    enabled: shouldLoadExpectedPayout,
   });
 
   const now = new Date();
@@ -437,10 +443,9 @@ export default function HomePage() {
           loadFromDevice();
           return;
         }
-        const payload = await fetchAuthedJsonOrThrow<{
-          ok?: boolean;
-          profile?: Record<string, unknown>;
-        }>(auth.currentUser, "/api/user/profile", { method: "GET" });
+        const payload = await getUserProfileCached(auth.currentUser, {
+          maxAgeMs: 60 * 1000,
+        });
         const data = (payload?.profile ?? {}) as any;
 
         const cloudLayout = (data?.homeLayout as HomeSection[] | undefined) ?? null;
@@ -530,6 +535,7 @@ export default function HomePage() {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
+      invalidateUserProfileCache(normalizedEmail);
     } catch (e) {
       console.error("Uložení nastavení domova selhalo", e);
     }
@@ -628,7 +634,7 @@ export default function HomePage() {
       : "from-rose-500 via-red-400 to-orange-300";
 
   const showProductionSummary = homeWidgets.productionSummary;
-  const showExpectedPayoutSection = homeWidgets.expectedPayout;
+  const showExpectedPayoutSection = shouldLoadExpectedPayout;
   const showMonthlyGoalSection = homeWidgets.monthlyGoal;
   const showLeaderboardSection = showTeamBox && homeWidgets.teamLeaderboard;
   const showChartSection = homeWidgets.productionChart;
@@ -930,6 +936,7 @@ export default function HomePage() {
         method: "PATCH",
         body: JSON.stringify({ monthlyGoal: value }),
       });
+      invalidateUserProfileCache(normalizedEmail);
       setUserMeta((prev) => (prev ? { ...prev, monthlyGoal: value } : prev));
     } catch (e) {
       console.error("Uložení měsíčního cíle selhalo", e);
