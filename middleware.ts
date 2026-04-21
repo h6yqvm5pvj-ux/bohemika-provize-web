@@ -98,7 +98,6 @@ function buildStrictNonceCsp(nonce: string): string {
 export function middleware(req: NextRequest) {
   const nonce = createNonce();
   const requestHeaders = new Headers(req.headers);
-  requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("x-csp-nonce", nonce);
 
   const res = NextResponse.next({
@@ -108,9 +107,8 @@ export function middleware(req: NextRequest) {
   });
 
   const strictCsp = buildStrictNonceCsp(nonce);
-  const useLegacyReportOnlyMode = process.env.CSP_STRICT_ENFORCE === "0";
 
-  if (!useLegacyReportOnlyMode) {
+  if (process.env.CSP_STRICT_ENFORCE === "1") {
     res.headers.set("Content-Security-Policy", strictCsp);
   } else {
     res.headers.set("Content-Security-Policy", buildBaselineCsp());
