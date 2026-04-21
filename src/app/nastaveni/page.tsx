@@ -28,7 +28,6 @@ import {
   type MultiFactorError,
   onAuthStateChanged,
   reauthenticateWithCredential,
-  sendEmailVerification,
   TotpMultiFactorGenerator,
   type TotpSecret,
   updatePassword,
@@ -234,7 +233,6 @@ const EXPECTED_MFA_ERROR_CODES = new Set<string>([
   "auth/requires-recent-login",
   "auth/too-many-requests",
   "auth/operation-not-allowed",
-  "auth/unverified-email",
 ]);
 
 const isExpectedMfaError = (error: unknown): boolean => {
@@ -278,9 +276,6 @@ const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
   if (err?.code === "auth/operation-not-allowed") {
     return "TOTP MFA není zapnuté ve Firebase Console (Authentication > Multi-factor).";
   }
-  if (err?.code === "auth/unverified-email") {
-    return "Nejdřív ověř e-mail účtu. Pak půjde 2FA zapnout.";
-  }
   return fallback;
 };
 
@@ -304,7 +299,6 @@ export default function SettingsPage() {
   const [mfaPassword, setMfaPassword] = useState("");
   const [mfaStatus, setMfaStatus] = useState<InlineStatus | null>(null);
   const [mfaBusy, setMfaBusy] = useState(false);
-  const [mfaForceVerifyingEmail, setMfaForceVerifyingEmail] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [mfaTotpUid, setMfaTotpUid] = useState<string | null>(null);
   const [mfaTotpLabel, setMfaTotpLabel] = useState<string | null>(null);
@@ -1126,43 +1120,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleForceVerifyMfaEmail = async () => {
-    if (!user) return;
-    setMfaForceVerifyingEmail(true);
-    setMfaStatus(null);
-    try {
-      await user.reload();
-      const currentUser = auth.currentUser ?? user;
-      setUser(currentUser);
-
-      if (currentUser.emailVerified) {
-        setMfaStatus({
-          type: "success",
-          message: "E-mail je ověřený. Teď můžeš kliknout na Zapnout 2FA.",
-        });
-        return;
-      }
-
-      await sendEmailVerification(currentUser);
-      setMfaStatus({
-        type: "info",
-        message:
-          "Poslal jsem ověřovací e-mail. Otevři odkaz v e-mailu a potom klikni znovu na stejné tlačítko.",
-      });
-    } catch (error) {
-      logMfaIssue("handleForceVerifyMfaEmail", error);
-      setMfaStatus({
-        type: "error",
-        message: resolveMfaErrorMessage(
-          error,
-          "Nepodařilo se připravit ověření e-mailu pro 2FA."
-        ),
-      });
-    } finally {
-      setMfaForceVerifyingEmail(false);
-    }
-  };
-
   const handleStartMfaEnrollment = async () => {
     if (!user) return;
 
@@ -1173,15 +1130,6 @@ export default function SettingsPage() {
       await user.reload();
       const activeUser = auth.currentUser ?? user;
       setUser(activeUser);
-
-      if (!activeUser.emailVerified) {
-        setMfaStatus({
-          type: "error",
-          message:
-            "Nejdřív ověř e-mail účtu. Pak půjde 2FA zapnout.",
-        });
-        return;
-      }
 
       const reauthenticated = await reauthenticateForMfaChange(activeUser);
       if (!reauthenticated) return;
@@ -2102,14 +2050,6 @@ export default function SettingsPage() {
                       Po zadání hesla budete při přihlášení potvrzovat ještě jednorázový kód z aplikace Microsoft Authenticator.
                     </p>
 
-                    {!user.emailVerified && !mfaEnabled && (
-                      <div className="space-y-2 rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2.5">
-                        <p className="text-xs text-amber-900">
-                          Pro zapnutí 2FA je potřeba ověřit e-mail účtu. Klikni na hlavní tlačítko níže.
-                        </p>
-                      </div>
-                    )}
-
                     <input
                       type="password"
                       autoComplete="current-password"
@@ -2136,26 +2076,11 @@ export default function SettingsPage() {
                     {!mfaEnabled && !mfaEnrollmentSecret && (
                       <button
                         type="button"
-                        onClick={() =>
-                          void (
-                            user.emailVerified
-                              ? handleStartMfaEnrollment()
-                              : handleForceVerifyMfaEmail()
-                          )
-                        }
-                        disabled={
-                          mfaBusy ||
-                          mfaForceVerifyingEmail
-                        }
+                        onClick={() => void handleStartMfaEnrollment()}
+                        disabled={mfaBusy}
                         className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {mfaForceVerifyingEmail
-                          ? "Posílám ověření…"
-                          : mfaBusy
-                            ? "Spouštím 2FA…"
-                            : user.emailVerified
-                              ? "Zapnout 2FA"
-                              : "Ověřit e-mail a pokračovat"}
+                        {mfaBusy ? "Spouštím 2FA…" : "Zapnout 2FA"}
                       </button>
                     )}
 

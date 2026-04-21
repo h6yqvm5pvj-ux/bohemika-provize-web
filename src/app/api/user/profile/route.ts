@@ -46,6 +46,7 @@ const COMMISSION_MODE_SET = new Set<CommissionMode>(["accelerated", "standard"])
 const HOME_SECTION_SET = new Set([
   "gold",
   "summary",
+  "expectedPayout",
   "goal",
   "leaderboard",
   "quickActions",
@@ -325,6 +326,7 @@ function sanitizeHomeWidgets(value: unknown): Record<string, boolean> | null {
   const out: Record<string, boolean> = {};
   const keys = [
     "productionSummary",
+    "expectedPayout",
     "monthlyGoal",
     "teamLeaderboard",
     "productionChart",

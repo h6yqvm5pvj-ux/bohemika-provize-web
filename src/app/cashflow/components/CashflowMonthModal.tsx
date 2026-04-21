@@ -1,6 +1,14 @@
 import Link from "next/link";
 
-import { formatMoney, frequencyText, productLabel } from "../helpers";
+import {
+  calculateNetCashflow,
+  calculateStornoFund,
+  formatMoney,
+  frequencyText,
+  productLabel,
+  STORNO_EXEMPT_PRODUCT,
+  STORNO_FUND_RATE,
+} from "../helpers";
 import type { CashflowItem, MonthGroup } from "../types";
 
 type CashflowMonthModalProps = {
@@ -8,9 +16,6 @@ type CashflowMonthModalProps = {
   onClose: () => void;
   onSelectItem: (item: CashflowItem) => void;
 };
-
-const STORNO_FUND_RATE = 0.15;
-const STORNO_EXEMPT_PRODUCT = "comfortcc";
 
 export function CashflowMonthModal({
   month,
@@ -22,11 +27,9 @@ export function CashflowMonthModal({
   const sortedItems = [...month.items].sort(
     (a, b) => a.date.getTime() - b.date.getTime()
   );
-  const stornoFund = month.items.reduce((sum, item) => {
-    if (item.productKey === STORNO_EXEMPT_PRODUCT) return sum;
-    return sum + item.amount * STORNO_FUND_RATE;
-  }, 0);
-  const netTotal = month.total - stornoFund;
+  const stornoFund = calculateStornoFund(month.items);
+  const netTotal = calculateNetCashflow(month.total, stornoFund);
+  const stornoPercent = Math.round(STORNO_FUND_RATE * 100);
 
   return (
     <div
@@ -57,7 +60,7 @@ export function CashflowMonthModal({
               </div>
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-right">
                 <div className="text-[11px] uppercase tracking-[0.14em] text-rose-700">
-                  STORNO fond (15 %)
+                  STORNO fond ({stornoPercent} %)
                 </div>
                 <div className="mt-1 text-lg font-semibold leading-none text-rose-700 sm:text-2xl">
                   - {formatMoney(stornoFund)}

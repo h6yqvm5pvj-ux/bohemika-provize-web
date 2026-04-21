@@ -148,7 +148,6 @@ type UserProfileSnapshot = {
 type SubscriptionStatus = "active" | "expired" | "none";
 type AuthContextOptions = {
   requireKnownUser?: boolean;
-  requireVerifiedEmail?: boolean;
   requireActiveSubscription?: boolean;
 };
 
@@ -2681,7 +2680,6 @@ async function getAuthContext(
 ) {
   const {
     requireKnownUser = false,
-    requireVerifiedEmail = false,
     requireActiveSubscription = false,
   } = options;
 
@@ -2710,10 +2708,6 @@ async function getAuthContext(
     return { error: "User e-mail missing in token", status: 401 } as const;
   }
   const rawTokenEmail = typeof decoded.email === "string" ? decoded.email.trim() : "";
-
-  if (requireVerifiedEmail && decoded.email_verified !== true) {
-    return { error: "E-mail účtu musí být ověřen.", status: 403 } as const;
-  }
 
   const { users, childrenByManager } = await getCachedUserTree();
   const me = users.find((u) => u.email === email) ?? null;
@@ -2755,7 +2749,6 @@ export async function handleContractsGet(
 ) {
   const ctx = await getAuthContext(req, {
     requireKnownUser: true,
-    requireVerifiedEmail: true,
     requireActiveSubscription: true,
   });
   if ("error" in ctx) {
@@ -3003,7 +2996,6 @@ export async function handleContractsGet(
 export async function handleContractsCreate(req: NextRequest) {
   const ctx = await getAuthContext(req, {
     requireKnownUser: true,
-    requireVerifiedEmail: true,
     requireActiveSubscription: true,
   });
   if ("error" in ctx) {
@@ -3220,7 +3212,6 @@ export async function handleContractsPatch(
 ) {
   const ctx = await getAuthContext(req, {
     requireKnownUser: true,
-    requireVerifiedEmail: true,
     requireActiveSubscription: true,
   });
   if ("error" in ctx) {
@@ -3750,7 +3741,6 @@ export async function handleContractsPatch(
 export async function handleContractsDelete(req: NextRequest) {
   const ctx = await getAuthContext(req, {
     requireKnownUser: true,
-    requireVerifiedEmail: true,
     requireActiveSubscription: true,
   });
   if ("error" in ctx) {

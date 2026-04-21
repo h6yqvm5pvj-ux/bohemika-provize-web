@@ -5,7 +5,14 @@ export type LeaderboardRange = "month" | "sixMonths" | "year";
 export type ChartMode = "personal" | "team" | "combined" | "specific";
 export type LayoutScope = "cloud" | "device";
 export type PerformanceMode = "default" | "lite";
-export type HomeSection = "gold" | "summary" | "goal" | "leaderboard" | "chart" | "quickActions";
+export type HomeSection =
+  | "gold"
+  | "summary"
+  | "expectedPayout"
+  | "goal"
+  | "leaderboard"
+  | "chart"
+  | "quickActions";
 
 export type TeamLeaderboardEntry = {
   email: string;
@@ -15,6 +22,7 @@ export type TeamLeaderboardEntry = {
 
 export type HomeWidgets = {
   productionSummary: boolean;
+  expectedPayout: boolean;
   monthlyGoal: boolean;
   teamLeaderboard: boolean;
   productionChart: boolean;

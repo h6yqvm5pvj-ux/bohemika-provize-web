@@ -27,8 +27,8 @@ export function ProductionSummarySection({
     ? "h-full rounded-[28px] border border-slate-700 bg-slate-950 px-5 py-8 text-white transition-[border-color,box-shadow] duration-200 hover:border-slate-500 focus-within:border-slate-500 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.28)] sm:px-8 sm:py-10"
     : "h-full rounded-[28px] border border-slate-700 bg-slate-950 px-5 py-8 text-white shadow-[0_14px_34px_rgba(2,6,23,0.35)] transition-[border-color,box-shadow] duration-200 hover:border-slate-500 hover:shadow-[0_18px_42px_rgba(2,6,23,0.45),0_0_0_1px_rgba(148,163,184,0.18)] focus-within:border-slate-500 focus-within:shadow-[0_18px_42px_rgba(2,6,23,0.45),0_0_0_1px_rgba(148,163,184,0.22)] sm:px-8 sm:py-10";
   const compactSummaryCardClass = isLiteUI
-    ? "rounded-[24px] border border-slate-700 bg-slate-950 px-5 py-5 text-white transition-[border-color,box-shadow] duration-200 hover:border-slate-500 focus-within:border-slate-500 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.28)] sm:px-7 sm:py-6"
-    : "rounded-[24px] border border-slate-700 bg-slate-950 px-5 py-5 text-white shadow-[0_12px_28px_rgba(2,6,23,0.34)] transition-[border-color,box-shadow] duration-200 hover:border-slate-500 hover:shadow-[0_16px_36px_rgba(2,6,23,0.42),0_0_0_1px_rgba(148,163,184,0.16)] focus-within:border-slate-500 focus-within:shadow-[0_16px_36px_rgba(2,6,23,0.42),0_0_0_1px_rgba(148,163,184,0.2)] sm:px-7 sm:py-6";
+    ? "h-full rounded-[24px] border border-slate-700 bg-slate-950 px-5 py-5 text-white transition-[border-color,box-shadow] duration-200 hover:border-slate-500 focus-within:border-slate-500 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.28)] sm:px-7 sm:py-6"
+    : "h-full rounded-[24px] border border-slate-700 bg-slate-950 px-5 py-5 text-white shadow-[0_12px_28px_rgba(2,6,23,0.34)] transition-[border-color,box-shadow] duration-200 hover:border-slate-500 hover:shadow-[0_16px_36px_rgba(2,6,23,0.42),0_0_0_1px_rgba(148,163,184,0.16)] focus-within:border-slate-500 focus-within:shadow-[0_16px_36px_rgba(2,6,23,0.42),0_0_0_1px_rgba(148,163,184,0.2)] sm:px-7 sm:py-6";
 
   if (!showTeamBox) {
     return (
@@ -96,8 +96,9 @@ export function ProductionSummarySection({
         </div>
 
         <div className="flex min-h-[220px] h-full flex-col justify-center space-y-6 text-center md:px-6">
-          <h2 className="whitespace-nowrap text-2xl font-semibold text-white sm:text-3xl">
-            Týmová produkce
+          <h2 className="text-2xl font-semibold text-white sm:text-3xl">
+            <span className="block">Týmová</span>
+            <span className="block">produkce</span>
           </h2>
           {loading ? (
             <p className="text-base text-slate-300">Načítám…</p>

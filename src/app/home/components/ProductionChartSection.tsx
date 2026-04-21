@@ -297,8 +297,8 @@ export function ProductionChartSection({
   isLiteUI,
 }: ProductionChartSectionProps) {
   const chartCardClass = isLiteUI
-    ? "overflow-hidden rounded-[24px] border border-slate-200 bg-white px-5 py-5 transition-[border-color,box-shadow] duration-200 hover:border-slate-300 focus-within:border-slate-300 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.35)] sm:px-7 sm:py-6"
-    : "overflow-hidden rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.1)] focus-within:border-slate-300 focus-within:shadow-[0_12px_28px_rgba(15,23,42,0.1),0_0_0_1px_rgba(148,163,184,0.35)] sm:px-7 sm:py-6";
+    ? "h-full overflow-hidden rounded-[24px] border border-slate-200 bg-white px-5 py-5 transition-[border-color,box-shadow] duration-200 hover:border-slate-300 focus-within:border-slate-300 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.35)] sm:px-7 sm:py-6"
+    : "h-full overflow-hidden rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.1)] focus-within:border-slate-300 focus-within:shadow-[0_12px_28px_rgba(15,23,42,0.1),0_0_0_1px_rgba(148,163,184,0.35)] sm:px-7 sm:py-6";
 
   return (
     <section className={chartCardClass}>

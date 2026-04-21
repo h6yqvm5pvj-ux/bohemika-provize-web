@@ -33,6 +33,9 @@ const MONTH_LABELS = [
   "prosinec",
 ];
 
+export const STORNO_FUND_RATE = 0.15;
+export const STORNO_EXEMPT_PRODUCT: Product = "comfortcc";
+
 export function monthLabelFromDate(d: Date): string {
   return `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`;
 }
@@ -186,4 +189,17 @@ export function groupMonthsByYear(monthGroups: MonthGroup[]): YearGroup[] {
   years.sort((a, b) => a.year - b.year);
 
   return years;
+}
+
+export function calculateStornoFund(items: CashflowItem[]): number {
+  return items.reduce((sum, item) => {
+    if (item.productKey === STORNO_EXEMPT_PRODUCT) return sum;
+    const amount = Number(item.amount);
+    if (!Number.isFinite(amount)) return sum;
+    return sum + amount * STORNO_FUND_RATE;
+  }, 0);
+}
+
+export function calculateNetCashflow(grossAmount: number, stornoFund: number): number {
+  return grossAmount - stornoFund;
 }

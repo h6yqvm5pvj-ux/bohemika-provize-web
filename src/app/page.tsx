@@ -13,6 +13,9 @@ import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 
 import { AppLayout } from "@/components/AppLayout";
 import { AutoAnniversaryModal } from "@/components/AutoAnniversaryModal";
+import { calculateNetCashflow, calculateStornoFund } from "./cashflow/helpers";
+import { useCashflowData } from "./cashflow/useCashflowData";
+import { ExpectedPayoutSection } from "./home/components/ExpectedPayoutSection";
 import { GoldWidget } from "./home/components/GoldWidget";
 import { MonthlyGoalSection } from "./home/components/MonthlyGoalSection";
 import { ProductionChartSection } from "./home/components/ProductionChartSection";
@@ -98,6 +101,7 @@ type PersonalSeriesPoint = {
 
 const HOME_WIDGETS_DEFAULT: HomeWidgets = {
   productionSummary: true,
+  expectedPayout: true,
   monthlyGoal: true,
   teamLeaderboard: true,
   productionChart: true,
@@ -119,6 +123,7 @@ const quickActionsKey = (email?: string | null) =>
 const HOME_LAYOUT_DEFAULT: HomeSection[] = [
   "gold",
   "summary",
+  "expectedPayout",
   "goal",
   "leaderboard",
   "quickActions",
@@ -270,6 +275,11 @@ export default function HomePage() {
     email: normalizedEmail,
     loadPersonalHistory: homeWidgets.productionChart,
     loadTeamHistory: homeWidgets.productionChart || homeWidgets.teamLeaderboard,
+  });
+  const { loading: cashflowLoading, cashflowItems } = useCashflowData({
+    userEmail: normalizedEmail,
+    scopeFilter: "combined",
+    productFilter: "all",
   });
 
   const now = new Date();
@@ -604,6 +614,7 @@ export default function HomePage() {
       : "from-rose-500 via-red-400 to-orange-300";
 
   const showProductionSummary = homeWidgets.productionSummary;
+  const showExpectedPayoutSection = homeWidgets.expectedPayout;
   const showMonthlyGoalSection = homeWidgets.monthlyGoal;
   const showLeaderboardSection = showTeamBox && homeWidgets.teamLeaderboard;
   const showChartSection = homeWidgets.productionChart;
@@ -615,6 +626,28 @@ export default function HomePage() {
   const goldChangeAbs =
     goldData?.czkPerOz && goldChangePct != null ? (goldData.czkPerOz * goldChangePct) / 100 : null;
   const goldDir = goldChangePct == null ? "flat" : goldChangePct > 0 ? "up" : goldChangePct < 0 ? "down" : "flat";
+  const expectedPayout = useMemo(() => {
+    const dateNow = new Date();
+    const currentYear = dateNow.getFullYear();
+    const currentMonth = dateNow.getMonth();
+    const currentMonthItems = cashflowItems.filter(
+      (item) =>
+        item.date.getFullYear() === currentYear &&
+        item.date.getMonth() === currentMonth
+    );
+    const grossAmount = currentMonthItems.reduce((sum, item) => {
+      const amount = Number(item.amount);
+      if (!Number.isFinite(amount)) return sum;
+      return sum + amount;
+    }, 0);
+    const stornoFundAmount = calculateStornoFund(currentMonthItems);
+    const netAmount = calculateNetCashflow(grossAmount, stornoFundAmount);
+    return {
+      grossAmount,
+      stornoFundAmount,
+      netAmount,
+    };
+  }, [cashflowItems]);
 
   const handleSectionDragStart = (id: HomeSection) => {
     setDraggingSection(id);
@@ -702,6 +735,18 @@ export default function HomePage() {
             onSaveGoal={saveMonthlyGoal}
           />
         );
+      case "expectedPayout":
+        if (!showExpectedPayoutSection) return null;
+        return (
+          <ExpectedPayoutSection
+            loading={cashflowLoading}
+            grossAmount={expectedPayout.grossAmount}
+            stornoFundAmount={expectedPayout.stornoFundAmount}
+            netAmount={expectedPayout.netAmount}
+            periodLabel={`${monthLabelCapitalized} ${year}`}
+            isLiteUI={isLiteUI}
+          />
+        );
       case "leaderboard":
         if (!showLeaderboardSection) return null;
         return (
@@ -722,7 +767,7 @@ export default function HomePage() {
         );
         return (
           <section
-            className={`relative z-30 space-y-3 rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:px-8 sm:py-7 ${
+            className={`relative z-30 ${reorderEnabled ? "h-full" : ""} space-y-3 rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:px-8 sm:py-7 ${
               reorderEnabled && draggingSection === id ? "opacity-50" : ""
             } ${reorderEnabled ? "cursor-move" : ""}`}
             draggable={reorderEnabled}
@@ -845,10 +890,8 @@ export default function HomePage() {
   const sectionSpan: Record<HomeSection, string> = {
     gold: "md:col-span-1",
     summary: showTeamBox ? "md:col-span-2" : "md:col-span-1",
-    goal:
-      showLeaderboardSection && showGoldWidget
-        ? "md:col-span-1 md:col-start-2"
-        : "md:col-span-1",
+    expectedPayout: "md:col-span-1",
+    goal: "md:col-span-1",
     leaderboard: "md:col-span-1",
     quickActions: "md:col-span-1",
     chart: "md:col-span-2",
@@ -857,14 +900,9 @@ export default function HomePage() {
   const sectionRowSpan: Record<HomeSection, string> = {
     gold: "",
     summary: "",
-    goal:
-      showLeaderboardSection && showGoldWidget && showMonthlyGoalSection
-        ? "md:row-start-2"
-        : "",
-    leaderboard:
-      showLeaderboardSection && showGoldWidget && showMonthlyGoalSection
-        ? "md:row-span-2"
-        : "",
+    expectedPayout: "",
+    goal: "",
+    leaderboard: "",
     quickActions: "",
     chart: "",
   };
@@ -1060,6 +1098,8 @@ export default function HomePage() {
         return showProductionSummary;
       case "goal":
         return showMonthlyGoalSection;
+      case "expectedPayout":
+        return showExpectedPayoutSection;
       case "leaderboard":
         return showLeaderboardSection;
       case "chart":
@@ -1142,6 +1182,7 @@ export default function HomePage() {
                 <div className="space-y-2 text-sm text-slate-700">
                     {[
                       { key: "productionSummary", label: "Přehled produkce", disabled: false },
+                      { key: "expectedPayout", label: "Očekávaná výplata", disabled: false },
                       { key: "monthlyGoal", label: "Měsíční cíl", disabled: false },
                       { key: "goldWidget", label: "Cena zlata", disabled: false },
                       {
@@ -1237,7 +1278,13 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 grid-flow-row-dense">
+        <div
+          className={
+            reorderEnabled
+              ? "grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 grid-flow-row-dense"
+              : "columns-1 md:columns-2 [column-gap:1rem] sm:[column-gap:1.25rem]"
+          }
+        >
           {visibleSections.map((sec) => {
             const isDragging = draggingSection === sec;
             const isHoverTarget = reorderEnabled && hoverSection === sec && !isDragging;
@@ -1245,7 +1292,13 @@ export default function HomePage() {
             return (
               <div
                 key={sec}
-                className={[sectionSpan[sec], sectionRowSpan[sec]].filter(Boolean).join(" ")}
+                className={
+                  reorderEnabled
+                    ? [sectionSpan[sec], sectionRowSpan[sec]].filter(Boolean).join(" ")
+                    : `mb-4 break-inside-avoid sm:mb-5 ${
+                        sec === "summary" || sec === "chart" ? "md:[column-span:all]" : ""
+                      }`
+                }
               >
                 <div
                   draggable={reorderEnabled}
@@ -1272,7 +1325,7 @@ export default function HomePage() {
                     isHoverTarget
                       ? "rounded-3xl bg-slate-100 ring-2 ring-slate-400 ring-offset-2 ring-offset-white"
                       : ""
-                  }`}
+                  } ${reorderEnabled ? "h-full" : ""}`}
                 >
                   {reorderEnabled && (
                     <div className="pointer-events-none absolute right-3 top-3 z-10">
