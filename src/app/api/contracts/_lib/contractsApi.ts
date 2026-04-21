@@ -2698,7 +2698,7 @@ async function getAuthContext(
 
   let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
   try {
-    decoded = await adminAuth.verifyIdToken(token);
+    decoded = await adminAuth.verifyIdToken(token, true);
   } catch (err: any) {
     const msg = err?.message || "Invalid or expired token";
     const code = err?.code || "auth/invalid-token";

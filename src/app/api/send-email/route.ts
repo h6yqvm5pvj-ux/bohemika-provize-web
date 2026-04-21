@@ -45,7 +45,7 @@ export async function POST(req: Request) {
 
     let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
     try {
-      decoded = await adminAuth.verifyIdToken(token);
+      decoded = await adminAuth.verifyIdToken(token, true);
     } catch {
       return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });
     }

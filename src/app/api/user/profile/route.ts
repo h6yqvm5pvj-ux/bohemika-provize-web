@@ -126,7 +126,7 @@ async function getAuthContext(req: NextRequest) {
 
   let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
   try {
-    decoded = await adminAuth.verifyIdToken(token);
+    decoded = await adminAuth.verifyIdToken(token, true);
   } catch (err: any) {
     const code = err?.code || "auth/invalid-token";
     const message = err?.message || "Invalid or expired token";
@@ -236,6 +236,59 @@ async function loadPrivateProfile({
     merged = { ...(merged ?? {}), ...data };
   }
   return merged;
+}
+
+function hasAdminFunctionFlag(data: Record<string, unknown> | null | undefined): boolean {
+  if (!data) return false;
+  return data.adminFunction === true || data.adminfunction === true;
+}
+
+async function loadHasAdminFunction({
+  email,
+  rawTokenEmail,
+  uid,
+}: {
+  email: string;
+  rawTokenEmail: string;
+  uid: string;
+}): Promise<boolean> {
+  if (!adminDb) return false;
+  const candidateEmails = Array.from(
+    new Set([email, rawTokenEmail, rawTokenEmail.toLowerCase()].map((it) => it.trim()).filter(Boolean))
+  );
+
+  const privateCol = adminDb.collection("usersPrivate");
+  for (const docId of candidateEmails) {
+    const privateSnap = await privateCol.doc(docId).get();
+    if (!privateSnap.exists) continue;
+    const data = (privateSnap.data() as Record<string, unknown> | undefined) ?? {};
+    if (hasAdminFunctionFlag(data)) return true;
+  }
+
+  const usersCol = adminDb.collection("users");
+  for (const docId of candidateEmails) {
+    const directSnap = await usersCol.doc(docId).get();
+    if (directSnap.exists) {
+      const data = (directSnap.data() as Record<string, unknown> | undefined) ?? {};
+      if (hasAdminFunctionFlag(data)) return true;
+    }
+
+    const byEmailSnap = await usersCol.where("email", "==", docId).limit(6).get();
+    for (const row of byEmailSnap.docs) {
+      const data = (row.data() as Record<string, unknown> | undefined) ?? {};
+      if (hasAdminFunctionFlag(data)) return true;
+    }
+  }
+
+  if (uid) {
+    const byUidSnap = await usersCol.where("userId", "==", uid).limit(6).get();
+    for (const row of byUidSnap.docs) {
+      const data = (row.data() as Record<string, unknown> | undefined) ?? {};
+      if (hasAdminFunctionFlag(data)) return true;
+    }
+  }
+
+  return false;
 }
 
 async function getHasTeam(email: string): Promise<boolean> {
@@ -591,7 +644,7 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const { email } = ctx;
+  const { email, uid, rawTokenEmail } = ctx;
   const rateLimit = consumeRateLimit({
     namespace: "api:user-profile:patch",
     key: email,
@@ -625,18 +678,20 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (wantsPositionEdit) {
-    const meSnap = await adminDb.collection("users").doc(email).get();
-    if (meSnap.exists) {
-      const data = (meSnap.data() as Record<string, unknown> | undefined) ?? {};
-      if (data.canChangePosition === false) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Nemáš oprávnění měnit pozici nebo timeline.",
-          } satisfies ApiError,
-          { status: 403 }
-        );
-      }
+    const hasAdminFunction = await loadHasAdminFunction({
+      email,
+      rawTokenEmail,
+      uid,
+    });
+    if (!hasAdminFunction) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Nemáš oprávnění měnit position/commissionMode/positionTimeline přes vlastní profil.",
+        } satisfies ApiError,
+        { status: 403 }
+      );
     }
   }
 

@@ -313,7 +313,7 @@ export async function POST(req: Request) {
 
     let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
     try {
-      decoded = await adminAuth.verifyIdToken(token);
+      decoded = await adminAuth.verifyIdToken(token, true);
     } catch (err: any) {
       const code = err?.code || "auth/invalid-token";
       const message = err?.message || "Invalid or expired token";

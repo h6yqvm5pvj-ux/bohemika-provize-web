@@ -285,11 +285,18 @@ service cloud.firestore {
       );
     }
 
-    function isChangingPositionOrMode() {
-      return resource != null && (
-        resource.data.position != request.resource.data.position ||
-        resource.data.commissionMode != request.resource.data.commissionMode
-      );
+    function isChangingCareerCalculationFields() {
+      return resource == null
+        ? request.resource.data.keys().hasAny([
+            "position",
+            "commissionMode",
+            "positionTimeline"
+          ])
+        : request.resource.data.diff(resource.data).changedKeys().hasAny([
+            "position",
+            "commissionMode",
+            "positionTimeline"
+          ]);
     }
 
     function isSettingCanChangeToTrue() {
@@ -471,14 +478,15 @@ service cloud.firestore {
                   || isSubordinateOfUserResource(userEmail);
       // zapisuje majitel nebo admin
       allow create: if ((isOwner(userEmail) && !isChangingSensitivePublicUserFields() && !isChangingIdentityPublicUserFields()) || isAdmin())
-        && !isSettingCanChangeToTrue();
+        && !isSettingCanChangeToTrue()
+        && (!isChangingCareerCalculationFields() || authUserHasAdminFunction() || isAdmin());
       allow update: if (
           (
             (isOwner(userEmail) && !isChangingSensitivePublicUserFields() && !isChangingIdentityPublicUserFields())
             || isAdmin()
           )
           && !isSettingCanChangeToTrue()
-          && (!isChangingPositionOrMode() || canEditPositionFields(userEmail) || isAdmin())
+          && (!isChangingCareerCalculationFields() || authUserHasAdminFunction() || isAdmin())
         )
         || isPrivilegedSubordinatePositionUpdate();
       allow delete: if isOwner(userEmail) || isAdmin();
