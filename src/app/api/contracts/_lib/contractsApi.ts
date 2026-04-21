@@ -1,6 +1,5 @@
 // src/app/api/contracts/route.ts
 import { NextResponse, type NextRequest } from "next/server";
-import type { DecodedIdToken } from "firebase-admin/auth";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import {
@@ -150,7 +149,6 @@ type SubscriptionStatus = "active" | "expired" | "none";
 type AuthContextOptions = {
   requireKnownUser?: boolean;
   requireVerifiedEmail?: boolean;
-  requireMfa?: boolean;
   requireActiveSubscription?: boolean;
 };
 
@@ -2614,29 +2612,6 @@ const resolveSubscriptionStatusFromSources = (
   return null;
 };
 
-const tokenHasMfaClaim = (decoded: DecodedIdToken): boolean => {
-  const firebaseClaim = isPlainObject(decoded.firebase) ? decoded.firebase : null;
-  const signInSecondFactor =
-    firebaseClaim && typeof firebaseClaim.sign_in_second_factor === "string"
-      ? firebaseClaim.sign_in_second_factor.trim()
-      : "";
-  const secondFactorIdentifier =
-    firebaseClaim && typeof firebaseClaim.second_factor_identifier === "string"
-      ? firebaseClaim.second_factor_identifier.trim()
-      : "";
-  const amrValues = Array.isArray(decoded.amr)
-    ? decoded.amr
-        .map((item) => (typeof item === "string" ? item.trim().toLowerCase() : ""))
-        .filter(Boolean)
-    : [];
-
-  return (
-    signInSecondFactor.length > 0 ||
-    secondFactorIdentifier.length > 0 ||
-    amrValues.includes("mfa")
-  );
-};
-
 const loadUserSubscriptionStatus = async ({
   email,
   rawTokenEmail,
@@ -2707,7 +2682,6 @@ async function getAuthContext(
   const {
     requireKnownUser = false,
     requireVerifiedEmail = false,
-    requireMfa = false,
     requireActiveSubscription = false,
   } = options;
 
@@ -2722,7 +2696,7 @@ async function getAuthContext(
     return { error: "Missing bearer token", status: 401 } as const;
   }
 
-  let decoded: DecodedIdToken;
+  let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
   try {
     decoded = await adminAuth.verifyIdToken(token);
   } catch (err: any) {
@@ -2739,9 +2713,6 @@ async function getAuthContext(
 
   if (requireVerifiedEmail && decoded.email_verified !== true) {
     return { error: "E-mail účtu musí být ověřen.", status: 403 } as const;
-  }
-  if (requireMfa && !tokenHasMfaClaim(decoded)) {
-    return { error: "Pro tuto operaci je vyžadováno 2FA (MFA).", status: 403 } as const;
   }
 
   const { users, childrenByManager } = await getCachedUserTree();
@@ -2785,7 +2756,6 @@ export async function handleContractsGet(
   const ctx = await getAuthContext(req, {
     requireKnownUser: true,
     requireVerifiedEmail: true,
-    requireMfa: true,
     requireActiveSubscription: true,
   });
   if ("error" in ctx) {
@@ -3034,7 +3004,6 @@ export async function handleContractsCreate(req: NextRequest) {
   const ctx = await getAuthContext(req, {
     requireKnownUser: true,
     requireVerifiedEmail: true,
-    requireMfa: true,
     requireActiveSubscription: true,
   });
   if ("error" in ctx) {
@@ -3252,7 +3221,6 @@ export async function handleContractsPatch(
   const ctx = await getAuthContext(req, {
     requireKnownUser: true,
     requireVerifiedEmail: true,
-    requireMfa: true,
     requireActiveSubscription: true,
   });
   if ("error" in ctx) {
@@ -3783,7 +3751,6 @@ export async function handleContractsDelete(req: NextRequest) {
   const ctx = await getAuthContext(req, {
     requireKnownUser: true,
     requireVerifiedEmail: true,
-    requireMfa: true,
     requireActiveSubscription: true,
   });
   if ("error" in ctx) {

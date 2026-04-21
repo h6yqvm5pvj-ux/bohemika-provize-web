@@ -3,11 +3,9 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Smartphone, X } from "lucide-react";
 import {
   FactorId,
   getMultiFactorResolver,
-  multiFactor,
   type MultiFactorError,
   type MultiFactorResolver,
   onAuthStateChanged,
@@ -49,8 +47,6 @@ export default function LoginPage() {
   const [mfaCode, setMfaCode] = useState("");
   const [mfaHintUid, setMfaHintUid] = useState<string | null>(null);
   const [mfaHintLabel, setMfaHintLabel] = useState<string | null>(null);
-  const [showMissing2FaModal, setShowMissing2FaModal] = useState(false);
-  const [missing2FaEmail, setMissing2FaEmail] = useState<string | null>(null);
 
   const clearMfaState = () => {
     setMfaResolver(null);
@@ -69,8 +65,6 @@ export default function LoginPage() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
-        setShowMissing2FaModal(false);
-        setMissing2FaEmail(null);
         return;
       }
 
@@ -80,8 +74,6 @@ export default function LoginPage() {
         await signOut(auth);
         return;
       }
-
-      const normalizedEmail = rawEmail.trim().toLowerCase();
 
       try {
         const response = await fetchAuthedJsonOrThrow<{
@@ -98,22 +90,7 @@ export default function LoginPage() {
         const hasActive = evaluateSubscription(data);
 
         if (hasActive) {
-          const hasTotpFactor = multiFactor(user).enrolledFactors.some(
-            (factor) => factor.factorId === FactorId.TOTP
-          );
-
-          if (!hasTotpFactor) {
-            clearMfaState();
-            setError(null);
-            setResetStatus(null);
-            setMissing2FaEmail(normalizedEmail);
-            setShowMissing2FaModal(true);
-            return;
-          }
-
           // OK → pustíme na hlavní stránku
-          setShowMissing2FaModal(false);
-          setMissing2FaEmail(null);
           clearMfaState();
           router.replace("/");
         } else {
@@ -258,16 +235,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleContinueWithout2Fa = () => {
-    setShowMissing2FaModal(false);
-    router.replace("/");
-  };
-
-  const handleOpen2FaSetup = () => {
-    setShowMissing2FaModal(false);
-    router.push("/nastaveni");
-  };
-
   return (
     <main className="min-h-screen bg-white text-slate-900">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-10">
@@ -388,62 +355,6 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {showMissing2FaModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 px-4"
-          onClick={handleContinueWithout2Fa}
-        >
-          <div
-            className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_20px_50px_rgba(15,23,42,0.3)] sm:px-6"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.16em] text-slate-900">
-                <ShieldCheck size={14} strokeWidth={2.2} className="text-slate-600" />
-                2faktorové ověření
-              </h3>
-              <button
-                type="button"
-                onClick={handleContinueWithout2Fa}
-                className="rounded-full border border-slate-300 p-1.5 text-slate-600 transition hover:bg-slate-100"
-                aria-label="Zavřít upozornění"
-              >
-                <X size={14} strokeWidth={2.4} />
-              </button>
-            </div>
-
-            <p className="text-sm leading-relaxed text-slate-700">
-              Účet <span className="font-semibold text-slate-900">{missing2FaEmail}</span>{" "}
-              zatím nemá aktivní 2FA. Pro vyšší bezpečnost doporučujeme zapnout ověřování hned.
-            </p>
-
-            <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-              <p className="inline-flex items-start gap-2 text-xs leading-relaxed text-slate-700">
-                <Smartphone size={14} className="mt-0.5 shrink-0 text-slate-600" />
-                Pro zapnutí 2FA potřebuješ aplikaci{" "}
-                <span className="font-semibold text-slate-900">Microsoft Authenticator</span>.
-              </p>
-            </div>
-
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={handleContinueWithout2Fa}
-                className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-              >
-                Pokračovat bez 2FA
-              </button>
-              <button
-                type="button"
-                onClick={handleOpen2FaSetup}
-                className="inline-flex items-center justify-center rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
-              >
-                Nastavit 2FA teď
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
