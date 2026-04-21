@@ -24,6 +24,8 @@ const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
   "auth/too-many-requests",
   "auth/user-not-found",
   "auth/wrong-password",
+  "auth/network-request-failed",
+  "auth/timeout",
 ]);
 
 const logAuthIssue = (context: string, error: unknown) => {
@@ -34,6 +36,32 @@ const logAuthIssue = (context: string, error: unknown) => {
   }
   console.error(`[Login] ${context}:`, error);
 };
+
+function timeoutError(message: string) {
+  const err = new Error(message) as Error & { code?: string };
+  err.code = "auth/timeout";
+  return err;
+}
+
+async function withTimeout<T>(
+  operation: Promise<T>,
+  ms: number,
+  message: string
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(timeoutError(message)), ms);
+    operation.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -55,6 +83,14 @@ export default function LoginPage() {
     setMfaHintLabel(null);
   };
 
+  const safeSignOut = async () => {
+    try {
+      await withTimeout(signOut(auth), 6000, "Odhlášení trvá příliš dlouho.");
+    } catch (err) {
+      logAuthIssue("safeSignOut", err);
+    }
+  };
+
   // pomocná funkce: vyhodnotí, jestli má user aktivní předplatné
   function evaluateSubscription(data: any): boolean {
     const statusRaw = (data?.subscriptionStatus as string | undefined)?.trim().toLowerCase();
@@ -71,18 +107,22 @@ export default function LoginPage() {
       const rawEmail = user.email;
       if (!rawEmail) {
         // nějaký divný user bez emailu – raději odhlásit
-        await signOut(auth);
+        await safeSignOut();
         return;
       }
 
       try {
-        const response = await fetchAuthedJsonOrThrow<{
-          ok?: boolean;
-          hasProfile?: boolean;
-          profile?: Record<string, unknown>;
-        }>(user, "/api/user/profile", { method: "GET" });
+        const response = await withTimeout(
+          fetchAuthedJsonOrThrow<{
+            ok?: boolean;
+            hasProfile?: boolean;
+            profile?: Record<string, unknown>;
+          }>(user, "/api/user/profile", { method: "GET" }),
+          10000,
+          "Ověření účtu trvá příliš dlouho."
+        );
         if (response?.hasProfile !== true) {
-          await signOut(auth);
+          await safeSignOut();
           setError("Tento účet nemá aktivní předplatné.");
           return;
         }
@@ -95,12 +135,12 @@ export default function LoginPage() {
           router.replace("/");
         } else {
           // žádné / expirované předplatné → odhlásit a ukázat hlášku
-          await signOut(auth);
+          await safeSignOut();
           setError("Tento účet nemá aktivní (platné) předplatné.");
         }
       } catch (e) {
         console.error("Chyba při ověřování předplatného:", e);
-        await signOut(auth);
+        await safeSignOut();
         setError(
           "Nepodařilo se ověřit předplatné. Zkus to prosím znovu nebo kontaktuj podporu."
         );
@@ -132,7 +172,11 @@ export default function LoginPage() {
         mfaHintUid,
         oneTimePassword
       );
-      await mfaResolver.resolveSignIn(assertion);
+      await withTimeout(
+        mfaResolver.resolveSignIn(assertion),
+        12000,
+        "2FA ověření trvá příliš dlouho."
+      );
       // dokončení přihlášení + kontrolu subscription řeší onAuthStateChanged
     } catch (err: unknown) {
       logAuthIssue("handleMfaSubmit", err);
@@ -145,6 +189,10 @@ export default function LoginPage() {
         msg = "2FA kód vypršel. Zadej nový aktuální kód.";
       } else if (authErr?.code === "auth/too-many-requests") {
         msg = "Příliš mnoho pokusů. Zkus to prosím za chvíli.";
+      } else if (authErr?.code === "auth/network-request-failed") {
+        msg = "Síťová chyba při 2FA ověření. Zkontroluj připojení a zkus to znovu.";
+      } else if (authErr?.code === "auth/timeout") {
+        msg = "2FA ověření trvá příliš dlouho. Zkus to prosím znovu.";
       }
 
       setError(msg);
@@ -167,7 +215,11 @@ export default function LoginPage() {
       const trimmedEmail = email.trim().toLowerCase();
       const trimmedPassword = password.trim();
 
-      await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
+      await withTimeout(
+        signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword),
+        12000,
+        "Přihlášení trvá příliš dlouho."
+      );
       // dál už to řeší onAuthStateChanged výše:
       // ověří subscription a podle toho buď router.replace("/"),
       // nebo signOut + error.
@@ -207,6 +259,10 @@ export default function LoginPage() {
         msg = "Účet s tímto e-mailem neexistuje.";
       } else if (authErr?.code === "auth/wrong-password") {
         msg = "Nesprávné heslo.";
+      } else if (authErr?.code === "auth/network-request-failed") {
+        msg = "Síťová chyba při přihlášení. Zkontroluj připojení a zkus to znovu.";
+      } else if (authErr?.code === "auth/timeout") {
+        msg = "Přihlášení trvá příliš dlouho. Zkus to prosím znovu.";
       }
 
       setError(msg);

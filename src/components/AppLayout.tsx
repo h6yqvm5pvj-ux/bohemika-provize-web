@@ -95,7 +95,22 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
   // Auth listener
   useEffect(() => {
+    let resolved = false;
+    const readyFallbackTimer = window.setTimeout(() => {
+      if (resolved) return;
+      console.warn("Auth ready timeout in AppLayout; falling back to guest redirect.");
+      setUser(null);
+      setSubscriptionStatus("none");
+      setLoadingProfile(false);
+      setNeedsCareerTimelineSetup(false);
+      setShowCareerTimelinePrompt(false);
+      setHasTeam(false);
+      setAuthReady(true);
+    }, 5000);
+
     const unsub = onAuthStateChanged(auth, (u) => {
+      resolved = true;
+      window.clearTimeout(readyFallbackTimer);
       setUser(u);
       if (!u) {
         setSubscriptionStatus("none");
@@ -108,7 +123,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       }
       setAuthReady(true);
     });
-    return () => unsub();
+
+    return () => {
+      resolved = true;
+      window.clearTimeout(readyFallbackTimer);
+      unsub();
+    };
   }, []);
 
   // Redirect guests to login (all pages using AppLayout should be protected)

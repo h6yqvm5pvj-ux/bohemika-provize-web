@@ -290,7 +290,17 @@ export default function HomePage() {
 
   // auth
   useEffect(() => {
+    let resolved = false;
+    const readyFallbackTimer = window.setTimeout(() => {
+      if (resolved) return;
+      console.warn("Auth ready timeout on home page; continuing as guest.");
+      setUser(null);
+      setAuthReady(true);
+    }, 5000);
+
     const unsub = onAuthStateChanged(auth, (fbUser) => {
+      resolved = true;
+      window.clearTimeout(readyFallbackTimer);
       if (!fbUser) {
         setUser(null);
         setAuthReady(true);
@@ -300,7 +310,11 @@ export default function HomePage() {
       setAuthReady(true);
     });
 
-    return () => unsub();
+    return () => {
+      resolved = true;
+      window.clearTimeout(readyFallbackTimer);
+      unsub();
+    };
   }, []);
 
   const persistHomeWidgets = (updater: (prev: HomeWidgets) => HomeWidgets) => {
