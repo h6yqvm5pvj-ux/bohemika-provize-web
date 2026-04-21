@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Pencil, Shuffle, Target } from "lucide-react";
 
 import { type CommissionMode, type Position } from "@/app/types/domain";
 import { formatMoney } from "../homeUtils";
@@ -43,6 +44,7 @@ export function MonthlyGoalSection({
   const canGeneratePlan = hasGoal && remainingImmediate > 0 && !!position;
   const normalizedProgress = Math.max(0, Math.min(100, Number(progress) || 0));
   const progressFillClass = normalizedProgress >= 51 ? "bg-emerald-600" : "bg-rose-600";
+  const goalDisplayValue = monthlyGoal ? formatMoney(monthlyGoal) : "Není nastaven";
 
   useEffect(() => {
     setInputValue(
@@ -172,42 +174,42 @@ export function MonthlyGoalSection({
         </div>
       )}
       <div className="relative flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold text-slate-900">
-              Měsíční cíl:{" "}
-              <span className="font-semibold text-slate-900">
-                {monthlyGoal ? formatMoney(monthlyGoal) : "Není nastaven"}
-              </span>
-            </h2>
-          </div>
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="flex flex-col items-end gap-2 sm:gap-3">
-              <div className="text-right">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Splněno</div>
-                <div className="text-3xl font-semibold text-slate-900">
-                  {loading ? "Načítám…" : `${normalizedProgress}%`}
-                </div>
-              </div>
-              <div className="flex flex-wrap sm:flex-nowrap justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleGeneratePlan}
-                  disabled={!canGeneratePlan || planning}
-                  className="whitespace-nowrap rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {planning ? "Počítám…" : "Náhodný plán do 100 %"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditOpen(true)}
-                  className="whitespace-nowrap rounded-full border border-slate-900 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
-                >
-                  Upravit cíl
-                </button>
-              </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-2 text-2xl font-semibold text-slate-900">
+              <Target className="h-6 w-6 text-slate-700" strokeWidth={2} aria-hidden="true" />
+              <span>Měsíční cíl:</span>
+            </div>
+            <div className="mt-1 text-[2.5rem] leading-[1] font-semibold tracking-tight text-slate-900 sm:text-[3rem]">
+              {goalDisplayValue}
             </div>
           </div>
+          <div className="self-start sm:self-auto sm:text-right">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Splněno</div>
+            <div className="text-3xl font-semibold text-slate-900">
+              {loading ? "Načítám…" : `${normalizedProgress}%`}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          <button
+            type="button"
+            onClick={handleGeneratePlan}
+            disabled={!canGeneratePlan || planning}
+            className="whitespace-nowrap inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Shuffle className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            {planning ? "Počítám…" : "Náhodný plán do 100 %"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditOpen(true)}
+            className="whitespace-nowrap inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
+          >
+            <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            Upravit cíl
+          </button>
         </div>
 
         <div className="flex flex-col gap-2">
@@ -223,21 +225,10 @@ export function MonthlyGoalSection({
           </div>
         </div>
 
-        {hasGoal ? (
+        {hasGoal && (planError || (plan && plan.items.length > 0)) ? (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-slate-600">
-                {remainingImmediate > 0 ? (
-                  <>
-                    Do cíle chybí{" "}
-                    <span className="font-semibold text-slate-900">{formatMoney(remainingImmediate)}</span>{" "}
-                    okamžité provize.
-                  </>
-                ) : (
-                  <span className="font-semibold text-slate-900">Cíl je splněný.</span>
-                )}
-              </p>
-              {plan ? (
+            {plan ? (
+              <div className="mb-2 flex justify-end">
                 <button
                   type="button"
                   onClick={handleGeneratePlan}
@@ -246,10 +237,10 @@ export function MonthlyGoalSection({
                 >
                   Přegenerovat
                 </button>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
 
-            {planError ? <p className="mt-2 text-xs text-rose-300">{planError}</p> : null}
+            {planError ? <p className="mt-1 text-xs text-rose-600">{planError}</p> : null}
 
             {plan && plan.items.length > 0 ? (
               <div className="mt-3 space-y-2">

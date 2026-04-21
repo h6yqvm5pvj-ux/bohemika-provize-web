@@ -1,3 +1,4 @@
+import { BarChart3, UserRound, UsersRound } from "lucide-react";
 import { AnimatedMoney, AnimatedNumber } from "./AnimatedNumbers";
 
 type Props = {
@@ -35,7 +36,10 @@ export function ProductionSummarySection({
       <section className={compactSummaryCardClass}>
         <div className="flex min-h-[190px] flex-col items-center justify-center gap-5 text-center sm:min-h-[210px]">
           <h2 className="text-4xl font-semibold text-white sm:text-5xl">
-            Vlastní produkce
+            <span className="inline-flex items-center gap-2.5">
+              <UserRound className="h-9 w-9 text-slate-300" strokeWidth={1.8} aria-hidden="true" />
+              <span>Vlastní produkce</span>
+            </span>
           </h2>
           {loading ? (
             <p className="text-base text-slate-300">Načítám…</p>
@@ -68,9 +72,15 @@ export function ProductionSummarySection({
     <section className={summaryCardClass}>
       <div className="grid h-full items-stretch gap-6 md:grid-cols-3 md:gap-8 md:divide-x md:divide-slate-700">
         <div className="flex min-h-[220px] h-full flex-col justify-center space-y-6 text-center md:px-6">
-          <h2 className="text-2xl font-semibold text-white sm:text-3xl">
-            Vlastní produkce
-          </h2>
+          <div className="space-y-3">
+            <div className="mx-auto flex h-6 w-6 items-center justify-center">
+              <UserRound className="h-6 w-6 text-slate-300" strokeWidth={1.9} aria-hidden="true" />
+            </div>
+            <h2 className="text-2xl font-semibold text-white sm:text-3xl">
+              <span className="block">Vlastní</span>
+              <span className="block">produkce</span>
+            </h2>
+          </div>
           {loading ? (
             <p className="text-base text-slate-300">Načítám…</p>
           ) : (
@@ -96,10 +106,15 @@ export function ProductionSummarySection({
         </div>
 
         <div className="flex min-h-[220px] h-full flex-col justify-center space-y-6 text-center md:px-6">
-          <h2 className="text-2xl font-semibold text-white sm:text-3xl">
-            <span className="block">Týmová</span>
-            <span className="block">produkce</span>
-          </h2>
+          <div className="space-y-3">
+            <div className="mx-auto flex h-6 w-6 items-center justify-center">
+              <UsersRound className="h-6 w-6 text-slate-300" strokeWidth={1.9} aria-hidden="true" />
+            </div>
+            <h2 className="text-2xl font-semibold text-white sm:text-3xl">
+              <span className="block">Týmová</span>
+              <span className="block">produkce</span>
+            </h2>
+          </div>
           {loading ? (
             <p className="text-base text-slate-300">Načítám…</p>
           ) : (
@@ -125,9 +140,15 @@ export function ProductionSummarySection({
         </div>
 
         <div className="flex min-h-[220px] h-full flex-col justify-center space-y-6 text-center md:px-6">
-          <h2 className="text-2xl font-semibold text-white sm:text-3xl">
-            Celková produkce
-          </h2>
+          <div className="space-y-3">
+            <div className="mx-auto flex h-6 w-6 items-center justify-center">
+              <BarChart3 className="h-6 w-6 text-emerald-300" strokeWidth={1.9} aria-hidden="true" />
+            </div>
+            <h2 className="text-2xl font-semibold text-white sm:text-3xl">
+              <span className="block">Celková</span>
+              <span className="block">produkce</span>
+            </h2>
+          </div>
           {loading ? (
             <p className="text-base text-slate-300">Načítám…</p>
           ) : (
