@@ -478,6 +478,7 @@ const CPP_WSEXTRA_URL = "https://wsextra.cpp.cz/extranet/extranet.asmx";
 const CPP_SOAP_ACTION_STAV_SMLOUVY_ZP = "https://extranet.cpp.cz/StavSmlouvyZP";
 const CPP_STATUS_SYNC_ENABLED = false;
 const CONTRACT_REFS_COLLECTION = "contractRefs";
+const CONTRACT_NUMBER_CLAIMS_COLLECTION = "contractNumberClaims";
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
 
@@ -1961,6 +1962,97 @@ const normalizeContractNumber = (value: string | null | undefined): string =>
 const normalizeContractNumberLoose = (value: string | null | undefined): string =>
   normalizeContractNumber(value).replace(/^0+/, "");
 
+const contractNumberClaimDocId = (value: string | null | undefined): string =>
+  encodeURIComponent(normalizeContractNumber(value).toLowerCase());
+
+const normalizeContractEntryType = (
+  value: unknown
+): "contract" | "endorsement" | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "contract" || normalized === "endorsement") {
+    return normalized;
+  }
+  return null;
+};
+
+type ExistingContractByNumber = {
+  entryPath: string;
+  ownerEmail: string | null;
+  entryId: string | null;
+};
+
+async function findExistingContractByNumber(
+  contractNumber: string,
+  options: { excludeEntryPath?: string | null } = {}
+): Promise<ExistingContractByNumber | null> {
+  if (!adminDb) {
+    throw new Error("Firebase Admin credentials are not configured.");
+  }
+
+  const db = adminDb;
+  const normalized = normalizeContractNumber(contractNumber);
+  const excludeEntryPath = (options.excludeEntryPath ?? "").trim();
+  if (!normalized) return null;
+
+  const claimRef = db
+    .collection(CONTRACT_NUMBER_CLAIMS_COLLECTION)
+    .doc(contractNumberClaimDocId(normalized));
+  const claimSnap = await claimRef.get();
+  if (claimSnap.exists) {
+    const claimData = (claimSnap.data() ?? {}) as {
+      entryPath?: string | null;
+      ownerEmail?: string | null;
+      entryId?: string | null;
+    };
+    const claimedEntryPath = (claimData.entryPath ?? "").trim();
+    if (claimedEntryPath && claimedEntryPath !== excludeEntryPath) {
+      const claimedEntrySnap = await db.doc(claimedEntryPath).get();
+      if (claimedEntrySnap.exists) {
+        const claimedEntry = (claimedEntrySnap.data() ?? {}) as ContractDoc;
+        if (
+          normalizeContractEntryType(claimedEntry.entryType ?? "contract") === "contract" &&
+          normalizeContractNumber(claimedEntry.contractNumber) === normalized
+        ) {
+          return {
+            entryPath: claimedEntryPath,
+            ownerEmail:
+              normalizeEmail(claimData.ownerEmail) ||
+              normalizeEmail(
+                (claimedEntry.userEmail as string | undefined) ??
+                  claimedEntrySnap.ref.path.split("/")[1]
+              ) ||
+              null,
+            entryId: (claimData.entryId ?? "").trim() || claimedEntrySnap.id,
+          };
+        }
+      }
+    }
+  }
+
+  const refs = await resolveEntryRefsByContractNumber(normalized);
+  const refsByPath = new Map<string, FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>>();
+  refs.forEach((ref) => refsByPath.set(ref.path, ref));
+  for (const ref of refsByPath.values()) {
+    if (excludeEntryPath && ref.path === excludeEntryPath) continue;
+    const snap = await ref.get();
+    if (!snap.exists) continue;
+
+    const data = (snap.data() ?? {}) as ContractDoc;
+    if (normalizeContractEntryType(data.entryType ?? "contract") !== "contract") continue;
+    if (normalizeContractNumber(data.contractNumber) !== normalized) continue;
+
+    const ownerFromPath = ref.path.split("/")[1] ?? "";
+    return {
+      entryPath: ref.path,
+      ownerEmail: normalizeEmail((data.userEmail as string | undefined) ?? ownerFromPath) || null,
+      entryId: ref.id,
+    };
+  }
+
+  return null;
+}
+
 const contractRefDocId = (ownerEmail: string, entryId: string): string =>
   `${normalizeEmail(ownerEmail)}___${entryId.trim()}`;
 
@@ -2459,13 +2551,15 @@ async function fetchContractsForOwners(
           .collectionGroup("entries")
           .where("userEmail", "in", chunk)
           .orderBy("contractSignedDate", "desc");
-        let qByCreated = db
+        const qByCreated = db
           .collectionGroup("entries")
           .where("userEmail", "in", chunk)
           .orderBy("createdAt", "desc");
+        // Keep createdAt query uncursored. Backfilled contracts can have old
+        // contractSignedDate with fresh createdAt; cursoring createdAt would
+        // skip them permanently in subsequent pages.
         if (cursor) {
           qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
-          qByCreated = qByCreated.where("createdAt", "<=", cursor.date);
         }
 
         const [signedSnap, createdSnap] = await Promise.all([
@@ -2511,14 +2605,16 @@ async function fetchContractsForOwners(
             .doc(owner)
             .collection("entries")
             .orderBy("contractSignedDate", "desc");
-          let qByCreated = db
+          const qByCreated = db
             .collection("users")
             .doc(owner)
             .collection("entries")
             .orderBy("createdAt", "desc");
+          // Keep createdAt query uncursored. Backfilled contracts can have old
+          // contractSignedDate with fresh createdAt; cursoring createdAt would
+          // skip them permanently in subsequent pages.
           if (cursor) {
             qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
-            qByCreated = qByCreated.where("createdAt", "<=", cursor.date);
           }
 
           const [signedSnap, createdSnap] = await Promise.all([
@@ -3163,20 +3259,109 @@ export async function handleContractsCreate(req: NextRequest) {
     allowedEmails: trustedAllowedEmails,
   };
 
+  if (trustedPayload.entryType === "contract") {
+    const existingContract = await findExistingContractByNumber(
+      trustedPayload.contractNumber
+    );
+    if (existingContract) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Smlouva s tímto číslem už v systému existuje.",
+          duplicate: existingContract,
+        },
+        { status: 409 }
+      );
+    }
+  }
+
   try {
     const db = adminDb;
     const ownerEntriesRef = db.collection("users").doc(email).collection("entries");
-    const createdRef = await ownerEntriesRef.add(trustedPayload);
+    const createdRef = ownerEntriesRef.doc();
 
-    const batch = db.batch();
-    applyContractRefToBatch({
-      batch,
-      ownerEmail: email,
-      entryId: createdRef.id,
-      contractNumber: trustedPayload.contractNumber,
-      productKey: trustedPayload.productKey,
-    });
-    await batch.commit();
+    if (trustedPayload.entryType === "contract") {
+      const contractNumberNormalized = normalizeContractNumber(
+        trustedPayload.contractNumber
+      );
+      const contractNumberLoose = normalizeContractNumberLoose(
+        trustedPayload.contractNumber
+      );
+      const claimRef = db
+        .collection(CONTRACT_NUMBER_CLAIMS_COLLECTION)
+        .doc(contractNumberClaimDocId(contractNumberNormalized));
+      const claimPayload = {
+        contractNumberRaw: trustedPayload.contractNumber,
+        contractNumberNormalized,
+        contractNumberLoose,
+        ownerEmail: email,
+        entryId: createdRef.id,
+        entryPath: createdRef.path,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      };
+
+      await db.runTransaction(async (tx) => {
+        const claimSnap = await tx.get(claimRef);
+        if (claimSnap.exists) {
+          const claimData = (claimSnap.data() ?? {}) as {
+            entryPath?: string | null;
+          };
+          const claimEntryPath = (claimData.entryPath ?? "").trim();
+          if (claimEntryPath && claimEntryPath !== createdRef.path) {
+            const claimEntrySnap = await tx.get(db.doc(claimEntryPath));
+            if (claimEntrySnap.exists) {
+              const claimEntryData = (claimEntrySnap.data() ?? {}) as ContractDoc;
+              if (
+                normalizeContractEntryType(
+                  claimEntryData.entryType ?? "contract"
+                ) === "contract" &&
+                normalizeContractNumber(claimEntryData.contractNumber) ===
+                  contractNumberNormalized
+              ) {
+                const duplicateErr = new Error(
+                  "Smlouva s tímto číslem už v systému existuje."
+                ) as Error & { statusCode?: number; duplicatePath?: string };
+                duplicateErr.statusCode = 409;
+                duplicateErr.duplicatePath = claimEntryPath;
+                throw duplicateErr;
+              }
+            }
+          }
+          tx.set(claimRef, claimPayload, { merge: true });
+        } else {
+          tx.create(claimRef, claimPayload);
+        }
+
+        tx.create(createdRef, trustedPayload);
+
+        const contractRefPayload = contractRefFromData({
+          ownerEmail: email,
+          entryId: createdRef.id,
+          contractNumber: trustedPayload.contractNumber,
+          productKey: trustedPayload.productKey,
+        });
+        const contractRef = db
+          .collection(CONTRACT_REFS_COLLECTION)
+          .doc(contractRefDocId(email, createdRef.id));
+        if (contractRefPayload) {
+          tx.set(contractRef, contractRefPayload, { merge: true });
+        } else {
+          tx.delete(contractRef);
+        }
+      });
+    } else {
+      await createdRef.create(trustedPayload);
+      const batch = db.batch();
+      applyContractRefToBatch({
+        batch,
+        ownerEmail: email,
+        entryId: createdRef.id,
+        contractNumber: trustedPayload.contractNumber,
+        productKey: trustedPayload.productKey,
+      });
+      await batch.commit();
+    }
 
     try {
       await markTeamOverviewOwnersDirty([email]);
@@ -3198,6 +3383,20 @@ export async function handleContractsCreate(req: NextRequest) {
       typeof createErr?.message === "string" && createErr.message.trim()
         ? createErr.message.trim()
         : "Neznámá chyba při ukládání smlouvy.";
+    const statusCode = Number((createErr as any)?.statusCode);
+    if (statusCode === 409) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: message,
+          duplicatePath:
+            typeof (createErr as any)?.duplicatePath === "string"
+              ? (createErr as any).duplicatePath
+              : null,
+        },
+        { status: 409 }
+      );
+    }
     console.error("POST /api/contracts create selhal:", createErr);
     return NextResponse.json(
       { ok: false, error: `Uložení smlouvy selhalo: ${message}` },

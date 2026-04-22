@@ -419,6 +419,7 @@ type ContractsApiResponse = {
 const CONTRACTS_CACHE_KEY = "contracts_cache_v2";
 const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 const CONTRACTS_VIEW_STATE_KEY = "contracts_view_state_v1";
+const CONTRACTS_SILENT_REFRESH_COOLDOWN_MS = 15_000;
 const CONTRACT_LIST_WINDOWING_THRESHOLD = 90;
 const CONTRACT_LIST_ESTIMATED_ROW_HEIGHT = 340;
 const CONTRACT_LIST_OVERSCAN_ROWS = 3;
@@ -559,6 +560,8 @@ function ContractsPageContent() {
   const searchParams = useSearchParams();
   const [isFilterPending, startFilterTransition] = useTransition();
   const pendingScrollRestoreRef = useRef<number | null>(null);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
+  const lastSilentRefreshAtRef = useRef(0);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [currentUserPosition, setCurrentUserPosition] =
     useState<Position | null>(null);
@@ -764,21 +767,44 @@ function ContractsPageContent() {
       // Při aktivním full-scanu (hledání / výročí / nezaplacené) by tichý refresh
       // přepsal lokální dataset první stránkou a UI by viditelně "probliklo".
       if (silent && wantsFullScan) return;
-      if (!silent) setLoading(true);
-      setLoadError(null);
-      try {
-        const data = await apiFetchContracts({ scope: "my", includeTeam: true });
-        applyContractsPayload(email, data);
-      } catch (e) {
-        const msg = getErrorMessage(e, "Nepodařilo se načíst nejnovější smlouvy.");
-        if (msg.toLowerCase().includes("síť") || msg.toLowerCase().includes("network")) {
-          console.warn("Dočasný výpadek sítě při načítání smluv:", msg);
-        } else {
-          console.error("Chyba při načítání smluv:", e);
+      if (silent && Date.now() - lastSilentRefreshAtRef.current < CONTRACTS_SILENT_REFRESH_COOLDOWN_MS) {
+        return;
+      }
+      if (refreshInFlightRef.current) {
+        if (!silent) {
+          await refreshInFlightRef.current;
         }
-        setLoadError(msg);
+        return;
+      }
+      const task = (async () => {
+        if (!silent) setLoading(true);
+        setLoadError(null);
+        try {
+          const data = await apiFetchContracts({ scope: "my", includeTeam: true });
+          applyContractsPayload(email, data);
+        } catch (e) {
+          const msg = getErrorMessage(e, "Nepodařilo se načíst nejnovější smlouvy.");
+          if (msg.toLowerCase().includes("síť") || msg.toLowerCase().includes("network")) {
+            console.warn("Dočasný výpadek sítě při načítání smluv:", msg);
+          } else {
+            console.error("Chyba při načítání smluv:", e);
+          }
+          setLoadError(msg);
+        } finally {
+          if (!silent) setLoading(false);
+        }
+      })();
+
+      refreshInFlightRef.current = task;
+      try {
+        await task;
       } finally {
-        if (!silent) setLoading(false);
+        if (silent) {
+          lastSilentRefreshAtRef.current = Date.now();
+        }
+        if (refreshInFlightRef.current === task) {
+          refreshInFlightRef.current = null;
+        }
       }
     },
     [user?.email, apiFetchContracts, applyContractsPayload, wantsFullScan]
@@ -791,6 +817,10 @@ function ContractsPageContent() {
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    lastSilentRefreshAtRef.current = 0;
+  }, [user?.email]);
 
   // load pozice + smlouvy
   useEffect(() => {
@@ -905,6 +935,7 @@ function ContractsPageContent() {
       {
         latest: ContractDoc & { adviserEmail?: string | null };
         latestSortMs: number;
+        latestCreatedMs: number;
         entryCount: number;
         endorsementCount: number;
       }
@@ -927,6 +958,7 @@ function ContractsPageContent() {
         toDate((contract as any).contractSignedDate)?.getTime() ??
         toDate((contract as any).createdAt)?.getTime() ??
         0;
+      const createdMs = toDate((contract as any).createdAt)?.getTime() ?? 0;
       const isEndorsement = contract.entryType === "endorsement";
 
       const existing = grouped.get(groupKey);
@@ -934,6 +966,7 @@ function ContractsPageContent() {
         grouped.set(groupKey, {
           latest: contract,
           latestSortMs: sortMs,
+          latestCreatedMs: createdMs,
           entryCount: 1,
           endorsementCount: isEndorsement ? 1 : 0,
         });
@@ -942,9 +975,18 @@ function ContractsPageContent() {
 
       existing.entryCount += 1;
       if (isEndorsement) existing.endorsementCount += 1;
-      if (sortMs >= existing.latestSortMs) {
+
+      const shouldReplaceLatest =
+        sortMs > existing.latestSortMs ||
+        (sortMs === existing.latestSortMs &&
+          (createdMs > existing.latestCreatedMs ||
+            (createdMs === existing.latestCreatedMs &&
+              contract.id.localeCompare(existing.latest.id, "cs") > 0)));
+
+      if (shouldReplaceLatest) {
         existing.latest = contract;
         existing.latestSortMs = sortMs;
+        existing.latestCreatedMs = createdMs;
       }
     });
 
