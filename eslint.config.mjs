@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local scratch scripts used for one-off ops.
+    ".tmp/**",
     // Static assets (including vendored/minified workers) are not source files.
     "public/**",
   ]),
