@@ -2,6 +2,7 @@ import {
   type Product,
   type Position,
   type CommissionMode,
+  type MaxCizinKomplexVariant,
 } from "../types/domain";
 
 import {
@@ -16,6 +17,11 @@ import {
   calculateMaxEfekt,
   maxEfektCoefficients,
 } from "./productFormulas/maximaMaxEfekt";
+import {
+  calculateMaxCizinKomplex,
+  maxCizinKomplexCoefficient,
+  maxCizinKomplexVariantLabel,
+} from "./productFormulas/maxcizinkomplex";
 import {
   calculatePillowInjury,
   pillowInjuryCoefficients,
@@ -117,6 +123,7 @@ export {
   calculateNeon,
   calculateFlexi,
   calculateMaxEfekt,
+  calculateMaxCizinKomplex,
   calculatePillowInjury,
   calculateDomex,
   calculatePillowMajetek,
@@ -147,6 +154,7 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "neon",
   "flexi",
   "maximaMaxEfekt",
+  "maxcizinkomplex",
   "pillowInjury",
   "domex",
   "pillowmajetek",
@@ -174,7 +182,8 @@ export const SUPPORTED_PRODUCTS: Product[] = [
 export function getCoefficientSummary(
   product: Product | null,
   position: Position | null,
-  mode: CommissionMode | null
+  mode: CommissionMode | null,
+  maxCizinKomplexVariant: MaxCizinKomplexVariant = "exclusiveStandard"
 ): { label: string; value: number }[] {
   if (!product || !position) return [];
   const m = mode ?? "accelerated";
@@ -208,6 +217,13 @@ export function getCoefficientSummary(
         { label: "Následná provize (od 5. roku)", value: k.n5plus },
       ];
     }
+    case "maxcizinkomplex":
+      return [
+        {
+          label: `Koeficient (${maxCizinKomplexVariantLabel(maxCizinKomplexVariant)})`,
+          value: maxCizinKomplexCoefficient(position, maxCizinKomplexVariant),
+        },
+      ];
     case "pillowInjury": {
       const k = pillowInjuryCoefficients(position, m);
       return [

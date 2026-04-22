@@ -420,6 +420,7 @@ export function useCashflowData({
             product === "cppcestovko" ||
             product === "axacestovko" ||
             product === "koopcestovko" ||
+            product === "maxcizinkomplex" ||
             product === "zamex"
           );
         }

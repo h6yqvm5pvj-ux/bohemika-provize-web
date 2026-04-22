@@ -8,9 +8,11 @@ type ContractLifecycleInput = {
   productKey?: Product | null;
   policyStartDate?: unknown;
   durationYears?: number | null;
+  durationMonths?: number | null;
 };
 
-const DOZITA_PRODUCTS = new Set<Product>(["flexi"]);
+const DOZITA_YEAR_PRODUCTS = new Set<Product>(["flexi"]);
+const DOZITA_MONTH_PRODUCTS = new Set<Product>(["maxcizinkomplex"]);
 
 const startOfDay = (value: Date): Date =>
   new Date(value.getFullYear(), value.getMonth(), value.getDate());
@@ -18,21 +20,38 @@ const startOfDay = (value: Date): Date =>
 export function contractMaturityDate(
   contract: ContractLifecycleInput | null | undefined
 ): Date | null {
-  if (!contract?.productKey || !DOZITA_PRODUCTS.has(contract.productKey)) return null;
+  if (!contract?.productKey) return null;
 
   const startDate = toDate(contract.policyStartDate);
   if (!startDate) return null;
 
-  const yearsRaw = Number(contract.durationYears);
-  if (!Number.isFinite(yearsRaw) || yearsRaw <= 0) return null;
+  if (DOZITA_YEAR_PRODUCTS.has(contract.productKey)) {
+    const yearsRaw = Number(contract.durationYears);
+    if (!Number.isFinite(yearsRaw) || yearsRaw <= 0) return null;
 
-  const years = Math.floor(yearsRaw);
-  const maturityDate = new Date(
-    startDate.getFullYear() + years,
-    startDate.getMonth(),
-    startDate.getDate()
-  );
-  return Number.isNaN(maturityDate.getTime()) ? null : maturityDate;
+    const years = Math.floor(yearsRaw);
+    const maturityDate = new Date(
+      startDate.getFullYear() + years,
+      startDate.getMonth(),
+      startDate.getDate()
+    );
+    return Number.isNaN(maturityDate.getTime()) ? null : maturityDate;
+  }
+
+  if (DOZITA_MONTH_PRODUCTS.has(contract.productKey)) {
+    const monthsRaw = Number(contract.durationMonths);
+    if (!Number.isFinite(monthsRaw) || monthsRaw <= 0) return null;
+
+    const months = Math.floor(monthsRaw);
+    const maturityDate = new Date(
+      startDate.getFullYear(),
+      startDate.getMonth() + months,
+      startDate.getDate()
+    );
+    return Number.isNaN(maturityDate.getTime()) ? null : maturityDate;
+  }
+
+  return null;
 }
 
 export function isContractDozita(

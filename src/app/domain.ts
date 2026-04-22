@@ -5,6 +5,7 @@ export type Product =
   | "neon"
   | "flexi"
   | "maximaMaxEfekt"
+  | "maxcizinkomplex"
   | "pillowInjury"
   | "zamex"
   | "domex"
@@ -37,6 +38,7 @@ export type PaymentFrequency =
 
 // 👉 CommissionMode (.accelerated / .standard)
 export type CommissionMode = "accelerated" | "standard";
+export type MaxCizinKomplexVariant = "exclusiveStandard" | "premium";
 
 // 👉 Pozice – stejné názvy jako ve Swiftu
 export type Position =
@@ -91,6 +93,8 @@ export interface CommissionEntry {
   clientName?: string | null;
   policyStartDate: Date;             // policyStartDate
   durationYears?: number | null;     // u NEON/MaxEfekt, jinak null
+  durationMonths?: number | null;    // u MAXIMA Cizinci, jinak null
+  maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
 }
 
 // ---------- „Store“ – to co je teď Store.shared ----------
@@ -112,6 +116,8 @@ export interface CalculatorFormState {
   agreementDate: Date;     // Date v JS = podobná jako Swift Date
   policyStartDate: Date;
   durationYears: number;
+  durationMonths?: number | null;
+  maxCizinKomplexVariant?: MaxCizinKomplexVariant;
 
   // Comfort Commodity
   comfortVariant: ComfortVariant;

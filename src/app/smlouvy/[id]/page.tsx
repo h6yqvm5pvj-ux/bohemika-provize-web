@@ -567,6 +567,10 @@ export default function ContractDetailPage() {
       typeof contract?.durationYears === "number" && !Number.isNaN(contract.durationYears)
         ? contract.durationYears
         : null,
+    durationMonths:
+      typeof contract?.durationMonths === "number" && !Number.isNaN(contract.durationMonths)
+        ? contract.durationMonths
+        : null,
   };
   const lifecycleStatus = contractLifecycleStatus(lifecycleInput);
   const isStornoContract = lifecycleStatus === "storno";

@@ -25,6 +25,7 @@ import {
   type Product,
   type Position,
   type PaymentFrequency,
+  type MaxCizinKomplexVariant,
 } from "../types/domain";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -93,6 +94,8 @@ type ContractDoc = {
   contractSignedDate?: FirestoreTimestamp | Date | string | null;
   policyStartDate?: FirestoreTimestamp | Date | string | null;
   durationYears?: number | null;
+  durationMonths?: number | null;
+  maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
 };
 
 type AppUser = {

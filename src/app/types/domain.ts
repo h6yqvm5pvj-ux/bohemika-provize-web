@@ -4,6 +4,7 @@ export type Product =
   | "neon"
   | "flexi"
   | "maximaMaxEfekt"
+  | "maxcizinkomplex"
   | "pillowInjury"
   | "zamex"
   | "domex"
@@ -53,6 +54,8 @@ export type PaymentFrequency =
   | "annual";
 
 export type CommissionMode = "accelerated" | "standard";
+
+export type MaxCizinKomplexVariant = "exclusiveStandard" | "premium";
 
 export interface CommissionResultItemDTO {
   title: string;

@@ -5,6 +5,7 @@ import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import {
   type CommissionMode,
   type CommissionResultItemDTO,
+  type MaxCizinKomplexVariant,
   type PaymentFrequency,
   type Position,
   type Product,
@@ -19,6 +20,7 @@ import {
   calculateNeon,
   calculateFlexi,
   calculateMaxEfekt,
+  calculateMaxCizinKomplex,
   calculatePillowInjury,
   calculateDomex,
   calculatePillowMajetek,
@@ -71,6 +73,8 @@ type ContractDoc = {
   position?: Position | null;
   inputAmount?: number;
   frequencyRaw?: PaymentFrequency | null;
+  durationMonths?: number | null;
+  maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
   total?: number;
 
   userEmail?: string | null;
@@ -182,6 +186,8 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "contractSignedDate",
   "policyStartDate",
   "durationYears",
+  "durationMonths",
+  "maxCizinKomplexVariant",
   "contractNumber",
   "isRefresh",
   "refreshOriginalContractNumber",
@@ -201,6 +207,7 @@ const SUPPORTED_PRODUCTS = new Set<Product>([
   "neon",
   "flexi",
   "maximaMaxEfekt",
+  "maxcizinkomplex",
   "pillowInjury",
   "zamex",
   "domex",
@@ -255,6 +262,10 @@ const SUPPORTED_ENDORSEMENT_CHANGE_TYPES = new Set([
   "decrease",
   "same",
 ] as const);
+const SUPPORTED_MAX_CIZIN_KOMPLEX_VARIANTS = new Set<MaxCizinKomplexVariant>([
+  "exclusiveStandard",
+  "premium",
+]);
 const CPP_STATUS_SYNC_PRODUCTS = new Set<Product>([
   "neon",
   "zamex",
@@ -317,6 +328,8 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "flexiDetail",
   "domexDetail",
   "durationYears",
+  "durationMonths",
+  "maxCizinKomplexVariant",
   "note",
   "status",
   "stornoDate",
@@ -757,6 +770,26 @@ const parseFrequencyField = (
   return { ok: true, value: normalized };
 };
 
+const parseOptionalMaxCizinKomplexVariant = (
+  value: unknown
+): ParseResult<MaxCizinKomplexVariant | null> => {
+  if (value == null) return { ok: true, value: null };
+  if (typeof value !== "string") {
+    return {
+      ok: false,
+      error: "Pole maxCizinKomplexVariant musí být text nebo null.",
+    };
+  }
+  const normalized = value.trim() as MaxCizinKomplexVariant;
+  if (!SUPPORTED_MAX_CIZIN_KOMPLEX_VARIANTS.has(normalized)) {
+    return {
+      ok: false,
+      error: "Pole maxCizinKomplexVariant má nepodporovanou hodnotu.",
+    };
+  }
+  return { ok: true, value: normalized };
+};
+
 type NormalizedManagerChainEntry = {
   email: string | null;
   position: Position | null;
@@ -801,6 +834,8 @@ type NormalizedCreateEntryPayload = {
   contractSignedDate: Date;
   policyStartDate: Date;
   durationYears: number | null;
+  durationMonths: number | null;
+  maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
   userEmail: string;
   contractNumber: string;
   paid: boolean;
@@ -895,6 +930,15 @@ const normalizeCreateEntryPayload = ({
     max: 120,
   });
   if (!durationYearsParsed.ok) return durationYearsParsed;
+  const durationMonthsParsed = parseOptionalInteger(raw.durationMonths, "durationMonths", {
+    min: 1,
+    max: 240,
+  });
+  if (!durationMonthsParsed.ok) return durationMonthsParsed;
+  const maxCizinKomplexVariantParsed = parseOptionalMaxCizinKomplexVariant(
+    raw.maxCizinKomplexVariant
+  );
+  if (!maxCizinKomplexVariantParsed.ok) return maxCizinKomplexVariantParsed;
 
   const isRefreshParsed = parseOptionalBoolean(raw.isRefresh, "isRefresh");
   if (!isRefreshParsed.ok) return isRefreshParsed;
@@ -973,6 +1017,16 @@ const normalizeCreateEntryPayload = ({
     }
   }
 
+  if (
+    productParsed.value === "maxcizinkomplex" &&
+    durationMonthsParsed.value == null
+  ) {
+    return {
+      ok: false,
+      error: "Pro produkt MAXIMA Cizinci je povinné pole durationMonths.",
+    };
+  }
+
   return {
     ok: true,
     payload: {
@@ -997,6 +1051,14 @@ const normalizeCreateEntryPayload = ({
       contractSignedDate: signedDateParsed.value,
       policyStartDate: policyStartParsed.value,
       durationYears: durationYearsParsed.value,
+      durationMonths:
+        productParsed.value === "maxcizinkomplex"
+          ? durationMonthsParsed.value
+          : null,
+      maxCizinKomplexVariant:
+        productParsed.value === "maxcizinkomplex"
+          ? maxCizinKomplexVariantParsed.value ?? "exclusiveStandard"
+          : null,
       userEmail: ownerEmail,
       contractNumber: contractNumberParsed.value,
       paid: false,
@@ -1388,6 +1450,7 @@ const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
     case "cppcestovko":
     case "axacestovko":
     case "koopcestovko":
+    case "maxcizinkomplex":
     case "comfortcc":
       return ["annual"];
     default:
@@ -1442,6 +1505,8 @@ const computeItemsForProductPositionAndMode = ({
   inputAmount,
   frequencyRaw,
   durationYears,
+  durationMonths,
+  maxCizinKomplexVariant,
   comfortPayment,
   comfortGradual,
   comfortTargetAmount,
@@ -1452,6 +1517,8 @@ const computeItemsForProductPositionAndMode = ({
   inputAmount: number;
   frequencyRaw: PaymentFrequency;
   durationYears: number | null;
+  durationMonths: number | null;
+  maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
   comfortPayment: number | null;
   comfortGradual: boolean | null;
   comfortTargetAmount: number | null;
@@ -1474,6 +1541,15 @@ const computeItemsForProductPositionAndMode = ({
     case "maximaMaxEfekt": {
       const years = normalizedDurationYears("maximaMaxEfekt", durationYears);
       return calculateMaxEfekt(safeAmount, years, position, commissionMode);
+    }
+    case "maxcizinkomplex": {
+      const normalizedMonths =
+        typeof durationMonths === "number" && Number.isFinite(durationMonths)
+          ? Math.max(1, Math.floor(durationMonths))
+          : null;
+      void normalizedMonths;
+      const variant = maxCizinKomplexVariant ?? "exclusiveStandard";
+      return calculateMaxCizinKomplex(safeAmount, position, variant);
     }
     case "pillowInjury":
       return calculatePillowInjury(safeAmount, position, commissionMode);
@@ -1566,6 +1642,8 @@ const computeManagerOverridesForChain = ({
   inputAmount,
   frequencyRaw,
   durationYears,
+  durationMonths,
+  maxCizinKomplexVariant,
   comfortPayment,
   comfortGradual,
   comfortTargetAmount,
@@ -1577,6 +1655,8 @@ const computeManagerOverridesForChain = ({
   inputAmount: number;
   frequencyRaw: PaymentFrequency;
   durationYears: number | null;
+  durationMonths: number | null;
+  maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
   comfortPayment: number | null;
   comfortGradual: boolean | null;
   comfortTargetAmount: number | null;
@@ -1595,6 +1675,8 @@ const computeManagerOverridesForChain = ({
       inputAmount,
       frequencyRaw,
       durationYears,
+      durationMonths,
+      maxCizinKomplexVariant,
       comfortPayment,
       comfortGradual,
       comfortTargetAmount,
@@ -1607,6 +1689,8 @@ const computeManagerOverridesForChain = ({
           inputAmount,
           frequencyRaw,
           durationYears,
+          durationMonths,
+          maxCizinKomplexVariant,
           comfortPayment,
           comfortGradual,
           comfortTargetAmount,
@@ -1917,6 +2001,20 @@ const normalizePatchUpdates = (
       continue;
     }
 
+    if (field === "durationMonths") {
+      const parsed = parseOptionalInteger(rawValue, field, { min: 1, max: 240 });
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (field === "maxCizinKomplexVariant") {
+      const parsed = parseOptionalMaxCizinKomplexVariant(rawValue);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
     if (field === "status") {
       const parsed = parseContractStatus(rawValue);
       if (!parsed.ok) return parsed;
@@ -1964,6 +2062,19 @@ const normalizeContractNumberLoose = (value: string | null | undefined): string 
 
 const contractNumberClaimDocId = (value: string | null | undefined): string =>
   encodeURIComponent(normalizeContractNumber(value).toLowerCase());
+
+const isFirestoreFailedPrecondition = (error: unknown): boolean => {
+  const code =
+    typeof (error as { code?: unknown })?.code === "number"
+      ? (error as { code?: number }).code
+      : null;
+  if (code === 9) return true;
+  const message =
+    typeof (error as { message?: unknown })?.message === "string"
+      ? (error as { message?: string }).message ?? ""
+      : "";
+  return /FAILED_PRECONDITION/i.test(message);
+};
 
 const normalizeContractEntryType = (
   value: unknown
@@ -2178,8 +2289,19 @@ async function resolveEntryRefsByContractNumber(
     );
   }
 
-  const contractRefSnaps = await Promise.all(contractRefQueries);
-  contractRefSnaps.forEach(consumeContractRefSnap);
+  try {
+    const contractRefSnaps = await Promise.all(contractRefQueries);
+    contractRefSnaps.forEach(consumeContractRefSnap);
+  } catch (queryErr) {
+    if (isFirestoreFailedPrecondition(queryErr)) {
+      console.warn(
+        "resolveEntryRefsByContractNumber: contractRefs query failed with FAILED_PRECONDITION, skipping deep duplicate lookup.",
+        queryErr
+      );
+      return [...refsByPath.values()];
+    }
+    throw queryErr;
+  }
 
   if (refsByPath.size === 0) {
     const entryQueries: Promise<FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>>[] = [
@@ -2195,8 +2317,19 @@ async function resolveEntryRefsByContractNumber(
         db.collectionGroup("entries").where("contractNumber", "==", loose).get()
       );
     }
-    const entrySnaps = await Promise.all(entryQueries);
-    entrySnaps.forEach(consumeEntrySnap);
+    try {
+      const entrySnaps = await Promise.all(entryQueries);
+      entrySnaps.forEach(consumeEntrySnap);
+    } catch (queryErr) {
+      if (isFirestoreFailedPrecondition(queryErr)) {
+        console.warn(
+          "resolveEntryRefsByContractNumber: collectionGroup entries query failed with FAILED_PRECONDITION, returning refs from contractRefs only.",
+          queryErr
+        );
+        return [...refsByPath.values()];
+      }
+      throw queryErr;
+    }
   }
 
   return [...refsByPath.values()];
@@ -3090,314 +3223,330 @@ export async function handleContractsGet(
 }
 
 export async function handleContractsCreate(req: NextRequest) {
-  const ctx = await getAuthContext(req, {
-    requireKnownUser: true,
-    requireActiveSubscription: true,
-  });
-  if ("error" in ctx) {
-    return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
-  }
-  const { email, uid } = ctx;
-
-  const rateLimitResult = consumeRateLimit({
-    namespace: "api:contracts:create",
-    key: email,
-    limit: CONTRACTS_CREATE_RATE_LIMIT,
-    windowMs: CONTRACTS_CREATE_RATE_LIMIT_WINDOW_MS,
-  });
-  if (!rateLimitResult.allowed) {
-    const response = NextResponse.json(
-      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
-      { status: 429 }
-    );
-    applyRateLimitHeaders(response.headers, rateLimitResult);
-    return response;
-  }
-
-  let body: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json(
-      { ok: false, error: "Neplatný JSON payload." },
-      { status: 400 }
+    const ctx = await getAuthContext(req, {
+      requireKnownUser: true,
+      requireActiveSubscription: true,
+    });
+    if ("error" in ctx) {
+      return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
+    }
+    const { email, uid } = ctx;
+
+    const rateLimitResult = consumeRateLimit({
+      namespace: "api:contracts:create",
+      key: email,
+      limit: CONTRACTS_CREATE_RATE_LIMIT,
+      windowMs: CONTRACTS_CREATE_RATE_LIMIT_WINDOW_MS,
+    });
+    if (!rateLimitResult.allowed) {
+      const response = NextResponse.json(
+        { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
+        { status: 429 }
+      );
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
+    }
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "Neplatný JSON payload." },
+        { status: 400 }
+      );
+    }
+
+    const entryRaw =
+      isPlainObject(body) && isPlainObject(body.entry)
+        ? body.entry
+        : body;
+
+    const normalizedEntry = normalizeCreateEntryPayload({
+      raw: entryRaw,
+      ownerEmail: email,
+      ownerUid: uid,
+    });
+    if (!normalizedEntry.ok) {
+      return NextResponse.json(
+        { ok: false, error: normalizedEntry.error },
+        { status: 400 }
+      );
+    }
+
+    if (!adminDb) {
+      return NextResponse.json(
+        { ok: false, error: "Server není správně nakonfigurován." },
+        { status: 500 }
+      );
+    }
+
+    const signedDateIso = toIsoDay(normalizedEntry.payload.contractSignedDate);
+    const callerProfile = await loadCallerProfile({
+      uid,
+      tokenEmail: email,
+    });
+    if (!callerProfile) {
+      return NextResponse.json(
+        { ok: false, error: "Nepodařilo se načíst profil přihlášeného uživatele." },
+        { status: 403 }
+      );
+    }
+
+    const trustedPosition = resolvePositionForSignedDate(callerProfile, signedDateIso);
+    if (!trustedPosition) {
+      return NextResponse.json(
+        { ok: false, error: "Nelze určit důvěryhodnou pozici uživatele pro výpočet." },
+        { status: 400 }
+      );
+    }
+
+    const trustedMode = callerProfile.commissionMode ?? "standard";
+    const trustedManagerEmail = normalizeEmail(callerProfile.managerEmail) || null;
+    let trustedManagerChain = await buildTrustedManagerChainForSignedDate({
+      directManagerEmail: trustedManagerEmail,
+      signedDateIso,
+    });
+
+    trustedManagerChain = ensureManagerChainWithDirectManager(
+      trustedManagerChain,
+      trustedManagerEmail,
+      trustedManagerChain[0]?.position ?? null,
+      trustedManagerChain[0]?.commissionMode ?? null
     );
-  }
 
-  const entryRaw =
-    isPlainObject(body) && isPlainObject(body.entry)
-      ? body.entry
-      : body;
-
-  const normalizedEntry = normalizeCreateEntryPayload({
-    raw: entryRaw,
-    ownerEmail: email,
-    ownerUid: uid,
-  });
-  if (!normalizedEntry.ok) {
-    return NextResponse.json(
-      { ok: false, error: normalizedEntry.error },
-      { status: 400 }
-    );
-  }
-
-  if (!adminDb) {
-    return NextResponse.json(
-      { ok: false, error: "Server není správně nakonfigurován." },
-      { status: 500 }
-    );
-  }
-
-  const signedDateIso = toIsoDay(normalizedEntry.payload.contractSignedDate);
-  const callerProfile = await loadCallerProfile({
-    uid,
-    tokenEmail: email,
-  });
-  if (!callerProfile) {
-    return NextResponse.json(
-      { ok: false, error: "Nepodařilo se načíst profil přihlášeného uživatele." },
-      { status: 403 }
-    );
-  }
-
-  const trustedPosition = resolvePositionForSignedDate(callerProfile, signedDateIso);
-  if (!trustedPosition) {
-    return NextResponse.json(
-      { ok: false, error: "Nelze určit důvěryhodnou pozici uživatele pro výpočet." },
-      { status: 400 }
-    );
-  }
-
-  const trustedMode = callerProfile.commissionMode ?? "standard";
-  const trustedManagerEmail = normalizeEmail(callerProfile.managerEmail) || null;
-  let trustedManagerChain = await buildTrustedManagerChainForSignedDate({
-    directManagerEmail: trustedManagerEmail,
-    signedDateIso,
-  });
-
-  trustedManagerChain = ensureManagerChainWithDirectManager(
-    trustedManagerChain,
-    trustedManagerEmail,
-    trustedManagerChain[0]?.position ?? null,
-    trustedManagerChain[0]?.commissionMode ?? null
-  );
-
-  if (!hasResolvedTopManagerPosition(trustedManagerChain, trustedManagerEmail)) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "Nepodařilo se načíst pozici nadřízeného. Uložení je zablokované, aby nechyběla meziprovize.",
-      },
-      { status: 400 }
-    );
-  }
-
-  const trustedResult = computeItemsForProductPositionAndMode({
-    productKey: normalizedEntry.payload.productKey,
-    position: trustedPosition,
-    commissionMode: trustedMode,
-    inputAmount: normalizedEntry.payload.inputAmount,
-    frequencyRaw: normalizedEntry.payload.frequencyRaw,
-    durationYears: normalizedEntry.payload.durationYears,
-    comfortPayment: normalizedEntry.payload.comfortPayment,
-    comfortGradual: normalizedEntry.payload.comfortGradual,
-    comfortTargetAmount: normalizedEntry.payload.comfortTargetAmount,
-  });
-  if (!trustedResult) {
-    return NextResponse.json(
-      { ok: false, error: "Nepodařilo se serverově přepočítat provizi pro daný produkt." },
-      { status: 400 }
-    );
-  }
-  if (
-    normalizedEntry.payload.entryType === "contract" &&
-    trustedResult.items.length === 0
-  ) {
-    return NextResponse.json(
-      { ok: false, error: "Smlouva musí obsahovat alespoň jednu položku provize." },
-      { status: 400 }
-    );
-  }
-
-  const trustedManagerOverrides = computeManagerOverridesForChain({
-    managerChain: trustedManagerChain,
-    adviserPosition: trustedPosition,
-    adviserMode: trustedMode,
-    productKey: normalizedEntry.payload.productKey,
-    inputAmount: normalizedEntry.payload.inputAmount,
-    frequencyRaw: normalizedEntry.payload.frequencyRaw,
-    durationYears: normalizedEntry.payload.durationYears,
-    comfortPayment: normalizedEntry.payload.comfortPayment,
-    comfortGradual: normalizedEntry.payload.comfortGradual,
-    comfortTargetAmount: normalizedEntry.payload.comfortTargetAmount,
-  });
-  const trustedManagerPosition = trustedManagerChain[0]?.position ?? null;
-  const trustedManagerMode = trustedManagerChain[0]?.commissionMode ?? null;
-  const trustedAllowedEmails = collectAllowedEmailsForCreate({
-    ownerEmail: email,
-    managerEmailSnapshot: trustedManagerEmail,
-    managerChain: trustedManagerChain,
-    managerOverrides: trustedManagerOverrides,
-  });
-
-  const trustedPayload: NormalizedCreateEntryPayload = {
-    ...normalizedEntry.payload,
-    position: trustedPosition,
-    commissionMode: trustedMode,
-    items: trustedResult.items,
-    total: trustedResult.total,
-    result: {
-      items: trustedResult.items,
-      total: trustedResult.total,
-    },
-    managerEmailSnapshot: trustedManagerEmail,
-    managerPositionSnapshot: trustedManagerPosition,
-    managerModeSnapshot: trustedManagerMode,
-    managerChain: trustedManagerChain,
-    managerOverrides: trustedManagerOverrides,
-    allowedEmails: trustedAllowedEmails,
-  };
-
-  if (trustedPayload.entryType === "contract") {
-    const existingContract = await findExistingContractByNumber(
-      trustedPayload.contractNumber
-    );
-    if (existingContract) {
+    if (!hasResolvedTopManagerPosition(trustedManagerChain, trustedManagerEmail)) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Smlouva s tímto číslem už v systému existuje.",
-          duplicate: existingContract,
+          error:
+            "Nepodařilo se načíst pozici nadřízeného. Uložení je zablokované, aby nechyběla meziprovize.",
         },
-        { status: 409 }
+        { status: 400 }
       );
     }
-  }
 
-  try {
-    const db = adminDb;
-    const ownerEntriesRef = db.collection("users").doc(email).collection("entries");
-    const createdRef = ownerEntriesRef.doc();
+    const trustedResult = computeItemsForProductPositionAndMode({
+      productKey: normalizedEntry.payload.productKey,
+      position: trustedPosition,
+      commissionMode: trustedMode,
+      inputAmount: normalizedEntry.payload.inputAmount,
+      frequencyRaw: normalizedEntry.payload.frequencyRaw,
+      durationYears: normalizedEntry.payload.durationYears,
+      durationMonths: normalizedEntry.payload.durationMonths,
+      maxCizinKomplexVariant: normalizedEntry.payload.maxCizinKomplexVariant,
+      comfortPayment: normalizedEntry.payload.comfortPayment,
+      comfortGradual: normalizedEntry.payload.comfortGradual,
+      comfortTargetAmount: normalizedEntry.payload.comfortTargetAmount,
+    });
+    if (!trustedResult) {
+      return NextResponse.json(
+        { ok: false, error: "Nepodařilo se serverově přepočítat provizi pro daný produkt." },
+        { status: 400 }
+      );
+    }
+    if (
+      normalizedEntry.payload.entryType === "contract" &&
+      trustedResult.items.length === 0
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "Smlouva musí obsahovat alespoň jednu položku provize." },
+        { status: 400 }
+      );
+    }
+
+    const trustedManagerOverrides = computeManagerOverridesForChain({
+      managerChain: trustedManagerChain,
+      adviserPosition: trustedPosition,
+      adviserMode: trustedMode,
+      productKey: normalizedEntry.payload.productKey,
+      inputAmount: normalizedEntry.payload.inputAmount,
+      frequencyRaw: normalizedEntry.payload.frequencyRaw,
+      durationYears: normalizedEntry.payload.durationYears,
+      durationMonths: normalizedEntry.payload.durationMonths,
+      maxCizinKomplexVariant: normalizedEntry.payload.maxCizinKomplexVariant,
+      comfortPayment: normalizedEntry.payload.comfortPayment,
+      comfortGradual: normalizedEntry.payload.comfortGradual,
+      comfortTargetAmount: normalizedEntry.payload.comfortTargetAmount,
+    });
+    const trustedManagerPosition = trustedManagerChain[0]?.position ?? null;
+    const trustedManagerMode = trustedManagerChain[0]?.commissionMode ?? null;
+    const trustedAllowedEmails = collectAllowedEmailsForCreate({
+      ownerEmail: email,
+      managerEmailSnapshot: trustedManagerEmail,
+      managerChain: trustedManagerChain,
+      managerOverrides: trustedManagerOverrides,
+    });
+
+    const trustedPayload: NormalizedCreateEntryPayload = {
+      ...normalizedEntry.payload,
+      position: trustedPosition,
+      commissionMode: trustedMode,
+      items: trustedResult.items,
+      total: trustedResult.total,
+      result: {
+        items: trustedResult.items,
+        total: trustedResult.total,
+      },
+      managerEmailSnapshot: trustedManagerEmail,
+      managerPositionSnapshot: trustedManagerPosition,
+      managerModeSnapshot: trustedManagerMode,
+      managerChain: trustedManagerChain,
+      managerOverrides: trustedManagerOverrides,
+      allowedEmails: trustedAllowedEmails,
+    };
 
     if (trustedPayload.entryType === "contract") {
-      const contractNumberNormalized = normalizeContractNumber(
+      const existingContract = await findExistingContractByNumber(
         trustedPayload.contractNumber
       );
-      const contractNumberLoose = normalizeContractNumberLoose(
-        trustedPayload.contractNumber
-      );
-      const claimRef = db
-        .collection(CONTRACT_NUMBER_CLAIMS_COLLECTION)
-        .doc(contractNumberClaimDocId(contractNumberNormalized));
-      const claimPayload = {
-        contractNumberRaw: trustedPayload.contractNumber,
-        contractNumberNormalized,
-        contractNumberLoose,
-        ownerEmail: email,
-        entryId: createdRef.id,
-        entryPath: createdRef.path,
-        updatedAt: new Date(),
-        createdAt: new Date(),
-      };
+      if (existingContract) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Smlouva s tímto číslem už v systému existuje.",
+            duplicate: existingContract,
+          },
+          { status: 409 }
+        );
+      }
+    }
 
-      await db.runTransaction(async (tx) => {
-        const claimSnap = await tx.get(claimRef);
-        if (claimSnap.exists) {
-          const claimData = (claimSnap.data() ?? {}) as {
-            entryPath?: string | null;
-          };
-          const claimEntryPath = (claimData.entryPath ?? "").trim();
-          if (claimEntryPath && claimEntryPath !== createdRef.path) {
-            const claimEntrySnap = await tx.get(db.doc(claimEntryPath));
-            if (claimEntrySnap.exists) {
-              const claimEntryData = (claimEntrySnap.data() ?? {}) as ContractDoc;
-              if (
-                normalizeContractEntryType(
-                  claimEntryData.entryType ?? "contract"
-                ) === "contract" &&
-                normalizeContractNumber(claimEntryData.contractNumber) ===
-                  contractNumberNormalized
-              ) {
-                const duplicateErr = new Error(
-                  "Smlouva s tímto číslem už v systému existuje."
-                ) as Error & { statusCode?: number; duplicatePath?: string };
-                duplicateErr.statusCode = 409;
-                duplicateErr.duplicatePath = claimEntryPath;
-                throw duplicateErr;
+    try {
+      const db = adminDb;
+      const ownerEntriesRef = db.collection("users").doc(email).collection("entries");
+      const createdRef = ownerEntriesRef.doc();
+
+      if (trustedPayload.entryType === "contract") {
+        const contractNumberNormalized = normalizeContractNumber(
+          trustedPayload.contractNumber
+        );
+        const contractNumberLoose = normalizeContractNumberLoose(
+          trustedPayload.contractNumber
+        );
+        const claimRef = db
+          .collection(CONTRACT_NUMBER_CLAIMS_COLLECTION)
+          .doc(contractNumberClaimDocId(contractNumberNormalized));
+        const claimPayload = {
+          contractNumberRaw: trustedPayload.contractNumber,
+          contractNumberNormalized,
+          contractNumberLoose,
+          ownerEmail: email,
+          entryId: createdRef.id,
+          entryPath: createdRef.path,
+          updatedAt: new Date(),
+          createdAt: new Date(),
+        };
+
+        await db.runTransaction(async (tx) => {
+          const claimSnap = await tx.get(claimRef);
+          if (claimSnap.exists) {
+            const claimData = (claimSnap.data() ?? {}) as {
+              entryPath?: string | null;
+            };
+            const claimEntryPath = (claimData.entryPath ?? "").trim();
+            if (claimEntryPath && claimEntryPath !== createdRef.path) {
+              const claimEntrySnap = await tx.get(db.doc(claimEntryPath));
+              if (claimEntrySnap.exists) {
+                const claimEntryData = (claimEntrySnap.data() ?? {}) as ContractDoc;
+                if (
+                  normalizeContractEntryType(
+                    claimEntryData.entryType ?? "contract"
+                  ) === "contract" &&
+                  normalizeContractNumber(claimEntryData.contractNumber) ===
+                    contractNumberNormalized
+                ) {
+                  const duplicateErr = new Error(
+                    "Smlouva s tímto číslem už v systému existuje."
+                  ) as Error & { statusCode?: number; duplicatePath?: string };
+                  duplicateErr.statusCode = 409;
+                  duplicateErr.duplicatePath = claimEntryPath;
+                  throw duplicateErr;
+                }
               }
             }
+            tx.set(claimRef, claimPayload, { merge: true });
+          } else {
+            tx.create(claimRef, claimPayload);
           }
-          tx.set(claimRef, claimPayload, { merge: true });
-        } else {
-          tx.create(claimRef, claimPayload);
-        }
 
-        tx.create(createdRef, trustedPayload);
+          tx.create(createdRef, trustedPayload);
 
-        const contractRefPayload = contractRefFromData({
+          const contractRefPayload = contractRefFromData({
+            ownerEmail: email,
+            entryId: createdRef.id,
+            contractNumber: trustedPayload.contractNumber,
+            productKey: trustedPayload.productKey,
+          });
+          const contractRef = db
+            .collection(CONTRACT_REFS_COLLECTION)
+            .doc(contractRefDocId(email, createdRef.id));
+          if (contractRefPayload) {
+            tx.set(contractRef, contractRefPayload, { merge: true });
+          } else {
+            tx.delete(contractRef);
+          }
+        });
+      } else {
+        await createdRef.create(trustedPayload);
+        const batch = db.batch();
+        applyContractRefToBatch({
+          batch,
           ownerEmail: email,
           entryId: createdRef.id,
           contractNumber: trustedPayload.contractNumber,
           productKey: trustedPayload.productKey,
         });
-        const contractRef = db
-          .collection(CONTRACT_REFS_COLLECTION)
-          .doc(contractRefDocId(email, createdRef.id));
-        if (contractRefPayload) {
-          tx.set(contractRef, contractRefPayload, { merge: true });
-        } else {
-          tx.delete(contractRef);
-        }
-      });
-    } else {
-      await createdRef.create(trustedPayload);
-      const batch = db.batch();
-      applyContractRefToBatch({
-        batch,
-        ownerEmail: email,
+        await batch.commit();
+      }
+
+      try {
+        await markTeamOverviewOwnersDirty([email]);
+      } catch (markErr) {
+        console.warn(
+          "POST /api/contracts create: team-overview invalidace selhala:",
+          markErr
+        );
+      }
+
+      const response = NextResponse.json({
+        ok: true,
         entryId: createdRef.id,
-        contractNumber: trustedPayload.contractNumber,
-        productKey: trustedPayload.productKey,
       });
-      await batch.commit();
-    }
-
-    try {
-      await markTeamOverviewOwnersDirty([email]);
-    } catch (markErr) {
-      console.warn(
-        "POST /api/contracts create: team-overview invalidace selhala:",
-        markErr
-      );
-    }
-
-    const response = NextResponse.json({
-      ok: true,
-      entryId: createdRef.id,
-    });
-    applyRateLimitHeaders(response.headers, rateLimitResult);
-    return response;
-  } catch (createErr: any) {
-    const message =
-      typeof createErr?.message === "string" && createErr.message.trim()
-        ? createErr.message.trim()
-        : "Neznámá chyba při ukládání smlouvy.";
-    const statusCode = Number((createErr as any)?.statusCode);
-    if (statusCode === 409) {
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
+    } catch (createErr: any) {
+      const message =
+        typeof createErr?.message === "string" && createErr.message.trim()
+          ? createErr.message.trim()
+          : "Neznámá chyba při ukládání smlouvy.";
+      const statusCode = Number((createErr as any)?.statusCode);
+      if (statusCode === 409) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: message,
+            duplicatePath:
+              typeof (createErr as any)?.duplicatePath === "string"
+                ? (createErr as any).duplicatePath
+                : null,
+          },
+          { status: 409 }
+        );
+      }
+      console.error("POST /api/contracts create selhal:", createErr);
       return NextResponse.json(
-        {
-          ok: false,
-          error: message,
-          duplicatePath:
-            typeof (createErr as any)?.duplicatePath === "string"
-              ? (createErr as any).duplicatePath
-              : null,
-        },
-        { status: 409 }
+        { ok: false, error: `Uložení smlouvy selhalo: ${message}` },
+        { status: 500 }
       );
     }
-    console.error("POST /api/contracts create selhal:", createErr);
+  } catch (unexpectedErr: any) {
+    const message =
+      typeof unexpectedErr?.message === "string" && unexpectedErr.message.trim()
+        ? unexpectedErr.message.trim()
+        : "Neznámá neočekávaná chyba při ukládání smlouvy.";
+    console.error("POST /api/contracts create neočekávaně selhal:", unexpectedErr);
     return NextResponse.json(
       { ok: false, error: `Uložení smlouvy selhalo: ${message}` },
       { status: 500 }

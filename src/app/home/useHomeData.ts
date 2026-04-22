@@ -7,6 +7,7 @@ import {
   type PaymentFrequency,
   type Position,
   type Product,
+  type MaxCizinKomplexVariant,
 } from "@/app/types/domain";
 import {
   entrySignedDate,
@@ -31,6 +32,8 @@ export type EntryDoc = {
   inputAmount?: number | null;
   frequencyRaw?: PaymentFrequency | null;
   durationYears?: number | null;
+  durationMonths?: number | null;
+  maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
   commissionMode?: CommissionMode | null;
   position?: Position | null;
   comfortPayment?: number | null;

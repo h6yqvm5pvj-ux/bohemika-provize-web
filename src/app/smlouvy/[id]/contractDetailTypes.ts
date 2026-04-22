@@ -4,6 +4,7 @@ import {
   type Position,
   type CommissionResultItemDTO,
   type CommissionMode,
+  type MaxCizinKomplexVariant,
 } from "../../types/domain";
 
 export type FirestoreTimestamp = {
@@ -74,6 +75,8 @@ export type ContractDoc = {
   createdAt?: FirestoreTimestamp | Date | string | null;
 
   durationYears?: number | null;
+  durationMonths?: number | null;
+  maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
   carMake?: string | null;
   carPlate?: string | null;
   carVin?: string | null;

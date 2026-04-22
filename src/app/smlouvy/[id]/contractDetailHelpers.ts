@@ -4,6 +4,7 @@ import {
   type Position,
   type CommissionResultItemDTO,
   type CommissionMode,
+  type MaxCizinKomplexVariant,
 } from "../../types/domain";
 import {
   formatMoney as formatMoneyValue,
@@ -39,6 +40,9 @@ export function preloadFormulaModule(product?: Product | null) {
       break;
     case "maximaMaxEfekt":
       import("../../lib/productFormulas/maximaMaxEfekt");
+      break;
+    case "maxcizinkomplex":
+      import("../../lib/productFormulas/maxcizinkomplex");
       break;
     case "pillowInjury":
       import("../../lib/productFormulas/pillowInjury");
@@ -357,6 +361,8 @@ export async function calculateResultForPosition(
   const comfortPayment = c.comfortPayment ?? 0;
   const comfortTargetAmount = c.comfortTargetAmount ?? 0;
   const comfortGradual = !!c.comfortGradual;
+  const maxCizinKomplexVariant: MaxCizinKomplexVariant =
+    c.maxCizinKomplexVariant === "premium" ? "premium" : "exclusiveStandard";
 
   const years =
     typeof c.durationYears === "number" && !Number.isNaN(c.durationYears)
@@ -379,6 +385,12 @@ export async function calculateResultForPosition(
         "../../lib/productFormulas/maximaMaxEfekt"
       );
       return calculateMaxEfekt(amount, years, position, usedMode);
+    }
+    case "maxcizinkomplex": {
+      const { calculateMaxCizinKomplex } = await import(
+        "../../lib/productFormulas/maxcizinkomplex"
+      );
+      return calculateMaxCizinKomplex(amount, position, maxCizinKomplexVariant);
     }
     case "pillowInjury": {
       const { calculatePillowInjury } = await import(

@@ -86,6 +86,7 @@ export const PRODUCT_ORDER: Product[] = [
   "koopcestovko",
   "cppcestovko",
   "axacestovko",
+  "maxcizinkomplex",
   "comfortcc",
 ];
 
@@ -236,6 +237,12 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
     label: "AXA Cestovko",
     icon: "/icons/icon_cestovko.png",
     institutionId: "axa",
+    category: "travel",
+  },
+  maxcizinkomplex: {
+    label: "MAXIMA Komplexní zdravotní pojištění cizinců",
+    icon: "/icons/icon_cestovko.png",
+    institutionId: "maxima",
     category: "travel",
   },
   comfortcc: {

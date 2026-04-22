@@ -1,7 +1,7 @@
 // src/app/kalkulacka/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -25,12 +25,14 @@ import {
   type PaymentFrequency,
   type CommissionMode,
   type CommissionResultItemDTO,
+  type MaxCizinKomplexVariant,
 } from "../types/domain";
 
 import {
   calculateNeon,
   calculateFlexi,
   calculateMaxEfekt,
+  calculateMaxCizinKomplex,
   calculatePillowInjury,
   calculateDomex,
   calculatePillowMajetek,
@@ -60,6 +62,7 @@ import { parseNeonPdf } from "../lib/parseNeonPdf";
 import { parseFlexiPdf } from "../lib/parseFlexiPdf";
 import { parseDomexPdf } from "../lib/parseDomexPdf";
 import { parseComfortPdf } from "../lib/parseComfortPdf";
+import { parseMaxCizinKomplexPdf } from "../lib/parseMaxCizinKomplexPdf";
 import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_OPTIONS,
@@ -105,6 +108,13 @@ const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   pillowAuto: "/provize/pillowauto.jpg",
   kooperativaAuto: "/provize/koopauto.jpg",
 };
+const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
+  id: MaxCizinKomplexVariant;
+  label: string;
+}[] = [
+  { id: "exclusiveStandard", label: "EXCLUSIVE / STANDARD" },
+  { id: "premium", label: "PREMIUM" },
+];
 
 function formatCoefficientNumber(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
@@ -140,6 +150,7 @@ type ProductPickerSectionKey =
   | "auto"
   | "entrepreneurs"
   | "travel"
+  | "foreigners"
   | "investments"
   | "gold";
 
@@ -191,6 +202,11 @@ const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
     key: "travel",
     title: "Cestovko",
     products: ["cppcestovko", "axacestovko", "koopcestovko"],
+  },
+  {
+    key: "foreigners",
+    title: "Cizinci",
+    products: ["maxcizinkomplex"],
   },
   {
     key: "investments",
@@ -701,6 +717,10 @@ function shouldShowDuration(product: Product): boolean {
   return product === "neon" || product === "flexi" || product === "maximaMaxEfekt";
 }
 
+function shouldShowDurationMonths(product: Product): boolean {
+  return product === "maxcizinkomplex";
+}
+
 function durationRange(product: Product): [number, number] {
   switch (product) {
     case "neon":
@@ -737,6 +757,37 @@ function normalizedDurationYears(
   return Math.min(max, Math.max(min, wholeYears));
 }
 
+function durationMonthsRange(product: Product): [number, number] {
+  switch (product) {
+    case "maxcizinkomplex":
+      return [1, 240];
+    default:
+      return [1, 1];
+  }
+}
+
+function durationMonthsFallback(product: Product): number {
+  switch (product) {
+    case "maxcizinkomplex":
+      return 12;
+    default:
+      return 1;
+  }
+}
+
+function normalizedDurationMonths(
+  product: Product,
+  months: number | null | undefined
+): number {
+  const [min, max] = durationMonthsRange(product);
+  const raw =
+    typeof months === "number" && Number.isFinite(months)
+      ? months
+      : durationMonthsFallback(product);
+  const wholeMonths = Math.floor(raw);
+  return Math.min(max, Math.max(min, wholeMonths));
+}
+
 function allowedFrequencies(product: Product): PaymentFrequency[] {
   switch (product) {
     case "neon":
@@ -769,6 +820,7 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "cppcestovko":
     case "axacestovko":
     case "koopcestovko":
+    case "maxcizinkomplex":
     case "comfortcc":
       return ["annual"];
   }
@@ -797,6 +849,7 @@ function defaultFrequencyText(product: Product): string {
     case "cppcestovko":
     case "axacestovko":
     case "koopcestovko":
+    case "maxcizinkomplex":
     case "comfortcc":
       return "Frekvence: jednorázově";
     default:
@@ -814,7 +867,8 @@ function placeholderForAmount(
   if (
     product === "cppcestovko" ||
     product === "axacestovko" ||
-    product === "koopcestovko"
+    product === "koopcestovko" ||
+    product === "maxcizinkomplex"
   ) {
     return "Zadejte jednorázové pojistné";
   }
@@ -1001,6 +1055,9 @@ export default function CalculatorPage() {
   const [mode, setMode] = useState<CommissionMode>("accelerated");
   const [frequency, setFrequency] = useState<PaymentFrequency>("monthly");
   const [durationYears, setDurationYears] = useState<number | null>(null);
+  const [durationMonths, setDurationMonths] = useState<number | null>(null);
+  const [maxCizinKomplexVariant, setMaxCizinKomplexVariant] =
+    useState<MaxCizinKomplexVariant>("exclusiveStandard");
   const [amountText, setAmountText] = useState<string>("");
   const [tipsterModeEnabled, setTipsterModeEnabled] = useState(false);
   const [tipsterPercent, setTipsterPercent] = useState(100);
@@ -1021,6 +1078,8 @@ export default function CalculatorPage() {
   const [pdfImporting, setPdfImporting] = useState(false);
   const [pdfImportStatus, setPdfImportStatus] = useState<string | null>(null);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
+  const [pdfDropActive, setPdfDropActive] = useState(false);
+  const pdfDragCounterRef = useRef(0);
 
   const [items, setItems] = useState<CommissionResultItemDTO[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -1140,13 +1199,20 @@ export default function CalculatorPage() {
         product === "neon" ||
         product === "flexi" ||
         product === "domex" ||
+        product === "maxcizinkomplex" ||
         product === "comfortcc"),
     [product, tipsterModeEnabled]
   );
 
   const coefList = useMemo(
-    () => getCoefficientSummary(product ?? null, position ?? null, mode ?? null),
-    [product, position, mode]
+    () =>
+      getCoefficientSummary(
+        product ?? null,
+        position ?? null,
+        mode ?? null,
+        maxCizinKomplexVariant
+      ),
+    [product, position, mode, maxCizinKomplexVariant]
   );
   const coefExplanation = useMemo(() => {
     if (!product) return "";
@@ -1159,6 +1225,8 @@ export default function CalculatorPage() {
         return "Výpočet: roční pojistné (měsíční × 12) × koeficient/100 pro okamžitou/po 3/po 4 letech. Následná: roční pojistné × koeficient ročně od 6. roku do konce zadané doby.";
       case "maximaMaxEfekt":
         return "Výpočet: roční pojistné × doba trvání × koeficient pro okamžitou/po 3/po 4 letech. Následná: roční pojistné × koeficient ročně od 5. roku.";
+      case "maxcizinkomplex":
+        return `Výpočet: jednorázové pojistné × koeficient (${maxCizinKomplexVariant === "premium" ? "PREMIUM" : "EXCLUSIVE / STANDARD"}). Provize je vyplacena pouze 1×.`;
       case "pillowInjury":
         return "Výpočet: roční pojistné (měsíční × 12) × koeficient/100 pro jednotlivé položky.";
       case "domex":
@@ -1193,7 +1261,7 @@ export default function CalculatorPage() {
       default:
         return "";
     }
-  }, [product, frequency]);
+  }, [product, frequency, maxCizinKomplexVariant]);
   const autoTermsPreviewUrl = useMemo(() => {
     if (!product) return null;
     return AUTO_TERMS_PREVIEW_BY_PRODUCT[product] ?? null;
@@ -1432,9 +1500,22 @@ export default function CalculatorPage() {
       setDurationYears(Math.min(max, Math.max(min, durationYears)));
     }
 
+    if (shouldShowDurationMonths(product)) {
+      if (durationMonths == null) {
+        setDurationMonths(durationMonthsFallback(product));
+        return;
+      }
+      const [minMonths, maxMonths] = durationMonthsRange(product);
+      if (durationMonths < minMonths || durationMonths > maxMonths) {
+        setDurationMonths(Math.min(maxMonths, Math.max(minMonths, durationMonths)));
+      }
+    } else if (durationMonths != null) {
+      setDurationMonths(null);
+    }
+
     // pokud uživatel má zrychlený režim, dovolíme přepnout pro konkrétní smlouvu
     // defaultně zůstává nastavený režim z profilu (mode)
-  }, [product, frequency, durationYears]);
+  }, [product, frequency, durationYears, durationMonths]);
 
   // Výchozí hodnota doby trvání po změně produktu
   useEffect(() => {
@@ -1443,6 +1524,10 @@ export default function CalculatorPage() {
     }
     if (product === "maximaMaxEfekt") {
       setDurationYears(20);
+    }
+    if (product === "maxcizinkomplex") {
+      setDurationMonths(12);
+      setMaxCizinKomplexVariant("exclusiveStandard");
     }
   }, [product]);
 
@@ -1456,10 +1541,26 @@ export default function CalculatorPage() {
         if (key === "datum sjednání") return !contractSignedDate.trim();
         if (key === "datum počátku") return !policyStartDate.trim();
         if (key === "pravidelnou platbu") return product === "comfortcc" && comfortGradual && parseNumber(comfortPaymentText) <= 0;
+        if (key === "dobu trvání v měsících") {
+          return (
+            product === "maxcizinkomplex" &&
+            (durationMonths == null || normalizedDurationMonths(product, durationMonths) <= 0)
+          );
+        }
         return true;
       })
     );
-  }, [amountText, clientName, contractNumber, contractSignedDate, policyStartDate, comfortPaymentText, product, comfortGradual]);
+  }, [
+    amountText,
+    clientName,
+    contractNumber,
+    contractSignedDate,
+    policyStartDate,
+    comfortPaymentText,
+    product,
+    comfortGradual,
+    durationMonths,
+  ]);
 
   useEffect(() => {
     if (!tipsterModeEnabled) {
@@ -1491,6 +1592,29 @@ export default function CalculatorPage() {
     }
   };
 
+  const looksLikeMaxCizinKomplexPdf = (
+    parsed:
+      | Awaited<ReturnType<typeof parseMaxCizinKomplexPdf>>
+      | null
+      | undefined
+  ): boolean => {
+    if (!parsed) return false;
+    return Boolean(
+      parsed.maxCizinKomplexVariant ||
+        (typeof parsed.durationMonths === "number" && parsed.durationMonths > 0) ||
+        typeof parsed.amount === "number" ||
+        parsed.policyStartDate ||
+        parsed.contractSignedDate
+    );
+  };
+
+  const showMaxCizinKomplexHint = () => {
+    setPdfImportError(
+      "PDF vypadá jako MAXIMA Cizinci. V poli Produkt vyber sekci Cizinci -> MAXIMA Komplexní zdravotní pojištění cizinců a nahraj PDF znovu."
+    );
+    setPdfImportStatus(null);
+  };
+
   const handlePdfImport = async (file: File | null) => {
     if (!file) return;
     setPdfImporting(true);
@@ -1502,6 +1626,7 @@ export default function CalculatorPage() {
         | Awaited<ReturnType<typeof parseNeonPdf>>
         | Awaited<ReturnType<typeof parseFlexiPdf>>
         | Awaited<ReturnType<typeof parseDomexPdf>>
+        | Awaited<ReturnType<typeof parseMaxCizinKomplexPdf>>
         | Awaited<ReturnType<typeof parseComfortPdf>>
         | null = null;
 
@@ -1513,11 +1638,13 @@ export default function CalculatorPage() {
         parsed = await parseFlexiPdf(file);
       } else if (product === "domex") {
         parsed = await parseDomexPdf(file);
+      } else if (product === "maxcizinkomplex") {
+        parsed = await parseMaxCizinKomplexPdf(file);
       } else if (product === "comfortcc") {
         parsed = await parseComfortPdf(file);
       } else {
         setPdfImportError(
-          "Načítání z PDF je teď dostupné jen pro ČPP Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX a Comfort Commodity."
+          "Načítání z PDF je teď dostupné jen pro ČPP Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
         );
         setPdfImportStatus(null);
         return;
@@ -1565,6 +1692,30 @@ export default function CalculatorPage() {
         setDurationYears(yrs);
         applied += 1;
       }
+      if ("durationMonths" in parsed && typeof parsed.durationMonths === "number") {
+        setDurationMonths(normalizedDurationMonths(product, parsed.durationMonths));
+        applied += 1;
+      }
+      if (
+        "maxCizinKomplexVariant" in parsed &&
+        (parsed.maxCizinKomplexVariant === "exclusiveStandard" ||
+          parsed.maxCizinKomplexVariant === "premium")
+      ) {
+        setMaxCizinKomplexVariant(parsed.maxCizinKomplexVariant);
+        applied += 1;
+      }
+
+      if (applied === 0 && product !== "maxcizinkomplex") {
+        try {
+          const maxCizinParsed = await parseMaxCizinKomplexPdf(file);
+          if (looksLikeMaxCizinKomplexPdf(maxCizinParsed)) {
+            showMaxCizinKomplexHint();
+            return;
+          }
+        } catch {
+          // ignore fallback detection error
+        }
+      }
 
       setPdfImportStatus(
         applied > 0
@@ -1573,6 +1724,17 @@ export default function CalculatorPage() {
       );
     } catch (err) {
       console.error("PDF import selhal", err);
+      if (product !== "maxcizinkomplex") {
+        try {
+          const maxCizinParsed = await parseMaxCizinKomplexPdf(file);
+          if (looksLikeMaxCizinKomplexPdf(maxCizinParsed)) {
+            showMaxCizinKomplexHint();
+            return;
+          }
+        } catch {
+          // ignore fallback detection error
+        }
+      }
       setPdfImportError("PDF se nepodařilo přečíst. Zkus prosím zadat ručně.");
       setPdfImportStatus(null);
     } finally {
@@ -1581,6 +1743,56 @@ export default function CalculatorPage() {
         fileInputRef.current.value = "";
       }
     }
+  };
+
+  const resetPdfDropState = () => {
+    pdfDragCounterRef.current = 0;
+    setPdfDropActive(false);
+  };
+
+  const handlePdfDragEnter = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    pdfDragCounterRef.current += 1;
+    setPdfDropActive(true);
+  };
+
+  const handlePdfDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  };
+
+  const handlePdfDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    pdfDragCounterRef.current = Math.max(0, pdfDragCounterRef.current - 1);
+    if (pdfDragCounterRef.current === 0) {
+      setPdfDropActive(false);
+    }
+  };
+
+  const handlePdfDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resetPdfDropState();
+
+    if (pdfImporting) return;
+
+    const file =
+      Array.from(e.dataTransfer?.files ?? []).find(
+        (candidate) =>
+          candidate.type === "application/pdf" ||
+          candidate.name.toLowerCase().endsWith(".pdf")
+      ) ?? null;
+
+    if (!file) {
+      setPdfImportError("Přetáhni prosím PDF soubor.");
+      setPdfImportStatus(null);
+      return;
+    }
+
+    void handlePdfImport(file);
   };
 
   const recalc = () => {
@@ -1616,6 +1828,14 @@ export default function CalculatorPage() {
     if (product === "maximaMaxEfekt") {
       const y = normalizedDurationYears("maximaMaxEfekt", durationYears);
       const dto = calculateMaxEfekt(val, y, position, mode);
+      setItems(dto.items);
+      setTotal(dto.total);
+      setUnsupported(false);
+      return;
+    }
+
+    if (product === "maxcizinkomplex") {
+      const dto = calculateMaxCizinKomplex(val, position, maxCizinKomplexVariant);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -1812,7 +2032,18 @@ export default function CalculatorPage() {
   useEffect(() => {
     recalc();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product, position, mode, frequency, durationYears, amountText, comfortGradual, comfortPaymentText, comfortTargetAmountText]);
+  }, [
+    product,
+    position,
+    mode,
+    frequency,
+    durationYears,
+    amountText,
+    comfortGradual,
+    comfortPaymentText,
+    comfortTargetAmountText,
+    maxCizinKomplexVariant,
+  ]);
 
   useEffect(() => {
     if (product !== "neon") {
@@ -2086,6 +2317,13 @@ export default function CalculatorPage() {
             durationYears: shouldShowDuration(endorsementDraft.productKey)
               ? durationYears
               : null,
+            durationMonths: shouldShowDurationMonths(endorsementDraft.productKey)
+              ? normalizedDurationMonths(endorsementDraft.productKey, durationMonths)
+              : null,
+            maxCizinKomplexVariant:
+              endorsementDraft.productKey === "maxcizinkomplex"
+                ? maxCizinKomplexVariant
+                : null,
             contractNumber: endorsementDraft.contractNumber,
           },
         },
@@ -2096,7 +2334,8 @@ export default function CalculatorPage() {
         fallback: "Uložení dodatku selhalo.",
       });
       if (apiError) {
-        throw new Error(apiError);
+        setSaveMessage(apiError);
+        return;
       }
 
       if (typeof window !== "undefined") {
@@ -2120,10 +2359,12 @@ export default function CalculatorPage() {
       });
       setEndorsementDraft(null);
     } catch (error) {
-      console.error("Chyba při ukládání dodatku", error);
-      setSaveMessage(
-        "Nepodařilo se uložit dodatek. Zkus to prosím za chvíli znovu."
-      );
+      const errorMessage =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message.trim()
+          : "Nepodařilo se uložit dodatek. Zkus to prosím za chvíli znovu.";
+      console.error("Chyba při ukládání dodatku:", errorMessage);
+      setSaveMessage(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -2148,6 +2389,12 @@ export default function CalculatorPage() {
     if (!policyStartDate.trim()) missing.push("datum počátku");
     if (product === "comfortcc" && comfortGradual && comfortPayment <= 0) {
       missing.push("pravidelnou platbu");
+    }
+    if (
+      product === "maxcizinkomplex" &&
+      (durationMonths == null || normalizedDurationMonths(product, durationMonths) <= 0)
+    ) {
+      missing.push("dobu trvání v měsících");
     }
 
     if (missing.length > 0 || items.length === 0) {
@@ -2309,6 +2556,10 @@ export default function CalculatorPage() {
             contractSignedDate: contractSignedDate.trim(),
             policyStartDate: policyStartDate.trim(),
             durationYears: shouldShowDuration(product) ? durationYears : null,
+            durationMonths:
+              shouldShowDurationMonths(product) ? normalizedDurationMonths(product, durationMonths) : null,
+            maxCizinKomplexVariant:
+              product === "maxcizinkomplex" ? maxCizinKomplexVariant : null,
             contractNumber: trimmedContractNumber || null,
             isRefresh: shouldRefreshOriginalNeon,
             refreshOriginalContractNumber: null,
@@ -2321,7 +2572,8 @@ export default function CalculatorPage() {
         fallback: "Uložení smlouvy selhalo.",
       });
       if (apiError) {
-        throw new Error(apiError);
+        setSaveMessage(apiError);
+        return;
       }
 
       if (typeof window !== "undefined") {
@@ -2345,10 +2597,12 @@ export default function CalculatorPage() {
       });
       setRefreshOriginalOpen(false);
     } catch (error) {
-      console.error("Chyba při ukládání smlouvy", error);
-      setSaveMessage(
-        "Nepodařilo se uložit smlouvu. Zkus to prosím za chvíli znovu."
-      );
+      const errorMessage =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message.trim()
+          : "Nepodařilo se uložit smlouvu. Zkus to prosím za chvíli znovu.";
+      console.error("Chyba při ukládání smlouvy:", errorMessage);
+      setSaveMessage(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -2428,6 +2682,8 @@ export default function CalculatorPage() {
         const y = normalizedDurationYears("maximaMaxEfekt", years);
         return calculateMaxEfekt(val, y, pos, usedMode);
       }
+      case "maxcizinkomplex":
+        return calculateMaxCizinKomplex(val, pos, maxCizinKomplexVariant);
       case "pillowInjury":
         return calculatePillowInjury(val, pos, usedMode);
       case "domex":
@@ -2947,9 +3203,19 @@ export default function CalculatorPage() {
 
               {canImportFromPdf && (
                 <div className="space-y-2">
-                  <div className="ui-card ui-card-quiet flex h-full items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5">
+                  <div
+                    className={`ui-card ui-card-quiet flex h-full items-center justify-between gap-3 rounded-xl border-2 border-dashed px-3 py-2.5 transition ${
+                      pdfDropActive
+                        ? "border-slate-900 bg-slate-100"
+                        : "border-slate-300 bg-white"
+                    }`}
+                    onDragEnter={handlePdfDragEnter}
+                    onDragOver={handlePdfDragOver}
+                    onDragLeave={handlePdfDragLeave}
+                    onDrop={handlePdfDrop}
+                  >
                     <div className="text-sm font-semibold text-slate-900">
-                      Nahraj smlouvu PDF pro načtení údajů.
+                      Nahraj smlouvu PDF nebo ji přetáhni sem.
                     </div>
                     <button
                       type="button"
@@ -2992,7 +3258,10 @@ export default function CalculatorPage() {
                       type="file"
                       accept="application/pdf"
                       className="hidden"
-                      onChange={(e) => handlePdfImport(e.target.files?.[0] ?? null)}
+                      onChange={(e) => {
+                        resetPdfDropState();
+                        handlePdfImport(e.target.files?.[0] ?? null);
+                      }}
                     />
                   </div>
                   {pdfImportStatus && (
@@ -3048,6 +3317,60 @@ export default function CalculatorPage() {
                       const [min, max] = durationRange(product);
                       setDurationYears(Math.min(max, Math.max(min, Math.floor(parsed))));
                     }}
+                  />
+                </div>
+              )}
+
+              {product === "maxcizinkomplex" && (
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium">Varianta produktu</label>
+                  <select
+                    className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                    value={maxCizinKomplexVariant}
+                    onChange={(e) =>
+                      setMaxCizinKomplexVariant(e.target.value as MaxCizinKomplexVariant)
+                    }
+                  >
+                    {MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {shouldShowDurationMonths(product) && (
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium">
+                    Doba trvání smlouvy (měsíce)
+                  </label>
+                  <input
+                    type="number"
+                    min={durationMonthsRange(product)[0]}
+                    max={durationMonthsRange(product)[1]}
+                    className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 ${
+                      missingFields.includes("dobu trvání v měsících")
+                        ? "border-rose-400/70"
+                        : "border-slate-300"
+                    }`}
+                    value={durationMonths ?? ""}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim();
+                      if (!raw) {
+                        setDurationMonths(null);
+                        return;
+                      }
+                      const parsed = Number(raw);
+                      if (!Number.isFinite(parsed)) {
+                        setDurationMonths(null);
+                        return;
+                      }
+                      setDurationMonths(
+                        normalizedDurationMonths(product, parsed)
+                      );
+                    }}
+                    placeholder="Např. 12"
                   />
                 </div>
               )}

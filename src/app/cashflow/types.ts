@@ -52,6 +52,8 @@ export type EntryDoc = {
   policyStartDate?: unknown;
   createdAt?: unknown;
   durationYears?: number | null;
+  durationMonths?: number | null;
+  maxCizinKomplexVariant?: "exclusiveStandard" | "premium" | null;
   source?: "own" | "manager";
 };
 

@@ -385,6 +385,7 @@ service cloud.firestore {
         "neon",
         "flexi",
         "maximaMaxEfekt",
+        "maxcizinkomplex",
         "pillowInjury",
         "zamex",
         "domex",
