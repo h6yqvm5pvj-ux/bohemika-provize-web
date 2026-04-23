@@ -148,8 +148,21 @@ function isManagerPosition(pos?: Position | null): boolean {
 const ONLINE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minut
 const RECENT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 1 den
 
-type Category = "life" | "auto" | "property" | "travel" | "comfort" | "other";
-type ProductionCategory = "life" | "auto" | "property" | "travel" | "comfort";
+type Category =
+  | "life"
+  | "auto"
+  | "property"
+  | "travel"
+  | "foreigners"
+  | "comfort"
+  | "other";
+type ProductionCategory =
+  | "life"
+  | "auto"
+  | "property"
+  | "travel"
+  | "foreigners"
+  | "comfort";
 type AggregateMetrics = { contracts: number; annualPremium: number; monthlyPremium: number };
 type ContractStats = {
   total: number;
@@ -164,6 +177,7 @@ const PRODUCTION_CATEGORY_TABS: { key: ProductionCategory; label: string }[] = [
   { key: "auto", label: "Auta" },
   { key: "property", label: "Majetek" },
   { key: "comfort", label: "Zlato" },
+  { key: "foreigners", label: "Cizinci" },
   { key: "travel", label: "Cestovko" },
 ];
 

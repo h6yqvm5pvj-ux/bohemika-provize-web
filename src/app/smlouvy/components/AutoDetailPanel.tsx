@@ -15,6 +15,7 @@ export type AutoFields = {
   carPlate: string;
   carVin: string;
   carTp: string;
+  carOrv: string;
   carLiabilityLimit: string;
   carHullSumInsured: string;
   carHullDeductible: string;
@@ -32,6 +33,7 @@ export type AutoFields = {
   carAddonReplacementCar: boolean;
   carAddonLuggage: boolean;
   carAddonPassengerInjury: boolean;
+  carAddonKeyLossTheft: boolean;
 };
 
 export type AutoDetail = {
@@ -39,6 +41,7 @@ export type AutoDetail = {
   carPlate?: string | null;
   carVin?: string | null;
   carTp?: string | null;
+  carOrv?: string | null;
   carLiabilityLimit?: number | null;
   carHullSumInsured?: number | null;
   carHullDeductible?: number | null;
@@ -56,6 +59,7 @@ export type AutoDetail = {
   carAddonReplacementCar?: boolean | null;
   carAddonLuggage?: boolean | null;
   carAddonPassengerInjury?: boolean | null;
+  carAddonKeyLossTheft?: boolean | null;
 } | null;
 
 const formatMoney = (value: number | undefined | null) =>
@@ -219,6 +223,22 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
               )}
             </span>
           </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-slate-600">ORV</span>
+            <span className="font-semibold text-right">
+              {editMode ? (
+                <input
+                  type="text"
+                  value={fields.carOrv}
+                  onChange={(e) => onChange("carOrv", e.target.value)}
+                  className="w-36 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                  placeholder="Číslo ORV"
+                />
+              ) : (
+                contract?.carOrv || fields.carOrv || "—"
+              )}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -342,6 +362,7 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
             { key: "carAddonReplacementCar", label: "Náhradní vozidlo", checked: fields.carAddonReplacementCar },
             { key: "carAddonLuggage", label: "Zavazadla", checked: fields.carAddonLuggage },
             { key: "carAddonPassengerInjury", label: "Úraz všech osob", checked: fields.carAddonPassengerInjury },
+            { key: "carAddonKeyLossTheft", label: "Ztráta a odcizení klíčů", checked: fields.carAddonKeyLossTheft },
           ]
             .filter((item) => editMode || item.checked)
             .map((item) => (

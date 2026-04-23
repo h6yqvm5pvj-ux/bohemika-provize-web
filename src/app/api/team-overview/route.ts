@@ -32,6 +32,7 @@ type Category =
   | "auto"
   | "property"
   | "travel"
+  | "foreigners"
   | "comfort"
   | "other";
 type AggregateMetrics = {
@@ -77,7 +78,7 @@ const TEAM_OVERVIEW_RATE_LIMIT = 120;
 const TEAM_OVERVIEW_RATE_LIMIT_WINDOW_MS = 60_000;
 const TEAM_OVERVIEW_PATCH_RATE_LIMIT = 60;
 const TEAM_OVERVIEW_PATCH_RATE_LIMIT_WINDOW_MS = 60_000;
-const TEAM_OVERVIEW_MODEL_VERSION = 1;
+const TEAM_OVERVIEW_MODEL_VERSION = 2;
 const TEAM_OVERVIEW_MODEL_STALE_MS = 5 * 60 * 1000;
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
@@ -211,6 +212,10 @@ function paymentsPerYear(freq?: PaymentFrequency | null): number {
 }
 
 function categorizeProduct(p?: Product | null): Category {
+  if (p === "maxcizinkomplex") {
+    return "foreigners";
+  }
+
   switch (productCategory(p)) {
     case "life":
       return "life";
@@ -242,6 +247,7 @@ function emptyCategoryCounts(): Record<Category, number> {
     auto: 0,
     property: 0,
     travel: 0,
+    foreigners: 0,
     comfort: 0,
     other: 0,
   };
@@ -253,6 +259,7 @@ function emptyCategoryMetrics(): Record<Category, AggregateMetrics> {
     auto: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     property: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     travel: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
+    foreigners: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     comfort: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     other: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
   };
@@ -264,6 +271,7 @@ function emptyInstitutionByCategory(): Record<Category, Record<string, Aggregate
     auto: {},
     property: {},
     travel: {},
+    foreigners: {},
     comfort: {},
     other: {},
   };
@@ -290,6 +298,7 @@ function cloneContractStats(source: ContractStats): ContractStats {
       auto: { ...source.categoryMetrics.auto },
       property: { ...source.categoryMetrics.property },
       travel: { ...source.categoryMetrics.travel },
+      foreigners: { ...source.categoryMetrics.foreigners },
       comfort: { ...source.categoryMetrics.comfort },
       other: { ...source.categoryMetrics.other },
     },
@@ -322,6 +331,11 @@ function cloneContractStats(source: ContractStats): ContractStats {
           name,
           { ...value },
         ])
+      ),
+      foreigners: Object.fromEntries(
+        Object.entries(source.institutionByCategory.foreigners).map(
+          ([name, value]) => [name, { ...value }]
+        )
       ),
       comfort: Object.fromEntries(
         Object.entries(source.institutionByCategory.comfort).map(([name, value]) => [
@@ -366,6 +380,7 @@ function parseCategoryCounts(value: unknown): Record<Category, number> {
     auto: finiteNumber(row.auto),
     property: finiteNumber(row.property),
     travel: finiteNumber(row.travel),
+    foreigners: finiteNumber(row.foreigners),
     comfort: finiteNumber(row.comfort),
     other: finiteNumber(row.other),
   };
@@ -383,6 +398,7 @@ function parseCategoryMetrics(
     auto: parseAggregateMetrics(row.auto),
     property: parseAggregateMetrics(row.property),
     travel: parseAggregateMetrics(row.travel),
+    foreigners: parseAggregateMetrics(row.foreigners),
     comfort: parseAggregateMetrics(row.comfort),
     other: parseAggregateMetrics(row.other),
   };
@@ -416,6 +432,7 @@ function parseInstitutionByCategory(
     auto: parseInstitutionMetrics(row.auto),
     property: parseInstitutionMetrics(row.property),
     travel: parseInstitutionMetrics(row.travel),
+    foreigners: parseInstitutionMetrics(row.foreigners),
     comfort: parseInstitutionMetrics(row.comfort),
     other: parseInstitutionMetrics(row.other),
   };

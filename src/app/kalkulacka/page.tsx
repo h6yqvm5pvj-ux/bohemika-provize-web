@@ -58,6 +58,7 @@ import {
   getCoefficientSummary,
 } from "../lib/productFormulas";
 import { parseCppAutoPdf } from "../lib/parseCppAutoPdf";
+import { parseSlaviaAutoPdf } from "../lib/parseSlaviaAutoPdf";
 import { parseNeonPdf } from "../lib/parseNeonPdf";
 import { parseFlexiPdf } from "../lib/parseFlexiPdf";
 import { parseDomexPdf } from "../lib/parseDomexPdf";
@@ -176,7 +177,6 @@ const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
       "koopmajetekobcan",
       "maxdomov",
       "allianzmujdomov",
-      "cppsimplex",
     ],
   },
   {
@@ -196,7 +196,7 @@ const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
   {
     key: "entrepreneurs",
     title: "Podnikatele",
-    products: ["zamex", "cppPPRbez", "cppPPRs"],
+    products: ["zamex", "cppPPRbez", "cppPPRs", "cppsimplex"],
   },
   {
     key: "travel",
@@ -255,6 +255,13 @@ type ContractsMutationResponse = {
   error?: string;
   [key: string]: unknown;
 };
+
+type ContractNumberLiveCheckState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "ok" }
+  | { status: "duplicate"; count: number }
+  | { status: "error" };
 
 type ManagerSnapshotApiChainEntry = {
   email?: string | null;
@@ -1072,6 +1079,17 @@ export default function CalculatorPage() {
   const [contractSignedDate, setContractSignedDate] = useState<string>("");
   const [policyStartDate, setPolicyStartDate] = useState<string>("");
   const [contractNumber, setContractNumber] = useState<string>("");
+  const [autoCarMake, setAutoCarMake] = useState<string>("");
+  const [autoCarPlate, setAutoCarPlate] = useState<string>("");
+  const [autoCarVin, setAutoCarVin] = useState<string>("");
+  const [autoCarTp, setAutoCarTp] = useState<string>("");
+  const [autoCarOrv, setAutoCarOrv] = useState<string>("");
+  const [autoCarLiabilityLimit, setAutoCarLiabilityLimit] = useState<number | null>(null);
+  const [autoCarAddonGlass, setAutoCarAddonGlass] = useState(false);
+  const [autoCarAddonAnimalCollision, setAutoCarAddonAnimalCollision] = useState(false);
+  const [autoCarAddonAnimalDamage, setAutoCarAddonAnimalDamage] = useState(false);
+  const [autoCarAddonVandalism, setAutoCarAddonVandalism] = useState(false);
+  const [autoCarAddonKeyLossTheft, setAutoCarAddonKeyLossTheft] = useState(false);
   const [refreshOriginalOpen, setRefreshOriginalOpen] = useState(false);
   const [durationHelpOpen, setDurationHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1089,6 +1107,8 @@ export default function CalculatorPage() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [missingFields, setMissingFields] = useState<string[]>([]);
+  const [contractNumberLiveCheck, setContractNumberLiveCheck] =
+    useState<ContractNumberLiveCheckState>({ status: "idle" });
   const [duplicateModal, setDuplicateModal] = useState<{
     mode: "overwrite" | "saveAnyway";
     description: string;
@@ -1196,6 +1216,7 @@ export default function CalculatorPage() {
     () =>
       !tipsterModeEnabled &&
       (product === "cppAuto" ||
+        product === "slaviaauto" ||
         product === "neon" ||
         product === "flexi" ||
         product === "domex" ||
@@ -1568,6 +1589,66 @@ export default function CalculatorPage() {
     }
   }, [tipsterModeEnabled]);
 
+  useEffect(() => {
+    if (product !== "slaviaauto") {
+      setAutoCarMake("");
+      setAutoCarPlate("");
+      setAutoCarVin("");
+      setAutoCarTp("");
+      setAutoCarOrv("");
+      setAutoCarLiabilityLimit(null);
+      setAutoCarAddonGlass(false);
+      setAutoCarAddonAnimalCollision(false);
+      setAutoCarAddonAnimalDamage(false);
+      setAutoCarAddonVandalism(false);
+      setAutoCarAddonKeyLossTheft(false);
+    }
+  }, [product]);
+
+  useEffect(() => {
+    const trimmedContractNumber = contractNumber.trim();
+    if (!user || !trimmedContractNumber || trimmedContractNumber.length < 3 || endorsementDraft) {
+      setContractNumberLiveCheck({ status: "idle" });
+      return;
+    }
+
+    let canceled = false;
+    const timer = window.setTimeout(async () => {
+      setContractNumberLiveCheck({ status: "checking" });
+      try {
+        const email = (user.email ?? "").trim().toLowerCase();
+        if (!email) {
+          if (!canceled) setContractNumberLiveCheck({ status: "idle" });
+          return;
+        }
+
+        const userRef = doc(db, "users", email);
+        const entriesRef = collection(userRef, "entries");
+        const dupSnap = await getDocs(
+          query(entriesRef, where("contractNumber", "==", trimmedContractNumber))
+        );
+        if (canceled) return;
+
+        if (dupSnap.size > 0) {
+          setContractNumberLiveCheck({
+            status: "duplicate",
+            count: dupSnap.size,
+          });
+          return;
+        }
+        setContractNumberLiveCheck({ status: "ok" });
+      } catch (err) {
+        console.warn("Live kontrola duplicitního čísla smlouvy selhala", err);
+        if (!canceled) setContractNumberLiveCheck({ status: "error" });
+      }
+    }, 350);
+
+    return () => {
+      canceled = true;
+      window.clearTimeout(timer);
+    };
+  }, [user, contractNumber, endorsementDraft]);
+
   const setTipsterPercentDraft = (value: number): number => {
     const next = clampTipsterPercent(value);
     setTipsterPercent(next);
@@ -1620,9 +1701,23 @@ export default function CalculatorPage() {
     setPdfImporting(true);
     setPdfImportError(null);
     setPdfImportStatus("Načítám PDF…");
+    if (product === "slaviaauto") {
+      setAutoCarMake("");
+      setAutoCarPlate("");
+      setAutoCarVin("");
+      setAutoCarTp("");
+      setAutoCarOrv("");
+      setAutoCarLiabilityLimit(null);
+      setAutoCarAddonGlass(false);
+      setAutoCarAddonAnimalCollision(false);
+      setAutoCarAddonAnimalDamage(false);
+      setAutoCarAddonVandalism(false);
+      setAutoCarAddonKeyLossTheft(false);
+    }
     try {
       let parsed:
         | Awaited<ReturnType<typeof parseCppAutoPdf>>
+        | Awaited<ReturnType<typeof parseSlaviaAutoPdf>>
         | Awaited<ReturnType<typeof parseNeonPdf>>
         | Awaited<ReturnType<typeof parseFlexiPdf>>
         | Awaited<ReturnType<typeof parseDomexPdf>>
@@ -1632,6 +1727,8 @@ export default function CalculatorPage() {
 
       if (product === "cppAuto") {
         parsed = await parseCppAutoPdf(file);
+      } else if (product === "slaviaauto") {
+        parsed = await parseSlaviaAutoPdf(file);
       } else if (product === "neon") {
         parsed = await parseNeonPdf(file);
       } else if (product === "flexi") {
@@ -1644,7 +1741,7 @@ export default function CalculatorPage() {
         parsed = await parseComfortPdf(file);
       } else {
         setPdfImportError(
-          "Načítání z PDF je teď dostupné jen pro ČPP Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
+          "Načítání z PDF je teď dostupné jen pro ČPP Auto, SLAVIA Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
         );
         setPdfImportStatus(null);
         return;
@@ -1703,6 +1800,65 @@ export default function CalculatorPage() {
       ) {
         setMaxCizinKomplexVariant(parsed.maxCizinKomplexVariant);
         applied += 1;
+      }
+      if ("carMake" in parsed) {
+        const carMake = typeof parsed.carMake === "string" ? parsed.carMake.trim() : "";
+        setAutoCarMake(carMake);
+        if (carMake) applied += 1;
+      }
+      if ("carPlate" in parsed) {
+        const plate = typeof parsed.carPlate === "string" ? parsed.carPlate.trim() : "";
+        setAutoCarPlate(plate);
+        if (plate) applied += 1;
+      }
+      if ("carVin" in parsed) {
+        const vin = typeof parsed.carVin === "string" ? parsed.carVin.trim() : "";
+        setAutoCarVin(vin);
+        if (vin) applied += 1;
+      }
+      if ("carTp" in parsed) {
+        const tp = typeof parsed.carTp === "string" ? parsed.carTp.trim() : "";
+        setAutoCarTp(tp);
+        if (tp) applied += 1;
+      }
+      if ("carOrv" in parsed) {
+        const orv = typeof parsed.carOrv === "string" ? parsed.carOrv.trim() : "";
+        setAutoCarOrv(orv);
+        if (orv) applied += 1;
+      }
+      if ("carLiabilityLimit" in parsed) {
+        const liabilityLimit =
+          typeof parsed.carLiabilityLimit === "number" &&
+          Number.isFinite(parsed.carLiabilityLimit)
+            ? Math.round(parsed.carLiabilityLimit)
+            : null;
+        setAutoCarLiabilityLimit(liabilityLimit);
+        if (liabilityLimit != null) applied += 1;
+      }
+      if ("carAddonGlass" in parsed) {
+        const addon = parsed.carAddonGlass === true;
+        setAutoCarAddonGlass(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonAnimalCollision" in parsed) {
+        const addon = parsed.carAddonAnimalCollision === true;
+        setAutoCarAddonAnimalCollision(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonAnimalDamage" in parsed) {
+        const addon = parsed.carAddonAnimalDamage === true;
+        setAutoCarAddonAnimalDamage(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonVandalism" in parsed) {
+        const addon = parsed.carAddonVandalism === true;
+        setAutoCarAddonVandalism(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonKeyLossTheft" in parsed) {
+        const addon = parsed.carAddonKeyLossTheft === true;
+        setAutoCarAddonKeyLossTheft(addon);
+        if (addon) applied += 1;
       }
 
       if (applied === 0 && product !== "maxcizinkomplex") {
@@ -2561,6 +2717,19 @@ export default function CalculatorPage() {
             maxCizinKomplexVariant:
               product === "maxcizinkomplex" ? maxCizinKomplexVariant : null,
             contractNumber: trimmedContractNumber || null,
+            carMake: product === "slaviaauto" ? autoCarMake.trim() || null : null,
+            carPlate: product === "slaviaauto" ? autoCarPlate.trim() || null : null,
+            carVin: product === "slaviaauto" ? autoCarVin.trim() || null : null,
+            carTp: product === "slaviaauto" ? autoCarTp.trim() || null : null,
+            carOrv: product === "slaviaauto" ? autoCarOrv.trim() || null : null,
+            carLiabilityLimit: product === "slaviaauto" ? autoCarLiabilityLimit : null,
+            carAddonGlass: product === "slaviaauto" ? autoCarAddonGlass : null,
+            carAddonAnimalCollision:
+              product === "slaviaauto" ? autoCarAddonAnimalCollision : null,
+            carAddonAnimalDamage: product === "slaviaauto" ? autoCarAddonAnimalDamage : null,
+            carAddonVandalism: product === "slaviaauto" ? autoCarAddonVandalism : null,
+            carAddonKeyLossTheft:
+              product === "slaviaauto" ? autoCarAddonKeyLossTheft : null,
             isRefresh: shouldRefreshOriginalNeon,
             refreshOriginalContractNumber: null,
           },
@@ -2643,14 +2812,21 @@ export default function CalculatorPage() {
   const currentProductInstitutionId = productInstitutionIdFromCatalog(product);
   const activeProductPickerColumn =
     PRODUCT_PICKER_COLUMN_BY_KEY.get(productPickerSection) ?? PRODUCT_PICKER_COLUMNS[0];
+  const productPickerSearchQuery = normalizeProductPickerSearch(productSearchText);
+  const allProductPickerProducts = PRODUCT_PICKER_COLUMNS.flatMap((column) => column.products);
+  const isGlobalProductSearch = productPickerSearchQuery.length > 0;
   const filteredSectionProducts = (() => {
-    const query = normalizeProductPickerSearch(productSearchText);
-    if (!query) return activeProductPickerColumn.products;
+    const sourceProducts = isGlobalProductSearch
+      ? allProductPickerProducts
+      : activeProductPickerColumn.products;
+    if (!productPickerSearchQuery) return sourceProducts;
 
-    return activeProductPickerColumn.products.filter((productId) => {
+    return sourceProducts.filter((productId) => {
       const option = PRODUCT_OPTION_BY_ID.get(productId);
-      const haystack = normalizeProductPickerSearch(option?.label ?? productLabel(productId));
-      return haystack.includes(query);
+      const haystack = normalizeProductPickerSearch(
+        [option?.label ?? productLabel(productId), productInstitutionLabel(productId)].join(" ")
+      );
+      return haystack.includes(productPickerSearchQuery);
     });
   })();
   const durationHelp = durationTooltip(product);
@@ -3046,14 +3222,19 @@ export default function CalculatorPage() {
               <div className="px-5 pb-6 pt-5 sm:px-10">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h3 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-                    {activeProductPickerColumn.title}
+                    {isGlobalProductSearch
+                      ? "Výsledky hledání (všechny kategorie)"
+                      : activeProductPickerColumn.title}
                   </h3>
                   <span className="text-xs font-medium text-slate-500">
-                    {filteredSectionProducts.length} / {activeProductPickerColumn.products.length}
+                    {filteredSectionProducts.length} /{" "}
+                    {isGlobalProductSearch
+                      ? allProductPickerProducts.length
+                      : activeProductPickerColumn.products.length}
                   </span>
                 </div>
 
-                {activeProductPickerColumn.products.length === 0 ? (
+                {!isGlobalProductSearch && activeProductPickerColumn.products.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
                     {activeProductPickerColumn.emptyText ?? "Zatím bez produktů."}
                   </div>
@@ -3621,6 +3802,21 @@ export default function CalculatorPage() {
                   onChange={(e) => setContractNumber(e.target.value)}
                   placeholder=""
                 />
+                {contractNumberLiveCheck.status === "checking" && (
+                  <p className="text-[11px] text-slate-500">
+                    Kontroluji duplicitu čísla smlouvy…
+                  </p>
+                )}
+                {contractNumberLiveCheck.status === "duplicate" && (
+                  <p className="text-[11px] text-rose-700">
+                    Smlouva s tímto číslem už existuje ({contractNumberLiveCheck.count}×).
+                  </p>
+                )}
+                {contractNumberLiveCheck.status === "error" && (
+                  <p className="text-[11px] text-amber-700">
+                    Nepodařilo se ověřit duplicitu čísla smlouvy.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1">

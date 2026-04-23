@@ -83,6 +83,12 @@ type ContractDoc = {
   clientPhone?: string | null;
   clientAddress?: string | null;
   contractNumber?: string | null;
+  carMake?: string | null;
+  carPlate?: string | null;
+  carVin?: string | null;
+  carTp?: string | null;
+  carOrv?: string | null;
+  carLiabilityLimit?: number | null;
 
   createdAt?: FirestoreTimestamp | Date | string | number | null;
   contractSignedDate?: FirestoreTimestamp | Date | string | number | null;
@@ -189,6 +195,17 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "durationMonths",
   "maxCizinKomplexVariant",
   "contractNumber",
+  "carMake",
+  "carPlate",
+  "carVin",
+  "carTp",
+  "carOrv",
+  "carLiabilityLimit",
+  "carAddonGlass",
+  "carAddonAnimalCollision",
+  "carAddonAnimalDamage",
+  "carAddonVandalism",
+  "carAddonKeyLossTheft",
   "isRefresh",
   "refreshOriginalContractNumber",
   "rootContractEntryId",
@@ -307,6 +324,7 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carPlate",
   "carVin",
   "carTp",
+  "carOrv",
   "carLiabilityLimit",
   "carHullSumInsured",
   "carHullDeductible",
@@ -324,6 +342,7 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAddonReplacementCar",
   "carAddonLuggage",
   "carAddonPassengerInjury",
+  "carAddonKeyLossTheft",
   "neonDetail",
   "flexiDetail",
   "domexDetail",
@@ -345,6 +364,7 @@ const UPDATE_FIELDS_OPTIONAL_TEXT_FIELDS = new Set<string>([
   "carPlate",
   "carVin",
   "carTp",
+  "carOrv",
   "carAssistancePlan",
   "note",
 ]);
@@ -367,6 +387,7 @@ const UPDATE_FIELDS_OPTIONAL_BOOLEAN_FIELDS = new Set<string>([
   "carAddonReplacementCar",
   "carAddonLuggage",
   "carAddonPassengerInjury",
+  "carAddonKeyLossTheft",
 ]);
 const UPDATE_FIELDS_CONTRACT_CORE_KEYS = new Set<string>([
   "clientName",
@@ -838,6 +859,17 @@ type NormalizedCreateEntryPayload = {
   maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
   userEmail: string;
   contractNumber: string;
+  carMake: string | null;
+  carPlate: string | null;
+  carVin: string | null;
+  carTp: string | null;
+  carOrv: string | null;
+  carLiabilityLimit: number | null;
+  carAddonGlass: boolean | null;
+  carAddonAnimalCollision: boolean | null;
+  carAddonAnimalDamage: boolean | null;
+  carAddonVandalism: boolean | null;
+  carAddonKeyLossTheft: boolean | null;
   paid: boolean;
   managerEmailSnapshot: string | null;
   managerPositionSnapshot: Position | null;
@@ -897,6 +929,43 @@ const normalizeCreateEntryPayload = ({
   if (!isValidContractNumber(contractNumberParsed.value)) {
     return { ok: false, error: "Pole contractNumber má neplatný formát." };
   }
+  const carMakeParsed = parseOptionalTrimmedText(raw.carMake, "carMake", 120);
+  if (!carMakeParsed.ok) return carMakeParsed;
+  const carPlateParsed = parseOptionalTrimmedText(raw.carPlate, "carPlate", 40);
+  if (!carPlateParsed.ok) return carPlateParsed;
+  const carVinParsed = parseOptionalTrimmedText(raw.carVin, "carVin", 40);
+  if (!carVinParsed.ok) return carVinParsed;
+  const carTpParsed = parseOptionalTrimmedText(raw.carTp, "carTp", 40);
+  if (!carTpParsed.ok) return carTpParsed;
+  const carOrvParsed = parseOptionalTrimmedText(raw.carOrv, "carOrv", 40);
+  if (!carOrvParsed.ok) return carOrvParsed;
+  const carLiabilityLimitParsed = parseOptionalFiniteNumber(
+    raw.carLiabilityLimit,
+    "carLiabilityLimit"
+  );
+  if (!carLiabilityLimitParsed.ok) return carLiabilityLimitParsed;
+  const carAddonGlassParsed = parseOptionalBoolean(raw.carAddonGlass, "carAddonGlass");
+  if (!carAddonGlassParsed.ok) return carAddonGlassParsed;
+  const carAddonAnimalCollisionParsed = parseOptionalBoolean(
+    raw.carAddonAnimalCollision,
+    "carAddonAnimalCollision"
+  );
+  if (!carAddonAnimalCollisionParsed.ok) return carAddonAnimalCollisionParsed;
+  const carAddonAnimalDamageParsed = parseOptionalBoolean(
+    raw.carAddonAnimalDamage,
+    "carAddonAnimalDamage"
+  );
+  if (!carAddonAnimalDamageParsed.ok) return carAddonAnimalDamageParsed;
+  const carAddonVandalismParsed = parseOptionalBoolean(
+    raw.carAddonVandalism,
+    "carAddonVandalism"
+  );
+  if (!carAddonVandalismParsed.ok) return carAddonVandalismParsed;
+  const carAddonKeyLossTheftParsed = parseOptionalBoolean(
+    raw.carAddonKeyLossTheft,
+    "carAddonKeyLossTheft"
+  );
+  if (!carAddonKeyLossTheftParsed.ok) return carAddonKeyLossTheftParsed;
 
   const signedDateParsed = parseRequiredDateField(raw.contractSignedDate, "contractSignedDate");
   if (!signedDateParsed.ok) return signedDateParsed;
@@ -1061,6 +1130,17 @@ const normalizeCreateEntryPayload = ({
           : null,
       userEmail: ownerEmail,
       contractNumber: contractNumberParsed.value,
+      carMake: carMakeParsed.value,
+      carPlate: carPlateParsed.value,
+      carVin: carVinParsed.value,
+      carTp: carTpParsed.value,
+      carOrv: carOrvParsed.value,
+      carLiabilityLimit: carLiabilityLimitParsed.value,
+      carAddonGlass: carAddonGlassParsed.value,
+      carAddonAnimalCollision: carAddonAnimalCollisionParsed.value,
+      carAddonAnimalDamage: carAddonAnimalDamageParsed.value,
+      carAddonVandalism: carAddonVandalismParsed.value,
+      carAddonKeyLossTheft: carAddonKeyLossTheftParsed.value,
       paid: false,
       managerEmailSnapshot: null,
       managerPositionSnapshot: null,

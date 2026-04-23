@@ -95,7 +95,7 @@ export function CashflowAccordion({
                             <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
                               Měsíc
                             </div>
-                            <h3 className="text-[1.9rem] leading-none font-semibold tracking-tight text-slate-900 sm:text-[2.2rem]">
+                            <h3 className="text-[1.7rem] leading-none font-semibold tracking-tight text-slate-900 sm:text-[2rem]">
                               {month.label}
                             </h3>
                             <p className="mt-1.5 text-[15px] text-slate-600">

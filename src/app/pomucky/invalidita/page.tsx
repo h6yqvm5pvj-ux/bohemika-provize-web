@@ -338,6 +338,9 @@ export default function InvaliditaPage() {
                               <div className="mt-1 text-xs text-slate-500">
                                 Měsíční renta
                               </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {Math.round(activeScenario.ratios[idx] * 100)} % příjmu
+                              </div>
                             </div>
                             <div className="text-sm text-slate-900 sm:text-right">
                               <div className="text-xs text-slate-500">

@@ -851,6 +851,7 @@ export default function ContractDetailPage() {
   const [editCarPlate, setEditCarPlate] = useState("");
   const [editCarVin, setEditCarVin] = useState("");
   const [editCarTp, setEditCarTp] = useState("");
+  const [editCarOrv, setEditCarOrv] = useState("");
   const [editCarLiabilityLimit, setEditCarLiabilityLimit] = useState("");
   const [editCarHullSumInsured, setEditCarHullSumInsured] = useState("");
   const [editCarHullDeductible, setEditCarHullDeductible] = useState("");
@@ -868,6 +869,7 @@ export default function ContractDetailPage() {
   const [editCarAddonReplacementCar, setEditCarAddonReplacementCar] = useState(false);
   const [editCarAddonLuggage, setEditCarAddonLuggage] = useState(false);
   const [editCarAddonPassengerInjury, setEditCarAddonPassengerInjury] = useState(false);
+  const [editCarAddonKeyLossTheft, setEditCarAddonKeyLossTheft] = useState(false);
   const [editNeonVersion, setEditNeonVersion] = useState("");
   const [editNeonDeathType, setEditNeonDeathType] = useState("");
   const [editNeonDeathAmount, setEditNeonDeathAmount] = useState("");
@@ -976,6 +978,7 @@ export default function ContractDetailPage() {
     carPlate: editCarPlate,
     carVin: editCarVin,
     carTp: editCarTp,
+    carOrv: editCarOrv,
     carLiabilityLimit: editCarLiabilityLimit,
     carHullSumInsured: editCarHullSumInsured,
     carHullDeductible: editCarHullDeductible,
@@ -993,6 +996,7 @@ export default function ContractDetailPage() {
     carAddonReplacementCar: editCarAddonReplacementCar,
     carAddonLuggage: editCarAddonLuggage,
     carAddonPassengerInjury: editCarAddonPassengerInjury,
+    carAddonKeyLossTheft: editCarAddonKeyLossTheft,
   };
 
   const neonFields: NeonFields = {
@@ -1121,6 +1125,9 @@ export default function ContractDetailPage() {
         case "carTp":
           setEditCarTp(String(value));
           break;
+        case "carOrv":
+          setEditCarOrv(String(value));
+          break;
         case "carLiabilityLimit":
           setEditCarLiabilityLimit(String(value));
           break;
@@ -1171,6 +1178,9 @@ export default function ContractDetailPage() {
           break;
         case "carAddonPassengerInjury":
           setEditCarAddonPassengerInjury(Boolean(value));
+          break;
+        case "carAddonKeyLossTheft":
+          setEditCarAddonKeyLossTheft(Boolean(value));
           break;
         default:
           break;
@@ -1536,6 +1546,7 @@ export default function ContractDetailPage() {
     setEditCarPlate(contract.carPlate ?? "");
     setEditCarVin(contract.carVin ?? "");
     setEditCarTp(contract.carTp ?? "");
+    setEditCarOrv(contract.carOrv ?? "");
     setEditCarLiabilityLimit(
       contract.carLiabilityLimit != null && Number.isFinite(contract.carLiabilityLimit)
         ? String(contract.carLiabilityLimit)
@@ -1565,6 +1576,7 @@ export default function ContractDetailPage() {
     setEditCarAddonReplacementCar(!!contract.carAddonReplacementCar);
     setEditCarAddonLuggage(!!contract.carAddonLuggage);
     setEditCarAddonPassengerInjury(!!contract.carAddonPassengerInjury);
+    setEditCarAddonKeyLossTheft(!!contract.carAddonKeyLossTheft);
     setEditNeonVersion(contract.neonDetail?.version ?? "");
     setEditNeonDeathType(contract.neonDetail?.deathType ?? "");
     setEditNeonDeathAmount(
@@ -2036,6 +2048,7 @@ export default function ContractDetailPage() {
               carPlate: editCarPlate.trim() || null,
               carVin: editCarVin.trim() || null,
               carTp: editCarTp.trim() || null,
+              carOrv: editCarOrv.trim() || null,
               carLiabilityLimit: toNumberOrNull(editCarLiabilityLimit),
               carHullSumInsured: toNumberOrNull(editCarHullSumInsured),
               carHullDeductible: toNumberOrNull(editCarHullDeductible),
@@ -2053,12 +2066,14 @@ export default function ContractDetailPage() {
               carAddonReplacementCar: !!editCarAddonReplacementCar,
               carAddonLuggage: !!editCarAddonLuggage,
               carAddonPassengerInjury: !!editCarAddonPassengerInjury,
+              carAddonKeyLossTheft: !!editCarAddonKeyLossTheft,
             }
           : {
               carMake: null,
               carPlate: null,
               carVin: null,
               carTp: null,
+              carOrv: null,
               carLiabilityLimit: null,
               carHullSumInsured: null,
               carHullDeductible: null,
@@ -2076,6 +2091,7 @@ export default function ContractDetailPage() {
               carAddonReplacementCar: null,
               carAddonLuggage: null,
               carAddonPassengerInjury: null,
+              carAddonKeyLossTheft: null,
             };
 
       const domexUpdate =
@@ -2255,6 +2271,7 @@ export default function ContractDetailPage() {
                     carPlate: autoFields.carPlate,
                     carVin: autoFields.carVin,
                     carTp: autoFields.carTp,
+                    carOrv: autoFields.carOrv,
                     carLiabilityLimit: autoFields.carLiabilityLimit,
                     carHullSumInsured: autoFields.carHullSumInsured,
                     carHullDeductible: autoFields.carHullDeductible,
@@ -2272,6 +2289,7 @@ export default function ContractDetailPage() {
                     carAddonReplacementCar: autoFields.carAddonReplacementCar,
                     carAddonLuggage: autoFields.carAddonLuggage,
                     carAddonPassengerInjury: autoFields.carAddonPassengerInjury,
+                    carAddonKeyLossTheft: autoFields.carAddonKeyLossTheft,
                     neonDetail: neonUpdate.neonDetail,
                   }
                 : {
@@ -2279,6 +2297,7 @@ export default function ContractDetailPage() {
                     carPlate: null,
                     carVin: null,
                     carTp: null,
+                    carOrv: null,
                     carLiabilityLimit: null,
                     carHullSumInsured: null,
                     carHullDeductible: null,
@@ -2296,6 +2315,7 @@ export default function ContractDetailPage() {
                     carAddonReplacementCar: null,
                     carAddonLuggage: null,
                     carAddonPassengerInjury: null,
+                    carAddonKeyLossTheft: null,
                     neonDetail: neonUpdate.neonDetail,
                   }),
               ...(prod === "domex"

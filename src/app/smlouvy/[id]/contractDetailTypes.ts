@@ -81,6 +81,7 @@ export type ContractDoc = {
   carPlate?: string | null;
   carVin?: string | null;
   carTp?: string | null;
+  carOrv?: string | null;
   carLiabilityLimit?: number | null;
   carHullSumInsured?: number | null;
   carHullDeductible?: number | null;
@@ -98,6 +99,7 @@ export type ContractDoc = {
   carAddonReplacementCar?: boolean | null;
   carAddonLuggage?: boolean | null;
   carAddonPassengerInjury?: boolean | null;
+  carAddonKeyLossTheft?: boolean | null;
 
   domexDetail?: {
     address?: string | null;

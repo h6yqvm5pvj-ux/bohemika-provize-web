@@ -4,7 +4,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { Building2, ExternalLink, Map, MapPin, Search, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Building2,
+  CalendarClock,
+  ExternalLink,
+  Home,
+  Landmark,
+  Map,
+  MapPin,
+  Ruler,
+  Search,
+  Sparkles,
+  UserRound,
+  X,
+} from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "../firebase";
@@ -121,6 +135,80 @@ function formatEpochMsCs(v: any): string {
   const d = new Date(n);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("cs-CZ");
+}
+
+function parseDateCandidate(value: any): Date | null {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === "number") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  if (/^-?\d+$/.test(raw)) {
+    const n = Number(raw);
+    if (Number.isFinite(n)) {
+      const d = new Date(n);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+  }
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  const m = raw.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})$/);
+  if (m) {
+    const day = Number(m[1]);
+    const month = Number(m[2]);
+    const year = Number(m[3]);
+    const d = new Date(Date.UTC(year, month - 1, day));
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+
+  return null;
+}
+
+function wholeDaysBetween(from: Date, to: Date): number {
+  const fromUtc = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
+  const toUtc = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
+  return Math.floor((toUtc - fromUtc) / (24 * 60 * 60 * 1000));
+}
+
+function formatDateCs(value: Date): string {
+  return value.toLocaleDateString("cs-CZ");
+}
+
+function relativeDateLabel(value: Date): string {
+  const diffDays = wholeDaysBetween(value, new Date());
+  if (diffDays === 0) return "dnes";
+  if (diffDays > 0) return `před ${diffDays} dny`;
+  return `za ${Math.abs(diffDays)} dní`;
+}
+
+type DateInsightTone = "fresh" | "normal" | "warning";
+type DateInsight = {
+  key: string;
+  label: string;
+  date: Date;
+  hint: string;
+  tone: DateInsightTone;
+};
+
+function dateInsightToneClass(tone: DateInsightTone): string {
+  switch (tone) {
+    case "fresh":
+      return "border-emerald-300 bg-emerald-50";
+    case "warning":
+      return "border-amber-300 bg-amber-50";
+    default:
+      return "border-slate-300 bg-white";
+  }
 }
 
 function formatParcelaFromDef(p: any): string | undefined {
@@ -270,14 +358,32 @@ function Field({
   right?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3">
+    <div className="px-1 py-2">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
-          <div className="text-[11px] uppercase tracking-wider text-slate-500">{label}</div>
-          <div className="text-sm text-slate-900">{value}</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</div>
+          <div className="text-sm font-semibold text-slate-900">{value}</div>
         </div>
-        {right ? <div className="text-[11px] text-slate-500">{right}</div> : null}
+        {right ? <div className="text-[11px] font-medium text-slate-500">{right}</div> : null}
       </div>
+    </div>
+  );
+}
+
+function SummaryPill({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[11px] text-slate-100">
+      <Icon className="h-3.5 w-3.5 opacity-90" />
+      <span className="font-semibold text-slate-200">{label}:</span>
+      <span className="font-semibold text-white">{value}</span>
     </div>
   );
 }
@@ -523,6 +629,59 @@ export default function CuzkPage() {
   const jednotky = Array.isArray(obj?.jednotky) ? obj.jednotky : [];
   const parcels = useMemo(() => extractParcels(obj), [obj]);
   const adresniMista = useMemo(() => extractAdresniMista(obj), [obj]);
+  const dateInsights = useMemo(() => {
+    const out: DateInsight[] = [];
+    const now = new Date();
+
+    const aktualnost = parseDateCandidate(obj?.aktualnostDatK);
+    if (aktualnost) {
+      const ageDays = wholeDaysBetween(aktualnost, now);
+      out.push({
+        key: "aktualnost",
+        label: "Aktuálnost dat",
+        date: aktualnost,
+        hint:
+          ageDays >= 0
+            ? ageDays === 0
+              ? "Data jsou aktualizována dnes."
+              : `Data jsou stará ${ageDays} dní.`
+            : `Datum je ${Math.abs(ageDays)} dní v budoucnu.`,
+        tone: ageDays <= 2 ? "fresh" : ageDays <= 14 ? "normal" : "warning",
+      });
+    }
+
+    const platiOd = parseDateCandidate(ruianStavebniObjekt?.platiod);
+    if (platiOd) {
+      const years = Math.max(0, Math.floor(wholeDaysBetween(platiOd, now) / 365.25));
+      out.push({
+        key: "platiOd",
+        label: "Platí od",
+        date: platiOd,
+        hint: `Evidence je v tomto režimu ${years} let.`,
+        tone: "normal",
+      });
+    }
+
+    const dokonceni = parseDateCandidate(ruianStavebniObjekt?.dokonceni);
+    if (dokonceni) {
+      const years = Math.max(0, Math.floor(wholeDaysBetween(dokonceni, now) / 365.25));
+      out.push({
+        key: "dokonceni",
+        label: "Datum dokončení",
+        date: dokonceni,
+        hint: `Stavba je přibližně ${years} let stará.`,
+        tone: years >= 80 ? "warning" : "normal",
+      });
+    }
+
+    return out.sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [obj?.aktualnostDatK, ruianStavebniObjekt?.platiod, ruianStavebniObjekt?.dokonceni]);
+  const summaryAddress = safeStr(obj?.match?.adresa ?? addressQuery);
+  const summaryRuianCode = safeStr(obj?.match?.kod);
+  const summaryBuildingCode = safeStr(
+    ruianStavebniObjekt?.kod ?? obj?.match?.stavebniobjekt ?? stavba?.id
+  );
+  const summaryOwner = safeStr(obj?.forUser ?? obj?.user ?? obj?.email);
 
   const marushkaUrl = useMemo(() => {
     // Maruška deep-link podle stavebního objektu (SO)
@@ -852,10 +1011,12 @@ export default function CuzkPage() {
         </div>
 
         {/* Výsledek */}
-        <section className="relative z-0 rounded-3xl border border-slate-200 bg-white px-5 py-5 space-y-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+        <section className="relative z-0 rounded-2xl bg-white px-5 py-5 space-y-6">
           <div className="flex items-center justify-between gap-3">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-              <Building2 className="h-4 w-4 text-slate-600" />
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100">
+                <Building2 className="h-4 w-4 text-slate-700" />
+              </span>
               <span>Výsledek</span>
             </h2>
             <div className="flex items-center gap-2">
@@ -863,7 +1024,7 @@ export default function CuzkPage() {
                 <button
                   type="button"
                   onClick={() => setShowJson((s) => !s)}
-                  className="text-[11px] rounded-full border border-slate-300 bg-white px-3 py-1 text-slate-800 transition hover:bg-slate-100"
+                  className="text-[11px] rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
                   {showJson ? "Skrýt JSON" : "Zobrazit JSON"}
                 </button>
@@ -872,20 +1033,105 @@ export default function CuzkPage() {
           </div>
 
           {loading ? (
-            <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800">Načítám data…</div>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800">Načítám data…</div>
           ) : !hasAnyResult ? (
-            <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
+            <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
               Zatím nic nezobrazuji. Zadej adresu a klikni na „Vyhledat adresu“.
             </div>
           ) : (
             <>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Aktuálnost dat k" value={formatDateTimeCs(obj?.aktualnostDatK)} />
-                <Field label="Pro uživatele" value={safeStr(obj?.forUser ?? obj?.user ?? obj?.email)} />
+              <div className="rounded-2xl bg-slate-900 px-4 py-4 text-white sm:px-5">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="space-y-2">
+                    <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-200">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Přehled nemovitosti
+                    </div>
+                    <div className="text-lg font-bold leading-tight text-white sm:text-xl">{summaryAddress}</div>
+                    <div className="text-[12px] text-slate-300">
+                      Detail z RÚIAN s technickými údaji a vazbami na parcelu.
+                    </div>
+                  </div>
+
+                  <div className="hidden shrink-0 lg:block">
+                    <Image
+                      src="/icons/icon_domex.png"
+                      alt="Ilustrace nemovitosti"
+                      width={140}
+                      height={96}
+                      className="h-20 w-auto opacity-90 drop-shadow-[0_8px_14px_rgba(2,6,23,0.35)]"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <SummaryPill icon={MapPin} label="RÚIAN adresa" value={summaryRuianCode} />
+                  <SummaryPill icon={Building2} label="Stavba" value={summaryBuildingCode} />
+                  <SummaryPill icon={Ruler} label="Parcely" value={`${parcels.length}`} />
+                  <SummaryPill icon={UserRound} label="Uživatel" value={summaryOwner} />
+                </div>
+              </div>
+
+              {dateInsights.length > 0 ? (
+                <div className="space-y-3 border-t border-slate-200 pt-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <CalendarClock className="h-4 w-4 text-sky-700" />
+                      Časová osa dat
+                    </div>
+                    <div className="text-[11px] font-semibold text-slate-500">
+                      RÚIAN / ČÚZK
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {dateInsights.map((item) => (
+                      <div
+                        key={item.key}
+                        className={`rounded-xl px-3 py-2.5 ${dateInsightToneClass(item.tone)}`}
+                      >
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">{item.label}</div>
+                        <div className="mt-1 text-sm font-bold text-slate-900">{formatDateCs(item.date)}</div>
+                        <div className="mt-1 text-[12px] text-slate-700">{item.hint}</div>
+                        <div className="mt-0.5 text-[11px] text-slate-500">{relativeDateLabel(item.date)}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {dateInsights.length > 1 ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                        {dateInsights.map((item, idx) => (
+                          <span key={`line-${item.key}`} className="inline-flex items-center gap-2">
+                            <span className="inline-flex h-2 w-2 rounded-full bg-slate-400" />
+                            <span className="font-medium text-slate-700">{item.label}:</span>
+                            <span>{formatDateCs(item.date)}</span>
+                            {idx < dateInsights.length - 1 ? (
+                              <span className="text-slate-400">→</span>
+                            ) : null}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="space-y-3 border-t border-slate-200 pt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <Sparkles className="h-4 w-4 text-slate-700" />
+                    Metadata odpovědi
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Aktuálnost dat k" value={formatDateTimeCs(obj?.aktualnostDatK)} />
+                  <Field label="Pro uživatele" value={summaryOwner} />
+                </div>
               </div>
 
               {showJson ? (
-                <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-[11px] text-slate-800 space-y-1">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-800 space-y-1">
                   <div>
                     <span className="text-slate-500">gmapsEmbedUrl:</span> {gmapsEmbedUrl ? gmapsEmbedUrl : "—"}
                   </div>
@@ -899,13 +1145,18 @@ export default function CuzkPage() {
               ) : null}
 
               {gmapsEmbedUrl ? (
-                <div className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3">
+                <div className="space-y-3 border-t border-slate-200 pt-4">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-slate-900">Náhled mapy</div>
-                    <div className="text-[11px] text-slate-500">Google Maps</div>
+                    <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <Map className="h-4 w-4 text-sky-700" />
+                      Náhled mapy
+                    </div>
+                    <div className="text-[11px] font-semibold text-slate-500">
+                      Google Maps
+                    </div>
                   </div>
 
-                  <div className="overflow-hidden rounded-2xl border border-slate-300 bg-white">
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                     <iframe
                       key={gmapsEmbedUrl}
                       title="Náhled mapy"
@@ -924,7 +1175,7 @@ export default function CuzkPage() {
                   </div>
 
                   {gmapsEmbedError ? (
-                    <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-500/60 rounded-xl px-3 py-2">
+                    <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
                       {gmapsEmbedError}
                     </div>
                   ) : null}
@@ -938,13 +1189,18 @@ export default function CuzkPage() {
 
 
 
-              <div className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3">
+              <div className="space-y-3 border-t border-slate-200 pt-4">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-slate-900">Stavba</div>
-                  <div className="text-[11px] text-slate-500">ID: {safeStr(stavba?.id)}</div>
+                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <Home className="h-4 w-4 text-slate-700" />
+                    Stavba
+                  </div>
+                  <div className="text-[11px] font-semibold text-slate-500">
+                    ID: {safeStr(stavba?.id)}
+                  </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
                   <Field label="Typ stavby" value={safeStr(stavba?.typStavby?.nazev ?? stavba?.typStavby)} />
                   <Field
                     label="Způsob využití"
@@ -978,13 +1234,18 @@ export default function CuzkPage() {
               </div>
 
               {ruianStavebniObjekt ? (
-                <div className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3">
+                <div className="space-y-3 border-t border-slate-200 pt-4">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-slate-900">Stavební objekt (RÚIAN) – technicko‑ekonomické atributy</div>
-                    <div className="text-[11px] text-slate-500">Kód: {safeStr(ruianStavebniObjekt?.kod)}</div>
+                    <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <Landmark className="h-4 w-4 text-emerald-700" />
+                      Stavební objekt (RÚIAN) – technicko‑ekonomické atributy
+                    </div>
+                    <div className="text-[11px] font-semibold text-slate-500">
+                      Kód: {safeStr(ruianStavebniObjekt?.kod)}
+                    </div>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
                     <Field label="ISKN budova ID" value={safeStr(ruianStavebniObjekt?.isknbudovaid)} />
                     <Field label="Identifikační parcela (ID)" value={safeStr(ruianStavebniObjekt?.identifikacniparcela)} />
 
@@ -1021,15 +1282,6 @@ export default function CuzkPage() {
                     />
                     <Field label="Druh konstrukce (kód)" value={safeStr(ruianStavebniObjekt?.druhkonstrukcekod)} />
 
-                    <Field label="Připojení kanalizace (kód)" value={safeStr(ruianStavebniObjekt?.pripojenikanalizacekod)} />
-                    <Field label="Připojení vodovod (kód)" value={safeStr(ruianStavebniObjekt?.pripojenivodovodkod)} />
-
-                    <Field label="Připojení plyn (kód)" value={safeStr(ruianStavebniObjekt?.pripojeniplynkod)} />
-                    <Field label="Vybavení výtahem (kód)" value={safeStr(ruianStavebniObjekt?.vybavenivytahemkod)} />
-
-                    <Field label="Způsob vytápění (kód)" value={safeStr(ruianStavebniObjekt?.zpusobvytapenikod)} />
-                    <Field label="Zdroj" value={safeStr(ruianStavebniObjekt?.zdroj)} />
-
                     <Field
                       label="Plocha geometrie (ST_Area)"
                       value={
@@ -1050,27 +1302,40 @@ export default function CuzkPage() {
                 </div>
               ) : null}
 
-              <div className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3">
+              <div className="space-y-3 border-t border-slate-200 pt-4">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-slate-900">Parcely / pozemky</div>
-                  <div className="text-[11px] text-slate-500">{parcels.length ? `${parcels.length} položek` : "—"}</div>
+                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <Ruler className="h-4 w-4 text-amber-700" />
+                    Parcely / pozemky
+                  </div>
+                  <div className="text-[11px] font-semibold text-slate-500">
+                    {parcels.length ? `${parcels.length} položek` : "—"}
+                  </div>
                 </div>
 
                 {parcels.length ? (
-                  <div className="space-y-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1">
                     {parcels.map((p, idx) => (
                       <div
                         key={`${p.id ?? p.parcela ?? "p"}-${idx}`}
-                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3"
+                        className="border-b border-slate-200 px-1 py-3 last:border-b-0"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="text-sm text-slate-900">
                             <span className="font-semibold">Parcela:</span> {p.parcela ? p.parcela : "—"}
                             {p.typParcely ? <span className="text-slate-500"> ({p.typParcely})</span> : null}
                           </div>
-                          <div className="text-[11px] text-slate-500">
-                            {p.katUzemi ? `KÚ: ${p.katUzemi}` : ""}
-                            {p.lv != null ? ` • LV: ${p.lv}` : ""}
+                          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                            {p.katUzemi ? (
+                              <span className="rounded-full bg-white px-2 py-0.5 text-slate-700">
+                                KÚ: {p.katUzemi}
+                              </span>
+                            ) : null}
+                            {p.lv != null ? (
+                              <span className="rounded-full bg-white px-2 py-0.5 text-slate-700">
+                                LV: {p.lv}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
 
@@ -1101,68 +1366,80 @@ export default function CuzkPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
                     Parcely/výměra se v téhle odpovědi nenašly.
                   </div>
                 )}
               </div>
 
-              <div className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3">
+              <div className="space-y-3 border-t border-slate-200 pt-4">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-slate-900">Adresní místa</div>
-                  <div className="text-[11px] text-slate-500">{adresniMista.length ? `${adresniMista.length} položek` : "—"}</div>
+                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <MapPin className="h-4 w-4 text-sky-700" />
+                    Adresní místa
+                  </div>
+                  <div className="text-[11px] font-semibold text-slate-500">
+                    {adresniMista.length ? `${adresniMista.length} položek` : "—"}
+                  </div>
                 </div>
 
                 {adresniMista.length ? (
-                  <div className="space-y-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1">
                     {adresniMista.map((a, idx) => (
                       <div
                         key={`${a.adresa}-${a.ruian ?? "x"}-${idx}`}
-                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3"
+                        className="border-b border-slate-200 px-1 py-3 last:border-b-0"
                       >
                         <div className="text-sm text-slate-900">{a.adresa}</div>
-                        <div className="text-[11px] text-slate-500">
-                          RÚIAN: <span className="text-slate-800">{a.ruian != null ? a.ruian : "—"}</span>
+                        <div className="mt-1 text-[11px] text-slate-500">
+                          <span className="rounded-full bg-white px-2 py-0.5 text-slate-700">
+                            RÚIAN: {a.ruian != null ? a.ruian : "—"}
+                          </span>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
                     Žádné adresní místo v odpovědi.
                   </div>
                 )}
               </div>
 
-              <div className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3">
+              <div className="space-y-3 border-t border-slate-200 pt-4">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-slate-900">Jednotky</div>
-                  <div className="text-[11px] text-slate-500">{jednotky.length ? `${jednotky.length} ks` : "0 ks"}</div>
+                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <Building2 className="h-4 w-4 text-indigo-700" />
+                    Jednotky
+                  </div>
+                  <div className="text-[11px] font-semibold text-slate-500">
+                    {jednotky.length ? `${jednotky.length} ks` : "0 ks"}
+                  </div>
                 </div>
 
                 {jednotky.length ? (
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
                     {jednotky.slice(0, 8).map((j: any, idx: number) => (
                       <div
                         key={`${j?.id ?? "j"}-${idx}`}
-                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3"
+                        className="rounded-lg bg-white px-3 py-2.5"
                       >
                         <div className="text-sm text-slate-900">Jednotka ID: {safeStr(j?.id)}</div>
-                        <div className="text-[12px] text-slate-600">
+                        <div className="mt-1 text-[12px] text-slate-600">
                           {j?.typJednotky?.nazev ? `Typ: ${j.typJednotky.nazev}` : "Typ: —"}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
                     Žádné jednotky nejsou k dispozici.
                   </div>
                 )}
               </div>
 
               {showJson && (
-                <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 overflow-x-auto">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 overflow-x-auto">
                   <pre className="whitespace-pre-wrap break-all font-mono text-xs text-slate-900">
                     {JSON.stringify(result, null, 2)}
                   </pre>
