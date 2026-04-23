@@ -165,6 +165,13 @@ type ContractsResponse = {
   teamNextCursorToken?: string | null;
 };
 
+type ContractsFindResponse = {
+  ok: true;
+  scope: "my" | "team";
+  query: string;
+  contracts: ContractResponseItem[];
+};
+
 type ErrorResponse = { ok: false; error: string };
 type UserNode = {
   email: string;
@@ -3822,6 +3829,136 @@ export async function handleContractsGet(
   };
 
   return withGetRateLimitHeaders(NextResponse.json(response));
+}
+
+export async function handleContractsFind(req: NextRequest) {
+  const ctx = await getAuthContext(req, {
+    requireKnownUser: true,
+    requireActiveSubscription: true,
+  });
+  if ("error" in ctx) {
+    return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
+  }
+
+  const { email, teamEmails } = ctx;
+  const rateLimitResult = consumeRateLimit({
+    namespace: "api:contracts:find",
+    key: email,
+    limit: CONTRACTS_GET_RATE_LIMIT,
+    windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!rateLimitResult.allowed) {
+    const response = NextResponse.json(
+      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
+      { status: 429 }
+    );
+    applyRateLimitHeaders(response.headers, rateLimitResult);
+    return response;
+  }
+  const withFindRateLimitHeaders = (response: NextResponse) => {
+    applyRateLimitHeaders(response.headers, rateLimitResult);
+    return response;
+  };
+
+  const search = req.nextUrl.searchParams;
+  const queryRaw = (search.get("q") ?? "").trim();
+  if (!queryRaw) {
+    return NextResponse.json(
+      { ok: false, error: "Chybí parametr q." } satisfies ErrorResponse,
+      { status: 400 }
+    );
+  }
+
+  const scope: "my" | "team" = search.get("scope") === "team" ? "team" : "my";
+  if (scope === "team" && teamEmails.length === 0) {
+    return NextResponse.json(
+      { ok: false, error: "Nemáš práva pro zobrazení týmových smluv." } satisfies ErrorResponse,
+      { status: 403 }
+    );
+  }
+
+  const normalizedContractNumber = normalizeContractNumber(queryRaw);
+  if (!normalizedContractNumber) {
+    const emptyResponse: ContractsFindResponse = {
+      ok: true,
+      scope,
+      query: queryRaw,
+      contracts: [],
+    };
+    return withFindRateLimitHeaders(NextResponse.json(emptyResponse));
+  }
+
+  const allowedOwners =
+    scope === "team"
+      ? new Set(teamEmails.map((owner) => normalizeEmail(owner)))
+      : new Set([normalizeEmail(email)]);
+
+  let entryRefs: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[];
+  try {
+    entryRefs = await resolveEntryRefsByContractNumber(queryRaw);
+  } catch (err) {
+    console.error("GET /api/contracts/find: resolveEntryRefsByContractNumber selhalo:", err);
+    return NextResponse.json(
+      { ok: false, error: "Nepodařilo se dohledat smlouvu podle čísla." } satisfies ErrorResponse,
+      { status: 500 }
+    );
+  }
+
+  const contracts: ContractResponseItem[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const ref of entryRefs) {
+    const ownerFromPath = normalizeEmail(ref.path.split("/")[1] ?? "");
+    if (!ownerFromPath || !allowedOwners.has(ownerFromPath)) continue;
+
+    try {
+      const snap = await ref.get();
+      if (!snap.exists) continue;
+      const contract = snap.data() as ContractDoc;
+      if (normalizeContractNumber(contract.contractNumber ?? null) !== normalizedContractNumber) {
+        continue;
+      }
+      if (
+        !hasContractAccess({
+          viewerEmail: email,
+          teamEmails,
+          ownerEmail: ownerFromPath,
+          contract,
+        })
+      ) {
+        continue;
+      }
+
+      const itemKey = `${ownerFromPath}___${snap.id}`;
+      if (seenKeys.has(itemKey)) continue;
+      seenKeys.add(itemKey);
+      contracts.push(toContractResponseItem(snap.id, ownerFromPath, contract));
+    } catch (entryErr) {
+      console.warn("GET /api/contracts/find: načtení entry selhalo:", ref.path, entryErr);
+    }
+  }
+
+  contracts.sort((a, b) => {
+    const da = contractSortDate(a);
+    const db = contractSortDate(b);
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    const diff = db.getTime() - da.getTime();
+    if (diff !== 0) return diff;
+    const keyA = responseCursorKey(a);
+    const keyB = responseCursorKey(b);
+    if (keyA === keyB) return 0;
+    return keyA > keyB ? -1 : 1;
+  });
+
+  const response: ContractsFindResponse = {
+    ok: true,
+    scope,
+    query: queryRaw,
+    contracts,
+  };
+  return withFindRateLimitHeaders(NextResponse.json(response));
 }
 
 export async function handleContractsCreate(req: NextRequest) {

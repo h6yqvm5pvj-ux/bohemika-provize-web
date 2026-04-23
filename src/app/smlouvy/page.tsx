@@ -428,6 +428,14 @@ type ContractsApiResponse = {
   teamNextCursor?: number | null;
 };
 
+type ContractsFindApiResponse = {
+  ok: boolean;
+  error?: string;
+  scope?: "my" | "team";
+  query?: string;
+  contracts?: (ContractDoc & { adviserEmail: string | null })[];
+};
+
 const CONTRACTS_CACHE_KEY = "contracts_cache_v2";
 const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 const CONTRACTS_VIEW_STATE_KEY = "contracts_view_state_v1";
@@ -596,6 +604,9 @@ function ContractsPageContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [autoScanPaused, setAutoScanPaused] = useState(false);
+  const [searchFallbackContracts, setSearchFallbackContracts] = useState<DisplayedContract[]>([]);
+  const [searchFallbackLoading, setSearchFallbackLoading] = useState(false);
+  const searchFallbackRequestRef = useRef(0);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -1129,8 +1140,35 @@ function ContractsPageContent() {
     selectedInstitutions,
   ]);
 
+  const effectiveFilteredContracts = useMemo(() => {
+    if (!hasSearchQuery) return filteredContracts;
+    if (filteredContracts.length > 0) return filteredContracts;
+    if (searchFallbackContracts.length === 0) return filteredContracts;
+
+    const fallbackBase = showUnpaidOnly
+      ? searchFallbackContracts.filter(
+          (c) => c.paid !== true && !isContractStorno(c) && !isContractDozita(c)
+        )
+      : searchFallbackContracts;
+
+    return fallbackBase.filter((c) =>
+      productMatchesFilters(
+        c.productKey as Product | undefined,
+        selectedCategories,
+        selectedInstitutions
+      )
+    );
+  }, [
+    hasSearchQuery,
+    filteredContracts,
+    searchFallbackContracts,
+    showUnpaidOnly,
+    selectedCategories,
+    selectedInstitutions,
+  ]);
+
   const virtualizedContracts = useMemo(() => {
-    const total = filteredContracts.length;
+    const total = effectiveFilteredContracts.length;
     const enabled =
       total > CONTRACT_LIST_WINDOWING_THRESHOLD &&
       contractsWindowMetrics.viewportHeight > 0;
@@ -1140,7 +1178,7 @@ function ContractsPageContent() {
         enabled: false,
         topPadding: 0,
         bottomPadding: 0,
-        items: filteredContracts,
+        items: effectiveFilteredContracts,
       };
     }
 
@@ -1171,9 +1209,9 @@ function ContractsPageContent() {
       enabled: true,
       topPadding,
       bottomPadding,
-      items: filteredContracts.slice(startIndex, endExclusive),
+      items: effectiveFilteredContracts.slice(startIndex, endExclusive),
     };
-  }, [filteredContracts, contractsWindowMetrics, contractsColumns]);
+  }, [effectiveFilteredContracts, contractsWindowMetrics, contractsColumns]);
 
   const listTransitionSignature = useMemo(
     () =>
@@ -1259,7 +1297,7 @@ function ContractsPageContent() {
       window.removeEventListener("scroll", onWindowChange);
       window.removeEventListener("resize", onWindowChange);
     };
-  }, [filteredContracts.length, showTeam, filterMode]);
+  }, [effectiveFilteredContracts.length, showTeam, filterMode]);
 
   const handleLoadMore = useCallback(async () => {
     if (loadingMore) return;
@@ -1310,9 +1348,8 @@ function ContractsPageContent() {
     (isFilterPending || loadingMore || hasMoreActive);
   const isSearchLoading =
     hasSearchQuery &&
-    filteredContracts.length === 0 &&
-    (loadingMore || hasMoreActive) &&
-    !autoScanPaused;
+    effectiveFilteredContracts.length === 0 &&
+    (((loadingMore || hasMoreActive) && !autoScanPaused) || searchFallbackLoading);
 
   const persistContractsViewState = useCallback(() => {
     if (!normalizedUserEmail) return;
@@ -1365,7 +1402,7 @@ function ContractsPageContent() {
       }
     });
     return () => window.cancelAnimationFrame(raf);
-  }, [loading, loadingMore, hasMoreActive, filteredContracts.length]);
+  }, [loading, loadingMore, hasMoreActive, effectiveFilteredContracts.length]);
 
   useEffect(() => {
     if (!wantsFullScan) return;
@@ -1384,6 +1421,128 @@ function ContractsPageContent() {
     showTeam,
     canShowTeamToggle,
     handleLoadMore,
+  ]);
+
+  useEffect(() => {
+    if (!user) {
+      setSearchFallbackContracts([]);
+      setSearchFallbackLoading(false);
+      return;
+    }
+    if (!hasSearchQuery) {
+      setSearchFallbackContracts([]);
+      setSearchFallbackLoading(false);
+      return;
+    }
+
+    const compactQuery = normalizeContractNumberForSearch(searchText);
+    if (compactQuery.length < 5) {
+      setSearchFallbackContracts([]);
+      setSearchFallbackLoading(false);
+      return;
+    }
+
+    if (filteredContracts.length > 0) {
+      setSearchFallbackContracts([]);
+      setSearchFallbackLoading(false);
+      return;
+    }
+
+    if (loading || loadingMore) {
+      setSearchFallbackContracts([]);
+      setSearchFallbackLoading(false);
+      return;
+    }
+
+    if (!autoScanPaused && hasMoreActive) {
+      setSearchFallbackContracts([]);
+      setSearchFallbackLoading(false);
+      return;
+    }
+
+    const requestId = searchFallbackRequestRef.current + 1;
+    searchFallbackRequestRef.current = requestId;
+    const scope: "my" | "team" =
+      showTeam && canShowTeamToggle ? "team" : "my";
+    const rawQuery = searchText.trim();
+
+    if (!rawQuery) {
+      setSearchFallbackContracts([]);
+      setSearchFallbackLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSearchFallbackContracts([]);
+    setSearchFallbackLoading(true);
+
+    const timer = window.setTimeout(() => {
+      (async () => {
+        try {
+          const token = await user.getIdToken();
+          const params = new URLSearchParams({
+            scope,
+            q: rawQuery,
+          });
+          const res = await fetch(`/api/contracts/find?${params.toString()}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = (await res.json()) as ContractsFindApiResponse;
+          if (cancelled || searchFallbackRequestRef.current !== requestId) return;
+          if (!res.ok || data.ok === false) {
+            setSearchFallbackContracts([]);
+            return;
+          }
+
+          const mapped: DisplayedContract[] = (data.contracts ?? []).map((contract) => {
+            const normalizedClient = normalizeSearchValue(contract.clientName);
+            const normalizedContract = normalizeSearchValue(contract.contractNumber);
+            const compactContract = normalizeContractNumberForSearch(
+              contract.contractNumber
+            );
+            return {
+              ...contract,
+              groupedEntryCount: Number(contract.groupedEntryCount ?? 1),
+              groupedEndorsementCount: Number(
+                contract.groupedEndorsementCount ??
+                  (contract.entryType === "endorsement" ? 1 : 0)
+              ),
+              searchClientTokens:
+                normalizedClient.length > 0 ? [normalizedClient] : [],
+              searchContractTokens:
+                normalizedContract.length > 0 ? [normalizedContract] : [],
+              searchContractCompactTokens:
+                compactContract.length > 0 ? [compactContract] : [],
+            } satisfies DisplayedContract;
+          });
+          setSearchFallbackContracts(mapped);
+        } catch (err) {
+          if (cancelled || searchFallbackRequestRef.current !== requestId) return;
+          console.warn("Fallback vyhledání smlouvy selhalo:", err);
+          setSearchFallbackContracts([]);
+        } finally {
+          if (!cancelled && searchFallbackRequestRef.current === requestId) {
+            setSearchFallbackLoading(false);
+          }
+        }
+      })();
+    }, 200);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    user,
+    hasSearchQuery,
+    searchText,
+    filteredContracts.length,
+    loading,
+    loadingMore,
+    autoScanPaused,
+    hasMoreActive,
+    showTeam,
+    canShowTeamToggle,
   ]);
 
   useEffect(() => {
@@ -1702,7 +1861,7 @@ function ContractsPageContent() {
             <p className="mt-4 text-sm text-slate-600">
               Načítám smlouvy…
             </p>
-          ) : isAnniversaryLoading && filteredContracts.length === 0 ? (
+          ) : isAnniversaryLoading && effectiveFilteredContracts.length === 0 ? (
             <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
               <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
               <p className="font-medium">Vyhledávám blížící se výročí…</p>
@@ -1718,7 +1877,7 @@ function ContractsPageContent() {
                 Procházím další stránky smluv, může to chvíli trvat.
               </p>
             </div>
-          ) : filteredContracts.length === 0 ? (
+          ) : effectiveFilteredContracts.length === 0 ? (
             <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
               {anniversaryModeActive ? (
                 <>
