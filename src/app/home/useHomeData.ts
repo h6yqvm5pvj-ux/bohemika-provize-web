@@ -63,6 +63,8 @@ type HomeCachePayload = {
   hasTeam: boolean;
   myContractsCount: number;
   myImmediateSum: number;
+  myTipContractsCount: number;
+  myTipImmediateSum: number;
   teamContractsCount: number;
   teamImmediateSum: number;
 };
@@ -75,6 +77,8 @@ export type HomeDataState = {
   hasTeam: boolean;
   myContractsCount: number;
   myImmediateSum: number;
+  myTipContractsCount: number;
+  myTipImmediateSum: number;
   teamContractsCount: number;
   teamImmediateSum: number;
   loading: boolean;
@@ -93,6 +97,23 @@ type ContractsApiResponse = {
   hasTeam?: boolean;
   teamEmails?: string[];
   contracts?: (EntryDoc & { adviserEmail?: string | null })[];
+  hasMore?: boolean;
+  nextCursorToken?: string | null;
+  nextCursor?: number | null;
+};
+
+type TipPayoutApiItem = {
+  id?: string;
+  payoutDate?: number | null;
+  amount?: number;
+  sourceToken?: string | null;
+  sourceContractSignedDate?: number | null;
+};
+
+type TipPayoutsApiResponse = {
+  ok: boolean;
+  error?: string;
+  payouts?: TipPayoutApiItem[];
   hasMore?: boolean;
   nextCursorToken?: string | null;
   nextCursor?: number | null;
@@ -178,6 +199,8 @@ export function useHomeData({
   const [hasTeam, setHasTeam] = useState(false);
   const [myContractsCount, setMyContractsCount] = useState(0);
   const [myImmediateSum, setMyImmediateSum] = useState(0);
+  const [myTipContractsCount, setMyTipContractsCount] = useState(0);
+  const [myTipImmediateSum, setMyTipImmediateSum] = useState(0);
   const [teamContractsCount, setTeamContractsCount] = useState(0);
   const [teamImmediateSum, setTeamImmediateSum] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -194,6 +217,8 @@ export function useHomeData({
       setHasTeam(payload.hasTeam);
       setMyContractsCount(payload.myContractsCount);
       setMyImmediateSum(payload.myImmediateSum);
+      setMyTipContractsCount(payload.myTipContractsCount ?? 0);
+      setMyTipImmediateSum(payload.myTipImmediateSum ?? 0);
       setTeamContractsCount(payload.teamContractsCount);
       setTeamImmediateSum(payload.teamImmediateSum);
     };
@@ -238,6 +263,35 @@ export function useHomeData({
             const err = new Error(data.error || "Nepodařilo se načíst smlouvy.") as Error & {
               status?: number;
             };
+            err.status = res.status;
+            throw err;
+          }
+          return data;
+        };
+
+        const requestTipPayouts = async (
+          cursor?: string | null
+        ): Promise<TipPayoutsApiResponse> => {
+          const params = new URLSearchParams({ limit: "100" });
+          if (cursor) params.set("cursor", cursor);
+
+          const requestWithToken = async (token: string) =>
+            fetch(`/api/tip-payouts/list?${params.toString()}`, {
+              headers: { Authorization: `Bearer ${token}` },
+              cache: "no-store",
+            });
+
+          let res = await requestWithToken(bearerToken);
+          if (res.status === 401) {
+            bearerToken = await currentUser.getIdToken(true);
+            res = await requestWithToken(bearerToken);
+          }
+
+          const data = (await res.json()) as TipPayoutsApiResponse;
+          if (!res.ok || data.ok === false) {
+            const err = new Error(
+              data.error || "Nepodařilo se načíst TIP výplaty."
+            ) as Error & { status?: number };
             err.status = res.status;
             throw err;
           }
@@ -407,6 +461,62 @@ export function useHomeData({
           }
         });
 
+        let myTipCount = 0;
+        let myTipImmediate = 0;
+        try {
+          const tipSourcesInMonth = new Set<string>();
+          let cursor: string | null = null;
+          let hasMore = true;
+          let pages = 0;
+
+          while (hasMore && pages < 60) {
+            const response = await requestTipPayouts(cursor);
+            pages += 1;
+            const chunk = Array.isArray(response.payouts) ? response.payouts : [];
+            if (chunk.length === 0) break;
+
+            chunk.forEach((item) => {
+              const signedTs =
+                typeof item.sourceContractSignedDate === "number" &&
+                Number.isFinite(item.sourceContractSignedDate)
+                  ? item.sourceContractSignedDate
+                  : null;
+              const payoutTs =
+                typeof item.payoutDate === "number" && Number.isFinite(item.payoutDate)
+                  ? item.payoutDate
+                  : null;
+              const productionTs = signedTs ?? payoutTs;
+              if (productionTs == null) return;
+              if (
+                productionTs < monthStart.getTime() ||
+                productionTs >= nextMonthStart.getTime()
+              ) {
+                return;
+              }
+              const amount =
+                typeof item.amount === "number" && Number.isFinite(item.amount)
+                  ? item.amount
+                  : 0;
+              if (!(amount > 0)) return;
+              const sourceToken =
+                typeof item.sourceToken === "string" && item.sourceToken.trim()
+                  ? item.sourceToken.trim()
+                  : `payout:${String(item.id ?? "").trim() || String(payoutTs ?? "")}`;
+              tipSourcesInMonth.add(sourceToken);
+              myTipImmediate += amount;
+            });
+
+            cursor = normalizeCursorToken(
+              response.nextCursorToken,
+              response.nextCursor
+            );
+            hasMore = Boolean(response.hasMore) && Boolean(cursor);
+          }
+          myTipCount = tipSourcesInMonth.size;
+        } catch (tipErr) {
+          console.warn("[home] načtení TIP výplat selhalo, pokračuji bez nich.", tipErr);
+        }
+
         const payload: HomeCachePayload = {
           userMeta: {
             position,
@@ -418,6 +528,8 @@ export function useHomeData({
           hasTeam: hasTeamValue,
           myContractsCount: myCount,
           myImmediateSum: myImmediate,
+          myTipContractsCount: myTipCount,
+          myTipImmediateSum: myTipImmediate,
           teamContractsCount: teamCount,
           teamImmediateSum: teamImmediate,
         };
@@ -440,24 +552,29 @@ export function useHomeData({
         if (cached?.payload) {
           fallbackPayload = cached.payload;
         }
-        if (cached && Date.now() - cached.ts < HOME_CACHE_TTL_MS) {
+        const seededFromMemory = Boolean(
+          cached && Date.now() - cached.ts < HOME_CACHE_TTL_MS
+        );
+        if (seededFromMemory && cached) {
           applyCachedHomeState(cached.payload);
-          setLoading(false);
-          return;
         }
 
         const persisted = readPersistedHomeCache(cacheKey);
         if (persisted?.payload) {
           fallbackPayload = persisted.payload;
         }
-        const seededFromPersist = !!persisted && Date.now() - persisted.ts < HOME_CACHE_TTL_MS;
-        if (seededFromPersist && persisted) {
+        const seededFromPersist = Boolean(
+          persisted && Date.now() - persisted.ts < HOME_CACHE_TTL_MS
+        );
+        if (!seededFromMemory && seededFromPersist && persisted) {
           homeDataCache[cacheKey] = persisted;
           applyCachedHomeState(persisted.payload);
         }
 
-        if (!seededFromPersist) {
+        if (!seededFromMemory && !seededFromPersist) {
           setLoading(true);
+        } else {
+          setLoading(false);
         }
 
         const usersRef = collection(db, "users");
@@ -513,6 +630,8 @@ export function useHomeData({
     hasTeam,
     myContractsCount,
     myImmediateSum,
+    myTipContractsCount,
+    myTipImmediateSum,
     teamContractsCount,
     teamImmediateSum,
     loading,

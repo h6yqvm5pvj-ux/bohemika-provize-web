@@ -273,6 +273,8 @@ export default function HomePage() {
     hasTeam,
     myContractsCount,
     myImmediateSum,
+    myTipContractsCount,
+    myTipImmediateSum,
     teamContractsCount,
     teamImmediateSum,
     loading,
@@ -616,7 +618,7 @@ export default function HomePage() {
 
   const baseProduction = myImmediateSum;
   const totalWithTeam =
-    baseProduction + (showTeamBox ? teamImmediateSum : 0);
+    baseProduction + (showTeamBox ? teamImmediateSum + myTipImmediateSum : 0);
   const totalContractsCount =
     myContractsCount + (showTeamBox ? teamContractsCount : 0);
 
@@ -733,6 +735,8 @@ export default function HomePage() {
             showTeamBox={showTeamBox}
             myContractsCount={myContractsCount}
             myImmediateSum={myImmediateSum}
+            myTipContractsCount={myTipContractsCount}
+            myTipImmediateSum={myTipImmediateSum}
             teamContractsCount={teamContractsCount}
             teamImmediateSum={teamImmediateSum}
             totalContractsCount={totalContractsCount}

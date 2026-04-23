@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 
 import { auth } from "../firebase";
 import {
+  type PaymentFrequency,
   type Position,
+  type Product,
 } from "../types/domain";
 import { totalWithMultipliers } from "../lib/commissionTotals";
 import { generateCashflow } from "./generator";
@@ -43,16 +45,40 @@ type ContractsApiResponse = {
   nextCursor?: number | null;
 };
 
+type TipPayoutApiItem = {
+  id?: string;
+  payoutDate?: number | null;
+  amount?: number;
+  note?: string | null;
+  productKey?: Product | null;
+  frequencyRaw?: PaymentFrequency | null;
+  tipsterPercent?: number | null;
+  sourceOwnerEmail?: string | null;
+  adviserEmail?: string | null;
+};
+
+type TipPayoutsApiResponse = {
+  ok: boolean;
+  error?: string;
+  payouts?: TipPayoutApiItem[];
+  hasMore?: boolean;
+  nextCursorToken?: string | null;
+  nextCursor?: number | null;
+};
+
 type RawContractsSnapshot = {
   email: string;
   myPosition: Position | null;
   hasAnyTeam: boolean;
   ownEntries: EntryDoc[];
   teamEntriesRaw: EntryDoc[];
+  tipPayouts: TipPayoutApiItem[];
 };
 
 const CONTRACTS_PAGE_LIMIT = 50;
 const CONTRACTS_MAX_PAGES = 400;
+const TIP_PAYOUTS_PAGE_LIMIT = 100;
+const TIP_PAYOUTS_MAX_PAGES = 200;
 const CONTRACTS_CACHE_TTL_MS = 2 * 60 * 1000;
 const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 const contractsSnapshotCache: Record<
@@ -146,6 +172,39 @@ async function fetchContractsSnapshot(
     const data = (await res.json()) as ContractsApiResponse;
     if (!res.ok || data.ok === false) {
       const err = new Error(data.error || "Nepodařilo se načíst smlouvy.") as Error & {
+        status?: number;
+      };
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  };
+
+  const requestTipPayouts = async (
+    cursor?: string | null
+  ): Promise<TipPayoutsApiResponse> => {
+    const params = new URLSearchParams({
+      limit: String(TIP_PAYOUTS_PAGE_LIMIT),
+    });
+    if (cursor) {
+      params.set("cursor", cursor);
+    }
+
+    const requestWithToken = async (token: string) =>
+      fetch(`/api/tip-payouts/list?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+    let res = await requestWithToken(bearerToken);
+    if (res.status === 401) {
+      bearerToken = await currentUser.getIdToken(true);
+      res = await requestWithToken(bearerToken);
+    }
+
+    const data = (await res.json()) as TipPayoutsApiResponse;
+    if (!res.ok || data.ok === false) {
+      const err = new Error(data.error || "Nepodařilo se načíst TIP výplaty.") as Error & {
         status?: number;
       };
       err.status = res.status;
@@ -261,12 +320,57 @@ async function fetchContractsSnapshot(
     }
   }
 
+  const tipPayouts: TipPayoutApiItem[] = [];
+  try {
+    const seenTipPayoutIds = new Set<string>();
+    const seenCursorTokens = new Set<string>();
+    let cursor: string | null = null;
+    let hasMore = true;
+    let pages = 0;
+
+    while (hasMore && pages < TIP_PAYOUTS_MAX_PAGES) {
+      const response = await requestTipPayouts(cursor);
+      pages += 1;
+
+      const chunk = Array.isArray(response.payouts) ? response.payouts : [];
+      if (chunk.length === 0) break;
+
+      chunk.forEach((item) => {
+        const id = String(item.id ?? "").trim();
+        if (!id) return;
+        if (seenTipPayoutIds.has(id)) return;
+        seenTipPayoutIds.add(id);
+        tipPayouts.push(item);
+      });
+
+      const nextCursor = normalizeCursorToken(
+        response.nextCursorToken,
+        response.nextCursor
+      );
+      if (nextCursor && seenCursorTokens.has(nextCursor)) {
+        console.warn(
+          "[cashflow] tip-payouts/list returned repeated cursor token, stopping pagination."
+        );
+        hasMore = false;
+        break;
+      }
+      if (nextCursor) {
+        seenCursorTokens.add(nextCursor);
+      }
+      cursor = nextCursor;
+      hasMore = Boolean(response.hasMore) && Boolean(nextCursor);
+    }
+  } catch (tipErr) {
+    console.warn("[cashflow] načtení TIP výplat selhalo, pokračuji bez nich.", tipErr);
+  }
+
   return {
     email,
     myPosition,
     hasAnyTeam,
     ownEntries: ownResult.entries,
     teamEntriesRaw,
+    tipPayouts,
   };
 }
 
@@ -435,7 +539,9 @@ export function useCashflowData({
       entriesForCashflow = [...ownEntries, ...overrides];
     }
 
-    if (productFilter !== "all") {
+    if (productFilter === "tip") {
+      entriesForCashflow = [];
+    } else if (productFilter !== "all") {
       entriesForCashflow = entriesForCashflow.filter((entry) => {
         const product = entry.productKey;
         if (!product) return false;
@@ -491,7 +597,57 @@ export function useCashflowData({
       });
     }
 
-    const cashflow = generateCashflow(entriesForCashflow, 10);
+    const generatedCashflow = generateCashflow(entriesForCashflow, 10);
+    const includeTipPayouts = productFilter === "all" || productFilter === "tip";
+    const tipCashflowItems: CashflowItem[] = includeTipPayouts
+      ? snapshot.tipPayouts.reduce<CashflowItem[]>((acc, payout, index) => {
+          const payoutTs =
+            typeof payout.payoutDate === "number" && Number.isFinite(payout.payoutDate)
+              ? payout.payoutDate
+              : null;
+          if (payoutTs == null) return acc;
+          const payoutDate = new Date(payoutTs);
+          if (Number.isNaN(payoutDate.getTime())) return acc;
+
+          const amount =
+            typeof payout.amount === "number" && Number.isFinite(payout.amount)
+              ? payout.amount
+              : 0;
+          if (!(amount > 0)) return acc;
+
+          const productKey =
+            typeof payout.productKey === "string" && payout.productKey.trim()
+              ? (payout.productKey as Product)
+              : "unknown";
+          const tipSourceAdviserEmail =
+            normalizeEmail(payout.sourceOwnerEmail ?? payout.adviserEmail) || null;
+          const note =
+            typeof payout.note === "string" && payout.note.trim()
+              ? payout.note.trim()
+              : "TIP provize";
+          const id = String(payout.id ?? "").trim() || `tip-${payoutTs}-${index}`;
+
+          acc.push({
+            id: `tip-${id}`,
+            date: payoutDate,
+            amount,
+            productKey,
+            note,
+            frequency: (payout.frequencyRaw as PaymentFrequency | null | undefined) ?? null,
+            source: "own",
+            contractNumber: null,
+            clientName: null,
+            ownerEmail: null,
+            entryId: null,
+            isTipPayout: true,
+            tipSourceAdviserEmail,
+          });
+          return acc;
+        }, [])
+      : [];
+    const cashflow = [...generatedCashflow, ...tipCashflowItems].sort(
+      (a, b) => a.date.getTime() - b.date.getTime()
+    );
     if (process.env.NODE_ENV !== "production") {
       const total = cashflow.reduce((sum, item) => sum + item.amount, 0);
       const entryFingerprint = stableHash(
@@ -514,6 +670,8 @@ export function useCashflowData({
         teamRaw: teamRaw.length,
         overrides: overrides.length,
         entriesForCashflow: entriesForCashflow.length,
+        tipPayouts: snapshot.tipPayouts.length,
+        tipCashflowItems: tipCashflowItems.length,
         cashflowItems: cashflow.length,
         total,
         entryFingerprint,

@@ -1,5 +1,13 @@
 import type { LucideIcon } from "lucide-react";
-import { CarFront, HeartPulse, Home, UserRound, UsersRound, WalletCards } from "lucide-react";
+import {
+  CarFront,
+  HeartPulse,
+  Home,
+  Tag,
+  UserRound,
+  UsersRound,
+  WalletCards,
+} from "lucide-react";
 
 import type { ProductFilter, ScopeFilter } from "../types";
 
@@ -13,6 +21,7 @@ type CashflowFiltersProps = {
 
 const PRODUCT_FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
   { value: "all", label: "Všechny" },
+  { value: "tip", label: "TIP" },
   { value: "life", label: "Život" },
   { value: "auto", label: "Auto" },
   { value: "property", label: "Majetek" },
@@ -21,6 +30,7 @@ const PRODUCT_FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
 ];
 
 const PRODUCT_FILTER_ICONS: Partial<Record<ProductFilter, LucideIcon>> = {
+  tip: Tag,
   life: HeartPulse,
   auto: CarFront,
   property: Home,

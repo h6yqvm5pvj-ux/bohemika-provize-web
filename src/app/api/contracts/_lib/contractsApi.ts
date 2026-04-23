@@ -52,7 +52,7 @@ type FirestoreTimestamp = {
 };
 
 type ContractDoc = {
-  id: string;
+  id?: string;
   paid?: boolean | null;
   status?: "active" | "storno" | string | null;
   stornoDate?: FirestoreTimestamp | Date | string | number | null;
@@ -75,6 +75,7 @@ type ContractDoc = {
   frequencyRaw?: PaymentFrequency | null;
   durationMonths?: number | null;
   maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
+  items?: CommissionResultItemDTO[];
   total?: number;
 
   userEmail?: string | null;
@@ -83,6 +84,12 @@ type ContractDoc = {
   clientPhone?: string | null;
   clientAddress?: string | null;
   contractNumber?: string | null;
+  tipContractTipsterEmail?: string | null;
+  tipContractTipsterName?: string | null;
+  tipContractTipsterPercent?: number | null;
+  tipContractImmediateFirstYearGross?: number | null;
+  tipContractImmediateFirstYearNet?: number | null;
+  tipContractTipsterAmountFirstYear?: number | null;
   carMake?: string | null;
   carPlate?: string | null;
   carVin?: string | null;
@@ -95,7 +102,34 @@ type ContractDoc = {
   policyStartDate?: FirestoreTimestamp | Date | string | number | null;
 };
 
-type ContractResponseItem = ContractDoc & { adviserEmail: string | null };
+type TipPayoutDoc = {
+  sourceKey: string;
+  sourceOwnerEmail: string;
+  sourceEntryId: string;
+  sourceEntryType: "contract" | "endorsement";
+  adviserEmail: string;
+  tipsterEmail: string;
+  tipsterUserDocId: string;
+  tipsterName?: string | null;
+  tipsterPercent: number;
+  productKey: Product | null;
+  frequencyRaw: PaymentFrequency | null;
+  payoutDate: Date;
+  amount: number;
+  note: string;
+  sourceStatus: "active" | "storno";
+  sourceStornoDate?: Date | null;
+  sourcePaid: boolean;
+  sourceContractSignedDate?: Date | null;
+  sourcePolicyStartDate?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type ContractResponseItem = ContractDoc & {
+  id: string;
+  adviserEmail: string | null;
+};
 
 type ContractOwnerMeta = {
   position: Position | null;
@@ -150,6 +184,7 @@ type PositionTimelineEntry = {
 type UserProfileSnapshot = {
   docId: string;
   email: string;
+  name: string | null;
   managerEmail: string | null;
   position: Position | null;
   commissionMode: CommissionMode | null;
@@ -177,8 +212,15 @@ const CONTRACTS_GET_RATE_LIMIT_WINDOW_MS = 60_000;
 const UPDATE_FIELDS_MAX_ENTRY_IDS = 50;
 const USER_TREE_CACHE_TTL_MS = 30_000;
 const CONTRACT_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONTRACTS_CREATE_RATE_LIMIT = 30;
 const CONTRACTS_CREATE_RATE_LIMIT_WINDOW_MS = 60_000;
+const TIP_CONTRACT_PERCENT_MIN = 5;
+const TIP_CONTRACT_PERCENT_MAX = 95;
+const TIP_CONTRACT_PERCENT_STEP = 5;
+const TIP_PAYOUTS_SUBCOLLECTION = "tipPayouts";
+const TIP_PAYOUTS_BATCH_LIMIT = 350;
+const TIP_PAYOUT_CUTOFF_DAY = 25;
 const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "productKey",
   "entryType",
@@ -195,6 +237,8 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "durationMonths",
   "maxCizinKomplexVariant",
   "contractNumber",
+  "tipContractTipsterEmail",
+  "tipContractTipsterPercent",
   "carMake",
   "carPlate",
   "carVin",
@@ -591,6 +635,12 @@ const parseCursor = (search: URLSearchParams): ParsedCursor | null => {
 const normalizeEmail = (email: string | null | undefined) =>
   (email ?? "").trim().toLowerCase();
 
+const normalizeOptionalDisplayName = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed.slice(0, 200) : null;
+};
+
 const currentYearMonth = (now: Date): string =>
   `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
@@ -859,6 +909,12 @@ type NormalizedCreateEntryPayload = {
   maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
   userEmail: string;
   contractNumber: string;
+  tipContractTipsterEmail: string | null;
+  tipContractTipsterName: string | null;
+  tipContractTipsterPercent: number | null;
+  tipContractImmediateFirstYearGross: number | null;
+  tipContractImmediateFirstYearNet: number | null;
+  tipContractTipsterAmountFirstYear: number | null;
   carMake: string | null;
   carPlate: string | null;
   carVin: string | null;
@@ -929,6 +985,48 @@ const normalizeCreateEntryPayload = ({
   if (!isValidContractNumber(contractNumberParsed.value)) {
     return { ok: false, error: "Pole contractNumber má neplatný formát." };
   }
+  const tipContractTipsterEmailParsed = parseOptionalTrimmedText(
+    raw.tipContractTipsterEmail,
+    "tipContractTipsterEmail",
+    200
+  );
+  if (!tipContractTipsterEmailParsed.ok) return tipContractTipsterEmailParsed;
+  const tipContractTipsterPercentParsed = parseOptionalFiniteNumber(
+    raw.tipContractTipsterPercent,
+    "tipContractTipsterPercent",
+    { min: TIP_CONTRACT_PERCENT_MIN, max: TIP_CONTRACT_PERCENT_MAX }
+  );
+  if (!tipContractTipsterPercentParsed.ok) return tipContractTipsterPercentParsed;
+
+  const tipContractTipsterEmail = normalizeEmail(tipContractTipsterEmailParsed.value);
+  const rawTipContractPercent = tipContractTipsterPercentParsed.value;
+  let tipContractTipsterPercent: number | null = null;
+  if (rawTipContractPercent != null) {
+    const roundedTipContractPercent = Math.round(rawTipContractPercent);
+    if (
+      Math.abs(rawTipContractPercent - roundedTipContractPercent) > 0.000001 ||
+      roundedTipContractPercent % TIP_CONTRACT_PERCENT_STEP !== 0
+    ) {
+      return {
+        ok: false,
+        error: `Pole tipContractTipsterPercent musí být násobek ${TIP_CONTRACT_PERCENT_STEP}.`,
+      };
+    }
+    tipContractTipsterPercent = roundedTipContractPercent;
+  }
+  if (tipContractTipsterEmail && tipContractTipsterPercent == null) {
+    return {
+      ok: false,
+      error: "Pole tipContractTipsterPercent je povinné, pokud je vyplněné tipContractTipsterEmail.",
+    };
+  }
+  if (tipContractTipsterEmail && !EMAIL_RE.test(tipContractTipsterEmail)) {
+    return { ok: false, error: "Pole tipContractTipsterEmail má neplatný formát." };
+  }
+  if (tipContractTipsterEmail && tipContractTipsterEmail === ownerEmail) {
+    return { ok: false, error: "Tipař nemůže být stejný uživatel jako sjednatel." };
+  }
+
   const carMakeParsed = parseOptionalTrimmedText(raw.carMake, "carMake", 120);
   if (!carMakeParsed.ok) return carMakeParsed;
   const carPlateParsed = parseOptionalTrimmedText(raw.carPlate, "carPlate", 40);
@@ -1130,6 +1228,12 @@ const normalizeCreateEntryPayload = ({
           : null,
       userEmail: ownerEmail,
       contractNumber: contractNumberParsed.value,
+      tipContractTipsterEmail: tipContractTipsterEmail || null,
+      tipContractTipsterName: null,
+      tipContractTipsterPercent,
+      tipContractImmediateFirstYearGross: null,
+      tipContractImmediateFirstYearNet: null,
+      tipContractTipsterAmountFirstYear: null,
       carMake: carMakeParsed.value,
       carPlate: carPlateParsed.value,
       carVin: carVinParsed.value,
@@ -1278,6 +1382,10 @@ const profileFromRaw = (
   return {
     docId,
     email,
+    name:
+      normalizeOptionalDisplayName(raw.name) ||
+      normalizeOptionalDisplayName(raw.fullName) ||
+      null,
     managerEmail: normalizeEmail(raw.managerEmail as string | null | undefined) || null,
     position: normalizePositionValue(raw.position),
     commissionMode: normalizeCommissionModeValue(raw.commissionMode),
@@ -1577,6 +1685,420 @@ const stripTotalRows = (
   items: CommissionResultItemDTO[] = []
 ): CommissionResultItemDTO[] =>
   items.filter((item) => !normalizeTitleKey(item.title ?? "").includes("celkem"));
+
+const roundToCents = (value: number): number =>
+  Number.isFinite(value) ? Math.round(value * 100) / 100 : 0;
+
+const normalizeTipContractTitle = (title: string | undefined | null): string =>
+  (title ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+const isTipContractImmediateBaseTitle = (title: string | undefined | null): boolean => {
+  const normalized = normalizeTipContractTitle(title);
+  return (
+    normalized.includes("okamzita provize") || normalized.includes("ziskatelska provize")
+  );
+};
+
+const isTipContractImmediateAnnualTitle = (title: string | undefined | null): boolean => {
+  const normalized = normalizeTipContractTitle(title);
+  if (!normalized.includes("za rok")) return false;
+  if (normalized.includes("nasledna")) return false;
+  return true;
+};
+
+const sumTipContractImmediateFirstYear = (items: CommissionResultItemDTO[]): number => {
+  if (!Array.isArray(items) || items.length === 0) return 0;
+
+  const annualImmediate = items.reduce((sum, item) => {
+    if (!isTipContractImmediateAnnualTitle(item.title)) return sum;
+    return sum + (item.amount ?? 0);
+  }, 0);
+  if (annualImmediate > 0) return annualImmediate;
+
+  return items.reduce((sum, item) => {
+    if (!isTipContractImmediateBaseTitle(item.title)) return sum;
+    return sum + (item.amount ?? 0);
+  }, 0);
+};
+
+const applyTipContractAdjustmentToItems = ({
+  items,
+  tipsterPercent,
+}: {
+  items: CommissionResultItemDTO[];
+  tipsterPercent: number;
+}): {
+  items: CommissionResultItemDTO[];
+  immediateGross: number;
+  tipsterAmount: number;
+  immediateNet: number;
+} => {
+  const ratio = 1 - tipsterPercent / 100;
+  const adjustedItems = items.map((item) => {
+    const shouldAdjust =
+      isTipContractImmediateBaseTitle(item.title) ||
+      isTipContractImmediateAnnualTitle(item.title);
+    if (!shouldAdjust) return item;
+    return {
+      ...item,
+      amount: roundToCents((item.amount ?? 0) * ratio),
+    };
+  });
+
+  const immediateGross = roundToCents(sumTipContractImmediateFirstYear(items));
+  const tipsterAmount = roundToCents(immediateGross * (tipsterPercent / 100));
+  const immediateNet = roundToCents(immediateGross - tipsterAmount);
+
+  return {
+    items: adjustedItems,
+    immediateGross,
+    tipsterAmount,
+    immediateNet,
+  };
+};
+
+type TipPayoutOccurrence = {
+  sequence: number;
+  payoutDate: Date;
+  amount: number;
+  note: string;
+};
+
+const paymentsPerYearFromFrequency = (frequency: PaymentFrequency | null | undefined): number => {
+  switch (frequency) {
+    case "monthly":
+      return 12;
+    case "quarterly":
+      return 4;
+    case "semiannual":
+      return 2;
+    case "annual":
+      return 1;
+    default:
+      return 1;
+  }
+};
+
+const monthsBetweenPaymentsFromFrequency = (
+  frequency: PaymentFrequency | null | undefined
+): number => {
+  switch (frequency) {
+    case "monthly":
+      return 1;
+    case "quarterly":
+      return 3;
+    case "semiannual":
+      return 6;
+    case "annual":
+      return 12;
+    default:
+      return 12;
+  }
+};
+
+const estimateTipFirstPayoutDate = ({
+  policyStart,
+  agreementDate,
+}: {
+  policyStart: Date;
+  agreementDate: Date;
+}): Date => {
+  const dayForCutoff = Math.max(policyStart.getDate(), agreementDate.getDate());
+  const monthsToAdd = dayForCutoff > TIP_PAYOUT_CUTOFF_DAY ? 2 : 1;
+  return new Date(policyStart.getFullYear(), policyStart.getMonth() + monthsToAdd, 1);
+};
+
+const tipPayoutDateKey = (date: Date): string =>
+  `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+
+const tipPayoutSourceKey = (ownerEmail: string, entryId: string): string =>
+  `${normalizeEmail(ownerEmail)}___${entryId.trim()}`;
+
+const normalizeContractStatusForTip = (status: unknown): "active" | "storno" => {
+  if (typeof status !== "string") return "active";
+  return status.trim().toLowerCase() === "storno" ? "storno" : "active";
+};
+
+const resolveTipAmountFirstYear = ({
+  entry,
+  tipsterPercent,
+}: {
+  entry: ContractDoc;
+  tipsterPercent: number;
+}): number => {
+  const fromStored = entry.tipContractTipsterAmountFirstYear;
+  if (typeof fromStored === "number" && Number.isFinite(fromStored)) {
+    return roundToCents(Math.max(0, fromStored));
+  }
+
+  const fromGross = entry.tipContractImmediateFirstYearGross;
+  if (typeof fromGross === "number" && Number.isFinite(fromGross)) {
+    return roundToCents(Math.max(0, fromGross * (tipsterPercent / 100)));
+  }
+
+  const fromNet = entry.tipContractImmediateFirstYearNet;
+  if (
+    typeof fromNet === "number" &&
+    Number.isFinite(fromNet) &&
+    tipsterPercent > 0 &&
+    tipsterPercent < 100
+  ) {
+    const ratio = 1 - tipsterPercent / 100;
+    const gross = fromNet / ratio;
+    return roundToCents(Math.max(0, gross * (tipsterPercent / 100)));
+  }
+
+  return 0;
+};
+
+const shouldSplitTipByFrequency = (entry: ContractDoc): boolean => {
+  const paymentMultiplier = paymentsPerYearFromFrequency(entry.frequencyRaw);
+  if (paymentMultiplier <= 1) return false;
+  const titles = Array.isArray(entry.items)
+    ? entry.items.map((item) => normalizeTipContractTitle(item.title))
+    : [];
+  if (titles.length === 0) return false;
+  const hasAnnualHint = titles.some((title) => title.includes("za rok"));
+  const hasPaymentHint = titles.some((title) => title.includes("(z platby)"));
+  return hasAnnualHint || hasPaymentHint;
+};
+
+const buildTipPayoutOccurrences = ({
+  entry,
+  tipAmountFirstYear,
+}: {
+  entry: ContractDoc;
+  tipAmountFirstYear: number;
+}): TipPayoutOccurrence[] => {
+  const normalizedTipAmount = roundToCents(Math.max(0, tipAmountFirstYear));
+  if (!(normalizedTipAmount > 0)) return [];
+
+  const policyStart =
+    toDate(entry.policyStartDate) ??
+    toDate(entry.contractSignedDate) ??
+    toDate(entry.createdAt) ??
+    new Date();
+  const agreementDate =
+    toDate(entry.contractSignedDate) ??
+    toDate(entry.createdAt) ??
+    toDate(entry.policyStartDate) ??
+    policyStart;
+  const firstPayoutDate = estimateTipFirstPayoutDate({
+    policyStart,
+    agreementDate,
+  });
+
+  const paymentCount = shouldSplitTipByFrequency(entry)
+    ? paymentsPerYearFromFrequency(entry.frequencyRaw)
+    : 1;
+  const stepMonths = monthsBetweenPaymentsFromFrequency(entry.frequencyRaw);
+
+  const status = normalizeContractStatusForTip(entry.status);
+  const stornoCutoffDate =
+    status === "storno" ? toDate(entry.stornoDate) ?? new Date() : null;
+
+  const occurrences: TipPayoutOccurrence[] = [];
+  let allocated = 0;
+
+  for (let index = 0; index < paymentCount; index += 1) {
+    const payoutDate = new Date(
+      firstPayoutDate.getFullYear(),
+      firstPayoutDate.getMonth() + stepMonths * index,
+      firstPayoutDate.getDate()
+    );
+    if (stornoCutoffDate && payoutDate.getTime() > stornoCutoffDate.getTime()) {
+      continue;
+    }
+
+    const amount =
+      index === paymentCount - 1
+        ? roundToCents(normalizedTipAmount - allocated)
+        : roundToCents(normalizedTipAmount / paymentCount);
+    if (!(amount > 0)) continue;
+
+    allocated = roundToCents(allocated + amount);
+    occurrences.push({
+      sequence: index + 1,
+      payoutDate,
+      amount,
+      note:
+        paymentCount > 1
+          ? `TIP provize (${index + 1}/${paymentCount})`
+          : "TIP provize",
+    });
+  }
+
+  return occurrences;
+};
+
+const tipPayoutDocId = ({
+  sourceKey,
+  payoutDate,
+  sequence,
+}: {
+  sourceKey: string;
+  payoutDate: Date;
+  sequence: number;
+}): string =>
+  `${sourceKey}__${tipPayoutDateKey(payoutDate)}__${String(sequence).padStart(2, "0")}`;
+
+const deleteTipPayoutDocsForSource = async ({
+  tipsterUserDocId,
+  sourceKey,
+}: {
+  tipsterUserDocId: string;
+  sourceKey: string;
+}): Promise<void> => {
+  if (!adminDb) return;
+  const normalizedTipsterUserDocId = tipsterUserDocId.trim();
+  const normalizedSourceKey = sourceKey.trim();
+  if (!normalizedTipsterUserDocId || !normalizedSourceKey) return;
+
+  const payoutsCol = adminDb
+    .collection("users")
+    .doc(normalizedTipsterUserDocId)
+    .collection(TIP_PAYOUTS_SUBCOLLECTION);
+
+  while (true) {
+    const existingSnap = await payoutsCol
+      .where("sourceKey", "==", normalizedSourceKey)
+      .limit(TIP_PAYOUTS_BATCH_LIMIT)
+      .get();
+    if (existingSnap.empty) break;
+
+    const batch = adminDb.batch();
+    existingSnap.docs.forEach((docSnap) => {
+      batch.delete(docSnap.ref);
+    });
+    await batch.commit();
+
+    if (existingSnap.size < TIP_PAYOUTS_BATCH_LIMIT) break;
+  }
+};
+
+const syncTipPayoutDocsForEntry = async ({
+  ownerEmail,
+  entryId,
+  entryData,
+}: {
+  ownerEmail: string;
+  entryId: string;
+  entryData: ContractDoc | null | undefined;
+}): Promise<void> => {
+  if (!adminDb) return;
+  const normalizedOwner = normalizeEmail(ownerEmail);
+  const normalizedEntryId = entryId.trim();
+  if (!normalizedOwner || !normalizedEntryId || !entryData) return;
+
+  const tipsterEmail = normalizeEmail(entryData.tipContractTipsterEmail);
+  if (!tipsterEmail) return;
+  const tipsterProfile = await loadUserProfileByEmail(tipsterEmail);
+  const tipsterUserDocId = (tipsterProfile?.docId ?? tipsterEmail).trim();
+  if (!tipsterUserDocId) return;
+
+  const sourceKey = tipPayoutSourceKey(normalizedOwner, normalizedEntryId);
+  await deleteTipPayoutDocsForSource({
+    tipsterUserDocId,
+    sourceKey,
+  });
+
+  const entryType = normalizeContractEntryType(entryData.entryType ?? "contract");
+  if (entryType !== "contract") return;
+
+  const rawPercent = entryData.tipContractTipsterPercent;
+  if (typeof rawPercent !== "number" || !Number.isFinite(rawPercent)) return;
+  const tipsterPercent = Math.round(rawPercent);
+  if (
+    tipsterPercent < TIP_CONTRACT_PERCENT_MIN ||
+    tipsterPercent > TIP_CONTRACT_PERCENT_MAX
+  ) {
+    return;
+  }
+
+  const tipAmountFirstYear = resolveTipAmountFirstYear({
+    entry: entryData,
+    tipsterPercent,
+  });
+  if (!(tipAmountFirstYear > 0)) return;
+
+  const occurrences = buildTipPayoutOccurrences({
+    entry: entryData,
+    tipAmountFirstYear,
+  });
+  if (occurrences.length === 0) return;
+
+  const tipsterName =
+    normalizeOptionalDisplayName(entryData.tipContractTipsterName) ??
+    tipsterProfile?.name ??
+    null;
+  const sourceStatus = normalizeContractStatusForTip(entryData.status);
+  const sourceStornoDate =
+    sourceStatus === "storno" ? toDate(entryData.stornoDate) ?? new Date() : null;
+  const sourceContractSignedDate = toDate(entryData.contractSignedDate) ?? null;
+  const sourcePolicyStartDate = toDate(entryData.policyStartDate) ?? null;
+
+  const payoutsCol = adminDb
+    .collection("users")
+    .doc(tipsterUserDocId)
+    .collection(TIP_PAYOUTS_SUBCOLLECTION);
+  const now = new Date();
+  let batch = adminDb.batch();
+  let opsInBatch = 0;
+
+  for (const occurrence of occurrences) {
+    const docRef = payoutsCol.doc(
+      tipPayoutDocId({
+        sourceKey,
+        payoutDate: occurrence.payoutDate,
+        sequence: occurrence.sequence,
+      })
+    );
+    const payload: TipPayoutDoc = {
+      sourceKey,
+      sourceOwnerEmail: normalizedOwner,
+      sourceEntryId: normalizedEntryId,
+      sourceEntryType: entryType,
+      adviserEmail: normalizedOwner,
+      tipsterEmail,
+      tipsterUserDocId,
+      tipsterName,
+      tipsterPercent,
+      productKey:
+        (entryData.productKey as Product | null | undefined) ?? null,
+      frequencyRaw:
+        (entryData.frequencyRaw as PaymentFrequency | null | undefined) ?? null,
+      payoutDate: occurrence.payoutDate,
+      amount: occurrence.amount,
+      note: occurrence.note,
+      sourceStatus,
+      sourceStornoDate,
+      sourcePaid: entryData.paid === true,
+      sourceContractSignedDate,
+      sourcePolicyStartDate,
+      createdAt: now,
+      updatedAt: now,
+    };
+    batch.set(docRef, payload, { merge: true });
+    opsInBatch += 1;
+
+    if (opsInBatch >= TIP_PAYOUTS_BATCH_LIMIT) {
+      await batch.commit();
+      batch = adminDb.batch();
+      opsInBatch = 0;
+    }
+  }
+
+  if (opsInBatch > 0) {
+    await batch.commit();
+  }
+};
 
 const computeItemsForProductPositionAndMode = ({
   productKey,
@@ -3436,6 +3958,43 @@ export async function handleContractsCreate(req: NextRequest) {
       );
     }
 
+    let trustedItems = trustedResult.items;
+    let trustedTotal = trustedResult.total;
+    let tipContractTipsterName: string | null = null;
+    let tipContractImmediateFirstYearGross: number | null = null;
+    let tipContractImmediateFirstYearNet: number | null = null;
+    let tipContractTipsterAmountFirstYear: number | null = null;
+
+    if (normalizedEntry.payload.tipContractTipsterPercent != null) {
+      if (normalizedEntry.payload.tipContractTipsterEmail) {
+        const tipsterProfile = await loadUserProfileByEmail(
+          normalizedEntry.payload.tipContractTipsterEmail
+        );
+        if (!tipsterProfile) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "Tipař s tímto e-mailem neexistuje v systému.",
+            },
+            { status: 400 }
+          );
+        }
+        tipContractTipsterName = tipsterProfile.name ?? null;
+      }
+
+      const tipAdjusted = applyTipContractAdjustmentToItems({
+        items: trustedResult.items,
+        tipsterPercent: normalizedEntry.payload.tipContractTipsterPercent,
+      });
+      trustedItems = tipAdjusted.items;
+      trustedTotal = roundToCents(
+        Math.max(0, trustedResult.total - tipAdjusted.tipsterAmount)
+      );
+      tipContractImmediateFirstYearGross = tipAdjusted.immediateGross;
+      tipContractImmediateFirstYearNet = tipAdjusted.immediateNet;
+      tipContractTipsterAmountFirstYear = tipAdjusted.tipsterAmount;
+    }
+
     const trustedManagerOverrides = computeManagerOverridesForChain({
       managerChain: trustedManagerChain,
       adviserPosition: trustedPosition,
@@ -3463,12 +4022,16 @@ export async function handleContractsCreate(req: NextRequest) {
       ...normalizedEntry.payload,
       position: trustedPosition,
       commissionMode: trustedMode,
-      items: trustedResult.items,
-      total: trustedResult.total,
+      items: trustedItems,
+      total: trustedTotal,
       result: {
-        items: trustedResult.items,
-        total: trustedResult.total,
+        items: trustedItems,
+        total: trustedTotal,
       },
+      tipContractTipsterName,
+      tipContractImmediateFirstYearGross,
+      tipContractImmediateFirstYearNet,
+      tipContractTipsterAmountFirstYear,
       managerEmailSnapshot: trustedManagerEmail,
       managerPositionSnapshot: trustedManagerPosition,
       managerModeSnapshot: trustedManagerMode,
@@ -3587,6 +4150,19 @@ export async function handleContractsCreate(req: NextRequest) {
         console.warn(
           "POST /api/contracts create: team-overview invalidace selhala:",
           markErr
+        );
+      }
+
+      try {
+        await syncTipPayoutDocsForEntry({
+          ownerEmail: email,
+          entryId: createdRef.id,
+          entryData: trustedPayload,
+        });
+      } catch (tipSyncErr) {
+        console.warn(
+          "POST /api/contracts create: TIP payout sync selhal:",
+          tipSyncErr
         );
       }
 
@@ -3972,6 +4548,23 @@ export async function handleContractsPatch(
         updated += 1;
       }
 
+      for (const ref of filteredTargetRefs.values()) {
+        try {
+          const syncedSnap = await ref.get();
+          if (!syncedSnap.exists) continue;
+          await syncTipPayoutDocsForEntry({
+            ownerEmail,
+            entryId: syncedSnap.id,
+            entryData: syncedSnap.data() as ContractDoc,
+          });
+        } catch (tipSyncErr) {
+          console.warn(
+            "PATCH /api/contracts syncCppStatus: TIP payout sync selhal:",
+            tipSyncErr
+          );
+        }
+      }
+
       return NextResponse.json({
         ok: true,
         matched: true,
@@ -4136,6 +4729,23 @@ export async function handleContractsPatch(
       );
     }
 
+    for (const ref of entryRefs) {
+      try {
+        const syncedSnap = await ref.get();
+        if (!syncedSnap.exists) continue;
+        await syncTipPayoutDocsForEntry({
+          ownerEmail,
+          entryId: syncedSnap.id,
+          entryData: syncedSnap.data() as ContractDoc,
+        });
+      } catch (tipSyncErr) {
+        console.warn(
+          "PATCH /api/contracts updateFields: TIP payout sync selhal:",
+          tipSyncErr
+        );
+      }
+    }
+
     return NextResponse.json({ ok: true, updated: entryRefs.length });
   }
 
@@ -4148,6 +4758,7 @@ export async function handleContractsPatch(
 
   const allowedOwners = new Set<string>([email, ...teamEmails]);
   let updated = 0;
+  const updatedRefs: { owner: string; entryId: string }[] = [];
   for (const item of entries) {
     const owner = normalizeEmail(item.ownerEmail);
     const entryId = item.entryId as string | undefined;
@@ -4161,6 +4772,29 @@ export async function handleContractsPatch(
       .doc(entryId)
       .set({ paid }, { merge: true });
     updated += 1;
+    updatedRefs.push({ owner, entryId });
+  }
+
+  for (const target of updatedRefs) {
+    try {
+      const syncedSnap = await adminDb
+        ?.collection("users")
+        .doc(target.owner)
+        .collection("entries")
+        .doc(target.entryId)
+        .get();
+      if (!syncedSnap?.exists) continue;
+      await syncTipPayoutDocsForEntry({
+        ownerEmail: target.owner,
+        entryId: target.entryId,
+        entryData: syncedSnap.data() as ContractDoc,
+      });
+    } catch (tipSyncErr) {
+      console.warn(
+        "PATCH /api/contracts setPaid: TIP payout sync selhal:",
+        tipSyncErr
+      );
+    }
   }
 
   return NextResponse.json({ ok: true, updated });
@@ -4211,6 +4845,7 @@ export async function handleContractsDelete(req: NextRequest) {
 
   const allowedOwners = new Set<string>([email, ...teamEmails]);
   const dirtyOwners = new Set<string>();
+  const tipCleanupTargets = new Set<string>();
   let deleted = 0;
   const db = adminDb;
   let batch = db.batch();
@@ -4235,6 +4870,31 @@ export async function handleContractsDelete(req: NextRequest) {
       .doc(owner)
       .collection("entries")
       .doc(entryId);
+    try {
+      const entrySnap = await entryRef.get();
+      if (entrySnap.exists) {
+        const entryData = entrySnap.data() as ContractDoc;
+        const tipsterEmail = normalizeEmail(entryData.tipContractTipsterEmail);
+        if (tipsterEmail) {
+          const tipsterProfile = await loadUserProfileByEmail(tipsterEmail);
+          const tipsterUserDocId = (tipsterProfile?.docId ?? tipsterEmail).trim();
+          if (tipsterUserDocId) {
+            const sourceKey = tipPayoutSourceKey(owner, entryId);
+            tipCleanupTargets.add(
+              JSON.stringify({
+                tipsterUserDocId,
+                sourceKey,
+              })
+            );
+          }
+        }
+      }
+    } catch (tipReadErr) {
+      console.warn(
+        "DELETE /api/contracts: načtení TIP metadata selhalo:",
+        tipReadErr
+      );
+    }
     const contractRef = db
       .collection(CONTRACT_REFS_COLLECTION)
       .doc(contractRefDocId(owner, entryId));
@@ -4257,6 +4917,32 @@ export async function handleContractsDelete(req: NextRequest) {
       "DELETE /api/contracts: team-overview invalidace selhala:",
       markErr
     );
+  }
+
+  for (const packedTarget of tipCleanupTargets) {
+    let target: { tipsterUserDocId?: string; sourceKey?: string } | null = null;
+    try {
+      target = JSON.parse(packedTarget) as {
+        tipsterUserDocId?: string;
+        sourceKey?: string;
+      };
+    } catch {
+      target = null;
+    }
+    const tipsterUserDocId = (target?.tipsterUserDocId ?? "").trim();
+    const sourceKey = (target?.sourceKey ?? "").trim();
+    if (!tipsterUserDocId || !sourceKey) continue;
+    try {
+      await deleteTipPayoutDocsForSource({
+        tipsterUserDocId,
+        sourceKey,
+      });
+    } catch (tipDeleteErr) {
+      console.warn(
+        "DELETE /api/contracts: TIP payout cleanup selhal:",
+        tipDeleteErr
+      );
+    }
   }
 
   return NextResponse.json({ ok: true, deleted });

@@ -86,6 +86,7 @@ export function matchesProductFilter(
   product: Product | undefined,
   productFilter: ProductFilter
 ): boolean {
+  if (productFilter === "tip") return false;
   if (!product) return false;
   if (productFilter === "all") return true;
   if (productFilter === "life") {

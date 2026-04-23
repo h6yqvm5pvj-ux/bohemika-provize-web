@@ -100,10 +100,16 @@ export function CashflowMonthModal({
                 ownerEmail && baseEntryId
                   ? `${ownerEmail}___${baseEntryId}`
                   : null;
-              const href = contractSlug
+              const isTipIncome = item.isTipPayout === true;
+              const href = !isTipIncome && contractSlug
                 ? `/smlouvy/${encodeURIComponent(contractSlug)}`
                 : null;
-              const isTeamIncome = item.source === "manager" || item.isManagerOverride;
+              const isTeamIncome =
+                !isTipIncome && (item.source === "manager" || item.isManagerOverride);
+              const tipSourceOwner =
+                item.tipSourceAdviserEmail && item.tipSourceAdviserEmail.trim() !== ""
+                  ? item.tipSourceAdviserEmail.trim().toLowerCase()
+                  : null;
 
               return (
                 <article
@@ -126,13 +132,24 @@ export function CashflowMonthModal({
                       </div>
 
                       <div className="mt-3 grid grid-cols-1 gap-1 text-sm text-slate-700">
+                        {isTipIncome ? (
+                          <p>
+                            <span className="text-slate-500">TIP od:</span>{" "}
+                            <span className="text-slate-900">{tipSourceOwner ?? "—"}</span>
+                          </p>
+                        ) : (
+                          <p>
+                            <span className="text-slate-500">Klient:</span>{" "}
+                            <span className="text-slate-900">{clientName ?? "—"}</span>
+                          </p>
+                        )}
                         <p>
-                          <span className="text-slate-500">Klient:</span>{" "}
-                          <span className="text-slate-900">{clientName ?? "—"}</span>
-                        </p>
-                        <p>
-                          <span className="text-slate-500">Frekvence:</span>{" "}
-                          <span className="text-slate-900">{frequencyText(item.frequency)}</span>
+                          <span className="text-slate-500">
+                            {isTipIncome ? "Typ:" : "Frekvence:"}
+                          </span>{" "}
+                          <span className="text-slate-900">
+                            {isTipIncome ? "TIP provize" : frequencyText(item.frequency)}
+                          </span>
                         </p>
                         {item.note && (
                           <p className="text-xs text-slate-500">{item.note}</p>
@@ -162,12 +179,14 @@ export function CashflowMonthModal({
                         <div className="flex items-center gap-2">
                           <span
                             className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium ${
-                              isTeamIncome
+                              isTipIncome
+                                ? "border-fuchsia-600 bg-fuchsia-600 text-white"
+                                : isTeamIncome
                                 ? "border-indigo-600 bg-indigo-600 !text-white"
                                 : "border-emerald-600 bg-emerald-600 text-white"
                             }`}
                           >
-                            {isTeamIncome ? "Týmová" : "Vlastní"}
+                            {isTipIncome ? "TIP" : isTeamIncome ? "Týmová" : "Vlastní"}
                           </span>
                           {href && (
                             <Link

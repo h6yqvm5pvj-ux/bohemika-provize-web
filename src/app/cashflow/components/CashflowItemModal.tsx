@@ -8,6 +8,11 @@ type CashflowItemModalProps = {
 
 export function CashflowItemModal({ item, onClose }: CashflowItemModalProps) {
   if (!item) return null;
+  const isTipPayout = item.isTipPayout === true;
+  const tipSourceOwner =
+    item.tipSourceAdviserEmail && item.tipSourceAdviserEmail.trim() !== ""
+      ? item.tipSourceAdviserEmail.trim().toLowerCase()
+      : null;
 
   return (
     <div
@@ -42,21 +47,29 @@ export function CashflowItemModal({ item, onClose }: CashflowItemModalProps) {
           <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
             <div className="rounded-2xl border border-white/20 bg-black p-3 space-y-1">
               <div className="text-[11px] uppercase tracking-wide text-slate-400">
-                Klient
+                {isTipPayout ? "TIP od" : "Klient"}
               </div>
-              <div className="font-medium">{item.clientName?.trim() || "—"}</div>
-              <div className="text-[11px] text-slate-300">
-                Číslo smlouvy: {item.contractNumber?.trim() || "—"}
+              <div className="font-medium">
+                {isTipPayout ? tipSourceOwner ?? "—" : item.clientName?.trim() || "—"}
               </div>
+              {!isTipPayout && (
+                <div className="text-[11px] text-slate-300">
+                  Číslo smlouvy: {item.contractNumber?.trim() || "—"}
+                </div>
+              )}
             </div>
 
             <div className="rounded-2xl border border-white/20 bg-black p-3 space-y-1">
               <div className="text-[11px] uppercase tracking-wide text-slate-400">
                 Frekvence / Zdroj
               </div>
-              <div className="font-medium">{frequencyText(item.frequency)}</div>
+              <div className="font-medium">
+                {isTipPayout ? "TIP provize" : frequencyText(item.frequency)}
+              </div>
               <div className="text-[11px] text-slate-300">
-                {item.source === "manager" || item.isManagerOverride
+                {isTipPayout
+                  ? "TIP provize"
+                  : item.source === "manager" || item.isManagerOverride
                   ? "Manažerská provize"
                   : "Vlastní provize"}
               </div>

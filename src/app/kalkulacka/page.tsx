@@ -99,6 +99,8 @@ const SETTINGS_KEYS = {
   tipsterPercent: "settings.tipsterPercent",
 };
 const TIPSTER_PERCENT_PRESETS = [10, 20, 30, 40, 50, 75, 100];
+const TIP_CONTRACT_PERCENT_OPTIONS = Array.from({ length: 19 }, (_, idx) => (idx + 1) * 5);
+const EMAIL_LOOKUP_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   cppAuto: "/provize/cppauto.jpg",
   slaviaauto: "/provize/slaviaauto.jpg",
@@ -254,6 +256,27 @@ type ContractsMutationResponse = {
   ok?: boolean;
   error?: string;
   [key: string]: unknown;
+};
+
+type TipsterLookupApiResponse = {
+  ok?: boolean;
+  exists?: boolean;
+  email?: string | null;
+  name?: string | null;
+  error?: string;
+};
+
+type TipsterLookupState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "found"; email: string; name: string | null }
+  | { status: "notFound" }
+  | { status: "error"; message: string };
+
+type TipContractConfig = {
+  tipsterEmail: string | null;
+  tipsterName: string | null;
+  tipsterPercent: number;
 };
 
 type ContractNumberLiveCheckState =
@@ -918,6 +941,17 @@ function clampTipsterPercent(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
+function clampTipContractPercent(value: number): number {
+  if (!Number.isFinite(value)) return 50;
+  const rounded = Math.round(value / 5) * 5;
+  return Math.min(95, Math.max(5, rounded));
+}
+
+function roundToCents(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 100) / 100;
+}
+
 const SUPPORTED_LABEL =
   "Tento produkt zatím není na webu dopočítaný – aktuálně počítáme všechny produkty kromě Comfort Commodity.";
 
@@ -949,6 +983,15 @@ function cleanResultTitle(title: string): string {
   return title.slice(title.indexOf(match[0])).trim();
 }
 
+function normalizeResultTitleForCompare(title: string): string {
+  return cleanResultTitle(title)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function resultIconForTitle(title: string): string | null {
   const t = cleanResultTitle(title).toLowerCase();
 
@@ -968,8 +1011,32 @@ function resultIconForTitle(title: string): string | null {
 }
 
 function isImmediateCommissionTitle(title: string): boolean {
-  const t = cleanResultTitle(title).toLowerCase();
-  return t.includes("okamžitá provize") || t.includes("získatelská provize");
+  const t = normalizeResultTitleForCompare(title);
+  return t.includes("okamzita provize") || t.includes("ziskatelska provize");
+}
+
+function isImmediateAnnualFirstYearTitle(title: string): boolean {
+  const t = normalizeResultTitleForCompare(title);
+  if (!t.includes("za rok")) return false;
+  if (t.includes("nasledna")) return false;
+  return true;
+}
+
+function computeImmediateCommissionFirstYearTotal(items: CommissionResultItemDTO[]): number {
+  if (!Array.isArray(items) || items.length === 0) return 0;
+
+  const annualImmediate = items.reduce((sum, item) => {
+    if (!isImmediateAnnualFirstYearTitle(item.title ?? "")) return sum;
+    return sum + (item.amount ?? 0);
+  }, 0);
+  if (annualImmediate > 0) {
+    return annualImmediate;
+  }
+
+  return items.reduce((sum, item) => {
+    if (!isImmediateCommissionTitle(item.title ?? "")) return sum;
+    return sum + (item.amount ?? 0);
+  }, 0);
 }
 
 type ContractEntryType = "contract" | "endorsement";
@@ -1069,6 +1136,13 @@ export default function CalculatorPage() {
   const [tipsterModeEnabled, setTipsterModeEnabled] = useState(false);
   const [tipsterPercent, setTipsterPercent] = useState(100);
   const [tipsterPercentPanelOpen, setTipsterPercentPanelOpen] = useState(false);
+  const [tipContractModalOpen, setTipContractModalOpen] = useState(false);
+  const [tipContractDraftEmail, setTipContractDraftEmail] = useState("");
+  const [tipContractDraftPercent, setTipContractDraftPercent] = useState(50);
+  const [tipContractLookupState, setTipContractLookupState] = useState<TipsterLookupState>({
+    status: "idle",
+  });
+  const [tipContractConfig, setTipContractConfig] = useState<TipContractConfig | null>(null);
   const [comfortGradual, setComfortGradual] = useState<boolean>(false);
   const [comfortPaymentText, setComfortPaymentText] = useState<string>("");
   const [comfortTargetAmountText, setComfortTargetAmountText] = useState<string>("");
@@ -1183,6 +1257,30 @@ export default function CalculatorPage() {
       }, 0),
     [items]
   );
+  const tipContractImmediateGrossFirstYear = useMemo(
+    () => computeImmediateCommissionFirstYearTotal(items),
+    [items]
+  );
+  const tipContractTipsterAmountFirstYear = useMemo(() => {
+    if (!tipContractConfig) return 0;
+    return roundToCents(
+      tipContractImmediateGrossFirstYear * (tipContractConfig.tipsterPercent / 100)
+    );
+  }, [tipContractConfig, tipContractImmediateGrossFirstYear]);
+  const tipContractImmediateNetFirstYear = useMemo(() => {
+    if (!tipContractConfig) return 0;
+    return roundToCents(
+      tipContractImmediateGrossFirstYear - tipContractTipsterAmountFirstYear
+    );
+  }, [
+    tipContractConfig,
+    tipContractImmediateGrossFirstYear,
+    tipContractTipsterAmountFirstYear,
+  ]);
+  const tipContractTotalNet = useMemo(() => {
+    if (!tipContractConfig) return total;
+    return roundToCents(Math.max(0, total - tipContractTipsterAmountFirstYear));
+  }, [tipContractConfig, tipContractTipsterAmountFirstYear, total]);
   const tipsterImmediateCommission = useMemo(
     () => immediateCommissionTotal * (tipsterPercent / 100),
     [immediateCommissionTotal, tipsterPercent]
@@ -1590,6 +1688,66 @@ export default function CalculatorPage() {
   }, [tipsterModeEnabled]);
 
   useEffect(() => {
+    if (tipsterModeEnabled) {
+      setTipContractModalOpen(false);
+    }
+  }, [tipsterModeEnabled]);
+
+  useEffect(() => {
+    if (!tipContractModalOpen) return;
+
+    const normalizedEmail = tipContractDraftEmail.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setTipContractLookupState({ status: "idle" });
+      return;
+    }
+    if (!EMAIL_LOOKUP_RE.test(normalizedEmail)) {
+      setTipContractLookupState({ status: "idle" });
+      return;
+    }
+    if (!user) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setTipContractLookupState({ status: "checking" });
+      try {
+        const payload = await fetchAuthedJsonOrThrow<TipsterLookupApiResponse>(
+          user,
+          `/api/user/lookup?email=${encodeURIComponent(normalizedEmail)}`,
+          { method: "GET" }
+        );
+        if (cancelled) return;
+
+        if (payload?.exists && typeof payload.email === "string" && payload.email.trim()) {
+          setTipContractLookupState({
+            status: "found",
+            email: payload.email.trim().toLowerCase(),
+            name:
+              typeof payload.name === "string" && payload.name.trim()
+                ? payload.name.trim()
+                : null,
+          });
+          return;
+        }
+
+        setTipContractLookupState({ status: "notFound" });
+      } catch (lookupErr) {
+        if (cancelled) return;
+        const message =
+          lookupErr instanceof Error && lookupErr.message.trim()
+            ? lookupErr.message.trim()
+            : "Ověření tipaře se nepodařilo.";
+        setTipContractLookupState({ status: "error", message });
+      }
+    }, 320);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [tipContractModalOpen, tipContractDraftEmail, user]);
+
+  useEffect(() => {
     if (product !== "slaviaauto") {
       setAutoCarMake("");
       setAutoCarPlate("");
@@ -1671,6 +1829,71 @@ export default function CalculatorPage() {
     } catch (err) {
       console.error("Failed to persist tipster percent", err);
     }
+  };
+
+  const openTipContractModal = () => {
+    setTipContractDraftPercent(tipContractConfig?.tipsterPercent ?? 50);
+    setTipContractDraftEmail(tipContractConfig?.tipsterEmail ?? "");
+    if (tipContractConfig?.tipsterEmail) {
+      setTipContractLookupState({
+        status: "found",
+        email: tipContractConfig.tipsterEmail,
+        name: tipContractConfig.tipsterName ?? null,
+      });
+    } else {
+      setTipContractLookupState({ status: "idle" });
+    }
+    setTipContractModalOpen(true);
+  };
+
+  const applyTipContractSettings = () => {
+    const normalizedDraftEmail = tipContractDraftEmail.trim().toLowerCase();
+    const nextPercent = clampTipContractPercent(tipContractDraftPercent);
+    if (!normalizedDraftEmail) {
+      if (typeof window !== "undefined") {
+        const confirmed = window.confirm(
+          "Opravdu chcete uložit tip bez označení Tipaře?"
+        );
+        if (!confirmed) return;
+      }
+
+      setTipContractConfig({
+        tipsterEmail: null,
+        tipsterName: null,
+        tipsterPercent: nextPercent,
+      });
+      setTipContractModalOpen(false);
+      setSaveMessage(`Smlouva z TIPU: ${nextPercent} % bez označení tipaře.`);
+      return;
+    }
+
+    if (
+      tipContractLookupState.status !== "found" ||
+      tipContractLookupState.email !== normalizedDraftEmail
+    ) {
+      setSaveMessage("Nejdřív vyber tipaře, který v systému existuje.");
+      return;
+    }
+
+    const nextEmail = normalizedDraftEmail;
+    setTipContractConfig({
+      tipsterEmail: nextEmail,
+      tipsterName: tipContractLookupState.name ?? null,
+      tipsterPercent: nextPercent,
+    });
+    setTipContractModalOpen(false);
+    setSaveMessage(
+      `Smlouva z TIPU: ${nextPercent} % pro tipaře (${tipContractLookupState.name ?? nextEmail}).`
+    );
+  };
+
+  const clearTipContractSettings = () => {
+    setTipContractConfig(null);
+    setTipContractModalOpen(false);
+    setTipContractDraftEmail("");
+    setTipContractDraftPercent(50);
+    setTipContractLookupState({ status: "idle" });
+    setSaveMessage("Smlouva z TIPU byla vypnutá.");
   };
 
   const looksLikeMaxCizinKomplexPdf = (
@@ -2717,6 +2940,8 @@ export default function CalculatorPage() {
             maxCizinKomplexVariant:
               product === "maxcizinkomplex" ? maxCizinKomplexVariant : null,
             contractNumber: trimmedContractNumber || null,
+            tipContractTipsterEmail: tipContractConfig?.tipsterEmail ?? null,
+            tipContractTipsterPercent: tipContractConfig?.tipsterPercent ?? null,
             carMake: product === "slaviaauto" ? autoCarMake.trim() || null : null,
             carPlate: product === "slaviaauto" ? autoCarPlate.trim() || null : null,
             carVin: product === "slaviaauto" ? autoCarVin.trim() || null : null,
@@ -3137,6 +3362,128 @@ export default function CalculatorPage() {
                 className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? "Ukládám…" : "Uložit změnu"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tipContractModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setTipContractModalOpen(false)}
+          />
+          <div className="relative w-full max-w-lg rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_20px_70px_rgba(0,0,0,0.35)] space-y-4">
+            <div className="space-y-2">
+              <h3 className="text-base font-semibold text-slate-900">Smlouva z TIPU</h3>
+              <p className="text-sm text-slate-700">
+                Tipař má nárok pouze na % z okamžité provize v 1. roce.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs uppercase tracking-wide text-slate-600">
+                Podíl pro tipaře
+              </label>
+              <select
+                value={tipContractDraftPercent}
+                onChange={(e) =>
+                  setTipContractDraftPercent(clampTipContractPercent(Number(e.target.value)))
+                }
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+              >
+                {TIP_CONTRACT_PERCENT_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {value} %
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs uppercase tracking-wide text-slate-600">
+                E-mail tipaře (volitelné)
+              </label>
+              <input
+                type="email"
+                value={tipContractDraftEmail}
+                onChange={(e) => setTipContractDraftEmail(e.target.value)}
+                placeholder="napr. tipar@bohemika.cz"
+                className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:border-slate-900 ${
+                  tipContractLookupState.status === "found"
+                    ? "border-emerald-400 bg-emerald-50 focus:ring-emerald-600"
+                    : "border-slate-300 bg-white focus:ring-slate-900"
+                }`}
+              />
+              {tipContractLookupState.status === "checking" && (
+                <p className="text-xs text-slate-500">Ověřuji uživatele…</p>
+              )}
+              {tipContractLookupState.status === "found" && (
+                <p className="text-xs text-emerald-700">
+                  Uživatel nalezen:{" "}
+                  <strong>
+                    {tipContractLookupState.name ?? tipContractLookupState.email}
+                  </strong>
+                </p>
+              )}
+              {tipContractLookupState.status === "notFound" && (
+                <p className="text-xs text-rose-700">Uživatel s tímto e-mailem nebyl nalezen.</p>
+              )}
+              {tipContractLookupState.status === "error" && (
+                <p className="text-xs text-rose-700">{tipContractLookupState.message}</p>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <p>
+                Příklad: pokud je okamžitá provize v 1. roce {formatMoneyResult(
+                  tipContractImmediateGrossFirstYear
+                )}
+                , tipař dostane {tipContractDraftPercent} % a tobě zůstane{" "}
+                {formatMoneyResult(
+                  roundToCents(
+                    tipContractImmediateGrossFirstYear *
+                      (1 - clampTipContractPercent(tipContractDraftPercent) / 100)
+                  )
+                )}
+                .
+              </p>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              {tipContractConfig && (
+                <button
+                  type="button"
+                  onClick={clearTipContractSettings}
+                  className="rounded-full border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100 transition"
+                >
+                  Vypnout TIP
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setTipContractModalOpen(false)}
+                className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-900 hover:bg-slate-100 transition"
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                onClick={applyTipContractSettings}
+                disabled={
+                  (() => {
+                    const normalizedDraftEmail = tipContractDraftEmail.trim().toLowerCase();
+                    if (!normalizedDraftEmail) return false;
+                    return (
+                      tipContractLookupState.status !== "found" ||
+                      tipContractLookupState.email !== normalizedDraftEmail
+                    );
+                  })()
+                }
+                className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Použít
               </button>
             </div>
           </div>
@@ -3685,10 +4032,21 @@ export default function CalculatorPage() {
                 </div>
               )}
 
-              {!tipsterModeEnabled && isLifeProduct && (
+              {!tipsterModeEnabled && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    {product === "neon" && (
+                    <button
+                      type="button"
+                      onClick={openTipContractModal}
+                      className={`ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition ${
+                        tipContractConfig
+                          ? "border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700"
+                          : ""
+                      }`}
+                    >
+                      {tipContractConfig ? "Smlouva z TIPU ✓" : "Smlouva z TIPU"}
+                    </button>
+                    {isLifeProduct && product === "neon" && (
                       <button
                         type="button"
                         onClick={() => setRefreshOriginalOpen((v) => !v)}
@@ -3702,25 +4060,29 @@ export default function CalculatorPage() {
                         {refreshOriginalOpen ? "Refresh zapnutý" : "Refresh smlouvy"}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handlePrepareEndorsement();
-                      }}
-                      className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm"
-                    >
-                      <Repeat2 size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                      Změna
-                    </button>
+                    {isLifeProduct && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handlePrepareEndorsement();
+                        }}
+                        className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm"
+                      >
+                        <Repeat2 size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                        Změna
+                      </button>
+                    )}
                   </div>
-                  {product === "neon" && refreshOriginalOpen && (
+                  {isLifeProduct && product === "neon" && refreshOriginalOpen && (
                     <p className="text-[11px] text-slate-600">
                       Při uložení se nová smlouva označí jako Refresh.
                     </p>
                   )}
-                  <p className="text-[11px] text-slate-600">
-                    Změna vytvoří dodatek k existující ŽP smlouvě. Navýšení se zprovizuje jen z rozdílu, ponížení je zatím 0 Kč.
-                  </p>
+                  {isLifeProduct && (
+                    <p className="text-[11px] text-slate-600">
+                      Změna vytvoří dodatek k existující ŽP smlouvě. Navýšení se zprovizuje jen z rozdílu, ponížení je zatím 0 Kč.
+                    </p>
+                  )}
                 </div>
               )}
             </section>
@@ -4056,6 +4418,17 @@ export default function CalculatorPage() {
               <p className="text-xs text-slate-600">{saveMessage}</p>
             )}
 
+            {tipContractConfig && !tipsterModeEnabled && (
+              <p className="text-xs text-emerald-700">
+                Aktivní Smlouva z TIPU: {tipContractConfig.tipsterPercent} % z okamžité provize v
+                1. roce pro{" "}
+                {tipContractConfig.tipsterName ??
+                  tipContractConfig.tipsterEmail ??
+                  "neoznačeného tipaře"}
+                .
+              </p>
+            )}
+
             {unsupported && (
               <p className="text-sm text-amber-800 bg-amber-100 border border-amber-300 rounded-xl px-3 py-2">
                 {SUPPORTED_LABEL}
@@ -4138,6 +4511,32 @@ export default function CalculatorPage() {
                     );
                   })}
 
+                  {tipContractConfig && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-slate-900 space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                        Smlouva z TIPU
+                      </p>
+                      <div className="flex items-center justify-between text-sm">
+                        <span>Okamžitá v 1. roce (brutto)</span>
+                        <span className="font-semibold">
+                          {formatMoneyResult(tipContractImmediateGrossFirstYear)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span>Podíl tipaře ({tipContractConfig.tipsterPercent} %)</span>
+                        <span className="font-semibold text-rose-700">
+                          −{formatMoneyResult(tipContractTipsterAmountFirstYear)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span>Okamžitá v 1. roce po TIPU</span>
+                        <span className="font-bold text-emerald-800">
+                          {formatMoneyResult(tipContractImmediateNetFirstYear)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="pt-2 flex items-center justify-between">
                     {(product === "domex" ||
                       product === "koopmajetekobcan" ||
@@ -4145,9 +4544,15 @@ export default function CalculatorPage() {
                     paymentBasedTotalsMemo ? (
                       <div className="w-full space-y-1 text-slate-900">
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold">Celkem v 1. roce</span>
+                          <span className="font-semibold">
+                            Celkem v 1. roce{tipContractConfig ? " po TIPU" : ""}
+                          </span>
                           <span className="text-2xl sm:text-3xl font-bold text-slate-900">
-                            {formatMoneyResult(paymentBasedTotalsMemo.immediate)}
+                            {formatMoneyResult(
+                              tipContractConfig
+                                ? tipContractImmediateNetFirstYear
+                                : paymentBasedTotalsMemo.immediate
+                            )}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
@@ -4159,9 +4564,11 @@ export default function CalculatorPage() {
                       </div>
                     ) : (
                       <>
-                        <span className="font-semibold text-slate-900">Celkem</span>
+                        <span className="font-semibold text-slate-900">
+                          Celkem{tipContractConfig ? " po TIPU" : ""}
+                        </span>
                         <span className="text-2xl sm:text-3xl font-bold text-slate-900">
-                          {formatMoneyResult(total)}
+                          {formatMoneyResult(tipContractConfig ? tipContractTotalNet : total)}
                         </span>
                       </>
                     )}

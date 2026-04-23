@@ -70,6 +70,8 @@ export type CashflowItem = {
   ownerEmail: string | null;
   entryId: string | null;
   isManagerOverride?: boolean;
+  isTipPayout?: boolean;
+  tipSourceAdviserEmail?: string | null;
 };
 
 export type MonthGroup = {
@@ -89,6 +91,7 @@ export type YearGroup = {
 
 export type ProductFilter =
   | "all"
+  | "tip"
   | "life"
   | "auto"
   | "property"

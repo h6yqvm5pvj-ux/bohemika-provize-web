@@ -13,6 +13,7 @@ import {
   Package,
   PencilLine,
   StickyNote,
+  Tag,
   UserRound,
 } from "lucide-react";
 
@@ -697,6 +698,42 @@ export default function ContractDetailPage() {
     return contractTimeline.some((entry) => entry.entryType === "endorsement");
   }, [contractTimeline, isEndorsement]);
   const contractTotal = contract?.total ?? 0;
+  const tipContractTipsterEmail = normalizeEmail(
+    contract?.tipContractTipsterEmail ?? null
+  );
+  const tipContractTipsterPercent =
+    typeof contract?.tipContractTipsterPercent === "number" &&
+    Number.isFinite(contract.tipContractTipsterPercent)
+      ? contract.tipContractTipsterPercent
+      : null;
+  const hasTipContract = tipContractTipsterPercent != null;
+  const tipContractTipsterName = hasTipContract
+    ? (contract?.tipContractTipsterName ?? "").trim() ||
+      (tipContractTipsterEmail ? nameFromEmail(tipContractTipsterEmail) : "")
+    : null;
+  const tipContractSourceLabel = hasTipContract
+    ? tipContractTipsterEmail
+      ? `Od uživatele ${tipContractTipsterName || tipContractTipsterEmail} (${tipContractTipsterEmail}).`
+      : "Tipař nebyl označen."
+    : null;
+  const tipContractImmediateGross =
+    hasTipContract &&
+    typeof contract?.tipContractImmediateFirstYearGross === "number" &&
+    Number.isFinite(contract.tipContractImmediateFirstYearGross)
+      ? contract.tipContractImmediateFirstYearGross
+      : null;
+  const tipContractImmediateNet =
+    hasTipContract &&
+    typeof contract?.tipContractImmediateFirstYearNet === "number" &&
+    Number.isFinite(contract.tipContractImmediateFirstYearNet)
+      ? contract.tipContractImmediateFirstYearNet
+      : null;
+  const tipContractTipsterAmount =
+    hasTipContract &&
+    typeof contract?.tipContractTipsterAmountFirstYear === "number" &&
+    Number.isFinite(contract.tipContractTipsterAmountFirstYear)
+      ? contract.tipContractTipsterAmountFirstYear
+      : null;
   const freq = (contract?.frequencyRaw as PaymentFrequency | null | undefined) ?? null;
   const prod = contract?.productKey as Product | undefined;
   const paymentVerificationUrl =
@@ -3481,6 +3518,57 @@ export default function ContractDetailPage() {
                             : "Aktivní"}
                         </dd>
                       </div>
+                      {hasTipContract && (
+                        <div className="rounded-2xl border border-fuchsia-200 bg-[linear-gradient(160deg,#fff7ff_0%,#f6f3ff_100%)] px-3 py-3 shadow-[0_8px_20px_rgba(147,51,234,0.1)]">
+                          <div className="flex items-center justify-between gap-3">
+                            <dt className="inline-flex items-center gap-2 text-base font-semibold text-fuchsia-900">
+                              <Tag size={15} strokeWidth={2} aria-hidden="true" />
+                              <span>Smlouva z TIPU</span>
+                            </dt>
+                            <span className="inline-flex items-center rounded-full border border-fuchsia-300 bg-fuchsia-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-fuchsia-800">
+                              {tipContractTipsterPercent} % tipař
+                            </span>
+                          </div>
+
+                          <dd className="mt-2 space-y-2 text-sm text-slate-700">
+                            <p className="leading-snug">{tipContractSourceLabel}</p>
+                            <p className="text-xs text-fuchsia-800/90">
+                              Tipař má nárok pouze na podíl z okamžité provize v 1. roce.
+                            </p>
+
+                            {tipContractImmediateGross != null &&
+                              tipContractTipsterAmount != null &&
+                              tipContractImmediateNet != null && (
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                  <div className="rounded-xl border border-fuchsia-200 bg-white/70 px-3 py-2 text-center">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
+                                      Brutto
+                                    </p>
+                                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                                      {formatMoney(tipContractImmediateGross)}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-xl border border-fuchsia-200 bg-white/70 px-3 py-2 text-center">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
+                                      Tipař
+                                    </p>
+                                    <p className="mt-1 text-sm font-semibold text-fuchsia-900">
+                                      {formatMoney(tipContractTipsterAmount)}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-xl border border-fuchsia-200 bg-white/70 px-3 py-2 text-center">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
+                                      Sjednatel
+                                    </p>
+                                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                                      {formatMoney(tipContractImmediateNet)}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                          </dd>
+                        </div>
+                      )}
                       {isRefreshContract && (
                         <div className="flex justify-between gap-2">
                           <dt className={keyValueLabelClass}>Refresh</dt>
