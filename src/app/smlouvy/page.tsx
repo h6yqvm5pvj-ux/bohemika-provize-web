@@ -105,6 +105,15 @@ type AppUser = {
   managerEmail?: string | null;
 };
 
+type DisplayedContract = ContractDoc & {
+  adviserEmail?: string | null;
+  groupedEntryCount?: number;
+  groupedEndorsementCount?: number;
+  searchClientTokens?: string[];
+  searchContractTokens?: string[];
+  searchContractCompactTokens?: string[];
+};
+
 type FilterMode = "latest" | "anniversary";
 type ProductCategory =
   | "life"
@@ -941,6 +950,9 @@ function ContractsPageContent() {
         latestCreatedMs: number;
         entryCount: number;
         endorsementCount: number;
+        searchClientTokens: Set<string>;
+        searchContractTokens: Set<string>;
+        searchContractCompactTokens: Set<string>;
       }
     >();
 
@@ -963,6 +975,9 @@ function ContractsPageContent() {
         0;
       const createdMs = toDate((contract as any).createdAt)?.getTime() ?? 0;
       const isEndorsement = contract.entryType === "endorsement";
+      const normalizedClient = normalizeSearchValue(contract.clientName);
+      const normalizedContract = normalizeSearchValue(contract.contractNumber);
+      const compactContract = normalizeContractNumberForSearch(contract.contractNumber);
 
       const existing = grouped.get(groupKey);
       if (!existing) {
@@ -972,12 +987,30 @@ function ContractsPageContent() {
           latestCreatedMs: createdMs,
           entryCount: 1,
           endorsementCount: isEndorsement ? 1 : 0,
+          searchClientTokens: new Set(
+            normalizedClient.length > 0 ? [normalizedClient] : []
+          ),
+          searchContractTokens: new Set(
+            normalizedContract.length > 0 ? [normalizedContract] : []
+          ),
+          searchContractCompactTokens: new Set(
+            compactContract.length > 0 ? [compactContract] : []
+          ),
         });
         return;
       }
 
       existing.entryCount += 1;
       if (isEndorsement) existing.endorsementCount += 1;
+      if (normalizedClient.length > 0) {
+        existing.searchClientTokens.add(normalizedClient);
+      }
+      if (normalizedContract.length > 0) {
+        existing.searchContractTokens.add(normalizedContract);
+      }
+      if (compactContract.length > 0) {
+        existing.searchContractCompactTokens.add(compactContract);
+      }
 
       const shouldReplaceLatest =
         sortMs > existing.latestSortMs ||
@@ -994,10 +1027,13 @@ function ContractsPageContent() {
     });
 
     return Array.from(grouped.values())
-      .map((group) => ({
+      .map((group): DisplayedContract => ({
         ...group.latest,
         groupedEntryCount: group.entryCount,
         groupedEndorsementCount: group.endorsementCount,
+        searchClientTokens: Array.from(group.searchClientTokens),
+        searchContractTokens: Array.from(group.searchContractTokens),
+        searchContractCompactTokens: Array.from(group.searchContractCompactTokens),
       }))
       .sort((a, b) => {
         const da =
@@ -1016,13 +1052,23 @@ function ContractsPageContent() {
 
     if (q) {
       base = base.filter((c) => {
-        const client = normalizeSearchValue(c.clientName);
-        const contractNo = normalizeSearchValue(c.contractNumber);
-        const compactContractNo = normalizeContractNumberForSearch(c.contractNumber);
+        const clientTokens =
+          c.searchClientTokens && c.searchClientTokens.length > 0
+            ? c.searchClientTokens
+            : [normalizeSearchValue(c.clientName)];
+        const contractTokens =
+          c.searchContractTokens && c.searchContractTokens.length > 0
+            ? c.searchContractTokens
+            : [normalizeSearchValue(c.contractNumber)];
+        const compactContractTokens =
+          c.searchContractCompactTokens && c.searchContractCompactTokens.length > 0
+            ? c.searchContractCompactTokens
+            : [normalizeContractNumberForSearch(c.contractNumber)];
         return (
-          client.includes(q) ||
-          contractNo.includes(q) ||
-          (qContract.length > 0 && compactContractNo.includes(qContract))
+          clientTokens.some((value) => value.includes(q)) ||
+          contractTokens.some((value) => value.includes(q)) ||
+          (qContract.length > 0 &&
+            compactContractTokens.some((value) => value.includes(qContract)))
         );
       });
     }
@@ -1262,6 +1308,11 @@ function ContractsPageContent() {
   const isAnniversaryLoading =
     anniversaryModeActive &&
     (isFilterPending || loadingMore || hasMoreActive);
+  const isSearchLoading =
+    hasSearchQuery &&
+    filteredContracts.length === 0 &&
+    (loadingMore || hasMoreActive) &&
+    !autoScanPaused;
 
   const persistContractsViewState = useCallback(() => {
     if (!normalizedUserEmail) return;
@@ -1659,6 +1710,14 @@ function ContractsPageContent() {
                 Procházím další smlouvy, může to chvíli trvat.
               </p>
             </div>
+          ) : isSearchLoading ? (
+            <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
+              <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+              <p className="font-medium">Vyhledávám smlouvu…</p>
+              <p className="text-xs text-slate-500">
+                Procházím další stránky smluv, může to chvíli trvat.
+              </p>
+            </div>
           ) : filteredContracts.length === 0 ? (
             <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
               {anniversaryModeActive ? (
@@ -1677,12 +1736,39 @@ function ContractsPageContent() {
                   </p>
                 </>
               ) : searchText.trim() !== "" ? (
-                <>
-                  <p className="font-medium">Nic nenalezeno</p>
-                  <p className="text-xs text-slate-500">
-                    Zkus upravit hledaný text (klient nebo číslo smlouvy).
-                  </p>
-                </>
+                autoScanPaused && hasMoreActive ? (
+                  <>
+                    <p className="font-medium">Vyhledávání se dočasně zastavilo</p>
+                    <p className="text-xs text-slate-500">
+                      Při načítání dalších smluv došlo k chybě. Zkus pokračovat znovu.
+                    </p>
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAutoScanPaused(false);
+                          void handleLoadMore();
+                        }}
+                        className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+                      >
+                        Pokračovat ve vyhledávání
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-medium">Nic nenalezeno</p>
+                    <p className="text-xs text-slate-500">
+                      Zkus upravit hledaný text (klient nebo číslo smlouvy).
+                    </p>
+                    {!showTeam && canShowTeamToggle && (
+                      <p className="text-xs text-slate-500">
+                        Pokud smlouvu sjednal někdo z týmu, přepni nahoře na
+                        týmové smlouvy.
+                      </p>
+                    )}
+                  </>
+                )
               ) : showTeam && hasTeamContracts ? (
                 <>
                   <p className="font-medium">Žádné týmové smlouvy</p>

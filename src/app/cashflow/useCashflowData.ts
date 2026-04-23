@@ -52,8 +52,9 @@ type RawContractsSnapshot = {
 };
 
 const CONTRACTS_PAGE_LIMIT = 50;
-const CONTRACTS_MAX_PAGES = 100;
+const CONTRACTS_MAX_PAGES = 400;
 const CONTRACTS_CACHE_TTL_MS = 2 * 60 * 1000;
+const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 const contractsSnapshotCache: Record<
   string,
   { ts: number; payload: RawContractsSnapshot }
@@ -76,6 +77,24 @@ const normalizeCursorToken = (
   }
   return null;
 };
+
+const getContractsUpdatedAtMs = (): number => {
+  if (typeof window === "undefined") return 0;
+  try {
+    const raw = localStorage.getItem(CONTRACTS_UPDATED_KEY);
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0;
+  }
+};
+
+const isSnapshotFresh = (
+  snapshotTs: number,
+  updatedAtMs: number
+): boolean =>
+  Date.now() - snapshotTs < CONTRACTS_CACHE_TTL_MS &&
+  snapshotTs >= updatedAtMs;
 
 function stableHash(parts: string[]): string {
   let hash = 2166136261;
@@ -145,6 +164,7 @@ async function fetchContractsSnapshot(
   const collectScope = async (scope: "my" | "team"): Promise<ScopeResult> => {
     const entries: EntryDoc[] = [];
     const seen = new Set<string>();
+    const seenCursorTokens = new Set<string>();
     let cursor: string | null = null;
     let hasMore = true;
     let pages = 0;
@@ -188,8 +208,28 @@ async function fetchContractsSnapshot(
         });
       });
 
-      cursor = normalizeCursorToken(response.nextCursorToken, response.nextCursor);
-      hasMore = Boolean(response.hasMore) && Boolean(cursor);
+      const nextCursor = normalizeCursorToken(
+        response.nextCursorToken,
+        response.nextCursor
+      );
+      if (nextCursor && seenCursorTokens.has(nextCursor)) {
+        console.warn(
+          `[cashflow] scope=${scope} returned repeated cursor token, stopping pagination to prevent loop.`
+        );
+        hasMore = false;
+        break;
+      }
+      if (nextCursor) {
+        seenCursorTokens.add(nextCursor);
+      }
+      cursor = nextCursor;
+      hasMore = Boolean(response.hasMore) && Boolean(nextCursor);
+    }
+
+    if (pages >= CONTRACTS_MAX_PAGES && hasMore) {
+      console.warn(
+        `[cashflow] scope=${scope} reached pagination safety cap (${CONTRACTS_MAX_PAGES} pages).`
+      );
     }
 
     return {
@@ -234,8 +274,12 @@ async function getContractsSnapshot(
   email: string
 ): Promise<RawContractsSnapshot> {
   const cached = contractsSnapshotCache[email];
-  if (cached && Date.now() - cached.ts < CONTRACTS_CACHE_TTL_MS) {
+  const updatedAtMs = getContractsUpdatedAtMs();
+  if (cached && isSnapshotFresh(cached.ts, updatedAtMs)) {
     return cached.payload;
+  }
+  if (cached && !isSnapshotFresh(cached.ts, updatedAtMs)) {
+    delete contractsSnapshotCache[email];
   }
 
   if (contractsSnapshotInFlight[email]) {
@@ -276,7 +320,15 @@ export function useCashflowData({
 
     const load = async () => {
       const normalized = normalizeEmail(userEmail);
-      const cached = contractsSnapshotCache[normalized];
+      const cachedRaw = contractsSnapshotCache[normalized];
+      const updatedAtMs = getContractsUpdatedAtMs();
+      const cached =
+        cachedRaw && isSnapshotFresh(cachedRaw.ts, updatedAtMs)
+          ? cachedRaw
+          : undefined;
+      if (cachedRaw && !cached) {
+        delete contractsSnapshotCache[normalized];
+      }
       const hasCachedPayload = Boolean(cached?.payload);
       if (cached?.payload) {
         setSnapshot(cached.payload);
