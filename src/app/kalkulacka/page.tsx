@@ -1162,11 +1162,14 @@ export default function CalculatorPage() {
   const [autoCarLiabilityLimit, setAutoCarLiabilityLimit] = useState<number | null>(null);
   const [autoCarHullSumInsured, setAutoCarHullSumInsured] = useState<number | null>(null);
   const [autoCarHullDeductible, setAutoCarHullDeductible] = useState<number | null>(null);
+  const [autoCarHullDeductibleText, setAutoCarHullDeductibleText] = useState<string>("");
   const [autoCarHullRiskAccident, setAutoCarHullRiskAccident] = useState(false);
   const [autoCarHullRiskTheft, setAutoCarHullRiskTheft] = useState(false);
   const [autoCarHullRiskNatural, setAutoCarHullRiskNatural] = useState(false);
   const [autoCarHullRiskVandalism, setAutoCarHullRiskVandalism] = useState(false);
+  const [autoCarHullRiskAnimalCollision, setAutoCarHullRiskAnimalCollision] = useState(false);
   const [autoCarAssistancePlan, setAutoCarAssistancePlan] = useState<string>("");
+  const [autoCarAddonEso, setAutoCarAddonEso] = useState(false);
   const [autoCarAddonGlass, setAutoCarAddonGlass] = useState(false);
   const [autoCarAddonAnimalCollision, setAutoCarAddonAnimalCollision] = useState(false);
   const [autoCarAddonAnimalDamage, setAutoCarAddonAnimalDamage] = useState(false);
@@ -1763,7 +1766,11 @@ export default function CalculatorPage() {
   }, [tipContractModalOpen, tipContractDraftEmail, user]);
 
   useEffect(() => {
-    if (product !== "slaviaauto" && product !== "kooperativaAuto") {
+    if (
+      product !== "cppAuto" &&
+      product !== "slaviaauto" &&
+      product !== "kooperativaAuto"
+    ) {
       setAutoCarMake("");
       setAutoCarPlate("");
       setAutoCarVin("");
@@ -1772,11 +1779,14 @@ export default function CalculatorPage() {
       setAutoCarLiabilityLimit(null);
       setAutoCarHullSumInsured(null);
       setAutoCarHullDeductible(null);
+      setAutoCarHullDeductibleText("");
       setAutoCarHullRiskAccident(false);
       setAutoCarHullRiskTheft(false);
       setAutoCarHullRiskNatural(false);
       setAutoCarHullRiskVandalism(false);
+      setAutoCarHullRiskAnimalCollision(false);
       setAutoCarAssistancePlan("");
+      setAutoCarAddonEso(false);
       setAutoCarAddonGlass(false);
       setAutoCarAddonAnimalCollision(false);
       setAutoCarAddonAnimalDamage(false);
@@ -1952,7 +1962,11 @@ export default function CalculatorPage() {
     setPdfImporting(true);
     setPdfImportError(null);
     setPdfImportStatus("Načítám PDF…");
-    if (product === "slaviaauto" || product === "kooperativaAuto") {
+    if (
+      product === "cppAuto" ||
+      product === "slaviaauto" ||
+      product === "kooperativaAuto"
+    ) {
       setAutoCarMake("");
       setAutoCarPlate("");
       setAutoCarVin("");
@@ -1961,11 +1975,14 @@ export default function CalculatorPage() {
       setAutoCarLiabilityLimit(null);
       setAutoCarHullSumInsured(null);
       setAutoCarHullDeductible(null);
+      setAutoCarHullDeductibleText("");
       setAutoCarHullRiskAccident(false);
       setAutoCarHullRiskTheft(false);
       setAutoCarHullRiskNatural(false);
       setAutoCarHullRiskVandalism(false);
+      setAutoCarHullRiskAnimalCollision(false);
       setAutoCarAssistancePlan("");
+      setAutoCarAddonEso(false);
       setAutoCarAddonGlass(false);
       setAutoCarAddonAnimalCollision(false);
       setAutoCarAddonAnimalDamage(false);
@@ -2120,6 +2137,14 @@ export default function CalculatorPage() {
         setAutoCarHullDeductible(hullDeductible);
         if (hullDeductible != null) applied += 1;
       }
+      if ("carHullDeductibleText" in parsed) {
+        const hullDeductibleText =
+          typeof parsed.carHullDeductibleText === "string"
+            ? parsed.carHullDeductibleText.trim()
+            : "";
+        setAutoCarHullDeductibleText(hullDeductibleText);
+        if (hullDeductibleText) applied += 1;
+      }
       if ("carHullRiskAccident" in parsed) {
         const risk = parsed.carHullRiskAccident === true;
         setAutoCarHullRiskAccident(risk);
@@ -2140,6 +2165,11 @@ export default function CalculatorPage() {
         setAutoCarHullRiskVandalism(risk);
         if (risk) applied += 1;
       }
+      if ("carHullRiskAnimalCollision" in parsed) {
+        const risk = parsed.carHullRiskAnimalCollision === true;
+        setAutoCarHullRiskAnimalCollision(risk);
+        if (risk) applied += 1;
+      }
       if ("carAssistancePlan" in parsed) {
         const assistance =
           typeof parsed.carAssistancePlan === "string"
@@ -2147,6 +2177,11 @@ export default function CalculatorPage() {
             : "";
         setAutoCarAssistancePlan(assistance);
         if (assistance) applied += 1;
+      }
+      if ("carAddonEso" in parsed) {
+        const addon = parsed.carAddonEso === true;
+        setAutoCarAddonEso(addon);
+        if (addon) applied += 1;
       }
       if ("carAddonGlass" in parsed) {
         const addon = parsed.carAddonGlass === true;
@@ -3063,42 +3098,75 @@ export default function CalculatorPage() {
             tipContractTipsterEmail: tipContractConfig?.tipsterEmail ?? null,
             tipContractTipsterPercent: tipContractConfig?.tipsterPercent ?? null,
             carMake:
-              product === "slaviaauto" || product === "kooperativaAuto"
+              product === "cppAuto" ||
+              product === "slaviaauto" ||
+              product === "kooperativaAuto"
                 ? autoCarMake.trim() || null
                 : null,
             carPlate:
-              product === "slaviaauto" || product === "kooperativaAuto"
+              product === "cppAuto" ||
+              product === "slaviaauto" ||
+              product === "kooperativaAuto"
                 ? autoCarPlate.trim() || null
                 : null,
             carVin:
-              product === "slaviaauto" || product === "kooperativaAuto"
+              product === "cppAuto" ||
+              product === "slaviaauto" ||
+              product === "kooperativaAuto"
                 ? autoCarVin.trim() || null
                 : null,
             carTp: product === "slaviaauto" ? autoCarTp.trim() || null : null,
             carOrv:
-              product === "slaviaauto" || product === "kooperativaAuto"
+              product === "cppAuto" ||
+              product === "slaviaauto" ||
+              product === "kooperativaAuto"
                 ? autoCarOrv.trim() || null
                 : null,
             carLiabilityLimit:
-              product === "slaviaauto" || product === "kooperativaAuto"
+              product === "cppAuto" ||
+              product === "slaviaauto" ||
+              product === "kooperativaAuto"
                 ? autoCarLiabilityLimit
                 : null,
             carHullSumInsured:
               product === "kooperativaAuto" ? autoCarHullSumInsured : null,
             carHullDeductible:
-              product === "kooperativaAuto" ? autoCarHullDeductible : null,
+              product === "kooperativaAuto" || product === "cppAuto"
+                ? autoCarHullDeductible
+                : null,
+            carHullDeductibleText:
+              product === "kooperativaAuto" || product === "cppAuto"
+                ? autoCarHullDeductibleText.trim() || null
+                : null,
             carHullRiskAccident:
-              product === "kooperativaAuto" ? autoCarHullRiskAccident : null,
+              product === "kooperativaAuto" || product === "cppAuto"
+                ? autoCarHullRiskAccident
+                : null,
             carHullRiskTheft:
-              product === "kooperativaAuto" ? autoCarHullRiskTheft : null,
+              product === "kooperativaAuto" || product === "cppAuto"
+                ? autoCarHullRiskTheft
+                : null,
             carHullRiskNatural:
-              product === "kooperativaAuto" ? autoCarHullRiskNatural : null,
+              product === "kooperativaAuto" || product === "cppAuto"
+                ? autoCarHullRiskNatural
+                : null,
             carHullRiskVandalism:
-              product === "kooperativaAuto" ? autoCarHullRiskVandalism : null,
+              product === "kooperativaAuto" || product === "cppAuto"
+                ? autoCarHullRiskVandalism
+                : null,
+            carHullRiskAnimalCollision:
+              product === "kooperativaAuto" || product === "cppAuto"
+                ? autoCarHullRiskAnimalCollision
+                : null,
             carAssistancePlan:
-              product === "kooperativaAuto" ? autoCarAssistancePlan.trim() || null : null,
+              product === "kooperativaAuto" || product === "cppAuto"
+                ? autoCarAssistancePlan.trim() || null
+                : null,
+            carAddonEso: product === "cppAuto" ? autoCarAddonEso : null,
             carAddonGlass:
-              product === "slaviaauto" || product === "kooperativaAuto"
+              product === "cppAuto" ||
+              product === "slaviaauto" ||
+              product === "kooperativaAuto"
                 ? autoCarAddonGlass
                 : null,
             carAddonAnimalCollision:

@@ -99,10 +99,15 @@ type ContractDoc = {
   carAssistancePlan?: string | null;
   carHullSumInsured?: number | null;
   carHullDeductible?: number | null;
+  carHullDeductibleText?: string | null;
   carHullRiskAccident?: boolean | null;
   carHullRiskTheft?: boolean | null;
   carHullRiskNatural?: boolean | null;
   carHullRiskVandalism?: boolean | null;
+  carHullRiskAnimalCollision?: boolean | null;
+  carAddonEso?: boolean | null;
+  carAddonNaturalRisks?: boolean | null;
+  carAddonKlika?: boolean | null;
   carAddonReplacementCar?: boolean | null;
   carAddonLuggage?: boolean | null;
   carAddonTransportedGoods?: boolean | null;
@@ -265,10 +270,15 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAssistancePlan",
   "carHullSumInsured",
   "carHullDeductible",
+  "carHullDeductibleText",
   "carHullRiskAccident",
   "carHullRiskTheft",
   "carHullRiskNatural",
   "carHullRiskVandalism",
+  "carHullRiskAnimalCollision",
+  "carAddonEso",
+  "carAddonNaturalRisks",
+  "carAddonKlika",
   "carAddonGlass",
   "carAddonAnimalCollision",
   "carAddonAnimalDamage",
@@ -402,11 +412,16 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carLiabilityLimit",
   "carHullSumInsured",
   "carHullDeductible",
+  "carHullDeductibleText",
   "carHullRiskAccident",
   "carHullRiskTheft",
   "carHullRiskNatural",
   "carHullRiskVandalism",
+  "carHullRiskAnimalCollision",
   "carAssistancePlan",
+  "carAddonEso",
+  "carAddonNaturalRisks",
+  "carAddonKlika",
   "carAddonGlass",
   "carAddonAnimalCollision",
   "carAddonAnimalDamage",
@@ -447,6 +462,7 @@ const UPDATE_FIELDS_OPTIONAL_TEXT_FIELDS = new Set<string>([
   "carTp",
   "carOrv",
   "carAssistancePlan",
+  "carHullDeductibleText",
   "note",
 ]);
 const UPDATE_FIELDS_OPTIONAL_NUMBER_FIELDS = new Set<string>([
@@ -459,6 +475,10 @@ const UPDATE_FIELDS_OPTIONAL_BOOLEAN_FIELDS = new Set<string>([
   "carHullRiskTheft",
   "carHullRiskNatural",
   "carHullRiskVandalism",
+  "carHullRiskAnimalCollision",
+  "carAddonEso",
+  "carAddonNaturalRisks",
+  "carAddonKlika",
   "carAddonGlass",
   "carAddonAnimalCollision",
   "carAddonAnimalDamage",
@@ -968,10 +988,15 @@ type NormalizedCreateEntryPayload = {
   carAssistancePlan: string | null;
   carHullSumInsured: number | null;
   carHullDeductible: number | null;
+  carHullDeductibleText: string | null;
   carHullRiskAccident: boolean | null;
   carHullRiskTheft: boolean | null;
   carHullRiskNatural: boolean | null;
   carHullRiskVandalism: boolean | null;
+  carHullRiskAnimalCollision: boolean | null;
+  carAddonEso: boolean | null;
+  carAddonNaturalRisks: boolean | null;
+  carAddonKlika: boolean | null;
   carAddonGlass: boolean | null;
   carAddonAnimalCollision: boolean | null;
   carAddonAnimalDamage: boolean | null;
@@ -1115,6 +1140,12 @@ const normalizeCreateEntryPayload = ({
     "carHullDeductible"
   );
   if (!carHullDeductibleParsed.ok) return carHullDeductibleParsed;
+  const carHullDeductibleTextParsed = parseOptionalTrimmedText(
+    raw.carHullDeductibleText,
+    "carHullDeductibleText",
+    200
+  );
+  if (!carHullDeductibleTextParsed.ok) return carHullDeductibleTextParsed;
   const carHullRiskAccidentParsed = parseOptionalBoolean(
     raw.carHullRiskAccident,
     "carHullRiskAccident"
@@ -1135,6 +1166,20 @@ const normalizeCreateEntryPayload = ({
     "carHullRiskVandalism"
   );
   if (!carHullRiskVandalismParsed.ok) return carHullRiskVandalismParsed;
+  const carHullRiskAnimalCollisionParsed = parseOptionalBoolean(
+    raw.carHullRiskAnimalCollision,
+    "carHullRiskAnimalCollision"
+  );
+  if (!carHullRiskAnimalCollisionParsed.ok) return carHullRiskAnimalCollisionParsed;
+  const carAddonEsoParsed = parseOptionalBoolean(raw.carAddonEso, "carAddonEso");
+  if (!carAddonEsoParsed.ok) return carAddonEsoParsed;
+  const carAddonNaturalRisksParsed = parseOptionalBoolean(
+    raw.carAddonNaturalRisks,
+    "carAddonNaturalRisks"
+  );
+  if (!carAddonNaturalRisksParsed.ok) return carAddonNaturalRisksParsed;
+  const carAddonKlikaParsed = parseOptionalBoolean(raw.carAddonKlika, "carAddonKlika");
+  if (!carAddonKlikaParsed.ok) return carAddonKlikaParsed;
   const carAddonGlassParsed = parseOptionalBoolean(raw.carAddonGlass, "carAddonGlass");
   if (!carAddonGlassParsed.ok) return carAddonGlassParsed;
   const carAddonAnimalCollisionParsed = parseOptionalBoolean(
@@ -1366,10 +1411,15 @@ const normalizeCreateEntryPayload = ({
       carAssistancePlan: carAssistancePlanParsed.value,
       carHullSumInsured: carHullSumInsuredParsed.value,
       carHullDeductible: carHullDeductibleParsed.value,
+      carHullDeductibleText: carHullDeductibleTextParsed.value,
       carHullRiskAccident: carHullRiskAccidentParsed.value,
       carHullRiskTheft: carHullRiskTheftParsed.value,
       carHullRiskNatural: carHullRiskNaturalParsed.value,
       carHullRiskVandalism: carHullRiskVandalismParsed.value,
+      carHullRiskAnimalCollision: carHullRiskAnimalCollisionParsed.value,
+      carAddonEso: carAddonEsoParsed.value,
+      carAddonNaturalRisks: carAddonNaturalRisksParsed.value,
+      carAddonKlika: carAddonKlikaParsed.value,
       carAddonGlass: carAddonGlassParsed.value,
       carAddonAnimalCollision: carAddonAnimalCollisionParsed.value,
       carAddonAnimalDamage: carAddonAnimalDamageParsed.value,

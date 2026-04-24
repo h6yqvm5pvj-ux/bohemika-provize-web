@@ -896,7 +896,11 @@ export default function ContractDetailPage() {
   const [editCarHullRiskTheft, setEditCarHullRiskTheft] = useState(false);
   const [editCarHullRiskNatural, setEditCarHullRiskNatural] = useState(false);
   const [editCarHullRiskVandalism, setEditCarHullRiskVandalism] = useState(false);
+  const [editCarHullRiskAnimalCollision, setEditCarHullRiskAnimalCollision] = useState(false);
   const [editCarAssistancePlan, setEditCarAssistancePlan] = useState("");
+  const [editCarAddonEso, setEditCarAddonEso] = useState(false);
+  const [editCarAddonNaturalRisks, setEditCarAddonNaturalRisks] = useState(false);
+  const [editCarAddonKlika, setEditCarAddonKlika] = useState(false);
   const [editCarAddonGlass, setEditCarAddonGlass] = useState(false);
   const [editCarAddonAnimalCollision, setEditCarAddonAnimalCollision] = useState(false);
   const [editCarAddonAnimalDamage, setEditCarAddonAnimalDamage] = useState(false);
@@ -1030,7 +1034,11 @@ export default function ContractDetailPage() {
     carHullRiskTheft: editCarHullRiskTheft,
     carHullRiskNatural: editCarHullRiskNatural,
     carHullRiskVandalism: editCarHullRiskVandalism,
+    carHullRiskAnimalCollision: editCarHullRiskAnimalCollision,
     carAssistancePlan: editCarAssistancePlan,
+    carAddonEso: editCarAddonEso,
+    carAddonNaturalRisks: editCarAddonNaturalRisks,
+    carAddonKlika: editCarAddonKlika,
     carAddonGlass: editCarAddonGlass,
     carAddonAnimalCollision: editCarAddonAnimalCollision,
     carAddonAnimalDamage: editCarAddonAnimalDamage,
@@ -1200,8 +1208,20 @@ export default function ContractDetailPage() {
         case "carHullRiskVandalism":
           setEditCarHullRiskVandalism(Boolean(value));
           break;
+        case "carHullRiskAnimalCollision":
+          setEditCarHullRiskAnimalCollision(Boolean(value));
+          break;
         case "carAssistancePlan":
           setEditCarAssistancePlan(String(value));
+          break;
+        case "carAddonEso":
+          setEditCarAddonEso(Boolean(value));
+          break;
+        case "carAddonNaturalRisks":
+          setEditCarAddonNaturalRisks(Boolean(value));
+          break;
+        case "carAddonKlika":
+          setEditCarAddonKlika(Boolean(value));
           break;
         case "carAddonGlass":
           setEditCarAddonGlass(Boolean(value));
@@ -1630,15 +1650,20 @@ export default function ContractDetailPage() {
         : ""
     );
     setEditCarHullDeductible(
-      contract.carHullDeductible != null && Number.isFinite(contract.carHullDeductible)
-        ? String(contract.carHullDeductible)
-        : ""
+      (contract.carHullDeductibleText ?? "").trim() ||
+        (contract.carHullDeductible != null && Number.isFinite(contract.carHullDeductible)
+          ? String(contract.carHullDeductible)
+          : "")
     );
     setEditCarHullRiskAccident(!!contract.carHullRiskAccident);
     setEditCarHullRiskTheft(!!contract.carHullRiskTheft);
     setEditCarHullRiskNatural(!!contract.carHullRiskNatural);
     setEditCarHullRiskVandalism(!!contract.carHullRiskVandalism);
+    setEditCarHullRiskAnimalCollision(!!contract.carHullRiskAnimalCollision);
     setEditCarAssistancePlan(contract.carAssistancePlan ?? "");
+    setEditCarAddonEso(!!contract.carAddonEso);
+    setEditCarAddonNaturalRisks(!!contract.carAddonNaturalRisks);
+    setEditCarAddonKlika(!!contract.carAddonKlika);
     setEditCarAddonGlass(!!contract.carAddonGlass);
     setEditCarAddonAnimalCollision(!!contract.carAddonAnimalCollision);
     setEditCarAddonAnimalDamage(!!contract.carAddonAnimalDamage);
@@ -2131,11 +2156,16 @@ export default function ContractDetailPage() {
               carLiabilityLimit: toNumberOrNull(editCarLiabilityLimit),
               carHullSumInsured: toNumberOrNull(editCarHullSumInsured),
               carHullDeductible: toNumberOrNull(editCarHullDeductible),
+              carHullDeductibleText: editCarHullDeductible.trim() || null,
               carHullRiskAccident: !!editCarHullRiskAccident,
               carHullRiskTheft: !!editCarHullRiskTheft,
               carHullRiskNatural: !!editCarHullRiskNatural,
               carHullRiskVandalism: !!editCarHullRiskVandalism,
+              carHullRiskAnimalCollision: !!editCarHullRiskAnimalCollision,
               carAssistancePlan: editCarAssistancePlan.trim() || null,
+              carAddonEso: !!editCarAddonEso,
+              carAddonNaturalRisks: !!editCarAddonNaturalRisks,
+              carAddonKlika: !!editCarAddonKlika,
               carAddonGlass: !!editCarAddonGlass,
               carAddonAnimalCollision: !!editCarAddonAnimalCollision,
               carAddonAnimalDamage: !!editCarAddonAnimalDamage,
@@ -2163,11 +2193,16 @@ export default function ContractDetailPage() {
               carLiabilityLimit: null,
               carHullSumInsured: null,
               carHullDeductible: null,
+              carHullDeductibleText: null,
               carHullRiskAccident: null,
               carHullRiskTheft: null,
               carHullRiskNatural: null,
               carHullRiskVandalism: null,
+              carHullRiskAnimalCollision: null,
               carAssistancePlan: null,
+              carAddonEso: null,
+              carAddonNaturalRisks: null,
+              carAddonKlika: null,
               carAddonGlass: null,
               carAddonAnimalCollision: null,
               carAddonAnimalDamage: null,
@@ -2368,11 +2403,16 @@ export default function ContractDetailPage() {
                     carLiabilityLimit: autoFields.carLiabilityLimit,
                     carHullSumInsured: autoFields.carHullSumInsured,
                     carHullDeductible: autoFields.carHullDeductible,
+                    carHullDeductibleText: editCarHullDeductible.trim() || null,
                     carHullRiskAccident: autoFields.carHullRiskAccident,
                     carHullRiskTheft: autoFields.carHullRiskTheft,
                     carHullRiskNatural: autoFields.carHullRiskNatural,
                     carHullRiskVandalism: autoFields.carHullRiskVandalism,
+                    carHullRiskAnimalCollision: autoFields.carHullRiskAnimalCollision,
                     carAssistancePlan: autoFields.carAssistancePlan,
+                    carAddonEso: autoFields.carAddonEso,
+                    carAddonNaturalRisks: autoFields.carAddonNaturalRisks,
+                    carAddonKlika: autoFields.carAddonKlika,
                     carAddonGlass: autoFields.carAddonGlass,
                     carAddonAnimalCollision: autoFields.carAddonAnimalCollision,
                     carAddonAnimalDamage: autoFields.carAddonAnimalDamage,
@@ -2401,11 +2441,16 @@ export default function ContractDetailPage() {
                     carLiabilityLimit: null,
                     carHullSumInsured: null,
                     carHullDeductible: null,
+                    carHullDeductibleText: null,
                     carHullRiskAccident: null,
                     carHullRiskTheft: null,
                     carHullRiskNatural: null,
                     carHullRiskVandalism: null,
+                    carHullRiskAnimalCollision: null,
                     carAssistancePlan: null,
+                    carAddonEso: null,
+                    carAddonNaturalRisks: null,
+                    carAddonKlika: null,
                     carAddonGlass: null,
                     carAddonAnimalCollision: null,
                     carAddonAnimalDamage: null,

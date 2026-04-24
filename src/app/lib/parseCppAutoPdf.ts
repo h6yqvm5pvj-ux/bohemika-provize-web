@@ -8,6 +8,21 @@ export type CppAutoPdfResult = {
   contractSignedDate?: string | null;
   amount?: number | null;
   frequency?: PaymentFrequency | null;
+  carMake?: string | null;
+  carPlate?: string | null;
+  carVin?: string | null;
+  carOrv?: string | null;
+  carLiabilityLimit?: number | null;
+  carHullDeductible?: number | null;
+  carHullDeductibleText?: string | null;
+  carHullRiskAccident?: boolean | null;
+  carHullRiskTheft?: boolean | null;
+  carHullRiskNatural?: boolean | null;
+  carHullRiskVandalism?: boolean | null;
+  carHullRiskAnimalCollision?: boolean | null;
+  carAssistancePlan?: string | null;
+  carAddonEso?: boolean | null;
+  carAddonGlass?: boolean | null;
 };
 
 const toDateInput = (value: string | null | undefined): string | null => {
@@ -33,6 +48,178 @@ const parseAmount = (val: string | null | undefined): number | null => {
   const cleaned = val.replace(/\s+/g, "").replace(",", ".").trim();
   const num = Number.parseFloat(cleaned);
   return Number.isFinite(num) ? Math.round(num) : null;
+};
+
+const normalizeVehicleMakeModel = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const cleaned = value
+    .replace(/\s+/g, " ")
+    .replace(/^[\s:;,\-–—]+|[\s:;,\-–—]+$/g, "")
+    .trim();
+  if (!cleaned || cleaned.length < 2) return null;
+  if (!/[A-Za-zÀ-ž0-9]/.test(cleaned)) return null;
+  return cleaned;
+};
+
+const normalizePlate = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const cleaned = value.replace(/\s+/g, "").trim().toUpperCase();
+  if (cleaned.length < 3) return null;
+  return cleaned;
+};
+
+const normalizeVin = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const cleaned = value.replace(/\s+/g, "").trim().toUpperCase();
+  if (cleaned.length < 10) return null;
+  if (!/^[A-HJ-NPR-Z0-9]+$/.test(cleaned)) return null;
+  return cleaned;
+};
+
+const normalizeVehicleDocCode = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const cleaned = value.replace(/\s+/g, "").trim().toUpperCase();
+  if (cleaned.length < 3) return null;
+  return cleaned;
+};
+
+const LIABILITY_LIMIT_VALUES = new Set<number>([
+  50_000_000,
+  70_000_000,
+  100_000_000,
+  150_000_000,
+  200_000_000,
+  250_000_000,
+]);
+
+const normalizeLiabilityLimit = (value: string | null | undefined): number | null => {
+  if (!value) return null;
+  const normalized = value.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
+
+  const groupedMatches = normalized.match(/\d[\d\s]{4,}\d/g) ?? [];
+  for (const candidate of groupedMatches) {
+    const num = Number.parseInt(candidate.replace(/\s+/g, ""), 10);
+    if (Number.isFinite(num) && LIABILITY_LIMIT_VALUES.has(num)) return num;
+  }
+
+  const slashMatch = normalized.match(
+    /\b(50|70|100|150|200|250)\s*\/\s*(50|70|100|150|200|250)\b/
+  );
+  if (slashMatch?.[1] && slashMatch[1] === slashMatch[2]) {
+    const mil = Number.parseInt(slashMatch[1], 10);
+    if (Number.isFinite(mil)) return mil * 1_000_000;
+  }
+
+  const milMatch = normalized.match(/\b(50|70|100|150|200|250)\b\s*(?:mil(?:ionu?)?|mio)/i);
+  if (milMatch?.[1]) {
+    const mil = Number.parseInt(milMatch[1], 10);
+    if (Number.isFinite(mil)) return mil * 1_000_000;
+  }
+
+  const compact = normalized.replace(/[^\d]/g, "");
+  if (compact.length >= 7) {
+    const num = Number.parseInt(compact, 10);
+    if (Number.isFinite(num) && LIABILITY_LIMIT_VALUES.has(num)) return num;
+  }
+
+  return null;
+};
+
+const looksLikeStandaloneLabelLine = (value: string): boolean =>
+  /[:：]\s*$/.test(value) ||
+  /^(tovarni|obchodni|vin|registracni|serie|limit|pojistne|datum|rozsah|spoluucast|havarijni)\b/i.test(
+    stripDiacritics(value).trim()
+  );
+
+const extractInlineValueAfterColon = (value: string): string | null => {
+  const idx = value.indexOf(":");
+  if (idx < 0) return null;
+  const tail = value.slice(idx + 1).trim();
+  return tail || null;
+};
+
+const findLabelIndexes = (asciiLines: string[], label: RegExp): number[] => {
+  const indexes: number[] = [];
+  asciiLines.forEach((line, idx) => {
+    if (label.test(line)) indexes.push(idx);
+  });
+  return indexes;
+};
+
+const readNearestValueByLabel = (
+  lines: string[],
+  asciiLines: string[],
+  label: RegExp,
+  maxLookahead = 6
+): string | null => {
+  const indexes = findLabelIndexes(asciiLines, label);
+  for (const idx of indexes) {
+    const line = lines[idx] ?? "";
+    const inline = extractInlineValueAfterColon(line);
+    if (inline) return inline;
+
+    for (let step = 1; step <= maxLookahead; step++) {
+      const next = lines[idx + step]?.trim();
+      if (!next) continue;
+      if (looksLikeStandaloneLabelLine(next)) continue;
+      return next;
+    }
+  }
+  return null;
+};
+
+const readSectionValue = (
+  lines: string[],
+  asciiLines: string[],
+  sectionStart: number,
+  label: RegExp,
+  maxLookahead = 8,
+  sectionWindow = 70
+): string | null => {
+  const sectionEnd = Math.min(lines.length - 1, sectionStart + sectionWindow);
+  for (let idx = sectionStart; idx <= sectionEnd; idx++) {
+    if (!label.test(asciiLines[idx] ?? "")) continue;
+
+    const inline = extractInlineValueAfterColon(lines[idx] ?? "");
+    if (inline) return inline;
+
+    for (let step = 1; step <= maxLookahead; step++) {
+      const nextIdx = idx + step;
+      if (nextIdx > sectionEnd) break;
+      const next = lines[nextIdx]?.trim();
+      if (!next) continue;
+      if (label.test(asciiLines[nextIdx] ?? "")) continue;
+      if (looksLikeStandaloneLabelLine(next)) continue;
+      return next;
+    }
+  }
+  return null;
+};
+
+const normalizeHullDeductibleText = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const cleaned = value
+    .replace(/\u00A0/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s:;,\-–—]+|[\s:;,\-–—]+$/g, "")
+    .trim();
+  if (!cleaned || cleaned.length < 2) return null;
+  return cleaned;
+};
+
+const normalizeCppAssistancePlan = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const normalized = stripDiacritics(value).toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+
+  if (/plus\s*-\s*dvojnasobn(?:y|eho)?\s+limit/.test(normalized) || /\bdvojnasobn/.test(normalized)) {
+    return "plus_dvojnasob";
+  }
+  if (/car\s+premium/.test(normalized)) return "evropa_cr_bez_limitu";
+  if (/car\s+plus/.test(normalized)) return "cr_bez_limitu";
+  if (/\basistence\s+plus\b/.test(normalized) || /^plus\b/.test(normalized)) return "plus";
+  if (/\bstandard\b/.test(normalized)) return "standard";
+  return null;
 };
 
 export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
@@ -65,6 +252,11 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
   }
 
   const fullText = pagesText.join("\n");
+  const lines = fullText
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const asciiLines = lines.map((line) => stripDiacritics(line).toLowerCase());
   const normalized = fullText.replace(/\s+/g, " ").trim();
   const ascii = stripDiacritics(normalized).toLowerCase();
 
@@ -120,9 +312,12 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
   }
 
   // Frekvence platby
-  const freqMatch = ascii.match(/pojistne obdobi:\s*([a-z]+)/i);
-  if (freqMatch?.[1]) {
-    const word = freqMatch[1];
+  const frequencyRaw =
+    readNearestValueByLabel(lines, asciiLines, /pojistne\s+obdobi/i, 4) ??
+    ascii.match(/pojistne obdobi:\s*([a-z]+)/i)?.[1] ??
+    null;
+  if (frequencyRaw) {
+    const word = stripDiacritics(frequencyRaw).toLowerCase();
     if (word.startsWith("ctvrt")) result.frequency = "quarterly";
     else if (word.startsWith("polo")) result.frequency = "semiannual";
     else if (word.startsWith("roc")) result.frequency = "annual";
@@ -136,6 +331,129 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
   const amount = parseAmount(amountMatch);
   if (amount != null) {
     result.amount = amount;
+  }
+
+  const manufacturer = normalizeVehicleMakeModel(
+    readNearestValueByLabel(lines, asciiLines, /tovarni\s+znacka/i, 4)
+  );
+  const model = normalizeVehicleMakeModel(
+    readNearestValueByLabel(lines, asciiLines, /obchodni\s+oznaceni\s*\/\s*typ/i, 4) ??
+      readNearestValueByLabel(lines, asciiLines, /obchodni\s+oznaceni/i, 4)
+  );
+  const mergedMakeModel = normalizeVehicleMakeModel(
+    [manufacturer, model].filter(Boolean).join(" ")
+  );
+  if (mergedMakeModel) {
+    result.carMake = mergedMakeModel;
+  } else if (manufacturer) {
+    result.carMake = manufacturer;
+  }
+
+  const vin = normalizeVin(
+    readNearestValueByLabel(lines, asciiLines, /vin\s*\(vyrobni\s+cislo\s+karoserie\)/i, 4) ??
+      readNearestValueByLabel(lines, asciiLines, /^vin\b/i, 4)
+  );
+  if (vin) {
+    result.carVin = vin;
+  }
+
+  const plate = normalizePlate(
+    readNearestValueByLabel(lines, asciiLines, /registracni\s+znacka(?:\s*\(spz\))?/i, 4)
+  );
+  if (plate) {
+    result.carPlate = plate;
+  }
+
+  const orv = normalizeVehicleDocCode(
+    readNearestValueByLabel(lines, asciiLines, /serie\s+a\s+cislo\s+orv/i, 4)
+  );
+  if (orv) {
+    result.carOrv = orv;
+  }
+
+  const liabilityRaw =
+    readNearestValueByLabel(
+      lines,
+      asciiLines,
+      /limit\s+pojistneho\s+plneni\s*\(skody\s+na\s+zdravi\s*\/\s*majetku\)/i,
+      4
+    ) ?? readNearestValueByLabel(lines, asciiLines, /limit\s+pojistneho\s+plneni/i, 4);
+  const liability = normalizeLiabilityLimit(liabilityRaw);
+  if (liability != null) {
+    result.carLiabilityLimit = liability;
+  }
+
+  const assistanceLabelIndexes = findLabelIndexes(asciiLines, /pojisteni\s+asistence/i);
+  const hasAssistanceSection =
+    assistanceLabelIndexes.length > 0 || /pojisteni\s+asistence/i.test(ascii);
+  let assistancePlan: string | null = null;
+  for (const idx of assistanceLabelIndexes) {
+    const chunk = lines.slice(idx, Math.min(lines.length, idx + 12)).join(" ");
+    assistancePlan = normalizeCppAssistancePlan(chunk);
+    if (assistancePlan) break;
+  }
+  if (!assistancePlan) {
+    const sectionCandidate =
+      ascii.match(/pojisteni\s+asistence\s+(.{0,260})/i)?.[1] ??
+      readNearestValueByLabel(lines, asciiLines, /pojisteni\s+asistence/i, 10);
+    assistancePlan = normalizeCppAssistancePlan(sectionCandidate);
+  }
+  if (!assistancePlan) {
+    assistancePlan = normalizeCppAssistancePlan(ascii);
+  }
+  if (!assistancePlan && hasAssistanceSection) {
+    assistancePlan = "standard";
+  }
+  if (assistancePlan) {
+    result.carAssistancePlan = assistancePlan;
+  }
+
+  result.carAddonEso = /pojisteni\s+eso/i.test(ascii);
+  result.carAddonGlass = /pojisteni\s+skel\s+vozidla/i.test(ascii);
+
+  const hullSectionStarts = findLabelIndexes(asciiLines, /^havarijni\s+pojisteni\b/i);
+  for (const sectionStart of hullSectionStarts) {
+    const scopeRaw = readSectionValue(
+      lines,
+      asciiLines,
+      sectionStart,
+      /^rozsah\s+pojisteni\b/i,
+      10,
+      60
+    );
+    if (scopeRaw) {
+      const scopeAscii = stripDiacritics(scopeRaw).toLowerCase();
+      if (/\bhavarie\b/i.test(scopeAscii)) result.carHullRiskAccident = true;
+      if (/\bodcizeni\b/i.test(scopeAscii)) result.carHullRiskTheft = true;
+      if (/\bzivel\b/i.test(scopeAscii)) result.carHullRiskNatural = true;
+      if (/\bvandalismus\b/i.test(scopeAscii)) result.carHullRiskVandalism = true;
+      if (/stret\s+se\s+zv(?:iretem|eri)\b/i.test(scopeAscii)) {
+        result.carHullRiskAnimalCollision = true;
+      }
+    }
+
+    const deductibleRaw = readSectionValue(
+      lines,
+      asciiLines,
+      sectionStart,
+      /^spoluucast\b/i,
+      10,
+      60
+    );
+    const deductibleText = normalizeHullDeductibleText(deductibleRaw);
+    if (deductibleText) {
+      result.carHullDeductibleText = deductibleText;
+      if (!/%/.test(deductibleText)) {
+        const deductibleAmount = parseAmount(deductibleText);
+        if (deductibleAmount != null) {
+          result.carHullDeductible = deductibleAmount;
+        }
+      }
+    }
+
+    if (scopeRaw || deductibleText) {
+      break;
+    }
   }
 
   return result;

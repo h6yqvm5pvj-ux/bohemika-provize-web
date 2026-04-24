@@ -23,7 +23,11 @@ export type AutoFields = {
   carHullRiskTheft: boolean;
   carHullRiskNatural: boolean;
   carHullRiskVandalism: boolean;
+  carHullRiskAnimalCollision: boolean;
   carAssistancePlan: string;
+  carAddonEso: boolean;
+  carAddonNaturalRisks: boolean;
+  carAddonKlika: boolean;
   carAddonGlass: boolean;
   carAddonAnimalCollision: boolean;
   carAddonAnimalDamage: boolean;
@@ -52,11 +56,16 @@ export type AutoDetail = {
   carLiabilityLimit?: number | null;
   carHullSumInsured?: number | null;
   carHullDeductible?: number | null;
+  carHullDeductibleText?: string | null;
   carHullRiskAccident?: boolean | null;
   carHullRiskTheft?: boolean | null;
   carHullRiskNatural?: boolean | null;
   carHullRiskVandalism?: boolean | null;
+  carHullRiskAnimalCollision?: boolean | null;
   carAssistancePlan?: string | null;
+  carAddonEso?: boolean | null;
+  carAddonNaturalRisks?: boolean | null;
+  carAddonKlika?: boolean | null;
   carAddonGlass?: boolean | null;
   carAddonAnimalCollision?: boolean | null;
   carAddonAnimalDamage?: boolean | null;
@@ -94,10 +103,16 @@ const formatLimitLabel = (val: string): string => {
 const assistanceLabel = (val?: string | null): string => {
   const map: Record<string, string> = {
     zakladni: "Základní",
+    standard: "Standard",
     plus: "PLUS",
-    plus_dvojnasob: "Plus Dvojnásob",
-    cr_bez_limitu: "V ČR bez limitu",
-    evropa_cr_bez_limitu: "Evropa a ČR bez limitu",
+    plus_dvojnasob: "PLUS Dvojnásob",
+    "plus dvojnasob": "PLUS Dvojnásob",
+    cr_bez_limitu: "CAR PLUS v ČR bez limitu",
+    "v čr bez limitu": "CAR PLUS v ČR bez limitu",
+    "v cr bez limitu": "CAR PLUS v ČR bez limitu",
+    evropa_cr_bez_limitu: "CAR PREMIUM ČR a EVROPA bez limitu",
+    "evropa a čr bez limitu": "CAR PREMIUM ČR a EVROPA bez limitu",
+    "evropa a cr bez limitu": "CAR PREMIUM ČR a EVROPA bez limitu",
   };
   if (!val) return "—";
   const key = val.trim().toLowerCase();
@@ -165,16 +180,19 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
   const hasHullData =
     contract?.carHullSumInsured != null ||
     contract?.carHullDeductible != null ||
+    (contract?.carHullDeductibleText?.trim() ?? "") !== "" ||
     contract?.carHullRiskAccident === true ||
     contract?.carHullRiskTheft === true ||
     contract?.carHullRiskNatural === true ||
     contract?.carHullRiskVandalism === true ||
+    contract?.carHullRiskAnimalCollision === true ||
     (fields.carHullSumInsured?.trim?.() ?? "") !== "" ||
     (fields.carHullDeductible?.trim?.() ?? "") !== "" ||
     fields.carHullRiskAccident ||
     fields.carHullRiskTheft ||
     fields.carHullRiskNatural ||
-    fields.carHullRiskVandalism;
+    fields.carHullRiskVandalism ||
+    fields.carHullRiskAnimalCollision;
 
   return (
     <>
@@ -310,10 +328,11 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                 >
                   <option value="">Vyber asistenci</option>
                   <option value="zakladni">Základní</option>
+                  <option value="standard">Standard</option>
                   <option value="plus">PLUS</option>
-                  <option value="plus_dvojnasob">Plus Dvojnásob</option>
-                  <option value="cr_bez_limitu">V ČR bez limitu</option>
-                  <option value="evropa_cr_bez_limitu">Evropa a ČR bez limitu</option>
+                  <option value="plus_dvojnasob">PLUS Dvojnásob</option>
+                  <option value="cr_bez_limitu">CAR PLUS v ČR bez limitu</option>
+                  <option value="evropa_cr_bez_limitu">CAR PREMIUM ČR a EVROPA bez limitu</option>
                   <option value="ZÁKLAD">ZÁKLAD</option>
                   <option value="IDEÁL">IDEÁL</option>
                   <option value="MAX">MAX</option>
@@ -360,12 +379,14 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
               <span className="font-semibold text-right">
                 {editMode ? (
                   <input
-                    type="number"
+                    type="text"
                     value={fields.carHullDeductible}
                     onChange={(e) => onChange("carHullDeductible", e.target.value)}
-                    className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                    placeholder="Spoluúčast v Kč"
+                    className="w-56 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                    placeholder="např. 10 % (min. 10.000 Kč)"
                   />
+                ) : (contract?.carHullDeductibleText?.trim() ?? "") !== "" ? (
+                  contract?.carHullDeductibleText?.trim()
                 ) : contract?.carHullDeductible != null ? (
                   formatMoney(contract.carHullDeductible)
                 ) : (
@@ -395,6 +416,11 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                   label: "Vandalismus",
                   checked: fields.carHullRiskVandalism,
                 },
+                {
+                  key: "carHullRiskAnimalCollision",
+                  label: "Střet se zvířetem",
+                  checked: fields.carHullRiskAnimalCollision,
+                },
               ]
                 .filter((item) => editMode || item.checked)
                 .map((item) => (
@@ -415,6 +441,13 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
         <SectionTitle icon={Wrench} label="Připojištění" />
         <div className="space-y-1">
           {[
+            { key: "carAddonEso", label: "ESO", checked: fields.carAddonEso },
+            {
+              key: "carAddonNaturalRisks",
+              label: "Pojištění PŘÍRODNÍCH RIZIK",
+              checked: fields.carAddonNaturalRisks,
+            },
+            { key: "carAddonKlika", label: "Pojištění KLIKA", checked: fields.carAddonKlika },
             { key: "carAddonGlass", label: "Skla", checked: fields.carAddonGlass },
             { key: "carAddonAnimalCollision", label: "Střet se zvěří", checked: fields.carAddonAnimalCollision },
             { key: "carAddonAnimalDamage", label: "Poškození zvěří", checked: fields.carAddonAnimalDamage },

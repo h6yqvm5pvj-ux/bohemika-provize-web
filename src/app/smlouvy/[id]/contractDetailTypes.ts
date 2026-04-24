@@ -91,11 +91,16 @@ export type ContractDoc = {
   carLiabilityLimit?: number | null;
   carHullSumInsured?: number | null;
   carHullDeductible?: number | null;
+  carHullDeductibleText?: string | null;
   carHullRiskAccident?: boolean | null;
   carHullRiskTheft?: boolean | null;
   carHullRiskNatural?: boolean | null;
   carHullRiskVandalism?: boolean | null;
+  carHullRiskAnimalCollision?: boolean | null;
   carAssistancePlan?: string | null;
+  carAddonEso?: boolean | null;
+  carAddonNaturalRisks?: boolean | null;
+  carAddonKlika?: boolean | null;
   carAddonGlass?: boolean | null;
   carAddonAnimalCollision?: boolean | null;
   carAddonAnimalDamage?: boolean | null;
