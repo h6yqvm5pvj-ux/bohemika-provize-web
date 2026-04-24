@@ -64,6 +64,7 @@ import { parseFlexiPdf } from "../lib/parseFlexiPdf";
 import { parseDomexPdf } from "../lib/parseDomexPdf";
 import { parseComfortPdf } from "../lib/parseComfortPdf";
 import { parseMaxCizinKomplexPdf } from "../lib/parseMaxCizinKomplexPdf";
+import { parseKooperativaAutoPdf } from "../lib/parseKooperativaAutoPdf";
 import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_OPTIONS,
@@ -1159,10 +1160,23 @@ export default function CalculatorPage() {
   const [autoCarTp, setAutoCarTp] = useState<string>("");
   const [autoCarOrv, setAutoCarOrv] = useState<string>("");
   const [autoCarLiabilityLimit, setAutoCarLiabilityLimit] = useState<number | null>(null);
+  const [autoCarHullSumInsured, setAutoCarHullSumInsured] = useState<number | null>(null);
+  const [autoCarHullDeductible, setAutoCarHullDeductible] = useState<number | null>(null);
+  const [autoCarHullRiskAccident, setAutoCarHullRiskAccident] = useState(false);
+  const [autoCarHullRiskTheft, setAutoCarHullRiskTheft] = useState(false);
+  const [autoCarHullRiskNatural, setAutoCarHullRiskNatural] = useState(false);
+  const [autoCarHullRiskVandalism, setAutoCarHullRiskVandalism] = useState(false);
+  const [autoCarAssistancePlan, setAutoCarAssistancePlan] = useState<string>("");
   const [autoCarAddonGlass, setAutoCarAddonGlass] = useState(false);
   const [autoCarAddonAnimalCollision, setAutoCarAddonAnimalCollision] = useState(false);
   const [autoCarAddonAnimalDamage, setAutoCarAddonAnimalDamage] = useState(false);
   const [autoCarAddonVandalism, setAutoCarAddonVandalism] = useState(false);
+  const [autoCarAddonNatural, setAutoCarAddonNatural] = useState(false);
+  const [autoCarAddonReplacementCar, setAutoCarAddonReplacementCar] = useState(false);
+  const [autoCarAddonLuggage, setAutoCarAddonLuggage] = useState(false);
+  const [autoCarAddonTransportedGoods, setAutoCarAddonTransportedGoods] = useState(false);
+  const [autoCarAddonPothole, setAutoCarAddonPothole] = useState(false);
+  const [autoCarAddonNonFaultAccident, setAutoCarAddonNonFaultAccident] = useState(false);
   const [autoCarAddonKeyLossTheft, setAutoCarAddonKeyLossTheft] = useState(false);
   const [refreshOriginalOpen, setRefreshOriginalOpen] = useState(false);
   const [durationHelpOpen, setDurationHelpOpen] = useState(false);
@@ -1315,6 +1329,7 @@ export default function CalculatorPage() {
       !tipsterModeEnabled &&
       (product === "cppAuto" ||
         product === "slaviaauto" ||
+        product === "kooperativaAuto" ||
         product === "neon" ||
         product === "flexi" ||
         product === "domex" ||
@@ -1748,17 +1763,30 @@ export default function CalculatorPage() {
   }, [tipContractModalOpen, tipContractDraftEmail, user]);
 
   useEffect(() => {
-    if (product !== "slaviaauto") {
+    if (product !== "slaviaauto" && product !== "kooperativaAuto") {
       setAutoCarMake("");
       setAutoCarPlate("");
       setAutoCarVin("");
       setAutoCarTp("");
       setAutoCarOrv("");
       setAutoCarLiabilityLimit(null);
+      setAutoCarHullSumInsured(null);
+      setAutoCarHullDeductible(null);
+      setAutoCarHullRiskAccident(false);
+      setAutoCarHullRiskTheft(false);
+      setAutoCarHullRiskNatural(false);
+      setAutoCarHullRiskVandalism(false);
+      setAutoCarAssistancePlan("");
       setAutoCarAddonGlass(false);
       setAutoCarAddonAnimalCollision(false);
       setAutoCarAddonAnimalDamage(false);
       setAutoCarAddonVandalism(false);
+      setAutoCarAddonNatural(false);
+      setAutoCarAddonReplacementCar(false);
+      setAutoCarAddonLuggage(false);
+      setAutoCarAddonTransportedGoods(false);
+      setAutoCarAddonPothole(false);
+      setAutoCarAddonNonFaultAccident(false);
       setAutoCarAddonKeyLossTheft(false);
     }
   }, [product]);
@@ -1924,17 +1952,30 @@ export default function CalculatorPage() {
     setPdfImporting(true);
     setPdfImportError(null);
     setPdfImportStatus("Načítám PDF…");
-    if (product === "slaviaauto") {
+    if (product === "slaviaauto" || product === "kooperativaAuto") {
       setAutoCarMake("");
       setAutoCarPlate("");
       setAutoCarVin("");
       setAutoCarTp("");
       setAutoCarOrv("");
       setAutoCarLiabilityLimit(null);
+      setAutoCarHullSumInsured(null);
+      setAutoCarHullDeductible(null);
+      setAutoCarHullRiskAccident(false);
+      setAutoCarHullRiskTheft(false);
+      setAutoCarHullRiskNatural(false);
+      setAutoCarHullRiskVandalism(false);
+      setAutoCarAssistancePlan("");
       setAutoCarAddonGlass(false);
       setAutoCarAddonAnimalCollision(false);
       setAutoCarAddonAnimalDamage(false);
       setAutoCarAddonVandalism(false);
+      setAutoCarAddonNatural(false);
+      setAutoCarAddonReplacementCar(false);
+      setAutoCarAddonLuggage(false);
+      setAutoCarAddonTransportedGoods(false);
+      setAutoCarAddonPothole(false);
+      setAutoCarAddonNonFaultAccident(false);
       setAutoCarAddonKeyLossTheft(false);
     }
     try {
@@ -1946,12 +1987,15 @@ export default function CalculatorPage() {
         | Awaited<ReturnType<typeof parseDomexPdf>>
         | Awaited<ReturnType<typeof parseMaxCizinKomplexPdf>>
         | Awaited<ReturnType<typeof parseComfortPdf>>
+        | Awaited<ReturnType<typeof parseKooperativaAutoPdf>>
         | null = null;
 
       if (product === "cppAuto") {
         parsed = await parseCppAutoPdf(file);
       } else if (product === "slaviaauto") {
         parsed = await parseSlaviaAutoPdf(file);
+      } else if (product === "kooperativaAuto") {
+        parsed = await parseKooperativaAutoPdf(file);
       } else if (product === "neon") {
         parsed = await parseNeonPdf(file);
       } else if (product === "flexi") {
@@ -1964,7 +2008,7 @@ export default function CalculatorPage() {
         parsed = await parseComfortPdf(file);
       } else {
         setPdfImportError(
-          "Načítání z PDF je teď dostupné jen pro ČPP Auto, SLAVIA Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
+          "Načítání z PDF je teď dostupné jen pro ČPP Auto, SLAVIA Auto, Kooperativa Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
         );
         setPdfImportStatus(null);
         return;
@@ -2058,6 +2102,52 @@ export default function CalculatorPage() {
         setAutoCarLiabilityLimit(liabilityLimit);
         if (liabilityLimit != null) applied += 1;
       }
+      if ("carHullSumInsured" in parsed) {
+        const hullSumInsured =
+          typeof parsed.carHullSumInsured === "number" &&
+          Number.isFinite(parsed.carHullSumInsured)
+            ? Math.round(parsed.carHullSumInsured)
+            : null;
+        setAutoCarHullSumInsured(hullSumInsured);
+        if (hullSumInsured != null) applied += 1;
+      }
+      if ("carHullDeductible" in parsed) {
+        const hullDeductible =
+          typeof parsed.carHullDeductible === "number" &&
+          Number.isFinite(parsed.carHullDeductible)
+            ? Math.round(parsed.carHullDeductible)
+            : null;
+        setAutoCarHullDeductible(hullDeductible);
+        if (hullDeductible != null) applied += 1;
+      }
+      if ("carHullRiskAccident" in parsed) {
+        const risk = parsed.carHullRiskAccident === true;
+        setAutoCarHullRiskAccident(risk);
+        if (risk) applied += 1;
+      }
+      if ("carHullRiskTheft" in parsed) {
+        const risk = parsed.carHullRiskTheft === true;
+        setAutoCarHullRiskTheft(risk);
+        if (risk) applied += 1;
+      }
+      if ("carHullRiskNatural" in parsed) {
+        const risk = parsed.carHullRiskNatural === true;
+        setAutoCarHullRiskNatural(risk);
+        if (risk) applied += 1;
+      }
+      if ("carHullRiskVandalism" in parsed) {
+        const risk = parsed.carHullRiskVandalism === true;
+        setAutoCarHullRiskVandalism(risk);
+        if (risk) applied += 1;
+      }
+      if ("carAssistancePlan" in parsed) {
+        const assistance =
+          typeof parsed.carAssistancePlan === "string"
+            ? parsed.carAssistancePlan.trim()
+            : "";
+        setAutoCarAssistancePlan(assistance);
+        if (assistance) applied += 1;
+      }
       if ("carAddonGlass" in parsed) {
         const addon = parsed.carAddonGlass === true;
         setAutoCarAddonGlass(addon);
@@ -2076,6 +2166,36 @@ export default function CalculatorPage() {
       if ("carAddonVandalism" in parsed) {
         const addon = parsed.carAddonVandalism === true;
         setAutoCarAddonVandalism(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonNatural" in parsed) {
+        const addon = parsed.carAddonNatural === true;
+        setAutoCarAddonNatural(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonReplacementCar" in parsed) {
+        const addon = parsed.carAddonReplacementCar === true;
+        setAutoCarAddonReplacementCar(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonLuggage" in parsed) {
+        const addon = parsed.carAddonLuggage === true;
+        setAutoCarAddonLuggage(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonTransportedGoods" in parsed) {
+        const addon = parsed.carAddonTransportedGoods === true;
+        setAutoCarAddonTransportedGoods(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonPothole" in parsed) {
+        const addon = parsed.carAddonPothole === true;
+        setAutoCarAddonPothole(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonNonFaultAccident" in parsed) {
+        const addon = parsed.carAddonNonFaultAccident === true;
+        setAutoCarAddonNonFaultAccident(addon);
         if (addon) applied += 1;
       }
       if ("carAddonKeyLossTheft" in parsed) {
@@ -2942,17 +3062,66 @@ export default function CalculatorPage() {
             contractNumber: trimmedContractNumber || null,
             tipContractTipsterEmail: tipContractConfig?.tipsterEmail ?? null,
             tipContractTipsterPercent: tipContractConfig?.tipsterPercent ?? null,
-            carMake: product === "slaviaauto" ? autoCarMake.trim() || null : null,
-            carPlate: product === "slaviaauto" ? autoCarPlate.trim() || null : null,
-            carVin: product === "slaviaauto" ? autoCarVin.trim() || null : null,
+            carMake:
+              product === "slaviaauto" || product === "kooperativaAuto"
+                ? autoCarMake.trim() || null
+                : null,
+            carPlate:
+              product === "slaviaauto" || product === "kooperativaAuto"
+                ? autoCarPlate.trim() || null
+                : null,
+            carVin:
+              product === "slaviaauto" || product === "kooperativaAuto"
+                ? autoCarVin.trim() || null
+                : null,
             carTp: product === "slaviaauto" ? autoCarTp.trim() || null : null,
-            carOrv: product === "slaviaauto" ? autoCarOrv.trim() || null : null,
-            carLiabilityLimit: product === "slaviaauto" ? autoCarLiabilityLimit : null,
-            carAddonGlass: product === "slaviaauto" ? autoCarAddonGlass : null,
+            carOrv:
+              product === "slaviaauto" || product === "kooperativaAuto"
+                ? autoCarOrv.trim() || null
+                : null,
+            carLiabilityLimit:
+              product === "slaviaauto" || product === "kooperativaAuto"
+                ? autoCarLiabilityLimit
+                : null,
+            carHullSumInsured:
+              product === "kooperativaAuto" ? autoCarHullSumInsured : null,
+            carHullDeductible:
+              product === "kooperativaAuto" ? autoCarHullDeductible : null,
+            carHullRiskAccident:
+              product === "kooperativaAuto" ? autoCarHullRiskAccident : null,
+            carHullRiskTheft:
+              product === "kooperativaAuto" ? autoCarHullRiskTheft : null,
+            carHullRiskNatural:
+              product === "kooperativaAuto" ? autoCarHullRiskNatural : null,
+            carHullRiskVandalism:
+              product === "kooperativaAuto" ? autoCarHullRiskVandalism : null,
+            carAssistancePlan:
+              product === "kooperativaAuto" ? autoCarAssistancePlan.trim() || null : null,
+            carAddonGlass:
+              product === "slaviaauto" || product === "kooperativaAuto"
+                ? autoCarAddonGlass
+                : null,
             carAddonAnimalCollision:
               product === "slaviaauto" ? autoCarAddonAnimalCollision : null,
-            carAddonAnimalDamage: product === "slaviaauto" ? autoCarAddonAnimalDamage : null,
+            carAddonAnimalDamage:
+              product === "slaviaauto" || product === "kooperativaAuto"
+                ? autoCarAddonAnimalDamage
+                : null,
             carAddonVandalism: product === "slaviaauto" ? autoCarAddonVandalism : null,
+            carAddonNatural:
+              product === "kooperativaAuto" ? autoCarAddonNatural : null,
+            carAddonReplacementCar:
+              product === "kooperativaAuto" ? autoCarAddonReplacementCar : null,
+            carAddonLuggage:
+              product === "kooperativaAuto" ? autoCarAddonLuggage : null,
+            carAddonTransportedGoods:
+              product === "kooperativaAuto" ? autoCarAddonTransportedGoods : null,
+            carAddonPothole:
+              product === "kooperativaAuto" ? autoCarAddonPothole : null,
+            carAddonNonFaultAccident:
+              product === "kooperativaAuto"
+                ? autoCarAddonNonFaultAccident
+                : null,
             carAddonKeyLossTheft:
               product === "slaviaauto" ? autoCarAddonKeyLossTheft : null,
             isRefresh: shouldRefreshOriginalNeon,

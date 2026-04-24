@@ -96,6 +96,16 @@ type ContractDoc = {
   carTp?: string | null;
   carOrv?: string | null;
   carLiabilityLimit?: number | null;
+  carAssistancePlan?: string | null;
+  carHullSumInsured?: number | null;
+  carHullDeductible?: number | null;
+  carHullRiskAccident?: boolean | null;
+  carHullRiskTheft?: boolean | null;
+  carHullRiskNatural?: boolean | null;
+  carHullRiskVandalism?: boolean | null;
+  carAddonReplacementCar?: boolean | null;
+  carAddonLuggage?: boolean | null;
+  carAddonTransportedGoods?: boolean | null;
 
   createdAt?: FirestoreTimestamp | Date | string | number | null;
   contractSignedDate?: FirestoreTimestamp | Date | string | number | null;
@@ -252,10 +262,23 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carTp",
   "carOrv",
   "carLiabilityLimit",
+  "carAssistancePlan",
+  "carHullSumInsured",
+  "carHullDeductible",
+  "carHullRiskAccident",
+  "carHullRiskTheft",
+  "carHullRiskNatural",
+  "carHullRiskVandalism",
   "carAddonGlass",
   "carAddonAnimalCollision",
   "carAddonAnimalDamage",
   "carAddonVandalism",
+  "carAddonNatural",
+  "carAddonReplacementCar",
+  "carAddonLuggage",
+  "carAddonTransportedGoods",
+  "carAddonPothole",
+  "carAddonNonFaultAccident",
   "carAddonKeyLossTheft",
   "isRefresh",
   "refreshOriginalContractNumber",
@@ -379,6 +402,10 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carLiabilityLimit",
   "carHullSumInsured",
   "carHullDeductible",
+  "carHullRiskAccident",
+  "carHullRiskTheft",
+  "carHullRiskNatural",
+  "carHullRiskVandalism",
   "carAssistancePlan",
   "carAddonGlass",
   "carAddonAnimalCollision",
@@ -387,11 +414,14 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAddonTheft",
   "carAddonNatural",
   "carAddonOwnDamage",
+  "carAddonPothole",
+  "carAddonNonFaultAccident",
   "carAddonGap",
   "carAddonSmartGap",
   "carAddonServisPro",
   "carAddonReplacementCar",
   "carAddonLuggage",
+  "carAddonTransportedGoods",
   "carAddonPassengerInjury",
   "carAddonKeyLossTheft",
   "neonDetail",
@@ -425,6 +455,10 @@ const UPDATE_FIELDS_OPTIONAL_NUMBER_FIELDS = new Set<string>([
   "carHullDeductible",
 ]);
 const UPDATE_FIELDS_OPTIONAL_BOOLEAN_FIELDS = new Set<string>([
+  "carHullRiskAccident",
+  "carHullRiskTheft",
+  "carHullRiskNatural",
+  "carHullRiskVandalism",
   "carAddonGlass",
   "carAddonAnimalCollision",
   "carAddonAnimalDamage",
@@ -432,11 +466,14 @@ const UPDATE_FIELDS_OPTIONAL_BOOLEAN_FIELDS = new Set<string>([
   "carAddonTheft",
   "carAddonNatural",
   "carAddonOwnDamage",
+  "carAddonPothole",
+  "carAddonNonFaultAccident",
   "carAddonGap",
   "carAddonSmartGap",
   "carAddonServisPro",
   "carAddonReplacementCar",
   "carAddonLuggage",
+  "carAddonTransportedGoods",
   "carAddonPassengerInjury",
   "carAddonKeyLossTheft",
 ]);
@@ -928,10 +965,23 @@ type NormalizedCreateEntryPayload = {
   carTp: string | null;
   carOrv: string | null;
   carLiabilityLimit: number | null;
+  carAssistancePlan: string | null;
+  carHullSumInsured: number | null;
+  carHullDeductible: number | null;
+  carHullRiskAccident: boolean | null;
+  carHullRiskTheft: boolean | null;
+  carHullRiskNatural: boolean | null;
+  carHullRiskVandalism: boolean | null;
   carAddonGlass: boolean | null;
   carAddonAnimalCollision: boolean | null;
   carAddonAnimalDamage: boolean | null;
   carAddonVandalism: boolean | null;
+  carAddonNatural: boolean | null;
+  carAddonReplacementCar: boolean | null;
+  carAddonLuggage: boolean | null;
+  carAddonTransportedGoods: boolean | null;
+  carAddonPothole: boolean | null;
+  carAddonNonFaultAccident: boolean | null;
   carAddonKeyLossTheft: boolean | null;
   paid: boolean;
   managerEmailSnapshot: string | null;
@@ -1049,6 +1099,42 @@ const normalizeCreateEntryPayload = ({
     "carLiabilityLimit"
   );
   if (!carLiabilityLimitParsed.ok) return carLiabilityLimitParsed;
+  const carAssistancePlanParsed = parseOptionalTrimmedText(
+    raw.carAssistancePlan,
+    "carAssistancePlan",
+    120
+  );
+  if (!carAssistancePlanParsed.ok) return carAssistancePlanParsed;
+  const carHullSumInsuredParsed = parseOptionalFiniteNumber(
+    raw.carHullSumInsured,
+    "carHullSumInsured"
+  );
+  if (!carHullSumInsuredParsed.ok) return carHullSumInsuredParsed;
+  const carHullDeductibleParsed = parseOptionalFiniteNumber(
+    raw.carHullDeductible,
+    "carHullDeductible"
+  );
+  if (!carHullDeductibleParsed.ok) return carHullDeductibleParsed;
+  const carHullRiskAccidentParsed = parseOptionalBoolean(
+    raw.carHullRiskAccident,
+    "carHullRiskAccident"
+  );
+  if (!carHullRiskAccidentParsed.ok) return carHullRiskAccidentParsed;
+  const carHullRiskTheftParsed = parseOptionalBoolean(
+    raw.carHullRiskTheft,
+    "carHullRiskTheft"
+  );
+  if (!carHullRiskTheftParsed.ok) return carHullRiskTheftParsed;
+  const carHullRiskNaturalParsed = parseOptionalBoolean(
+    raw.carHullRiskNatural,
+    "carHullRiskNatural"
+  );
+  if (!carHullRiskNaturalParsed.ok) return carHullRiskNaturalParsed;
+  const carHullRiskVandalismParsed = parseOptionalBoolean(
+    raw.carHullRiskVandalism,
+    "carHullRiskVandalism"
+  );
+  if (!carHullRiskVandalismParsed.ok) return carHullRiskVandalismParsed;
   const carAddonGlassParsed = parseOptionalBoolean(raw.carAddonGlass, "carAddonGlass");
   if (!carAddonGlassParsed.ok) return carAddonGlassParsed;
   const carAddonAnimalCollisionParsed = parseOptionalBoolean(
@@ -1066,6 +1152,36 @@ const normalizeCreateEntryPayload = ({
     "carAddonVandalism"
   );
   if (!carAddonVandalismParsed.ok) return carAddonVandalismParsed;
+  const carAddonNaturalParsed = parseOptionalBoolean(
+    raw.carAddonNatural,
+    "carAddonNatural"
+  );
+  if (!carAddonNaturalParsed.ok) return carAddonNaturalParsed;
+  const carAddonReplacementCarParsed = parseOptionalBoolean(
+    raw.carAddonReplacementCar,
+    "carAddonReplacementCar"
+  );
+  if (!carAddonReplacementCarParsed.ok) return carAddonReplacementCarParsed;
+  const carAddonLuggageParsed = parseOptionalBoolean(
+    raw.carAddonLuggage,
+    "carAddonLuggage"
+  );
+  if (!carAddonLuggageParsed.ok) return carAddonLuggageParsed;
+  const carAddonTransportedGoodsParsed = parseOptionalBoolean(
+    raw.carAddonTransportedGoods,
+    "carAddonTransportedGoods"
+  );
+  if (!carAddonTransportedGoodsParsed.ok) return carAddonTransportedGoodsParsed;
+  const carAddonPotholeParsed = parseOptionalBoolean(
+    raw.carAddonPothole,
+    "carAddonPothole"
+  );
+  if (!carAddonPotholeParsed.ok) return carAddonPotholeParsed;
+  const carAddonNonFaultAccidentParsed = parseOptionalBoolean(
+    raw.carAddonNonFaultAccident,
+    "carAddonNonFaultAccident"
+  );
+  if (!carAddonNonFaultAccidentParsed.ok) return carAddonNonFaultAccidentParsed;
   const carAddonKeyLossTheftParsed = parseOptionalBoolean(
     raw.carAddonKeyLossTheft,
     "carAddonKeyLossTheft"
@@ -1247,10 +1363,23 @@ const normalizeCreateEntryPayload = ({
       carTp: carTpParsed.value,
       carOrv: carOrvParsed.value,
       carLiabilityLimit: carLiabilityLimitParsed.value,
+      carAssistancePlan: carAssistancePlanParsed.value,
+      carHullSumInsured: carHullSumInsuredParsed.value,
+      carHullDeductible: carHullDeductibleParsed.value,
+      carHullRiskAccident: carHullRiskAccidentParsed.value,
+      carHullRiskTheft: carHullRiskTheftParsed.value,
+      carHullRiskNatural: carHullRiskNaturalParsed.value,
+      carHullRiskVandalism: carHullRiskVandalismParsed.value,
       carAddonGlass: carAddonGlassParsed.value,
       carAddonAnimalCollision: carAddonAnimalCollisionParsed.value,
       carAddonAnimalDamage: carAddonAnimalDamageParsed.value,
       carAddonVandalism: carAddonVandalismParsed.value,
+      carAddonNatural: carAddonNaturalParsed.value,
+      carAddonReplacementCar: carAddonReplacementCarParsed.value,
+      carAddonLuggage: carAddonLuggageParsed.value,
+      carAddonTransportedGoods: carAddonTransportedGoodsParsed.value,
+      carAddonPothole: carAddonPotholeParsed.value,
+      carAddonNonFaultAccident: carAddonNonFaultAccidentParsed.value,
       carAddonKeyLossTheft: carAddonKeyLossTheftParsed.value,
       paid: false,
       managerEmailSnapshot: null,

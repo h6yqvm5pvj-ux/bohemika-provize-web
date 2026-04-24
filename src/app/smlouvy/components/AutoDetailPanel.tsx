@@ -19,6 +19,10 @@ export type AutoFields = {
   carLiabilityLimit: string;
   carHullSumInsured: string;
   carHullDeductible: string;
+  carHullRiskAccident: boolean;
+  carHullRiskTheft: boolean;
+  carHullRiskNatural: boolean;
+  carHullRiskVandalism: boolean;
   carAssistancePlan: string;
   carAddonGlass: boolean;
   carAddonAnimalCollision: boolean;
@@ -27,11 +31,14 @@ export type AutoFields = {
   carAddonTheft: boolean;
   carAddonNatural: boolean;
   carAddonOwnDamage: boolean;
+  carAddonPothole: boolean;
+  carAddonNonFaultAccident: boolean;
   carAddonGap: boolean;
   carAddonSmartGap: boolean;
   carAddonServisPro: boolean;
   carAddonReplacementCar: boolean;
   carAddonLuggage: boolean;
+  carAddonTransportedGoods: boolean;
   carAddonPassengerInjury: boolean;
   carAddonKeyLossTheft: boolean;
 };
@@ -45,6 +52,10 @@ export type AutoDetail = {
   carLiabilityLimit?: number | null;
   carHullSumInsured?: number | null;
   carHullDeductible?: number | null;
+  carHullRiskAccident?: boolean | null;
+  carHullRiskTheft?: boolean | null;
+  carHullRiskNatural?: boolean | null;
+  carHullRiskVandalism?: boolean | null;
   carAssistancePlan?: string | null;
   carAddonGlass?: boolean | null;
   carAddonAnimalCollision?: boolean | null;
@@ -53,11 +64,14 @@ export type AutoDetail = {
   carAddonTheft?: boolean | null;
   carAddonNatural?: boolean | null;
   carAddonOwnDamage?: boolean | null;
+  carAddonPothole?: boolean | null;
+  carAddonNonFaultAccident?: boolean | null;
   carAddonGap?: boolean | null;
   carAddonSmartGap?: boolean | null;
   carAddonServisPro?: boolean | null;
   carAddonReplacementCar?: boolean | null;
   carAddonLuggage?: boolean | null;
+  carAddonTransportedGoods?: boolean | null;
   carAddonPassengerInjury?: boolean | null;
   carAddonKeyLossTheft?: boolean | null;
 } | null;
@@ -151,8 +165,16 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
   const hasHullData =
     contract?.carHullSumInsured != null ||
     contract?.carHullDeductible != null ||
+    contract?.carHullRiskAccident === true ||
+    contract?.carHullRiskTheft === true ||
+    contract?.carHullRiskNatural === true ||
+    contract?.carHullRiskVandalism === true ||
     (fields.carHullSumInsured?.trim?.() ?? "") !== "" ||
-    (fields.carHullDeductible?.trim?.() ?? "") !== "";
+    (fields.carHullDeductible?.trim?.() ?? "") !== "" ||
+    fields.carHullRiskAccident ||
+    fields.carHullRiskTheft ||
+    fields.carHullRiskNatural ||
+    fields.carHullRiskVandalism;
 
   return (
     <>
@@ -292,6 +314,16 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                   <option value="plus_dvojnasob">Plus Dvojnásob</option>
                   <option value="cr_bez_limitu">V ČR bez limitu</option>
                   <option value="evropa_cr_bez_limitu">Evropa a ČR bez limitu</option>
+                  <option value="ZÁKLAD">ZÁKLAD</option>
+                  <option value="IDEÁL">IDEÁL</option>
+                  <option value="MAX">MAX</option>
+                  <option value="MAX+">MAX+</option>
+                  <option value="S">S</option>
+                  <option value="M">M</option>
+                  <option value="XL">XL</option>
+                  <option value="VIP">VIP</option>
+                  <option value="Rozšířená asistence 150km">Rozšířená asistence 150km</option>
+                  <option value="Rozšířená asistence 750km">Rozšířená asistence 750km</option>
                 </select>
               ) : (
                 assistanceLabel(contract?.carAssistancePlan ?? fields.carAssistancePlan)
@@ -341,6 +373,40 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                 )}
               </span>
             </div>
+            <div className="pt-1 space-y-1">
+              {[
+                {
+                  key: "carHullRiskAccident",
+                  label: "Havárie",
+                  checked: fields.carHullRiskAccident,
+                },
+                {
+                  key: "carHullRiskTheft",
+                  label: "Odcizení",
+                  checked: fields.carHullRiskTheft,
+                },
+                {
+                  key: "carHullRiskNatural",
+                  label: "Živel",
+                  checked: fields.carHullRiskNatural,
+                },
+                {
+                  key: "carHullRiskVandalism",
+                  label: "Vandalismus",
+                  checked: fields.carHullRiskVandalism,
+                },
+              ]
+                .filter((item) => editMode || item.checked)
+                .map((item) => (
+                  <ToggleRow
+                    key={item.key}
+                    label={item.label}
+                    checked={item.checked}
+                    onChange={(val) => onChange(item.key as keyof AutoFields, val)}
+                    disabled={!editMode}
+                  />
+                ))}
+            </div>
           </div>
         </div>
       )}
@@ -356,11 +422,30 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
             { key: "carAddonTheft", label: "Odcizení", checked: fields.carAddonTheft },
             { key: "carAddonNatural", label: "Živel", checked: fields.carAddonNatural },
             { key: "carAddonOwnDamage", label: "Poškození vlastního vozidla", checked: fields.carAddonOwnDamage },
+            { key: "carAddonPothole", label: "Výmol", checked: fields.carAddonPothole },
+            {
+              key: "carAddonNonFaultAccident",
+              label: "Pojištění nezaviněné nehody",
+              checked: fields.carAddonNonFaultAccident,
+            },
             { key: "carAddonGap", label: "GAP", checked: fields.carAddonGap },
             { key: "carAddonSmartGap", label: "SmartGAP", checked: fields.carAddonSmartGap },
             { key: "carAddonServisPro", label: "Servis PRO", checked: fields.carAddonServisPro },
-            { key: "carAddonReplacementCar", label: "Náhradní vozidlo", checked: fields.carAddonReplacementCar },
-            { key: "carAddonLuggage", label: "Zavazadla", checked: fields.carAddonLuggage },
+            {
+              key: "carAddonReplacementCar",
+              label: "Pojištění náhradního vozidla",
+              checked: fields.carAddonReplacementCar,
+            },
+            {
+              key: "carAddonLuggage",
+              label: "Pojištění zavazadel, nosičů a boxů",
+              checked: fields.carAddonLuggage,
+            },
+            {
+              key: "carAddonTransportedGoods",
+              label: "Pojištění dopravovaných věcí",
+              checked: fields.carAddonTransportedGoods,
+            },
             { key: "carAddonPassengerInjury", label: "Úraz všech osob", checked: fields.carAddonPassengerInjury },
             { key: "carAddonKeyLossTheft", label: "Ztráta a odcizení klíčů", checked: fields.carAddonKeyLossTheft },
           ]

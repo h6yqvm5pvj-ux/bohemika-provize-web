@@ -91,6 +91,10 @@ export type ContractDoc = {
   carLiabilityLimit?: number | null;
   carHullSumInsured?: number | null;
   carHullDeductible?: number | null;
+  carHullRiskAccident?: boolean | null;
+  carHullRiskTheft?: boolean | null;
+  carHullRiskNatural?: boolean | null;
+  carHullRiskVandalism?: boolean | null;
   carAssistancePlan?: string | null;
   carAddonGlass?: boolean | null;
   carAddonAnimalCollision?: boolean | null;
@@ -99,11 +103,14 @@ export type ContractDoc = {
   carAddonTheft?: boolean | null;
   carAddonNatural?: boolean | null;
   carAddonOwnDamage?: boolean | null;
+  carAddonPothole?: boolean | null;
+  carAddonNonFaultAccident?: boolean | null;
   carAddonGap?: boolean | null;
   carAddonSmartGap?: boolean | null;
   carAddonServisPro?: boolean | null;
   carAddonReplacementCar?: boolean | null;
   carAddonLuggage?: boolean | null;
+  carAddonTransportedGoods?: boolean | null;
   carAddonPassengerInjury?: boolean | null;
   carAddonKeyLossTheft?: boolean | null;
 
