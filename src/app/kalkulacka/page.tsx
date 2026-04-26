@@ -65,6 +65,8 @@ import { parseDomexPdf } from "../lib/parseDomexPdf";
 import { parseComfortPdf } from "../lib/parseComfortPdf";
 import { parseMaxCizinKomplexPdf } from "../lib/parseMaxCizinKomplexPdf";
 import { parseKooperativaAutoPdf } from "../lib/parseKooperativaAutoPdf";
+import { parseAllianzAutoPdf } from "../lib/parseAllianzAutoPdf";
+import { parsePillowAutoPdf } from "../lib/parsePillowAutoPdf";
 import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_OPTIONS,
@@ -251,6 +253,15 @@ type ContractsApiResponse = {
   ok?: boolean;
   error?: string;
   contracts?: { clientName?: string | null }[];
+};
+
+type ContractsFindApiResponse = {
+  ok?: boolean;
+  error?: string;
+  contracts?: Array<{
+    id?: string;
+    contractNumber?: string | null;
+  }>;
 };
 
 type ContractsMutationResponse = {
@@ -1159,8 +1170,11 @@ export default function CalculatorPage() {
   const [autoCarVin, setAutoCarVin] = useState<string>("");
   const [autoCarTp, setAutoCarTp] = useState<string>("");
   const [autoCarOrv, setAutoCarOrv] = useState<string>("");
+  const [autoCarAnnualMileage, setAutoCarAnnualMileage] = useState<string>("");
+  const [autoCarAllianzScope, setAutoCarAllianzScope] = useState<string>("");
   const [autoCarLiabilityLimit, setAutoCarLiabilityLimit] = useState<number | null>(null);
   const [autoCarHullSumInsured, setAutoCarHullSumInsured] = useState<number | null>(null);
+  const [autoCarHullSumInsuredText, setAutoCarHullSumInsuredText] = useState<string>("");
   const [autoCarHullDeductible, setAutoCarHullDeductible] = useState<number | null>(null);
   const [autoCarHullDeductibleText, setAutoCarHullDeductibleText] = useState<string>("");
   const [autoCarHullRiskAccident, setAutoCarHullRiskAccident] = useState(false);
@@ -1174,13 +1188,32 @@ export default function CalculatorPage() {
   const [autoCarAddonAnimalCollision, setAutoCarAddonAnimalCollision] = useState(false);
   const [autoCarAddonAnimalDamage, setAutoCarAddonAnimalDamage] = useState(false);
   const [autoCarAddonVandalism, setAutoCarAddonVandalism] = useState(false);
+  const [autoCarAddonTheft, setAutoCarAddonTheft] = useState(false);
   const [autoCarAddonNatural, setAutoCarAddonNatural] = useState(false);
+  const [autoCarAddonGap, setAutoCarAddonGap] = useState(false);
+  const [autoCarAddonFireExplosion, setAutoCarAddonFireExplosion] = useState(false);
+  const [autoCarAddonLegalAdvice, setAutoCarAddonLegalAdvice] = useState(false);
   const [autoCarAddonReplacementCar, setAutoCarAddonReplacementCar] = useState(false);
   const [autoCarAddonLuggage, setAutoCarAddonLuggage] = useState(false);
   const [autoCarAddonTransportedGoods, setAutoCarAddonTransportedGoods] = useState(false);
   const [autoCarAddonPothole, setAutoCarAddonPothole] = useState(false);
   const [autoCarAddonNonFaultAccident, setAutoCarAddonNonFaultAccident] = useState(false);
   const [autoCarAddonKeyLossTheft, setAutoCarAddonKeyLossTheft] = useState(false);
+  const [domexAddress, setDomexAddress] = useState<string>("");
+  const [domexPropertyType, setDomexPropertyType] = useState<string>("");
+  const [domexPropertyCoverage, setDomexPropertyCoverage] = useState<string>("");
+  const [domexPropertySumInsured, setDomexPropertySumInsured] = useState<number | null>(null);
+  const [domexPropertyDeductible, setDomexPropertyDeductible] = useState<number | null>(null);
+  const [domexHouseholdType, setDomexHouseholdType] = useState<string>("");
+  const [domexHouseholdCoverage, setDomexHouseholdCoverage] = useState<string>("");
+  const [domexHouseholdSumInsured, setDomexHouseholdSumInsured] = useState<number | null>(null);
+  const [domexHouseholdDeductible, setDomexHouseholdDeductible] = useState<number | null>(null);
+  const [domexLiabilitySumInsured, setDomexLiabilitySumInsured] = useState<number | null>(null);
+  const [domexLiabilityDeductible, setDomexLiabilityDeductible] = useState<number | null>(null);
+  const [domexLiabilityMobile, setDomexLiabilityMobile] = useState(false);
+  const [domexLiabilityTenant, setDomexLiabilityTenant] = useState(false);
+  const [domexLiabilityLandlord, setDomexLiabilityLandlord] = useState(false);
+  const [domexAssistancePlus, setDomexAssistancePlus] = useState(false);
   const [refreshOriginalOpen, setRefreshOriginalOpen] = useState(false);
   const [durationHelpOpen, setDurationHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1332,6 +1365,8 @@ export default function CalculatorPage() {
       !tipsterModeEnabled &&
       (product === "cppAuto" ||
         product === "slaviaauto" ||
+        product === "allianzAuto" ||
+        product === "pillowAuto" ||
         product === "kooperativaAuto" ||
         product === "neon" ||
         product === "flexi" ||
@@ -1776,8 +1811,11 @@ export default function CalculatorPage() {
       setAutoCarVin("");
       setAutoCarTp("");
       setAutoCarOrv("");
+      setAutoCarAnnualMileage("");
+      setAutoCarAllianzScope("");
       setAutoCarLiabilityLimit(null);
       setAutoCarHullSumInsured(null);
+      setAutoCarHullSumInsuredText("");
       setAutoCarHullDeductible(null);
       setAutoCarHullDeductibleText("");
       setAutoCarHullRiskAccident(false);
@@ -1791,13 +1829,37 @@ export default function CalculatorPage() {
       setAutoCarAddonAnimalCollision(false);
       setAutoCarAddonAnimalDamage(false);
       setAutoCarAddonVandalism(false);
+      setAutoCarAddonTheft(false);
       setAutoCarAddonNatural(false);
+      setAutoCarAddonGap(false);
+      setAutoCarAddonFireExplosion(false);
+      setAutoCarAddonLegalAdvice(false);
       setAutoCarAddonReplacementCar(false);
       setAutoCarAddonLuggage(false);
       setAutoCarAddonTransportedGoods(false);
       setAutoCarAddonPothole(false);
       setAutoCarAddonNonFaultAccident(false);
       setAutoCarAddonKeyLossTheft(false);
+    }
+  }, [product]);
+
+  useEffect(() => {
+    if (product !== "domex") {
+      setDomexAddress("");
+      setDomexPropertyType("");
+      setDomexPropertyCoverage("");
+      setDomexPropertySumInsured(null);
+      setDomexPropertyDeductible(null);
+      setDomexHouseholdType("");
+      setDomexHouseholdCoverage("");
+      setDomexHouseholdSumInsured(null);
+      setDomexHouseholdDeductible(null);
+      setDomexLiabilitySumInsured(null);
+      setDomexLiabilityDeductible(null);
+      setDomexLiabilityMobile(false);
+      setDomexLiabilityTenant(false);
+      setDomexLiabilityLandlord(false);
+      setDomexAssistancePlus(false);
     }
   }, [product]);
 
@@ -1812,23 +1874,26 @@ export default function CalculatorPage() {
     const timer = window.setTimeout(async () => {
       setContractNumberLiveCheck({ status: "checking" });
       try {
-        const email = (user.email ?? "").trim().toLowerCase();
-        if (!email) {
-          if (!canceled) setContractNumberLiveCheck({ status: "idle" });
-          return;
-        }
-
-        const userRef = doc(db, "users", email);
-        const entriesRef = collection(userRef, "entries");
-        const dupSnap = await getDocs(
-          query(entriesRef, where("contractNumber", "==", trimmedContractNumber))
+        const params = new URLSearchParams({
+          scope: "my",
+          q: trimmedContractNumber,
+        });
+        const payload = await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
+          user,
+          `/api/contracts/find?${params.toString()}`
         );
         if (canceled) return;
 
-        if (dupSnap.size > 0) {
+        if (payload.ok === false) {
+          setContractNumberLiveCheck({ status: "error" });
+          return;
+        }
+
+        const dupCount = Array.isArray(payload.contracts) ? payload.contracts.length : 0;
+        if (dupCount > 0) {
           setContractNumberLiveCheck({
             status: "duplicate",
-            count: dupSnap.size,
+            count: dupCount,
           });
           return;
         }
@@ -1965,6 +2030,8 @@ export default function CalculatorPage() {
     if (
       product === "cppAuto" ||
       product === "slaviaauto" ||
+      product === "allianzAuto" ||
+      product === "pillowAuto" ||
       product === "kooperativaAuto"
     ) {
       setAutoCarMake("");
@@ -1972,8 +2039,11 @@ export default function CalculatorPage() {
       setAutoCarVin("");
       setAutoCarTp("");
       setAutoCarOrv("");
+      setAutoCarAnnualMileage("");
+      setAutoCarAllianzScope("");
       setAutoCarLiabilityLimit(null);
       setAutoCarHullSumInsured(null);
+      setAutoCarHullSumInsuredText("");
       setAutoCarHullDeductible(null);
       setAutoCarHullDeductibleText("");
       setAutoCarHullRiskAccident(false);
@@ -1987,13 +2057,34 @@ export default function CalculatorPage() {
       setAutoCarAddonAnimalCollision(false);
       setAutoCarAddonAnimalDamage(false);
       setAutoCarAddonVandalism(false);
+      setAutoCarAddonTheft(false);
       setAutoCarAddonNatural(false);
+      setAutoCarAddonGap(false);
+      setAutoCarAddonFireExplosion(false);
+      setAutoCarAddonLegalAdvice(false);
       setAutoCarAddonReplacementCar(false);
       setAutoCarAddonLuggage(false);
       setAutoCarAddonTransportedGoods(false);
       setAutoCarAddonPothole(false);
       setAutoCarAddonNonFaultAccident(false);
       setAutoCarAddonKeyLossTheft(false);
+    }
+    if (product === "domex") {
+      setDomexAddress("");
+      setDomexPropertyType("");
+      setDomexPropertyCoverage("");
+      setDomexPropertySumInsured(null);
+      setDomexPropertyDeductible(null);
+      setDomexHouseholdType("");
+      setDomexHouseholdCoverage("");
+      setDomexHouseholdSumInsured(null);
+      setDomexHouseholdDeductible(null);
+      setDomexLiabilitySumInsured(null);
+      setDomexLiabilityDeductible(null);
+      setDomexLiabilityMobile(false);
+      setDomexLiabilityTenant(false);
+      setDomexLiabilityLandlord(false);
+      setDomexAssistancePlus(false);
     }
     try {
       let parsed:
@@ -2005,12 +2096,18 @@ export default function CalculatorPage() {
         | Awaited<ReturnType<typeof parseMaxCizinKomplexPdf>>
         | Awaited<ReturnType<typeof parseComfortPdf>>
         | Awaited<ReturnType<typeof parseKooperativaAutoPdf>>
+        | Awaited<ReturnType<typeof parseAllianzAutoPdf>>
+        | Awaited<ReturnType<typeof parsePillowAutoPdf>>
         | null = null;
 
       if (product === "cppAuto") {
         parsed = await parseCppAutoPdf(file);
       } else if (product === "slaviaauto") {
         parsed = await parseSlaviaAutoPdf(file);
+      } else if (product === "allianzAuto") {
+        parsed = await parseAllianzAutoPdf(file);
+      } else if (product === "pillowAuto") {
+        parsed = await parsePillowAutoPdf(file);
       } else if (product === "kooperativaAuto") {
         parsed = await parseKooperativaAutoPdf(file);
       } else if (product === "neon") {
@@ -2025,7 +2122,7 @@ export default function CalculatorPage() {
         parsed = await parseComfortPdf(file);
       } else {
         setPdfImportError(
-          "Načítání z PDF je teď dostupné jen pro ČPP Auto, SLAVIA Auto, Kooperativa Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
+          "Načítání z PDF je teď dostupné jen pro ČPP Auto, SLAVIA Auto, Allianz Auto, Pillow Auto, Kooperativa Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
         );
         setPdfImportStatus(null);
         return;
@@ -2066,6 +2163,113 @@ export default function CalculatorPage() {
         if (allowedForProduct.includes(parsed.frequency)) {
           setFrequency(parsed.frequency);
         }
+      }
+      if ("domexAddress" in parsed) {
+        const address = typeof parsed.domexAddress === "string" ? parsed.domexAddress.trim() : "";
+        setDomexAddress(address);
+        if (address) applied += 1;
+      }
+      if ("domexPropertyType" in parsed) {
+        const propertyType =
+          typeof parsed.domexPropertyType === "string" ? parsed.domexPropertyType.trim() : "";
+        setDomexPropertyType(propertyType);
+        if (propertyType) applied += 1;
+      }
+      if ("domexPropertyCoverage" in parsed) {
+        const propertyCoverage =
+          typeof parsed.domexPropertyCoverage === "string"
+            ? parsed.domexPropertyCoverage.trim()
+            : "";
+        setDomexPropertyCoverage(propertyCoverage);
+        if (propertyCoverage) applied += 1;
+      }
+      if ("domexPropertySumInsured" in parsed) {
+        const sumInsured =
+          typeof parsed.domexPropertySumInsured === "number" &&
+          Number.isFinite(parsed.domexPropertySumInsured)
+            ? Math.round(parsed.domexPropertySumInsured)
+            : null;
+        setDomexPropertySumInsured(sumInsured);
+        if (sumInsured != null) applied += 1;
+      }
+      if ("domexPropertyDeductible" in parsed) {
+        const deductible =
+          typeof parsed.domexPropertyDeductible === "number" &&
+          Number.isFinite(parsed.domexPropertyDeductible)
+            ? Math.round(parsed.domexPropertyDeductible)
+            : null;
+        setDomexPropertyDeductible(deductible);
+        if (deductible != null) applied += 1;
+      }
+      if ("domexHouseholdType" in parsed) {
+        const householdType =
+          typeof parsed.domexHouseholdType === "string" ? parsed.domexHouseholdType.trim() : "";
+        setDomexHouseholdType(householdType);
+        if (householdType) applied += 1;
+      }
+      if ("domexHouseholdCoverage" in parsed) {
+        const householdCoverage =
+          typeof parsed.domexHouseholdCoverage === "string"
+            ? parsed.domexHouseholdCoverage.trim()
+            : "";
+        setDomexHouseholdCoverage(householdCoverage);
+        if (householdCoverage) applied += 1;
+      }
+      if ("domexHouseholdSumInsured" in parsed) {
+        const householdSumInsured =
+          typeof parsed.domexHouseholdSumInsured === "number" &&
+          Number.isFinite(parsed.domexHouseholdSumInsured)
+            ? Math.round(parsed.domexHouseholdSumInsured)
+            : null;
+        setDomexHouseholdSumInsured(householdSumInsured);
+        if (householdSumInsured != null) applied += 1;
+      }
+      if ("domexHouseholdDeductible" in parsed) {
+        const householdDeductible =
+          typeof parsed.domexHouseholdDeductible === "number" &&
+          Number.isFinite(parsed.domexHouseholdDeductible)
+            ? Math.round(parsed.domexHouseholdDeductible)
+            : null;
+        setDomexHouseholdDeductible(householdDeductible);
+        if (householdDeductible != null) applied += 1;
+      }
+      if ("domexLiabilitySumInsured" in parsed) {
+        const liabilitySumInsured =
+          typeof parsed.domexLiabilitySumInsured === "number" &&
+          Number.isFinite(parsed.domexLiabilitySumInsured)
+            ? Math.round(parsed.domexLiabilitySumInsured)
+            : null;
+        setDomexLiabilitySumInsured(liabilitySumInsured);
+        if (liabilitySumInsured != null) applied += 1;
+      }
+      if ("domexLiabilityDeductible" in parsed) {
+        const liabilityDeductible =
+          typeof parsed.domexLiabilityDeductible === "number" &&
+          Number.isFinite(parsed.domexLiabilityDeductible)
+            ? Math.round(parsed.domexLiabilityDeductible)
+            : null;
+        setDomexLiabilityDeductible(liabilityDeductible);
+        if (liabilityDeductible != null) applied += 1;
+      }
+      if ("domexLiabilityMobile" in parsed) {
+        const hasAddon = parsed.domexLiabilityMobile === true;
+        setDomexLiabilityMobile(hasAddon);
+        if (hasAddon) applied += 1;
+      }
+      if ("domexLiabilityTenant" in parsed) {
+        const hasAddon = parsed.domexLiabilityTenant === true;
+        setDomexLiabilityTenant(hasAddon);
+        if (hasAddon) applied += 1;
+      }
+      if ("domexLiabilityLandlord" in parsed) {
+        const hasAddon = parsed.domexLiabilityLandlord === true;
+        setDomexLiabilityLandlord(hasAddon);
+        if (hasAddon) applied += 1;
+      }
+      if ("domexAssistancePlus" in parsed) {
+        const hasAssistance = parsed.domexAssistancePlus === true;
+        setDomexAssistancePlus(hasAssistance);
+        if (hasAssistance) applied += 1;
       }
       if ("durationYears" in parsed && typeof parsed.durationYears === "number") {
         const [min, max] = durationRange(product);
@@ -2110,6 +2314,22 @@ export default function CalculatorPage() {
         setAutoCarOrv(orv);
         if (orv) applied += 1;
       }
+      if ("carAnnualMileage" in parsed) {
+        const annualMileage =
+          typeof parsed.carAnnualMileage === "string"
+            ? parsed.carAnnualMileage.trim()
+            : "";
+        setAutoCarAnnualMileage(annualMileage);
+        if (annualMileage) applied += 1;
+      }
+      if ("carAllianzScope" in parsed) {
+        const scope =
+          typeof parsed.carAllianzScope === "string"
+            ? parsed.carAllianzScope.trim()
+            : "";
+        setAutoCarAllianzScope(scope);
+        if (scope) applied += 1;
+      }
       if ("carLiabilityLimit" in parsed) {
         const liabilityLimit =
           typeof parsed.carLiabilityLimit === "number" &&
@@ -2127,6 +2347,17 @@ export default function CalculatorPage() {
             : null;
         setAutoCarHullSumInsured(hullSumInsured);
         if (hullSumInsured != null) applied += 1;
+      }
+      if ("carHullSumInsuredText" in parsed) {
+        const hullSumInsuredText =
+          typeof parsed.carHullSumInsuredText === "string"
+            ? parsed.carHullSumInsuredText.trim()
+            : "";
+        setAutoCarHullSumInsuredText(hullSumInsuredText);
+        if (hullSumInsuredText) {
+          setAutoCarHullSumInsured(null);
+          applied += 1;
+        }
       }
       if ("carHullDeductible" in parsed) {
         const hullDeductible =
@@ -2203,9 +2434,29 @@ export default function CalculatorPage() {
         setAutoCarAddonVandalism(addon);
         if (addon) applied += 1;
       }
+      if ("carAddonTheft" in parsed) {
+        const addon = parsed.carAddonTheft === true;
+        setAutoCarAddonTheft(addon);
+        if (addon) applied += 1;
+      }
       if ("carAddonNatural" in parsed) {
         const addon = parsed.carAddonNatural === true;
         setAutoCarAddonNatural(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonGap" in parsed) {
+        const addon = parsed.carAddonGap === true;
+        setAutoCarAddonGap(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonFireExplosion" in parsed) {
+        const addon = parsed.carAddonFireExplosion === true;
+        setAutoCarAddonFireExplosion(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonLegalAdvice" in parsed) {
+        const addon = parsed.carAddonLegalAdvice === true;
+        setAutoCarAddonLegalAdvice(addon);
         if (addon) applied += 1;
       }
       if ("carAddonReplacementCar" in parsed) {
@@ -3100,84 +3351,143 @@ export default function CalculatorPage() {
             carMake:
               product === "cppAuto" ||
               product === "slaviaauto" ||
-              product === "kooperativaAuto"
+              product === "kooperativaAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarMake.trim() || null
                 : null,
             carPlate:
               product === "cppAuto" ||
               product === "slaviaauto" ||
-              product === "kooperativaAuto"
+              product === "kooperativaAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarPlate.trim() || null
                 : null,
             carVin:
               product === "cppAuto" ||
               product === "slaviaauto" ||
-              product === "kooperativaAuto"
+              product === "kooperativaAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarVin.trim() || null
                 : null,
             carTp: product === "slaviaauto" ? autoCarTp.trim() || null : null,
             carOrv:
               product === "cppAuto" ||
               product === "slaviaauto" ||
-              product === "kooperativaAuto"
+              product === "kooperativaAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarOrv.trim() || null
                 : null,
+            carAnnualMileage:
+              product === "allianzAuto" || product === "pillowAuto"
+                ? autoCarAnnualMileage.trim() || null
+                : null,
+            carAllianzScope:
+              product === "allianzAuto" ? autoCarAllianzScope.trim() || null : null,
             carLiabilityLimit:
               product === "cppAuto" ||
               product === "slaviaauto" ||
-              product === "kooperativaAuto"
+              product === "kooperativaAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarLiabilityLimit
                 : null,
             carHullSumInsured:
-              product === "kooperativaAuto" ? autoCarHullSumInsured : null,
+              product === "kooperativaAuto" || product === "pillowAuto"
+                ? autoCarHullSumInsured
+                : null,
+            carHullSumInsuredText:
+              product === "pillowAuto" ? autoCarHullSumInsuredText.trim() || null : null,
             carHullDeductible:
-              product === "kooperativaAuto" || product === "cppAuto"
+              product === "kooperativaAuto" ||
+              product === "cppAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarHullDeductible
                 : null,
             carHullDeductibleText:
-              product === "kooperativaAuto" || product === "cppAuto"
+              product === "kooperativaAuto" ||
+              product === "cppAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarHullDeductibleText.trim() || null
                 : null,
             carHullRiskAccident:
-              product === "kooperativaAuto" || product === "cppAuto"
+              product === "kooperativaAuto" ||
+              product === "cppAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarHullRiskAccident
                 : null,
             carHullRiskTheft:
-              product === "kooperativaAuto" || product === "cppAuto"
+              product === "kooperativaAuto" ||
+              product === "cppAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarHullRiskTheft
                 : null,
             carHullRiskNatural:
-              product === "kooperativaAuto" || product === "cppAuto"
+              product === "kooperativaAuto" ||
+              product === "cppAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarHullRiskNatural
                 : null,
             carHullRiskVandalism:
-              product === "kooperativaAuto" || product === "cppAuto"
+              product === "kooperativaAuto" ||
+              product === "cppAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarHullRiskVandalism
                 : null,
             carHullRiskAnimalCollision:
-              product === "kooperativaAuto" || product === "cppAuto"
+              product === "kooperativaAuto" ||
+              product === "cppAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarHullRiskAnimalCollision
                 : null,
             carAssistancePlan:
-              product === "kooperativaAuto" || product === "cppAuto"
+              product === "kooperativaAuto" ||
+              product === "cppAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarAssistancePlan.trim() || null
                 : null,
             carAddonEso: product === "cppAuto" ? autoCarAddonEso : null,
             carAddonGlass:
               product === "cppAuto" ||
               product === "slaviaauto" ||
-              product === "kooperativaAuto"
+              product === "kooperativaAuto" ||
+              product === "allianzAuto" ||
+              product === "pillowAuto"
                 ? autoCarAddonGlass
                 : null,
             carAddonAnimalCollision:
               product === "slaviaauto" ? autoCarAddonAnimalCollision : null,
             carAddonAnimalDamage:
-              product === "slaviaauto" || product === "kooperativaAuto"
+              product === "slaviaauto" ||
+              product === "kooperativaAuto" ||
+              product === "allianzAuto"
                 ? autoCarAddonAnimalDamage
                 : null,
-            carAddonVandalism: product === "slaviaauto" ? autoCarAddonVandalism : null,
+            carAddonVandalism:
+              product === "slaviaauto" || product === "allianzAuto"
+                ? autoCarAddonVandalism
+                : null,
+            carAddonTheft: product === "allianzAuto" ? autoCarAddonTheft : null,
             carAddonNatural:
-              product === "kooperativaAuto" ? autoCarAddonNatural : null,
+              product === "kooperativaAuto" || product === "allianzAuto"
+                ? autoCarAddonNatural
+                : null,
+            carAddonGap: product === "allianzAuto" ? autoCarAddonGap : null,
+            carAddonFireExplosion:
+              product === "allianzAuto" ? autoCarAddonFireExplosion : null,
+            carAddonLegalAdvice:
+              product === "allianzAuto" ? autoCarAddonLegalAdvice : null,
             carAddonReplacementCar:
               product === "kooperativaAuto" ? autoCarAddonReplacementCar : null,
             carAddonLuggage:
@@ -3187,11 +3497,33 @@ export default function CalculatorPage() {
             carAddonPothole:
               product === "kooperativaAuto" ? autoCarAddonPothole : null,
             carAddonNonFaultAccident:
-              product === "kooperativaAuto"
+              product === "kooperativaAuto" || product === "pillowAuto"
                 ? autoCarAddonNonFaultAccident
                 : null,
             carAddonKeyLossTheft:
               product === "slaviaauto" ? autoCarAddonKeyLossTheft : null,
+            domexDetail:
+              product === "domex"
+                ? {
+                    address: domexAddress.trim() || null,
+                    propertyType: domexPropertyType.trim() || null,
+                    propertyCoverage: domexPropertyCoverage.trim() || null,
+                    sumInsured: domexPropertySumInsured,
+                    deductible: domexPropertyDeductible,
+                    householdType: domexHouseholdType.trim() || null,
+                    householdCoverage: domexHouseholdCoverage.trim() || null,
+                    householdSumInsured: domexHouseholdSumInsured,
+                    householdDeductible: domexHouseholdDeductible,
+                    outbuildingSumInsured: null,
+                    liabilitySumInsured: domexLiabilitySumInsured,
+                    liabilityDeductible: domexLiabilityDeductible,
+                    liabilityMobile: domexLiabilityMobile ? true : null,
+                    liabilityTenant: domexLiabilityTenant ? true : null,
+                    liabilityLandlord: domexLiabilityLandlord ? true : null,
+                    assistancePlus: domexAssistancePlus ? true : null,
+                    note: null,
+                  }
+                : null,
             isRefresh: shouldRefreshOriginalNeon,
             refreshOriginalContractNumber: null,
           },

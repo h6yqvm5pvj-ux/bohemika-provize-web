@@ -889,6 +889,8 @@ export default function ContractDetailPage() {
   const [editCarVin, setEditCarVin] = useState("");
   const [editCarTp, setEditCarTp] = useState("");
   const [editCarOrv, setEditCarOrv] = useState("");
+  const [editCarAnnualMileage, setEditCarAnnualMileage] = useState("");
+  const [editCarAllianzScope, setEditCarAllianzScope] = useState("");
   const [editCarLiabilityLimit, setEditCarLiabilityLimit] = useState("");
   const [editCarHullSumInsured, setEditCarHullSumInsured] = useState("");
   const [editCarHullDeductible, setEditCarHullDeductible] = useState("");
@@ -916,6 +918,8 @@ export default function ContractDetailPage() {
   const [editCarAddonReplacementCar, setEditCarAddonReplacementCar] = useState(false);
   const [editCarAddonLuggage, setEditCarAddonLuggage] = useState(false);
   const [editCarAddonTransportedGoods, setEditCarAddonTransportedGoods] = useState(false);
+  const [editCarAddonFireExplosion, setEditCarAddonFireExplosion] = useState(false);
+  const [editCarAddonLegalAdvice, setEditCarAddonLegalAdvice] = useState(false);
   const [editCarAddonPassengerInjury, setEditCarAddonPassengerInjury] = useState(false);
   const [editCarAddonKeyLossTheft, setEditCarAddonKeyLossTheft] = useState(false);
   const [editNeonVersion, setEditNeonVersion] = useState("");
@@ -1027,6 +1031,8 @@ export default function ContractDetailPage() {
     carVin: editCarVin,
     carTp: editCarTp,
     carOrv: editCarOrv,
+    carAnnualMileage: editCarAnnualMileage,
+    carAllianzScope: editCarAllianzScope,
     carLiabilityLimit: editCarLiabilityLimit,
     carHullSumInsured: editCarHullSumInsured,
     carHullDeductible: editCarHullDeductible,
@@ -1054,6 +1060,8 @@ export default function ContractDetailPage() {
     carAddonReplacementCar: editCarAddonReplacementCar,
     carAddonLuggage: editCarAddonLuggage,
     carAddonTransportedGoods: editCarAddonTransportedGoods,
+    carAddonFireExplosion: editCarAddonFireExplosion,
+    carAddonLegalAdvice: editCarAddonLegalAdvice,
     carAddonPassengerInjury: editCarAddonPassengerInjury,
     carAddonKeyLossTheft: editCarAddonKeyLossTheft,
   };
@@ -1187,6 +1195,12 @@ export default function ContractDetailPage() {
         case "carOrv":
           setEditCarOrv(String(value));
           break;
+        case "carAnnualMileage":
+          setEditCarAnnualMileage(String(value));
+          break;
+        case "carAllianzScope":
+          setEditCarAllianzScope(String(value));
+          break;
         case "carLiabilityLimit":
           setEditCarLiabilityLimit(String(value));
           break;
@@ -1267,6 +1281,12 @@ export default function ContractDetailPage() {
           break;
         case "carAddonTransportedGoods":
           setEditCarAddonTransportedGoods(Boolean(value));
+          break;
+        case "carAddonFireExplosion":
+          setEditCarAddonFireExplosion(Boolean(value));
+          break;
+        case "carAddonLegalAdvice":
+          setEditCarAddonLegalAdvice(Boolean(value));
           break;
         case "carAddonPassengerInjury":
           setEditCarAddonPassengerInjury(Boolean(value));
@@ -1639,15 +1659,18 @@ export default function ContractDetailPage() {
     setEditCarVin(contract.carVin ?? "");
     setEditCarTp(contract.carTp ?? "");
     setEditCarOrv(contract.carOrv ?? "");
+    setEditCarAnnualMileage(contract.carAnnualMileage ?? "");
+    setEditCarAllianzScope(contract.carAllianzScope ?? "");
     setEditCarLiabilityLimit(
       contract.carLiabilityLimit != null && Number.isFinite(contract.carLiabilityLimit)
         ? String(contract.carLiabilityLimit)
         : ""
     );
     setEditCarHullSumInsured(
-      contract.carHullSumInsured != null && Number.isFinite(contract.carHullSumInsured)
-        ? String(contract.carHullSumInsured)
-        : ""
+      (contract.carHullSumInsuredText ?? "").trim() ||
+        (contract.carHullSumInsured != null && Number.isFinite(contract.carHullSumInsured)
+          ? String(contract.carHullSumInsured)
+          : "")
     );
     setEditCarHullDeductible(
       (contract.carHullDeductibleText ?? "").trim() ||
@@ -1679,6 +1702,8 @@ export default function ContractDetailPage() {
     setEditCarAddonReplacementCar(!!contract.carAddonReplacementCar);
     setEditCarAddonLuggage(!!contract.carAddonLuggage);
     setEditCarAddonTransportedGoods(!!contract.carAddonTransportedGoods);
+    setEditCarAddonFireExplosion(!!contract.carAddonFireExplosion);
+    setEditCarAddonLegalAdvice(!!contract.carAddonLegalAdvice);
     setEditCarAddonPassengerInjury(!!contract.carAddonPassengerInjury);
     setEditCarAddonKeyLossTheft(!!contract.carAddonKeyLossTheft);
     setEditNeonVersion(contract.neonDetail?.version ?? "");
@@ -2144,6 +2169,12 @@ export default function ContractDetailPage() {
               Math.min(durationBounds[1], Math.floor(editDuration))
             )
           : null;
+      const trimmedCarHullSumInsured = editCarHullSumInsured.trim();
+      const parsedCarHullSumInsured = toNumberOrNull(trimmedCarHullSumInsured);
+      const parsedCarHullSumInsuredText =
+        trimmedCarHullSumInsured && parsedCarHullSumInsured == null
+          ? trimmedCarHullSumInsured
+          : null;
 
       const autoFields =
         isAutoProduct(prod ?? null)
@@ -2153,8 +2184,15 @@ export default function ContractDetailPage() {
               carVin: editCarVin.trim() || null,
               carTp: editCarTp.trim() || null,
               carOrv: editCarOrv.trim() || null,
+              carAnnualMileage:
+                prod === "allianzAuto" || prod === "pillowAuto"
+                  ? editCarAnnualMileage.trim() || null
+                  : null,
+              carAllianzScope:
+                prod === "allianzAuto" ? editCarAllianzScope.trim() || null : null,
               carLiabilityLimit: toNumberOrNull(editCarLiabilityLimit),
-              carHullSumInsured: toNumberOrNull(editCarHullSumInsured),
+              carHullSumInsured: parsedCarHullSumInsured,
+              carHullSumInsuredText: parsedCarHullSumInsuredText,
               carHullDeductible: toNumberOrNull(editCarHullDeductible),
               carHullDeductibleText: editCarHullDeductible.trim() || null,
               carHullRiskAccident: !!editCarHullRiskAccident,
@@ -2181,6 +2219,8 @@ export default function ContractDetailPage() {
               carAddonReplacementCar: !!editCarAddonReplacementCar,
               carAddonLuggage: !!editCarAddonLuggage,
               carAddonTransportedGoods: !!editCarAddonTransportedGoods,
+              carAddonFireExplosion: !!editCarAddonFireExplosion,
+              carAddonLegalAdvice: !!editCarAddonLegalAdvice,
               carAddonPassengerInjury: !!editCarAddonPassengerInjury,
               carAddonKeyLossTheft: !!editCarAddonKeyLossTheft,
             }
@@ -2190,8 +2230,11 @@ export default function ContractDetailPage() {
               carVin: null,
               carTp: null,
               carOrv: null,
+              carAnnualMileage: null,
+              carAllianzScope: null,
               carLiabilityLimit: null,
               carHullSumInsured: null,
+              carHullSumInsuredText: null,
               carHullDeductible: null,
               carHullDeductibleText: null,
               carHullRiskAccident: null,
@@ -2218,6 +2261,8 @@ export default function ContractDetailPage() {
               carAddonReplacementCar: null,
               carAddonLuggage: null,
               carAddonTransportedGoods: null,
+              carAddonFireExplosion: null,
+              carAddonLegalAdvice: null,
               carAddonPassengerInjury: null,
               carAddonKeyLossTheft: null,
             };
@@ -2400,8 +2445,11 @@ export default function ContractDetailPage() {
                     carVin: autoFields.carVin,
                     carTp: autoFields.carTp,
                     carOrv: autoFields.carOrv,
+                    carAnnualMileage: autoFields.carAnnualMileage,
+                    carAllianzScope: autoFields.carAllianzScope,
                     carLiabilityLimit: autoFields.carLiabilityLimit,
                     carHullSumInsured: autoFields.carHullSumInsured,
+                    carHullSumInsuredText: autoFields.carHullSumInsuredText,
                     carHullDeductible: autoFields.carHullDeductible,
                     carHullDeductibleText: editCarHullDeductible.trim() || null,
                     carHullRiskAccident: autoFields.carHullRiskAccident,
@@ -2428,6 +2476,8 @@ export default function ContractDetailPage() {
                     carAddonReplacementCar: autoFields.carAddonReplacementCar,
                     carAddonLuggage: autoFields.carAddonLuggage,
                     carAddonTransportedGoods: autoFields.carAddonTransportedGoods,
+                    carAddonFireExplosion: autoFields.carAddonFireExplosion,
+                    carAddonLegalAdvice: autoFields.carAddonLegalAdvice,
                     carAddonPassengerInjury: autoFields.carAddonPassengerInjury,
                     carAddonKeyLossTheft: autoFields.carAddonKeyLossTheft,
                     neonDetail: neonUpdate.neonDetail,
@@ -2438,8 +2488,11 @@ export default function ContractDetailPage() {
                     carVin: null,
                     carTp: null,
                     carOrv: null,
+                    carAnnualMileage: null,
+                    carAllianzScope: null,
                     carLiabilityLimit: null,
                     carHullSumInsured: null,
+                    carHullSumInsuredText: null,
                     carHullDeductible: null,
                     carHullDeductibleText: null,
                     carHullRiskAccident: null,
@@ -2466,6 +2519,8 @@ export default function ContractDetailPage() {
                     carAddonReplacementCar: null,
                     carAddonLuggage: null,
                     carAddonTransportedGoods: null,
+                    carAddonFireExplosion: null,
+                    carAddonLegalAdvice: null,
                     carAddonPassengerInjury: null,
                     carAddonKeyLossTheft: null,
                     neonDetail: neonUpdate.neonDetail,

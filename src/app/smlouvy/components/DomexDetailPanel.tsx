@@ -102,6 +102,19 @@ const formatKc = (val?: number | null) =>
     maxFractionDigits: 2,
   });
 
+const propertyTypeLabel = (val?: string | null): string => {
+  const key = (val ?? "").trim().toLowerCase();
+  const map: Record<string, string> = {
+    byt: "Byt",
+    dum: "Dům",
+    chata: "Chata",
+    rekreace: "Rekreační objekt",
+    ostatni: "Ostatní",
+  };
+  if (!key) return "—";
+  return map[key] ?? (val ?? "—");
+};
+
 export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange }: Props) {
   if (prod !== "domex") return null;
 
@@ -179,7 +192,7 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
                   <option value="ostatni">Ostatní</option>
                 </select>
               ) : (
-                domexDetail?.propertyType || "—"
+                propertyTypeLabel(domexDetail?.propertyType)
               )}
             </span>
           </div>

@@ -16,6 +16,8 @@ export type AutoFields = {
   carVin: string;
   carTp: string;
   carOrv: string;
+  carAnnualMileage: string;
+  carAllianzScope: string;
   carLiabilityLimit: string;
   carHullSumInsured: string;
   carHullDeductible: string;
@@ -43,6 +45,8 @@ export type AutoFields = {
   carAddonReplacementCar: boolean;
   carAddonLuggage: boolean;
   carAddonTransportedGoods: boolean;
+  carAddonFireExplosion: boolean;
+  carAddonLegalAdvice: boolean;
   carAddonPassengerInjury: boolean;
   carAddonKeyLossTheft: boolean;
 };
@@ -53,8 +57,11 @@ export type AutoDetail = {
   carVin?: string | null;
   carTp?: string | null;
   carOrv?: string | null;
+  carAnnualMileage?: string | null;
+  carAllianzScope?: string | null;
   carLiabilityLimit?: number | null;
   carHullSumInsured?: number | null;
+  carHullSumInsuredText?: string | null;
   carHullDeductible?: number | null;
   carHullDeductibleText?: string | null;
   carHullRiskAccident?: boolean | null;
@@ -81,6 +88,8 @@ export type AutoDetail = {
   carAddonReplacementCar?: boolean | null;
   carAddonLuggage?: boolean | null;
   carAddonTransportedGoods?: boolean | null;
+  carAddonFireExplosion?: boolean | null;
+  carAddonLegalAdvice?: boolean | null;
   carAddonPassengerInjury?: boolean | null;
   carAddonKeyLossTheft?: boolean | null;
 } | null;
@@ -113,6 +122,10 @@ const assistanceLabel = (val?: string | null): string => {
     evropa_cr_bez_limitu: "CAR PREMIUM ČR a EVROPA bez limitu",
     "evropa a čr bez limitu": "CAR PREMIUM ČR a EVROPA bez limitu",
     "evropa a cr bez limitu": "CAR PREMIUM ČR a EVROPA bez limitu",
+    odtah_50_km_pri_nehode: "Odtah 50 km při nehodě",
+    odtah_50_km: "Odtah 50 km",
+    odtah_v_cr_neomezene: "Odtah v ČR neomezeně",
+    odtah_i_ze_zahranici: "Odtah i ze zahraničí",
   };
   if (!val) return "—";
   const key = val.trim().toLowerCase();
@@ -176,9 +189,12 @@ const SectionTitle = ({
 
 export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: Props) {
   if (!prod) return null;
+  const showAnnualMileageBox = prod === "allianzAuto" || prod === "pillowAuto";
+  const showAllianzScopeBox = prod === "allianzAuto";
 
   const hasHullData =
     contract?.carHullSumInsured != null ||
+    (contract?.carHullSumInsuredText?.trim() ?? "") !== "" ||
     contract?.carHullDeductible != null ||
     (contract?.carHullDeductibleText?.trim() ?? "") !== "" ||
     contract?.carHullRiskAccident === true ||
@@ -282,6 +298,58 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
         </div>
       </div>
 
+      {showAnnualMileageBox && (
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <SectionTitle icon={Car} label="Roční nájezd km" />
+          <div className="text-sm text-slate-900">
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Hodnota</span>
+              <span className="font-semibold text-right">
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={fields.carAnnualMileage}
+                    onChange={(e) => onChange("carAnnualMileage", e.target.value)}
+                    className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                    placeholder="např. 10 000 km"
+                  />
+                ) : (
+                  contract?.carAnnualMileage || fields.carAnnualMileage || "—"
+                )}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAllianzScopeBox && (
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <SectionTitle icon={Car} label="Rozsah" />
+          <div className="text-sm text-slate-900">
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Varianta</span>
+              <span className="font-semibold text-right">
+                {editMode ? (
+                  <select
+                    value={fields.carAllianzScope}
+                    onChange={(e) => onChange("carAllianzScope", e.target.value)}
+                    className="w-40 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                  >
+                    <option value="">Vyber rozsah</option>
+                    <option value="Komfort">Komfort</option>
+                    <option value="Plus">Plus</option>
+                    <option value="Extra">Extra</option>
+                    <option value="Max">Max</option>
+                  </select>
+                ) : (
+                  contract?.carAllianzScope || fields.carAllianzScope || "—"
+                )}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
         <SectionTitle icon={Shield} label="Povinné ručení" />
         <div className="text-sm text-slate-900">
@@ -343,6 +411,10 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                   <option value="VIP">VIP</option>
                   <option value="Rozšířená asistence 150km">Rozšířená asistence 150km</option>
                   <option value="Rozšířená asistence 750km">Rozšířená asistence 750km</option>
+                  <option value="Odtah 50 km při nehodě">Odtah 50 km při nehodě</option>
+                  <option value="Odtah 50 km">Odtah 50 km</option>
+                  <option value="Odtah v ČR neomezeně">Odtah v ČR neomezeně</option>
+                  <option value="Odtah i ze zahraničí">Odtah i ze zahraničí</option>
                 </select>
               ) : (
                 assistanceLabel(contract?.carAssistancePlan ?? fields.carAssistancePlan)
@@ -361,12 +433,14 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
               <span className="font-semibold text-right">
                 {editMode ? (
                   <input
-                    type="number"
+                    type="text"
                     value={fields.carHullSumInsured}
                     onChange={(e) => onChange("carHullSumInsured", e.target.value)}
-                    className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                    placeholder="částka"
+                    className="w-56 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                    placeholder="např. 200000 nebo Obvyklá cena vozidla"
                   />
+                ) : (contract?.carHullSumInsuredText?.trim() ?? "") !== "" ? (
+                  contract?.carHullSumInsuredText?.trim()
                 ) : contract?.carHullSumInsured != null ? (
                   formatMoney(contract.carHullSumInsured)
                 ) : (
@@ -478,6 +552,16 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
               key: "carAddonTransportedGoods",
               label: "Pojištění dopravovaných věcí",
               checked: fields.carAddonTransportedGoods,
+            },
+            {
+              key: "carAddonFireExplosion",
+              label: "Požár a výbuch",
+              checked: fields.carAddonFireExplosion,
+            },
+            {
+              key: "carAddonLegalAdvice",
+              label: "Právní poradenství",
+              checked: fields.carAddonLegalAdvice,
             },
             { key: "carAddonPassengerInjury", label: "Úraz všech osob", checked: fields.carAddonPassengerInjury },
             { key: "carAddonKeyLossTheft", label: "Ztráta a odcizení klíčů", checked: fields.carAddonKeyLossTheft },

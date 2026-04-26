@@ -88,8 +88,11 @@ export type ContractDoc = {
   carVin?: string | null;
   carTp?: string | null;
   carOrv?: string | null;
+  carAnnualMileage?: string | null;
+  carAllianzScope?: string | null;
   carLiabilityLimit?: number | null;
   carHullSumInsured?: number | null;
+  carHullSumInsuredText?: string | null;
   carHullDeductible?: number | null;
   carHullDeductibleText?: string | null;
   carHullRiskAccident?: boolean | null;
@@ -116,6 +119,8 @@ export type ContractDoc = {
   carAddonReplacementCar?: boolean | null;
   carAddonLuggage?: boolean | null;
   carAddonTransportedGoods?: boolean | null;
+  carAddonFireExplosion?: boolean | null;
+  carAddonLegalAdvice?: boolean | null;
   carAddonPassengerInjury?: boolean | null;
   carAddonKeyLossTheft?: boolean | null;
 
