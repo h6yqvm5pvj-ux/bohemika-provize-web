@@ -67,6 +67,7 @@ import { parseMaxCizinKomplexPdf } from "../lib/parseMaxCizinKomplexPdf";
 import { parseKooperativaAutoPdf } from "../lib/parseKooperativaAutoPdf";
 import { parseAllianzAutoPdf } from "../lib/parseAllianzAutoPdf";
 import { parsePillowAutoPdf } from "../lib/parsePillowAutoPdf";
+import { parseCsobAutoPdf } from "../lib/parseCsobAutoPdf";
 import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_OPTIONS,
@@ -1220,6 +1221,7 @@ export default function CalculatorPage() {
   const [pdfImporting, setPdfImporting] = useState(false);
   const [pdfImportStatus, setPdfImportStatus] = useState<string | null>(null);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
+  const [pdfMatchedClientName, setPdfMatchedClientName] = useState(false);
   const [pdfDropActive, setPdfDropActive] = useState(false);
   const pdfDragCounterRef = useRef(0);
 
@@ -1366,6 +1368,7 @@ export default function CalculatorPage() {
       (product === "cppAuto" ||
         product === "slaviaauto" ||
         product === "allianzAuto" ||
+        product === "csobAuto" ||
         product === "pillowAuto" ||
         product === "kooperativaAuto" ||
         product === "neon" ||
@@ -2027,10 +2030,12 @@ export default function CalculatorPage() {
     setPdfImporting(true);
     setPdfImportError(null);
     setPdfImportStatus("Načítám PDF…");
+    setPdfMatchedClientName(false);
     if (
       product === "cppAuto" ||
       product === "slaviaauto" ||
       product === "allianzAuto" ||
+      product === "csobAuto" ||
       product === "pillowAuto" ||
       product === "kooperativaAuto"
     ) {
@@ -2098,6 +2103,7 @@ export default function CalculatorPage() {
         | Awaited<ReturnType<typeof parseKooperativaAutoPdf>>
         | Awaited<ReturnType<typeof parseAllianzAutoPdf>>
         | Awaited<ReturnType<typeof parsePillowAutoPdf>>
+        | Awaited<ReturnType<typeof parseCsobAutoPdf>>
         | null = null;
 
       if (product === "cppAuto") {
@@ -2106,6 +2112,8 @@ export default function CalculatorPage() {
         parsed = await parseSlaviaAutoPdf(file);
       } else if (product === "allianzAuto") {
         parsed = await parseAllianzAutoPdf(file);
+      } else if (product === "csobAuto") {
+        parsed = await parseCsobAutoPdf(file);
       } else if (product === "pillowAuto") {
         parsed = await parsePillowAutoPdf(file);
       } else if (product === "kooperativaAuto") {
@@ -2122,7 +2130,7 @@ export default function CalculatorPage() {
         parsed = await parseComfortPdf(file);
       } else {
         setPdfImportError(
-          "Načítání z PDF je teď dostupné jen pro ČPP Auto, SLAVIA Auto, Allianz Auto, Pillow Auto, Kooperativa Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
+          "Načítání z PDF je teď dostupné jen pro ČPP Auto, SLAVIA Auto, Allianz Auto, ČSOB Auto, Pillow Auto, Kooperativa Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
         );
         setPdfImportStatus(null);
         return;
@@ -2140,6 +2148,7 @@ export default function CalculatorPage() {
       }
       if (parsed.clientName) {
         setClientName(parsed.clientName);
+        setPdfMatchedClientName(true);
         applied += 1;
       }
       if (parsed.policyStartDate) {
@@ -3353,6 +3362,7 @@ export default function CalculatorPage() {
               product === "slaviaauto" ||
               product === "kooperativaAuto" ||
               product === "allianzAuto" ||
+              product === "csobAuto" ||
               product === "pillowAuto"
                 ? autoCarMake.trim() || null
                 : null,
@@ -3361,6 +3371,7 @@ export default function CalculatorPage() {
               product === "slaviaauto" ||
               product === "kooperativaAuto" ||
               product === "allianzAuto" ||
+              product === "csobAuto" ||
               product === "pillowAuto"
                 ? autoCarPlate.trim() || null
                 : null,
@@ -3369,6 +3380,7 @@ export default function CalculatorPage() {
               product === "slaviaauto" ||
               product === "kooperativaAuto" ||
               product === "allianzAuto" ||
+              product === "csobAuto" ||
               product === "pillowAuto"
                 ? autoCarVin.trim() || null
                 : null,
@@ -3378,6 +3390,7 @@ export default function CalculatorPage() {
               product === "slaviaauto" ||
               product === "kooperativaAuto" ||
               product === "allianzAuto" ||
+              product === "csobAuto" ||
               product === "pillowAuto"
                 ? autoCarOrv.trim() || null
                 : null,
@@ -3392,11 +3405,14 @@ export default function CalculatorPage() {
               product === "slaviaauto" ||
               product === "kooperativaAuto" ||
               product === "allianzAuto" ||
+              product === "csobAuto" ||
               product === "pillowAuto"
                 ? autoCarLiabilityLimit
                 : null,
             carHullSumInsured:
-              product === "kooperativaAuto" || product === "pillowAuto"
+              product === "kooperativaAuto" ||
+              product === "pillowAuto" ||
+              product === "csobAuto"
                 ? autoCarHullSumInsured
                 : null,
             carHullSumInsuredText:
@@ -3405,6 +3421,7 @@ export default function CalculatorPage() {
               product === "kooperativaAuto" ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
+              product === "csobAuto" ||
               product === "pillowAuto"
                 ? autoCarHullDeductible
                 : null,
@@ -3412,6 +3429,7 @@ export default function CalculatorPage() {
               product === "kooperativaAuto" ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
+              product === "csobAuto" ||
               product === "pillowAuto"
                 ? autoCarHullDeductibleText.trim() || null
                 : null,
@@ -3454,6 +3472,7 @@ export default function CalculatorPage() {
               product === "kooperativaAuto" ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
+              product === "csobAuto" ||
               product === "pillowAuto"
                 ? autoCarAssistancePlan.trim() || null
                 : null,
@@ -3463,6 +3482,7 @@ export default function CalculatorPage() {
               product === "slaviaauto" ||
               product === "kooperativaAuto" ||
               product === "allianzAuto" ||
+              product === "csobAuto" ||
               product === "pillowAuto"
                 ? autoCarAddonGlass
                 : null,
@@ -4175,6 +4195,7 @@ export default function CalculatorPage() {
                             type="button"
                             onClick={() => {
                               setProduct(productId);
+                              setPdfMatchedClientName(false);
                               setProductOpen(false);
                             }}
                             className={`relative rounded-2xl border bg-white px-4 py-3 text-left font-mono shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:bg-slate-50 ${
@@ -4671,12 +4692,17 @@ export default function CalculatorPage() {
               <div className="relative">
                 <input
                   type="text"
-                  className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 ${
-                    missingFields.includes("jméno klienta") ? "border-rose-400/70" : "border-slate-300"
+                  className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 ${
+                    missingFields.includes("jméno klienta")
+                      ? "border-rose-400/70 focus:ring-rose-500 focus:border-rose-500"
+                      : pdfMatchedClientName
+                      ? "border-emerald-400 bg-emerald-50 focus:ring-emerald-600 focus:border-emerald-600"
+                      : "border-slate-300 focus:ring-slate-900 focus:border-slate-900"
                   }`}
                   value={clientName}
                   onChange={(e) => {
                     setClientName(e.target.value);
+                    setPdfMatchedClientName(false);
                     setClientSuggestionsOpen(true);
                   }}
                   placeholder="Např. Jan Novák"
@@ -4684,6 +4710,9 @@ export default function CalculatorPage() {
                   onFocus={() => setClientSuggestionsOpen(true)}
                   onBlur={() => setTimeout(() => setClientSuggestionsOpen(false), 100)}
                 />
+                {pdfMatchedClientName && !missingFields.includes("jméno klienta") && (
+                  <p className="mt-1 text-[11px] text-emerald-700">Jméno klienta načteno z PDF.</p>
+                )}
                 {filteredClientSuggestions.length > 0 && clientSuggestionsOpen && (
                   <div className="absolute z-30 mt-1 w-full rounded-xl border border-slate-300 bg-white backdrop-blur-2xl shadow-[0_14px_40px_rgba(0,0,0,0.7)] overflow-hidden">
                     {filteredClientSuggestions.map((name) => (
@@ -4692,6 +4721,7 @@ export default function CalculatorPage() {
                         type="button"
                         onClick={() => {
                           setClientName(name);
+                          setPdfMatchedClientName(false);
                           setMissingFields((prev) => prev.filter((k) => k !== "jméno klienta"));
                           setClientSuggestionsOpen(false);
                         }}

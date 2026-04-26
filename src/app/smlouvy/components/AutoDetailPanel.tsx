@@ -113,6 +113,9 @@ const assistanceLabel = (val?: string | null): string => {
   const map: Record<string, string> = {
     zakladni: "Základní",
     standard: "Standard",
+    nadstandard: "Nadstandard",
+    "bez limitu": "Bez limitu",
+    bez_limitu: "Bez limitu",
     plus: "PLUS",
     plus_dvojnasob: "PLUS Dvojnásob",
     "plus dvojnasob": "PLUS Dvojnásob",
@@ -397,6 +400,8 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                   <option value="">Vyber asistenci</option>
                   <option value="zakladni">Základní</option>
                   <option value="standard">Standard</option>
+                  <option value="Nadstandard">Nadstandard</option>
+                  <option value="Bez limitu">Bez limitu</option>
                   <option value="plus">PLUS</option>
                   <option value="plus_dvojnasob">PLUS Dvojnásob</option>
                   <option value="cr_bez_limitu">CAR PLUS v ČR bez limitu</option>
