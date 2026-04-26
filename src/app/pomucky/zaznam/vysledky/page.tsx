@@ -2,6 +2,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppLayout } from "@/components/AppLayout";
 import {
   PRODUCT_CAPABILITIES,
@@ -15,6 +16,9 @@ type LifeResultInput = {
   hasCriticalIllness: boolean;
   hasSeriousIllness: boolean;
   hasExistingContract?: boolean;
+  isChangeOnExistingContract?: boolean;
+  isRefreshOrRenovation?: boolean;
+  isContractTerminationDueToNewOne?: boolean;
   selectedBenefits?: SelectedBenefit[];
 };
 
@@ -348,12 +352,47 @@ function buildRecommendation(
 }
 
 const MANDATORY_IMPACT_TEXTS: string[] = [
-  "Klient byl upozorněn na vliv inflace a doporučena pravidelná aktualizace smlouvy.",
-  "Vyplnění zdravotního dotazníku proběhlo společně s klientem, klient prohlašuje, že uvedl veškeré pravdivé a úplné informace bez zamlčení či zkreslení, a byl upozorněn, že případné zamlčení nebo nepravdivé údaje mohou mít za následek krácení nebo odmítnutí pojistného plnění, případně změnu podmínek či zánik pojištění dle pojistných podmínek pojišťovny.",
   "Klient byl seznámen s rozsahem krytí, výší pojistných částek a pojistného, s hlavními výlukami/čekacími dobami a principem likvidace pojistné události dle pojistných podmínek, doporučení pravidelné aktualizace smlouvy a nutnosti hlásit změny jako například změna povolání.",
+];
+const EXISTING_CONTRACT_EXTRA_TEXT =
+  "Protože jsi zvolil, že klient má již smlouvu se stejným pojistným zájmem, uveď, že klient má již uzavřenou smlouvu / smlouvy životního pojištění u pojišťovny ______ a co s nimi má v plánu. Např.: Klient má již uzavřenou smlouvu ŽP u pojišťovny Kooperativa a.s., klient ji chce vypovědět.";
+const IMPACT_HEADING_PREFIX = "[[heading]]:";
+const CHANGE_EXISTING_CONTRACT_HEADING_ONE = `${IMPACT_HEADING_PREFIX}Dopady na změnu/vyjmutí připojištění bez ukončení stávající smlouvy:`;
+const CHANGE_EXISTING_CONTRACT_HEADING_TWO = `${IMPACT_HEADING_PREFIX}Dopady na změnu/vyjmutí připojištění ze stávající smlouvy z důvodu sjednání připojištění v nové pojistné smlouvě:`;
+const CHANGE_EXISTING_CONTRACT_IMPACT_LINES_ONE: string[] = [
+  "ukončení pojistného krytí a nepřipsání bonusů definovaných v pojistných podmínkách.",
+];
+const CHANGE_EXISTING_CONTRACT_IMPACT_LINES_TWO: string[] = [
+  "uplatnění nové čekací doby pro nárok na pojistné plnění z některých pojištěných rizik.",
+  "nové oceňování zdravotního stavu pojištěného, které může znamenat zhoršení podmínek v rámci nově sjednaného pojištění.",
+  "vyšší rizikové pojistné s ohledem na věk pojištěného.",
+  "klient byl seznámen s konkrétním porovnáním a rozdíly mezi nastavením jeho stávající a nové navrhované smlouvy, po předložení modelace ke stávající smlouvě mu byla k posouzení rozdílů před sjednáním nové smlouvy odeslána na jeho mailovou adresu modelace nová.",
+  "na základě porovnání modelací klient vyhodnotil novou variantu jako odpovídající jeho aktuálním potřebám.",
+];
+const REFRESH_RENOVATION_HEADING = `${IMPACT_HEADING_PREFIX}Refresh / Renovace - S čím byl klient seznámen?`;
+const REFRESH_RENOVATION_IMPACT_LINES: string[] = [
+  "přechod na nové pojistné podmínky.",
+  "uplatnění nové čekací doby pro nárok na pojistné plnění z navýšených nebo nově zahrnutých pojištěných rizik.",
+  "nové oceňování zdravotního stavu pojištěného.",
+  "vyšší rizikové pojistné s ohledem na věk a zdravotní ocenění pojištěného a tím i vyšší celkově pravidelně placené pojistné.",
+  "ukončení pravidelně připisovaných bonusů dle původních pojistných podmínek.",
+  "nemožnost sjednat některá z původních připojištění (viz. modelace pojištění „Náhled původní smlouvy“).",
+  "v případě volby daňově neodečitatelné náhrady (Refreshe/Renovace) povinnost dodanění uplatněných odpočtů zaplaceného pojistného od základu daně z příjmů, včetně případných příspěvků zaměstnavatele, pokud dojde k porušení podmínek pro tyto odpočty.",
+  "klient byl seznámen s konkrétním porovnáním a rozdíly mezi nastavením jeho stávající a nově nahtazované smlouvy, po předložení modelace ke stávající smlouvě mu byla k posouzení rozdílů před sjednáním nové smlouvy odeslána na jeho mailovou adresu modelace nová.",
+  "na základě porovnání modelací klient vyhodnotil novou variantu jako odpovídající jeho aktuálním potřebám",
+];
+const TERMINATION_DUE_TO_NEW_CONTRACT_HEADING = `${IMPACT_HEADING_PREFIX}Ukončení z důvodu sjednání nové pojistné smlouvy:`;
+const TERMINATION_DUE_TO_NEW_CONTRACT_IMPACT_LINES: string[] = [
+  "opětovná úhrada počátečních nákladů na sjednání pojištění.",
+  "uplatnění nových čekacích dob pro nárok na pojistné plnění z některých pojištěných rizik.",
+  "nové oceňování zdravotního stavu pojištěného, které může znamenat zhoršení podmínek v rámci nově sjednaného pojištění v podobě výluk nebo rizikových přirážek za zdravotní stav.",
+  "vyšší rizikové pojistné s ohledem na věk pojištěného a zdravotní stav a tím i vyšší celkově pravidelně placené pojistné.",
+  "klient byl seznámen s konkrétním porovnáním a rozdíly mezi nastavením jeho stávající a nové navrhované smlouvy, po předložení modelace ke stávající smlouvě mu byla k posouzení rozdílů před sjednáním nové smlouvy odeslána na jeho mailovou adresu modelace nová.",
+  "na základě porovnání modelací klient vyhodnotil novou variantu jako odpovídající jeho aktuálním potřebám.",
 ];
 
 export default function RecordResultsPage() {
+  const router = useRouter();
   const [lines, setLines] = useState<string[] | null>(null);
   const [additional, setAdditional] = useState<string[] | null>(null);
   const [showProductInfo, setShowProductInfo] = useState(false);
@@ -413,11 +452,8 @@ export default function RecordResultsPage() {
           "Klient byl upozorněn, že se připojištění Vážná onemocnění (Pro něj / Pro ni) vztahuje pouze na diagnózy uvedené v pojistných podmínkách."
         );
       }
-
       if (data.hasExistingContract) {
-        extras.push(
-          "Protože jsi zvolil, že klient má již smlouvu se stejným pojistným zájmem, uveď, že klient má již uzavřenou smlouvu / smlouvy životního pojištění u pojišťovny ______ a co s nimi má v plánu. Např.: Klient má již uzavřenou smlouvu ŽP u pojišťovny Kooperativa a.s., klient ji chce vypovědět."
-        );
+        extras.push(EXISTING_CONTRACT_EXTRA_TEXT);
       }
 
       const selectedBenefits = data.selectedBenefits ?? [];
@@ -443,6 +479,20 @@ export default function RecordResultsPage() {
       recs.push(
         "Klient byl poučen o povinnosti uvádět pravdivé a úplné informace ve zdravotním dotazníku a o možných důsledcích nepravdivých údajů (krácení/odmítnutí plnění)."
       );
+      if (data.isChangeOnExistingContract) {
+        recs.push(CHANGE_EXISTING_CONTRACT_HEADING_ONE);
+        recs.push(...CHANGE_EXISTING_CONTRACT_IMPACT_LINES_ONE);
+        recs.push(CHANGE_EXISTING_CONTRACT_HEADING_TWO);
+        recs.push(...CHANGE_EXISTING_CONTRACT_IMPACT_LINES_TWO);
+      }
+      if (data.isRefreshOrRenovation) {
+        recs.push(REFRESH_RENOVATION_HEADING);
+        recs.push(...REFRESH_RENOVATION_IMPACT_LINES);
+      }
+      if (data.isContractTerminationDueToNewOne) {
+        recs.push(TERMINATION_DUE_TO_NEW_CONTRACT_HEADING);
+        recs.push(...TERMINATION_DUE_TO_NEW_CONTRACT_IMPACT_LINES);
+      }
 
       setLines(recs);
       setAdditional(extras);
@@ -457,8 +507,15 @@ export default function RecordResultsPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-3xl space-y-6">
+      <div className="w-full max-w-4xl space-y-6">
         <header>
+          <button
+            type="button"
+            onClick={() => router.push("/pomucky/zaznam")}
+            className="mb-3 inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-medium text-slate-900 transition hover:border-slate-500 hover:bg-slate-200"
+          >
+            Zpět
+          </button>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
             Doporučení do dopadů
           </h1>
@@ -498,22 +555,38 @@ export default function RecordResultsPage() {
               <p className="text-sm text-slate-600">Načítám…</p>
             ) : (
               <div className="space-y-2 text-sm text-slate-900">
-                {additional.map((line, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-start gap-3 leading-relaxed"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(line)}
-                      className="mt-[1px] inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-900 transition hover:border-emerald-300/60 hover:text-emerald-800"
+                {additional.map((line, idx) => {
+                  const showCopyButton =
+                    line !== EXISTING_CONTRACT_EXTRA_TEXT;
+                  const copySlotClass =
+                    "mt-[1px] inline-flex min-w-[78px] items-center justify-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-900";
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-start gap-3 leading-relaxed"
                     >
-                      {copiedText === line ? "Zkopírováno" : "Kopírovat"}
-                    </button>
-                    <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
-                    <span className="flex-1">{line}</span>
-                  </div>
-                ))}
+                      {showCopyButton && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(line)}
+                          className={`${copySlotClass} transition hover:border-emerald-300/60 hover:text-emerald-800`}
+                        >
+                          {copiedText === line ? "Zkopírováno" : "Kopírovat"}
+                        </button>
+                      )}
+                      {!showCopyButton && (
+                        <span
+                          aria-hidden="true"
+                          className={`${copySlotClass} invisible`}
+                        >
+                          Kopírovat
+                        </span>
+                      )}
+                      <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
+                      <span className="flex-1">{line}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>
@@ -534,22 +607,32 @@ export default function RecordResultsPage() {
               </p>
             ) : (
               <ul className="space-y-3 text-sm text-slate-900">
-                {lines.map((line, idx) => (
-                  <li
-                    key={idx}
-                    className="flex items-start gap-3 leading-relaxed"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(line)}
-                      className="mt-[1px] inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-900 transition hover:border-emerald-300/60 hover:text-emerald-800"
+                {lines.map((line, idx) => {
+                  const isHeading = line.startsWith(IMPACT_HEADING_PREFIX);
+                  if (isHeading) {
+                    return (
+                      <li key={idx} className="pt-1 text-base font-semibold text-slate-900">
+                        {line.slice(IMPACT_HEADING_PREFIX.length)}
+                      </li>
+                    );
+                  }
+                  return (
+                    <li
+                      key={idx}
+                      className="flex items-start gap-3 leading-relaxed"
                     >
-                      {copiedText === line ? "Zkopírováno" : "Kopírovat"}
-                    </button>
-                    <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
-                    <span className="flex-1">{line}</span>
-                  </li>
-                ))}
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(line)}
+                        className="mt-[1px] inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-900 transition hover:border-emerald-300/60 hover:text-emerald-800"
+                      >
+                        {copiedText === line ? "Zkopírováno" : "Kopírovat"}
+                      </button>
+                      <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
+                      <span className="flex-1">{line}</span>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>

@@ -1,9 +1,17 @@
 // src/app/pomucky/zaznam/LifeRecordForm.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileCheck2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Accessibility,
+  FileCheck2,
+  FileSignature,
+  HeartPulse,
+  Shield,
+  UsersRound,
+} from "lucide-react";
 
 type WaiverInvalidityScope = "twoAndThree" | "threeOnly";
 type InvalidityDegreesSelection = "all" | "twoAndThree" | "threeOnly";
@@ -44,6 +52,59 @@ function parseAmount(text: string): number {
   const n = parseInt(digits, 10);
   return Number.isNaN(n) ? 0 : n;
 }
+
+function normalizeLabel(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function getBenefitCardIcon(title: string): LucideIcon {
+  const normalized = normalizeLabel(title);
+
+  if (
+    normalized.includes("invalidita") ||
+    normalized.includes("zavislost") ||
+    normalized.includes("telesne")
+  ) {
+    return Accessibility;
+  }
+
+  if (
+    normalized.includes("deti") ||
+    normalized.includes("dite") ||
+    normalized.includes("asistence")
+  ) {
+    return UsersRound;
+  }
+
+  if (
+    normalized.includes("zprosteni") ||
+    normalized.includes("duchod") ||
+    normalized.includes("pripojisteni") ||
+    normalized.includes("prispevek")
+  ) {
+    return FileSignature;
+  }
+
+  if (
+    normalized.includes("smrt") ||
+    normalized.includes("onemocnen") ||
+    normalized.includes("hospitalizace") ||
+    normalized.includes("uraz") ||
+    normalized.includes("pracovni neschopnost") ||
+    normalized.includes("cukrovka") ||
+    normalized.includes("ockovani") ||
+    normalized.includes("operace")
+  ) {
+    return HeartPulse;
+  }
+
+  return Shield;
+}
+
+const LIFE_RECORD_DRAFT_KEY = "lifeRecordFormDraft";
 
 export function LifeRecordForm() {
   const router = useRouter();
@@ -206,6 +267,12 @@ export function LifeRecordForm() {
   const [hasExistingContract, setHasExistingContract] = useState<"yes" | "no">(
     "no"
   );
+  const [isChangeOnExistingContract, setIsChangeOnExistingContract] =
+    useState<"yes" | "no">("no");
+  const [isRefreshOrRenovation, setIsRefreshOrRenovation] =
+    useState<"yes" | "no">("no");
+  const [isContractTerminationDueToNewOne, setIsContractTerminationDueToNewOne] =
+    useState<"yes" | "no">("no");
   const [childOperationAmount, setChildOperationAmount] = useState("");
 
   // Připojištění dětí – úraz dospělého
@@ -234,6 +301,320 @@ export function LifeRecordForm() {
 
   // Zdravotní a sociální asistence
   const [healthSocialOn, setHealthSocialOn] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const raw = window.localStorage.getItem(LIFE_RECORD_DRAFT_KEY);
+      if (!raw) return;
+
+      const draft = JSON.parse(raw) as any;
+      if (!draft || typeof draft !== "object") return;
+
+      if (typeof draft.deathOn === "boolean") {
+        setDeathOn(draft.deathOn);
+      }
+      if (typeof draft.deathAmount === "string") {
+        setDeathAmount(draft.deathAmount);
+      }
+      if (typeof draft.terminalOn === "boolean") {
+        setTerminalOn(draft.terminalOn);
+      }
+      if (typeof draft.terminalAmount === "string") {
+        setTerminalAmount(draft.terminalAmount);
+      }
+      if (typeof draft.extraDeathOn === "boolean") {
+        setExtraDeathOn(draft.extraDeathOn);
+      }
+      if (typeof draft.extraDeathConstantOn === "boolean") {
+        setExtraDeathConstantOn(draft.extraDeathConstantOn);
+      }
+      if (typeof draft.extraDeathConstantAmount === "string") {
+        setExtraDeathConstantAmount(draft.extraDeathConstantAmount);
+      }
+      if (typeof draft.extraDeathDecreasingOn === "boolean") {
+        setExtraDeathDecreasingOn(draft.extraDeathDecreasingOn);
+      }
+      if (typeof draft.extraDeathDecreasingAmount === "string") {
+        setExtraDeathDecreasingAmount(draft.extraDeathDecreasingAmount);
+      }
+      if (typeof draft.extraDeathInterestOn === "boolean") {
+        setExtraDeathInterestOn(draft.extraDeathInterestOn);
+      }
+      if (typeof draft.extraDeathInterestAmount === "string") {
+        setExtraDeathInterestAmount(draft.extraDeathInterestAmount);
+      }
+      if (typeof draft.survivorPensionOn === "boolean") {
+        setSurvivorPensionOn(draft.survivorPensionOn);
+      }
+      if (typeof draft.survivorPensionAmount === "string") {
+        setSurvivorPensionAmount(draft.survivorPensionAmount);
+      }
+      if (typeof draft.waiverOn === "boolean") {
+        setWaiverOn(draft.waiverOn);
+      }
+      if (typeof draft.waiverInvalidityOn === "boolean") {
+        setWaiverInvalidityOn(draft.waiverInvalidityOn);
+      }
+      if (typeof draft.waiverInvalidityScope === "string") {
+        setWaiverInvalidityScope(draft.waiverInvalidityScope);
+      }
+      if (typeof draft.waiverJobLossOn === "boolean") {
+        setWaiverJobLossOn(draft.waiverJobLossOn);
+      }
+      if (typeof draft.invalid1On === "boolean") {
+        setInvalid1On(draft.invalid1On);
+      }
+      if (typeof draft.invalid1Degrees === "string") {
+        setInvalid1Degrees(draft.invalid1Degrees);
+      }
+      if (typeof draft.invalid1Type === "string") {
+        setInvalid1Type(draft.invalid1Type);
+      }
+      if (typeof draft.invalid1Amount1 === "string") {
+        setInvalid1Amount1(draft.invalid1Amount1);
+      }
+      if (typeof draft.invalid1Amount2 === "string") {
+        setInvalid1Amount2(draft.invalid1Amount2);
+      }
+      if (typeof draft.invalid1Amount3 === "string") {
+        setInvalid1Amount3(draft.invalid1Amount3);
+      }
+      if (typeof draft.invalid2On === "boolean") {
+        setInvalid2On(draft.invalid2On);
+      }
+      if (typeof draft.invalid2Degrees === "string") {
+        setInvalid2Degrees(draft.invalid2Degrees);
+      }
+      if (typeof draft.invalid2Type === "string") {
+        setInvalid2Type(draft.invalid2Type);
+      }
+      if (typeof draft.invalid2Amount1 === "string") {
+        setInvalid2Amount1(draft.invalid2Amount1);
+      }
+      if (typeof draft.invalid2Amount2 === "string") {
+        setInvalid2Amount2(draft.invalid2Amount2);
+      }
+      if (typeof draft.invalid2Amount3 === "string") {
+        setInvalid2Amount3(draft.invalid2Amount3);
+      }
+      if (typeof draft.ci1On === "boolean") {
+        setCi1On(draft.ci1On);
+      }
+      if (typeof draft.ci1Type === "string") {
+        setCi1Type(draft.ci1Type);
+      }
+      if (typeof draft.ci1Repeat === "boolean") {
+        setCi1Repeat(draft.ci1Repeat);
+      }
+      if (typeof draft.ci1Amount === "string") {
+        setCi1Amount(draft.ci1Amount);
+      }
+      if (typeof draft.ci2On === "boolean") {
+        setCi2On(draft.ci2On);
+      }
+      if (typeof draft.ci2Type === "string") {
+        setCi2Type(draft.ci2Type);
+      }
+      if (typeof draft.ci2Repeat === "boolean") {
+        setCi2Repeat(draft.ci2Repeat);
+      }
+      if (typeof draft.ci2Amount === "string") {
+        setCi2Amount(draft.ci2Amount);
+      }
+      if (typeof draft.seriousHimOn === "boolean") {
+        setSeriousHimOn(draft.seriousHimOn);
+      }
+      if (typeof draft.seriousHimAmount === "string") {
+        setSeriousHimAmount(draft.seriousHimAmount);
+      }
+      if (typeof draft.seriousHerOn === "boolean") {
+        setSeriousHerOn(draft.seriousHerOn);
+      }
+      if (typeof draft.seriousHerAmount === "string") {
+        setSeriousHerAmount(draft.seriousHerAmount);
+      }
+      if (typeof draft.diabetesOn === "boolean") {
+        setDiabetesOn(draft.diabetesOn);
+      }
+      if (typeof draft.diabetesAmount === "string") {
+        setDiabetesAmount(draft.diabetesAmount);
+      }
+      if (typeof draft.vaccinationOn === "boolean") {
+        setVaccinationOn(draft.vaccinationOn);
+      }
+      if (typeof draft.vaccinationAmount === "string") {
+        setVaccinationAmount(draft.vaccinationAmount);
+      }
+      if (typeof draft.deathAccOn === "boolean") {
+        setDeathAccOn(draft.deathAccOn);
+      }
+      if (typeof draft.deathAccAmount === "string") {
+        setDeathAccAmount(draft.deathAccAmount);
+      }
+      if (typeof draft.deathAccDoubleCar === "boolean") {
+        setDeathAccDoubleCar(draft.deathAccDoubleCar);
+      }
+      if (typeof draft.perm1On === "boolean") {
+        setPerm1On(draft.perm1On);
+      }
+      if (typeof draft.perm1Progress === "string") {
+        setPerm1Progress(draft.perm1Progress);
+      }
+      if (typeof draft.perm1From === "string") {
+        setPerm1From(draft.perm1From);
+      }
+      if (typeof draft.perm1Amount === "string") {
+        setPerm1Amount(draft.perm1Amount);
+      }
+      if (typeof draft.perm2On === "boolean") {
+        setPerm2On(draft.perm2On);
+      }
+      if (typeof draft.perm2Progress === "string") {
+        setPerm2Progress(draft.perm2Progress);
+      }
+      if (typeof draft.perm2From === "string") {
+        setPerm2From(draft.perm2From);
+      }
+      if (typeof draft.perm2Amount === "string") {
+        setPerm2Amount(draft.perm2Amount);
+      }
+      if (typeof draft.dailyOn === "boolean") {
+        setDailyOn(draft.dailyOn);
+      }
+      if (typeof draft.dailyFrom === "string") {
+        setDailyFrom(draft.dailyFrom);
+      }
+      if (typeof draft.dailyProgress === "string") {
+        setDailyProgress(draft.dailyProgress);
+      }
+      if (typeof draft.dailyAmount === "string") {
+        setDailyAmount(draft.dailyAmount);
+      }
+      if (typeof draft.bodilyOn === "boolean") {
+        setBodilyOn(draft.bodilyOn);
+      }
+      if (typeof draft.bodilyFrom === "string") {
+        setBodilyFrom(draft.bodilyFrom);
+      }
+      if (typeof draft.bodilyAmount === "string") {
+        setBodilyAmount(draft.bodilyAmount);
+      }
+      if (typeof draft.sick1On === "boolean") {
+        setSick1On(draft.sick1On);
+      }
+      if (typeof draft.sick1From === "string") {
+        setSick1From(draft.sick1From);
+      }
+      if (typeof draft.sick1Variant === "string") {
+        setSick1Variant(draft.sick1Variant);
+      }
+      if (typeof draft.sick1Amount === "string") {
+        setSick1Amount(draft.sick1Amount);
+      }
+      if (typeof draft.sickAccident1 === "boolean") {
+        setSickAccident1(draft.sickAccident1);
+      }
+      if (typeof draft.sickIllness1 === "boolean") {
+        setSickIllness1(draft.sickIllness1);
+      }
+      if (typeof draft.sick2On === "boolean") {
+        setSick2On(draft.sick2On);
+      }
+      if (typeof draft.sick2From === "string") {
+        setSick2From(draft.sick2From);
+      }
+      if (typeof draft.sick2Variant === "string") {
+        setSick2Variant(draft.sick2Variant);
+      }
+      if (typeof draft.sick2Amount === "string") {
+        setSick2Amount(draft.sick2Amount);
+      }
+      if (typeof draft.sickAccident2 === "boolean") {
+        setSickAccident2(draft.sickAccident2);
+      }
+      if (typeof draft.sickIllness2 === "boolean") {
+        setSickIllness2(draft.sickIllness2);
+      }
+      if (typeof draft.hospitalOn === "boolean") {
+        setHospitalOn(draft.hospitalOn);
+      }
+      if (typeof draft.hospitalAccidentOn === "boolean") {
+        setHospitalAccidentOn(draft.hospitalAccidentOn);
+      }
+      if (typeof draft.hospitalAccidentAmount === "string") {
+        setHospitalAccidentAmount(draft.hospitalAccidentAmount);
+      }
+      if (typeof draft.hospitalIllnessOn === "boolean") {
+        setHospitalIllnessOn(draft.hospitalIllnessOn);
+      }
+      if (typeof draft.hospitalIllnessAmount === "string") {
+        setHospitalIllnessAmount(draft.hospitalIllnessAmount);
+      }
+      if (typeof draft.hospitalProgressive === "boolean") {
+        setHospitalProgressive(draft.hospitalProgressive);
+      }
+      if (typeof draft.childOperationOn === "boolean") {
+        setChildOperationOn(draft.childOperationOn);
+      }
+      if (typeof draft.hasExistingContract === "string") {
+        setHasExistingContract(draft.hasExistingContract);
+      }
+      if (typeof draft.isChangeOnExistingContract === "string") {
+        setIsChangeOnExistingContract(draft.isChangeOnExistingContract);
+      }
+      if (typeof draft.isRefreshOrRenovation === "string") {
+        setIsRefreshOrRenovation(draft.isRefreshOrRenovation);
+      }
+      if (typeof draft.isContractTerminationDueToNewOne === "string") {
+        setIsContractTerminationDueToNewOne(
+          draft.isContractTerminationDueToNewOne
+        );
+      }
+      if (typeof draft.childOperationAmount === "string") {
+        setChildOperationAmount(draft.childOperationAmount);
+      }
+      if (typeof draft.childrenAccidentOn === "boolean") {
+        setChildrenAccidentOn(draft.childrenAccidentOn);
+      }
+      if (typeof draft.childrenAccidentType === "string") {
+        setChildrenAccidentType(draft.childrenAccidentType);
+      }
+      if (typeof draft.childrenAccidentAmount === "string") {
+        setChildrenAccidentAmount(draft.childrenAccidentAmount);
+      }
+      if (typeof draft.assistedOn === "boolean") {
+        setAssistedOn(draft.assistedOn);
+      }
+      if (typeof draft.assistedAmount === "string") {
+        setAssistedAmount(draft.assistedAmount);
+      }
+      if (typeof draft.careDependenceOn === "boolean") {
+        setCareDependenceOn(draft.careDependenceOn);
+      }
+      if (typeof draft.careDependenceAmount === "string") {
+        setCareDependenceAmount(draft.careDependenceAmount);
+      }
+      if (typeof draft.fullCareOn === "boolean") {
+        setFullCareOn(draft.fullCareOn);
+      }
+      if (typeof draft.fullCareAmount === "string") {
+        setFullCareAmount(draft.fullCareAmount);
+      }
+      if (typeof draft.specialAidOn === "boolean") {
+        setSpecialAidOn(draft.specialAidOn);
+      }
+      if (typeof draft.specialAidAmount === "string") {
+        setSpecialAidAmount(draft.specialAidAmount);
+      }
+      if (typeof draft.healthSocialOn === "boolean") {
+        setHealthSocialOn(draft.healthSocialOn);
+      }
+    } catch {
+      // ignore broken draft
+    }
+  }, []);
 
   // --------------------------------------------------
   // INPUT HELPERY
@@ -963,10 +1344,119 @@ export function LifeRecordForm() {
       hasCriticalIllness: ci1On || ci2On,
       hasSeriousIllness: seriousHimOn || seriousHerOn,
       hasExistingContract: hasExistingContract === "yes",
+      isChangeOnExistingContract: isChangeOnExistingContract === "yes",
+      isRefreshOrRenovation: isRefreshOrRenovation === "yes",
+      isContractTerminationDueToNewOne:
+        isContractTerminationDueToNewOne === "yes",
       selectedBenefits,
     };
 
     if (typeof window !== "undefined") {
+      const draft = {
+        deathOn,
+        deathAmount,
+        terminalOn,
+        terminalAmount,
+        extraDeathOn,
+        extraDeathConstantOn,
+        extraDeathConstantAmount,
+        extraDeathDecreasingOn,
+        extraDeathDecreasingAmount,
+        extraDeathInterestOn,
+        extraDeathInterestAmount,
+        survivorPensionOn,
+        survivorPensionAmount,
+        waiverOn,
+        waiverInvalidityOn,
+        waiverInvalidityScope,
+        waiverJobLossOn,
+        invalid1On,
+        invalid1Degrees,
+        invalid1Type,
+        invalid1Amount1,
+        invalid1Amount2,
+        invalid1Amount3,
+        invalid2On,
+        invalid2Degrees,
+        invalid2Type,
+        invalid2Amount1,
+        invalid2Amount2,
+        invalid2Amount3,
+        ci1On,
+        ci1Type,
+        ci1Repeat,
+        ci1Amount,
+        ci2On,
+        ci2Type,
+        ci2Repeat,
+        ci2Amount,
+        seriousHimOn,
+        seriousHimAmount,
+        seriousHerOn,
+        seriousHerAmount,
+        diabetesOn,
+        diabetesAmount,
+        vaccinationOn,
+        vaccinationAmount,
+        deathAccOn,
+        deathAccAmount,
+        deathAccDoubleCar,
+        perm1On,
+        perm1Progress,
+        perm1From,
+        perm1Amount,
+        perm2On,
+        perm2Progress,
+        perm2From,
+        perm2Amount,
+        dailyOn,
+        dailyFrom,
+        dailyProgress,
+        dailyAmount,
+        bodilyOn,
+        bodilyFrom,
+        bodilyAmount,
+        sick1On,
+        sick1From,
+        sick1Variant,
+        sick1Amount,
+        sickAccident1,
+        sickIllness1,
+        sick2On,
+        sick2From,
+        sick2Variant,
+        sick2Amount,
+        sickAccident2,
+        sickIllness2,
+        hospitalOn,
+        hospitalAccidentOn,
+        hospitalAccidentAmount,
+        hospitalIllnessOn,
+        hospitalIllnessAmount,
+        hospitalProgressive,
+        childOperationOn,
+        hasExistingContract,
+        isChangeOnExistingContract,
+        isRefreshOrRenovation,
+        isContractTerminationDueToNewOne,
+        childOperationAmount,
+        childrenAccidentOn,
+        childrenAccidentType,
+        childrenAccidentAmount,
+        assistedOn,
+        assistedAmount,
+        careDependenceOn,
+        careDependenceAmount,
+        fullCareOn,
+        fullCareAmount,
+        specialAidOn,
+        specialAidAmount,
+        healthSocialOn,
+      };
+      window.localStorage.setItem(
+        LIFE_RECORD_DRAFT_KEY,
+        JSON.stringify(draft)
+      );
       window.localStorage.setItem(
         "lifeRecordResultInput",
         JSON.stringify(payload)
@@ -1590,7 +2080,7 @@ export function LifeRecordForm() {
         />
 
         <section className="rounded-3xl border border-slate-900 bg-white  px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
-          <div className="text-sm sm:text-base font-semibold text-slate-900">
+          <div className="text-sm sm:text-base font-semibold text-slate-900 leading-tight">
             Zákazník má již uzavřenou pojistnou smlouvu týkající se stejného
             pojistného zájmu
           </div>
@@ -1604,6 +2094,60 @@ export function LifeRecordForm() {
             <ChipButton
               active={hasExistingContract === "no"}
               onClick={() => setHasExistingContract("no")}
+            >
+              Ne
+            </ChipButton>
+          </div>
+
+          <div className="text-sm sm:text-base font-semibold text-slate-900 leading-tight">
+            Změna na stávající smlouvě
+          </div>
+          <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+            <ChipButton
+              active={isChangeOnExistingContract === "yes"}
+              onClick={() => setIsChangeOnExistingContract("yes")}
+            >
+              Ano
+            </ChipButton>
+            <ChipButton
+              active={isChangeOnExistingContract === "no"}
+              onClick={() => setIsChangeOnExistingContract("no")}
+            >
+              Ne
+            </ChipButton>
+          </div>
+
+          <div className="text-sm sm:text-base font-semibold text-slate-900 leading-tight">
+            Refresh nebo Renovace stávající smlouvy
+          </div>
+          <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+            <ChipButton
+              active={isRefreshOrRenovation === "yes"}
+              onClick={() => setIsRefreshOrRenovation("yes")}
+            >
+              Ano
+            </ChipButton>
+            <ChipButton
+              active={isRefreshOrRenovation === "no"}
+              onClick={() => setIsRefreshOrRenovation("no")}
+            >
+              Ne
+            </ChipButton>
+          </div>
+
+          <div className="text-sm sm:text-base font-semibold text-slate-900 leading-tight">
+            Výpověď smlouvy z důvodu sjednání nové
+          </div>
+          <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+            <ChipButton
+              active={isContractTerminationDueToNewOne === "yes"}
+              onClick={() => setIsContractTerminationDueToNewOne("yes")}
+            >
+              Ano
+            </ChipButton>
+            <ChipButton
+              active={isContractTerminationDueToNewOne === "no"}
+              onClick={() => setIsContractTerminationDueToNewOne("no")}
             >
               Ne
             </ChipButton>
@@ -1645,8 +2189,10 @@ function BenefitCard({
   onToggle,
   children,
 }: BenefitCardProps) {
+  const Icon = getBenefitCardIcon(title);
+
   return (
-    <section className="rounded-3xl border border-slate-800 bg-slate-950 px-4 py-4 sm:px-5 sm:py-5 shadow-[0_12px_26px_rgba(15,23,42,0.3)]">
+    <section className="rounded-3xl border border-slate-300 bg-white px-4 py-4 sm:px-5 sm:py-5 shadow-[0_8px_22px_rgba(15,23,42,0.08)] transition hover:-translate-y-[1px] hover:shadow-[0_12px_26px_rgba(15,23,42,0.12)]">
       <button
         type="button"
         onClick={onToggle}
@@ -1655,27 +2201,25 @@ function BenefitCard({
         <div
           className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs transition ${
             enabled
-              ? "border-emerald-600 bg-emerald-500 text-white"
-              : "border-slate-500 bg-slate-900 text-transparent"
+              ? "border-slate-900 bg-slate-900 text-white"
+              : "border-slate-300 bg-white text-transparent"
           }`}
         >
           {enabled ? "✓" : ""}
         </div>
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
+          <Icon className="h-4 w-4" />
+        </div>
         <div className="flex-1">
-          <h3 className="text-sm sm:text-base font-semibold text-[#f8fafc]">
+          <h3 className="text-sm sm:text-base font-semibold text-slate-900">
             {title}
           </h3>
-          {subtitle && (
-            <p className="mt-0.5 text-[11px] text-[#cbd5e1] sm:text-xs">
-              {subtitle}
-            </p>
-          )}
         </div>
       </button>
 
       {enabled && children && (
-        <div className="mt-3 border-t border-slate-700 pt-3">
-          <div className="rounded-2xl border border-slate-300 bg-white p-3">
+        <div className="mt-3 border-t border-slate-200 pt-3">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             {children}
           </div>
         </div>
