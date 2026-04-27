@@ -568,6 +568,7 @@ export function useCashflowData({
         if (productFilter === "property") {
           return (
             product === "domex" ||
+            product === "cpphafan" ||
             product === "pillowmajetek" ||
             product === "koopmajetekobcan" ||
             product === "maxdomov" ||

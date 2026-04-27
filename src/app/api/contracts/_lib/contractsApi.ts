@@ -23,6 +23,7 @@ import {
   calculateMaxCizinKomplex,
   calculatePillowInjury,
   calculateDomex,
+  calculateCppHafan,
   calculatePillowMajetek,
   calculateKoopMajetekObcan,
   calculateMaxdomov,
@@ -362,6 +363,7 @@ const SUPPORTED_PRODUCTS = new Set<Product>([
   "pillowInjury",
   "zamex",
   "domex",
+  "cpphafan",
   "pillowmajetek",
   "koopmajetekobcan",
   "maxdomov",
@@ -421,6 +423,7 @@ const CPP_STATUS_SYNC_PRODUCTS = new Set<Product>([
   "neon",
   "zamex",
   "domex",
+  "cpphafan",
   "cppsimplex",
   "cppAuto",
   "cppPPRs",
@@ -1944,6 +1947,7 @@ const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
     case "maximaMaxEfekt":
       return ["monthly"];
     case "domex":
+    case "cpphafan":
       return ["quarterly", "semiannual", "annual"];
     case "pillowmajetek":
     case "koopmajetekobcan":
@@ -2484,10 +2488,13 @@ const computeItemsForProductPositionAndMode = ({
     case "pillowInjury":
       return calculatePillowInjury(safeAmount, position, commissionMode);
     case "domex":
+    case "cpphafan":
     case "koopmajetekobcan": {
       const dto =
         productKey === "domex"
           ? calculateDomex(safeAmount, usedFrequency, position)
+          : productKey === "cpphafan"
+          ? calculateCppHafan(safeAmount, usedFrequency, position)
           : calculateKoopMajetekObcan(safeAmount, usedFrequency, position);
       const filtered = dto.items.filter((item) =>
         (item.title ?? "").toLowerCase().includes("(z platby)")

@@ -91,6 +91,7 @@ const CPP_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
   "neon",
   "zamex",
   "domex",
+  "cpphafan",
   "cppsimplex",
   "cppAuto",
   "cppPPRs",
@@ -752,7 +753,10 @@ export default function ContractDetailPage() {
   const isLifeInsuranceContract = Boolean(prod && LIFE_PRODUCT_KEYS.has(prod));
   const showTimelineSection = isLifeInsuranceContract && hasTimelineChange;
   const isPaymentBasedProduct =
-    prod === "domex" || prod === "koopmajetekobcan" || prod === "maxdomov";
+    prod === "domex" ||
+    prod === "cpphafan" ||
+    prod === "koopmajetekobcan" ||
+    prod === "maxdomov";
   const paymentMultiplier = isPaymentBasedProduct ? paymentsPerYear(freq) : 1;
   const durationYears =
     typeof contract?.durationYears === "number" && !Number.isNaN(contract.durationYears)
@@ -2881,7 +2885,7 @@ export default function ContractDetailPage() {
 
   // vyfiltrované položky bez řádku "Celkem" a bez ročních součtů u produktů placených dle platby
   const filterPaymentBasedItems = (arr: CommissionResultItemDTO[]) => {
-    if (prod === "domex" || prod === "koopmajetekobcan") {
+    if (prod === "domex" || prod === "cpphafan" || prod === "koopmajetekobcan") {
       return arr.filter((it) =>
         (it.title ?? "").toLowerCase().includes("(z platby)")
       );
@@ -3005,6 +3009,10 @@ export default function ContractDetailPage() {
       if (!email) return;
       chainIdx.set(email, idx);
     });
+    const viewerChainIndex =
+      normalizedViewerEmail && chainIdx.has(normalizedViewerEmail)
+        ? (chainIdx.get(normalizedViewerEmail) ?? -1)
+        : -1;
 
     const excluded = new Set<string>();
     if (normalizedViewerEmail) excluded.add(normalizedViewerEmail);
@@ -3014,6 +3022,11 @@ export default function ContractDetailPage() {
       .map((override) => {
         const email = (override.email ?? "").trim().toLowerCase();
         if (!email || excluded.has(email)) return null;
+        const overrideChainIndex = chainIdx.get(email) ?? -1;
+        if (viewerChainIndex >= 0 && overrideChainIndex >= viewerChainIndex) {
+          // Zobrazuj jen meziprovize pod přihlášeným manažerem, ne nad ním.
+          return null;
+        }
 
         const rawItems = stripTotalRows(override.items);
         const rawTotal = computeTotalWithMultipliers(rawItems);
@@ -3046,7 +3059,7 @@ export default function ContractDetailPage() {
           items,
           totals,
           totalDisplay: isPaymentBasedProduct ? sum * paymentMultiplier : rawTotal,
-          chainIndex: chainIdx.get(email) ?? -1,
+          chainIndex: overrideChainIndex,
         };
       })
       .filter((row): row is NonNullable<typeof row> => !!row)
