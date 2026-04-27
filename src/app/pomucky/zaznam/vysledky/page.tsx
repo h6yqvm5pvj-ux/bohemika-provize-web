@@ -351,6 +351,17 @@ function buildRecommendation(
   return `Pojišťovna umožňuje pojistit rizika: ${texts.join(", ")}.`;
 }
 
+function formatCzkAmount(amount: number): string {
+  return `${amount.toLocaleString("cs-CZ")} Kč`;
+}
+
+function joinWithAnd(items: string[]): string {
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0]!;
+  if (items.length === 2) return `${items[0]} a ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")} a ${items[items.length - 1]}`;
+}
+
 const MANDATORY_IMPACT_TEXTS: string[] = [
   "Klient byl seznámen s rozsahem krytí, výší pojistných částek a pojistného, s hlavními výlukami/čekacími dobami a principem likvidace pojistné události dle pojistných podmínek, doporučení pravidelné aktualizace smlouvy a nutnosti hlásit změny jako například změna povolání.",
 ];
@@ -457,6 +468,76 @@ export default function RecordResultsPage() {
       }
 
       const selectedBenefits = data.selectedBenefits ?? [];
+      const highDailyBenefits: string[] = [];
+
+      selectedBenefits.forEach((benefit) => {
+        if (benefit.key === "dailyAllowance") {
+          if (typeof benefit.amount === "number" && benefit.amount > 600) {
+            highDailyBenefits.push(
+              `denní odškodné po úrazu (${formatCzkAmount(benefit.amount)})`
+            );
+          }
+          return;
+        }
+
+        if (benefit.key === "sickLeave") {
+          if (typeof benefit.amount !== "number") return;
+
+          const isAboveLimit =
+            ((benefit.from === "day15" || benefit.from === "day29") &&
+              benefit.amount > 600) ||
+            (benefit.from === "day60" && benefit.amount > 800);
+
+          if (!isAboveLimit) return;
+
+          const fromLabel =
+            benefit.from === "day15"
+              ? "od 15. dne"
+              : benefit.from === "day29"
+              ? "od 29. dne"
+              : "od 60. dne";
+
+          highDailyBenefits.push(
+            `pracovní neschopnost ${fromLabel} (${formatCzkAmount(
+              benefit.amount
+            )})`
+          );
+          return;
+        }
+
+        if (benefit.key === "hospitalization") {
+          if (
+            benefit.accident &&
+            typeof benefit.amountAccident === "number" &&
+            benefit.amountAccident > 600
+          ) {
+            highDailyBenefits.push(
+              `hospitalizace při úrazu (${formatCzkAmount(
+                benefit.amountAccident
+              )})`
+            );
+          }
+          if (
+            benefit.illness &&
+            typeof benefit.amountIllness === "number" &&
+            benefit.amountIllness > 600
+          ) {
+            highDailyBenefits.push(
+              `hospitalizace při nemoci (${formatCzkAmount(
+                benefit.amountIllness
+              )})`
+            );
+          }
+        }
+      });
+
+      const uniqueHighDailyBenefits = [...new Set(highDailyBenefits)];
+      if (uniqueHighDailyBenefits.length > 0) {
+        const list = joinWithAnd(uniqueHighDailyBenefits);
+        recs.push(
+          `Klient požaduje následující denní dávky: ${list} a byl seznámen s tím, že při pojistné události je nutné doložit příjem, dále byl seznámen s tabulkou maximálních pojistných částek denního odškodného ve vztahu k příjmu.`
+        );
+      }
 
       const productTexts = [
         {

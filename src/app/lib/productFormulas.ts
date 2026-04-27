@@ -32,6 +32,11 @@ import {
   domexSubsequentCoefficient,
 } from "./productFormulas/domex";
 import {
+  calculateCppHafan,
+  cppHafanImmediateCoefficient,
+  cppHafanSubsequentCoefficient,
+} from "./productFormulas/cpphafan";
+import {
   calculatePillowMajetek,
   pillowMajetekImmediateCoefficient,
   pillowMajetekSubsequentCoefficient,
@@ -126,6 +131,7 @@ export {
   calculateMaxCizinKomplex,
   calculatePillowInjury,
   calculateDomex,
+  calculateCppHafan,
   calculatePillowMajetek,
   calculateKoopMajetekObcan,
   calculateMaxdomov,
@@ -157,6 +163,7 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "maxcizinkomplex",
   "pillowInjury",
   "domex",
+  "cpphafan",
   "pillowmajetek",
   "koopmajetekobcan",
   "maxdomov",
@@ -241,6 +248,17 @@ export function getCoefficientSummary(
         },
       ];
     }
+    case "cpphafan":
+      return [
+        {
+          label: "Okamžitá provize (z platby)",
+          value: cppHafanImmediateCoefficient(position),
+        },
+        {
+          label: "Následná provize (z platby)",
+          value: cppHafanSubsequentCoefficient(position),
+        },
+      ];
     case "pillowmajetek": {
       const validFrom = new Date(
         `${PILLOW_MAJETEK_COEFFICIENT_VALID_FROM}T00:00:00`

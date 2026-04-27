@@ -151,9 +151,6 @@ export function CashflowMonthModal({
                             {isTipIncome ? "TIP provize" : frequencyText(item.frequency)}
                           </span>
                         </p>
-                        {item.note && (
-                          <p className="text-xs text-slate-500">{item.note}</p>
-                        )}
                       </div>
                     </button>
 

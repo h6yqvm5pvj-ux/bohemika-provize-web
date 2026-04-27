@@ -234,6 +234,7 @@ export function generateCashflow(
       }
 
       case "domex":
+      case "cpphafan":
       case "koopmajetekobcan":
       case "cppPPRbez": {
         const immediateDomex =
@@ -265,6 +266,8 @@ export function generateCashflow(
               `${notePrefix}${
                 product === "domex"
                   ? "DOMEX"
+                  : product === "cpphafan"
+                  ? "HAFAN"
                   : product === "koopmajetekobcan"
                   ? "Kooperativa majetek/odpovědnost"
                   : "ČPP PPR"

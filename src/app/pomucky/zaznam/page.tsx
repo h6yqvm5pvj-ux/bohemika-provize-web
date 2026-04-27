@@ -34,55 +34,41 @@ export default function RecordOfMeetingPage() {
           <h1 className="text-5xl font-semibold leading-none tracking-tight text-slate-900 sm:text-6xl">
             Záznam z jednání
           </h1>
-          <p className="text-sm text-slate-600">
-            Vyber typ sjednávaného pojištění a vyplň parametry ve stejném stylu jako zbytek aplikace.
-          </p>
         </header>
 
-        <section className="rounded-3xl border border-slate-900 bg-white  px-4 py-4 sm:px-5 sm:py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
-          <p className="text-xs text-slate-600 mb-3">
-            Vyber, jaký typ pojištění sjednáváš…
-          </p>
-
-          <div className="flex gap-3 overflow-x-auto pb-1">
-            {RECORD_INSURANCE_TYPES.map((t: RecordInsuranceTypeConfig) => {
-              const active = t.id === selectedType;
-              const Icon = INSURANCE_TYPE_ICONS[t.id];
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setSelectedType(t.id)}
-                  className={`min-w-[150px] rounded-2xl border px-3 py-2.5 text-left text-xs sm:text-sm transition ${
-                    active
-                      ? "border-slate-900 bg-gradient-to-br from-slate-950 to-slate-800 text-white shadow-[0_10px_18px_rgba(15,23,42,0.3)]"
-                      : "bg-white border-slate-400/80 text-slate-900 hover:-translate-y-[1px] hover:border-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-flex h-6 w-6 items-center justify-center rounded-lg border ${
-                        active
-                          ? "border-slate-500 bg-slate-800 text-emerald-300"
-                          : "border-slate-300 bg-slate-100 text-slate-700"
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                    </span>
-                    <div className="font-semibold">{t.shortTitle}</div>
-                  </div>
-                  <div
-                    className={`mt-1 text-[11px] leading-tight ${
-                      active ? "text-slate-200" : "text-slate-600"
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {RECORD_INSURANCE_TYPES.map((t: RecordInsuranceTypeConfig) => {
+            const active = t.id === selectedType;
+            const Icon = INSURANCE_TYPE_ICONS[t.id];
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setSelectedType(t.id)}
+                className={`min-w-[165px] rounded-3xl border px-4 py-4 text-left transition ${
+                  active
+                    ? "border-emerald-500 bg-emerald-50 text-slate-900 shadow-[0_10px_20px_rgba(16,185,129,0.2)]"
+                    : "border-slate-300 bg-white text-slate-900 shadow-[0_6px_14px_rgba(15,23,42,0.08)] hover:-translate-y-[1px] hover:border-slate-500"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border ${
+                      active
+                        ? "border-emerald-300 bg-white text-emerald-700"
+                        : "border-slate-200 bg-slate-50 text-slate-700"
                     }`}
                   >
-                    {t.subtitle}
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <div className="text-base font-semibold sm:text-lg">
+                    {t.shortTitle}
                   </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
+                </div>
+              </button>
+            );
+          })}
+        </div>
 
         <section className="space-y-4">
           {selectedType === "life" && <LifeRecordForm />}

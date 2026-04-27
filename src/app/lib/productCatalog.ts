@@ -68,6 +68,7 @@ export const PRODUCT_ORDER: Product[] = [
   "pillowInjury",
   "zamex",
   "domex",
+  "cpphafan",
   "pillowmajetek",
   "koopmajetekobcan",
   "maxdomov",
@@ -128,6 +129,12 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
     institutionId: "cpp",
     category: "property",
     extraGroups: ["liability"],
+  },
+  cpphafan: {
+    label: "ČPP HAFAN",
+    icon: "/icons/icon_domex.png",
+    institutionId: "cpp",
+    category: "property",
   },
   pillowmajetek: {
     label: "Pillow Majetek",

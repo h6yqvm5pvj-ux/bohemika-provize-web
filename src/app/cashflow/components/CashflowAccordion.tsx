@@ -82,6 +82,7 @@ export function CashflowAccordion({
                       100,
                       Math.round((month.total / maxMonthTotal) * 100)
                     );
+                    const monthLabelOnly = month.label.replace(/\s+\d{4}$/, "");
 
                     return (
                       <button
@@ -96,7 +97,7 @@ export function CashflowAccordion({
                               Měsíc
                             </div>
                             <h3 className="text-[1.7rem] leading-none font-semibold tracking-tight text-slate-900 sm:text-[2rem]">
-                              {month.label}
+                              {monthLabelOnly}
                             </h3>
                             <p className="mt-1.5 text-[15px] text-slate-600">
                               {month.items.length} smluv

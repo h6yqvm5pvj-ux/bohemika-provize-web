@@ -21,8 +21,11 @@ export function CashflowHeader({
           className="text-4xl sm:text-5xl !text-slate-900"
         />
 
-        <div className="ui-glass min-w-[340px] px-5 py-4">
-          <div className="relative ui-kicker text-white/90">
+        <div className="relative w-full overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.07)] sm:w-auto sm:min-w-[340px]">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_18%,rgba(16,185,129,0.1),transparent_44%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_96%,rgba(15,23,42,0.08),transparent_38%)]" />
+
+          <div className="relative ui-kicker text-slate-600">
             Celkové očekávané cashflow
           </div>
           <div className="relative mt-1">

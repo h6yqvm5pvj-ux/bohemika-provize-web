@@ -35,6 +35,7 @@ import {
   calculateMaxCizinKomplex,
   calculatePillowInjury,
   calculateDomex,
+  calculateCppHafan,
   calculatePillowMajetek,
   calculateKoopMajetekObcan,
   calculateMaxdomov,
@@ -179,6 +180,7 @@ const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
     title: "Majetek",
     products: [
       "domex",
+      "cpphafan",
       "pillowmajetek",
       "koopmajetekobcan",
       "maxdomov",
@@ -839,6 +841,7 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "maximaMaxEfekt":
       return ["monthly"];
     case "domex":
+    case "cpphafan":
       return ["quarterly", "semiannual", "annual"];
     case "pillowmajetek":
       return ["monthly", "quarterly", "semiannual", "annual"];
@@ -1405,6 +1408,7 @@ export default function CalculatorPage() {
       case "pillowInjury":
         return "Výpočet: roční pojistné (měsíční × 12) × koeficient/100 pro jednotlivé položky.";
       case "domex":
+      case "cpphafan":
       case "koopmajetekobcan":
         return `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}).`;
       case "pillowmajetek":
@@ -2644,10 +2648,16 @@ export default function CalculatorPage() {
       return;
     }
 
-    if (product === "domex" || product === "koopmajetekobcan") {
+    if (
+      product === "domex" ||
+      product === "cpphafan" ||
+      product === "koopmajetekobcan"
+    ) {
       const dto =
         product === "domex"
           ? calculateDomex(val, frequency, position)
+          : product === "cpphafan"
+          ? calculateCppHafan(val, frequency, position)
           : calculateKoopMajetekObcan(val, frequency, position);
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
@@ -3677,10 +3687,13 @@ export default function CalculatorPage() {
       case "pillowInjury":
         return calculatePillowInjury(val, pos, usedMode);
       case "domex":
+      case "cpphafan":
       case "koopmajetekobcan": {
         const dto =
           product === "domex"
             ? calculateDomex(val, freq, pos)
+            : product === "cpphafan"
+            ? calculateCppHafan(val, freq, pos)
             : calculateKoopMajetekObcan(val, freq, pos);
         const filtered = dto.items.filter((i) =>
           (i.title ?? "").toLowerCase().includes("(z platby)")
@@ -5138,6 +5151,7 @@ export default function CalculatorPage() {
 
                   <div className="pt-2 flex items-center justify-between">
                     {(product === "domex" ||
+                      product === "cpphafan" ||
                       product === "koopmajetekobcan" ||
                       product === "maxdomov") &&
                     paymentBasedTotalsMemo ? (

@@ -229,7 +229,7 @@ export default function InvaliditaPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="inline-flex flex-wrap gap-2 rounded-2xl border border-slate-300 bg-white p-2">
+              <div className="inline-flex flex-wrap gap-2 rounded-2xl bg-slate-100/80 p-1.5 ring-1 ring-slate-200">
                 {SCENARIOS.map((scenario) => {
                   const active = scenario.id === activeScenario.id;
                   return (
@@ -239,8 +239,8 @@ export default function InvaliditaPage() {
                       onClick={() => setActiveScenarioId(scenario.id)}
                       className={`rounded-full px-4 py-2 text-base font-semibold transition ${
                         active
-                          ? "border border-slate-900 bg-slate-900 text-white"
-                          : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                          ? "border border-slate-900 bg-white text-slate-900 shadow-[0_6px_16px_rgba(15,23,42,0.15)]"
+                          : "border border-transparent bg-transparent text-slate-700 hover:bg-white hover:shadow-[0_4px_12px_rgba(15,23,42,0.08)]"
                       }`}
                     >
                       {scenario.label}
@@ -250,113 +250,133 @@ export default function InvaliditaPage() {
               </div>
 
               {activeModel === "insurance" ? (
-                <div className="rounded-2xl border border-slate-900 bg-slate-900 px-4 py-4 text-white">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="text-xl font-semibold text-white">{activeScenario.label}</div>
-                    <div className="text-xs text-slate-300 text-right">
-                      Pokrytí: {activeScenario.ratios.map((r) => `${Math.round(r * 100)}%`).join(" / ")}
+                <div className="mx-auto w-full max-w-5xl rounded-[30px] border border-slate-200 bg-white px-5 py-5 shadow-[0_16px_36px_rgba(15,23,42,0.1)]">
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-2xl font-semibold text-slate-900">
+                          {activeScenario.label}
+                        </div>
+                        <div className="text-xs text-slate-600">
+                          Varianta krytí invalidity
+                        </div>
+                      </div>
+                      <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                        Pokrytí:{" "}
+                        {activeScenario.ratios
+                          .map((r) => `${Math.round(r * 100)}%`)
+                          .join(" / ")}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-2.5">
-                    {activeScenario.monthly.map((m, idx) => (
-                      <div
-                        key={`${activeScenario.id}-${idx}`}
-                        className="rounded-lg border border-slate-200 bg-white px-4 py-3"
-                      >
-                        <div className="grid gap-2.5 sm:grid-cols-[132px_1.15fr_1fr] sm:items-center">
-                          <div className="text-sm uppercase tracking-[0.12em] font-semibold text-slate-500">
-                            {DEGREE_LABELS[idx]}
-                          </div>
-                          <div className="text-sm text-slate-900">
-                            <div className="text-xl sm:text-2xl font-bold tabular-nums text-emerald-700 leading-none">
-                              {formatMoney(m)} / měsíc
+                    <div className="mx-auto grid w-full max-w-4xl gap-4 md:grid-cols-3">
+                      {activeScenario.monthly.map((m, idx) => (
+                        <article
+                          key={`${activeScenario.id}-${idx}`}
+                          className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+                              {DEGREE_LABELS[idx]}
                             </div>
-                            <div className="mt-1 text-xs text-slate-500">
-                              {Math.round(activeScenario.ratios[idx] * 100)} % příjmu
+                            <div className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                              {Math.round(activeScenario.ratios[idx] * 100)} %
                             </div>
                           </div>
-                          <div className="text-sm text-slate-900 sm:text-right">
-                            <div className="text-xs text-slate-500">Celkem do 65 let</div>
-                            <div className="mt-0.5 text-lg sm:text-xl font-bold tabular-nums text-emerald-700 whitespace-nowrap">
+                          <div className="mt-3 text-2xl sm:text-3xl font-bold leading-none tabular-nums text-emerald-800">
+                            {formatMoney(m)}
+                          </div>
+                          <div className="mt-1 text-xs font-semibold tracking-[0.08em] text-slate-600 uppercase">
+                            měsíční renta
+                          </div>
+                          <div className="mt-3 h-px bg-slate-200" />
+                          <div className="mt-3 text-right">
+                            <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
+                              Celkem do 65 let
+                            </div>
+                            <div className="mt-1 text-lg font-bold tabular-nums text-emerald-800 whitespace-nowrap">
                               {formatMoney(activeScenario.lump[idx])}
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    ))}
+                        </article>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ) : (
-                <div className="rounded-2xl border border-slate-900 bg-slate-900 px-4 py-4 text-white">
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-xl font-semibold text-white">
-                        {activeScenario.label}
+                <div className="mx-auto w-full max-w-5xl rounded-[30px] border border-slate-200 bg-white px-5 py-5 shadow-[0_16px_36px_rgba(15,23,42,0.1)]">
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-2xl font-semibold text-slate-900">
+                          {activeScenario.label}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-600">
+                          Cíl: renta z investice ({INVESTMENT_PRODUCT_NAME})
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-300">
-                        Cíl: renta z investice ({INVESTMENT_PRODUCT_NAME})
-                      </div>
+                      <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold leading-none text-slate-900 shadow-[0_2px_10px_rgba(15,23,42,0.2)]">
+                        <span
+                          className="h-1.5 w-1.5 rounded-full bg-emerald-500"
+                          aria-hidden="true"
+                        />
+                        <span>5,5–6 %</span>
+                        <span className="text-slate-600">p.a.</span>
+                      </span>
                     </div>
-                    <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold leading-none text-slate-900 shadow-[0_2px_10px_rgba(15,23,42,0.2)]">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-                      <span>5,5–6 %</span>
-                      <span className="text-slate-600">p.a.</span>
-                    </span>
-                  </div>
 
-                  <div className="space-y-2.5">
-                    {activeScenario.monthly.map((m, idx) => {
-                      const minCapital = Math.round(
-                        requiredCapitalForRenta(
-                          m,
-                          totalMonths,
-                          INVESTIKA_RETURN_RANGE.max
-                        )
-                      );
-                      const maxCapital = Math.round(
-                        requiredCapitalForRenta(
-                          m,
-                          totalMonths,
-                          INVESTIKA_RETURN_RANGE.min
-                        )
-                      );
+                    <div className="mx-auto grid w-full max-w-4xl gap-4 md:grid-cols-3">
+                      {activeScenario.monthly.map((m, idx) => {
+                        const minCapital = Math.round(
+                          requiredCapitalForRenta(
+                            m,
+                            totalMonths,
+                            INVESTIKA_RETURN_RANGE.max
+                          )
+                        );
+                        const maxCapital = Math.round(
+                          requiredCapitalForRenta(
+                            m,
+                            totalMonths,
+                            INVESTIKA_RETURN_RANGE.min
+                          )
+                        );
 
-                      return (
-                        <div
-                          key={`investika-${activeScenario.id}-${idx}`}
-                          className="rounded-lg border border-slate-200 bg-white px-4 py-3"
-                        >
-                          <div className="grid gap-2.5 sm:grid-cols-[132px_1.15fr_1fr] sm:items-center">
-                            <div className="text-sm uppercase tracking-[0.12em] font-semibold text-slate-500">
-                              {DEGREE_LABELS[idx]}
-                            </div>
-                            <div className="text-sm text-slate-900">
-                              <div className="text-xl sm:text-2xl font-bold tabular-nums text-emerald-700 leading-none">
-                                {formatMoney(m)}
+                        return (
+                          <article
+                            key={`investika-${activeScenario.id}-${idx}`}
+                            className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+                                {DEGREE_LABELS[idx]}
                               </div>
-                              <div className="mt-1 text-xs text-slate-500">
-                                Měsíční renta
-                              </div>
-                              <div className="mt-1 text-xs text-slate-500">
-                                {Math.round(activeScenario.ratios[idx] * 100)} % příjmu
+                              <div className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                                {Math.round(activeScenario.ratios[idx] * 100)} %
                               </div>
                             </div>
-                            <div className="text-sm text-slate-900 sm:text-right">
-                              <div className="text-xs text-slate-500">
+                            <div className="mt-3 text-2xl sm:text-3xl font-bold leading-none tabular-nums text-emerald-800">
+                              {formatMoney(m)}
+                            </div>
+                            <div className="mt-1 text-xs font-semibold tracking-[0.08em] text-slate-600 uppercase">
+                              měsíční renta
+                            </div>
+                            <div className="mt-3 h-px bg-slate-200" />
+                            <div className="mt-3 text-right">
+                              <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
                                 Potřebný vklad
                               </div>
-                              <div className="mt-0.5 text-base sm:text-lg font-bold tabular-nums text-emerald-700 whitespace-nowrap">
+                              <div className="mt-1 text-base sm:text-lg font-bold tabular-nums text-emerald-800 whitespace-nowrap">
                                 od {formatMoney(minCapital)}
                               </div>
-                              <div className="text-base sm:text-lg font-bold tabular-nums text-emerald-700 whitespace-nowrap">
+                              <div className="text-base sm:text-lg font-bold tabular-nums text-emerald-800 whitespace-nowrap">
                                 do {formatMoney(maxCapital)}
                               </div>
                             </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                          </article>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}

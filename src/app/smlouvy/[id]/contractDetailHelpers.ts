@@ -50,6 +50,9 @@ export function preloadFormulaModule(product?: Product | null) {
     case "domex":
       import("../../lib/productFormulas/domex");
       break;
+    case "cpphafan":
+      import("../../lib/productFormulas/cpphafan");
+      break;
     case "pillowmajetek":
       import("../../lib/productFormulas/pillowMajetek");
       break;
@@ -401,6 +404,12 @@ export async function calculateResultForPosition(
     case "domex": {
       const { calculateDomex } = await import("../../lib/productFormulas/domex");
       return calculateDomex(amount, freq, position);
+    }
+    case "cpphafan": {
+      const { calculateCppHafan } = await import(
+        "../../lib/productFormulas/cpphafan"
+      );
+      return calculateCppHafan(amount, freq, position);
     }
     case "pillowmajetek": {
       const { calculatePillowMajetek } = await import(
