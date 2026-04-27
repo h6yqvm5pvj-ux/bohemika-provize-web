@@ -565,6 +565,7 @@ export default function ContractDetailPage() {
     status: contract?.status,
     productKey: contract?.productKey,
     policyStartDate: contract?.policyStartDate,
+    policyEndDate: contract?.policyEndDate,
     durationYears:
       typeof contract?.durationYears === "number" && !Number.isNaN(contract.durationYears)
         ? contract.durationYears
@@ -887,6 +888,7 @@ export default function ContractDetailPage() {
   const [editContractNumber, setEditContractNumber] = useState("");
   const [editContractSigned, setEditContractSigned] = useState("");
   const [editPolicyStart, setEditPolicyStart] = useState("");
+  const [editPolicyEnd, setEditPolicyEnd] = useState("");
   const [editDuration, setEditDuration] = useState<number | null>(null);
   const [editCarMake, setEditCarMake] = useState("");
   const [editCarPlate, setEditCarPlate] = useState("");
@@ -1653,6 +1655,7 @@ export default function ContractDetailPage() {
     setEditContractNumber(contract.contractNumber ?? "");
     setEditContractSigned(toDateInputValue(contract.contractSignedDate ?? contract.createdAt));
     setEditPolicyStart(toDateInputValue(contract.policyStartDate));
+    setEditPolicyEnd(toDateInputValue(contract.policyEndDate));
     setEditDuration(
       typeof contract.durationYears === "number" && !Number.isNaN(contract.durationYears)
         ? contract.durationYears
@@ -2164,6 +2167,11 @@ export default function ContractDetailPage() {
       const trimmedNumber = editContractNumber.trim();
       const signedDate = editContractSigned ? new Date(editContractSigned) : null;
       const startDate = editPolicyStart ? new Date(editPolicyStart) : null;
+      const endDate = editPolicyEnd ? new Date(editPolicyEnd) : null;
+      if (startDate && endDate && endDate.getTime() < startDate.getTime()) {
+        setDetailsError("Datum „Pojištění do“ nesmí být před datem počátku.");
+        return;
+      }
       const durationVal =
         durationBounds != null &&
         typeof editDuration === "number" &&
@@ -2406,6 +2414,7 @@ export default function ContractDetailPage() {
         contractNumber: trimmedNumber || null,
         contractSignedDate: signedDate ?? null,
         policyStartDate: startDate ?? null,
+        policyEndDate: endDate ?? null,
         ...autoFields,
         ...neonUpdate,
         ...flexiUpdate,
@@ -2438,6 +2447,7 @@ export default function ContractDetailPage() {
               contractNumber: trimmedNumber || null,
               contractSignedDate: signedDate ?? null,
               policyStartDate: startDate ?? null,
+              policyEndDate: endDate ?? null,
               durationYears:
                 showDurationForProduct
                   ? durationVal ?? prev.durationYears ?? null
@@ -3832,6 +3842,21 @@ export default function ContractDetailPage() {
                             />
                           ) : (
                             formatDate(contract.policyStartDate)
+                          )}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <dt className={keyValueLabelClass}>Pojištění do</dt>
+                        <dd className={keyValueValueClass}>
+                          {editMode ? (
+                            <input
+                              type="date"
+                              value={editPolicyEnd}
+                              onChange={(e) => setEditPolicyEnd(e.target.value)}
+                              className={inputCompactClass}
+                            />
+                          ) : (
+                            formatDate(contract.policyEndDate)
                           )}
                         </dd>
                       </div>

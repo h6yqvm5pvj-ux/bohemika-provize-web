@@ -7,6 +7,7 @@ type ContractLifecycleInput = {
   status?: string | null;
   productKey?: Product | null;
   policyStartDate?: unknown;
+  policyEndDate?: unknown;
   durationYears?: number | null;
   durationMonths?: number | null;
 };
@@ -20,7 +21,12 @@ const startOfDay = (value: Date): Date =>
 export function contractMaturityDate(
   contract: ContractLifecycleInput | null | undefined
 ): Date | null {
-  if (!contract?.productKey) return null;
+  if (!contract) return null;
+
+  const explicitEndDate = toDate(contract.policyEndDate);
+  if (explicitEndDate) return explicitEndDate;
+
+  if (!contract.productKey) return null;
 
   const startDate = toDate(contract.policyStartDate);
   if (!startDate) return null;
@@ -58,6 +64,12 @@ export function isContractDozita(
   contract: ContractLifecycleInput | null | undefined,
   now: Date = new Date()
 ): boolean {
+  const explicitEndDate = toDate(contract?.policyEndDate);
+  if (explicitEndDate) {
+    // Smlouva je "dožitá" až po uplynutí dne "Pojištění do".
+    return startOfDay(now).getTime() > startOfDay(explicitEndDate).getTime();
+  }
+
   const maturityDate = contractMaturityDate(contract);
   if (!maturityDate) return false;
   return startOfDay(now).getTime() >= startOfDay(maturityDate).getTime();

@@ -93,6 +93,7 @@ type ContractDoc = {
   createdAt?: FirestoreTimestamp | Date | string | null;
   contractSignedDate?: FirestoreTimestamp | Date | string | null;
   policyStartDate?: FirestoreTimestamp | Date | string | null;
+  policyEndDate?: FirestoreTimestamp | Date | string | null;
   durationYears?: number | null;
   durationMonths?: number | null;
   maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;

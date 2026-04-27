@@ -154,6 +154,7 @@ type ContractDoc = {
   createdAt?: FirestoreTimestamp | Date | string | number | null;
   contractSignedDate?: FirestoreTimestamp | Date | string | number | null;
   policyStartDate?: FirestoreTimestamp | Date | string | number | null;
+  policyEndDate?: FirestoreTimestamp | Date | string | number | null;
 };
 
 type TipPayoutDoc = {
@@ -294,6 +295,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "clientName",
   "contractSignedDate",
   "policyStartDate",
+  "policyEndDate",
   "durationYears",
   "durationMonths",
   "maxCizinKomplexVariant",
@@ -440,6 +442,7 @@ const UPDATE_DATE_FIELDS = new Set<string>([
   "createdAt",
   "contractSignedDate",
   "policyStartDate",
+  "policyEndDate",
   "stornoDate",
   "refreshReplacedBySignedDate",
   "replacementReplacedBySignedDate",
@@ -447,6 +450,7 @@ const UPDATE_DATE_FIELDS = new Set<string>([
 const UPDATE_FIELDS_ALLOWED_DATE_FIELDS = new Set<string>([
   "contractSignedDate",
   "policyStartDate",
+  "policyEndDate",
   "stornoDate",
 ]);
 const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
@@ -457,6 +461,7 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "contractNumber",
   "contractSignedDate",
   "policyStartDate",
+  "policyEndDate",
   "carMake",
   "carPlate",
   "carVin",
@@ -565,6 +570,7 @@ const UPDATE_FIELDS_CONTRACT_CORE_KEYS = new Set<string>([
   "contractNumber",
   "contractSignedDate",
   "policyStartDate",
+  "policyEndDate",
 ]);
 const NEON_DETAIL_ALLOWED_KEYS = new Set<string>([
   "version",
@@ -829,6 +835,7 @@ const toContractResponseItem = (
     contractSignedDate: toMillis(data.contractSignedDate),
     createdAt: toMillis(data.createdAt),
     policyStartDate: toMillis((data as any).policyStartDate),
+    policyEndDate: toMillis((data as any).policyEndDate),
     stornoDate: toMillis((data as any).stornoDate),
     id: docId,
     adviserEmail: normalizedOwner,
@@ -1010,6 +1017,14 @@ const parseRequiredDateField = (value: unknown, field: string): ParseResult<Date
   return { ok: true, value: parsed };
 };
 
+const parseOptionalDateField = (
+  value: unknown,
+  field: string
+): ParseResult<Date | null> => {
+  if (value == null || value === "") return { ok: true, value: null };
+  return parseRequiredDateField(value, field);
+};
+
 type NormalizedCreateEntryPayload = {
   productKey: Product;
   entryType: "contract" | "endorsement";
@@ -1031,6 +1046,7 @@ type NormalizedCreateEntryPayload = {
   userId: string;
   contractSignedDate: Date;
   policyStartDate: Date;
+  policyEndDate: Date | null;
   durationYears: number | null;
   durationMonths: number | null;
   maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
@@ -1370,10 +1386,21 @@ const normalizeCreateEntryPayload = ({
   if (!signedDateParsed.ok) return signedDateParsed;
   const policyStartParsed = parseRequiredDateField(raw.policyStartDate, "policyStartDate");
   if (!policyStartParsed.ok) return policyStartParsed;
+  const policyEndParsed = parseOptionalDateField(raw.policyEndDate, "policyEndDate");
+  if (!policyEndParsed.ok) return policyEndParsed;
   if (policyStartParsed.value.getTime() < signedDateParsed.value.getTime()) {
     return {
       ok: false,
       error: "Pole policyStartDate nemůže být dřív než contractSignedDate.",
+    };
+  }
+  if (
+    policyEndParsed.value &&
+    policyEndParsed.value.getTime() < policyStartParsed.value.getTime()
+  ) {
+    return {
+      ok: false,
+      error: "Pole policyEndDate nemůže být dřív než policyStartDate.",
     };
   }
 
@@ -1518,6 +1545,7 @@ const normalizeCreateEntryPayload = ({
       userId: ownerUid,
       contractSignedDate: signedDateParsed.value,
       policyStartDate: policyStartParsed.value,
+      policyEndDate: policyEndParsed.value,
       durationYears: durationYearsParsed.value,
       durationMonths:
         productParsed.value === "maxcizinkomplex"
@@ -2825,6 +2853,11 @@ const validateContractCoreInvariants = (
       ? patch.policyStartDate
       : existing.policyStartDate
   );
+  const finalPolicyEndDate = toDate(
+    hasOwn(patch, "policyEndDate")
+      ? patch.policyEndDate
+      : existing.policyEndDate
+  );
 
   if (!finalSignedDate || !isReasonableContractDate(finalSignedDate)) {
     return { ok: false, error: "Pole contractSignedDate má neplatnou hodnotu." };
@@ -2836,6 +2869,16 @@ const validateContractCoreInvariants = (
     return {
       ok: false,
       error: "Pole policyStartDate nemůže být dřív než contractSignedDate.",
+    };
+  }
+  if (
+    finalPolicyEndDate &&
+    (!isReasonableContractDate(finalPolicyEndDate) ||
+      finalPolicyEndDate.getTime() < finalPolicyStartDate.getTime())
+  ) {
+    return {
+      ok: false,
+      error: "Pole policyEndDate má neplatnou hodnotu.",
     };
   }
 
@@ -3604,6 +3647,7 @@ async function fetchContractsForOwners(
       contractSignedDate: toMillis(data.contractSignedDate),
       createdAt: toMillis(data.createdAt),
       policyStartDate: toMillis((data as any).policyStartDate),
+      policyEndDate: toMillis((data as any).policyEndDate),
       stornoDate: toMillis((data as any).stornoDate),
       id: docId,
       adviserEmail: ownerEmail,

@@ -77,6 +77,7 @@ export type ContractDoc = {
   tipContractTipsterAmountFirstYear?: number | null;
 
   policyStartDate?: FirestoreTimestamp | Date | string | null;
+  policyEndDate?: FirestoreTimestamp | Date | string | null;
   contractSignedDate?: FirestoreTimestamp | Date | string | null;
   createdAt?: FirestoreTimestamp | Date | string | null;
 

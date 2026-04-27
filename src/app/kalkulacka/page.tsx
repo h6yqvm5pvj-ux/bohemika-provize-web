@@ -69,6 +69,8 @@ import { parseKooperativaAutoPdf } from "../lib/parseKooperativaAutoPdf";
 import { parseAllianzAutoPdf } from "../lib/parseAllianzAutoPdf";
 import { parsePillowAutoPdf } from "../lib/parsePillowAutoPdf";
 import { parseCsobAutoPdf } from "../lib/parseCsobAutoPdf";
+import { parseCppCestovkoPdf } from "../lib/parseCppCestovkoPdf";
+import { detectProductFromPdf } from "../lib/detectProductFromPdf";
 import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_OPTIONS,
@@ -536,14 +538,17 @@ function parseIsoDayUtc(value: string): Date | null {
 
 function collectContractDateIssues(
   signedDateIsoRaw: string,
-  policyStartDateIsoRaw: string
+  policyStartDateIsoRaw: string,
+  policyEndDateIsoRaw: string
 ): ContractDateIssue[] {
   const signedDateIso = signedDateIsoRaw.trim();
   const policyStartDateIso = policyStartDateIsoRaw.trim();
+  const policyEndDateIso = policyEndDateIsoRaw.trim();
   const issues: ContractDateIssue[] = [];
 
   const signedDate = signedDateIso ? parseIsoDayUtc(signedDateIso) : null;
   const policyStartDate = policyStartDateIso ? parseIsoDayUtc(policyStartDateIso) : null;
+  const policyEndDate = policyEndDateIso ? parseIsoDayUtc(policyEndDateIso) : null;
 
   if (signedDateIso && !signedDate) {
     issues.push({
@@ -556,6 +561,12 @@ function collectContractDateIssues(
     issues.push({
       severity: "error",
       message: "Datum počátku má neplatný formát.",
+    });
+  }
+  if (policyEndDateIso && !policyEndDate) {
+    issues.push({
+      severity: "error",
+      message: "Datum pojištění do má neplatný formát.",
     });
   }
 
@@ -584,6 +595,18 @@ function collectContractDateIssues(
       });
     }
   }
+  if (policyEndDate) {
+    const endYear = policyEndDate.getUTCFullYear();
+    if (
+      endYear < MIN_REASONABLE_CONTRACT_YEAR ||
+      endYear > MAX_REASONABLE_CONTRACT_YEAR
+    ) {
+      issues.push({
+        severity: "error",
+        message: `Datum pojištění do má podezřelý rok ${endYear}.`,
+      });
+    }
+  }
 
   if (signedDate && policyStartDate) {
     const diffDays = Math.round(
@@ -601,6 +624,17 @@ function collectContractDateIssues(
       issues.push({
         severity: "warning",
         message: `Počátek je ${diffDays} dní po sjednání (zkontroluj, jestli je to záměr).`,
+      });
+    }
+  }
+  if (policyStartDate && policyEndDate) {
+    const diffDays = Math.round(
+      (policyEndDate.getTime() - policyStartDate.getTime()) / 86400000
+    );
+    if (diffDays < 0) {
+      issues.push({
+        severity: "error",
+        message: "Datum pojištění do nesmí být před datem počátku.",
       });
     }
   }
@@ -1168,6 +1202,7 @@ export default function CalculatorPage() {
   const [clientSuggestionsOpen, setClientSuggestionsOpen] = useState(false);
   const [contractSignedDate, setContractSignedDate] = useState<string>("");
   const [policyStartDate, setPolicyStartDate] = useState<string>("");
+  const [policyEndDate, setPolicyEndDate] = useState<string>("");
   const [contractNumber, setContractNumber] = useState<string>("");
   const [autoCarMake, setAutoCarMake] = useState<string>("");
   const [autoCarPlate, setAutoCarPlate] = useState<string>("");
@@ -1252,8 +1287,8 @@ export default function CalculatorPage() {
   } | null>(null);
 
   const contractDateIssues = useMemo(
-    () => collectContractDateIssues(contractSignedDate, policyStartDate),
-    [contractSignedDate, policyStartDate]
+    () => collectContractDateIssues(contractSignedDate, policyStartDate, policyEndDate),
+    [contractSignedDate, policyStartDate, policyEndDate]
   );
   const contractDateErrors = useMemo(
     () => contractDateIssues.filter((issue) => issue.severity === "error"),
@@ -2035,13 +2070,25 @@ export default function CalculatorPage() {
     setPdfImportError(null);
     setPdfImportStatus("Načítám PDF…");
     setPdfMatchedClientName(false);
+    let importProduct: Product = product;
+    try {
+      const detected = await detectProductFromPdf(file);
+      if (detected && detected.product !== product) {
+        importProduct = detected.product;
+        setProduct(detected.product);
+        setProductPickerSection(productPickerSectionForProduct(detected.product));
+        setPdfImportStatus(`Rozpoznán produkt: ${productLabel(detected.product)}. Načítám data…`);
+      }
+    } catch (detectErr) {
+      console.warn("Auto-detekce produktu z PDF selhala", detectErr);
+    }
     if (
-      product === "cppAuto" ||
-      product === "slaviaauto" ||
-      product === "allianzAuto" ||
-      product === "csobAuto" ||
-      product === "pillowAuto" ||
-      product === "kooperativaAuto"
+      importProduct === "cppAuto" ||
+      importProduct === "slaviaauto" ||
+      importProduct === "allianzAuto" ||
+      importProduct === "csobAuto" ||
+      importProduct === "pillowAuto" ||
+      importProduct === "kooperativaAuto"
     ) {
       setAutoCarMake("");
       setAutoCarPlate("");
@@ -2078,7 +2125,7 @@ export default function CalculatorPage() {
       setAutoCarAddonNonFaultAccident(false);
       setAutoCarAddonKeyLossTheft(false);
     }
-    if (product === "domex") {
+    if (importProduct === "domex") {
       setDomexAddress("");
       setDomexPropertyType("");
       setDomexPropertyCoverage("");
@@ -2108,33 +2155,36 @@ export default function CalculatorPage() {
         | Awaited<ReturnType<typeof parseAllianzAutoPdf>>
         | Awaited<ReturnType<typeof parsePillowAutoPdf>>
         | Awaited<ReturnType<typeof parseCsobAutoPdf>>
+        | Awaited<ReturnType<typeof parseCppCestovkoPdf>>
         | null = null;
 
-      if (product === "cppAuto") {
+      if (importProduct === "cppAuto") {
         parsed = await parseCppAutoPdf(file);
-      } else if (product === "slaviaauto") {
+      } else if (importProduct === "slaviaauto") {
         parsed = await parseSlaviaAutoPdf(file);
-      } else if (product === "allianzAuto") {
+      } else if (importProduct === "allianzAuto") {
         parsed = await parseAllianzAutoPdf(file);
-      } else if (product === "csobAuto") {
+      } else if (importProduct === "csobAuto") {
         parsed = await parseCsobAutoPdf(file);
-      } else if (product === "pillowAuto") {
+      } else if (importProduct === "pillowAuto") {
         parsed = await parsePillowAutoPdf(file);
-      } else if (product === "kooperativaAuto") {
+      } else if (importProduct === "kooperativaAuto") {
         parsed = await parseKooperativaAutoPdf(file);
-      } else if (product === "neon") {
+      } else if (importProduct === "neon") {
         parsed = await parseNeonPdf(file);
-      } else if (product === "flexi") {
+      } else if (importProduct === "flexi") {
         parsed = await parseFlexiPdf(file);
-      } else if (product === "domex") {
+      } else if (importProduct === "domex") {
         parsed = await parseDomexPdf(file);
-      } else if (product === "maxcizinkomplex") {
+      } else if (importProduct === "maxcizinkomplex") {
         parsed = await parseMaxCizinKomplexPdf(file);
-      } else if (product === "comfortcc") {
+      } else if (importProduct === "comfortcc") {
         parsed = await parseComfortPdf(file);
+      } else if (importProduct === "cppcestovko") {
+        parsed = await parseCppCestovkoPdf(file);
       } else {
         setPdfImportError(
-          "Načítání z PDF je teď dostupné jen pro ČPP Auto, SLAVIA Auto, Allianz Auto, ČSOB Auto, Pillow Auto, Kooperativa Auto, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
+          "Načítání z PDF je teď dostupné jen pro ČPP Auto, SLAVIA Auto, Allianz Auto, ČSOB Auto, Pillow Auto, Kooperativa Auto, ČPP Cestovko, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
         );
         setPdfImportStatus(null);
         return;
@@ -2159,6 +2209,10 @@ export default function CalculatorPage() {
         setPolicyStartDate(parsed.policyStartDate);
         applied += 1;
       }
+      if ("policyEndDate" in parsed && typeof parsed.policyEndDate === "string") {
+        setPolicyEndDate(parsed.policyEndDate);
+        applied += 1;
+      }
       if (parsed.contractSignedDate) {
         setContractSignedDate(parsed.contractSignedDate);
         applied += 1;
@@ -2172,7 +2226,7 @@ export default function CalculatorPage() {
         applied += 1;
       }
       if (parsed.frequency) {
-        const allowedForProduct = allowedFrequencies(product);
+        const allowedForProduct = allowedFrequencies(importProduct);
         if (allowedForProduct.includes(parsed.frequency)) {
           setFrequency(parsed.frequency);
         }
@@ -2285,13 +2339,13 @@ export default function CalculatorPage() {
         if (hasAssistance) applied += 1;
       }
       if ("durationYears" in parsed && typeof parsed.durationYears === "number") {
-        const [min, max] = durationRange(product);
+        const [min, max] = durationRange(importProduct);
         const yrs = Math.min(max, Math.max(min, parsed.durationYears));
         setDurationYears(yrs);
         applied += 1;
       }
       if ("durationMonths" in parsed && typeof parsed.durationMonths === "number") {
-        setDurationMonths(normalizedDurationMonths(product, parsed.durationMonths));
+        setDurationMonths(normalizedDurationMonths(importProduct, parsed.durationMonths));
         applied += 1;
       }
       if (
@@ -2503,7 +2557,7 @@ export default function CalculatorPage() {
         if (addon) applied += 1;
       }
 
-      if (applied === 0 && product !== "maxcizinkomplex") {
+      if (applied === 0 && importProduct !== "maxcizinkomplex") {
         try {
           const maxCizinParsed = await parseMaxCizinKomplexPdf(file);
           if (looksLikeMaxCizinKomplexPdf(maxCizinParsed)) {
@@ -2522,7 +2576,7 @@ export default function CalculatorPage() {
       );
     } catch (err) {
       console.error("PDF import selhal", err);
-      if (product !== "maxcizinkomplex") {
+      if (importProduct !== "maxcizinkomplex") {
         try {
           const maxCizinParsed = await parseMaxCizinKomplexPdf(file);
           if (looksLikeMaxCizinKomplexPdf(maxCizinParsed)) {
@@ -3118,6 +3172,7 @@ export default function CalculatorPage() {
             clientName: clientName || null,
             contractSignedDate: contractSignedDate.trim(),
             policyStartDate: policyStartDate.trim(),
+            policyEndDate: policyEndDate.trim() || null,
             durationYears: shouldShowDuration(endorsementDraft.productKey)
               ? durationYears
               : null,
@@ -3359,6 +3414,7 @@ export default function CalculatorPage() {
             clientName: clientName || null,
             contractSignedDate: contractSignedDate.trim(),
             policyStartDate: policyStartDate.trim(),
+            policyEndDate: policyEndDate.trim() || null,
             durationYears: shouldShowDuration(product) ? durationYears : null,
             durationMonths:
               shouldShowDurationMonths(product) ? normalizedDurationMonths(product, durationMonths) : null,
@@ -4815,6 +4871,18 @@ export default function CalculatorPage() {
                     {contractDateWarnings.map((issue) => issue.message).join(" ")}
                   </p>
                 )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-sm font-medium">
+                  Pojištění do (volitelné)
+                </label>
+                <input
+                  type="date"
+                  className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                  value={policyEndDate}
+                  onChange={(e) => setPolicyEndDate(e.target.value)}
+                />
               </div>
             </div>
             </section>
