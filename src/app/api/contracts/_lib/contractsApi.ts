@@ -43,6 +43,7 @@ import {
   calculateAxaCestovko,
   calculateKoopCestovko,
   calculateComfortCC,
+  normalizeNeonDurationYears,
 } from "@/app/lib/productFormulas";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
@@ -2464,6 +2465,7 @@ const computeItemsForProductPositionAndMode = ({
   productKey,
   position,
   commissionMode,
+  contractSignedDateIso,
   inputAmount,
   frequencyRaw,
   durationYears,
@@ -2476,6 +2478,7 @@ const computeItemsForProductPositionAndMode = ({
   productKey: Product;
   position: Position;
   commissionMode: CommissionMode;
+  contractSignedDateIso: string | null;
   inputAmount: number;
   frequencyRaw: PaymentFrequency;
   durationYears: number | null;
@@ -2493,8 +2496,14 @@ const computeItemsForProductPositionAndMode = ({
 
   switch (productKey) {
     case "neon": {
-      const years = Math.min(15, normalizedDurationYears("neon", durationYears));
-      return calculateNeon(safeAmount, position, years, commissionMode);
+      const years = normalizeNeonDurationYears(durationYears, contractSignedDateIso);
+      return calculateNeon(
+        safeAmount,
+        position,
+        years,
+        commissionMode,
+        contractSignedDateIso
+      );
     }
     case "flexi": {
       const years = normalizedDurationYears("flexi", durationYears);
@@ -2604,6 +2613,7 @@ const computeManagerOverridesForChain = ({
   adviserPosition,
   adviserMode,
   productKey,
+  contractSignedDateIso,
   inputAmount,
   frequencyRaw,
   durationYears,
@@ -2617,6 +2627,7 @@ const computeManagerOverridesForChain = ({
   adviserPosition: Position;
   adviserMode: CommissionMode;
   productKey: Product;
+  contractSignedDateIso: string | null;
   inputAmount: number;
   frequencyRaw: PaymentFrequency;
   durationYears: number | null;
@@ -2637,6 +2648,7 @@ const computeManagerOverridesForChain = ({
       productKey,
       position: manager.position,
       commissionMode: managerMode,
+      contractSignedDateIso,
       inputAmount,
       frequencyRaw,
       durationYears,
@@ -2651,6 +2663,7 @@ const computeManagerOverridesForChain = ({
           productKey,
           position: childPositionForBaseline,
           commissionMode: managerMode,
+          contractSignedDateIso,
           inputAmount,
           frequencyRaw,
           durationYears,
@@ -4442,6 +4455,7 @@ export async function handleContractsCreate(req: NextRequest) {
       productKey: normalizedEntry.payload.productKey,
       position: trustedPosition,
       commissionMode: trustedMode,
+      contractSignedDateIso: signedDateIso,
       inputAmount: normalizedEntry.payload.inputAmount,
       frequencyRaw: normalizedEntry.payload.frequencyRaw,
       durationYears: normalizedEntry.payload.durationYears,
@@ -4509,6 +4523,7 @@ export async function handleContractsCreate(req: NextRequest) {
       adviserPosition: trustedPosition,
       adviserMode: trustedMode,
       productKey: normalizedEntry.payload.productKey,
+      contractSignedDateIso: signedDateIso,
       inputAmount: normalizedEntry.payload.inputAmount,
       frequencyRaw: normalizedEntry.payload.frequencyRaw,
       durationYears: normalizedEntry.payload.durationYears,

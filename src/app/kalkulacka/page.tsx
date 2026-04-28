@@ -7,6 +7,7 @@ import Image from "next/image";
 import {
   BarChart3,
   CheckCircle2,
+  Download,
   FileText,
   Package,
   RefreshCcw,
@@ -57,6 +58,7 @@ import {
   calculateComfortCC,
   SUPPORTED_PRODUCTS,
   getCoefficientSummary,
+  isNeonHistoricalPeriod,
 } from "../lib/productFormulas";
 import { parseCppAutoPdf } from "../lib/parseCppAutoPdf";
 import { parseSlaviaAutoPdf } from "../lib/parseSlaviaAutoPdf";
@@ -125,6 +127,8 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
   { id: "exclusiveStandard", label: "EXCLUSIVE / STANDARD" },
   { id: "premium", label: "PREMIUM" },
 ];
+
+type NeonCoefficientView = "current" | "historical";
 
 function formatCoefficientNumber(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
@@ -361,6 +365,31 @@ async function requestContractsMutationWithAuth({
   }
 
   return { response, data };
+}
+
+async function requestBlobWithAuth({
+  user,
+  path,
+}: {
+  user: User;
+  path: string;
+}): Promise<Response> {
+  let token = await user.getIdToken();
+  const request = async (idToken: string) =>
+    fetch(path, {
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+      },
+      cache: "no-store",
+    });
+
+  let response = await request(token);
+  if (response.status === 401) {
+    token = await user.getIdToken(true);
+    response = await request(token);
+  }
+
+  return response;
 }
 
 function normalizeManagerChainFromApi(
@@ -967,9 +996,15 @@ function placeholderForAmount(
   return "Zadejte roční částku";
 }
 
-function durationTooltip(product: Product): string | null {
+function durationTooltip(
+  product: Product,
+  neonHistoricalBySignedDate: boolean
+): string | null {
   if (product === "neon") {
-    return "Zadej celkovou dobu trvání smlouvy v letech. Pro výpočet provize se u NEON automaticky použije maximálně 15 let (pokud je doba kratší, použije se skutečná hodnota).";
+    if (neonHistoricalBySignedDate) {
+      return "U NEON smluv sjednaných od 01.10.2019 do 30.06.2024 se pro výpočet provize používá maximálně 20 let. V tomto období se nepoužívá režim zrychlený/běžný.";
+    }
+    return "U NEON se od 01.07.2024 pro výpočet provize používá maximálně 15 let (pokud je doba kratší, použije se skutečná hodnota). Pro starší období 01.10.2019–30.06.2024 je limit 20 let.";
   }
   if (product === "flexi") {
     return "Zadej dobu trvání smlouvy v letech (např. do roku 2050). Následná provize od 6. roku se počítá ročně do konce zadané doby.";
@@ -1152,6 +1187,15 @@ function normalizeClientNameForDuplicate(value: string | null | undefined): stri
   return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function normalizeClientNameForSystemMatch(value: string | null | undefined): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 function normalizeContractEntryType(value: unknown): ContractEntryType {
   if (typeof value !== "string") return "contract";
   const normalized = value.trim().toLowerCase();
@@ -1259,6 +1303,7 @@ export default function CalculatorPage() {
   const [pdfImporting, setPdfImporting] = useState(false);
   const [pdfImportStatus, setPdfImportStatus] = useState<string | null>(null);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
+  const [pdfClientNameLoaded, setPdfClientNameLoaded] = useState(false);
   const [pdfMatchedClientName, setPdfMatchedClientName] = useState(false);
   const [pdfDropActive, setPdfDropActive] = useState(false);
   const pdfDragCounterRef = useRef(0);
@@ -1284,6 +1329,10 @@ export default function CalculatorPage() {
   const [saveSuccessFlash, setSaveSuccessFlash] = useState<{
     contractNumber: string | null;
     clientName: string | null;
+  } | null>(null);
+  const [lastSavedContractRef, setLastSavedContractRef] = useState<{
+    ownerEmail: string;
+    entryId: string;
   } | null>(null);
 
   const contractDateIssues = useMemo(
@@ -1399,7 +1448,41 @@ export default function CalculatorPage() {
     unavailable: boolean;
   } | null>(null);
   const [showCoefModal, setShowCoefModal] = useState(false);
+  const [neonCoefficientView, setNeonCoefficientView] =
+    useState<NeonCoefficientView>("current");
+  const [neonPreviewBlobUrl, setNeonPreviewBlobUrl] = useState<string | null>(null);
+  const neonPreviewObjectUrlRef = useRef<string | null>(null);
+  const [neonPreviewLoading, setNeonPreviewLoading] = useState(false);
+  const [neonPreviewError, setNeonPreviewError] = useState<string | null>(null);
+  const [neonDocAction, setNeonDocAction] = useState<"download" | "open" | null>(null);
   const isLifeProduct = useMemo(() => LIFE_PRODUCTS.includes(product), [product]);
+  const contractSignedDateForNeon = useMemo(() => {
+    const signedDate = contractSignedDate.trim();
+    return isIsoDay(signedDate) ? signedDate : null;
+  }, [contractSignedDate]);
+  const isNeonHistoricalBySignedDate = useMemo(
+    () =>
+      product === "neon" && isNeonHistoricalPeriod(contractSignedDateForNeon),
+    [product, contractSignedDateForNeon]
+  );
+  const neonCoefficientDateForView = useMemo(() => {
+    if (neonCoefficientView === "historical") return "2024-06-30";
+    return "2024-07-01";
+  }, [neonCoefficientView]);
+  const isNeonHistoricalInCoefModal = useMemo(
+    () => product === "neon" && neonCoefficientView === "historical",
+    [product, neonCoefficientView]
+  );
+  const neonImmediatePayoutInfo = useMemo(() => {
+    if (product !== "neon") return null;
+    if (isNeonHistoricalInCoefModal) {
+      return "Okamžitá provize je součet 1. provize a 2. provize po 3 měsících (Při zpracování karty klienta je provize po 3 měsících vyplacena současně s 1. provizí).";
+    }
+    if (mode === "accelerated") {
+      return "Okamžitá provize je součet 1. provize a 2. provize po 3 měsících a 50 % z 3. provize po 36 měsících (Při zpracování karty klienta je provize po 3 měsících vyplacena současně s 1. provizí).";
+    }
+    return "Okamžitá provize je součet 1. provize a 2. provize po 3 měsících (Při zpracování karty klienta je provize po 3 měsících vyplacena současně s 1. provizí).";
+  }, [product, isNeonHistoricalInCoefModal, mode]);
   const canImportFromPdf = useMemo(
     () =>
       !tipsterModeEnabled &&
@@ -1409,6 +1492,7 @@ export default function CalculatorPage() {
         product === "csobAuto" ||
         product === "pillowAuto" ||
         product === "kooperativaAuto" ||
+        product === "cppcestovko" ||
         product === "neon" ||
         product === "flexi" ||
         product === "domex" ||
@@ -1423,9 +1507,17 @@ export default function CalculatorPage() {
         product ?? null,
         position ?? null,
         mode ?? null,
-        maxCizinKomplexVariant
+        maxCizinKomplexVariant,
+        product === "neon" ? neonCoefficientDateForView : contractSignedDateForNeon
       ),
-    [product, position, mode, maxCizinKomplexVariant]
+    [
+      product,
+      position,
+      mode,
+      maxCizinKomplexVariant,
+      contractSignedDateForNeon,
+      neonCoefficientDateForView,
+    ]
   );
   const coefExplanation = useMemo(() => {
     if (!product) return "";
@@ -1481,6 +1573,85 @@ export default function CalculatorPage() {
     return AUTO_TERMS_PREVIEW_BY_PRODUCT[product] ?? null;
   }, [product]);
   const showAutoTermsPreview = Boolean(autoTermsPreviewUrl);
+  const neonPeriod = neonCoefficientView === "historical" ? "2019" : "2024";
+  const neonPreviewRole: "poradce" | "manazer" = (baseUserPosition ?? position).startsWith(
+    "poradce"
+  )
+    ? "poradce"
+    : "manazer";
+  const neonTermsPreviewUrl =
+    product === "neon"
+      ? `/api/documents/neon?type=pdf&period=${neonPeriod}`
+      : null;
+  const neonPreviewImageUrl =
+    product === "neon"
+      ? `/api/documents/neon?type=preview&period=${neonPeriod}&role=${neonPreviewRole}`
+      : null;
+  const showNeonTermsPreview = product === "neon";
+  const handleNeonDocumentAction = async (action: "download" | "open") => {
+    if (!user || !neonTermsPreviewUrl) return;
+
+    let openedWindow: Window | null = null;
+    if (action === "open") {
+      openedWindow = window.open("", "_blank", "noopener,noreferrer");
+      if (!openedWindow) {
+        setNeonPreviewError("Prohlížeč zablokoval otevření nové karty s PDF.");
+        return;
+      }
+      try {
+        openedWindow.document.title = "Načítám provizní podmínky...";
+        openedWindow.document.body.style.fontFamily = "monospace";
+        openedWindow.document.body.style.padding = "24px";
+        openedWindow.document.body.textContent = "Načítám provizní podmínky...";
+      } catch {
+        // best effort
+      }
+    }
+
+    setNeonDocAction(action);
+    setNeonPreviewError(null);
+    try {
+      const path =
+        action === "download" ? `${neonTermsPreviewUrl}&download=1` : neonTermsPreviewUrl;
+      const response = await requestBlobWithAuth({
+        user,
+        path,
+      });
+      if (!response.ok) {
+        throw new Error(`Nepodařilo se načíst PDF (${response.status}).`);
+      }
+
+      const pdfBlob = await response.blob();
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      if (action === "download") {
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = `cppneon${neonPeriod}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1200);
+      } else {
+        if (!openedWindow || openedWindow.closed) {
+          URL.revokeObjectURL(blobUrl);
+          throw new Error("Nepodařilo se otevřít kartu s PDF.");
+        }
+        openedWindow.location.href = blobUrl;
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      }
+    } catch (err) {
+      if (openedWindow && !openedWindow.closed) {
+        openedWindow.close();
+      }
+      const errorMessage =
+        err instanceof Error && err.message.trim().length > 0
+          ? err.message.trim()
+          : "Nepodařilo se načíst provizní podmínky.";
+      setNeonPreviewError(errorMessage);
+    } finally {
+      setNeonDocAction(null);
+    }
+  };
   const filteredClientSuggestions = useMemo(() => {
     const q = clientName.trim().toLowerCase();
     if (!q) return [];
@@ -1537,6 +1708,24 @@ export default function CalculatorPage() {
 
     fetchClientNames();
   }, [user]);
+
+  useEffect(() => {
+    if (!pdfClientNameLoaded) {
+      setPdfMatchedClientName(false);
+      return;
+    }
+
+    const normalizedClientName = normalizeClientNameForSystemMatch(clientName);
+    if (!normalizedClientName) {
+      setPdfMatchedClientName(false);
+      return;
+    }
+
+    const matched = clientSuggestions.some(
+      (name) => normalizeClientNameForSystemMatch(name) === normalizedClientName
+    );
+    setPdfMatchedClientName(matched);
+  }, [pdfClientNameLoaded, clientName, clientSuggestions]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2069,6 +2258,7 @@ export default function CalculatorPage() {
     setPdfImporting(true);
     setPdfImportError(null);
     setPdfImportStatus("Načítám PDF…");
+    setPdfClientNameLoaded(false);
     setPdfMatchedClientName(false);
     let importProduct: Product = product;
     try {
@@ -2202,7 +2392,7 @@ export default function CalculatorPage() {
       }
       if (parsed.clientName) {
         setClientName(parsed.clientName);
-        setPdfMatchedClientName(true);
+        setPdfClientNameLoaded(true);
         applied += 1;
       }
       if (parsed.policyStartDate) {
@@ -2660,8 +2850,13 @@ export default function CalculatorPage() {
     }
 
     if (product === "neon") {
-      const y = Math.min(15, normalizedDurationYears("neon", durationYears));
-      const dto = calculateNeon(val, position, y, mode);
+      const dto = calculateNeon(
+        val,
+        position,
+        durationYears,
+        mode,
+        contractSignedDateForNeon
+      );
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2907,6 +3102,9 @@ export default function CalculatorPage() {
     if (product !== "neon") {
       setRefreshOriginalOpen(false);
     }
+    if (product !== "cppcestovko") {
+      setPolicyEndDate("");
+    }
   }, [product]);
 
   useEffect(() => {
@@ -3108,6 +3306,7 @@ export default function CalculatorPage() {
     setSaveMessage(null);
     setValidationError(null);
     setMissingFields([]);
+    setLastSavedContractRef(null);
 
     try {
       const signedDateIso = contractSignedDate.trim() || null;
@@ -3195,6 +3394,16 @@ export default function CalculatorPage() {
       if (apiError) {
         setSaveMessage(apiError);
         return;
+      }
+
+      const createdEntryId =
+        typeof data?.entryId === "string" ? data.entryId.trim() : "";
+      const ownerEmail = (user.email ?? "").trim().toLowerCase();
+      if (createdEntryId && ownerEmail) {
+        setLastSavedContractRef({
+          ownerEmail,
+          entryId: createdEntryId,
+        });
       }
 
       if (typeof window !== "undefined") {
@@ -3354,6 +3563,7 @@ export default function CalculatorPage() {
     setSaveMessage(null);
     setValidationError(null);
     setMissingFields([]);
+    setLastSavedContractRef(null);
 
     try {
       const signedDateIso = contractSignedDate.trim() || null;
@@ -3625,6 +3835,16 @@ export default function CalculatorPage() {
         return;
       }
 
+      const createdEntryId =
+        typeof data?.entryId === "string" ? data.entryId.trim() : "";
+      const ownerEmail = (user.email ?? "").trim().toLowerCase();
+      if (createdEntryId && ownerEmail) {
+        setLastSavedContractRef({
+          ownerEmail,
+          entryId: createdEntryId,
+        });
+      }
+
       if (typeof window !== "undefined") {
         try {
           sessionStorage.removeItem("contracts_cache_v2");
@@ -3663,6 +3883,82 @@ export default function CalculatorPage() {
     return () => window.clearTimeout(t);
   }, [saveSuccessFlash]);
 
+  useEffect(() => {
+    if (!showCoefModal || product !== "neon") return;
+    setNeonCoefficientView(isNeonHistoricalBySignedDate ? "historical" : "current");
+  }, [showCoefModal, product, isNeonHistoricalBySignedDate]);
+
+  useEffect(() => {
+    return () => {
+      if (neonPreviewObjectUrlRef.current) {
+        URL.revokeObjectURL(neonPreviewObjectUrlRef.current);
+        neonPreviewObjectUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showCoefModal || product !== "neon" || !user || !neonPreviewImageUrl) {
+      if (neonPreviewObjectUrlRef.current) {
+        URL.revokeObjectURL(neonPreviewObjectUrlRef.current);
+        neonPreviewObjectUrlRef.current = null;
+      }
+      setNeonPreviewBlobUrl(null);
+      setNeonPreviewLoading(false);
+      setNeonPreviewError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setNeonPreviewLoading(true);
+    setNeonPreviewError(null);
+
+    const loadPreview = async () => {
+      try {
+        const response = await requestBlobWithAuth({
+          user,
+          path: neonPreviewImageUrl,
+        });
+        if (!response.ok) {
+          throw new Error(`Nepodařilo se načíst náhled (${response.status}).`);
+        }
+
+        const previewBlob = await response.blob();
+        const blobUrl = URL.createObjectURL(previewBlob);
+
+        if (cancelled) {
+          URL.revokeObjectURL(blobUrl);
+          return;
+        }
+
+        if (neonPreviewObjectUrlRef.current) {
+          URL.revokeObjectURL(neonPreviewObjectUrlRef.current);
+        }
+        neonPreviewObjectUrlRef.current = blobUrl;
+        setNeonPreviewBlobUrl(blobUrl);
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error && err.message.trim().length > 0
+            ? err.message.trim()
+            : "Nepodařilo se načíst náhled provizních podmínek.";
+        if (!cancelled) {
+          setNeonPreviewError(errorMessage);
+          setNeonPreviewBlobUrl(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setNeonPreviewLoading(false);
+        }
+      }
+    };
+
+    loadPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showCoefModal, product, user, neonPreviewImageUrl]);
+
   if (!user) {
     return (
       <main className="relative min-h-screen overflow-hidden bg-black font-mono text-slate-50">
@@ -3688,6 +3984,12 @@ export default function CalculatorPage() {
 
   const allowed = allowedFrequencies(product);
   const hasFrequencyPicker = allowed.length > 1;
+  const showPolicyEndDateField = product === "cppcestovko";
+  const lastSavedContractHref = lastSavedContractRef
+    ? `/smlouvy/${encodeURIComponent(
+        `${lastSavedContractRef.ownerEmail}___${lastSavedContractRef.entryId}`
+      )}?from=list`
+    : null;
   const currentProduct = PRODUCT_OPTIONS.find((p) => p.id === product)!;
   const currentProductInstitutionId = productInstitutionIdFromCatalog(product);
   const activeProductPickerColumn =
@@ -3709,8 +4011,11 @@ export default function CalculatorPage() {
       return haystack.includes(productPickerSearchQuery);
     });
   })();
-  const durationHelp = durationTooltip(product);
-  const canChooseMode = isLifeProduct && userCommissionMode === "accelerated";
+  const durationHelp = durationTooltip(product, isNeonHistoricalBySignedDate);
+  const canChooseMode =
+    isLifeProduct &&
+    userCommissionMode === "accelerated" &&
+    !(product === "neon" && isNeonHistoricalBySignedDate);
 
   const computeItemsForPositionAndMode = (
     pos: Position | null,
@@ -3726,8 +4031,13 @@ export default function CalculatorPage() {
 
     switch (product) {
       case "neon": {
-        const y = Math.min(15, normalizedDurationYears("neon", years));
-        return calculateNeon(val, pos, y, usedMode);
+        return calculateNeon(
+          val,
+          pos,
+          years,
+          usedMode,
+          contractSignedDateForNeon
+        );
       }
       case "flexi":
       {
@@ -4264,6 +4574,7 @@ export default function CalculatorPage() {
                             type="button"
                             onClick={() => {
                               setProduct(productId);
+                              setPdfClientNameLoaded(false);
                               setPdfMatchedClientName(false);
                               setProductOpen(false);
                             }}
@@ -4737,11 +5048,6 @@ export default function CalculatorPage() {
                       Při uložení se nová smlouva označí jako Refresh.
                     </p>
                   )}
-                  {isLifeProduct && (
-                    <p className="text-[11px] text-slate-600">
-                      Změna vytvoří dodatek k existující ŽP smlouvě. Navýšení se zprovizuje jen z rozdílu, ponížení je zatím 0 Kč.
-                    </p>
-                  )}
                 </div>
               )}
             </section>
@@ -4771,6 +5077,7 @@ export default function CalculatorPage() {
                   value={clientName}
                   onChange={(e) => {
                     setClientName(e.target.value);
+                    setPdfClientNameLoaded(false);
                     setPdfMatchedClientName(false);
                     setClientSuggestionsOpen(true);
                   }}
@@ -4779,8 +5086,16 @@ export default function CalculatorPage() {
                   onFocus={() => setClientSuggestionsOpen(true)}
                   onBlur={() => setTimeout(() => setClientSuggestionsOpen(false), 100)}
                 />
-                {pdfMatchedClientName && !missingFields.includes("jméno klienta") && (
-                  <p className="mt-1 text-[11px] text-emerald-700">Jméno klienta načteno z PDF.</p>
+                {pdfClientNameLoaded && !missingFields.includes("jméno klienta") && (
+                  <p
+                    className={`mt-1 text-[11px] ${
+                      pdfMatchedClientName ? "text-emerald-700" : "text-slate-600"
+                    }`}
+                  >
+                    {pdfMatchedClientName
+                      ? "Jméno klienta načteno z PDF. Nalezena shoda s klientem v systému."
+                      : "Jméno klienta načteno z PDF. V systému zatím bez přesné shody."}
+                  </p>
                 )}
                 {filteredClientSuggestions.length > 0 && clientSuggestionsOpen && (
                   <div className="absolute z-30 mt-1 w-full rounded-xl border border-slate-300 bg-white backdrop-blur-2xl shadow-[0_14px_40px_rgba(0,0,0,0.7)] overflow-hidden">
@@ -4790,6 +5105,7 @@ export default function CalculatorPage() {
                         type="button"
                         onClick={() => {
                           setClientName(name);
+                          setPdfClientNameLoaded(false);
                           setPdfMatchedClientName(false);
                           setMissingFields((prev) => prev.filter((k) => k !== "jméno klienta"));
                           setClientSuggestionsOpen(false);
@@ -4873,17 +5189,19 @@ export default function CalculatorPage() {
                 )}
               </div>
 
-              <div className="space-y-1">
-                <label className="block text-sm font-medium">
-                  Pojištění do (volitelné)
-                </label>
-                <input
-                  type="date"
-                  className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                  value={policyEndDate}
-                  onChange={(e) => setPolicyEndDate(e.target.value)}
-                />
-              </div>
+              {showPolicyEndDateField && (
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium">
+                    Pojištění do (volitelné)
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
+                    value={policyEndDate}
+                    onChange={(e) => setPolicyEndDate(e.target.value)}
+                  />
+                </div>
+              )}
             </div>
             </section>
             )}
@@ -4951,12 +5269,25 @@ export default function CalculatorPage() {
                     </p>
                   </div>
                 )}
+
+                {product === "neon" && isNeonHistoricalBySignedDate && (
+                  <div className="space-y-1">
+                    <label className="block text-sm font-medium">
+                      Režim provize
+                    </label>
+                    <p className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-600">
+                      U NEON smluv sjednaných od 01.10.2019 do 30.06.2024 se
+                      režim zrychlený/běžný nepoužívá.
+                    </p>
+                  </div>
+                )}
               </section>
             )}
           </div>
 
-          {/* Výsledky + tlačítko Sepsáno */}
-          <section className="ui-card rounded-3xl bg-white px-5 py-4 space-y-3 h-full overflow-hidden">
+          {/* Výsledky */}
+          <div className="self-start space-y-3 lg:sticky lg:top-6">
+            <section className="ui-card rounded-3xl bg-white px-5 py-4 space-y-3 overflow-hidden">
             <div className="flex items-center justify-between gap-3">
               <h2 className="inline-flex items-center gap-1.5 text-lg font-semibold text-slate-900">
                 <BarChart3 size={18} strokeWidth={2} className="text-slate-700" aria-hidden="true" />
@@ -4968,7 +5299,7 @@ export default function CalculatorPage() {
                   type="button"
                   onClick={() => setShowCoefModal(true)}
                   disabled={unsupported}
-                  className={`ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm ${
+                  className={`ui-btn-secondary ui-focus inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm ${
                     unsupported ? "opacity-60 cursor-not-allowed" : ""
                   }`}
                 >
@@ -4985,20 +5316,6 @@ export default function CalculatorPage() {
                     aria-label="Nastavit procenta pro tipaře"
                   >
                     %
-                  </button>
-                )}
-
-                {!tipsterModeEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => handleSaveContract()}
-                    disabled={
-                      saving || items.length === 0 || parseNumber(amountText) <= 0
-                    }
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <CheckCircle2 size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                    {saving ? "Ukládám…" : "Sepsáno"}
                   </button>
                 )}
               </div>
@@ -5257,7 +5574,30 @@ export default function CalculatorPage() {
                 </div>
               );
             })()}
-          </section>
+            </section>
+            {!tipsterModeEnabled && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSaveContract()}
+                  disabled={saving || items.length === 0 || parseNumber(amountText) <= 0}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <CheckCircle2 size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                  {saving ? "Ukládám…" : "Sepsáno"}
+                </button>
+                {lastSavedContractHref && (
+                  <Link
+                    href={lastSavedContractHref}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
+                  >
+                    <FileText size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                    Zobrazit smlouvu
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -5271,36 +5611,11 @@ export default function CalculatorPage() {
           />
           <div
             className={`relative z-50 w-full max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-black/30 ${
-              showAutoTermsPreview ? "max-w-5xl" : "max-w-md"
+              showAutoTermsPreview || showNeonTermsPreview ? "max-w-6xl" : "max-w-md"
             }`}
           >
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">Koeficienty</h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  {product ? productLabel(product) : "—"} · pozice {positionLabel(position)} · režim {mode}
-                </p>
-                {coefExplanation && (
-                  <p className="mt-2 text-xs text-slate-600 leading-relaxed">
-                    {coefExplanation}
-                  </p>
-                )}
-                {product && (product === "neon" || product === "flexi" || product === "maximaMaxEfekt" || product === "pillowInjury") && (
-                  <p className="mt-2 text-xs font-semibold text-rose-700">
-                    UPOZORNĚNÍ: Výpočet okamžité provize počítá s tím, že je zpracována karta klienta dle podmínek!
-                  </p>
-                )}
-                {product === "neon" && (
-                  <p className="mt-1 text-xs font-semibold text-rose-700">
-                    Aktuální koeficienty – platnost od 01.07.2024
-                  </p>
-                )}
-                {product && isAutoProduct(product) && (
-                  <p className="mt-1 text-xs font-semibold text-rose-700">
-                    Provizní podmínky aktuální od 01.04.2026
-                  </p>
-                )}
-              </div>
+              <h3 className="text-lg font-semibold text-slate-900">Koeficienty</h3>
               <button
                 type="button"
                 onClick={() => setShowCoefModal(false)}
@@ -5311,52 +5626,209 @@ export default function CalculatorPage() {
               </button>
             </div>
 
-            <div className="mt-4 space-y-2">
-              {coefList.length > 0 ? (
-                coefList.map((c, idx) => (
-                  <div
-                    key={`${c.label}-${idx}`}
-                    className="flex items-center justify-between rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-900"
-                  >
-                    <span className="text-slate-600">{c.label}</span>
-                    <span className="font-semibold">{formatCoefficientNumber(c.value)}</span>
-                  </div>
-                ))
-              ) : (
+            <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
                 <p className="text-sm text-slate-600">
-                  Pro tento produkt nebo pozici nemám koeficienty k zobrazení.
+                  {product ? productLabel(product) : "—"} · pozice {positionLabel(position)}{" "}
+                  {product === "neon" && isNeonHistoricalInCoefModal
+                    ? "· historické podmínky (bez režimu)"
+                    : `· režim ${mode}`}
                 </p>
+                {product === "neon" && (
+                  <p className="text-xs font-semibold text-rose-700">
+                    {isNeonHistoricalInCoefModal
+                      ? "Historické koeficienty – platnost 01.10.2019 až 30.06.2024"
+                      : "Aktuální koeficienty – platnost od 01.07.2024"}
+                  </p>
+                )}
+                {product && isAutoProduct(product) && (
+                  <p className="text-xs font-semibold text-rose-700">
+                    Provizní podmínky aktuální od 01.04.2026
+                  </p>
+                )}
+              </div>
+
+              {product === "neon" && (
+                <div className="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-slate-50 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setNeonCoefficientView("current")}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                      neonCoefficientView === "current"
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-600 hover:bg-white"
+                    }`}
+                  >
+                    Aktuální
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNeonCoefficientView("historical")}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                      neonCoefficientView === "historical"
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-600 hover:bg-white"
+                    }`}
+                  >
+                    Historické
+                  </button>
+                </div>
               )}
             </div>
 
-            {showAutoTermsPreview && autoTermsPreviewUrl && (
-              <div className="mt-4 rounded-xl border border-slate-300 bg-slate-50 p-2 sm:p-3">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    Provizní podmínky {product ? productLabel(product) : "Auto"} (náhled)
+            <div
+              className={`mt-4 ${
+                showNeonTermsPreview
+                  ? "grid gap-4 lg:grid-cols-[minmax(320px,0.68fr)_minmax(620px,1.32fr)]"
+                  : ""
+              }`}
+            >
+              <section className="order-1 rounded-xl border border-slate-300 bg-slate-50 p-3 space-y-3">
+                {product === "neon" ? (
+                  <div className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs leading-relaxed text-slate-700">
+                    <p className="font-bold uppercase tracking-wide text-slate-900">
+                      JAK FUNGUJE VÝPOČET?
+                    </p>
+                    <p className="mt-1">
+                      Měsíční pojistné x 12 x doba trvání smlouvy (maximálně{" "}
+                      {isNeonHistoricalInCoefModal ? "20" : "15"}) x koeficient %.
+                    </p>
+                    <p className="mt-1">
+                      Pro následnou a pečovatelskou provizi: pojistné x 12 x
+                      koeficient %.
+                    </p>
+                  </div>
+                ) : (
+                  coefExplanation && (
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      {coefExplanation}
+                    </p>
+                  )
+                )}
+
+                {product &&
+                  (product === "neon" ||
+                    product === "flexi" ||
+                    product === "maximaMaxEfekt" ||
+                    product === "pillowInjury") && (
+                    <p className="text-xs font-semibold text-rose-700">
+                      UPOZORNĚNÍ: Výpočet okamžité provize počítá s tím, že je
+                      zpracována karta klienta dle podmínek!
+                    </p>
+                  )}
+                {neonImmediatePayoutInfo && (
+                  <p className="text-xs text-slate-700 leading-relaxed">
+                    {neonImmediatePayoutInfo}
                   </p>
-                  <a
-                    href={autoTermsPreviewUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900"
-                  >
-                    Otevřít v nové kartě
-                  </a>
+                )}
+
+                <div className="space-y-2 pt-1">
+                  {coefList.length > 0 ? (
+                    coefList.map((c, idx) => (
+                      <div
+                        key={`${c.label}-${idx}`}
+                        className="flex w-full max-w-[500px] items-center justify-between rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      >
+                        <span className="text-slate-600">{c.label}</span>
+                        <span className="font-semibold">{formatCoefficientNumber(c.value)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-600">
+                      Pro tento produkt nebo pozici nemám koeficienty k zobrazení.
+                    </p>
+                  )}
                 </div>
-                <div className="h-[62vh] min-h-[460px] overflow-auto rounded-lg border border-slate-300 bg-slate-100 p-2">
-                  <Image
-                    src={autoTermsPreviewUrl}
-                    alt={`Provizní podmínky ${product ? productLabel(product) : "Auto"}`}
-                    width={1600}
-                    height={2400}
-                    className="mx-auto h-auto w-full rounded-md"
-                    sizes="(max-width: 1024px) 100vw, 1200px"
-                    priority
-                  />
-                </div>
-              </div>
-            )}
+
+                {showAutoTermsPreview && autoTermsPreviewUrl && (
+                  <div className="rounded-xl border border-slate-300 bg-slate-50 p-2 sm:p-3">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                        Provizní podmínky {product ? productLabel(product) : "Auto"} (náhled)
+                      </p>
+                      <a
+                        href={autoTermsPreviewUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900"
+                      >
+                        Otevřít v nové kartě
+                      </a>
+                    </div>
+                    <div className="h-[62vh] min-h-[460px] overflow-auto rounded-lg border border-slate-300 bg-slate-100 p-2">
+                      <Image
+                        src={autoTermsPreviewUrl}
+                        alt={`Provizní podmínky ${product ? productLabel(product) : "Auto"}`}
+                        width={1600}
+                        height={2400}
+                        className="mx-auto h-auto w-full rounded-md"
+                        sizes="(max-width: 1024px) 100vw, 1200px"
+                        priority
+                      />
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              {showNeonTermsPreview && neonTermsPreviewUrl && (
+                <aside className="order-2 rounded-xl border border-slate-300 bg-slate-50 p-2 sm:p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      Provizní podmínky NEON
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleNeonDocumentAction("download")}
+                      disabled={neonDocAction !== null}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Download size={12} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                      {neonDocAction === "download"
+                        ? "Stahuji..."
+                        : "Stáhnout provizní podmínky"}
+                    </button>
+                  </div>
+                  <div className="mb-2 text-[11px] text-slate-600">
+                    <button
+                      type="button"
+                      onClick={() => void handleNeonDocumentAction("open")}
+                      disabled={neonDocAction !== null}
+                      className="font-semibold underline underline-offset-2 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {neonDocAction === "open"
+                        ? "Otevírám PDF..."
+                        : "Kompletní PDF: Otevřít v nové kartě"}
+                    </button>
+                  </div>
+
+                  {neonPreviewError && (
+                    <p className="mb-2 text-xs font-semibold text-rose-700">{neonPreviewError}</p>
+                  )}
+
+                  <div className="h-[70vh] min-h-[540px] overflow-hidden rounded-lg border border-slate-300 bg-white">
+                    {neonPreviewLoading ? (
+                      <div className="flex h-full items-center justify-center px-4 text-sm text-slate-600">
+                        Načítám náhled provizních podmínek...
+                      </div>
+                    ) : neonPreviewBlobUrl ? (
+                      <img
+                        src={neonPreviewBlobUrl}
+                        alt={
+                          neonCoefficientView === "historical"
+                            ? "Náhled provizních podmínek NEON 2019"
+                            : "Náhled provizních podmínek NEON 2024"
+                        }
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-600">
+                        Náhled se nepodařilo načíst.
+                      </div>
+                    )}
+                  </div>
+                </aside>
+              )}
+            </div>
           </div>
         </div>
       )}

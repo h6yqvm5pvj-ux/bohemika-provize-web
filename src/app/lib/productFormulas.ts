@@ -8,6 +8,9 @@ import {
 import {
   calculateNeon,
   neonCoefficients,
+  isNeonHistoricalPeriod,
+  neonMaxDurationYears,
+  normalizeNeonDurationYears,
 } from "./productFormulas/neon";
 import {
   calculateFlexi,
@@ -126,6 +129,9 @@ import {
 
 export {
   calculateNeon,
+  isNeonHistoricalPeriod,
+  neonMaxDurationYears,
+  normalizeNeonDurationYears,
   calculateFlexi,
   calculateMaxEfekt,
   calculateMaxCizinKomplex,
@@ -190,20 +196,21 @@ export function getCoefficientSummary(
   product: Product | null,
   position: Position | null,
   mode: CommissionMode | null,
-  maxCizinKomplexVariant: MaxCizinKomplexVariant = "exclusiveStandard"
+  maxCizinKomplexVariant: MaxCizinKomplexVariant = "exclusiveStandard",
+  contractSignedDateIso: string | null = null
 ): { label: string; value: number }[] {
   if (!product || !position) return [];
   const m = mode ?? "accelerated";
 
   switch (product) {
     case "neon": {
-      const k = neonCoefficients(position, m);
+      const k = neonCoefficients(position, m, contractSignedDateIso);
       return [
         { label: "Okamžitá provize", value: k.okamzita },
         { label: "Provize po 3 letech", value: k.po3 },
         { label: "Provize po 4 letech", value: k.po4 },
         { label: "Následná provize (2.–5. rok)", value: k.n2to5 },
-        { label: "Následná provize (5.–10. rok)", value: k.n5to10 },
+        { label: "Pečovatelská provize (5.–10. rok)", value: k.n5to10 },
       ];
     }
     case "flexi": {

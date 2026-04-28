@@ -310,6 +310,44 @@ const extractNameFromRowByTitleToken = (
   return { title, firstName, lastName };
 };
 
+const extractNameFromRowAfterBirthNumber = (
+  valueLine: string
+): { title: string | null; firstName: string | null; lastName: string | null } | null => {
+  const normalizedLine = normalizeSpaces(valueLine);
+  if (!normalizedLine) return null;
+
+  const tailMatch = normalizedLine.match(/\b\d{6}\s*\/\s*\d{3,4}\b\s+(.+)$/u);
+  if (!tailMatch?.[1]) return null;
+
+  const tail = normalizeSpaces(tailMatch[1]);
+  if (!tail) return null;
+
+  const tokens = tail
+    .split(" ")
+    .map((token) => cleanupNameToken(token))
+    .filter((token) => token.length > 0)
+    .filter((token) => /[A-Za-zÀ-ž]/u.test(token) && !/\d/.test(token));
+
+  if (tokens.length < 2) return null;
+
+  const maybeTitleToken = stripDiacritics(tokens[0] ?? "")
+    .toLowerCase()
+    .replace(/\./g, "");
+
+  if (TITLE_TOKENS.has(maybeTitleToken) && tokens.length >= 3) {
+    const title = normalizeNamePart(tokens[0] ?? null);
+    const firstName = normalizeNamePart(tokens[1] ?? null);
+    const lastName = normalizeNamePart(tokens.slice(2).join(" "));
+    if (firstName && lastName) return { title, firstName, lastName };
+    return null;
+  }
+
+  const firstName = normalizeNamePart(tokens[0] ?? null);
+  const lastName = normalizeNamePart(tokens.slice(1).join(" "));
+  if (!firstName || !lastName) return null;
+  return { title: null, firstName, lastName };
+};
+
 const extractClientName = (lines: string[], asciiLines: string[]): string | null => {
   const sectionStart = findSectionStart(asciiLines, /\bpojistnik\b/);
   if (sectionStart < 0) return null;
@@ -322,7 +360,7 @@ const extractClientName = (lines: string[], asciiLines: string[]): string | null
 
   for (let idx = sectionStart; idx <= Math.min(sectionEnd, sectionStart + 20); idx++) {
     const ascii = asciiLines[idx] ?? "";
-    if (!(ascii.includes("titul") && ascii.includes("jmeno") && ascii.includes("prijmeni"))) {
+    if (!(ascii.includes("jmeno") && ascii.includes("prijmeni"))) {
       continue;
     }
 
@@ -332,6 +370,14 @@ const extractClientName = (lines: string[], asciiLines: string[]): string | null
     const tokenBased = extractNameFromRowByTitleToken(row);
     if (tokenBased?.firstName && tokenBased.lastName) {
       return [tokenBased.title, tokenBased.firstName, tokenBased.lastName]
+        .filter((part): part is string => Boolean(part))
+        .join(" ")
+        .trim();
+    }
+
+    const birthNumberBased = extractNameFromRowAfterBirthNumber(row);
+    if (birthNumberBased?.firstName && birthNumberBased.lastName) {
+      return [birthNumberBased.title, birthNumberBased.firstName, birthNumberBased.lastName]
         .filter((part): part is string => Boolean(part))
         .join(" ")
         .trim();

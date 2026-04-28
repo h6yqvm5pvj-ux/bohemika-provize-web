@@ -45,7 +45,7 @@ function maybeAddReportUri(directives: string[]): string[] {
   return directives;
 }
 
-function buildBaselineCsp(): string {
+function buildBaselineCsp(frameAncestors: "'none'" | "'self'" = "'none'"): string {
   const scriptSrc = [
     "'self'",
     "'unsafe-inline'",
@@ -55,7 +55,7 @@ function buildBaselineCsp(): string {
   return maybeAddReportUri([
     "default-src 'self'",
     "base-uri 'self'",
-    "frame-ancestors 'none'",
+    `frame-ancestors ${frameAncestors}`,
     "object-src 'none'",
     "form-action 'self'",
     `frame-src ${FRAME_SRC}`,
@@ -69,7 +69,10 @@ function buildBaselineCsp(): string {
   ]).join("; ");
 }
 
-function buildStrictNonceCsp(nonce: string): string {
+function buildStrictNonceCsp(
+  nonce: string,
+  frameAncestors: "'none'" | "'self'" = "'none'"
+): string {
   const scriptSrc = [
     "'self'",
     `'nonce-${nonce}'`,
@@ -80,7 +83,7 @@ function buildStrictNonceCsp(nonce: string): string {
   return maybeAddReportUri([
     "default-src 'self'",
     "base-uri 'self'",
-    "frame-ancestors 'none'",
+    `frame-ancestors ${frameAncestors}`,
     "object-src 'none'",
     "form-action 'self'",
     `frame-src ${FRAME_SRC}`,
@@ -97,6 +100,10 @@ function buildStrictNonceCsp(nonce: string): string {
 
 export function middleware(req: NextRequest) {
   const nonce = createNonce();
+  const pathname = req.nextUrl.pathname.toLowerCase();
+  const isPdfDocumentPreview =
+    pathname.startsWith("/dokumenty/") && pathname.endsWith(".pdf");
+  const frameAncestors = isPdfDocumentPreview ? "'self'" : "'none'";
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-csp-nonce", nonce);
 
@@ -106,12 +113,13 @@ export function middleware(req: NextRequest) {
     },
   });
 
-  const strictCsp = buildStrictNonceCsp(nonce);
+  const strictCsp = buildStrictNonceCsp(nonce, frameAncestors);
+  res.headers.set("X-Frame-Options", isPdfDocumentPreview ? "SAMEORIGIN" : "DENY");
 
   if (process.env.CSP_STRICT_ENFORCE === "1") {
     res.headers.set("Content-Security-Policy", strictCsp);
   } else {
-    res.headers.set("Content-Security-Policy", buildBaselineCsp());
+    res.headers.set("Content-Security-Policy", buildBaselineCsp(frameAncestors));
     res.headers.set("Content-Security-Policy-Report-Only", strictCsp);
   }
 

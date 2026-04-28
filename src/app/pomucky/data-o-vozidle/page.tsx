@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
@@ -42,6 +42,11 @@ function safeStr(v: unknown): string {
   if (!hasValue(v)) return "—";
   const s = String(v).trim();
   return s.length ? s : "—";
+}
+
+function normalizeVinInput(v: unknown): string {
+  if (typeof v !== "string") return "";
+  return v.trim().toUpperCase().replace(/\s+/g, "");
 }
 
 function fmtDateCZ(v: unknown): string {
@@ -273,16 +278,24 @@ export default function VehicleDataPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
 
   const [vin, setVin] = useState("");
+  const [vinFromQuery, setVinFromQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<LookupResult | null>(null);
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
   const [copiedVin, setCopiedVin] = useState(false);
   const [copiedOrv, setCopiedOrv] = useState(false);
+  const autoLookupVinRef = useRef<string | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const qsVin = normalizeVinInput(new URLSearchParams(window.location.search).get("vin"));
+    setVinFromQuery(qsVin);
   }, []);
 
   const canSearch = useMemo(() => !!user && vin.trim().length >= 11, [user, vin]);
@@ -386,13 +399,13 @@ export default function VehicleDataPage() {
     return Array.from(new Set(split)).slice(0, 4);
   }, [vehicle]);
 
-  const handleSearch = async () => {
+  const handleSearchByVin = useCallback(async (value: string) => {
     setLoading(true);
     setError(null);
     setResult(null);
 
     try {
-      const data = (await rsvVehicleLookupByVin(vin)) as LookupResult;
+      const data = (await rsvVehicleLookupByVin(value)) as LookupResult;
       setResult(data);
       setLoadedAt(new Date());
     } catch (e: unknown) {
@@ -401,7 +414,24 @@ export default function VehicleDataPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const handleSearch = useCallback(async () => {
+    await handleSearchByVin(vin);
+  }, [handleSearchByVin, vin]);
+
+  useEffect(() => {
+    if (!vinFromQuery) return;
+    setVin((prev) => (prev === vinFromQuery ? prev : vinFromQuery));
+  }, [vinFromQuery]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (vinFromQuery.length < 11) return;
+    if (autoLookupVinRef.current === vinFromQuery) return;
+    autoLookupVinRef.current = vinFromQuery;
+    void handleSearchByVin(vinFromQuery);
+  }, [user, vinFromQuery, handleSearchByVin]);
 
   const handleCopyVin = async () => {
     const val = safeStr(result?.vin ?? vin);

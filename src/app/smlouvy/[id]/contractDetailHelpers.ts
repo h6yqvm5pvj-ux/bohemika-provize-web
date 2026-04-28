@@ -126,6 +126,15 @@ export function formatDate(value: unknown): string {
   return d.toLocaleDateString("cs-CZ");
 }
 
+function toIsoDay(value: unknown): string | null {
+  const date = toDate(value);
+  if (!date) return null;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function formatMoney(value: number | undefined | null): string {
   return formatMoneyValue(value, {
     minFractionDigits: 2,
@@ -371,13 +380,24 @@ export async function calculateResultForPosition(
     typeof c.durationYears === "number" && !Number.isNaN(c.durationYears)
       ? c.durationYears
       : 30;
+  const neonYears =
+    typeof c.durationYears === "number" && !Number.isNaN(c.durationYears)
+      ? c.durationYears
+      : null;
+  const contractSignedDateIso = toIsoDay(c.contractSignedDate);
 
   const usedMode = (mode ?? "standard") as CommissionMode;
 
   switch (product) {
     case "neon": {
       const { calculateNeon } = await import("../../lib/productFormulas/neon");
-      return calculateNeon(amount, position, years, usedMode);
+      return calculateNeon(
+        amount,
+        position,
+        neonYears,
+        usedMode,
+        contractSignedDateIso
+      );
     }
     case "flexi": {
       const { calculateFlexi } = await import("../../lib/productFormulas/flexi");
