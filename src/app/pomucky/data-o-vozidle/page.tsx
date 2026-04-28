@@ -5,14 +5,23 @@ import Link from "next/link";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
   Activity,
+  CalendarDays,
   CalendarClock,
+  Car,
   CarFront,
   Copy,
+  FileText,
+  Fuel,
   Gauge,
+  Leaf,
+  Palette,
   RotateCcw,
   Ruler,
   ShieldCheck,
+  UserRound,
+  Users,
   Weight,
+  Wind,
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -215,10 +224,27 @@ function InfoCard({
   );
 }
 
-function SpecRow({ label, value }: { label: string; value: ReactNode }) {
+function SpecRow({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: ReactNode;
+  icon?: ReactNode;
+}) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-slate-300 py-2 last:border-b-0">
-      <dt className="text-sm text-slate-600">{label}</dt>
+      <dt className="text-sm text-slate-600">
+        <span className="inline-flex items-center gap-1.5">
+          {icon && (
+            <span className="inline-flex h-4 w-4 items-center justify-center text-slate-500">
+              {icon}
+            </span>
+          )}
+          <span>{label}</span>
+        </span>
+      </dt>
       <dd className="text-sm font-semibold text-slate-900 text-right">{value}</dd>
     </div>
   );
@@ -319,7 +345,11 @@ export default function VehicleDataPage() {
     const yearFromApi = toNumber(firstOf(data, ["RokVyroby", "VozidloRokVyroby"]));
     const year = yearFromApi ?? (firstReg !== "—" ? new Date(firstRegRaw as string).getFullYear() : null);
 
+    const regularTechnicalInspectionRaw = firstOf(data, [
+      "PravidelnaTechnickaProhlidkaDo",
+    ]);
     const stkRaw = firstOf(data, [
+      "PravidelnaTechnickaProhlidkaDo",
       "StkDo",
       "STKDo",
       "DatumStkDo",
@@ -327,6 +357,7 @@ export default function VehicleDataPage() {
       "PlatnostStkDo",
     ]);
     const stkDo = fmtDateCZ(stkRaw);
+    const regularTechnicalInspectionDo = fmtDateCZ(regularTechnicalInspectionRaw);
 
     const powerKw = toNumber(firstOf(data, ["MotorMaxVykon", "Vykon", "MaxVykon"]));
     const displacement = toNumber(firstOf(data, ["MotorZdvihObjem", "ZdvihovyObjem", "ObjemMotoru"]));
@@ -344,6 +375,7 @@ export default function VehicleDataPage() {
     const wheelbaseMm = toNumber(firstOf(data, ["Rozvor", "RozvorNaprav", "VozidloRozvor"]));
 
     const tireValues = findByPattern(data, ["pneu", "pneumatik"]);
+    const statusByRegistry = safeStr(firstOf(data, ["StatusNazev"]));
 
     return {
       brand,
@@ -354,9 +386,12 @@ export default function VehicleDataPage() {
       year,
       stkDo,
       stkTone: stkTone(stkRaw),
-      status: statusLabel(data),
+      status: statusByRegistry !== "—" ? statusByRegistry : statusLabel(data),
+      statusByRegistry,
+      regularTechnicalInspectionDo,
       powerKw,
       displacement,
+      topSpeed: toNumber(firstOf(data, ["NejvyssiRychlost"])),
       operatingWeight,
       maxWeight,
       utilizationPct,
@@ -377,9 +412,12 @@ export default function VehicleDataPage() {
       orv: safeStr(firstOf(data, ["CisloOrv", "CisloORV"])),
       engineType: safeStr(firstOf(data, ["TypMotoru", "MotorTyp"])),
       engineCode: safeStr(firstOf(data, ["CisloMotoru", "KodMotoru"])),
-      engineMaker: safeStr(firstOf(data, ["VyrobceMotoru"])),
+      engineMaker: safeStr(firstOf(data, ["MotorVyrobce", "VyrobceMotoru"])),
       co2: safeStr(firstOf(data, ["EmiseCo2Komb", "Co2", "CO2"])),
       noise: safeStr(firstOf(data, ["Hluk", "HlukJizda"])),
+      vehiclePurpose: safeStr(firstOf(data, ["VozidloUcel"])),
+      ownerCount: safeStr(firstOf(data, ["PocetVlastniku"])),
+      operatorCount: safeStr(firstOf(data, ["PocetProvozovatelu"])),
       trailerBraked: fmtNumber(
         toNumber(firstOf(data, ["PripojneBrzdene", "PripojneBrzdeneKg"]))
       ),
@@ -477,8 +515,8 @@ export default function VehicleDataPage() {
           </div>
         </header>
 
-        <div className="relative overflow-hidden rounded-[28px] border border-slate-300 bg-white p-3 sm:p-4">
-        <section className="relative z-10 rounded-3xl border border-slate-300 bg-white p-4 sm:p-5 space-y-3">
+        <div className="space-y-4">
+        <section className="relative z-10 p-4 sm:p-5 space-y-3">
           <div className="flex flex-col items-center gap-2 text-center">
             <p className="text-xs text-slate-600">Zadej VIN a načti datový přehled.</p>
 
@@ -605,15 +643,24 @@ export default function VehicleDataPage() {
 
                 <div className="grid grid-cols-2 gap-3 min-w-[240px]">
                   <div className="rounded-2xl border border-slate-300 bg-white px-3 py-3">
-                    <div className="text-[10px] uppercase tracking-widest text-slate-500">Rok výroby</div>
+                    <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-slate-500">
+                      <CalendarDays className="h-3.5 w-3.5" />
+                      Rok výroby
+                    </div>
                     <div className="mt-1 text-xl font-semibold text-slate-900">{fmtNumber(vehicle.year)}</div>
                   </div>
                   <div className="rounded-2xl border border-slate-300 bg-white px-3 py-3">
-                    <div className="text-[10px] uppercase tracking-widest text-slate-500">STK do</div>
+                    <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-slate-500">
+                      <CalendarClock className="h-3.5 w-3.5" />
+                      STK do
+                    </div>
                     <div className="mt-1 text-xl font-semibold text-slate-900">{vehicle.stkDo}</div>
                   </div>
                   <div className="rounded-2xl border border-slate-300 bg-white px-3 py-3 col-span-2">
-                    <div className="text-[10px] uppercase tracking-widest text-slate-500">1. registrace / ČR</div>
+                    <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-slate-500">
+                      <CalendarDays className="h-3.5 w-3.5" />
+                      1. registrace / ČR
+                    </div>
                     <div className="mt-1 text-sm font-semibold text-slate-900">
                       {vehicle.firstReg} <span className="text-slate-500">/</span> {vehicle.firstRegCz}
                     </div>
@@ -623,23 +670,35 @@ export default function VehicleDataPage() {
 
               <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
                 <div className="rounded-2xl border border-slate-300 bg-white px-3 py-3">
-                  <div className="text-[10px] uppercase tracking-widest text-slate-500">Výkon</div>
+                  <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-slate-500">
+                    <Gauge className="h-3.5 w-3.5" />
+                    Výkon
+                  </div>
                   <div className="mt-1 text-lg font-semibold text-slate-900">
                     {fmtNumber(vehicle.powerKw)} <span className="text-sm text-slate-500">kW</span>
                   </div>
                 </div>
                 <div className="rounded-2xl border border-slate-300 bg-white px-3 py-3">
-                  <div className="text-[10px] uppercase tracking-widest text-slate-500">Objem</div>
+                  <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-slate-500">
+                    <Ruler className="h-3.5 w-3.5" />
+                    Objem
+                  </div>
                   <div className="mt-1 text-lg font-semibold text-slate-900">
                     {fmtNumber(vehicle.displacement)} <span className="text-sm text-slate-500">cm³</span>
                   </div>
                 </div>
                 <div className="rounded-2xl border border-slate-300 bg-white px-3 py-3">
-                  <div className="text-[10px] uppercase tracking-widest text-slate-500">Palivo</div>
+                  <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-slate-500">
+                    <Fuel className="h-3.5 w-3.5" />
+                    Palivo
+                  </div>
                   <div className="mt-1 text-lg font-semibold text-slate-900">{vehicle.fuel}</div>
                 </div>
                 <div className="rounded-2xl border border-slate-300 bg-white px-3 py-3">
-                  <div className="text-[10px] uppercase tracking-widest text-slate-500">Místa</div>
+                  <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-slate-500">
+                    <Users className="h-3.5 w-3.5" />
+                    Místa
+                  </div>
                   <div className="mt-1 text-lg font-semibold text-slate-900">{vehicle.seats}</div>
                 </div>
               </div>
@@ -653,9 +712,17 @@ export default function VehicleDataPage() {
                 </div>
 
                 <dl className="mt-3">
-                  <SpecRow label="Palivo" value={vehicle.fuel} />
-                  <SpecRow label="Emisní norma" value={vehicle.emissionNorm} />
-                  <SpecRow label="Spotřeba" value={vehicle.consumption} />
+                  <SpecRow label="Palivo" value={vehicle.fuel} icon={<Fuel className="h-3.5 w-3.5" />} />
+                  <SpecRow
+                    label="Emisní norma"
+                    value={vehicle.emissionNorm}
+                    icon={<Leaf className="h-3.5 w-3.5" />}
+                  />
+                  <SpecRow
+                    label="Spotřeba"
+                    value={vehicle.consumption}
+                    icon={<Activity className="h-3.5 w-3.5" />}
+                  />
                 </dl>
               </InfoCard>
 
@@ -729,18 +796,22 @@ export default function VehicleDataPage() {
                     <SpecRow
                       label="Provozní"
                       value={vehicle.operatingWeight != null ? `${fmtNumber(vehicle.operatingWeight)} kg` : "—"}
+                      icon={<Weight className="h-3.5 w-3.5" />}
                     />
                     <SpecRow
                       label="Povolená"
                       value={vehicle.maxWeight != null ? `${fmtNumber(vehicle.maxWeight)} kg` : "—"}
+                      icon={<Weight className="h-3.5 w-3.5" />}
                     />
                     <SpecRow
                       label="Přípojné (brzděné)"
                       value={vehicle.trailerBraked !== "—" ? `${vehicle.trailerBraked} kg` : "—"}
+                      icon={<CarFront className="h-3.5 w-3.5" />}
                     />
                     <SpecRow
                       label="Přípojné (nebrzděné)"
                       value={vehicle.trailerUnbraked !== "—" ? `${vehicle.trailerUnbraked} kg` : "—"}
+                      icon={<CarFront className="h-3.5 w-3.5" />}
                     />
                   </dl>
                 </div>
@@ -748,23 +819,37 @@ export default function VehicleDataPage() {
 
               <InfoCard icon={<Activity className="h-4 w-4" />} title="Detail Motoru a Emise">
                 <dl>
-                  <SpecRow label="Typ motoru" value={vehicle.engineType} />
-                  <SpecRow label="Výrobce motoru" value={vehicle.engineMaker} />
-                  <SpecRow label="Číslo/Kód motoru" value={vehicle.engineCode} />
-                  <SpecRow label="Emisní limit" value={vehicle.emissionNorm} />
-                  <SpecRow label="CO₂ (komb.)" value={vehicle.co2} />
-                  <SpecRow label="Hluk" value={vehicle.noise} />
+                  <SpecRow label="Typ motoru" value={vehicle.engineType} icon={<Activity className="h-3.5 w-3.5" />} />
+                  <SpecRow label="Výrobce motoru" value={vehicle.engineMaker} icon={<Car className="h-3.5 w-3.5" />} />
+                  <SpecRow label="Číslo/Kód motoru" value={vehicle.engineCode} icon={<FileText className="h-3.5 w-3.5" />} />
+                  <SpecRow
+                    label="Nejvyšší rychlost"
+                    value={vehicle.topSpeed != null ? `${fmtNumber(vehicle.topSpeed)} km/h` : "—"}
+                    icon={<Gauge className="h-3.5 w-3.5" />}
+                  />
+                  <SpecRow label="Emisní limit" value={vehicle.emissionNorm} icon={<Leaf className="h-3.5 w-3.5" />} />
+                  <SpecRow label="CO₂ (komb.)" value={vehicle.co2} icon={<Leaf className="h-3.5 w-3.5" />} />
+                  <SpecRow label="Hluk" value={vehicle.noise} icon={<Wind className="h-3.5 w-3.5" />} />
                 </dl>
               </InfoCard>
 
               <InfoCard icon={<CarFront className="h-4 w-4" />} title="Karoserie a Vzhled">
                 <dl>
-                  <SpecRow label="Druh vozidla" value={vehicle.vehicleType} />
-                  <SpecRow label="Kategorie" value={vehicle.category} />
-                  <SpecRow label="Barva" value={vehicle.color} />
-                  <SpecRow label="Místa" value={vehicle.seats} />
-                  <SpecRow label="Číslo ORV" value={vehicle.orv} />
-                  <SpecRow label="Číslo TP" value={vehicle.tp} />
+                  <SpecRow label="Druh vozidla" value={vehicle.vehicleType} icon={<CarFront className="h-3.5 w-3.5" />} />
+                  <SpecRow label="Status" value={vehicle.status} icon={<ShieldCheck className="h-3.5 w-3.5" />} />
+                  <SpecRow
+                    label="Pravidelná technická do"
+                    value={vehicle.regularTechnicalInspectionDo}
+                    icon={<CalendarClock className="h-3.5 w-3.5" />}
+                  />
+                  <SpecRow label="Účel vozidla" value={vehicle.vehiclePurpose} icon={<Car className="h-3.5 w-3.5" />} />
+                  <SpecRow label="Kategorie" value={vehicle.category} icon={<CarFront className="h-3.5 w-3.5" />} />
+                  <SpecRow label="Barva" value={vehicle.color} icon={<Palette className="h-3.5 w-3.5" />} />
+                  <SpecRow label="Místa" value={vehicle.seats} icon={<Users className="h-3.5 w-3.5" />} />
+                  <SpecRow label="Počet vlastníků" value={vehicle.ownerCount} icon={<Users className="h-3.5 w-3.5" />} />
+                  <SpecRow label="Počet provozovatelů" value={vehicle.operatorCount} icon={<UserRound className="h-3.5 w-3.5" />} />
+                  <SpecRow label="Číslo ORV" value={vehicle.orv} icon={<FileText className="h-3.5 w-3.5" />} />
+                  <SpecRow label="Číslo TP" value={vehicle.tp} icon={<FileText className="h-3.5 w-3.5" />} />
                 </dl>
               </InfoCard>
             </div>
