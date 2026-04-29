@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -26,6 +26,7 @@ import {
   cuzkLookupByAdresniMisto,
   cuzkLookupByAddress,
   cuzkSuggestAddress,
+  type CuzkAddressLookupQuery,
 } from "@/lib/cuzk";
 
 type RuianMatch = {
@@ -48,21 +49,60 @@ type ParcelRow = {
   typParcely?: string;
 };
 
+type AddressSearchHints = {
+  houseNumber: string | null;
+  zipCode: string | null;
+  localityTokens: string[];
+};
+
+type AddressLookupCandidate = CuzkAddressLookupQuery & {
+  _label: string;
+};
+
 function normalizeSuggestPayload(data: any): RuianMatch[] {
-  const raw =
-    (Array.isArray(data) && data) ||
-    (Array.isArray(data?.suggestions) && data.suggestions) ||
-    (Array.isArray(data?.matches) && data.matches) ||
-    (Array.isArray(data?.data) && data.data) ||
-    [];
+  const toList = (value: any): any[] => {
+    if (Array.isArray(value)) return value;
+    return [];
+  };
+
+  const rawCandidates = [
+    toList(data),
+    toList(data?.suggestions),
+    toList(data?.matches),
+    toList(data?.items),
+    toList(data?.results),
+    toList(data?.data),
+    toList(data?.data?.items),
+    toList(data?.data?.results),
+  ];
+  const raw = rawCandidates.find((arr) => arr.length > 0) ?? [];
 
   return raw
     .map((x: any) => {
       if (typeof x === "string") return { kod: 0, adresa: x } as RuianMatch;
 
       if (x && typeof x === "object") {
-        const adresa = String(x.adresa ?? x.text ?? x.label ?? "").trim();
-        const kod = Number(x.kod ?? x.id ?? x.ruianKod ?? 0);
+        const adresa = String(
+          x.adresa ??
+            x.address ??
+            x.text ??
+            x.label ??
+            x.title ??
+            x.displayName ??
+            x.value ??
+            x.name ??
+            ""
+        ).trim();
+        const kod = Number(
+          x.kod ??
+            x.id ??
+            x.ruianKod ??
+            x.ruian_kod ??
+            x.adresniMistoKod ??
+            x.adresnimistokod ??
+            x.addressPointCode ??
+            0
+        );
 
         return {
           kod: Number.isFinite(kod) ? kod : 0,
@@ -78,7 +118,10 @@ function normalizeSuggestPayload(data: any): RuianMatch[] {
       }
       return null;
     })
-    .filter((m: any) => m && m.adresa && String(m.adresa).trim().length > 0)
+    .filter(
+      (m): m is RuianMatch =>
+        Boolean(m && m.adresa && String(m.adresa).trim().length > 0)
+    )
     .slice(0, 12);
 }
 
@@ -107,6 +150,305 @@ function normalizeSuggestQueryVariants(input: string): string[] {
 
   // Unique, non-empty, min length 2
   return Array.from(new Set([v1, v2, v3].filter((s) => s && s.length >= 2)));
+}
+
+function normalizeAddressForCompare(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function escapeRegExp(value: string): string {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractAddressSearchHints(input: string): AddressSearchHints {
+  const base = String(input ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!base) {
+    return { houseNumber: null, zipCode: null, localityTokens: [] };
+  }
+
+  const zipMatch = base.match(/\b\d{3}\s?\d{2}\b/);
+  const zipCode = zipMatch ? zipMatch[0].replace(/\s+/g, "") : null;
+
+  const cleaned = base
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b\d{3}\s?\d{2}\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const houseNumber =
+    cleaned.match(/\b\d+[a-zA-Z]?(?:\/\d+)?\b/)?.[0]?.toLowerCase() ?? null;
+
+  const localityRaw = cleaned
+    .replace(/\b\d+[a-zA-Z]?(?:\/\d+)?\b/g, " ")
+    .replace(/[.,]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const localityTokens = normalizeAddressForCompare(localityRaw)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .filter((token) => !/^\d+$/.test(token))
+    .slice(0, 6);
+
+  return { houseNumber, zipCode, localityTokens };
+}
+
+function scoreMatchForAddressHints(match: RuianMatch, hints: AddressSearchHints): number {
+  const addressRaw = String(match?.adresa ?? "").trim();
+  if (!addressRaw) return Number.NEGATIVE_INFINITY;
+
+  const normalizedAddress = normalizeAddressForCompare(addressRaw);
+  let score = 0;
+
+  if (hints.houseNumber) {
+    const numberPattern = new RegExp(
+      `(^|\\D)${escapeRegExp(hints.houseNumber)}(?=\\D|$)`
+    );
+    if (numberPattern.test(normalizedAddress)) {
+      score += 10;
+    } else {
+      score -= 4;
+    }
+
+    const matchHouseNumber = String(match?.cislodomovni ?? "").trim().toLowerCase();
+    if (matchHouseNumber && matchHouseNumber === hints.houseNumber) {
+      score += 6;
+    }
+  }
+
+  for (const token of hints.localityTokens) {
+    if (normalizedAddress.includes(token)) {
+      score += 2;
+    } else {
+      score -= 1;
+    }
+  }
+
+  if (hints.zipCode) {
+    const psc = String(match?.psc ?? "").replace(/\s+/g, "");
+    if (psc && psc === hints.zipCode) {
+      score += 6;
+    } else if (normalizedAddress.includes(hints.zipCode)) {
+      score += 3;
+    }
+  }
+
+  return score;
+}
+
+function normalizeSpaces(value: string): string {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*,\s*/g, ", ")
+    .trim();
+}
+
+function parseStructuredAddressCandidates(input: string): AddressLookupCandidate[] {
+  const base = normalizeSpaces(input);
+  if (!base) return [];
+
+  const withoutParentheses = normalizeSpaces(base.replace(/\([^)]*\)/g, " "));
+  const zipMatch = withoutParentheses.match(/\b\d{3}\s?\d{2}\b/);
+  const zipCode = zipMatch ? zipMatch[0].replace(/\s+/g, "") : "";
+  const withoutZip = normalizeSpaces(withoutParentheses.replace(/\b\d{3}\s?\d{2}\b/g, " "));
+  const numberMatch = withoutZip.match(/\b(\d+)(?:\s*\/\s*(\d+))?\b/);
+  const houseNumber = numberMatch?.[1] ?? "";
+  const orientNumber = numberMatch?.[2] ?? "";
+
+  const localityRaw = normalizeSpaces(
+    withoutZip.replace(/\b\d+(?:\s*\/\s*\d+)?\b/g, " ").replace(/\s+,/g, ",")
+  );
+  const parts = localityRaw
+    .split(",")
+    .map((part) => normalizeSpaces(part))
+    .filter(Boolean);
+  const obec = parts.length ? parts[parts.length - 1] : "";
+  const ulice = parts.length > 1 ? parts[0] : "";
+
+  const out: AddressLookupCandidate[] = [];
+  const seen = new Set<string>();
+  const add = (candidate: AddressLookupCandidate) => {
+    const normalized: AddressLookupCandidate = {
+      ...candidate,
+      q: normalizeSpaces(String(candidate.q ?? "")) || undefined,
+      obec: normalizeSpaces(String(candidate.obec ?? "")) || undefined,
+      ulice: normalizeSpaces(String(candidate.ulice ?? "")) || undefined,
+      cisloDomovni: normalizeSpaces(String(candidate.cisloDomovni ?? "")) || undefined,
+      cisloOrientacni: normalizeSpaces(String(candidate.cisloOrientacni ?? "")) || undefined,
+      psc: normalizeSpaces(String(candidate.psc ?? "")) || undefined,
+    };
+
+    if (
+      !normalized.q &&
+      !normalized.obec &&
+      !normalized.ulice &&
+      !normalized.cisloDomovni
+    ) {
+      return;
+    }
+
+    const key = JSON.stringify({
+      q: normalized.q ?? "",
+      obec: normalized.obec ?? "",
+      ulice: normalized.ulice ?? "",
+      cp: normalized.cisloDomovni ?? "",
+      co: normalized.cisloOrientacni ?? "",
+      psc: normalized.psc ?? "",
+    });
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(normalized);
+  };
+
+  if (houseNumber && obec) {
+    add({
+      _label: "obec+cp",
+      obec,
+      cisloDomovni: houseNumber,
+      ...(orientNumber ? { cisloOrientacni: orientNumber } : {}),
+      ...(zipCode ? { psc: zipCode } : {}),
+    });
+
+    if (ulice && normalizeAddressForCompare(ulice) !== normalizeAddressForCompare(obec)) {
+      add({
+        _label: "obec+ulice+cp",
+        obec,
+        ulice,
+        cisloDomovni: houseNumber,
+        ...(orientNumber ? { cisloOrientacni: orientNumber } : {}),
+        ...(zipCode ? { psc: zipCode } : {}),
+      });
+    }
+  }
+
+  if (houseNumber && obec) {
+    add({
+      _label: "q-cp-format",
+      q: `č. p. ${houseNumber}, ${obec}`,
+    });
+  }
+
+  add({
+    _label: "q-raw",
+    q: base,
+  });
+
+  return out;
+}
+
+function normalizeAutoAddressCandidates(input: string): string[] {
+  const base = String(input ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!base) return [];
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (value: string) => {
+    const cleaned = String(value ?? "")
+      .replace(/\s+/g, " ")
+      .replace(/\s*,\s*/g, ", ")
+      .trim();
+    if (cleaned.length < 2) return;
+    const key = normalizeAddressForCompare(cleaned);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(cleaned);
+  };
+
+  add(base);
+
+  const withoutParentheses = base
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\s*,\s*/g, ", ")
+    .trim();
+  add(withoutParentheses);
+
+  const withoutZip = withoutParentheses
+    .replace(/\b\d{3}\s?\d{2}\b/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\s*,\s*/g, ", ")
+    .trim()
+    .replace(/,\s*,/g, ", ");
+  add(withoutZip);
+
+  const parts = withoutZip
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length > 0) {
+    add(parts[0]);
+    if (parts.length > 1) {
+      const first = parts[0];
+      const last = parts[parts.length - 1];
+      const firstWithoutNumber = first
+        .replace(/\b\d+[a-zA-Z]?(?:\/\d+)?\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (
+        firstWithoutNumber &&
+        normalizeAddressForCompare(firstWithoutNumber) !==
+          normalizeAddressForCompare(last)
+      ) {
+        add(`${first}, ${last}`);
+      }
+    }
+  }
+
+  const numberToken =
+    withoutZip.match(/\b\d+[a-zA-Z]?(?:\/\d+)?\b/)?.[0] ?? "";
+  const firstPart = parts[0] ?? withoutZip;
+  const lastPart = parts.length > 1 ? parts[parts.length - 1] : "";
+  const firstWithoutNumber = firstPart
+    .replace(/\b\d+[a-zA-Z]?(?:\/\d+)?\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const locality =
+    (lastPart || firstWithoutNumber || firstPart)
+      .replace(/\b\d+[a-zA-Z]?(?:\/\d+)?\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() || "";
+
+  if (firstWithoutNumber) {
+    add(firstWithoutNumber);
+  }
+  if (locality && normalizeAddressForCompare(locality) !== normalizeAddressForCompare(firstWithoutNumber)) {
+    add(locality);
+  }
+
+  if (numberToken && locality) {
+    add(`${locality} ${numberToken}`);
+    add(`${numberToken} ${locality}`);
+    add(`č. p. ${numberToken}, ${locality}`);
+    add(`č.p. ${numberToken}, ${locality}`);
+    add(`c. p. ${numberToken}, ${locality}`);
+    add(`c.p. ${numberToken}, ${locality}`);
+    add(`cp ${numberToken}, ${locality}`);
+    add(`číslo popisné ${numberToken}, ${locality}`);
+  }
+
+  if (
+    numberToken &&
+    firstWithoutNumber &&
+    locality &&
+    normalizeAddressForCompare(firstWithoutNumber) !==
+      normalizeAddressForCompare(locality)
+  ) {
+    add(`${firstWithoutNumber} ${numberToken}, ${locality}`);
+    add(`${locality}, ${firstWithoutNumber} ${numberToken}`);
+  }
+
+  return out;
 }
 
 function safeStr(v: any): string {
@@ -392,6 +734,7 @@ export default function CuzkPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
 
   const [addressQuery, setAddressQuery] = useState("");
+  const [addressFromQuery, setAddressFromQuery] = useState("");
   const [includeUnits, setIncludeUnits] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -408,6 +751,7 @@ export default function CuzkPage() {
   const suggestWrapRef = useRef<HTMLDivElement | null>(null);
   const suggestReqSeq = useRef(0);
   const suppressSuggestRef = useRef(false);
+  const autoLookupAddressRef = useRef<string | null>(null);
 
   const [showJson, setShowJson] = useState(false);
   const [gmapsEmbedError, setGmapsEmbedError] = useState<string | null>(null);
@@ -416,6 +760,19 @@ export default function CuzkPage() {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("address") ?? params.get("q") ?? "";
+    const normalized = String(raw ?? "").trim();
+    setAddressFromQuery(normalized);
+  }, []);
+
+  useEffect(() => {
+    if (!addressFromQuery) return;
+    setAddressQuery((prev) => (prev === addressFromQuery ? prev : addressFromQuery));
+  }, [addressFromQuery]);
 
   const canSearch = useMemo(() => !!user && addressQuery.trim().length >= 2, [user, addressQuery]);
 
@@ -443,8 +800,18 @@ export default function CuzkPage() {
       return;
     }
 
-    const variants = normalizeSuggestQueryVariants(addressQuery);
-    const q = variants[0] ?? "";
+    const typed = normalizeSpaces(addressQuery);
+    const directVariants = normalizeSuggestQueryVariants(typed);
+    const smartCandidates = normalizeAutoAddressCandidates(typed).slice(0, 5);
+    const suggestQueries = Array.from(
+      new Set(
+        smartCandidates
+          .flatMap((candidate) => normalizeSuggestQueryVariants(candidate))
+          .concat(directVariants)
+      )
+    ).slice(0, 12);
+
+    const q = suggestQueries[0] ?? "";
     if (q.length < 2) {
       setSuggestions([]);
       setSuggestOpen(false);
@@ -471,7 +838,7 @@ export default function CuzkPage() {
 
         let list: RuianMatch[] = [];
 
-        for (const v of variants.length ? variants : [q]) {
+        for (const v of suggestQueries.length ? suggestQueries : [q]) {
           try {
             const data: any = await cuzkSuggestAddress(v);
             if (mySeq !== suggestReqSeq.current) return;
@@ -529,7 +896,114 @@ export default function CuzkPage() {
     setMatches([]);
   };
 
-  const handleSearchAddress = async () => {
+  const runSmartAutoAddressSearch = useCallback(
+    async (rawQuery: string): Promise<{ data: unknown; resolvedAddress?: string }> => {
+      const candidates = normalizeAutoAddressCandidates(rawQuery);
+      if (candidates.length === 0) {
+        throw new Error("Adresa pro automatické vyhledání je prázdná.");
+      }
+
+      const hints = extractAddressSearchHints(rawQuery);
+      const structuredCandidates = parseStructuredAddressCandidates(rawQuery);
+      const seenAddressKod = new Set<number>();
+      let lastError: unknown = null;
+      const includeUnitsVariants = includeUnits ? [true, false] : [false];
+
+      for (const includeUnitsValue of includeUnitsVariants) {
+        for (const structured of structuredCandidates) {
+          try {
+            const data: any = await cuzkLookupByAddress(structured, includeUnitsValue);
+
+            if (data?.ok && data?.mode === "MULTI_MATCH" && Array.isArray(data?.matches)) {
+              const list = (data.matches as RuianMatch[]).slice().sort((a, b) => {
+                return scoreMatchForAddressHints(b, hints) - scoreMatchForAddressHints(a, hints);
+              });
+              const best = list.find((item) => {
+                const kod = Number(item?.kod ?? 0);
+                return Number.isFinite(kod) && kod > 0;
+              });
+
+              if (best) {
+                const detail = await cuzkLookupByAdresniMisto(Number(best.kod), includeUnitsValue);
+                return { data: detail, resolvedAddress: best.adresa || String(structured.q ?? structured.obec ?? rawQuery) };
+              }
+            } else {
+              return { data, resolvedAddress: String(data?.match?.adresa ?? structured.q ?? structured.obec ?? rawQuery) };
+            }
+          } catch (structuredErr) {
+            lastError = structuredErr;
+          }
+        }
+
+        for (const candidate of candidates) {
+          try {
+            const data: any = await cuzkLookupByAddress(candidate, includeUnitsValue);
+            if (data?.ok && data?.mode === "MULTI_MATCH" && Array.isArray(data?.matches)) {
+              const list = (data.matches as RuianMatch[]).slice().sort((a, b) => {
+                return scoreMatchForAddressHints(b, hints) - scoreMatchForAddressHints(a, hints);
+              });
+              const best = list.find((item) => {
+                const kod = Number(item?.kod ?? 0);
+                return Number.isFinite(kod) && kod > 0;
+              });
+
+              if (best) {
+                const detail = await cuzkLookupByAdresniMisto(
+                  Number(best.kod),
+                  includeUnitsValue
+                );
+                return { data: detail, resolvedAddress: best.adresa || candidate };
+              }
+            } else {
+              return { data, resolvedAddress: String(data?.match?.adresa ?? candidate) };
+            }
+          } catch (lookupErr) {
+            lastError = lookupErr;
+          }
+        }
+
+        const suggestQueries = Array.from(
+          new Set(
+            candidates
+              .slice(0, 5)
+              .flatMap((candidate) => normalizeSuggestQueryVariants(candidate))
+          )
+        ).slice(0, 10);
+
+        for (const suggestQuery of suggestQueries) {
+          try {
+            const suggestData: any = await cuzkSuggestAddress(suggestQuery);
+            const suggestMatches = normalizeSuggestPayload(suggestData).sort((a, b) => {
+              return scoreMatchForAddressHints(b, hints) - scoreMatchForAddressHints(a, hints);
+            });
+
+            for (const match of suggestMatches) {
+              const kod = Number(match.kod ?? 0);
+              if (!Number.isFinite(kod) || kod <= 0 || seenAddressKod.has(kod)) continue;
+              seenAddressKod.add(kod);
+
+              try {
+                const detail = await cuzkLookupByAdresniMisto(kod, includeUnitsValue);
+                return { data: detail, resolvedAddress: match.adresa || suggestQuery };
+              } catch (detailErr) {
+                lastError = detailErr;
+              }
+            }
+          } catch (suggestErr) {
+            lastError = suggestErr;
+          }
+        }
+      }
+
+      throw (
+        lastError ??
+        new Error("Adresní místo se podle zadaných údajů nenašlo.")
+      );
+    },
+    [includeUnits]
+  );
+
+  const handleSearchAddress = useCallback(async () => {
     const q = addressQuery.trim();
     if (q.length < 2) {
       setError("Zadej prosím adresu (aspoň pár znaků). Např. „Dlouhá 12, Praha“.");
@@ -544,30 +1018,50 @@ export default function CuzkPage() {
     setGmapsEmbedError(null);
 
     try {
-      if (selectedKod && Number.isFinite(selectedKod) && selectedKod > 0) {
-        const data = await cuzkLookupByAdresniMisto(selectedKod, includeUnits);
-        setSelectedKod(null);
-        setResult(data);
-        return;
+      const { data, resolvedAddress } = await runSmartAutoAddressSearch(q);
+      if (resolvedAddress) {
+        suppressSuggestRef.current = true;
+        setAddressQuery(resolvedAddress);
       }
-
-      const data: any = await cuzkLookupByAddress(q, includeUnits);
-
-      if (data?.ok && data?.mode === "MULTI_MATCH" && Array.isArray(data?.matches)) {
-        const list = data.matches as RuianMatch[];
-        setMatches(list);
-        setSelectedKod(list[0]?.kod ?? null);
-        setResult(data);
-        return;
-      }
-
+      setSelectedKod(null);
       setResult(data);
     } catch (e: any) {
       setError(String(e?.message ?? "Nepodařilo se načíst data."));
     } finally {
       setLoading(false);
     }
-  };
+  }, [addressQuery, runSmartAutoAddressSearch]);
+
+  useEffect(() => {
+    if (!user) return;
+    const query = addressFromQuery.trim();
+    if (query.length < 2) return;
+    const marker = query.toLowerCase();
+    if (autoLookupAddressRef.current === marker) return;
+    autoLookupAddressRef.current = marker;
+    setSelectedKod(null);
+    setMatches([]);
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    setShowJson(false);
+    setGmapsEmbedError(null);
+
+    void (async () => {
+      try {
+        const { data, resolvedAddress } = await runSmartAutoAddressSearch(query);
+        if (resolvedAddress) {
+          suppressSuggestRef.current = true;
+          setAddressQuery(resolvedAddress);
+        }
+        setResult(data);
+      } catch (e: any) {
+        setError(String(e?.message ?? "Nepodařilo se načíst data."));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [user, addressFromQuery, runSmartAutoAddressSearch]);
 
   const handleLoadSelected = async () => {
     if (!selectedKod || !Number.isFinite(selectedKod) || selectedKod <= 0) {
