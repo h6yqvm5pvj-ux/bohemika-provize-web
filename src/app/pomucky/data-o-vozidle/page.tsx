@@ -17,6 +17,7 @@ import {
   Palette,
   RotateCcw,
   Ruler,
+  Search,
   ShieldCheck,
   UserRound,
   Users,
@@ -311,7 +312,9 @@ export default function VehicleDataPage() {
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
   const [copiedVin, setCopiedVin] = useState(false);
   const [copiedOrv, setCopiedOrv] = useState(false);
+  const [searchActivated, setSearchActivated] = useState(false);
   const autoLookupVinRef = useRef<string | null>(null);
+  const compactVinInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
@@ -455,6 +458,7 @@ export default function VehicleDataPage() {
   }, []);
 
   const handleSearch = useCallback(async () => {
+    setSearchActivated(true);
     await handleSearchByVin(vin);
   }, [handleSearchByVin, vin]);
 
@@ -468,8 +472,29 @@ export default function VehicleDataPage() {
     if (vinFromQuery.length < 11) return;
     if (autoLookupVinRef.current === vinFromQuery) return;
     autoLookupVinRef.current = vinFromQuery;
+    setSearchActivated(true);
     void handleSearchByVin(vinFromQuery);
   }, [user, vinFromQuery, handleSearchByVin]);
+
+  useEffect(() => {
+    if (!searchActivated || typeof window === "undefined") return;
+    const frame = window.requestAnimationFrame(() => {
+      const input = compactVinInputRef.current;
+      if (!input) return;
+      input.focus();
+      const cursor = input.value.length;
+      input.setSelectionRange(cursor, cursor);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [searchActivated]);
+
+  const handleResetVin = useCallback(() => {
+    setVin("");
+    setSearchActivated(false);
+    setResult(null);
+    setError(null);
+    setLoadedAt(null);
+  }, []);
 
   const handleCopyVin = async () => {
     const val = safeStr(result?.vin ?? vin);
@@ -496,89 +521,143 @@ export default function VehicleDataPage() {
   };
 
   const displayedVin = safeStr(result?.vin ?? vin);
+  const valuationHref =
+    displayedVin !== "—"
+      ? `/pomucky/naceneni-vozidla?vin=${encodeURIComponent(displayedVin)}`
+      : "/pomucky/naceneni-vozidla";
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-[1000px] space-y-4">
-        <header className="space-y-2 text-center">
-          <h1 className="text-5xl font-semibold tracking-tight text-slate-900 sm:text-6xl">
-            Data o vozidle
-          </h1>
-          <p className="text-sm text-slate-600">Data z registru vozidel</p>
-          <div className="flex justify-center">
-            <Link
-              href="/pomucky"
-              className="inline-flex items-center text-xs text-slate-600 hover:text-slate-900 transition"
-            >
+      <div className="mx-auto w-full max-w-6xl space-y-4 pb-8">
+        <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-2">
+            <h1 className="flex items-center gap-2.5 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+              <CarFront className="h-7 w-7 text-slate-700" />
+              <span>Data o vozidle</span>
+            </h1>
+            <Link href="/pomucky" className="inline-flex text-xs text-slate-600 transition hover:text-slate-900">
               ← Zpět na pomůcky
             </Link>
           </div>
+          {searchActivated && (
+            <div className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 text-xs text-slate-600">
+              Datový přehled z registru vozidel podle VIN.
+            </div>
+          )}
         </header>
 
-        <div className="space-y-4">
-        <section className="relative z-10 p-4 sm:p-5 space-y-3">
-          <div className="flex flex-col items-center gap-2 text-center">
-            <p className="text-xs text-slate-600">Zadej VIN a načti datový přehled.</p>
-
-            {!user && (
-              <Tag tone="amber">Přihlaš se, aby šlo volat API</Tag>
-            )}
-          </div>
-
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 sm:flex-row">
-            <input
-              type="text"
-              value={vin}
-              onChange={(e) => setVin(e.target.value.toUpperCase().replace(/\s+/g, ""))}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && canSearch && !loading) {
-                  void handleSearch();
-                }
-              }}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900  shadow-[inset_0_1px_0_rgba(255,255,255,0.16)] outline-none focus:ring-2 focus:ring-sky-400/70 focus:border-sky-300/70"
-              placeholder='např. "TMB..."'
-            />
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setVin("");
-                  setResult(null);
-                  setError(null);
-                  setLoadedAt(null);
-                }}
-                className="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900  shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:border-slate-300 hover:bg-white transition"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Vymazat
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleSearch()}
-                disabled={loading || !canSearch}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-black transition disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {loading ? "Načítám…" : "Vyhledat"}
-              </button>
+        {searchActivated ? (
+          <section className="rounded-xl border border-slate-100 bg-white px-4 py-4 transition-all duration-300">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:gap-3">
+              <div className="min-w-0 flex-1 space-y-1.5 lg:max-w-[620px]">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">VIN</label>
+                <input
+                  ref={compactVinInputRef}
+                  type="text"
+                  value={vin}
+                  onChange={(event) => setVin(normalizeVinInput(event.target.value))}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && canSearch && !loading) void handleSearch();
+                  }}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                  placeholder='např. "TMB..."'
+                />
+              </div>
+              <div className="flex flex-wrap gap-2 lg:shrink-0 lg:pb-0.5">
+                <button
+                  type="button"
+                  onClick={handleResetVin}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Vymazat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSearch()}
+                  disabled={loading || !canSearch}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Search className="h-4 w-4" />
+                  {loading ? "Načítám..." : "Načíst data"}
+                </button>
+              </div>
             </div>
-          </div>
+            {!user && (
+              <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Přihlaš se, aby šlo volat data o vozidle.
+              </p>
+            )}
+            {error && (
+              <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                {error}
+              </p>
+            )}
+          </section>
+        ) : (
+          <section className="flex min-h-[58vh] items-center justify-center px-2 py-8 sm:px-4">
+            <div className="mx-auto w-full max-w-5xl">
+              <div className="mx-auto max-w-4xl text-center">
+                <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+                  Zadej VIN vozidla
+                </h2>
+              </div>
 
-          {loadedAt && (
-            <p className="inline-flex items-center justify-center gap-1 text-[11px] text-slate-400 w-full">
-              <CalendarClock className="h-3.5 w-3.5 text-slate-400" />
-              Načteno: {loadedAt.toLocaleDateString("cs-CZ")} {loadedAt.toLocaleTimeString("cs-CZ")}
-            </p>
-          )}
+              <div className="mx-auto mt-7 max-w-4xl space-y-4">
+                <input
+                  autoFocus
+                  type="text"
+                  value={vin}
+                  onChange={(event) => setVin(normalizeVinInput(event.target.value))}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && canSearch && !loading) void handleSearch();
+                  }}
+                  className="h-[72px] w-full rounded-2xl border border-emerald-300 bg-white px-6 text-center text-xl font-semibold tracking-[0.08em] text-slate-900 outline-none transition placeholder:tracking-normal placeholder:text-slate-400 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
+                  placeholder='např. "WAUZZZ..."'
+                />
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleResetVin}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Vymazat
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSearch()}
+                    disabled={loading || !canSearch}
+                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-700 bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Search className="h-4 w-4" />
+                    {loading ? "Načítám..." : "Načíst data"}
+                  </button>
+                </div>
+              </div>
 
-          {error && (
-            <p className="mx-auto max-w-3xl text-xs text-amber-800 bg-amber-50 border border-amber-500/60 rounded-xl px-3 py-2">
-              {error}
-            </p>
-          )}
-        </section>
+              {!user && (
+                <p className="mx-auto mt-4 max-w-4xl rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Přihlaš se, aby šlo volat data o vozidle.
+                </p>
+              )}
+              {error && (
+                <p className="mx-auto mt-3 max-w-4xl rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  {error}
+                </p>
+              )}
+            </div>
+          </section>
+        )}
 
-        {loading ? (
+        {searchActivated && loadedAt && (
+          <p className="inline-flex w-full items-center justify-center gap-1 text-[11px] text-slate-400">
+            <CalendarClock className="h-3.5 w-3.5 text-slate-400" />
+            Načteno: {loadedAt.toLocaleDateString("cs-CZ")} {loadedAt.toLocaleTimeString("cs-CZ")}
+          </p>
+        )}
+
+        {searchActivated && (loading ? (
           <section className="rounded-3xl border border-slate-300 bg-white px-4 py-4 space-y-3 animate-pulse">
             <div className="h-7 w-2/5 rounded-lg bg-white" />
             <div className="h-4 w-3/5 rounded-lg bg-white" />
@@ -591,7 +670,7 @@ export default function VehicleDataPage() {
           </section>
         ) : !result ? (
           <section className="rounded-2xl border border-slate-300 bg-white px-4 py-4 text-sm text-slate-600">
-            Zatím nic nezobrazuji. Zadej VIN a dej „Vyhledat“.
+            Zatím nejsou načtená data vozidla.
           </section>
         ) : !vehicle ? (
           <section className="rounded-2xl border border-amber-400/30 bg-amber-50 px-4 py-4 text-sm text-amber-800">
@@ -638,6 +717,13 @@ export default function VehicleDataPage() {
                       <Copy className="h-3.5 w-3.5" />
                       {copiedOrv ? "Zkopírováno" : "Kopírovat ORV"}
                     </button>
+                    <Link
+                      href={valuationHref}
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-900 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-900 hover:bg-slate-100 transition"
+                    >
+                      <CarFront className="h-3.5 w-3.5" />
+                      Nacenit vozidlo
+                    </Link>
                   </div>
                 </div>
 
@@ -865,8 +951,7 @@ export default function VehicleDataPage() {
               </div>
             </section>
           </div>
-        )}
-        </div>
+        ))}
       </div>
     </AppLayout>
   );

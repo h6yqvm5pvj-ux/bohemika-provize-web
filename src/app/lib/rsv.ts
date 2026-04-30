@@ -1,9 +1,7 @@
 // src/app/lib/rsv.ts
 import { auth } from "@/app/firebase-auth";
 
-const RSV_FUNCTION_URL =
-  process.env.NEXT_PUBLIC_RSV_LOOKUP_URL ??
-  "https://europe-central2-bohemikasmlouvy.cloudfunctions.net/rsvVehicleLookup";
+const RSV_PROXY_URL = "/api/rsv/vehicle";
 
 export async function rsvVehicleLookupByVin(vin: string) {
   const user = auth.currentUser;
@@ -17,12 +15,13 @@ export async function rsvVehicleLookupByVin(vin: string) {
     throw new Error("VIN je moc krátké.");
   }
 
-  const url = `${RSV_FUNCTION_URL}?vin=${encodeURIComponent(queryVin)}`;
+  const url = `${RSV_PROXY_URL}?vin=${encodeURIComponent(queryVin)}`;
   const resp = await fetch(url, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
     },
+    cache: "no-store",
   });
 
   const data = (await resp.json().catch(() => ({}))) as {

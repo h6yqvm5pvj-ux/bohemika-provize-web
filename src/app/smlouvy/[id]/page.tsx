@@ -7,7 +7,6 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CalendarDays,
-  ChevronDown,
   ExternalLink,
   FileText,
   Package,
@@ -45,7 +44,6 @@ import {
 import { Spinner, Skeleton, Toasts } from "./ContractDetailUi";
 import { type ContractDoc } from "./contractDetailTypes";
 import {
-  cleanResultTitle,
   computeTotalWithMultipliers,
   formatDate,
   formatMoney,
@@ -62,7 +60,6 @@ import {
   preloadFormulaModule,
   productIcon,
   productLabel,
-  resultIconForTitle,
   stripTotalRows,
   toDate,
   toDateInputValue,
@@ -72,230 +69,26 @@ import {
   contractLifecycleStatus,
   contractMaturityDate,
 } from "@/app/lib/contractLifecycle";
+import {
+  ALLIANZ_PAYMENT_CHECK_URL,
+  SLAVIA_PAYMENT_CHECK_URL,
+  CPP_PAYMENT_CHECK_URL,
+  KOOPERATIVA_PAYMENT_CHECK_URL,
+  CPP_PAYMENT_CHECK_PRODUCTS,
+  KOOPERATIVA_PAYMENT_CHECK_PRODUCTS,
+  LIFE_PRODUCT_KEYS,
+  type ContractsApiError,
+  type ContractsApiResponseBase,
+  type ContractDetailApiResponse,
+  type NeonImmediateBreakdown,
+  toCommissionMode,
+  buildNeonImmediateBreakdown,
+} from "./contractDetailLogic";
+import {
+  ContractCommissionSection,
+  type MeziprovisionCard,
+} from "./ContractCommissionSection";
 
-const LIFE_PRODUCT_KEYS = new Set<Product>([
-  "neon",
-  "flexi",
-  "maximaMaxEfekt",
-  "pillowInjury",
-]);
-
-const ALLIANZ_PAYMENT_CHECK_URL =
-  "https://www.allianz.cz/cs_CZ/apps/zaplacenost-pojistky.html";
-const SLAVIA_PAYMENT_CHECK_URL = "https://www.slavia-pojistovna.cz/over-ps/";
-const CPP_PAYMENT_CHECK_URL =
-  "https://insure.cpp.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml#kotva";
-const KOOPERATIVA_PAYMENT_CHECK_URL =
-  "https://insure.koop.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml";
-const CPP_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
-  "neon",
-  "zamex",
-  "domex",
-  "cpphafan",
-  "cppsimplex",
-  "cppAuto",
-  "cppPPRs",
-  "cppPPRbez",
-  "cppcestovko",
-]);
-const KOOPERATIVA_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
-  "flexi",
-  "koopmajetekobcan",
-  "kooperativaAuto",
-  "koopcestovko",
-]);
-
-type ContractsApiError = Error & { status?: number };
-
-type ContractsApiResponseBase = {
-  ok?: boolean;
-  error?: string;
-};
-
-type ContractOwnerMetaApi = {
-  position?: Position | null;
-  managerEmail?: string | null;
-  managerPosition?: Position | null;
-  currentChainEmails?: string[];
-};
-
-type ContractDetailApiResponse = ContractsApiResponseBase & {
-  mode?: "detail";
-  position?: Position | null;
-  hasTeam?: boolean;
-  teamEmails?: string[];
-  contract?: ContractDoc;
-  timeline?: ContractDoc[];
-  ownerMeta?: ContractOwnerMetaApi | null;
-};
-
-type NeonImmediateBreakdownPart = {
-  label: string;
-  amount: number;
-};
-
-type NeonImmediateBreakdown = {
-  position: Position;
-  totalCoefficient: number;
-  a101Coefficient: number;
-  b0301Coefficient: number;
-  b3601HalfCoefficient: number;
-  includeB3601: boolean;
-  parts: NeonImmediateBreakdownPart[];
-  total: number;
-};
-
-const NEON_IMMEDIATE_TOTAL_COEFFICIENTS: Record<Position, number> = {
-  poradce1: 1.2,
-  poradce2: 1.38,
-  poradce3: 1.502,
-  poradce4: 2.16,
-  poradce5: 2.4,
-  poradce6: 2.58,
-  poradce7: 2.702,
-  poradce8: 2.881,
-  poradce9: 3.002,
-  poradce10: 3.122,
-  manazer4: 2.404,
-  manazer5: 2.683,
-  manazer6: 2.962,
-  manazer7: 3.243,
-  manazer8: 3.522,
-  manazer9: 3.802,
-  manazer10: 4.083,
-};
-
-const NEON_IMMEDIATE_B0301_COEFFICIENTS: Record<Position, number> = {
-  poradce1: 0.444,
-  poradce2: 0.489,
-  poradce3: 0.533,
-  poradce4: 0.622,
-  poradce5: 0.645,
-  poradce6: 0.665,
-  poradce7: 0.687,
-  poradce8: 0.71,
-  poradce9: 0.73,
-  poradce10: 0.752,
-  manazer4: 0.633,
-  manazer5: 0.69,
-  manazer6: 0.747,
-  manazer7: 0.807,
-  manazer8: 0.863,
-  manazer9: 0.92,
-  manazer10: 0.987,
-};
-
-const NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS: Record<Position, number> = {
-  poradce1: 0.4445,
-  poradce2: 0.489,
-  poradce3: 0.5335,
-  poradce4: 0.689,
-  poradce5: 0.761,
-  poradce6: 0.8,
-  poradce7: 0.8385,
-  poradce8: 0.877,
-  poradce9: 0.9165,
-  poradce10: 0.955,
-  manazer4: 0.7575,
-  manazer5: 0.8395,
-  manazer6: 0.9205,
-  manazer7: 1.0015,
-  manazer8: 1.083,
-  manazer9: 1.1635,
-  manazer10: 1.2445,
-};
-
-const roundToCents = (value: number): number => Math.round(value * 100) / 100;
-const toCents = (value: number): number => Math.round(value * 100);
-const fromCents = (value: number): number => value / 100;
-const toCommissionMode = (value: unknown): CommissionMode | null =>
-  value === "accelerated" || value === "standard" ? value : null;
-const isAcceleratedMode = (mode: CommissionMode | null | undefined): boolean =>
-  mode === "accelerated";
-
-const isImmediateCommissionTitle = (title: string): boolean =>
-  normalizeTitleForCompare(title).includes("okamžitá provize");
-
-const hasNeonImmediateCoefficient = (
-  position: Position | null | undefined
-): position is Position =>
-  !!position &&
-  Number.isFinite(NEON_IMMEDIATE_TOTAL_COEFFICIENTS[position]) &&
-  Number.isFinite(NEON_IMMEDIATE_B0301_COEFFICIENTS[position]) &&
-  Number.isFinite(NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS[position]);
-
-const buildNeonImmediateBreakdown = (
-  amount: number,
-  position: Position | null | undefined,
-  mode: CommissionMode | null | undefined
-): NeonImmediateBreakdown | null => {
-  if (!hasNeonImmediateCoefficient(position)) return null;
-
-  const includeB3601 = isAcceleratedMode(mode);
-  const totalCoefficient = NEON_IMMEDIATE_TOTAL_COEFFICIENTS[position];
-  const b0301Coefficient = NEON_IMMEDIATE_B0301_COEFFICIENTS[position];
-  const b3601HalfCoefficient = includeB3601
-    ? NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS[position]
-    : 0;
-  const a101Coefficient =
-    totalCoefficient - b0301Coefficient - b3601HalfCoefficient;
-  if (!Number.isFinite(totalCoefficient) || totalCoefficient <= 0) return null;
-  if (!Number.isFinite(b0301Coefficient) || b0301Coefficient < 0) return null;
-  if (!Number.isFinite(b3601HalfCoefficient) || b3601HalfCoefficient < 0) return null;
-  if (a101Coefficient < -0.000001) return null;
-
-  const total = Number(amount);
-  if (!Number.isFinite(total) || total <= 0) return null;
-
-  const baseAmount = total / totalCoefficient;
-  const partDefs: { label: string; raw: number }[] = [
-    { label: "Provize 101A", raw: baseAmount * Math.max(0, a101Coefficient) },
-    { label: "Provize B0301", raw: baseAmount * b0301Coefficient },
-    ...(includeB3601
-      ? [
-          {
-            label: "Provize 50% z B3601",
-            raw: baseAmount * b3601HalfCoefficient,
-          },
-        ]
-      : []),
-  ];
-  if (partDefs.length === 0) return null;
-
-  const partCents = partDefs.map((part) => ({
-    label: part.label,
-    cents: Math.max(0, toCents(part.raw)),
-  }));
-  const totalCents = toCents(total);
-  const lastIdx = partCents.length - 1;
-  const roundedSumCents = partCents.reduce((sum, part) => sum + part.cents, 0);
-  partCents[lastIdx].cents += totalCents - roundedSumCents;
-
-  if (partCents[lastIdx].cents < 0) {
-    let deficit = -partCents[lastIdx].cents;
-    partCents[lastIdx].cents = 0;
-    for (let idx = lastIdx - 1; idx >= 0 && deficit > 0; idx -= 1) {
-      const reduceBy = Math.min(partCents[idx].cents, deficit);
-      partCents[idx].cents -= reduceBy;
-      deficit -= reduceBy;
-    }
-    if (deficit > 0) return null;
-  }
-
-  return {
-    position,
-    totalCoefficient,
-    a101Coefficient: Math.max(0, a101Coefficient),
-    b0301Coefficient,
-    b3601HalfCoefficient,
-    includeB3601,
-    total,
-    parts: partCents.map((part) => ({
-      label: part.label,
-      amount: roundToCents(fromCents(part.cents)),
-    })),
-  };
-};
 
 export default function ContractDetailPage() {
   const router = useRouter();
@@ -3079,9 +2872,10 @@ export default function ContractDetailPage() {
       });
   })();
 
-  const showAnyMeziprovision =
+  const showAnyMeziprovision = Boolean(
     isManagerViewingSubordinate &&
-    (showMeziprovision || showChildMeziprovision || otherManagerOverrideCards.length > 0);
+      (showMeziprovision || showChildMeziprovision || otherManagerOverrideCards.length > 0)
+  );
 
   const canDelete = isOwnContract;
 
@@ -3109,16 +2903,6 @@ export default function ContractDetailPage() {
   const childManagerTotalDisplay =
     isPaymentBasedProduct ? childManagerSum * paymentMultiplier : childOverrideTotal ?? 0;
   const contractAuthorName = nameFromEmail(contract?.userEmail ?? ownerEmail ?? user?.email);
-
-  type MeziprovisionCard = {
-    key: string;
-    userName: string;
-    position: Position | null;
-    mode: CommissionMode | null;
-    items: CommissionResultItemDTO[];
-    totals: { immediate: number; subsequent: number } | null;
-    totalDisplay: number;
-  };
 
   const meziprovisionCards: MeziprovisionCard[] = [
     ...(showMeziprovision
@@ -3188,14 +2972,6 @@ export default function ContractDetailPage() {
     "rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4";
   const successPanelClass =
     "rounded-2xl border border-slate-300 bg-white px-5 py-4 shadow-[0_8px_20px_rgba(15,23,42,0.08)]";
-  const commissionPanelClass =
-    "rounded-[22px] border border-slate-300 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_100%)] px-5 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]";
-  const commissionRowClass =
-    "flex items-baseline justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3";
-  const commissionTotalClass =
-    "mt-4 rounded-xl border border-slate-300 bg-slate-100 px-4 py-3";
-  const commissionTotalHighlightClass =
-    "mt-4 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-white shadow-[0_10px_20px_rgba(15,23,42,0.28)]";
   const noteCardClass =
     "rounded-[22px] border border-slate-300 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_100%)] px-5 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]";
   const monoHeadingClass = "font-mono tracking-tight text-slate-900";
@@ -3203,8 +2979,6 @@ export default function ContractDetailPage() {
     "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-4 py-2 text-base font-mono tracking-tight text-slate-900";
   const monoChipDarkClass =
     "inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-base font-mono tracking-tight text-white";
-  const collapsibleButtonClass =
-    "flex h-12 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-4 text-base font-semibold font-mono tracking-tight text-slate-900 transition hover:border-slate-400 hover:bg-slate-50";
   const ghostButtonClass =
     "rounded-xl border border-slate-900 bg-slate-900 px-5 py-3 text-base sm:text-lg font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
   const headerActionButtonClass =
@@ -3247,64 +3021,6 @@ export default function ContractDetailPage() {
     },
     [pushToast]
   );
-
-  const renderCommissionRow = (
-    item: CommissionResultItemDTO,
-    position: Position | null | undefined,
-    commissionMode: CommissionMode | null | undefined,
-    key: string
-  ) => {
-    const icon = resultIconForTitle(item.title);
-    const clickable =
-      prod === "neon" &&
-      isImmediateCommissionTitle(item.title) &&
-      hasNeonImmediateCoefficient(position);
-    const rowClass = clickable
-      ? `${commissionRowClass} w-full text-left transition hover:border-slate-400 hover:bg-slate-100`
-      : commissionRowClass;
-
-    const content = (
-      <>
-        <span className="flex items-center gap-3 text-lg text-slate-900 font-medium">
-          {icon && (
-            <span className="relative h-5 w-5 flex-shrink-0">
-              <Image
-                src={icon}
-                alt=""
-                fill
-                className="object-contain"
-              />
-            </span>
-          )}
-          <span>{cleanResultTitle(item.title)}</span>
-        </span>
-        <span className="text-lg font-semibold text-slate-900">
-          {formatMoney(item.amount)}
-        </span>
-      </>
-    );
-
-    if (!clickable) {
-      return (
-        <div key={key} className={rowClass}>
-          {content}
-        </div>
-      );
-    }
-
-    return (
-      <button
-        key={key}
-        type="button"
-        className={rowClass}
-        onClick={() =>
-          handleOpenNeonImmediateBreakdown(item, position, commissionMode)
-        }
-      >
-        {content}
-      </button>
-    );
-  };
 
   const renderLoadingSkeleton = () => (
     <div className="space-y-6">
@@ -4030,214 +3746,24 @@ export default function ContractDetailPage() {
             )}
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
-              <div className="space-y-5">
-            {/* MEZIPROVIZE – jen když manažer kouká na podřízeného */}
-            {showAnyMeziprovision && (
-              <section className="space-y-4">
-                {meziprovisionCards.map((card) => {
-                  const isExpanded = expandedMeziprovisionKeys.includes(card.key);
-                  return (
-                    <div key={card.key} className="space-y-3">
-                      <button
-                        type="button"
-                        onClick={() => toggleMeziprovisionCard(card.key)}
-                        aria-expanded={isExpanded}
-                        className={`${collapsibleButtonClass} ${
-                          isExpanded ? "border-slate-900 bg-slate-50" : ""
-                        }`}
-                      >
-                        <span className="truncate text-left">
-                          Meziprovize: {card.userName}
-                        </span>
-                        <ChevronDown
-                          size={16}
-                          className={`shrink-0 text-slate-500 transition-transform ${
-                            isExpanded ? "rotate-180" : ""
-                          }`}
-                          aria-hidden="true"
-                        />
-                      </button>
-
-                      {isExpanded && (
-                        <div className="space-y-3">
-                          <h4 className={`text-lg font-semibold ${monoHeadingClass} flex flex-wrap items-center gap-2`}>
-                            <span className={monoChipClass}>Meziprovize</span>
-                            Meziprovize: {card.userName}
-                            {card.position && (
-                              <span className="ml-1 text-sm text-slate-700">
-                                ({positionLabel(card.position)})
-                              </span>
-                            )}
-                          </h4>
-
-                          <div className={commissionPanelClass}>
-                            <div className="space-y-1">
-                              {card.items.map((item, idx) =>
-                                renderCommissionRow(
-                                  item,
-                                  card.position,
-                                  card.mode,
-                                  `${card.key}-${idx}-${item.title}`
-                                )
-                              )}
-                            </div>
-
-                            <div className={commissionTotalClass}>
-                              {isPaymentBasedProduct && card.totals ? (
-                                <div className="w-full space-y-2 text-lg">
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-semibold">Celkem v 1. roce</span>
-                                    <span className="text-2xl font-bold text-slate-900">
-                                      {formatMoney(card.totals.immediate)}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-semibold">Celkem ročně následně</span>
-                                    <span className="text-2xl font-bold text-slate-900">
-                                      {formatMoney(card.totals.subsequent)}
-                                    </span>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex w-full items-center justify-between gap-4">
-                                  <span className="text-lg font-semibold">
-                                    Celkem meziprovize
-                                  </span>
-                                  <span className="text-2xl font-bold text-slate-900">
-                                    {formatMoney(card.totalDisplay)}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                  </section>
-                )}
-
-                {/* PROVIZE PORADCE */}
-                {isOwnContract ? (
-                  // VLASTNÍ SMLOUVA – vždy viditelné
-                  <section className="space-y-4">
-                    <h3 className={`text-xl font-semibold ${monoHeadingClass} flex items-center gap-2`}>
-                      <span className={monoChipDarkClass}>Provize</span>
-                      Výpočet provizí
-                    </h3>
-                    <div className={commissionPanelClass}>
-                      <div className="space-y-1">
-                        {adviserItems.map((item, idx) =>
-                          renderCommissionRow(
-                            item,
-                            adviserBreakdownPosition,
-                            adviserBreakdownMode,
-                            `adviser-own-${idx}-${item.title}`
-                          )
-                        )}
-                      </div>
-
-                      <div className={commissionTotalHighlightClass}>
-                        {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
-                          <div className="w-full space-y-2 text-lg">
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold">Celkem v 1. roce</span>
-                              <span className="text-2xl font-bold text-emerald-300">
-                                {formatMoney(paymentBasedAdviserTotals.immediate)}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold">Celkem ročně následně</span>
-                              <span className="text-2xl font-bold text-emerald-300">
-                                {formatMoney(paymentBasedAdviserTotals.subsequent)}
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex w-full items-center justify-between gap-4">
-                            <span className="text-lg font-semibold">
-                              Celkem
-                            </span>
-                            <span className="text-2xl font-bold text-emerald-300">
-                              {formatMoney(adviserTotalDisplay)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </section>
-                ) : (
-                  // MANAŽER NA SMLOUVĚ PODŘÍZENÉHO – collapsible
-                  <section className="space-y-4">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowAdvisorDetails((v) => !v)
-                      }
-                      aria-expanded={showAdvisorDetails}
-                      className={`${collapsibleButtonClass} ${
-                        showAdvisorDetails ? "border-slate-900 bg-slate-50" : ""
-                      }`}
-                    >
-                      <span className="truncate text-left">
-                        Provize sjednatele: {contractAuthorName}
-                      </span>
-                      <ChevronDown
-                        size={16}
-                        className={`shrink-0 text-slate-500 transition-transform ${
-                          showAdvisorDetails ? "rotate-180" : ""
-                        }`}
-                        aria-hidden="true"
-                      />
-                    </button>
-
-                        {showAdvisorDetails && (
-                      <div className={commissionPanelClass}>
-                        <div className="space-y-1">
-                          {adviserItems.map((item, idx) =>
-                            renderCommissionRow(
-                              item,
-                              adviserBreakdownPosition,
-                              adviserBreakdownMode,
-                              `adviser-team-${idx}-${item.title}`
-                            )
-                          )}
-                        </div>
-
-                        <div className={commissionTotalHighlightClass}>
-                          {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
-                            <div className="w-full space-y-2 text-lg">
-                              <div className="flex items-center justify-between">
-                                <span className="font-semibold">Celkem v 1. roce</span>
-                                <span className="text-2xl font-bold text-emerald-300">
-                                  {formatMoney(paymentBasedAdviserTotals.immediate)}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <span className="font-semibold">Celkem ročně následně</span>
-                                <span className="text-2xl font-bold text-emerald-300">
-                                  {formatMoney(paymentBasedAdviserTotals.subsequent)}
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex w-full items-center justify-between gap-4">
-                              <span className="text-lg font-semibold">
-                                Celkem
-                              </span>
-                              <span className="text-2xl font-bold text-emerald-300">
-                                {formatMoney(adviserTotalDisplay)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </section>
-                )}
-
-              </div>
+              <ContractCommissionSection
+                product={prod}
+                isOwnContract={isOwnContract}
+                isPaymentBasedProduct={isPaymentBasedProduct}
+                showAnyMeziprovision={showAnyMeziprovision}
+                meziprovisionCards={meziprovisionCards}
+                expandedMeziprovisionKeys={expandedMeziprovisionKeys}
+                onToggleMeziprovisionCard={toggleMeziprovisionCard}
+                adviserItems={adviserItems}
+                adviserBreakdownPosition={adviserBreakdownPosition}
+                adviserBreakdownMode={adviserBreakdownMode}
+                paymentBasedAdviserTotals={paymentBasedAdviserTotals}
+                adviserTotalDisplay={adviserTotalDisplay}
+                contractAuthorName={contractAuthorName}
+                showAdvisorDetails={showAdvisorDetails}
+                onToggleAdvisorDetails={() => setShowAdvisorDetails((v) => !v)}
+                onOpenNeonImmediateBreakdown={handleOpenNeonImmediateBreakdown}
+              />
 
                 {/* POZNÁMKA */}
                 <section className={`${noteCardClass} space-y-4 lg:h-fit lg:mt-10`}>

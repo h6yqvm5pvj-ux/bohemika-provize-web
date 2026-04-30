@@ -64,6 +64,7 @@ const QUICK_ACTION_SET = new Set([
   "zlato",
   "katastr",
   "data-o-vozidle",
+  "naceneni-vozidla",
   "projekce-vykonu",
   "pracovni-neschopenka",
   "invalidita",

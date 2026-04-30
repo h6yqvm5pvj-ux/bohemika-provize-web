@@ -171,6 +171,14 @@ export default function ToolsPage() {
         href: "/pomucky/data-o-vozidle",
       },
       {
+        key: "naceneni-vozidla",
+        category: "Pojištění vozidel",
+        title: "Nacenění vozidla",
+        description: "Odhad doporučené a obvyklé ceny vozidla pro havarijní pojištění.",
+        icon: Calculator,
+        href: "/pomucky/naceneni-vozidla",
+      },
+      {
         key: "kontrola-tachometru",
         category: "Pojištění vozidel",
         title: "Kontrola tachometru",

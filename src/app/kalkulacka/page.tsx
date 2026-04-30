@@ -1,21 +1,11 @@
 // src/app/kalkulacka/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
-  BarChart3,
-  CheckCircle2,
   Download,
-  FileText,
-  Package,
-  RefreshCcw,
-  Repeat2,
-  Search,
-  Sigma,
-  SlidersHorizontal,
-  X,
 } from "lucide-react";
 import { auth, db } from "../firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
@@ -56,7 +46,6 @@ import {
   calculateAxaCestovko,
   calculateKoopCestovko,
   calculateComfortCC,
-  SUPPORTED_PRODUCTS,
   getCoefficientSummary,
   isNeonHistoricalPeriod,
 } from "../lib/productFormulas";
@@ -76,10 +65,7 @@ import { detectProductFromPdf } from "../lib/detectProductFromPdf";
 import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_OPTIONS,
-  isAutoProduct as isAutoProductFromCatalog,
   productInstitutionId as productInstitutionIdFromCatalog,
-  productInstitutionLabel as productInstitutionLabelFromCatalog,
-  productInstitutionLogo as productInstitutionLogoFromCatalog,
   productLabel as productLabelFromCatalog,
 } from "@/app/lib/productCatalog";
 import {
@@ -97,6 +83,60 @@ import { AppLayout } from "@/components/AppLayout";
 import { formatMoney, positionLabel, toDate } from "@/app/lib/formatters";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import {
+  POSITION_ORDER,
+  type PositionTimelineEntry,
+  type ManagerChainSnapshotEntry,
+  isIsoDay,
+  collectContractDateIssues,
+  parsePositionTimeline,
+  resolvePositionTimelineMatch,
+  ensureManagerChainWithDirectManager,
+  hasResolvedTopManagerPosition,
+  formatIsoDay,
+  allowedPositionsForUser,
+  productInstitutionLogo,
+  isAutoProduct,
+  shouldShowDuration,
+  shouldShowDurationMonths,
+  durationRange,
+  durationFallback,
+  normalizedDurationYears,
+  durationMonthsRange,
+  durationMonthsFallback,
+  normalizedDurationMonths,
+  allowedFrequencies,
+  durationTooltip,
+  parseNumber,
+  clampTipsterPercent,
+  clampTipContractPercent,
+  roundToCents,
+  SUPPORTED_LABEL,
+  paymentBasedTotals,
+  isImmediateCommissionTitle,
+  computeImmediateCommissionFirstYearTotal,
+  type ContractEntryType,
+  type EndorsementChangeType,
+  type EndorsementSourceEntry,
+  type EndorsementDraft,
+  toNonNegativeNumber,
+  compareSourceEntriesByRecency,
+  resolveEffectivePremium,
+  normalizeClientNameForDuplicate,
+  normalizeClientNameForSystemMatch,
+  normalizeContractEntryType,
+  isoDayFromUnknown,
+} from "./calculatorHelpers";
+import { useCalculatorProductPicker } from "./useCalculatorProductPicker";
+import { CalculatorProductPickerModal } from "./CalculatorProductPickerModal";
+import { CalculatorProductAndPdfSection } from "./CalculatorProductAndPdfSection";
+import { usePdfDropzone } from "./usePdfDropzone";
+import { CalculatorDurationAndFrequencySection } from "./CalculatorDurationAndFrequencySection";
+import { CalculatorAmountAndActionsSection } from "./CalculatorAmountAndActionsSection";
+import { CalculatorContractDetailsSection } from "./CalculatorContractDetailsSection";
+import { CalculatorPositionModeSection } from "./CalculatorPositionModeSection";
+import { CalculatorResultsSection } from "./CalculatorResultsSection";
+
 
 // ---------- Pomocné ----------
 
@@ -157,106 +197,6 @@ const frequencyLabel = (f: PaymentFrequency) => {
       return "roční";
   }
 };
-
-type ProductPickerSectionKey =
-  | "life"
-  | "property"
-  | "auto"
-  | "entrepreneurs"
-  | "travel"
-  | "foreigners"
-  | "investments"
-  | "gold";
-
-type ProductPickerColumn = {
-  key: ProductPickerSectionKey;
-  title: string;
-  products: Product[];
-  emptyText?: string;
-};
-
-const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
-  {
-    key: "life",
-    title: "Život",
-    products: ["neon", "flexi", "maximaMaxEfekt", "pillowInjury"],
-  },
-  {
-    key: "property",
-    title: "Majetek",
-    products: [
-      "domex",
-      "cpphafan",
-      "pillowmajetek",
-      "koopmajetekobcan",
-      "maxdomov",
-      "allianzmujdomov",
-    ],
-  },
-  {
-    key: "auto",
-    title: "Auto",
-    products: [
-      "cppAuto",
-      "slaviaauto",
-      "allianzAuto",
-      "csobAuto",
-      "uniqaAuto",
-      "uniqaflotila",
-      "pillowAuto",
-      "kooperativaAuto",
-    ],
-  },
-  {
-    key: "entrepreneurs",
-    title: "Podnikatele",
-    products: ["zamex", "cppPPRbez", "cppPPRs", "cppsimplex"],
-  },
-  {
-    key: "travel",
-    title: "Cestovko",
-    products: ["cppcestovko", "axacestovko", "koopcestovko"],
-  },
-  {
-    key: "foreigners",
-    title: "Cizinci",
-    products: ["maxcizinkomplex"],
-  },
-  {
-    key: "investments",
-    title: "Investice",
-    products: [],
-    emptyText: "Zatím bez produktů.",
-  },
-  {
-    key: "gold",
-    title: "Zlato",
-    products: ["comfortcc"],
-  },
-];
-
-const PRODUCT_PICKER_COLUMN_BY_KEY = new Map<ProductPickerSectionKey, ProductPickerColumn>(
-  PRODUCT_PICKER_COLUMNS.map((column) => [column.key, column] as const)
-);
-
-function productPickerSectionForProduct(product: Product): ProductPickerSectionKey {
-  for (const column of PRODUCT_PICKER_COLUMNS) {
-    if (column.products.includes(product)) return column.key;
-  }
-  return "life";
-}
-
-function normalizeProductPickerSearch(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-const PRODUCT_OPTION_BY_ID = new Map<Product, { id: Product; label: string }>(
-  PRODUCT_OPTIONS.map((option) => [option.id, option] as const)
-);
 
 type ContractsApiResponse = {
   ok?: boolean;
@@ -507,718 +447,12 @@ function getContractsMutationError({
 const productLabel = (p: Product | null) =>
   productLabelFromCatalog(p, p ?? "—");
 
-const POSITION_ORDER: Position[] = [
-  "poradce1",
-  "poradce2",
-  "poradce3",
-  "poradce4",
-  "poradce5",
-  "poradce6",
-  "poradce7",
-  "poradce8",
-  "poradce9",
-  "poradce10",
-  "manazer4",
-  "manazer5",
-  "manazer6",
-  "manazer7",
-  "manazer8",
-  "manazer9",
-  "manazer10",
-];
-
-type PositionTimelineEntry = {
-  id: string;
-  position: Position;
-  validFrom: string;
-  validTo: string | null;
-};
-
-type ManagerChainSnapshotEntry = {
-  email: string | null;
-  position: Position | null;
-  commissionMode: CommissionMode | null;
-};
-
-const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
-const MIN_REASONABLE_CONTRACT_YEAR = 2000;
-const MAX_REASONABLE_CONTRACT_YEAR = 2100;
-const MAX_POLICY_START_AFTER_SIGNED_DAYS = 365;
-
-type ContractDateIssue = {
-  severity: "error" | "warning";
-  message: string;
-};
-
-function isIsoDay(value: string): boolean {
-  if (!ISO_DAY_RE.test(value)) return false;
-  const d = new Date(`${value}T00:00:00`);
-  return !Number.isNaN(d.getTime());
-}
-
-function parseIsoDayUtc(value: string): Date | null {
-  const normalized = value.trim();
-  if (!ISO_DAY_RE.test(normalized)) return null;
-  const d = new Date(`${normalized}T00:00:00.000Z`);
-  if (Number.isNaN(d.getTime())) return null;
-  if (d.toISOString().slice(0, 10) !== normalized) return null;
-  return d;
-}
-
-function collectContractDateIssues(
-  signedDateIsoRaw: string,
-  policyStartDateIsoRaw: string,
-  policyEndDateIsoRaw: string
-): ContractDateIssue[] {
-  const signedDateIso = signedDateIsoRaw.trim();
-  const policyStartDateIso = policyStartDateIsoRaw.trim();
-  const policyEndDateIso = policyEndDateIsoRaw.trim();
-  const issues: ContractDateIssue[] = [];
-
-  const signedDate = signedDateIso ? parseIsoDayUtc(signedDateIso) : null;
-  const policyStartDate = policyStartDateIso ? parseIsoDayUtc(policyStartDateIso) : null;
-  const policyEndDate = policyEndDateIso ? parseIsoDayUtc(policyEndDateIso) : null;
-
-  if (signedDateIso && !signedDate) {
-    issues.push({
-      severity: "error",
-      message: "Datum sjednání má neplatný formát.",
-    });
-  }
-
-  if (policyStartDateIso && !policyStartDate) {
-    issues.push({
-      severity: "error",
-      message: "Datum počátku má neplatný formát.",
-    });
-  }
-  if (policyEndDateIso && !policyEndDate) {
-    issues.push({
-      severity: "error",
-      message: "Datum pojištění do má neplatný formát.",
-    });
-  }
-
-  if (signedDate) {
-    const signedYear = signedDate.getUTCFullYear();
-    if (
-      signedYear < MIN_REASONABLE_CONTRACT_YEAR ||
-      signedYear > MAX_REASONABLE_CONTRACT_YEAR
-    ) {
-      issues.push({
-        severity: "error",
-        message: `Datum sjednání má podezřelý rok ${signedYear}.`,
-      });
-    }
-  }
-
-  if (policyStartDate) {
-    const startYear = policyStartDate.getUTCFullYear();
-    if (
-      startYear < MIN_REASONABLE_CONTRACT_YEAR ||
-      startYear > MAX_REASONABLE_CONTRACT_YEAR
-    ) {
-      issues.push({
-        severity: "error",
-        message: `Datum počátku má podezřelý rok ${startYear}.`,
-      });
-    }
-  }
-  if (policyEndDate) {
-    const endYear = policyEndDate.getUTCFullYear();
-    if (
-      endYear < MIN_REASONABLE_CONTRACT_YEAR ||
-      endYear > MAX_REASONABLE_CONTRACT_YEAR
-    ) {
-      issues.push({
-        severity: "error",
-        message: `Datum pojištění do má podezřelý rok ${endYear}.`,
-      });
-    }
-  }
-
-  if (signedDate && policyStartDate) {
-    const diffDays = Math.round(
-      (policyStartDate.getTime() - signedDate.getTime()) / 86400000
-    );
-
-    if (diffDays < 0) {
-      issues.push({
-        severity: "error",
-        message: "Datum počátku nesmí být před datem sjednání.",
-      });
-    }
-
-    if (diffDays > MAX_POLICY_START_AFTER_SIGNED_DAYS) {
-      issues.push({
-        severity: "warning",
-        message: `Počátek je ${diffDays} dní po sjednání (zkontroluj, jestli je to záměr).`,
-      });
-    }
-  }
-  if (policyStartDate && policyEndDate) {
-    const diffDays = Math.round(
-      (policyEndDate.getTime() - policyStartDate.getTime()) / 86400000
-    );
-    if (diffDays < 0) {
-      issues.push({
-        severity: "error",
-        message: "Datum pojištění do nesmí být před datem počátku.",
-      });
-    }
-  }
-
-  return issues;
-}
-
-function parsePositionTimeline(raw: unknown): PositionTimelineEntry[] {
-  if (!Array.isArray(raw)) return [];
-
-  const rows: PositionTimelineEntry[] = [];
-  raw.forEach((item, index) => {
-    if (!item || typeof item !== "object") return;
-    const row = item as Record<string, unknown>;
-    const position = row.position as Position;
-    if (!POSITION_ORDER.includes(position)) return;
-
-    const validFrom = typeof row.validFrom === "string" ? row.validFrom.trim() : "";
-    const validToRaw = typeof row.validTo === "string" ? row.validTo.trim() : "";
-    const validTo = validToRaw || null;
-    if (!isIsoDay(validFrom)) return;
-    if (validTo && !isIsoDay(validTo)) return;
-    if (validTo && validTo < validFrom) return;
-
-    rows.push({
-      id:
-        typeof row.id === "string" && row.id.trim().length > 0
-          ? row.id.trim()
-          : `timeline_${index}`,
-      position,
-      validFrom,
-      validTo,
-    });
-  });
-
-  rows.sort((a, b) => {
-    if (a.validFrom !== b.validFrom) return a.validFrom.localeCompare(b.validFrom);
-    const aTo = a.validTo ?? "9999-12-31";
-    const bTo = b.validTo ?? "9999-12-31";
-    return aTo.localeCompare(bTo);
-  });
-
-  return rows;
-}
-
-function resolvePositionTimelineMatch(
-  signedDate: string,
-  timeline: PositionTimelineEntry[]
-): PositionTimelineEntry | null {
-  if (!isIsoDay(signedDate) || timeline.length === 0) return null;
-
-  const candidates = timeline.filter((row) => {
-    if (row.validFrom > signedDate) return false;
-    // validTo je hranice intervalu (nevčetně), aby řádky mohly navazovat stejným datem
-    if (row.validTo && signedDate >= row.validTo) return false;
-    return true;
-  });
-  if (candidates.length === 0) return null;
-
-  candidates.sort((a, b) => {
-    if (a.validFrom !== b.validFrom) return b.validFrom.localeCompare(a.validFrom);
-    const aTo = a.validTo ?? "9999-12-31";
-    const bTo = b.validTo ?? "9999-12-31";
-    return bTo.localeCompare(aTo);
-  });
-
-  return candidates[0] ?? null;
-}
-
-function ensureManagerChainWithDirectManager(
-  chain: ManagerChainSnapshotEntry[],
-  managerEmail: string | null | undefined,
-  managerPosition: Position | null,
-  managerMode: CommissionMode | null
-): ManagerChainSnapshotEntry[] {
-  if (chain.length > 0) return chain;
-  const normalizedEmail = (managerEmail ?? "").trim().toLowerCase();
-  if (!normalizedEmail) return chain;
-  return [
-    {
-      email: normalizedEmail,
-      position: managerPosition ?? null,
-      commissionMode: managerMode ?? null,
-    },
-  ];
-}
-
-function hasResolvedTopManagerPosition(
-  chain: ManagerChainSnapshotEntry[],
-  managerEmail: string | null | undefined
-): boolean {
-  const normalizedEmail = (managerEmail ?? "").trim().toLowerCase();
-  if (!normalizedEmail) return true;
-
-  const directManager =
-    chain.find((row) => (row.email ?? "").trim().toLowerCase() === normalizedEmail) ??
-    chain[0] ??
-    null;
-
-  return Boolean(directManager?.position);
-}
-
-function formatIsoDay(value: string | null): string {
-  if (!value || !isIsoDay(value)) return "—";
-  const d = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("cs-CZ");
-}
-
-function allowedPositionsForUser(base: Position | null): Position[] {
-  if (!base) return POSITION_ORDER;
-
-  const idx = POSITION_ORDER.indexOf(base);
-  if (idx === -1) return POSITION_ORDER;
-
-  if (base.startsWith("poradce")) {
-    // Poradce → jen poradci až do své úrovně
-    return POSITION_ORDER.filter(
-      (p) => p.startsWith("poradce") && POSITION_ORDER.indexOf(p) <= idx
-    );
-  }
-
-  // Manažer → poradci 1..level a manažeři 4..level
-  const level = Number(base.replace("manazer", ""));
-  return POSITION_ORDER.filter((p) => {
-    if (p.startsWith("poradce")) {
-      const lv = Number(p.replace("poradce", ""));
-      return lv <= level;
-    }
-    if (p.startsWith("manazer")) {
-      const lv = Number(p.replace("manazer", ""));
-      return lv <= level;
-    }
-    return false;
-  });
-}
-
-function productInstitutionLogo(product: Product): string {
-  return productInstitutionLogoFromCatalog(product) ?? "/icons/produkt.png";
-}
-
-function productInstitutionLabel(product: Product): string {
-  return productInstitutionLabelFromCatalog(product, "Pojišťovna") ?? "Pojišťovna";
-}
-
-function productLogoFrameClass(product: Product): string {
-  return institutionLogoFrameClass(productInstitutionIdFromCatalog(product), "card");
-}
-
-function productLogoScaleClass(product: Product): string {
-  return institutionLogoImageClass(productInstitutionIdFromCatalog(product));
-}
-
-function isAutoProduct(product: Product | null): product is Product {
-  return Boolean(product) && isAutoProductFromCatalog(product);
-}
-
-function shouldShowDuration(product: Product): boolean {
-  return product === "neon" || product === "flexi" || product === "maximaMaxEfekt";
-}
-
-function shouldShowDurationMonths(product: Product): boolean {
-  return product === "maxcizinkomplex";
-}
-
-function durationRange(product: Product): [number, number] {
-  switch (product) {
-    case "neon":
-      return [1, 99];
-    case "flexi":
-      return [1, 80];
-    case "maximaMaxEfekt":
-      return [1, 20];
-    default:
-      return [1, 1];
-  }
-}
-
-function durationFallback(product: Product): number {
-  switch (product) {
-    case "neon":
-      return 15;
-    case "flexi":
-      return 30;
-    case "maximaMaxEfekt":
-      return 20;
-    default:
-      return 1;
-  }
-}
-
-function normalizedDurationYears(
-  product: Product,
-  years: number | null | undefined
-): number {
-  const [min, max] = durationRange(product);
-  const raw = typeof years === "number" && Number.isFinite(years) ? years : durationFallback(product);
-  const wholeYears = Math.floor(raw);
-  return Math.min(max, Math.max(min, wholeYears));
-}
-
-function durationMonthsRange(product: Product): [number, number] {
-  switch (product) {
-    case "maxcizinkomplex":
-      return [1, 240];
-    default:
-      return [1, 1];
-  }
-}
-
-function durationMonthsFallback(product: Product): number {
-  switch (product) {
-    case "maxcizinkomplex":
-      return 12;
-    default:
-      return 1;
-  }
-}
-
-function normalizedDurationMonths(
-  product: Product,
-  months: number | null | undefined
-): number {
-  const [min, max] = durationMonthsRange(product);
-  const raw =
-    typeof months === "number" && Number.isFinite(months)
-      ? months
-      : durationMonthsFallback(product);
-  const wholeMonths = Math.floor(raw);
-  return Math.min(max, Math.max(min, wholeMonths));
-}
-
-function allowedFrequencies(product: Product): PaymentFrequency[] {
-  switch (product) {
-    case "neon":
-    case "flexi":
-    case "pillowInjury":
-    case "maximaMaxEfekt":
-      return ["monthly"];
-    case "domex":
-    case "cpphafan":
-      return ["quarterly", "semiannual", "annual"];
-    case "pillowmajetek":
-      return ["monthly", "quarterly", "semiannual", "annual"];
-    case "koopmajetekobcan":
-      return ["monthly", "quarterly", "semiannual", "annual"];
-    case "pillowAuto":
-    case "maxdomov":
-    case "allianzmujdomov":
-    case "kooperativaAuto":
-    case "allianzAuto":
-      return ["monthly", "quarterly", "semiannual", "annual"];
-    case "cppAuto":
-    case "slaviaauto":
-    case "csobAuto":
-    case "uniqaAuto":
-    case "uniqaflotila":
-    case "zamex":
-    case "cppsimplex":
-    case "cppPPRbez":
-    case "cppPPRs":
-      return ["quarterly", "semiannual", "annual"];
-    case "cppcestovko":
-    case "axacestovko":
-    case "koopcestovko":
-    case "maxcizinkomplex":
-    case "comfortcc":
-      return ["annual"];
-  }
-}
-
-function titleForFrequency(f: PaymentFrequency): string {
-  switch (f) {
-    case "monthly":
-      return "Měsíční";
-    case "quarterly":
-      return "Čtvrtletní";
-    case "semiannual":
-      return "Pololetní";
-    case "annual":
-      return "Roční";
-  }
-}
-
-function defaultFrequencyText(product: Product): string {
-  switch (product) {
-    case "neon":
-    case "flexi":
-    case "pillowInjury":
-    case "maximaMaxEfekt":
-      return "Frekvence: měsíční";
-    case "cppcestovko":
-    case "axacestovko":
-    case "koopcestovko":
-    case "maxcizinkomplex":
-    case "comfortcc":
-      return "Frekvence: jednorázově";
-    default:
-      return "";
-  }
-}
-
-function placeholderForAmount(
-  product: Product,
-  freq: PaymentFrequency
-): string {
-  if (product === "comfortcc") {
-    return "Zadejte výši poplatku / platby";
-  }
-  if (
-    product === "cppcestovko" ||
-    product === "axacestovko" ||
-    product === "koopcestovko" ||
-    product === "maxcizinkomplex"
-  ) {
-    return "Zadejte jednorázové pojistné";
-  }
-  if (
-    product === "neon" ||
-    product === "flexi" ||
-    product === "pillowInjury" ||
-    product === "maximaMaxEfekt"
-  ) {
-    return "Zadejte měsíční částku";
-  }
-  const allowed = allowedFrequencies(product);
-  if (allowed.length > 1 && freq !== "annual") {
-    return "Zadejte částku za platbu";
-  }
-  return "Zadejte roční částku";
-}
-
-function durationTooltip(
-  product: Product,
-  neonHistoricalBySignedDate: boolean
-): string | null {
-  if (product === "neon") {
-    if (neonHistoricalBySignedDate) {
-      return "U NEON smluv sjednaných od 01.10.2019 do 30.06.2024 se pro výpočet provize používá maximálně 20 let. V tomto období se nepoužívá režim zrychlený/běžný.";
-    }
-    return "U NEON se od 01.07.2024 pro výpočet provize používá maximálně 15 let (pokud je doba kratší, použije se skutečná hodnota). Pro starší období 01.10.2019–30.06.2024 je limit 20 let.";
-  }
-  if (product === "flexi") {
-    return "Zadej dobu trvání smlouvy v letech (např. do roku 2050). Následná provize od 6. roku se počítá ročně do konce zadané doby.";
-  }
-  if (product === "maximaMaxEfekt") {
-    return "Zadej dobu trvání smlouvy, maximálně však 20 let. Pokud je smlouva uzavřena na déle než 20 let, zadej 20.";
-  }
-  return null;
-}
-
-function parseNumber(text: string): number {
-  if (!text) return 0;
-  const value = parseFloat(text.replace(",", "."));
-  return Number.isNaN(value) ? 0 : value;
-}
-
-function clampTipsterPercent(value: number): number {
-  if (!Number.isFinite(value)) return 100;
-  return Math.min(100, Math.max(0, Math.round(value)));
-}
-
-function clampTipContractPercent(value: number): number {
-  if (!Number.isFinite(value)) return 50;
-  const rounded = Math.round(value / 5) * 5;
-  return Math.min(95, Math.max(5, rounded));
-}
-
-function roundToCents(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.round(value * 100) / 100;
-}
-
-const SUPPORTED_LABEL =
-  "Tento produkt zatím není na webu dopočítaný – aktuálně počítáme všechny produkty kromě Comfort Commodity.";
-
-function paymentBasedTotals(
-  items: CommissionResultItemDTO[],
-  multiplier: number
-): { immediate: number; subsequent: number } {
-  let immediate = 0;
-  let subsequent = 0;
-
-  items.forEach((it) => {
-    const t = (it.title ?? "").toLowerCase();
-    if (t.includes("okamžitá")) {
-      immediate += it.amount ?? 0;
-    } else if (t.includes("následná")) {
-      subsequent += it.amount ?? 0;
-    }
-  });
-
-  return {
-    immediate: immediate * multiplier,
-    subsequent: subsequent * multiplier,
-  };
-}
-
-function cleanResultTitle(title: string): string {
-  const match = title.match(/[\p{L}\p{N}]/u);
-  if (!match) return title.trim();
-  return title.slice(title.indexOf(match[0])).trim();
-}
-
-function normalizeResultTitleForCompare(title: string): string {
-  return cleanResultTitle(title)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function resultIconForTitle(title: string): string | null {
-  const t = cleanResultTitle(title).toLowerCase();
-
-  if (t.startsWith("okamžitá provize") || t.startsWith("získatelská provize")) {
-    return "/icons/penize2.png";
-  }
-
-  if (t.includes("po 3 letech") || t.includes("po 4 letech")) {
-    return "/icons/kalendar.png";
-  }
-
-  if (t.startsWith("následná provize")) {
-    return "/icons/nasledna.png";
-  }
-
-  return null;
-}
-
-function isImmediateCommissionTitle(title: string): boolean {
-  const t = normalizeResultTitleForCompare(title);
-  return t.includes("okamzita provize") || t.includes("ziskatelska provize");
-}
-
-function isImmediateAnnualFirstYearTitle(title: string): boolean {
-  const t = normalizeResultTitleForCompare(title);
-  if (!t.includes("za rok")) return false;
-  if (t.includes("nasledna")) return false;
-  return true;
-}
-
-function computeImmediateCommissionFirstYearTotal(items: CommissionResultItemDTO[]): number {
-  if (!Array.isArray(items) || items.length === 0) return 0;
-
-  const annualImmediate = items.reduce((sum, item) => {
-    if (!isImmediateAnnualFirstYearTitle(item.title ?? "")) return sum;
-    return sum + (item.amount ?? 0);
-  }, 0);
-  if (annualImmediate > 0) {
-    return annualImmediate;
-  }
-
-  return items.reduce((sum, item) => {
-    if (!isImmediateCommissionTitle(item.title ?? "")) return sum;
-    return sum + (item.amount ?? 0);
-  }, 0);
-}
-
-type ContractEntryType = "contract" | "endorsement";
-type EndorsementChangeType = "increase" | "decrease" | "same";
-
-type EndorsementSourceEntry = {
-  id: string;
-  path: string;
-  productKey: Product | null;
-  rootContractEntryId: string | null;
-  effectiveInputAmount: number;
-  policyStartDate: Date | null;
-  contractSignedDate: Date | null;
-  createdAt: Date | null;
-};
-
-type EndorsementDraft = {
-  productKey: Product;
-  contractNumber: string;
-  sourceEntryId: string;
-  sourceEntryPath: string;
-  rootContractEntryId: string;
-  previousPremiumAmount: number;
-  newPremiumAmount: number;
-  deltaAmount: number;
-  calculationAmount: number;
-  changeType: EndorsementChangeType;
-  items: CommissionResultItemDTO[];
-  total: number;
-};
-
-function toNonNegativeNumber(value: unknown): number {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return 0;
-  return Math.max(0, num);
-}
-
-function compareSourceEntriesByRecency(
-  a: EndorsementSourceEntry,
-  b: EndorsementSourceEntry
-): number {
-  const createdDiff = (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
-  if (createdDiff !== 0) return createdDiff;
-
-  const signedDiff =
-    (b.contractSignedDate?.getTime() ?? 0) - (a.contractSignedDate?.getTime() ?? 0);
-  if (signedDiff !== 0) return signedDiff;
-
-  const policyDiff =
-    (b.policyStartDate?.getTime() ?? 0) - (a.policyStartDate?.getTime() ?? 0);
-  if (policyDiff !== 0) return policyDiff;
-
-  return b.id.localeCompare(a.id);
-}
-
-function resolveEffectivePremium(data: any): number {
-  return toNonNegativeNumber(
-    data?.effectiveInputAmount ?? data?.newInputAmount ?? data?.inputAmount
-  );
-}
-
-function normalizeClientNameForDuplicate(value: string | null | undefined): string {
-  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function normalizeClientNameForSystemMatch(value: string | null | undefined): string {
-  return (value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-function normalizeContractEntryType(value: unknown): ContractEntryType {
-  if (typeof value !== "string") return "contract";
-  const normalized = value.trim().toLowerCase();
-  return normalized === "endorsement" ? "endorsement" : "contract";
-}
-
-function isoDayFromUnknown(value: unknown): string | null {
-  const d = toDate(value);
-  if (!d) return null;
-  return d.toISOString().slice(0, 10);
-}
-
 // ---------- Kalkulačka ----------
 
 export default function CalculatorPage() {
   const [user, setUser] = useState<User | null>(null);
 
   const [product, setProduct] = useState<Product>("neon");
-  const [productOpen, setProductOpen] = useState(false);
-  const [productPickerSection, setProductPickerSection] = useState<ProductPickerSectionKey>(() =>
-    productPickerSectionForProduct("neon")
-  );
-  const [productSearchText, setProductSearchText] = useState("");
   const [position, setPosition] = useState<Position>("manazer7");
   const [mode, setMode] = useState<CommissionMode>("accelerated");
   const [frequency, setFrequency] = useState<PaymentFrequency>("monthly");
@@ -1305,8 +539,28 @@ export default function CalculatorPage() {
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
   const [pdfClientNameLoaded, setPdfClientNameLoaded] = useState(false);
   const [pdfMatchedClientName, setPdfMatchedClientName] = useState(false);
-  const [pdfDropActive, setPdfDropActive] = useState(false);
-  const pdfDragCounterRef = useRef(0);
+  const {
+    isOpen: productOpen,
+    toggle: toggleProductPicker,
+    close: closeProductPicker,
+    setSectionKey: setProductPickerSection,
+    setSectionForProduct: setProductPickerSectionForProduct,
+    searchText: productSearchText,
+    setSearchText: setProductSearchText,
+    columns: productPickerColumns,
+    activeColumn: activeProductPickerColumn,
+    allProducts: allProductPickerProducts,
+    isGlobalSearch,
+    filteredProducts: filteredSectionProducts,
+    selectProduct,
+  } = useCalculatorProductPicker({
+    product,
+    onProductSelect: (nextProduct) => {
+      setProduct(nextProduct);
+      setPdfClientNameLoaded(false);
+      setPdfMatchedClientName(false);
+    },
+  });
 
   const [items, setItems] = useState<CommissionResultItemDTO[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -1346,6 +600,17 @@ export default function CalculatorPage() {
   const contractDateWarnings = useMemo(
     () => contractDateIssues.filter((issue) => issue.severity === "warning"),
     [contractDateIssues]
+  );
+  const contractDateErrorText = useMemo(
+    () => (contractDateErrors.length > 0 ? contractDateErrors.map((issue) => issue.message).join(" ") : null),
+    [contractDateErrors]
+  );
+  const contractDateWarningText = useMemo(
+    () =>
+      contractDateWarnings.length > 0
+        ? contractDateWarnings.map((issue) => issue.message).join(" ")
+        : null,
+    [contractDateWarnings]
   );
 
   const validateContractDatesBeforeSave = (): boolean => {
@@ -2266,7 +1531,7 @@ export default function CalculatorPage() {
       if (detected && detected.product !== product) {
         importProduct = detected.product;
         setProduct(detected.product);
-        setProductPickerSection(productPickerSectionForProduct(detected.product));
+        setProductPickerSectionForProduct(detected.product);
         setPdfImportStatus(`Rozpoznán produkt: ${productLabel(detected.product)}. Načítám data…`);
       }
     } catch (detectErr) {
@@ -2787,55 +2052,23 @@ export default function CalculatorPage() {
     }
   };
 
-  const resetPdfDropState = () => {
-    pdfDragCounterRef.current = 0;
-    setPdfDropActive(false);
-  };
-
-  const handlePdfDragEnter = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    pdfDragCounterRef.current += 1;
-    setPdfDropActive(true);
-  };
-
-  const handlePdfDragOver = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-  };
-
-  const handlePdfDragLeave = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    pdfDragCounterRef.current = Math.max(0, pdfDragCounterRef.current - 1);
-    if (pdfDragCounterRef.current === 0) {
-      setPdfDropActive(false);
-    }
-  };
-
-  const handlePdfDrop = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    resetPdfDropState();
-
-    if (pdfImporting) return;
-
-    const file =
-      Array.from(e.dataTransfer?.files ?? []).find(
-        (candidate) =>
-          candidate.type === "application/pdf" ||
-          candidate.name.toLowerCase().endsWith(".pdf")
-      ) ?? null;
-
-    if (!file) {
+  const {
+    isDropActive: pdfDropActive,
+    resetDropState: resetPdfDropState,
+    handleDragEnter: handlePdfDragEnter,
+    handleDragOver: handlePdfDragOver,
+    handleDragLeave: handlePdfDragLeave,
+    handleDrop: handlePdfDrop,
+  } = usePdfDropzone({
+    isBusy: pdfImporting,
+    onPdfFile: (file) => {
+      void handlePdfImport(file);
+    },
+    onInvalidFile: () => {
       setPdfImportError("Přetáhni prosím PDF soubor.");
       setPdfImportStatus(null);
-      return;
-    }
-
-    void handlePdfImport(file);
-  };
+    },
+  });
 
   const recalc = () => {
     const val = parseNumber(amountText);
@@ -3106,27 +2339,6 @@ export default function CalculatorPage() {
       setPolicyEndDate("");
     }
   }, [product]);
-
-  useEffect(() => {
-    if (!productOpen) return;
-    setProductPickerSection(productPickerSectionForProduct(product));
-    setProductSearchText("");
-  }, [productOpen, product]);
-
-  useEffect(() => {
-    if (!productOpen) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setProductOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [productOpen]);
 
   useEffect(() => {
     setDurationHelpOpen(false);
@@ -3992,30 +3204,27 @@ export default function CalculatorPage() {
     : null;
   const currentProduct = PRODUCT_OPTIONS.find((p) => p.id === product)!;
   const currentProductInstitutionId = productInstitutionIdFromCatalog(product);
-  const activeProductPickerColumn =
-    PRODUCT_PICKER_COLUMN_BY_KEY.get(productPickerSection) ?? PRODUCT_PICKER_COLUMNS[0];
-  const productPickerSearchQuery = normalizeProductPickerSearch(productSearchText);
-  const allProductPickerProducts = PRODUCT_PICKER_COLUMNS.flatMap((column) => column.products);
-  const isGlobalProductSearch = productPickerSearchQuery.length > 0;
-  const filteredSectionProducts = (() => {
-    const sourceProducts = isGlobalProductSearch
-      ? allProductPickerProducts
-      : activeProductPickerColumn.products;
-    if (!productPickerSearchQuery) return sourceProducts;
-
-    return sourceProducts.filter((productId) => {
-      const option = PRODUCT_OPTION_BY_ID.get(productId);
-      const haystack = normalizeProductPickerSearch(
-        [option?.label ?? productLabel(productId), productInstitutionLabel(productId)].join(" ")
-      );
-      return haystack.includes(productPickerSearchQuery);
-    });
-  })();
   const durationHelp = durationTooltip(product, isNeonHistoricalBySignedDate);
   const canChooseMode =
     isLifeProduct &&
     userCommissionMode === "accelerated" &&
     !(product === "neon" && isNeonHistoricalBySignedDate);
+  const allowedPositionOptions = allowedPositionsForUser(baseUserPosition ?? position);
+  const showPositionTimelineHint = contractSignedDate.trim().length > 0 && positionTimeline.length > 0;
+  const positionTimelineHintWarning = Boolean(timelineMatchedPosition?.unavailable);
+  const positionTimelineHintText = showPositionTimelineHint
+    ? timelineMatchedPosition
+      ? timelineMatchedPosition.unavailable
+        ? `Timeline pro ${formatIsoDay(contractSignedDate.trim())} ukazuje pozici ${positionLabel(
+            timelineMatchedPosition.position
+          )}, ale není v povoleném rozsahu tvé aktuální role.`
+        : `Pozice byla předvyplněná z timeline: ${positionLabel(
+            timelineMatchedPosition.position
+          )} (${formatIsoDay(timelineMatchedPosition.validFrom)} - ${
+            timelineMatchedPosition.validTo ? formatIsoDay(timelineMatchedPosition.validTo) : "otevřeno"
+          }).`
+      : "Pro zadané datum sjednání nemáš v timeline nastavenou pozici."
+    : null;
 
   const computeItemsForPositionAndMode = (
     pos: Position | null,
@@ -4458,183 +3667,20 @@ export default function CalculatorPage() {
         </div>
       )}
 
-      {productOpen && (
-        <div className="fixed inset-0 z-[120]">
-          <button
-            type="button"
-            onClick={() => setProductOpen(false)}
-            className="absolute inset-0 bg-transparent"
-            aria-label="Zavřít výběr produktu"
-          />
-          <div className="pointer-events-none absolute inset-x-0 top-1/2 z-[121] -translate-y-1/2">
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="Výběr produktu"
-              className="pointer-events-auto w-full border-y border-slate-300 bg-white shadow-[0_22px_70px_rgba(2,6,23,0.22)]"
-            >
-              <div className="space-y-4 border-b border-slate-200 bg-white px-5 py-5 sm:px-10">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="inline-flex rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700">
-                    {currentProduct.label}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setProductOpen(false)}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 hover:bg-slate-100 transition"
-                  >
-                    <X size={14} strokeWidth={2} aria-hidden="true" />
-                    Zavřít
-                  </button>
-                </div>
-
-                <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-                  <label className="flex w-full items-center gap-2 rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 lg:w-[230px] lg:flex-none">
-                    <Search size={13} className="text-slate-400" aria-hidden="true" />
-                    <input
-                      type="text"
-                      value={productSearchText}
-                      onChange={(e) => setProductSearchText(e.target.value)}
-                      aria-label="Hledat produkt"
-                      placeholder="Hledat produkt"
-                      className="w-full bg-transparent text-xs text-slate-900 placeholder:text-slate-400 outline-none"
-                    />
-                  </label>
-
-                  <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-gutter:stable_both-edges] [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb:hover]:bg-slate-400">
-                    <div className="flex min-w-max items-center gap-2 pb-1">
-                      {PRODUCT_PICKER_COLUMNS.map((column) => {
-                        const sectionActive = column.key === activeProductPickerColumn.key;
-                        return (
-                          <button
-                            key={column.key}
-                            type="button"
-                            onClick={() => setProductPickerSection(column.key)}
-                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                              sectionActive
-                                ? "border-slate-900 bg-slate-900 text-white"
-                                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                            }`}
-                          >
-                            <span>{column.title}</span>
-                            <span
-                              className={`rounded-full px-1.5 py-0.5 text-[10px] ${
-                                sectionActive
-                                  ? "bg-white text-slate-900"
-                                  : "bg-slate-100 text-slate-600"
-                              }`}
-                            >
-                              {column.products.length}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="px-5 pb-6 pt-5 sm:px-10">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <h3 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-                    {isGlobalProductSearch
-                      ? "Výsledky hledání (všechny kategorie)"
-                      : activeProductPickerColumn.title}
-                  </h3>
-                  <span className="text-xs font-medium text-slate-500">
-                    {filteredSectionProducts.length} /{" "}
-                    {isGlobalProductSearch
-                      ? allProductPickerProducts.length
-                      : activeProductPickerColumn.products.length}
-                  </span>
-                </div>
-
-                {!isGlobalProductSearch && activeProductPickerColumn.products.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-                    {activeProductPickerColumn.emptyText ?? "Zatím bez produktů."}
-                  </div>
-                ) : filteredSectionProducts.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-                    Pro tento filtr jsme nic nenašli.
-                  </div>
-                ) : (
-                  <div className="max-h-[46vh] overflow-y-auto pr-1">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      {filteredSectionProducts.map((productId) => {
-                        const option = PRODUCT_OPTION_BY_ID.get(productId);
-                        if (!option) return null;
-                        const isActive = productId === product;
-                        const unsupportedText = SUPPORTED_PRODUCTS.includes(productId)
-                          ? null
-                          : "zatím bez výpočtu";
-
-                        return (
-                          <button
-                            key={productId}
-                            type="button"
-                            onClick={() => {
-                              setProduct(productId);
-                              setPdfClientNameLoaded(false);
-                              setPdfMatchedClientName(false);
-                              setProductOpen(false);
-                            }}
-                            className={`relative rounded-2xl border bg-white px-4 py-3 text-left font-mono shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:bg-slate-50 ${
-                              isActive
-                                ? "border-slate-900 ring-2 ring-slate-900/25"
-                                : "border-slate-200"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="flex min-w-0 items-center gap-3">
-                                <span
-                                  className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white ${productLogoFrameClass(
-                                    productId
-                                  )}`}
-                                >
-                                  <Image
-                                    src={productInstitutionLogo(productId)}
-                                    alt=""
-                                    fill
-                                    className={productLogoScaleClass(productId)}
-                                  />
-                                </span>
-                                <span className="min-w-0">
-                                  <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                                    {productInstitutionLabel(productId)}
-                                  </span>
-                                  <span className="block truncate text-sm font-semibold text-slate-900">
-                                    {option.label}
-                                  </span>
-                                </span>
-                              </span>
-                              <span
-                                className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border text-xs ${
-                                  isActive
-                                    ? "border-slate-900 bg-slate-900 text-white"
-                                    : "border-slate-300 bg-white text-transparent"
-                                }`}
-                              >
-                                ✓
-                              </span>
-                            </div>
-                            {unsupportedText && (
-                              <div className="mt-2">
-                                <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
-                                  {unsupportedText}
-                                </span>
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <CalculatorProductPickerModal
+        isOpen={productOpen}
+        product={product}
+        columns={productPickerColumns}
+        activeColumn={activeProductPickerColumn}
+        allProducts={allProductPickerProducts}
+        filteredProducts={filteredSectionProducts}
+        isGlobalSearch={isGlobalSearch}
+        searchText={productSearchText}
+        onClose={closeProductPicker}
+        onSectionChange={setProductPickerSection}
+        onSearchTextChange={setProductSearchText}
+        onSelectProduct={selectProduct}
+      />
 
       {/* vnější glassy box je pryč – jen čistý container */}
       <div className="w-full max-w-6xl space-y-6">
@@ -4649,955 +3695,169 @@ export default function CalculatorPage() {
         <div className="grid gap-6 items-start lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-6 w-full lg:max-w-3xl">
             {/* Produkt + PDF import */}
-            <section className={`w-full space-y-3 ${canImportFromPdf ? "md:max-w-xl" : ""}`}>
-              <div className="space-y-1">
-                <label className="block text-sm font-medium mb-1">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Package size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                    <span>Produkt</span>
-                  </span>
-                </label>
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (productOpen) {
-                        setProductOpen(false);
-                        return;
-                      }
-                      setProductPickerSection(productPickerSectionForProduct(product));
-                      setProductSearchText("");
-                      setProductOpen(true);
-                    }}
-                    className="flex w-full items-center justify-between rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                  >
-                    <span className="flex items-center gap-3 min-w-0">
-                      <div
-                        className={`relative flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white ${institutionLogoFrameClass(
-                          currentProductInstitutionId,
-                          "chip"
-                        )}`}
-                      >
-                        <Image
-                          src={productInstitutionLogo(product)}
-                          alt=""
-                          fill
-                          className={institutionLogoImageClass(currentProductInstitutionId)}
-                        />
-                      </div>
-                      <span className="flex min-w-0 flex-col items-start text-left leading-tight">
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                          Vyber produkt
-                        </span>
-                        <span className="truncate font-medium">{currentProduct.label}</span>
-                      </span>
-                    </span>
-                    <span className="ml-3 text-xs text-slate-400">
-                      {productOpen ? "Skrýt" : "Otevřít"}
-                    </span>
-                  </button>
-                </div>
-              </div>
-
-              {canImportFromPdf && (
-                <div className="space-y-2">
-                  <div
-                    className={`ui-card ui-card-quiet flex h-full items-center justify-between gap-3 rounded-xl border-2 border-dashed px-3 py-2.5 transition ${
-                      pdfDropActive
-                        ? "border-slate-900 bg-slate-100"
-                        : "border-slate-300 bg-white"
-                    }`}
-                    onDragEnter={handlePdfDragEnter}
-                    onDragOver={handlePdfDragOver}
-                    onDragLeave={handlePdfDragLeave}
-                    onDrop={handlePdfDrop}
-                  >
-                    <div className="text-sm font-semibold text-slate-900">
-                      Nahraj smlouvu PDF nebo ji přetáhni sem.
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={pdfImporting}
-                      className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 24 24"
-                        className="h-4 w-4"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                        <path
-                          d="M14 3v5h5"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                        <path
-                          d="M8.5 16h7M8.5 12.5h3.8"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      {pdfImporting ? "Načítám…" : "Nahrát PDF"}
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="application/pdf"
-                      className="hidden"
-                      onChange={(e) => {
-                        resetPdfDropState();
-                        handlePdfImport(e.target.files?.[0] ?? null);
-                      }}
-                    />
-                  </div>
-                  {pdfImportStatus && (
-                    <p className="text-[12px] text-slate-700">{pdfImportStatus}</p>
-                  )}
-                  {pdfImportError && (
-                    <p className="text-[12px] text-rose-700">{pdfImportError}</p>
-                  )}
-                </div>
-              )}
-            </section>
+            <CalculatorProductAndPdfSection
+              canImportFromPdf={canImportFromPdf}
+              productOpen={productOpen}
+              currentProductLabel={currentProduct.label}
+              productLogoSrc={productInstitutionLogo(product)}
+              productLogoImageClass={institutionLogoImageClass(currentProductInstitutionId)}
+              productLogoFrameClass={institutionLogoFrameClass(currentProductInstitutionId, "chip")}
+              pdfDropActive={pdfDropActive}
+              pdfImporting={pdfImporting}
+              pdfImportStatus={pdfImportStatus}
+              pdfImportError={pdfImportError}
+              fileInputRef={fileInputRef}
+              onToggleProductPicker={toggleProductPicker}
+              onOpenFileDialog={() => fileInputRef.current?.click()}
+              onFileInputChange={(file) => {
+                resetPdfDropState();
+                void handlePdfImport(file);
+              }}
+              onDragEnter={handlePdfDragEnter}
+              onDragOver={handlePdfDragOver}
+              onDragLeave={handlePdfDragLeave}
+              onDrop={handlePdfDrop}
+            />
 
             {/* Doba trvání + frekvence */}
-            <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {shouldShowDuration(product) && (
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium">
-                    <span className="inline-flex items-center gap-2">
-                      Doba trvání smlouvy
-                      {durationHelp && (
-                        <button
-                          type="button"
-                          onClick={() => setDurationHelpOpen((prev) => !prev)}
-                          className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-900 hover:bg-slate-100 transition"
-                          aria-expanded={durationHelpOpen}
-                          aria-label="Zobrazit nápovědu k době trvání smlouvy"
-                        >
-                          Info
-                        </button>
-                      )}
-                    </span>
-                  </label>
-                  {durationHelp && durationHelpOpen && (
-                    <p className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-700">
-                      {durationHelp}
-                    </p>
-                  )}
-                  <input
-                    type="number"
-                    className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                    value={durationYears ?? ""}
-                    onChange={(e) => {
-                      const raw = e.target.value.trim();
-                      if (!raw) {
-                        setDurationYears(null);
-                        return;
-                      }
-                      const parsed = Number(raw);
-                      if (!Number.isFinite(parsed)) {
-                        setDurationYears(null);
-                        return;
-                      }
-                      const [min, max] = durationRange(product);
-                      setDurationYears(Math.min(max, Math.max(min, Math.floor(parsed))));
-                    }}
-                  />
-                </div>
-              )}
+            <CalculatorDurationAndFrequencySection
+              product={product}
+              durationHelp={durationHelp}
+              durationHelpOpen={durationHelpOpen}
+              durationYears={durationYears}
+              durationMonths={durationMonths}
+              missingFields={missingFields}
+              maxCizinKomplexVariant={maxCizinKomplexVariant}
+              maxCizinOptions={MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS}
+              hasFrequencyPicker={hasFrequencyPicker}
+              isLifeProduct={isLifeProduct}
+              frequency={frequency}
+              allowedFrequencies={allowed}
+              onToggleDurationHelp={() => setDurationHelpOpen((prev) => !prev)}
+              onDurationYearsChange={setDurationYears}
+              onDurationMonthsChange={setDurationMonths}
+              onMaxCizinVariantChange={setMaxCizinKomplexVariant}
+              onFrequencyChange={setFrequency}
+            />
 
-              {product === "maxcizinkomplex" && (
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium">Varianta produktu</label>
-                  <select
-                    className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                    value={maxCizinKomplexVariant}
-                    onChange={(e) =>
-                      setMaxCizinKomplexVariant(e.target.value as MaxCizinKomplexVariant)
-                    }
-                  >
-                    {MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+            <CalculatorAmountAndActionsSection
+              product={product}
+              frequency={frequency}
+              isLifeProduct={isLifeProduct}
+              tipsterModeEnabled={tipsterModeEnabled}
+              comfortGradual={comfortGradual}
+              amountText={amountText}
+              comfortPaymentText={comfortPaymentText}
+              comfortTargetAmountText={comfortTargetAmountText}
+              comfortPayoutCount={comfortPayoutCount}
+              missingFields={missingFields}
+              hasTipContractConfig={Boolean(tipContractConfig)}
+              refreshOriginalOpen={refreshOriginalOpen}
+              onComfortGradualChange={setComfortGradual}
+              onAmountTextChange={setAmountText}
+              onComfortPaymentTextChange={setComfortPaymentText}
+              onComfortTargetAmountTextChange={setComfortTargetAmountText}
+              onOpenTipContractModal={openTipContractModal}
+              onToggleRefreshOriginal={() => setRefreshOriginalOpen((prev) => !prev)}
+              onPrepareEndorsement={() => {
+                void handlePrepareEndorsement();
+              }}
+            />
 
-              {shouldShowDurationMonths(product) && (
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium">
-                    Doba trvání smlouvy (měsíce)
-                  </label>
-                  <input
-                    type="number"
-                    min={durationMonthsRange(product)[0]}
-                    max={durationMonthsRange(product)[1]}
-                    className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 ${
-                      missingFields.includes("dobu trvání v měsících")
-                        ? "border-rose-400/70"
-                        : "border-slate-300"
-                    }`}
-                    value={durationMonths ?? ""}
-                    onChange={(e) => {
-                      const raw = e.target.value.trim();
-                      if (!raw) {
-                        setDurationMonths(null);
-                        return;
-                      }
-                      const parsed = Number(raw);
-                      if (!Number.isFinite(parsed)) {
-                        setDurationMonths(null);
-                        return;
-                      }
-                      setDurationMonths(
-                        normalizedDurationMonths(product, parsed)
-                      );
-                    }}
-                    placeholder="Např. 12"
-                  />
-                </div>
-              )}
-
-              <div className="space-y-1">
-                <label className="block text-sm font-medium">
-                  <span className="inline-flex items-center gap-1.5">
-                    <SlidersHorizontal size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                    <span>Parametry platby</span>
-                  </span>
-                </label>
-                {hasFrequencyPicker ? (
-                  <select
-                    className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                    value={frequency}
-                    onChange={(e) =>
-                      setFrequency(e.target.value as PaymentFrequency)
-                    }
-                  >
-                    {allowed.map((f) => (
-                      <option key={f} value={f}>
-                        {titleForFrequency(f)}
-                      </option>
-                    ))}
-                  </select>
-                ) : !LIFE_PRODUCTS.includes(product) ? (
-                  <p className="text-sm text-slate-700">
-                    {defaultFrequencyText(product)}
-                  </p>
-                ) : null}
-              </div>
-            </section>
-
-            {/* Comfort Commodity – toggle poplatku */}
-            {product === "comfortcc" && (
-              <section className="space-y-2">
-                <div className="text-sm font-medium">Comfort Commodity</div>
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <div className="text-[12px] uppercase tracking-wide text-slate-400 mb-1">
-                      Poplatek
-                    </div>
-                    <div className="ui-chip-group">
-                      <button
-                        type="button"
-                        onClick={() => setComfortGradual(false)}
-                        className={`ui-chip ui-focus px-3 py-1.5 text-sm ${
-                          !comfortGradual
-                            ? "ui-chip-active"
-                            : ""
-                        }`}
-                      >
-                        Jednorázový poplatek
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setComfortGradual(true)}
-                        className={`ui-chip ui-focus px-3 py-1.5 text-sm ${
-                          comfortGradual
-                            ? "ui-chip-active"
-                            : ""
-                        }`}
-                      >
-                        Postupný poplatek
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            )}
-
-            {/* Poplatky / částka */}
-            <section className="space-y-3">
-              <div className="space-y-1">
-                <label className="block text-sm font-medium">
-                  {product === "comfortcc"
-                    ? comfortGradual
-                      ? "1% z Poplatku v 1. platbě"
-                      : "Poplatek (zde se určuje provize z poplatku klienta)"
-                    : "Částka"}
-                </label>
-                <input
-                  type="number"
-                  className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 ${
-                    missingFields.includes("částku") ? "border-rose-400/70" : "border-slate-300"
-                  }`}
-                  value={amountText}
-                  onChange={(e) => setAmountText(e.target.value)}
-                  placeholder={
-                    product === "comfortcc"
-                      ? "Zadejte poplatek"
-                      : placeholderForAmount(product, frequency)
-                  }
-                />
-              </div>
-
-              {product === "comfortcc" && (
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="block text-sm font-medium">
-                      Pravidelná platba
-                    </label>
-                    <input
-                      type="number"
-                      className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                      value={comfortPaymentText}
-                      onChange={(e) => setComfortPaymentText(e.target.value)}
-                      placeholder="Zadejte pravidelnou platbu"
-                    />
-                  </div>
-
-                  {comfortGradual && (
-                    <div className="space-y-1">
-                      <label className="block text-sm font-medium">
-                        Cílová částka (volitelné)
-                      </label>
-                      <input
-                        type="number"
-                        className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                        value={comfortTargetAmountText}
-                        onChange={(e) => setComfortTargetAmountText(e.target.value)}
-                        placeholder="Např. 200000"
-                      />
-                      {comfortPayoutCount && (
-                        <p className="text-xs text-slate-600">
-                          Následná provize z platby bude vyplacena celkem {comfortPayoutCount}x.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {!tipsterModeEnabled && (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={openTipContractModal}
-                      className={`ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition ${
-                        tipContractConfig
-                          ? "border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700"
-                          : ""
-                      }`}
-                    >
-                      {tipContractConfig ? "Smlouva z TIPU ✓" : "Smlouva z TIPU"}
-                    </button>
-                    {isLifeProduct && product === "neon" && (
-                      <button
-                        type="button"
-                        onClick={() => setRefreshOriginalOpen((v) => !v)}
-                        className={`ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition ${
-                          refreshOriginalOpen
-                            ? "border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700"
-                            : ""
-                        }`}
-                      >
-                        <RefreshCcw size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                        {refreshOriginalOpen ? "Refresh zapnutý" : "Refresh smlouvy"}
-                      </button>
-                    )}
-                    {isLifeProduct && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handlePrepareEndorsement();
-                        }}
-                        className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm"
-                      >
-                        <Repeat2 size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                        Změna
-                      </button>
-                    )}
-                  </div>
-                  {isLifeProduct && product === "neon" && refreshOriginalOpen && (
-                    <p className="text-[11px] text-slate-600">
-                      Při uložení se nová smlouva označí jako Refresh.
-                    </p>
-                  )}
-                </div>
-              )}
-            </section>
-
-            {/* Detaily smlouvy */}
-            {!tipsterModeEnabled && (
-            <section className="space-y-3">
-              <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-                <FileText size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                <span>Detaily smlouvy</span>
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="block text-sm font-medium">
-                Jméno a příjmení klienta
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 ${
-                    missingFields.includes("jméno klienta")
-                      ? "border-rose-400/70 focus:ring-rose-500 focus:border-rose-500"
-                      : pdfMatchedClientName
-                      ? "border-emerald-400 bg-emerald-50 focus:ring-emerald-600 focus:border-emerald-600"
-                      : "border-slate-300 focus:ring-slate-900 focus:border-slate-900"
-                  }`}
-                  value={clientName}
-                  onChange={(e) => {
-                    setClientName(e.target.value);
-                    setPdfClientNameLoaded(false);
-                    setPdfMatchedClientName(false);
-                    setClientSuggestionsOpen(true);
-                  }}
-                  placeholder="Např. Jan Novák"
-                  autoComplete="off"
-                  onFocus={() => setClientSuggestionsOpen(true)}
-                  onBlur={() => setTimeout(() => setClientSuggestionsOpen(false), 100)}
-                />
-                {pdfClientNameLoaded && !missingFields.includes("jméno klienta") && (
-                  <p
-                    className={`mt-1 text-[11px] ${
-                      pdfMatchedClientName ? "text-emerald-700" : "text-slate-600"
-                    }`}
-                  >
-                    {pdfMatchedClientName
-                      ? "Jméno klienta načteno z PDF. Nalezena shoda s klientem v systému."
-                      : "Jméno klienta načteno z PDF. V systému zatím bez přesné shody."}
-                  </p>
-                )}
-                {filteredClientSuggestions.length > 0 && clientSuggestionsOpen && (
-                  <div className="absolute z-30 mt-1 w-full rounded-xl border border-slate-300 bg-white backdrop-blur-2xl shadow-[0_14px_40px_rgba(0,0,0,0.7)] overflow-hidden">
-                    {filteredClientSuggestions.map((name) => (
-                      <button
-                        key={name}
-                        type="button"
-                        onClick={() => {
-                          setClientName(name);
-                          setPdfClientNameLoaded(false);
-                          setPdfMatchedClientName(false);
-                          setMissingFields((prev) => prev.filter((k) => k !== "jméno klienta"));
-                          setClientSuggestionsOpen(false);
-                        }}
-                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-900 hover:bg-slate-100"
-                      >
-                        <span>{name}</span>
-                        <span className="text-xs text-slate-400">vložit</span>
-                      </button>
-                        ))}
-                      </div>
-                    )}
-                </div>
-            </div>
-
-                <div className="space-y-1">
-                <label className="block text-sm font-medium">
-                  Datum sjednání smlouvy
-                </label>
-                <input
-                  type="date"
-                  className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 ${
-                    missingFields.includes("datum sjednání") ? "border-rose-400/70" : "border-slate-300"
-                  }`}
-                  value={contractSignedDate}
-                  onChange={(e) => setContractSignedDate(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-sm font-medium">
-                  Číslo smlouvy
-                </label>
-                <input
-                  type="text"
-                  className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 ${
-                    missingFields.includes("číslo smlouvy") ? "border-rose-400/70" : "border-slate-300"
-                  }`}
-                  value={contractNumber}
-                  onChange={(e) => setContractNumber(e.target.value)}
-                  placeholder=""
-                />
-                {contractNumberLiveCheck.status === "checking" && (
-                  <p className="text-[11px] text-slate-500">
-                    Kontroluji duplicitu čísla smlouvy…
-                  </p>
-                )}
-                {contractNumberLiveCheck.status === "duplicate" && (
-                  <p className="text-[11px] text-rose-700">
-                    Smlouva s tímto číslem už existuje ({contractNumberLiveCheck.count}×).
-                  </p>
-                )}
-                {contractNumberLiveCheck.status === "error" && (
-                  <p className="text-[11px] text-amber-700">
-                    Nepodařilo se ověřit duplicitu čísla smlouvy.
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-sm font-medium">
-                  Datum počátku smlouvy
-                </label>
-                <input
-                  type="date"
-                  className={`w-full rounded-xl border bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 ${
-                    missingFields.includes("datum počátku") ? "border-rose-400/70" : "border-slate-300"
-                  }`}
-                  value={policyStartDate}
-                  onChange={(e) => setPolicyStartDate(e.target.value)}
-                />
-                {contractDateErrors.length > 0 && (
-                  <p className="text-[11px] text-rose-700">
-                    {contractDateErrors.map((issue) => issue.message).join(" ")}
-                  </p>
-                )}
-                {contractDateWarnings.length > 0 && contractDateErrors.length === 0 && (
-                  <p className="text-[11px] text-amber-700">
-                    {contractDateWarnings.map((issue) => issue.message).join(" ")}
-                  </p>
-                )}
-              </div>
-
-              {showPolicyEndDateField && (
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium">
-                    Pojištění do (volitelné)
-                  </label>
-                  <input
-                    type="date"
-                    className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                    value={policyEndDate}
-                    onChange={(e) => setPolicyEndDate(e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
-            </section>
-            )}
-
-            {/* Pozice a režim pro tuto smlouvu */}
-            {!tipsterModeEnabled && (
-              <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium">
-                    Sjednána jako (pozice)
-                  </label>
-                  <select
-                    className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                    value={position}
-                    onChange={(e) => setPosition(e.target.value as Position)}
-                  >
-                    {allowedPositionsForUser(baseUserPosition ?? position).map((p) => (
-                      <option key={p} value={p}>
-                        {positionLabel(p)}
-                      </option>
-                    ))}
-                  </select>
-                  {contractSignedDate.trim() && positionTimeline.length > 0 && (
-                    <p
-                      className={`text-[11px] ${
-                        timelineMatchedPosition?.unavailable
-                          ? "text-amber-700"
-                          : "text-slate-500"
-                      }`}
-                    >
-                      {timelineMatchedPosition
-                        ? timelineMatchedPosition.unavailable
-                          ? `Timeline pro ${formatIsoDay(
-                              contractSignedDate.trim()
-                            )} ukazuje pozici ${positionLabel(
-                              timelineMatchedPosition.position
-                            )}, ale není v povoleném rozsahu tvé aktuální role.`
-                          : `Pozice byla předvyplněná z timeline: ${positionLabel(
-                              timelineMatchedPosition.position
-                            )} (${formatIsoDay(timelineMatchedPosition.validFrom)} - ${
-                              timelineMatchedPosition.validTo
-                                ? formatIsoDay(timelineMatchedPosition.validTo)
-                                : "otevřeno"
-                            }).`
-                        : "Pro zadané datum sjednání nemáš v timeline nastavenou pozici."}
-                    </p>
-                  )}
-                </div>
-
-                {canChooseMode && (
-                  <div className="space-y-1">
-                    <label className="block text-sm font-medium">
-                      Režim provize
-                    </label>
-                    <select
-                      className="w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                      value={mode}
-                      onChange={(e) => setMode(e.target.value as CommissionMode)}
-                    >
-                      <option value="accelerated">Zrychlený</option>
-                      <option value="standard">Běžný</option>
-                    </select>
-                    <p className="text-[11px] text-slate-400">
-                      Předvyplněno tvým režimem, ale můžeš přepnout pro tuto konkrétní smlouvu.
-                    </p>
-                  </div>
-                )}
-
-                {product === "neon" && isNeonHistoricalBySignedDate && (
-                  <div className="space-y-1">
-                    <label className="block text-sm font-medium">
-                      Režim provize
-                    </label>
-                    <p className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-600">
-                      U NEON smluv sjednaných od 01.10.2019 do 30.06.2024 se
-                      režim zrychlený/běžný nepoužívá.
-                    </p>
-                  </div>
-                )}
-              </section>
-            )}
-          </div>
-
-          {/* Výsledky */}
-          <div className="self-start space-y-3 lg:sticky lg:top-6">
-            <section className="ui-card rounded-3xl bg-white px-5 py-4 space-y-3 overflow-hidden">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="inline-flex items-center gap-1.5 text-lg font-semibold text-slate-900">
-                <BarChart3 size={18} strokeWidth={2} className="text-slate-700" aria-hidden="true" />
-                <span>Výsledky</span>
-              </h2>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCoefModal(true)}
-                  disabled={unsupported}
-                  className={`ui-btn-secondary ui-focus inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm ${
-                    unsupported ? "opacity-60 cursor-not-allowed" : ""
-                  }`}
-                >
-                  <Sigma size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                  Zobrazit koeficienty
-                </button>
-
-                {tipsterModeEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => setTipsterPercentPanelOpen((prev) => !prev)}
-                    className="ui-btn-primary ui-focus inline-flex items-center rounded-xl px-3 py-2 text-sm"
-                    aria-pressed={tipsterPercentPanelOpen}
-                    aria-label="Nastavit procenta pro tipaře"
-                  >
-                    %
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {tipsterModeEnabled && tipsterPercentPanelOpen && (
-              <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <label className="block text-xs uppercase tracking-wide text-slate-600">
-                    Zobrazované procento provize
-                  </label>
-                  <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-sm font-bold text-slate-900">
-                    {tipsterPercent} %
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void persistTipsterPercent(tipsterPercent - 5)}
-                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-900 hover:bg-slate-100 transition"
-                    aria-label="Snížit o 5 procentních bodů"
-                  >
-                    −5
-                  </button>
-
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={tipsterPercent}
-                    onChange={(e) =>
-                      setTipsterPercentDraft(Number(e.target.value) || 0)
-                    }
-                    onPointerUp={(e) =>
-                      void persistTipsterPercent(Number(e.currentTarget.value) || 0)
-                    }
-                    onKeyUp={(e) => {
-                      if (e.key.startsWith("Arrow") || e.key === "Home" || e.key === "End") {
-                        void persistTipsterPercent(Number((e.currentTarget as HTMLInputElement).value) || 0);
-                      }
-                    }}
-                    className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-slate-900"
-                    aria-label="Nastavit procento tipařské provize"
-                  />
-
-                  <button
-                    type="button"
-                    onClick={() => void persistTipsterPercent(tipsterPercent + 5)}
-                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-900 hover:bg-slate-100 transition"
-                    aria-label="Zvýšit o 5 procentních bodů"
-                  >
-                    +5
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {TIPSTER_PERCENT_PRESETS.map((preset) => {
-                    const active = preset === tipsterPercent;
-                    return (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => void persistTipsterPercent(preset)}
-                        className={`ui-chip ui-focus rounded-full px-2.5 py-1 text-xs font-semibold transition ${
-                          active
-                            ? "ui-chip-active"
-                            : "border-slate-300 bg-white text-slate-900 hover:bg-slate-100"
-                        }`}
-                      >
-                        {preset} %
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-[11px] text-slate-600">Rozsah 0–100 %</p>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={tipsterPercent}
-                    onChange={(e) =>
-                      setTipsterPercentDraft(Number(e.target.value) || 0)
-                    }
-                    onBlur={() => void persistTipsterPercent(tipsterPercent)}
-                    className="w-20 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                  />
-                </div>
-              </div>
-            )}
-
-            {saveMessage && (
-              <p className="text-xs text-slate-600">{saveMessage}</p>
-            )}
-
-            {tipContractConfig && !tipsterModeEnabled && (
-              <p className="text-xs text-emerald-700">
-                Aktivní Smlouva z TIPU: {tipContractConfig.tipsterPercent} % z okamžité provize v
-                1. roce pro{" "}
-                {tipContractConfig.tipsterName ??
-                  tipContractConfig.tipsterEmail ??
-                  "neoznačeného tipaře"}
-                .
-              </p>
-            )}
-
-            {unsupported && (
-              <p className="text-sm text-amber-800 bg-amber-100 border border-amber-300 rounded-xl px-3 py-2">
-                {SUPPORTED_LABEL}
-              </p>
-            )}
-
-            {!unsupported && items.length === 0 && (
-              <p className="text-sm text-slate-600">
-                Zadej částku a produkt, hned vypočítáme jednotlivé provize.
-              </p>
-            )}
-
-            {items.length > 0 && !unsupported && (() => {
-              if (tipsterModeEnabled) {
-                return (
-                  <div className="space-y-2">
-                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-200 py-1.5">
-                      <span className="flex items-center gap-3 text-sm text-slate-900">
-                        <span className="relative h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0">
-                          <Image
-                            src="/icons/penize2.png"
-                            alt=""
-                            fill
-                            className="object-contain"
-                          />
-                        </span>
-                        <span>Okamžitá provize ({tipsterPercent} %)</span>
-                      </span>
-                      <span className="text-lg sm:text-2xl font-semibold text-slate-900">
-                        {formatMoneyResult(tipsterImmediateCommission)}
-                      </span>
-                    </div>
-
-                    <div className="pt-2 flex items-center justify-between">
-                      <span className="font-semibold text-slate-900">Celkem</span>
-                      <span className="text-2xl sm:text-3xl font-bold text-slate-900">
-                        {formatMoneyResult(tipsterImmediateCommission)}
-                      </span>
-                    </div>
-                  </div>
-                );
+            <CalculatorContractDetailsSection
+              isVisible={!tipsterModeEnabled}
+              missingFields={missingFields}
+              clientName={clientName}
+              pdfClientNameLoaded={pdfClientNameLoaded}
+              pdfMatchedClientName={pdfMatchedClientName}
+              filteredClientSuggestions={filteredClientSuggestions}
+              clientSuggestionsOpen={clientSuggestionsOpen}
+              contractSignedDate={contractSignedDate}
+              contractNumber={contractNumber}
+              contractNumberLiveCheckStatus={contractNumberLiveCheck.status}
+              contractNumberLiveCheckCount={
+                contractNumberLiveCheck.status === "duplicate" ? contractNumberLiveCheck.count : null
               }
+              policyStartDate={policyStartDate}
+              contractDateErrorText={contractDateErrorText}
+              contractDateWarningText={contractDateWarningText}
+              showPolicyEndDateField={showPolicyEndDateField}
+              policyEndDate={policyEndDate}
+              onClientNameChange={(value) => {
+                setClientName(value);
+                setPdfClientNameLoaded(false);
+                setPdfMatchedClientName(false);
+                setClientSuggestionsOpen(true);
+              }}
+              onClientNameFocus={() => setClientSuggestionsOpen(true)}
+              onClientNameBlur={() => {
+                setTimeout(() => setClientSuggestionsOpen(false), 100);
+              }}
+              onSelectClientSuggestion={(name) => {
+                setClientName(name);
+                setPdfClientNameLoaded(false);
+                setPdfMatchedClientName(false);
+                setMissingFields((prev) => prev.filter((key) => key !== "jméno klienta"));
+                setClientSuggestionsOpen(false);
+              }}
+              onContractSignedDateChange={setContractSignedDate}
+              onContractNumberChange={setContractNumber}
+              onPolicyStartDateChange={setPolicyStartDate}
+              onPolicyEndDateChange={setPolicyEndDate}
+            />
 
-              const displayItems = items.filter((item) => {
-                const t = cleanResultTitle(item.title).toLowerCase();
-                return !(
-                  t === "celkem" ||
-                  t.startsWith("celková provize")
-                );
-              });
-
-              return (
-                <div className="space-y-2">
-                  {displayItems.map((item, idx) => {
-                    const iconSrc = resultIconForTitle(item.title);
-                    const title = cleanResultTitle(item.title);
-
-                    return (
-                      <div
-                        key={idx}
-                        className="flex items-baseline justify-between gap-3 border-b last:border-b-0 border-slate-200 py-1.5"
-                      >
-                        <span className="flex items-center gap-3 text-sm text-slate-900">
-                          {iconSrc && (
-                            <div className="relative h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0">
-                              <Image
-                                src={iconSrc}
-                                alt=""
-                                fill
-                                className="object-contain"
-                              />
-                            </div>
-                          )}
-                          <span>{title}</span>
-                        </span>
-                        <span className="text-lg sm:text-2xl font-semibold text-slate-900">
-                          {formatMoneyResult(item.amount)}
-                        </span>
-                      </div>
-                    );
-                  })}
-
-                  {tipContractConfig && (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-slate-900 space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                        Smlouva z TIPU
-                      </p>
-                      <div className="flex items-center justify-between text-sm">
-                        <span>Okamžitá v 1. roce (brutto)</span>
-                        <span className="font-semibold">
-                          {formatMoneyResult(tipContractImmediateGrossFirstYear)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span>Podíl tipaře ({tipContractConfig.tipsterPercent} %)</span>
-                        <span className="font-semibold text-rose-700">
-                          −{formatMoneyResult(tipContractTipsterAmountFirstYear)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span>Okamžitá v 1. roce po TIPU</span>
-                        <span className="font-bold text-emerald-800">
-                          {formatMoneyResult(tipContractImmediateNetFirstYear)}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="pt-2 flex items-center justify-between">
-                    {(product === "domex" ||
-                      product === "cpphafan" ||
-                      product === "koopmajetekobcan" ||
-                      product === "maxdomov") &&
-                    paymentBasedTotalsMemo ? (
-                      <div className="w-full space-y-1 text-slate-900">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold">
-                            Celkem v 1. roce{tipContractConfig ? " po TIPU" : ""}
-                          </span>
-                          <span className="text-2xl sm:text-3xl font-bold text-slate-900">
-                            {formatMoneyResult(
-                              tipContractConfig
-                                ? tipContractImmediateNetFirstYear
-                                : paymentBasedTotalsMemo.immediate
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold">Celkem ročně následně</span>
-                          <span className="text-2xl sm:text-3xl font-bold text-slate-900">
-                            {formatMoneyResult(paymentBasedTotalsMemo.subsequent)}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <span className="font-semibold text-slate-900">
-                          Celkem{tipContractConfig ? " po TIPU" : ""}
-                        </span>
-                        <span className="text-2xl sm:text-3xl font-bold text-slate-900">
-                          {formatMoneyResult(tipContractConfig ? tipContractTotalNet : total)}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-            </section>
-            {!tipsterModeEnabled && (
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleSaveContract()}
-                  disabled={saving || items.length === 0 || parseNumber(amountText) <= 0}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <CheckCircle2 size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                  {saving ? "Ukládám…" : "Sepsáno"}
-                </button>
-                {lastSavedContractHref && (
-                  <Link
-                    href={lastSavedContractHref}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
-                  >
-                    <FileText size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                    Zobrazit smlouvu
-                  </Link>
-                )}
-              </div>
-            )}
+            <CalculatorPositionModeSection
+              isVisible={!tipsterModeEnabled}
+              product={product}
+              position={position}
+              allowedPositions={allowedPositionOptions}
+              timelineHintText={positionTimelineHintText}
+              timelineHintWarning={positionTimelineHintWarning}
+              canChooseMode={canChooseMode}
+              mode={mode}
+              isNeonHistoricalBySignedDate={isNeonHistoricalBySignedDate}
+              onPositionChange={setPosition}
+              onModeChange={setMode}
+            />
           </div>
+
+          <CalculatorResultsSection
+            tipsterModeEnabled={tipsterModeEnabled}
+            tipsterPercentPanelOpen={tipsterPercentPanelOpen}
+            tipsterPercent={tipsterPercent}
+            tipsterPercentPresets={TIPSTER_PERCENT_PRESETS}
+            saveMessage={saveMessage}
+            tipContractConfig={
+              tipContractConfig
+                ? {
+                    tipsterPercent: tipContractConfig.tipsterPercent,
+                    tipsterName: tipContractConfig.tipsterName ?? null,
+                    tipsterEmail: tipContractConfig.tipsterEmail ?? null,
+                  }
+                : null
+            }
+            unsupported={unsupported}
+            supportedLabel={SUPPORTED_LABEL}
+            items={items}
+            tipsterImmediateCommission={tipsterImmediateCommission}
+            product={product}
+            paymentBasedTotalsMemo={paymentBasedTotalsMemo}
+            tipContractImmediateGrossFirstYear={tipContractImmediateGrossFirstYear}
+            tipContractTipsterAmountFirstYear={tipContractTipsterAmountFirstYear}
+            tipContractImmediateNetFirstYear={tipContractImmediateNetFirstYear}
+            tipContractTotalNet={tipContractTotalNet}
+            total={total}
+            saving={saving}
+            canSaveContract={!saving && items.length > 0 && parseNumber(amountText) > 0}
+            lastSavedContractHref={lastSavedContractHref}
+            onOpenCoefModal={() => setShowCoefModal(true)}
+            onToggleTipsterPercentPanel={() => setTipsterPercentPanelOpen((prev) => !prev)}
+            onTipsterPercentDraft={setTipsterPercentDraft}
+            onPersistTipsterPercent={persistTipsterPercent}
+            onSaveContract={() => {
+              void handleSaveContract();
+            }}
+          />
         </div>
       </div>
 

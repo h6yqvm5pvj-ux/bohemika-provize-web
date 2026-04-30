@@ -1,5 +1,7 @@
 import React from "react";
+import Link from "next/link";
 import {
+  ExternalLink,
   House,
   HousePlus,
   LifeBuoy,
@@ -149,107 +151,127 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
     !!domexDetail?.liabilityLandlord;
 
   const showNote = editMode || hasValue(domexDetail?.note);
+  const resolvedAddress = (editMode
+    ? fields.address
+    : domexDetail?.address || fields.address || ""
+  ).trim();
+  const cuzkHref = resolvedAddress
+    ? `/cuzk?address=${encodeURIComponent(resolvedAddress)}`
+    : "/cuzk";
 
   return (
     <>
       {showPropertyBlock && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
-          <House size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-          <span>Pojištění stavby</span>
-        </div>
-        <div className="space-y-2 text-sm text-slate-900">
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-600">Adresa</span>
-            <span className="font-semibold text-right">
-              {editMode ? (
-                <input
-                  type="text"
-                  value={fields.address}
-                  onChange={(e) => onChange("address", e.target.value)}
-                  className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                  placeholder="Adresa"
-                />
-              ) : (
-                domexDetail?.address || "—"
-              )}
-            </span>
+        <>
+          <div className="mb-2">
+            <Link
+              href={cuzkHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+            >
+              <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
+              Katastr
+            </Link>
           </div>
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-600">Typ nemovitosti</span>
-            <span className="font-semibold text-right">
-              {editMode ? (
-                <select
-                  value={fields.propertyType}
-                  onChange={(e) => onChange("propertyType", e.target.value)}
-                  className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                >
-                  <option value="">Vyber typ</option>
-                  <option value="byt">Byt</option>
-                  <option value="dum">Dům</option>
-                  <option value="chata">Chata</option>
-                  <option value="rekreace">Rekreační objekt</option>
-                  <option value="ostatni">Ostatní</option>
-                </select>
-              ) : (
-                propertyTypeLabel(domexDetail?.propertyType)
-              )}
-            </span>
+          <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
+            <House size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+            <span>Pojištění stavby</span>
           </div>
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-600">Rozsah</span>
-            <span className="font-semibold text-right">
-              {editMode ? (
-                <select
-                  value={fields.propertyCoverage}
-                  onChange={(e) => onChange("propertyCoverage", e.target.value)}
-                  className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                >
-                  <option value="">Vyber</option>
-                  <option value="mini">MINI</option>
-                  <option value="opti">OPTI</option>
-                  <option value="maxi">MAXI</option>
-                  <option value="nop">NOP</option>
-                </select>
-              ) : (
-                (domexDetail?.propertyCoverage ?? "").toUpperCase() || "—"
-              )}
-            </span>
+          <div className="space-y-2 text-sm text-slate-900">
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Adresa</span>
+              <span className="font-semibold text-right">
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={fields.address}
+                    onChange={(e) => onChange("address", e.target.value)}
+                    className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                    placeholder="Adresa"
+                  />
+                ) : (
+                  domexDetail?.address || "—"
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Typ nemovitosti</span>
+              <span className="font-semibold text-right">
+                {editMode ? (
+                  <select
+                    value={fields.propertyType}
+                    onChange={(e) => onChange("propertyType", e.target.value)}
+                    className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                  >
+                    <option value="">Vyber typ</option>
+                    <option value="byt">Byt</option>
+                    <option value="dum">Dům</option>
+                    <option value="chata">Chata</option>
+                    <option value="rekreace">Rekreační objekt</option>
+                    <option value="ostatni">Ostatní</option>
+                  </select>
+                ) : (
+                  propertyTypeLabel(domexDetail?.propertyType)
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Rozsah</span>
+              <span className="font-semibold text-right">
+                {editMode ? (
+                  <select
+                    value={fields.propertyCoverage}
+                    onChange={(e) => onChange("propertyCoverage", e.target.value)}
+                    className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                  >
+                    <option value="">Vyber</option>
+                    <option value="mini">MINI</option>
+                    <option value="opti">OPTI</option>
+                    <option value="maxi">MAXI</option>
+                    <option value="nop">NOP</option>
+                  </select>
+                ) : (
+                  (domexDetail?.propertyCoverage ?? "").toUpperCase() || "—"
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Pojistná částka</span>
+              <span className="font-semibold text-right">
+                {editMode ? (
+                  <input
+                    type="number"
+                    value={fields.sumInsured}
+                    onChange={(e) => onChange("sumInsured", e.target.value)}
+                    className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                    placeholder="částka"
+                  />
+                ) : (
+                  formatKc(domexDetail?.sumInsured)
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Spoluúčast</span>
+              <span className="font-semibold text-right">
+                {editMode ? (
+                  <input
+                    type="number"
+                    value={fields.deductible}
+                    onChange={(e) => onChange("deductible", e.target.value)}
+                    className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                    placeholder="Spoluúčast v Kč"
+                  />
+                ) : (
+                  formatKc(domexDetail?.deductible)
+                )}
+              </span>
+            </div>
           </div>
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-600">Pojistná částka</span>
-            <span className="font-semibold text-right">
-              {editMode ? (
-                <input
-                  type="number"
-                  value={fields.sumInsured}
-                  onChange={(e) => onChange("sumInsured", e.target.value)}
-                  className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                  placeholder="částka"
-                />
-              ) : (
-                formatKc(domexDetail?.sumInsured)
-              )}
-            </span>
           </div>
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-600">Spoluúčast</span>
-            <span className="font-semibold text-right">
-              {editMode ? (
-                <input
-                  type="number"
-                  value={fields.deductible}
-                  onChange={(e) => onChange("deductible", e.target.value)}
-                  className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                  placeholder="Spoluúčast v Kč"
-                />
-              ) : (
-                formatKc(domexDetail?.deductible)
-              )}
-            </span>
-          </div>
-        </div>
-        </div>
+        </>
       )}
 
       {showOutbuildingBlock && (

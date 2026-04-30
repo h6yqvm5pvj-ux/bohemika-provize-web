@@ -10,6 +10,7 @@ import {
   ArrowDownUp,
   CalendarDays,
   CheckCircle2,
+  Search,
   SlidersHorizontal,
   UserRound,
   UsersRound,
@@ -375,6 +376,25 @@ function productMatchesFilters(
   );
 }
 
+function contractOwnerEmail(
+  contract: ContractDoc | (ContractDoc & { adviserEmail?: string | null })
+): string {
+  return normalizeEmail(
+    ((contract as { adviserEmail?: string | null }).adviserEmail ??
+      contract.userEmail ??
+      null) as string | null
+  );
+}
+
+function contractMatchesSelectedSubordinates(
+  contract: ContractDoc | (ContractDoc & { adviserEmail?: string | null }),
+  selectedSubordinates: Set<string>
+): boolean {
+  if (selectedSubordinates.size === 0) return true;
+  const ownerEmail = contractOwnerEmail(contract);
+  return ownerEmail.length > 0 && selectedSubordinates.has(ownerEmail);
+}
+
 function getContractDate(contract: ContractDoc | (ContractDoc & { adviserEmail?: string | null })): Date | null {
   return (
     toDate((contract as any).contractSignedDate) ??
@@ -453,6 +473,7 @@ type ContractsViewState = {
   showUnpaidOnly: boolean;
   selectedCategories: ProductCategory[];
   selectedInstitutions: Institution[];
+  selectedSubordinates: string[];
   scrollY: number;
 };
 
@@ -537,6 +558,15 @@ function readContractsViewState(userEmail: string | null | undefined): Contracts
             INSTITUTION_DEFS.some((d) => d.id === v)
           )
         : [],
+      selectedSubordinates: Array.isArray(parsed.selectedSubordinates)
+        ? Array.from(
+            new Set(
+              parsed.selectedSubordinates
+                .map((v) => (typeof v === "string" ? normalizeEmail(v) : ""))
+                .filter(Boolean)
+            )
+          )
+        : [],
       scrollY:
         typeof parsed.scrollY === "number" && Number.isFinite(parsed.scrollY)
           ? Math.max(0, parsed.scrollY)
@@ -616,6 +646,8 @@ function ContractsPageContent() {
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<ProductCategory>>(new Set());
   const [selectedInstitutions, setSelectedInstitutions] = useState<Set<Institution>>(new Set());
+  const [selectedSubordinates, setSelectedSubordinates] = useState<Set<string>>(new Set());
+  const [subordinateSearchText, setSubordinateSearchText] = useState("");
   const [listMicroAnimating, setListMicroAnimating] = useState(false);
   const contractsListRef = useRef<HTMLDivElement | null>(null);
   const [contractsColumns, setContractsColumns] = useState(1);
@@ -950,6 +982,69 @@ function ContractsPageContent() {
   const canShowTeamToggle =
     isManagerPosition(currentUserPosition) || teamUsersRef.current.length > 0;
 
+  const subordinateFilterOptions = useMemo(() => {
+    if (!canShowTeamToggle) return [] as { email: string; label: string }[];
+    const emails = new Set<string>();
+
+    for (const member of teamUsersRef.current) {
+      const email = normalizeEmail(member.email);
+      if (email) emails.add(email);
+    }
+
+    for (const contract of teamContracts) {
+      const email = contractOwnerEmail(contract);
+      if (email) emails.add(email);
+    }
+
+    return Array.from(emails)
+      .map((email) => ({
+        email,
+        label: adviserNameFromEmail(email) || email,
+      }))
+      .sort((a, b) => {
+        const labelCompare = a.label.localeCompare(b.label, "cs", {
+          sensitivity: "base",
+        });
+        if (labelCompare !== 0) return labelCompare;
+        return a.email.localeCompare(b.email, "cs", { sensitivity: "base" });
+      });
+  }, [canShowTeamToggle, teamContracts]);
+
+  const subordinateSearchQuery = useMemo(
+    () => normalizeSearchValue(subordinateSearchText),
+    [subordinateSearchText]
+  );
+
+  const selectedSubordinateOptions = useMemo(() => {
+    if (selectedSubordinates.size === 0) return [] as { email: string; label: string }[];
+    const knownByEmail = new Map(
+      subordinateFilterOptions.map((member) => [member.email, member] as const)
+    );
+
+    return Array.from(selectedSubordinates)
+      .map((email) => knownByEmail.get(email) ?? { email, label: adviserNameFromEmail(email) || email })
+      .sort((a, b) => {
+        const labelCompare = a.label.localeCompare(b.label, "cs", {
+          sensitivity: "base",
+        });
+        if (labelCompare !== 0) return labelCompare;
+        return a.email.localeCompare(b.email, "cs", { sensitivity: "base" });
+      });
+  }, [selectedSubordinates, subordinateFilterOptions]);
+
+  const searchableSubordinateOptions = useMemo(() => {
+    if (!canShowTeamToggle) return [] as { email: string; label: string }[];
+    if (!subordinateSearchQuery) return [] as { email: string; label: string }[];
+
+    return subordinateFilterOptions
+      .filter((member) => {
+        const name = normalizeSearchValue(member.label);
+        const email = normalizeSearchValue(member.email);
+        return name.includes(subordinateSearchQuery) || email.includes(subordinateSearchQuery);
+      })
+      .slice(0, 8);
+  }, [canShowTeamToggle, subordinateFilterOptions, subordinateSearchQuery]);
+
   const displayedContracts = useMemo(() => {
     const base = (
       showTeam && canShowTeamToggle ? teamContracts : myContracts
@@ -969,9 +1064,7 @@ function ContractsPageContent() {
     >();
 
     base.forEach((contract) => {
-      const ownerEmail = normalizeEmail(
-        (contract.adviserEmail ?? contract.userEmail ?? "") as string
-      );
+      const ownerEmail = contractOwnerEmail(contract);
       const contractNo = (contract.contractNumber ?? "").trim().toLowerCase();
       const productKey = (contract.productKey ?? "unknown").toString();
       const rootContractEntryId = (contract.rootContractEntryId ?? "").trim();
@@ -1061,6 +1154,13 @@ function ContractsPageContent() {
     const qContract = normalizeContractNumberForSearch(searchText);
     const anniversaryOnly = filterMode === "anniversary" && q.length === 0;
     let base = displayedContracts;
+    const teamScopeActive = showTeam && canShowTeamToggle;
+
+    if (teamScopeActive && selectedSubordinates.size > 0) {
+      base = base.filter((c) =>
+        contractMatchesSelectedSubordinates(c, selectedSubordinates)
+      );
+    }
 
     if (q) {
       base = base.filter((c) => {
@@ -1134,6 +1234,9 @@ function ContractsPageContent() {
     );
   }, [
     displayedContracts,
+    showTeam,
+    canShowTeamToggle,
+    selectedSubordinates,
     searchText,
     showUnpaidOnly,
     filterMode,
@@ -1152,7 +1255,14 @@ function ContractsPageContent() {
         )
       : searchFallbackContracts;
 
-    return fallbackBase.filter((c) =>
+    const scopedFallback =
+      showTeam && canShowTeamToggle && selectedSubordinates.size > 0
+        ? fallbackBase.filter((c) =>
+            contractMatchesSelectedSubordinates(c, selectedSubordinates)
+          )
+        : fallbackBase;
+
+    return scopedFallback.filter((c) =>
       productMatchesFilters(
         c.productKey as Product | undefined,
         selectedCategories,
@@ -1164,6 +1274,9 @@ function ContractsPageContent() {
     filteredContracts,
     searchFallbackContracts,
     showUnpaidOnly,
+    showTeam,
+    canShowTeamToggle,
+    selectedSubordinates,
     selectedCategories,
     selectedInstitutions,
   ]);
@@ -1222,6 +1335,7 @@ function ContractsPageContent() {
         unpaidOnly: showUnpaidOnly,
         categories: Array.from(selectedCategories).sort(),
         institutions: Array.from(selectedInstitutions).sort(),
+        subordinates: Array.from(selectedSubordinates).sort(),
       }),
     [
       showTeam,
@@ -1230,6 +1344,7 @@ function ContractsPageContent() {
       showUnpaidOnly,
       selectedCategories,
       selectedInstitutions,
+      selectedSubordinates,
     ]
   );
 
@@ -1361,6 +1476,7 @@ function ContractsPageContent() {
       showUnpaidOnly,
       selectedCategories: Array.from(selectedCategories),
       selectedInstitutions: Array.from(selectedInstitutions),
+      selectedSubordinates: Array.from(selectedSubordinates),
       scrollY: typeof window !== "undefined" ? window.scrollY : 0,
     });
   }, [
@@ -1371,6 +1487,7 @@ function ContractsPageContent() {
     showUnpaidOnly,
     selectedCategories,
     selectedInstitutions,
+    selectedSubordinates,
   ]);
 
   useEffect(() => {
@@ -1385,6 +1502,7 @@ function ContractsPageContent() {
     setShowUnpaidOnly(saved.showUnpaidOnly);
     setSelectedCategories(new Set(saved.selectedCategories));
     setSelectedInstitutions(new Set(saved.selectedInstitutions));
+    setSelectedSubordinates(new Set(saved.selectedSubordinates));
     pendingScrollRestoreRef.current = saved.scrollY;
   }, [shouldRestoreView, normalizedUserEmail]);
 
@@ -1423,6 +1541,12 @@ function ContractsPageContent() {
     canShowTeamToggle,
     handleLoadMore,
   ]);
+
+  useEffect(() => {
+    if (!filterModalOpen) {
+      setSubordinateSearchText("");
+    }
+  }, [filterModalOpen]);
 
   useEffect(() => {
     if (!user) {
@@ -2290,12 +2414,12 @@ function ContractsPageContent() {
       </div>
 
       {filterModalOpen && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[80] flex items-start justify-center px-4 py-4 sm:items-center sm:py-0">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setFilterModalOpen(false)}
           />
-          <div className="relative w-full max-w-lg space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
+          <div className="relative w-full max-w-6xl rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_24px_80px_rgba(15,23,42,0.18)] sm:p-6">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-slate-900">Filtry</h3>
               <button
@@ -2307,120 +2431,232 @@ function ContractsPageContent() {
               </button>
             </div>
 
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-slate-900">Produkty</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {CATEGORY_DEFS.map((cat) => {
-                  const active = selectedCategories.has(cat.id);
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() =>
-                        setSelectedCategories((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(cat.id)) {
-                            next.delete(cat.id);
-                          } else {
-                            next.add(cat.id);
+            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+              <div className="space-y-4 xl:max-h-[68vh] xl:overflow-y-auto xl:pr-2">
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-slate-900">Produkty</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {CATEGORY_DEFS.map((cat) => {
+                      const active = selectedCategories.has(cat.id);
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() =>
+                            setSelectedCategories((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(cat.id)) {
+                                next.delete(cat.id);
+                              } else {
+                                next.add(cat.id);
+                              }
+                              return next;
+                            })
                           }
-                          return next;
-                        })
-                      }
-                      className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
-                        active
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      <span className="text-sm font-medium">{cat.label}</span>
-                      <span
-                        className={`h-5 w-5 rounded-full border ${
-                          active
-                            ? "border-slate-900 bg-white text-slate-900"
-                            : "border-slate-300"
-                        }`}
-                      >
-                        {active ? "✓" : ""}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-slate-900">Instituce</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {INSTITUTION_DEFS.map((inst) => {
-                  const active = selectedInstitutions.has(inst.id);
-                  const logoSrc = INSTITUTION_LOGO_BY_ID[inst.id];
-                  return (
-                    <button
-                      key={inst.id}
-                      type="button"
-                      onClick={() =>
-                        setSelectedInstitutions((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(inst.id)) {
-                            next.delete(inst.id);
-                          } else {
-                            next.add(inst.id);
-                          }
-                          return next;
-                        })
-                      }
-                      className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
-                        active
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      <span className="flex min-w-0 items-center gap-2.5">
-                        <span
-                          className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white ${institutionLogoFrameClass(
-                            inst.id,
-                            "chip"
-                          )}`}
+                          className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
+                            active
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                          }`}
                         >
-                          {logoSrc ? (
-                            <Image
-                              src={logoSrc}
-                              alt={`${inst.label} logo`}
-                              width={36}
-                              height={28}
-                              className={`${institutionLogoImageClass(inst.id)} h-full w-full`}
-                            />
-                          ) : (
-                            <span className="text-[10px] font-semibold tracking-wide text-slate-600">
-                              {institutionMonogram(inst.label)}
+                          <span className="text-sm font-medium">{cat.label}</span>
+                          <span
+                            className={`h-5 w-5 rounded-full border ${
+                              active
+                                ? "border-slate-900 bg-white text-slate-900"
+                                : "border-slate-300"
+                            }`}
+                          >
+                            {active ? "✓" : ""}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-slate-900">Instituce</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {INSTITUTION_DEFS.map((inst) => {
+                      const active = selectedInstitutions.has(inst.id);
+                      const logoSrc = INSTITUTION_LOGO_BY_ID[inst.id];
+                      return (
+                        <button
+                          key={inst.id}
+                          type="button"
+                          onClick={() =>
+                            setSelectedInstitutions((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(inst.id)) {
+                                next.delete(inst.id);
+                              } else {
+                                next.add(inst.id);
+                              }
+                              return next;
+                            })
+                          }
+                          className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
+                            active
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                          }`}
+                        >
+                          <span className="flex min-w-0 items-center gap-2.5">
+                            <span
+                              className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white ${institutionLogoFrameClass(
+                                inst.id,
+                                "chip"
+                              )}`}
+                            >
+                              {logoSrc ? (
+                                <Image
+                                  src={logoSrc}
+                                  alt={`${inst.label} logo`}
+                                  width={36}
+                                  height={28}
+                                  className={`${institutionLogoImageClass(inst.id)} h-full w-full`}
+                                />
+                              ) : (
+                                <span className="text-[10px] font-semibold tracking-wide text-slate-600">
+                                  {institutionMonogram(inst.label)}
+                                </span>
+                              )}
                             </span>
-                          )}
-                        </span>
-                        <span className="truncate text-sm font-medium">{inst.label}</span>
-                      </span>
-                      <span
-                        className={`h-5 w-5 rounded-full border ${
-                          active
-                            ? "border-slate-900 bg-white text-slate-900"
-                            : "border-slate-300"
-                        }`}
-                      >
-                        {active ? "✓" : ""}
-                      </span>
-                    </button>
-                  );
-                })}
+                            <span className="truncate text-sm font-medium">{inst.label}</span>
+                          </span>
+                          <span
+                            className={`h-5 w-5 rounded-full border ${
+                              active
+                                ? "border-slate-900 bg-white text-slate-900"
+                                : "border-slate-300"
+                            }`}
+                          >
+                            {active ? "✓" : ""}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
+
+              {canShowTeamToggle && (
+                <div className="space-y-2 border-t border-slate-200 pt-3 xl:max-h-[68vh] xl:overflow-y-auto xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
+                  <p className="text-sm font-semibold text-slate-900">Podřízení</p>
+                  {subordinateFilterOptions.length === 0 ? (
+                    <p className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      Zatím nejsou dostupní žádní podřízení pro filtrování.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-2.5 py-2">
+                        <Search size={13} className="text-slate-400" aria-hidden="true" />
+                        <input
+                          type="text"
+                          value={subordinateSearchText}
+                          onChange={(event) => setSubordinateSearchText(event.target.value)}
+                          aria-label="Hledat podřízeného"
+                          placeholder="Hledat podřízeného (jméno nebo e-mail)"
+                          className="w-full bg-transparent text-xs text-slate-900 placeholder:text-slate-400 outline-none"
+                        />
+                      </label>
+
+                      {selectedSubordinateOptions.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {selectedSubordinateOptions.map((member) => (
+                            <button
+                              key={`selected-${member.email}`}
+                              type="button"
+                              onClick={() =>
+                                setSelectedSubordinates((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(member.email);
+                                  return next;
+                                })
+                              }
+                              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs text-white"
+                            >
+                              <span className="truncate">{member.label}</span>
+                              <span className="text-[11px]">✕</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {!subordinateSearchQuery ? (
+                        <p className="text-xs text-slate-500">
+                          Začni psát jméno nebo e-mail podřízeného.
+                        </p>
+                      ) : searchableSubordinateOptions.length === 0 ? (
+                        <p className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                          Pro zadaný výraz jsme nikoho nenašli.
+                        </p>
+                      ) : (
+                        <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                          {searchableSubordinateOptions.map((member) => {
+                            const active = selectedSubordinates.has(member.email);
+                            return (
+                              <button
+                                key={member.email}
+                                type="button"
+                                onClick={() =>
+                                  setSelectedSubordinates((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(member.email)) {
+                                      next.delete(member.email);
+                                    } else {
+                                      next.add(member.email);
+                                    }
+                                    return next;
+                                  })
+                                }
+                                className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left transition ${
+                                  active
+                                    ? "border-slate-900 bg-slate-900 text-white"
+                                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                }`}
+                              >
+                                <span className="min-w-0">
+                                  <span className="block truncate text-sm font-medium">
+                                    {member.label}
+                                  </span>
+                                  <span
+                                    className={`block truncate text-[11px] ${
+                                      active ? "text-slate-200" : "text-slate-500"
+                                    }`}
+                                  >
+                                    {member.email}
+                                  </span>
+                                </span>
+                                <span
+                                  className={`h-5 w-5 rounded-full border text-center text-xs leading-[18px] ${
+                                    active
+                                      ? "border-slate-900 bg-white text-slate-900"
+                                      : "border-slate-300 text-transparent"
+                                  }`}
+                                >
+                                  ✓
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div className="flex justify-between pt-2 text-sm">
+            <div className="mt-4 flex justify-between border-t border-slate-200 pt-3 text-sm">
               <button
                 type="button"
                 onClick={() => {
                   setShowUnpaidOnly(false);
                   setSelectedCategories(new Set());
                   setSelectedInstitutions(new Set());
+                  setSelectedSubordinates(new Set());
                 }}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-slate-900 hover:bg-slate-50"
               >
