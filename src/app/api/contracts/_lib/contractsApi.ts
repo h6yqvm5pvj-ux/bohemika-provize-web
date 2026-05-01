@@ -304,7 +304,8 @@ const CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
 const CONTRACTS_GET_RATE_LIMIT = 180;
 const CONTRACTS_GET_RATE_LIMIT_WINDOW_MS = 60_000;
 const UPDATE_FIELDS_MAX_ENTRY_IDS = 50;
-const USER_TREE_CACHE_TTL_MS = 30_000;
+const USER_TREE_CACHE_TTL_MS = 5 * 60 * 1000;
+const SUBSCRIPTION_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
 const CONTRACT_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONTRACTS_CREATE_RATE_LIMIT = 30;
@@ -753,6 +754,46 @@ const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
 
 let cachedUserTree: { value: UserTreeResult; expiresAtMs: number } | null = null;
 let cachedUserTreePromise: Promise<UserTreeResult> | null = null;
+let cachedSubscriptionStatus = new Map<
+  string,
+  { value: SubscriptionStatus | null; expiresAtMs: number }
+>();
+
+const readCachedSubscriptionStatus = (
+  key: string
+): SubscriptionStatus | null | undefined => {
+  const now = Date.now();
+  const cached = cachedSubscriptionStatus.get(key);
+  if (!cached) return undefined;
+  if (cached.expiresAtMs <= now) {
+    cachedSubscriptionStatus.delete(key);
+    return undefined;
+  }
+  return cached.value;
+};
+
+const writeCachedSubscriptionStatus = (
+  key: string,
+  value: SubscriptionStatus | null
+) => {
+  const now = Date.now();
+  cachedSubscriptionStatus.set(key, {
+    value,
+    expiresAtMs: now + SUBSCRIPTION_STATUS_CACHE_TTL_MS,
+  });
+
+  // Keep cache bounded in long-lived node runtimes.
+  if (cachedSubscriptionStatus.size > 2000) {
+    for (const [cacheKey, entry] of cachedSubscriptionStatus) {
+      if (entry.expiresAtMs <= now || cachedSubscriptionStatus.size > 1500) {
+        cachedSubscriptionStatus.delete(cacheKey);
+      }
+      if (cachedSubscriptionStatus.size <= 1500) {
+        break;
+      }
+    }
+  }
+};
 
 const isManagerPosition = (pos: Position | null | undefined): boolean =>
   Boolean(pos) && (pos as Position).startsWith("manazer");
@@ -3999,59 +4040,69 @@ async function fetchContractsForOwners(
   }
 
   // fallback: per-user path (covers records without userEmail)
-  for (let i = 0; i < owners.length; i += 10) {
-    const ownerChunk = owners.slice(i, i + 10);
-    const chunkResults = await Promise.all(
-      ownerChunk.map(async (owner) => {
-        try {
-          const signedFrom = filters?.signedFrom ?? null;
-          let qBySigned = db
-            .collection("users")
-            .doc(owner)
-            .collection("entries")
-            .orderBy("contractSignedDate", "desc");
-          let qByCreated = db
-            .collection("users")
-            .doc(owner)
-            .collection("entries")
-            .orderBy("createdAt", "desc");
-          if (signedFrom) {
-            qBySigned = qBySigned.where("contractSignedDate", ">=", signedFrom);
-            qByCreated = qByCreated.where("createdAt", ">=", signedFrom);
+  // For multi-owner queries we only run this expensive fallback when
+  // collectionGroup did not yield enough items for the requested page.
+  const shouldRunPerOwnerFallback =
+    !shouldUseCollectionGroup || collectionGroupFailed || collected.length < pageLimit;
+  if (shouldRunPerOwnerFallback) {
+    for (let i = 0; i < owners.length; i += 10) {
+      if (shouldUseCollectionGroup && !collectionGroupFailed && collected.length >= pageLimit) {
+        break;
+      }
+
+      const ownerChunk = owners.slice(i, i + 10);
+      const chunkResults = await Promise.all(
+        ownerChunk.map(async (owner) => {
+          try {
+            const signedFrom = filters?.signedFrom ?? null;
+            let qBySigned = db
+              .collection("users")
+              .doc(owner)
+              .collection("entries")
+              .orderBy("contractSignedDate", "desc");
+            let qByCreated = db
+              .collection("users")
+              .doc(owner)
+              .collection("entries")
+              .orderBy("createdAt", "desc");
+            if (signedFrom) {
+              qBySigned = qBySigned.where("contractSignedDate", ">=", signedFrom);
+              qByCreated = qByCreated.where("createdAt", ">=", signedFrom);
+            }
+            // Keep createdAt query uncursored. Backfilled contracts can have old
+            // contractSignedDate with fresh createdAt; cursoring createdAt would
+            // skip them permanently in subsequent pages.
+            if (cursor) {
+              qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
+            }
+
+            const [signedSnap, createdSnap] = await Promise.all([
+              qBySigned.limit(pageLimit).get(),
+              qByCreated.limit(pageLimit).get(),
+            ]);
+
+            return { owner, signedSnap, createdSnap };
+          } catch {
+            // Ignore one broken owner branch instead of failing the whole response.
+            return null;
           }
-          // Keep createdAt query uncursored. Backfilled contracts can have old
-          // contractSignedDate with fresh createdAt; cursoring createdAt would
-          // skip them permanently in subsequent pages.
-          if (cursor) {
-            qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
-          }
+        })
+      );
 
-          const [signedSnap, createdSnap] = await Promise.all([
-            qBySigned.limit(pageLimit).get(),
-            qByCreated.limit(pageLimit).get(),
-          ]);
+      chunkResults.forEach((result) => {
+        if (!result) return;
 
-          return { owner, signedSnap, createdSnap };
-        } catch {
-          // Ignore one broken owner branch instead of failing the whole response.
-          return null;
-        }
-      })
-    );
+        const consumeSnap = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
+          snap.docs.forEach((doc) => {
+            const data = doc.data() as any as ContractDoc;
+            pushCollected(doc.id, result.owner, data);
+          });
+        };
 
-    chunkResults.forEach((result) => {
-      if (!result) return;
-
-      const consumeSnap = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
-        snap.docs.forEach((doc) => {
-          const data = doc.data() as any as ContractDoc;
-          pushCollected(doc.id, result.owner, data);
-        });
-      };
-
-      consumeSnap(result.signedSnap);
-      consumeSnap(result.createdSnap);
-    });
+        consumeSnap(result.signedSnap);
+        consumeSnap(result.createdSnap);
+      });
+    }
   }
 
   collected.sort((a, b) => {
@@ -4127,6 +4178,14 @@ const loadUserSubscriptionStatus = async ({
 }): Promise<SubscriptionStatus | null> => {
   if (!adminDb) return null;
 
+  const cacheKey = normalizeEmail(email || rawTokenEmail || uid);
+  if (cacheKey) {
+    const cached = readCachedSubscriptionStatus(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+  }
+
   const db = adminDb;
   const candidateValues = toNonEmptyCandidateValues([
     email,
@@ -4144,7 +4203,12 @@ const loadUserSubscriptionStatus = async ({
         (snap.data() as Record<string, unknown> | undefined) ?? ({} as Record<string, unknown>)
     );
   const privateStatus = resolveSubscriptionStatusFromSources(privateSources);
-  if (privateStatus) return privateStatus;
+  if (privateStatus) {
+    if (cacheKey) {
+      writeCachedSubscriptionStatus(cacheKey, privateStatus);
+    }
+    return privateStatus;
+  }
 
   const [directPublicSnaps, byEmailSnaps, byUidSnap] = await Promise.all([
     Promise.all(candidateValues.map((value) => db.collection("users").doc(value).get())),
@@ -4176,7 +4240,11 @@ const loadUserSubscriptionStatus = async ({
     );
   });
 
-  return resolveSubscriptionStatusFromSources(publicSources);
+  const resolved = resolveSubscriptionStatusFromSources(publicSources);
+  if (cacheKey) {
+    writeCachedSubscriptionStatus(cacheKey, resolved);
+  }
+  return resolved;
 };
 
 async function getAuthContext(
