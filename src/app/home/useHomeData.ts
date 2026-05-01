@@ -241,9 +241,14 @@ export function useHomeData({
 
         const requestContracts = async (
           scope: "my" | "team",
-          cursor?: string | null
+          cursor?: string | null,
+          signedFromMs?: number
         ): Promise<ContractsApiResponse> => {
           const params = new URLSearchParams({ scope, limit: "50" });
+          params.set("shape", "home");
+          if (Number.isFinite(signedFromMs)) {
+            params.set("signedFrom", String(signedFromMs));
+          }
           if (cursor) params.set("cursor", cursor);
 
           const requestWithToken = async (token: string) =>
@@ -273,6 +278,7 @@ export function useHomeData({
           cursor?: string | null
         ): Promise<TipPayoutsApiResponse> => {
           const params = new URLSearchParams({ limit: "100" });
+          params.set("payoutFrom", String(monthStart.getTime()));
           if (cursor) params.set("cursor", cursor);
 
           const requestWithToken = async (token: string) =>
@@ -405,7 +411,7 @@ export function useHomeData({
           let positionHint: Position | null = null;
 
           while (hasMore && pages < 60) {
-            const response = await requestContracts(scope, cursor);
+            const response = await requestContracts(scope, cursor, rangeStartMs);
             if (pages === 0) {
               hasTeamHint = Boolean(response.hasTeam);
               teamEmailsHint = Array.isArray(response.teamEmails)

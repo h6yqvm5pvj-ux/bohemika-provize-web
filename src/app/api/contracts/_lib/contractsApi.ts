@@ -86,6 +86,7 @@ type ContractDoc = {
   productKey?: Product;
   position?: Position | null;
   inputAmount?: number;
+  comfortPayment?: number | null;
   frequencyRaw?: PaymentFrequency | null;
   durationMonths?: number | null;
   maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
@@ -242,6 +243,7 @@ type ContractsFindResponse = {
 
 type ErrorResponse = { ok: false; error: string };
 type ContractListFilterMode = "latest" | "anniversary";
+type ContractListResponseShape = "full" | "home";
 type ContractListProductCategory =
   | "life"
   | "auto"
@@ -255,6 +257,7 @@ type ContractListFilters = {
   unpaidOnly: boolean;
   categories: Set<ContractListProductCategory>;
   institutions: Set<ProductInstitutionId>;
+  signedFrom: Date | null;
 };
 type UserNode = {
   email: string;
@@ -852,28 +855,51 @@ const parseCsvSet = <T extends string>(
 
 const parseContractListFilters = (
   search: URLSearchParams
-): ContractListFilters => ({
-  query: (search.get("q") ?? "").trim().slice(0, 120),
-  mode: search.get("mode") === "anniversary" ? "anniversary" : "latest",
-  unpaidOnly:
-    search.get("unpaidOnly") === "1" ||
-    search.get("unpaidOnly") === "true",
-  categories: parseCsvSet(
-    search.get("categories"),
-    CONTRACT_LIST_PRODUCT_CATEGORY_SET
-  ),
-  institutions: parseCsvSet(
-    search.get("institutions"),
-    CONTRACT_LIST_INSTITUTION_SET
-  ),
-});
+): ContractListFilters => {
+  const rawSignedFrom = (search.get("signedFrom") ?? "").trim();
+  let signedFrom: Date | null = null;
+  if (rawSignedFrom) {
+    const maybeNum = Number(rawSignedFrom);
+    if (Number.isFinite(maybeNum)) {
+      const parsed = new Date(maybeNum);
+      if (!Number.isNaN(parsed.getTime())) {
+        signedFrom = parsed;
+      }
+    } else {
+      const parsed = new Date(rawSignedFrom);
+      if (!Number.isNaN(parsed.getTime())) {
+        signedFrom = parsed;
+      }
+    }
+  }
 
-const hasContractListFilters = (filters: ContractListFilters): boolean =>
+  return {
+    query: (search.get("q") ?? "").trim().slice(0, 120),
+    mode: search.get("mode") === "anniversary" ? "anniversary" : "latest",
+    unpaidOnly:
+      search.get("unpaidOnly") === "1" ||
+      search.get("unpaidOnly") === "true",
+    categories: parseCsvSet(
+      search.get("categories"),
+      CONTRACT_LIST_PRODUCT_CATEGORY_SET
+    ),
+    institutions: parseCsvSet(
+      search.get("institutions"),
+      CONTRACT_LIST_INSTITUTION_SET
+    ),
+    signedFrom,
+  };
+};
+
+const hasContractListClientFilters = (filters: ContractListFilters): boolean =>
   normalizeSearchValue(filters.query).length > 0 ||
   filters.mode === "anniversary" ||
   filters.unpaidOnly ||
   filters.categories.size > 0 ||
   filters.institutions.size > 0;
+
+const hasContractListFilters = (filters: ContractListFilters): boolean =>
+  hasContractListClientFilters(filters) || filters.signedFrom != null;
 
 const normalizeOptionalDisplayName = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -948,6 +974,39 @@ const toContractResponseItem = (
     adviserEmail: normalizedOwner,
     userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
   };
+};
+
+const toContractListResponseItem = ({
+  docId,
+  ownerEmail,
+  data,
+  shape,
+}: {
+  docId: string;
+  ownerEmail: string;
+  data: ContractDoc;
+  shape: ContractListResponseShape;
+}): ContractResponseItem => {
+  if (shape === "home") {
+    const normalizedOwner = normalizeEmail(ownerEmail);
+    return {
+      id: docId,
+      adviserEmail: normalizedOwner,
+      userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
+      contractSignedDate: toMillis(data.contractSignedDate),
+      createdAt: toMillis(data.createdAt),
+      productKey: data.productKey,
+      inputAmount: data.inputAmount,
+      frequencyRaw: data.frequencyRaw ?? null,
+      comfortPayment: data.comfortPayment ?? null,
+      items: Array.isArray(data.items) ? data.items : [],
+      managerOverrides: Array.isArray(data.managerOverrides)
+        ? data.managerOverrides
+        : [],
+    };
+  }
+
+  return toContractResponseItem(docId, ownerEmail, data);
 };
 
 const normalizeRootEntryId = (entry: ContractDoc): string => {
@@ -3786,6 +3845,10 @@ function contractMatchesListFilters(
   filters: ContractListFilters
 ): boolean {
   const product = contract.productKey as Product | undefined;
+  if (filters.signedFrom) {
+    const signed = contractSortDate(contract);
+    if (!signed || signed < filters.signedFrom) return false;
+  }
 
   if (!contractMatchesListSearch(contract, filters.query)) return false;
 
@@ -3820,7 +3883,8 @@ async function fetchContractsForOwners(
   owners: string[],
   cursor: ParsedCursor | null,
   pageSize: number,
-  filters?: ContractListFilters
+  filters?: ContractListFilters,
+  responseShape: ContractListResponseShape = "full"
 ): Promise<{
   list: ContractResponseItem[];
   hasMore: boolean;
@@ -3829,7 +3893,8 @@ async function fetchContractsForOwners(
 }> {
   // Fetch one extra record to detect if more pages exist (so the UI can show the load-more button)
   const filtersActive = filters ? hasContractListFilters(filters) : false;
-  const pageLimit = filtersActive
+  const clientFiltersActive = filters ? hasContractListClientFilters(filters) : false;
+  const pageLimit = clientFiltersActive
     ? Math.max(pageSize + 1, FILTERED_LIST_QUERY_LIMIT)
     : pageSize + 1;
   if (!adminDb) {
@@ -3865,17 +3930,14 @@ async function fetchContractsForOwners(
     const key = `${ownerEmail}___${docId}`;
     if (seen.has(key)) return;
     seen.add(key);
-    collected.push({
-      ...data,
-      contractSignedDate: toMillis(data.contractSignedDate),
-      createdAt: toMillis(data.createdAt),
-      policyStartDate: toMillis((data as any).policyStartDate),
-      policyEndDate: toMillis((data as any).policyEndDate),
-      stornoDate: toMillis((data as any).stornoDate),
-      id: docId,
-      adviserEmail: ownerEmail,
-      userEmail: data.userEmail ?? ownerEmail,
-    });
+    collected.push(
+      toContractListResponseItem({
+        docId,
+        ownerEmail,
+        data,
+        shape: responseShape,
+      })
+    );
   };
 
   // collectionGroup queries (userEmail stored)
@@ -3884,14 +3946,19 @@ async function fetchContractsForOwners(
     for (let i = 0; i < owners.length; i += 10) {
       const chunk = owners.slice(i, i + 10);
       try {
+        const signedFrom = filters?.signedFrom ?? null;
         let qBySigned = db
           .collectionGroup("entries")
           .where("userEmail", "in", chunk)
           .orderBy("contractSignedDate", "desc");
-        const qByCreated = db
+        let qByCreated = db
           .collectionGroup("entries")
           .where("userEmail", "in", chunk)
           .orderBy("createdAt", "desc");
+        if (signedFrom) {
+          qBySigned = qBySigned.where("contractSignedDate", ">=", signedFrom);
+          qByCreated = qByCreated.where("createdAt", ">=", signedFrom);
+        }
         // Keep createdAt query uncursored. Backfilled contracts can have old
         // contractSignedDate with fresh createdAt; cursoring createdAt would
         // skip them permanently in subsequent pages.
@@ -3937,16 +4004,21 @@ async function fetchContractsForOwners(
     const chunkResults = await Promise.all(
       ownerChunk.map(async (owner) => {
         try {
+          const signedFrom = filters?.signedFrom ?? null;
           let qBySigned = db
             .collection("users")
             .doc(owner)
             .collection("entries")
             .orderBy("contractSignedDate", "desc");
-          const qByCreated = db
+          let qByCreated = db
             .collection("users")
             .doc(owner)
             .collection("entries")
             .orderBy("createdAt", "desc");
+          if (signedFrom) {
+            qBySigned = qBySigned.where("contractSignedDate", ">=", signedFrom);
+            qByCreated = qByCreated.where("createdAt", ">=", signedFrom);
+          }
           // Keep createdAt query uncursored. Backfilled contracts can have old
           // contractSignedDate with fresh createdAt; cursoring createdAt would
           // skip them permanently in subsequent pages.
@@ -4368,6 +4440,8 @@ export async function handleContractsGet(
 
   const scopeParam = search.get("scope") === "team" ? "team" : "my";
   const includeTeam = search.get("includeTeam") === "1" || search.get("includeTeam") === "true";
+  const responseShape: ContractListResponseShape =
+    search.get("shape") === "home" ? "home" : "full";
   const cursor = parseCursor(search);
   const listFilters = parseContractListFilters(search);
   const limitParam = Number(search.get("limit"));
@@ -4403,13 +4477,25 @@ export async function handleContractsGet(
 
   if (shouldFetchTeamInParallel) {
     [primaryRes, teamRes] = await Promise.all([
-      fetchContractsForOwners(owners, cursor, pageSize, listFilters),
-      fetchContractsForOwners(teamEmails, null, pageSize),
+      fetchContractsForOwners(owners, cursor, pageSize, listFilters, responseShape),
+      fetchContractsForOwners(teamEmails, null, pageSize, undefined, responseShape),
     ]);
   } else {
-    primaryRes = await fetchContractsForOwners(owners, cursor, pageSize, listFilters);
+    primaryRes = await fetchContractsForOwners(
+      owners,
+      cursor,
+      pageSize,
+      listFilters,
+      responseShape
+    );
     if (includeTeam && teamEmails.length > 0) {
-      teamRes = await fetchContractsForOwners(teamEmails, null, pageSize);
+      teamRes = await fetchContractsForOwners(
+        teamEmails,
+        null,
+        pageSize,
+        undefined,
+        responseShape
+      );
     }
   }
 

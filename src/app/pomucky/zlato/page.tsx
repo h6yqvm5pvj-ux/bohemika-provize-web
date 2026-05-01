@@ -966,20 +966,15 @@ export default function GoldToolPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
-        <div className="mx-auto w-full max-w-6xl space-y-6 font-mono text-slate-900">
-          <header className="flex flex-col gap-2">
+      <div className="w-full bg-white px-3 py-4 sm:px-4 sm:py-6 lg:px-8">
+        <div className="mx-auto w-full max-w-5xl space-y-4 font-mono text-slate-900">
+          <header className="flex flex-col gap-1">
             <SplitTitle text="Zlato" className="!text-slate-900" />
           </header>
 
-          <section className="space-y-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Aktuální cena</h2>
-                <p className="text-xs text-slate-600">
-                  Zobrazení v CZK. Aktuální cena se obnovuje cca 1× za minutu (o víkendu je auto-refresh pozastaven).
-                </p>
-              </div>
+          <section className="space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-base font-semibold text-slate-900">Aktuální cena</div>
               <div className="sm:justify-end">
                 <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-800 bg-slate-950 p-1">
                   {(Object.keys(UNITS) as UnitKey[]).map((k) => {
@@ -1008,18 +1003,18 @@ export default function GoldToolPage() {
               </div>
             ) : null}
 
-            <div className="space-y-4">
-              <div className="relative overflow-hidden rounded-[28px] border border-slate-300 bg-slate-100 px-5 py-5 space-y-4">
-                <div className="grid gap-4 md:grid-cols-[1fr_500px] md:items-start">
+            <div className="space-y-3">
+              <div className="relative space-y-3 overflow-hidden rounded-2xl border border-slate-300 bg-slate-100 px-4 py-4">
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_420px] md:items-start">
                   <div>
                     <div className="text-[11px] uppercase tracking-wider text-slate-500">Cena ({selected.label})</div>
-                    <div className="text-6xl font-semibold leading-none tracking-tight text-slate-900 sm:text-7xl lg:text-[5.25rem]">
+                    <div className="text-5xl font-semibold leading-none tracking-tight text-slate-900 sm:text-6xl lg:text-[4.5rem]">
                       {loading ? "Načítám…" : formatCzk(displayPrice ?? czkForSelectedUnit)}
                     </div>
                     <div className="text-xs text-slate-500">
                       {lastUpdated ? `Aktualizováno: ${lastUpdated.toLocaleString("cs-CZ")}` : ""}
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
                       <span
                         className={[
                           "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
@@ -1032,7 +1027,7 @@ export default function GoldToolPage() {
                         {isWeekendPause ? "Auto-refresh pozastaven (víkend)" : `Další auto-refresh za ${secondsToRefresh}s`}
                       </span>
                     </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         onClick={manualRefresh}
@@ -1044,7 +1039,7 @@ export default function GoldToolPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-[11px] uppercase tracking-wider text-slate-500">Nárůst / pokles (CZK / unce)</div>
                       <div className="inline-flex items-center gap-2 text-[10px]">
@@ -1064,8 +1059,8 @@ export default function GoldToolPage() {
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-2.5">
+                  <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
                     <div className="text-[11px] uppercase tracking-wider text-slate-500">
                       Graf ({RANGES[range].label})
                       {loadingRange ? <span className="ml-2 text-slate-500">• načítám…</span> : null}
@@ -1090,7 +1085,7 @@ export default function GoldToolPage() {
 
                   <GoldChart points={chartPoints} />
                 </div>
-                <div className="flex items-center justify-between rounded-2xl border border-slate-300 bg-white px-4 py-3 text-[12px] text-slate-600">
+                <div className="flex items-center justify-between rounded-xl border border-slate-300 bg-white px-3 py-2 text-[11px] text-slate-600">
                   <span className="text-slate-600">Data jsou orientační.</span>
 
                   <span className="relative group">

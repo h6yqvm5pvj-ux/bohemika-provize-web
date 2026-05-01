@@ -243,15 +243,23 @@ export async function GET(req: NextRequest) {
       Number.isFinite(rawLimit) && rawLimit > 0
         ? Math.min(Math.max(1, Math.floor(rawLimit)), PAGE_SIZE_MAX)
         : PAGE_SIZE_DEFAULT;
+    const rawPayoutFrom = Number(search.get("payoutFrom"));
+    const payoutFromDate =
+      Number.isFinite(rawPayoutFrom) && rawPayoutFrom > 0
+        ? new Date(rawPayoutFrom)
+        : null;
     const cursor = decodeCursorToken(search.get("cursor"));
 
-    const buildQuery = (ownerDocId: string) => {
+    const buildQuery = (ownerDocId: string, usePayoutFrom: boolean) => {
       let query = db
         .collection("users")
         .doc(ownerDocId)
         .collection("tipPayouts")
         .orderBy("payoutDate", "desc")
         .orderBy(FieldPath.documentId(), "desc");
+      if (usePayoutFrom && payoutFromDate) {
+        query = query.where("payoutDate", ">=", payoutFromDate);
+      }
 
       if (cursor) {
         query = query.startAfter(new Date(cursor.ts), cursor.id);
@@ -259,9 +267,22 @@ export async function GET(req: NextRequest) {
       return query.limit(pageSize + 1);
     };
 
-    let snap = await buildQuery(userDocId).get();
-    if (!cursor && snap.empty && userDocId !== email) {
-      snap = await buildQuery(email).get();
+    const readSnapshot = async (ownerDocId: string, usePayoutFrom: boolean) => {
+      let snap = await buildQuery(ownerDocId, usePayoutFrom).get();
+      if (!cursor && snap.empty && ownerDocId !== email) {
+        snap = await buildQuery(email, usePayoutFrom).get();
+      }
+      return snap;
+    };
+
+    let snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
+    try {
+      snap = await readSnapshot(userDocId, true);
+    } catch (err) {
+      if (!payoutFromDate) {
+        throw err;
+      }
+      snap = await readSnapshot(userDocId, false);
     }
     const docs = snap.docs.slice(0, pageSize);
     const hasMore = snap.docs.length > pageSize;
