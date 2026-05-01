@@ -25,6 +25,7 @@ import {
   TrendingUp,
   Trophy,
   WalletCards,
+  Wind,
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -177,6 +178,14 @@ export default function ToolsPage() {
         description: "Odhad doporučené a obvyklé ceny vozidla pro havarijní pojištění.",
         icon: Calculator,
         href: "/pomucky/naceneni-vozidla",
+      },
+      {
+        key: "naceneni-celniho-skla",
+        category: "Pojištění vozidel",
+        title: "Nacenění čelního skla",
+        description: "Odhad ceny výměny čelního skla a doporučeného limitu pojištění podle VIN.",
+        icon: Wind,
+        href: "/pomucky/naceneni-celniho-skla",
       },
       {
         key: "kontrola-tachometru",
