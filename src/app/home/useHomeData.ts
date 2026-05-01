@@ -81,6 +81,8 @@ export type HomeDataState = {
   myTipImmediateSum: number;
   teamContractsCount: number;
   teamImmediateSum: number;
+  summaryLoading: boolean;
+  historyLoading: boolean;
   loading: boolean;
 };
 
@@ -203,6 +205,8 @@ export function useHomeData({
   const [myTipImmediateSum, setMyTipImmediateSum] = useState(0);
   const [teamContractsCount, setTeamContractsCount] = useState(0);
   const [teamImmediateSum, setTeamImmediateSum] = useState(0);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -375,6 +379,7 @@ export function useHomeData({
         const teamRangeStart = loadTeamHistory
           ? new Date(currentYear, currentMonth - 11, 1)
           : monthStart;
+        const monthStartMs = monthStart.getTime();
         const personalRangeStartMs = personalRangeStart.getTime();
         const teamRangeStartMs = teamRangeStart.getTime();
         const tipSummaryPromise = collectTipSummaryForCurrentMonth().catch(
@@ -469,77 +474,117 @@ export function useHomeData({
           return { entries, hasTeamHint, teamEmailsHint, positionHint };
         };
 
-        const ownResult = await collectScope("my", personalRangeStartMs);
+        const summarizeOwnMonth = (entries: EntryDoc[]) => {
+          let count = 0;
+          let immediate = 0;
+          entries.forEach((data) => {
+            const signed = entrySignedDate(data);
+            if (!signed) return;
+            if (signed < monthStart || signed >= nextMonthStart) return;
+            count += 1;
 
-        if (!position && ownResult.positionHint) {
-          position = ownResult.positionHint;
+            const items = (data.items ?? []) as CommissionResultItemDTO[];
+            const immediateItem = items.find((it) =>
+              (it.title ?? "").toLowerCase().includes("okamžitá provize")
+            );
+            immediate += immediateItem?.amount ?? 0;
+          });
+          return { count, immediate };
+        };
+
+        const summarizeTeamMonth = (entries: EntryDoc[]) => {
+          let count = 0;
+          let immediate = 0;
+          entries.forEach((data) => {
+            const signed = entrySignedDate(data);
+            if (!signed) return;
+            if (!(signed >= monthStart && signed < nextMonthStart)) return;
+            count += 1;
+
+            const override = (data.managerOverrides as ManagerOverrideSnapshot[] | undefined)?.find(
+              (o) => (o.email ?? "").toLowerCase() === email
+            );
+            if (!override) return;
+            const overrideItems = (override.items ?? []) as CommissionResultItemDTO[];
+            const overrideImmediate =
+              overrideItems.find((it) =>
+                (it.title ?? "").toLowerCase().includes("okamžitá")
+              )?.amount ?? (Number.isFinite(override.total) ? (override.total as number) : null);
+            if (overrideImmediate != null) {
+              immediate += overrideImmediate;
+            }
+          });
+          return { count, immediate };
+        };
+
+        // Fáze 1: rychlé souhrny za aktuální měsíc (UI dostane čísla co nejdřív)
+        const ownSummaryResult = await collectScope("my", monthStartMs);
+        if (!position && ownSummaryResult.positionHint) {
+          position = ownSummaryResult.positionHint;
         }
 
-        const myEntriesList = ownResult.entries;
         let hasTeamValue =
-          ownResult.hasTeamHint || (ownResult.teamEmailsHint?.length ?? 0) > 0;
-        let teamEntriesAll: EntryDoc[] = [];
-
+          ownSummaryResult.hasTeamHint || (ownSummaryResult.teamEmailsHint?.length ?? 0) > 0;
+        let teamSummaryEntries: EntryDoc[] = [];
         if (hasTeamValue) {
           try {
-            const teamResult = await collectScope("team", teamRangeStartMs);
-            teamEntriesAll = teamResult.entries;
-            hasTeamValue = hasTeamValue || teamEntriesAll.length > 0;
+            const teamSummaryResult = await collectScope("team", monthStartMs);
+            teamSummaryEntries = teamSummaryResult.entries;
+            hasTeamValue = hasTeamValue || teamSummaryEntries.length > 0;
           } catch (teamErr) {
             if ((teamErr as { status?: number } | null)?.status === 403) {
               hasTeamValue = false;
-              teamEntriesAll = [];
+              teamSummaryEntries = [];
             } else {
               throw teamErr;
             }
           }
         }
 
-        let myCount = 0;
-        let myImmediate = 0;
-        myEntriesList.forEach((data) => {
-          const signed = entrySignedDate(data);
-          if (!signed) return;
-          if (signed < monthStart || signed >= nextMonthStart) return;
-          myCount += 1;
-
-          const items = (data.items ?? []) as CommissionResultItemDTO[];
-          const immediate = items.find((it) =>
-            (it.title ?? "").toLowerCase().includes("okamžitá provize")
-          );
-          myImmediate += immediate?.amount ?? 0;
-        });
-
-        let teamCount = 0;
-        let teamImmediate = 0;
-        const filteredTeamEntries: EntryDoc[] = [];
-        teamEntriesAll.forEach((data) => {
-          const signed = entrySignedDate(data);
-          if (!signed) return;
-          if (signed < teamRangeStart || signed >= nextMonthStart) return;
-
-          if (loadTeamHistory) {
-            filteredTeamEntries.push(data);
-          }
-
-          if (!(signed >= monthStart && signed < nextMonthStart)) return;
-          teamCount += 1;
-
-          const override = (data.managerOverrides as ManagerOverrideSnapshot[] | undefined)?.find(
-            (o) => (o.email ?? "").toLowerCase() === email
-          );
-          if (!override) return;
-          const overrideItems = (override.items ?? []) as CommissionResultItemDTO[];
-          const overrideImmediate =
-            overrideItems.find((it) =>
-              (it.title ?? "").toLowerCase().includes("okamžitá")
-            )?.amount ?? (Number.isFinite(override.total) ? (override.total as number) : null);
-          if (overrideImmediate != null) {
-            teamImmediate += overrideImmediate;
-          }
-        });
-
+        const ownMonth = summarizeOwnMonth(ownSummaryResult.entries);
+        const teamMonth = summarizeTeamMonth(teamSummaryEntries);
         const tipSummary = await tipSummaryPromise;
+
+        if (!cancelled) {
+          setHasTeam(hasTeamValue);
+          setMyContractsCount(ownMonth.count);
+          setMyImmediateSum(ownMonth.immediate);
+          setMyTipContractsCount(tipSummary.tipContractsCount);
+          setMyTipImmediateSum(tipSummary.tipImmediateSum);
+          setTeamContractsCount(teamMonth.count);
+          setTeamImmediateSum(teamMonth.immediate);
+          setSummaryLoading(false);
+          setLoading(false);
+        }
+
+        // Fáze 2: historie pro graf/leaderboard (může doběhnout později)
+        const ownHistoryResult =
+          loadPersonalHistory && personalRangeStartMs < monthStartMs
+            ? await collectScope("my", personalRangeStartMs)
+            : ownSummaryResult;
+
+        let teamHistoryEntriesAll: EntryDoc[] = teamSummaryEntries;
+        if (hasTeamValue && loadTeamHistory && teamRangeStartMs < monthStartMs) {
+          try {
+            const teamHistoryResult = await collectScope("team", teamRangeStartMs);
+            teamHistoryEntriesAll = teamHistoryResult.entries;
+          } catch (teamErr) {
+            if ((teamErr as { status?: number } | null)?.status === 403) {
+              hasTeamValue = false;
+              teamHistoryEntriesAll = [];
+            } else {
+              throw teamErr;
+            }
+          }
+        }
+
+        const filteredTeamEntries = loadTeamHistory
+          ? teamHistoryEntriesAll.filter((data) => {
+              const signed = entrySignedDate(data);
+              if (!signed) return false;
+              return signed >= teamRangeStart && signed < nextMonthStart;
+            })
+          : [];
 
         const payload: HomeCachePayload = {
           userMeta: {
@@ -547,16 +592,23 @@ export function useHomeData({
             commissionMode: myMode,
             monthlyGoal: monthlyGoal ?? null,
           },
-          myEntries: loadPersonalHistory ? myEntriesList : [],
-          teamEntries: loadTeamHistory ? filteredTeamEntries : [],
+          myEntries: loadPersonalHistory ? ownHistoryResult.entries : [],
+          teamEntries: filteredTeamEntries,
           hasTeam: hasTeamValue,
-          myContractsCount: myCount,
-          myImmediateSum: myImmediate,
+          myContractsCount: ownMonth.count,
+          myImmediateSum: ownMonth.immediate,
           myTipContractsCount: tipSummary.tipContractsCount,
           myTipImmediateSum: tipSummary.tipImmediateSum,
-          teamContractsCount: teamCount,
-          teamImmediateSum: teamImmediate,
+          teamContractsCount: teamMonth.count,
+          teamImmediateSum: teamMonth.immediate,
         };
+
+        if (!cancelled) {
+          setMyEntries(payload.myEntries);
+          setTeamEntries(payload.teamEntries);
+          setHasTeam(payload.hasTeam);
+          setHistoryLoading(false);
+        }
 
         homeDataCache[cacheKey] = {
           ts: Date.now(),
@@ -597,8 +649,12 @@ export function useHomeData({
 
         if (!seededFromMemory && !seededFromPersist) {
           setLoading(true);
+          setSummaryLoading(true);
+          setHistoryLoading(true);
         } else {
           setLoading(false);
+          setSummaryLoading(false);
+          setHistoryLoading(false);
         }
 
         const usersRef = collection(db, "users");
@@ -627,15 +683,21 @@ export function useHomeData({
         const payload = await loadViaContractsApi(cacheKey);
         if (!cancelled) {
           applyCachedHomeState(payload);
+          setSummaryLoading(false);
+          setHistoryLoading(false);
         }
       } catch (e) {
         console.error("Chyba při načítání produkce:", e);
         if (!cancelled && fallbackPayload) {
           applyCachedHomeState(fallbackPayload);
+          setSummaryLoading(false);
+          setHistoryLoading(false);
         }
       } finally {
         if (!cancelled) {
           setLoading(false);
+          setSummaryLoading(false);
+          setHistoryLoading(false);
         }
       }
     };
@@ -658,6 +720,8 @@ export function useHomeData({
     myTipImmediateSum,
     teamContractsCount,
     teamImmediateSum,
+    summaryLoading,
+    historyLoading,
     loading,
   };
 }

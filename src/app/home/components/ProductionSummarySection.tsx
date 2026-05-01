@@ -41,8 +41,8 @@ export function ProductionSummarySection({
   isLiteUI,
 }: Props) {
   const summaryCardClass = isLiteUI
-    ? "relative h-full overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 px-5 py-8 text-white transition-[border-color,box-shadow] duration-200 hover:border-slate-600 focus-within:border-slate-600 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.22)] sm:px-8 sm:py-10"
-    : "relative h-full overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 px-5 py-8 text-white shadow-[0_18px_34px_rgba(2,6,23,0.34)] transition-[border-color,box-shadow] duration-200 hover:border-slate-600 hover:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.18)] focus-within:border-slate-600 focus-within:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.2)] sm:px-8 sm:py-10";
+    ? "relative h-full overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 px-5 py-6 text-white transition-[border-color,box-shadow] duration-200 hover:border-slate-600 focus-within:border-slate-600 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.22)] sm:px-7 sm:py-8"
+    : "relative h-full overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 px-5 py-6 text-white shadow-[0_18px_34px_rgba(2,6,23,0.34)] transition-[border-color,box-shadow] duration-200 hover:border-slate-600 hover:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.18)] focus-within:border-slate-600 focus-within:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.2)] sm:px-7 sm:py-8";
   const compactSummaryCardClass = isLiteUI
     ? "relative h-full overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950 px-4 py-4 text-white transition-[border-color,box-shadow] duration-200 hover:border-slate-600 focus-within:border-slate-600 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.22)] sm:px-6 sm:py-5"
     : "relative h-full overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950 px-4 py-4 text-white shadow-[0_18px_34px_rgba(2,6,23,0.34)] transition-[border-color,box-shadow] duration-200 hover:border-slate-600 hover:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.18)] focus-within:border-slate-600 focus-within:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.2)] sm:px-6 sm:py-5";
@@ -80,7 +80,7 @@ export function ProductionSummarySection({
                   <dt className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Počet smluv
                   </dt>
-                  <dd className="text-5xl font-semibold text-sky-200 sm:text-6xl">
+                  <dd className="text-4xl font-semibold text-sky-300 sm:text-5xl">
                     <AnimatedNumber value={myContractsCount} />
                   </dd>
                 </dl>
@@ -88,7 +88,7 @@ export function ProductionSummarySection({
                   <dt className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Provize
                   </dt>
-                  <dd className="whitespace-nowrap text-4xl font-semibold text-sky-200 sm:text-5xl">
+                  <dd className="whitespace-nowrap text-5xl font-semibold text-sky-200 sm:text-6xl">
                     <AnimatedMoney value={myImmediateSum} />
                   </dd>
                 </dl>
@@ -116,7 +116,7 @@ export function ProductionSummarySection({
                   <dt className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Počet tipů
                   </dt>
-                  <dd className="text-5xl font-semibold text-fuchsia-200 sm:text-6xl">
+                  <dd className="text-4xl font-semibold text-fuchsia-300 sm:text-5xl">
                     <AnimatedNumber value={myTipContractsCount} />
                   </dd>
                 </dl>
@@ -124,7 +124,7 @@ export function ProductionSummarySection({
                   <dt className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Provize
                   </dt>
-                  <dd className="whitespace-nowrap text-4xl font-semibold text-fuchsia-200 sm:text-5xl">
+                  <dd className="whitespace-nowrap text-5xl font-semibold text-fuchsia-200 sm:text-6xl">
                     <AnimatedMoney value={myTipImmediateSum} />
                   </dd>
                 </dl>
@@ -140,13 +140,13 @@ export function ProductionSummarySection({
   const hasManagerTipIncome = myTipImmediateSum > 0;
   const managerTitleClass = hasManagerTipIncome
     ? "text-xl font-semibold text-white sm:text-2xl"
-    : "text-2xl font-semibold text-white sm:text-3xl";
+    : "text-xl font-semibold text-white sm:text-[1.7rem]";
   const managerCountClass = hasManagerTipIncome
-    ? "mt-2 text-3xl font-semibold sm:text-4xl"
-    : "mt-2 text-4xl font-semibold sm:text-5xl";
+    ? "mt-2 text-2xl font-semibold sm:text-3xl"
+    : "mt-2 text-3xl font-semibold sm:text-4xl";
   const managerAmountClass = hasManagerTipIncome
-    ? "mt-2 whitespace-nowrap text-[clamp(1.95rem,2vw,2.5rem)] font-semibold"
-    : "mt-2 whitespace-nowrap text-4xl font-semibold sm:text-5xl";
+    ? "mt-2 whitespace-nowrap text-4xl font-semibold sm:text-5xl"
+    : "mt-2 whitespace-nowrap text-[2.45rem] font-semibold sm:text-[3.1rem]";
 
   return (
     <section className={summaryCardClass}>
@@ -154,11 +154,11 @@ export function ProductionSummarySection({
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_100%,rgba(34,211,238,0.12),transparent_40%)]" />
 
       <div
-        className={`relative z-10 grid h-full items-stretch gap-6 md:gap-8 md:divide-x md:divide-slate-700 ${
+        className={`relative z-10 grid h-full items-stretch gap-4 md:gap-6 md:divide-x md:divide-slate-700 ${
           hasManagerTipIncome ? "md:grid-cols-2 lg:grid-cols-4" : "md:grid-cols-3"
         }`}
       >
-        <div className="flex min-h-[220px] h-full flex-col justify-center space-y-6 text-center md:px-6">
+        <div className="flex min-h-[188px] h-full flex-col justify-center space-y-4 text-center md:px-5">
           <div className="space-y-3">
               <div className="mx-auto flex h-6 w-6 items-center justify-center">
                 <UserRound className="h-6 w-6 text-sky-300" strokeWidth={1.9} aria-hidden="true" />
@@ -171,7 +171,7 @@ export function ProductionSummarySection({
           {loading ? (
             <LoadingIndicator />
           ) : (
-            <dl className="space-y-6">
+            <dl className="space-y-4">
               <div>
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Počet smluv
@@ -192,7 +192,7 @@ export function ProductionSummarySection({
           )}
         </div>
 
-        <div className="flex min-h-[220px] h-full flex-col justify-center space-y-6 text-center md:px-6">
+        <div className="flex min-h-[188px] h-full flex-col justify-center space-y-4 text-center md:px-5">
           <div className="space-y-3">
               <div className="mx-auto flex h-6 w-6 items-center justify-center">
                 <UsersRound className="h-6 w-6 text-amber-300" strokeWidth={1.9} aria-hidden="true" />
@@ -205,7 +205,7 @@ export function ProductionSummarySection({
           {loading ? (
             <LoadingIndicator />
           ) : (
-            <dl className="space-y-6">
+            <dl className="space-y-4">
               <div>
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Počet smluv
@@ -227,7 +227,7 @@ export function ProductionSummarySection({
         </div>
 
         {hasManagerTipIncome && (
-          <div className="flex min-h-[220px] h-full flex-col justify-center space-y-6 text-center md:px-6">
+          <div className="flex min-h-[188px] h-full flex-col justify-center space-y-4 text-center md:px-5">
             <div className="space-y-3">
               <div className="mx-auto flex h-6 w-6 items-center justify-center">
                 <Tag className="h-6 w-6 text-fuchsia-300" strokeWidth={1.9} aria-hidden="true" />
@@ -240,7 +240,7 @@ export function ProductionSummarySection({
             {loading ? (
               <LoadingIndicator />
             ) : (
-              <dl className="space-y-6">
+              <dl className="space-y-4">
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Počet tipů
@@ -262,7 +262,7 @@ export function ProductionSummarySection({
           </div>
         )}
 
-        <div className="flex min-h-[220px] h-full flex-col justify-center space-y-6 text-center md:px-6">
+        <div className="flex min-h-[188px] h-full flex-col justify-center space-y-4 text-center md:px-5">
           <div className="space-y-3">
               <div className="mx-auto flex h-6 w-6 items-center justify-center">
                 <BarChart3 className="h-6 w-6 text-emerald-300" strokeWidth={1.9} aria-hidden="true" />
@@ -275,7 +275,7 @@ export function ProductionSummarySection({
           {loading ? (
             <LoadingIndicator />
           ) : (
-            <dl className="space-y-6">
+            <dl className="space-y-4">
               <div>
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Počet smluv

@@ -279,7 +279,8 @@ export default function HomePage() {
     myTipImmediateSum,
     teamContractsCount,
     teamImmediateSum,
-    loading,
+    summaryLoading,
+    historyLoading,
   } = useHomeData({
     email: normalizedEmail,
     loadPersonalHistory: homeWidgets.productionChart,
@@ -732,7 +733,7 @@ export default function HomePage() {
         if (!showProductionSummary) return null;
         return (
           <ProductionSummarySection
-            loading={loading}
+            loading={summaryLoading}
             showTeamBox={showTeamBox}
             myContractsCount={myContractsCount}
             myImmediateSum={myImmediateSum}
@@ -752,7 +753,7 @@ export default function HomePage() {
             monthlyGoal={monthlyGoal}
             progress={progress}
             progressTone={progressTone}
-            loading={loading}
+            loading={summaryLoading}
             isLiteUI={isLiteUI}
             onSaveGoal={saveMonthlyGoal}
           />
@@ -773,7 +774,7 @@ export default function HomePage() {
         if (!showLeaderboardSection) return null;
         return (
           <TeamLeaderboardSection
-            loading={loading}
+            loading={historyLoading}
             entries={leaderboardEntries}
             leaderboardLabel={leaderboardLabel}
             lbProductFilter={lbProductFilter}
@@ -891,7 +892,7 @@ export default function HomePage() {
         if (!showChartSection) return null;
         return (
           <ProductionChartSection
-            loading={loading}
+            loading={historyLoading}
             chartMode={chartMode}
             setChartMode={setChartMode}
             hasTeam={hasTeam}
