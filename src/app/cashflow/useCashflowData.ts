@@ -213,6 +213,50 @@ async function fetchContractsSnapshot(
     return data;
   };
 
+  const collectTipPayouts = async (): Promise<TipPayoutApiItem[]> => {
+    const tipPayouts: TipPayoutApiItem[] = [];
+    const seenTipPayoutIds = new Set<string>();
+    const seenCursorTokens = new Set<string>();
+    let cursor: string | null = null;
+    let hasMore = true;
+    let pages = 0;
+
+    while (hasMore && pages < TIP_PAYOUTS_MAX_PAGES) {
+      const response = await requestTipPayouts(cursor);
+      pages += 1;
+
+      const chunk = Array.isArray(response.payouts) ? response.payouts : [];
+      if (chunk.length === 0) break;
+
+      chunk.forEach((item) => {
+        const id = String(item.id ?? "").trim();
+        if (!id) return;
+        if (seenTipPayoutIds.has(id)) return;
+        seenTipPayoutIds.add(id);
+        tipPayouts.push(item);
+      });
+
+      const nextCursor = normalizeCursorToken(
+        response.nextCursorToken,
+        response.nextCursor
+      );
+      if (nextCursor && seenCursorTokens.has(nextCursor)) {
+        console.warn(
+          "[cashflow] tip-payouts/list returned repeated cursor token, stopping pagination."
+        );
+        hasMore = false;
+        break;
+      }
+      if (nextCursor) {
+        seenCursorTokens.add(nextCursor);
+      }
+      cursor = nextCursor;
+      hasMore = Boolean(response.hasMore) && Boolean(nextCursor);
+    }
+
+    return tipPayouts;
+  };
+
   type ScopeResult = {
     entries: EntryDoc[];
     positionHint: Position | null;
@@ -299,6 +343,11 @@ async function fetchContractsSnapshot(
     };
   };
 
+  const tipPayoutsPromise = collectTipPayouts().catch((tipErr) => {
+    console.warn("[cashflow] načtení TIP výplat selhalo, pokračuji bez nich.", tipErr);
+    return [] as TipPayoutApiItem[];
+  });
+
   const ownResult = await collectScope("my");
   const myPosition = ownResult.positionHint ?? null;
   let teamEntriesRaw: EntryDoc[] = [];
@@ -320,49 +369,7 @@ async function fetchContractsSnapshot(
     }
   }
 
-  const tipPayouts: TipPayoutApiItem[] = [];
-  try {
-    const seenTipPayoutIds = new Set<string>();
-    const seenCursorTokens = new Set<string>();
-    let cursor: string | null = null;
-    let hasMore = true;
-    let pages = 0;
-
-    while (hasMore && pages < TIP_PAYOUTS_MAX_PAGES) {
-      const response = await requestTipPayouts(cursor);
-      pages += 1;
-
-      const chunk = Array.isArray(response.payouts) ? response.payouts : [];
-      if (chunk.length === 0) break;
-
-      chunk.forEach((item) => {
-        const id = String(item.id ?? "").trim();
-        if (!id) return;
-        if (seenTipPayoutIds.has(id)) return;
-        seenTipPayoutIds.add(id);
-        tipPayouts.push(item);
-      });
-
-      const nextCursor = normalizeCursorToken(
-        response.nextCursorToken,
-        response.nextCursor
-      );
-      if (nextCursor && seenCursorTokens.has(nextCursor)) {
-        console.warn(
-          "[cashflow] tip-payouts/list returned repeated cursor token, stopping pagination."
-        );
-        hasMore = false;
-        break;
-      }
-      if (nextCursor) {
-        seenCursorTokens.add(nextCursor);
-      }
-      cursor = nextCursor;
-      hasMore = Boolean(response.hasMore) && Boolean(nextCursor);
-    }
-  } catch (tipErr) {
-    console.warn("[cashflow] načtení TIP výplat selhalo, pokračuji bez nich.", tipErr);
-  }
+  const tipPayouts = await tipPayoutsPromise;
 
   return {
     email,

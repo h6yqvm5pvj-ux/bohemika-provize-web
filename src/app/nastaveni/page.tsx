@@ -10,7 +10,6 @@ import {
   CircleHelp,
   ExternalLink,
   KeyRound,
-  Palette,
   ShieldCheck,
   Snail,
   Sparkles,
@@ -153,8 +152,6 @@ type NotificationSettings = {
     push: boolean;
   };
 };
-type BackgroundPreset = "white";
-
 const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   types: {
     newContract: true,
@@ -172,7 +169,6 @@ const SETTINGS_KEYS = {
   position: "settings.position",
   mode: "settings.mode",
   monthlyGoal: "settings.monthlyGoal",
-  backgroundColor: "settings.backgroundColor",
   boxTheme: BOX_THEME_LOCAL_STORAGE_KEY,
   reduceMotion: "settings.reduceMotion",
   tipsterMode: "settings.tipsterMode",
@@ -313,7 +309,6 @@ export default function SettingsPage() {
   const [notificationSettings, setNotificationSettings] =
     useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
-  const [backgroundColor, setBackgroundColor] = useState<BackgroundPreset>("white");
   const [boxTheme, setBoxTheme] = useState<BoxTheme>(DEFAULT_BOX_THEME);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [tipsterMode, setTipsterMode] = useState(false);
@@ -530,23 +525,6 @@ export default function SettingsPage() {
           if (typeof data.notifyMinutes === "number") {
             setNotifyMinutes(data.notifyMinutes);
           }
-          if (typeof data.backgroundColor === "string") {
-            const c: BackgroundPreset = "white";
-            setBackgroundColor(c);
-            if (typeof window !== "undefined") {
-              window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, c);
-            }
-          } else if (typeof window !== "undefined") {
-            const stored = window.localStorage.getItem(
-              SETTINGS_KEYS.backgroundColor
-            );
-            if (stored) {
-              setBackgroundColor("white");
-              window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, "white");
-            }
-          } else {
-            setBackgroundColor("white");
-          }
 
           if (typeof data.boxTheme === "string") {
             applyBoxThemePreference(data.boxTheme);
@@ -624,9 +602,6 @@ export default function SettingsPage() {
             const storedGoal = window.localStorage.getItem(
               SETTINGS_KEYS.monthlyGoal
             );
-            const storedColor = window.localStorage.getItem(
-              SETTINGS_KEYS.backgroundColor
-            );
             const storedBoxTheme = window.localStorage.getItem(
               SETTINGS_KEYS.boxTheme
             );
@@ -635,10 +610,6 @@ export default function SettingsPage() {
             if (storedMode) setMode(storedMode);
             const n = storedGoal ? Number(storedGoal) : 0;
             if (Number.isFinite(n)) setMonthlyGoal(n);
-            if (storedColor) {
-              setBackgroundColor("white");
-              window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, "white");
-            }
             applyBoxThemePreference(storedBoxTheme);
             const storedMotion = window.localStorage.getItem(
               SETTINGS_KEYS.reduceMotion
@@ -925,26 +896,6 @@ export default function SettingsPage() {
     } catch (err) {
       setTestPushStatus(`Chyba: ${(err as any)?.message || String(err)}`);
     }
-  };
-
-  const handleBackgroundPreset = async (preset: BackgroundPreset) => {
-    const color = preset;
-    setBackgroundColor(color);
-
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(SETTINGS_KEYS.backgroundColor, color);
-      window.localStorage.removeItem("settings.simpleBackground");
-      window.dispatchEvent(
-        new CustomEvent("settings:updateBackground", {
-          detail: { backgroundColor: color },
-        })
-      );
-    }
-
-    await saveUserFields({
-      simpleBackground: true,
-      backgroundColor: color,
-    });
   };
 
   const handleBoxThemeChange = async (nextTheme: BoxTheme) => {
@@ -1811,14 +1762,13 @@ export default function SettingsPage() {
             {activeTab === "design" && (
             <section className={`space-y-3 ${compactPanelClass}`}>
                 <div className="space-y-2.5">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                     <div>
-                      <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-                        <Palette size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                        <span>Pozadí aplikace</span>
+                      <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
+                        Animace rozhraní
                       </h2>
                       <p className="text-xs text-slate-500">
-                        Používáme jednoduché bílé pozadí.
+                        Přepíná pohybové efekty v aplikaci.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1844,40 +1794,6 @@ export default function SettingsPage() {
                         {reduceMotion ? "Animace vypnuté" : "Animace zapnuté"}
                       </button>
                     </div>
-                  </div>
-
-                  <div className="flex gap-3 h-60">
-                    {[
-                      { id: "white" as const, label: "BÍLÁ", bg: "bg-white" },
-                    ].map((opt) => {
-                      const isActive = backgroundColor === opt.id;
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => handleBackgroundPreset(opt.id)}
-                          className={`settings-bg-preview relative flex-1 overflow-hidden rounded-2xl border transition ${
-                            isActive
-                              ? "border-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.12)]"
-                              : "border-slate-300 hover:border-slate-500"
-                          }`}
-                        >
-                          <div className={`settings-bg-preview-layer absolute inset-0 ${opt.bg}`} />
-                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(15,23,42,0.06),transparent_55%)]" />
-                          {isActive && (
-                            <div className="absolute top-2 right-2 rounded-full border border-slate-900 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-white">
-                              Aktivní
-                            </div>
-                          )}
-                          <span
-                            className="settings-bg-preview-label relative h-full w-full flex items-center justify-center text-sm font-bold tracking-[0.4em] text-[#0f172a]"
-                            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-                          >
-                            {opt.label}
-                          </span>
-                        </button>
-                      );
-                    })}
                   </div>
 
                   <div className="space-y-2.5">

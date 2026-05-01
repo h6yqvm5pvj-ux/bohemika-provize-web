@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import Link from "next/link";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
@@ -481,12 +480,6 @@ export default function PlanProdukcePage() {
               provizi (pozice: {position ?? "neznámá"}).
             </p>
           </div>
-          <Link
-            href="/pomucky"
-            className="text-xs text-slate-800 border border-slate-300 rounded-full px-3 py-1.5 hover:bg-slate-100 transition"
-          >
-            ← Zpět na pomůcky
-          </Link>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

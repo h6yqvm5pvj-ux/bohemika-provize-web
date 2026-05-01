@@ -3100,6 +3100,13 @@ export default function ContractDetailPage() {
             {/* HEADER */}
             <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
+                <Link
+                  href={backToContractsHref}
+                  className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
+                >
+                  <ArrowLeft size={15} strokeWidth={2} aria-hidden="true" />
+                  <span>Zpět na smlouvy</span>
+                </Link>
                 <p className="mb-1 text-base uppercase tracking-[0.18em] text-slate-600">
                   Detail smlouvy
                 </p>
@@ -3211,14 +3218,6 @@ export default function ContractDetailPage() {
                     </button>
                   </>
                 )}
-
-                <Link
-                  href={backToContractsHref}
-                  className={`${headerActionButtonClass} inline-flex items-center gap-2`}
-                >
-                  <ArrowLeft size={16} strokeWidth={2} aria-hidden="true" />
-                  <span>Zpět na smlouvy</span>
-                </Link>
               </div>
             </header>
 

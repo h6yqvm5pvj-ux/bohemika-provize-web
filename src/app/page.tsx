@@ -629,7 +629,6 @@ export default function HomePage() {
   const progress = hasGoal
     ? Math.min(100, Math.round((totalWithTeam / monthlyGoal) * 100))
     : 0;
-  const remainingToGoal = hasGoal ? Math.max(0, monthlyGoal - totalWithTeam) : 0;
   const progressTone =
     progress >= 90
       ? "from-emerald-400 via-lime-300 to-emerald-200"
@@ -755,9 +754,6 @@ export default function HomePage() {
             progressTone={progressTone}
             loading={loading}
             isLiteUI={isLiteUI}
-            remainingToGoal={remainingToGoal}
-            position={userMeta?.position ?? null}
-            commissionMode={userMeta?.commissionMode ?? null}
             onSaveGoal={saveMonthlyGoal}
           />
         );
@@ -777,6 +773,7 @@ export default function HomePage() {
         if (!showLeaderboardSection) return null;
         return (
           <TeamLeaderboardSection
+            loading={loading}
             entries={leaderboardEntries}
             leaderboardLabel={leaderboardLabel}
             lbProductFilter={lbProductFilter}
@@ -894,6 +891,7 @@ export default function HomePage() {
         if (!showChartSection) return null;
         return (
           <ProductionChartSection
+            loading={loading}
             chartMode={chartMode}
             setChartMode={setChartMode}
             hasTeam={hasTeam}

@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { formatMoney } from "@/app/lib/formatters";
@@ -48,12 +47,6 @@ export default function PracovniNeschopenkaPage() {
       <div className="w-full max-w-6xl space-y-6">
         <header className="mb-2 space-y-2">
           <SplitTitle text="Kalkulačka neschopenka" />
-          <Link
-            href="/pomucky"
-            className="inline-flex items-center text-xs text-slate-600 hover:text-slate-900 transition"
-          >
-            ← Zpět na pomůcky
-          </Link>
         </header>
 
         <section className="px-6 py-6 space-y-5">

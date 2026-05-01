@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { formatMoney } from "@/app/lib/formatters";
@@ -80,17 +79,6 @@ export default function InvaliditaPage() {
       <div className="w-full max-w-6xl space-y-6">
         <header className="mb-2 space-y-2">
           <SplitTitle text="Kalkulačka Invalidita" />
-          <p className="text-sm text-slate-600 max-w-2xl">
-            Stanov pojistnou částku podle poklesu příjmu pro invaliditu 1., 2. a
-            3. stupně. Zadáš věk, čistý příjem a délku krytí – uvidíš, kolik
-            chybí měsíčně i celkově do 65 let.
-          </p>
-          <Link
-            href="/pomucky"
-            className="inline-flex items-center text-xs text-slate-600 hover:text-slate-900 transition"
-          >
-            ← Zpět na pomůcky
-          </Link>
         </header>
 
         <section className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] space-y-4">

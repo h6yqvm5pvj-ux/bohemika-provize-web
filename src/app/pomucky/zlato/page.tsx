@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 
 import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "../plan-produkce/SplitTitle";
@@ -971,9 +970,6 @@ export default function GoldToolPage() {
         <div className="mx-auto w-full max-w-6xl space-y-6 font-mono text-slate-900">
           <header className="flex flex-col gap-2">
             <SplitTitle text="Zlato" className="!text-slate-900" />
-            <Link href="/pomucky" className="inline-flex items-center text-xs text-slate-600 transition hover:text-slate-900">
-              ← Zpět na pomůcky
-            </Link>
           </header>
 
           <section className="space-y-6">

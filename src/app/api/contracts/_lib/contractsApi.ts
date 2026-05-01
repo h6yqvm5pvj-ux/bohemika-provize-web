@@ -15,7 +15,19 @@ import {
   collectSubordinateHierarchy,
 } from "@/app/lib/teamHierarchy";
 import { toDate } from "@/app/lib/formatters";
+import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import { totalWithMultipliers } from "@/app/lib/commissionTotals";
+import {
+  AUTO_PRODUCTS,
+  COMFORT_PRODUCTS,
+  INSTITUTION_CATALOG,
+  LIFE_PRODUCTS as CATALOG_LIFE_PRODUCTS,
+  LIABILITY_PRODUCTS,
+  PROPERTY_PRODUCTS,
+  TRAVEL_PRODUCTS,
+  productInstitutionId,
+  type ProductInstitutionId,
+} from "@/app/lib/productCatalog";
 import {
   calculateNeon,
   calculateFlexi,
@@ -229,6 +241,21 @@ type ContractsFindResponse = {
 };
 
 type ErrorResponse = { ok: false; error: string };
+type ContractListFilterMode = "latest" | "anniversary";
+type ContractListProductCategory =
+  | "life"
+  | "auto"
+  | "property"
+  | "travel"
+  | "comfort"
+  | "liability";
+type ContractListFilters = {
+  query: string;
+  mode: ContractListFilterMode;
+  unpaidOnly: boolean;
+  categories: Set<ContractListProductCategory>;
+  institutions: Set<ProductInstitutionId>;
+};
 type UserNode = {
   email: string;
   managerEmail: string | null;
@@ -268,6 +295,7 @@ export type ContractsPatchAction =
 
 const PAGE_SIZE_DEFAULT = 30;
 const PAGE_SIZE_MAX = 50;
+const FILTERED_LIST_QUERY_LIMIT = 250;
 const CONTRACTS_MUTATION_RATE_LIMIT = 60;
 const CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
 const CONTRACTS_GET_RATE_LIMIT = 180;
@@ -439,6 +467,32 @@ const LIFE_TIMELINE_PRODUCTS = new Set<Product>([
   "maximaMaxEfekt",
   "pillowInjury",
 ]);
+const CONTRACT_LIST_PROPERTY_PRODUCTS = PROPERTY_PRODUCTS.filter(
+  (product) => product !== "zamex"
+);
+const CONTRACT_LIST_PRODUCT_CATEGORY_MAP: Record<
+  ContractListProductCategory,
+  Product[]
+> = {
+  life: CATALOG_LIFE_PRODUCTS,
+  auto: AUTO_PRODUCTS,
+  property: CONTRACT_LIST_PROPERTY_PRODUCTS,
+  travel: TRAVEL_PRODUCTS,
+  comfort: COMFORT_PRODUCTS,
+  liability: LIABILITY_PRODUCTS,
+};
+const CONTRACT_LIST_PRODUCT_CATEGORY_SET = new Set<ContractListProductCategory>([
+  "life",
+  "auto",
+  "property",
+  "travel",
+  "comfort",
+  "liability",
+]);
+const CONTRACT_LIST_INSTITUTION_SET = new Set<ProductInstitutionId>(
+  Object.keys(INSTITUTION_CATALOG) as ProductInstitutionId[]
+);
+const ANNIVERSARY_WINDOW_DAYS = 90;
 const UPDATE_DATE_FIELDS = new Set<string>([
   "createdAt",
   "contractSignedDate",
@@ -768,6 +822,58 @@ const parseCursor = (search: URLSearchParams): ParsedCursor | null => {
 
 const normalizeEmail = (email: string | null | undefined) =>
   (email ?? "").trim().toLowerCase();
+
+const stripDiacritics = (value: string): string =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+const normalizeSearchValue = (value?: string | null): string =>
+  stripDiacritics((value ?? "").trim().toLowerCase());
+
+const normalizeContractNumberForSearch = (value?: string | null): string =>
+  normalizeSearchValue(value).replace(/[^a-z0-9]/g, "");
+
+const parseCsvSet = <T extends string>(
+  value: string | null,
+  allowed: Set<T>
+): Set<T> => {
+  const out = new Set<T>();
+  if (!value) return out;
+  value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((item) => {
+      if (allowed.has(item as T)) {
+        out.add(item as T);
+      }
+    });
+  return out;
+};
+
+const parseContractListFilters = (
+  search: URLSearchParams
+): ContractListFilters => ({
+  query: (search.get("q") ?? "").trim().slice(0, 120),
+  mode: search.get("mode") === "anniversary" ? "anniversary" : "latest",
+  unpaidOnly:
+    search.get("unpaidOnly") === "1" ||
+    search.get("unpaidOnly") === "true",
+  categories: parseCsvSet(
+    search.get("categories"),
+    CONTRACT_LIST_PRODUCT_CATEGORY_SET
+  ),
+  institutions: parseCsvSet(
+    search.get("institutions"),
+    CONTRACT_LIST_INSTITUTION_SET
+  ),
+});
+
+const hasContractListFilters = (filters: ContractListFilters): boolean =>
+  normalizeSearchValue(filters.query).length > 0 ||
+  filters.mode === "anniversary" ||
+  filters.unpaidOnly ||
+  filters.categories.size > 0 ||
+  filters.institutions.size > 0;
 
 const normalizeOptionalDisplayName = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -3611,10 +3717,110 @@ const getCachedUserTree = async (): Promise<UserTreeResult> => {
   return cachedUserTreePromise;
 };
 
+function productMatchesListCategory(
+  product: Product | undefined,
+  categories: Set<ContractListProductCategory>
+): boolean {
+  if (!product) return false;
+  if (categories.size === 0) return true;
+  for (const category of categories) {
+    if (CONTRACT_LIST_PRODUCT_CATEGORY_MAP[category].includes(product)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function productMatchesListInstitution(
+  product: Product | undefined,
+  institutions: Set<ProductInstitutionId>
+): boolean {
+  if (!product) return false;
+  if (institutions.size === 0) return true;
+  const institution = productInstitutionId(product);
+  return institution != null && institutions.has(institution);
+}
+
+function nextAnniversaryDate(start: Date, now: Date): Date {
+  const candidate = new Date(
+    now.getFullYear(),
+    start.getMonth(),
+    start.getDate()
+  );
+  if (candidate.getTime() < now.getTime()) {
+    candidate.setFullYear(candidate.getFullYear() + 1);
+  }
+  return candidate;
+}
+
+function isAnniversarySoonForList(date: Date | null, nowRaw = new Date()): boolean {
+  if (!date) return false;
+  const now = new Date(nowRaw.getFullYear(), nowRaw.getMonth(), nowRaw.getDate());
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const next = nextAnniversaryDate(start, now);
+  const diffDays = (next.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  const anniversaryNumber = next.getFullYear() - start.getFullYear();
+  return (
+    anniversaryNumber >= 1 &&
+    diffDays >= 0 &&
+    diffDays <= ANNIVERSARY_WINDOW_DAYS
+  );
+}
+
+function contractMatchesListSearch(contract: ContractDoc, query: string): boolean {
+  const q = normalizeSearchValue(query);
+  if (!q) return true;
+  const qContract = normalizeContractNumberForSearch(query);
+  const client = normalizeSearchValue(contract.clientName);
+  const contractNumber = normalizeSearchValue(contract.contractNumber);
+  const compactContractNumber = normalizeContractNumberForSearch(contract.contractNumber);
+  return (
+    client.includes(q) ||
+    contractNumber.includes(q) ||
+    (qContract.length > 0 && compactContractNumber.includes(qContract))
+  );
+}
+
+function contractMatchesListFilters(
+  contract: ContractDoc,
+  filters: ContractListFilters
+): boolean {
+  const product = contract.productKey as Product | undefined;
+
+  if (!contractMatchesListSearch(contract, filters.query)) return false;
+
+  if (
+    !productMatchesListCategory(product, filters.categories) ||
+    !productMatchesListInstitution(product, filters.institutions)
+  ) {
+    return false;
+  }
+
+  const lifecycleStatus = contractLifecycleStatus(contract);
+  if (filters.unpaidOnly) {
+    if (contract.paid === true || lifecycleStatus !== "active") return false;
+  }
+
+  if (filters.mode === "anniversary") {
+    if (
+      lifecycleStatus !== "active" ||
+      !product ||
+      TRAVEL_PRODUCTS.includes(product)
+    ) {
+      return false;
+    }
+    const startDate = toDate(contract.policyStartDate) ?? contractSortDate(contract);
+    if (!isAnniversarySoonForList(startDate)) return false;
+  }
+
+  return true;
+}
+
 async function fetchContractsForOwners(
   owners: string[],
   cursor: ParsedCursor | null,
-  pageSize: number
+  pageSize: number,
+  filters?: ContractListFilters
 ): Promise<{
   list: ContractResponseItem[];
   hasMore: boolean;
@@ -3622,7 +3828,10 @@ async function fetchContractsForOwners(
   nextCursorToken: string | null;
 }> {
   // Fetch one extra record to detect if more pages exist (so the UI can show the load-more button)
-  const pageLimit = pageSize + 1;
+  const filtersActive = filters ? hasContractListFilters(filters) : false;
+  const pageLimit = filtersActive
+    ? Math.max(pageSize + 1, FILTERED_LIST_QUERY_LIMIT)
+    : pageSize + 1;
   if (!adminDb) {
     throw new Error("Firebase Admin credentials are not configured.");
   }
@@ -3652,6 +3861,7 @@ async function fetchContractsForOwners(
 
   const pushCollected = (docId: string, ownerEmail: string, data: ContractDoc) => {
     if (!shouldIncludeByCursor(data, docId, ownerEmail)) return;
+    if (filtersActive && filters && !contractMatchesListFilters(data, filters)) return;
     const key = `${ownerEmail}___${docId}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -4159,6 +4369,7 @@ export async function handleContractsGet(
   const scopeParam = search.get("scope") === "team" ? "team" : "my";
   const includeTeam = search.get("includeTeam") === "1" || search.get("includeTeam") === "true";
   const cursor = parseCursor(search);
+  const listFilters = parseContractListFilters(search);
   const limitParam = Number(search.get("limit"));
   const pageSize =
     Number.isFinite(limitParam) && limitParam > 0
@@ -4172,7 +4383,18 @@ export async function handleContractsGet(
     );
   }
 
-  const owners = scopeParam === "team" ? teamEmails : [email];
+  const selectedSubordinates = new Set(
+    (search.get("subordinates") ?? "")
+      .split(",")
+      .map((value) => normalizeEmail(value))
+      .filter(Boolean)
+  );
+  const owners =
+    scopeParam === "team"
+      ? selectedSubordinates.size > 0
+        ? teamEmails.filter((teamEmail) => selectedSubordinates.has(teamEmail))
+        : teamEmails
+      : [email];
   const shouldFetchTeamInParallel =
     scopeParam === "my" && includeTeam && teamEmails.length > 0;
 
@@ -4181,11 +4403,11 @@ export async function handleContractsGet(
 
   if (shouldFetchTeamInParallel) {
     [primaryRes, teamRes] = await Promise.all([
-      fetchContractsForOwners(owners, cursor, pageSize),
+      fetchContractsForOwners(owners, cursor, pageSize, listFilters),
       fetchContractsForOwners(teamEmails, null, pageSize),
     ]);
   } else {
-    primaryRes = await fetchContractsForOwners(owners, cursor, pageSize);
+    primaryRes = await fetchContractsForOwners(owners, cursor, pageSize, listFilters);
     if (includeTeam && teamEmails.length > 0) {
       teamRes = await fetchContractsForOwners(teamEmails, null, pageSize);
     }

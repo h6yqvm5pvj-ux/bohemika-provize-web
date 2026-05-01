@@ -6,8 +6,6 @@ import Image from "next/image";
 import {
   BarChart3,
   Copy,
-  Eye,
-  EyeOff,
   Mail,
   MessageSquare,
   Network,
@@ -250,15 +248,7 @@ type TeamOverviewApiError = {
 const TEAM_CACHE_TTL_MS = 60 * 1000;
 const teamDataCache: Record<string, { ts: number; payload: TeamCachePayload }> = {};
 
-type ActivityFilter = "all" | "online" | "recent" | "unknown";
 type SortKey = "activity" | "month" | "total" | "name";
-
-const ACTIVITY_FILTERS: { key: ActivityFilter; label: string }[] = [
-  { key: "all", label: "Všichni" },
-  { key: "online", label: "Online" },
-  { key: "recent", label: "Aktivní 24h" },
-  { key: "unknown", label: "Bez aktivity" },
-];
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "activity", label: "Nejaktivnější" },
@@ -282,11 +272,9 @@ export default function TeamPage() {
   const [contractsError, setContractsError] = useState(false);
   const [userPosition, setUserPosition] = useState<Position | null>(null);
   const [canManagePositions, setCanManagePositions] = useState(false);
-  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
   const [sortBy, setSortBy] = useState<SortKey>("activity");
   const [productionCategory, setProductionCategory] = useState<ProductionCategory>("life");
   const [detailTab, setDetailTab] = useState<"overview" | "subordinates" | "career">("overview");
-  const [showMembersPanel, setShowMembersPanel] = useState(true);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [positionModalOpen, setPositionModalOpen] = useState(false);
   const [positionDraft, setPositionDraft] = useState<Position>("poradce1");
@@ -508,17 +496,9 @@ export default function TeamPage() {
   const filteredMembers = useMemo(() => {
     const term = search.trim().toLowerCase();
 
-    const base = members.filter((m) => {
-      const searchOk = !term || m.name.toLowerCase().includes(term) || m.email.toLowerCase().includes(term);
-      if (!searchOk) return false;
-      if (activityFilter === "all") return true;
-      const ts = lastActive[m.email];
-      if (!ts) return activityFilter === "unknown";
-      const diff = Date.now() - ts;
-      if (activityFilter === "online") return diff <= ONLINE_THRESHOLD_MS;
-      if (activityFilter === "recent") return diff <= RECENT_THRESHOLD_MS;
-      return false;
-    });
+    const base = members.filter(
+      (m) => !term || m.name.toLowerCase().includes(term) || m.email.toLowerCase().includes(term)
+    );
 
     const toActivityRank = (email: string) => {
       const ts = lastActive[email];
@@ -543,10 +523,9 @@ export default function TeamPage() {
       if (actDiff !== 0) return actDiff;
       return a.name.localeCompare(b.name, "cs");
     });
-  }, [members, search, activityFilter, sortBy, lastActive, contractCounts]);
+  }, [members, search, sortBy, lastActive, contractCounts]);
 
   useEffect(() => {
-    if (!showMembersPanel) return;
     const el = membersListRef.current;
     if (!el) return;
 
@@ -587,12 +566,11 @@ export default function TeamPage() {
       resizeObserver?.disconnect();
       window.removeEventListener("resize", onWindowResize);
     };
-  }, [showMembersPanel, filteredMembers.length]);
+  }, [filteredMembers.length]);
 
   const virtualizedMembers = useMemo(() => {
     const total = filteredMembers.length;
-    const enabled =
-      showMembersPanel && total > 60 && membersViewportHeight > 0;
+    const enabled = total > 60 && membersViewportHeight > 0;
 
     if (!enabled) {
       return {
@@ -632,7 +610,6 @@ export default function TeamPage() {
     filteredMembers,
     membersScrollTop,
     membersViewportHeight,
-    showMembersPanel,
   ]);
 
   useEffect(() => {
@@ -1190,105 +1167,71 @@ export default function TeamPage() {
                         Zpráva týmu
                       </Link>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={() => setShowMembersPanel((v) => !v)}
-                      className={`ui-focus inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
-                        showMembersPanel
-                          ? "ui-btn-primary"
-                          : "ui-btn-secondary"
-                      }`}
+                  </div>
+
+                  <div className="space-y-2 border-t border-slate-200 pt-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
+                      <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+                        {filteredMembers.length} osob
+                      </span>
+                    </div>
+                    <div
+                      ref={membersListRef}
+                      className="grid grid-cols-1 gap-2 max-h-[58vh] overflow-auto pr-1 lg:max-h-none lg:overflow-visible"
                     >
-                      {showMembersPanel ? (
-                        <EyeOff size={14} strokeWidth={2} aria-hidden="true" />
-                      ) : (
-                        <Eye size={14} strokeWidth={2} aria-hidden="true" />
+                      {filteredMembers.length === 0 && (
+                        <div className="col-span-full rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                          Pro zadané vyhledávání nejsou žádní členové.
+                        </div>
                       )}
-                      {showMembersPanel ? "Skrýt podřízené" : `Zobrazit podřízené (${filteredMembers.length})`}
-                    </button>
-                  </div>
-
-                  <div className="ui-chip-group flex w-full flex-wrap gap-2">
-                    {ACTIVITY_FILTERS.map((option) => {
-                      const active = activityFilter === option.key;
-                      return (
-                        <button
-                          key={option.key}
-                          type="button"
-                          onClick={() => setActivityFilter(option.key)}
-                          className={`ui-chip ui-focus px-3 py-1 text-xs ${active ? "ui-chip-active" : ""}`}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {showMembersPanel && (
-                    <div className="space-y-2 border-t border-slate-200 pt-3">
-                      <div className="flex items-center justify-between">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
-                        <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
-                          {filteredMembers.length} osob
-                        </span>
-                      </div>
-                      <div
-                        ref={membersListRef}
-                        className="grid grid-cols-1 gap-2 max-h-[58vh] overflow-auto pr-1 lg:max-h-none lg:overflow-visible"
-                      >
-                        {filteredMembers.length === 0 && (
-                          <div className="col-span-full rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                            Pro zadaný filtr nejsou žádní členové.
-                          </div>
-                        )}
-                        {virtualizedMembers.enabled && virtualizedMembers.topPadding > 0 && (
+                      {virtualizedMembers.enabled && virtualizedMembers.topPadding > 0 && (
+                        <div
+                          aria-hidden="true"
+                          className="col-span-full"
+                          style={{ height: virtualizedMembers.topPadding }}
+                        />
+                      )}
+                      {virtualizedMembers.items.map((m) => {
+                        const isSelected = m.email === selectedEmail;
+                        const last = lastActiveBadge(m.email);
+                        return (
+                          <button
+                            key={m.email}
+                            onClick={() => setSelectedEmail(m.email)}
+                            className={[
+                              "w-full min-h-[88px] rounded-xl border px-3 py-2 text-left transition flex flex-col items-start gap-2",
+                              isSelected
+                                ? "border-slate-900 bg-slate-100 text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.1)]"
+                                : "border-slate-300 bg-white text-slate-900 hover:border-slate-900 hover:bg-slate-50",
+                            ].join(" ")}
+                          >
+                            <div className="w-full">
+                              <div className="text-[15px] font-semibold leading-tight break-words">{m.name}</div>
+                            </div>
+                            <div className="flex w-full flex-col items-start gap-1">
+                              <span
+                                className={`text-[11px] inline-flex items-center justify-center gap-1.5 rounded-full border px-2 py-0.5 ${last.className}`}
+                                aria-label={last.title}
+                              >
+                                <span className={`h-1.5 w-1.5 rounded-full ${last.dotClassName}`} />
+                                {last.statusLabel}
+                              </span>
+                              <span className="text-[11px] leading-none text-slate-500">{last.relativeLabel}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {virtualizedMembers.enabled &&
+                        virtualizedMembers.bottomPadding > 0 && (
                           <div
                             aria-hidden="true"
                             className="col-span-full"
-                            style={{ height: virtualizedMembers.topPadding }}
+                            style={{ height: virtualizedMembers.bottomPadding }}
                           />
                         )}
-                        {virtualizedMembers.items.map((m) => {
-                          const isSelected = m.email === selectedEmail;
-                          const last = lastActiveBadge(m.email);
-                          return (
-                            <button
-                              key={m.email}
-                              onClick={() => setSelectedEmail(m.email)}
-                              className={[
-                                "w-full min-h-[88px] rounded-xl border px-3 py-2 text-left transition flex flex-col items-start gap-2",
-                                isSelected
-                                  ? "border-slate-900 bg-slate-100 text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.1)]"
-                                  : "border-slate-300 bg-white text-slate-900 hover:border-slate-900 hover:bg-slate-50",
-                              ].join(" ")}
-                            >
-                              <div className="w-full">
-                                <div className="text-[15px] font-semibold leading-tight break-words">{m.name}</div>
-                              </div>
-                              <div className="flex w-full flex-col items-start gap-1">
-                                <span
-                                  className={`text-[11px] inline-flex items-center justify-center gap-1.5 rounded-full border px-2 py-0.5 ${last.className}`}
-                                  aria-label={last.title}
-                                >
-                                  <span className={`h-1.5 w-1.5 rounded-full ${last.dotClassName}`} />
-                                  {last.statusLabel}
-                                </span>
-                                <span className="text-[11px] leading-none text-slate-500">{last.relativeLabel}</span>
-                              </div>
-                            </button>
-                          );
-                        })}
-                        {virtualizedMembers.enabled &&
-                          virtualizedMembers.bottomPadding > 0 && (
-                            <div
-                              aria-hidden="true"
-                              className="col-span-full"
-                              style={{ height: virtualizedMembers.bottomPadding }}
-                            />
-                          )}
-                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               </aside>
               ) : null}

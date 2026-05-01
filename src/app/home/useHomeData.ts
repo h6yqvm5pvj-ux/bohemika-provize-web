@@ -298,6 +298,66 @@ export function useHomeData({
           return data;
         };
 
+        const collectTipSummaryForCurrentMonth = async (): Promise<{
+          tipContractsCount: number;
+          tipImmediateSum: number;
+        }> => {
+          const tipSourcesInMonth = new Set<string>();
+          let tipImmediateSum = 0;
+          let cursor: string | null = null;
+          let hasMore = true;
+          let pages = 0;
+
+          while (hasMore && pages < 60) {
+            const response = await requestTipPayouts(cursor);
+            pages += 1;
+            const chunk = Array.isArray(response.payouts) ? response.payouts : [];
+            if (chunk.length === 0) break;
+
+            chunk.forEach((item) => {
+              const signedTs =
+                typeof item.sourceContractSignedDate === "number" &&
+                Number.isFinite(item.sourceContractSignedDate)
+                  ? item.sourceContractSignedDate
+                  : null;
+              const payoutTs =
+                typeof item.payoutDate === "number" && Number.isFinite(item.payoutDate)
+                  ? item.payoutDate
+                  : null;
+              const productionTs = signedTs ?? payoutTs;
+              if (productionTs == null) return;
+              if (
+                productionTs < monthStart.getTime() ||
+                productionTs >= nextMonthStart.getTime()
+              ) {
+                return;
+              }
+              const amount =
+                typeof item.amount === "number" && Number.isFinite(item.amount)
+                  ? item.amount
+                  : 0;
+              if (!(amount > 0)) return;
+              const sourceToken =
+                typeof item.sourceToken === "string" && item.sourceToken.trim()
+                  ? item.sourceToken.trim()
+                  : `payout:${String(item.id ?? "").trim() || String(payoutTs ?? "")}`;
+              tipSourcesInMonth.add(sourceToken);
+              tipImmediateSum += amount;
+            });
+
+            cursor = normalizeCursorToken(
+              response.nextCursorToken,
+              response.nextCursor
+            );
+            hasMore = Boolean(response.hasMore) && Boolean(cursor);
+          }
+
+          return {
+            tipContractsCount: tipSourcesInMonth.size,
+            tipImmediateSum,
+          };
+        };
+
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
@@ -311,6 +371,18 @@ export function useHomeData({
           : monthStart;
         const personalRangeStartMs = personalRangeStart.getTime();
         const teamRangeStartMs = teamRangeStart.getTime();
+        const tipSummaryPromise = collectTipSummaryForCurrentMonth().catch(
+          (tipErr) => {
+            console.warn(
+              "[home] načtení TIP výplat selhalo, pokračuji bez nich.",
+              tipErr
+            );
+            return {
+              tipContractsCount: 0,
+              tipImmediateSum: 0,
+            };
+          }
+        );
 
         type ScopeCollection = {
           entries: EntryDoc[];
@@ -461,61 +533,7 @@ export function useHomeData({
           }
         });
 
-        let myTipCount = 0;
-        let myTipImmediate = 0;
-        try {
-          const tipSourcesInMonth = new Set<string>();
-          let cursor: string | null = null;
-          let hasMore = true;
-          let pages = 0;
-
-          while (hasMore && pages < 60) {
-            const response = await requestTipPayouts(cursor);
-            pages += 1;
-            const chunk = Array.isArray(response.payouts) ? response.payouts : [];
-            if (chunk.length === 0) break;
-
-            chunk.forEach((item) => {
-              const signedTs =
-                typeof item.sourceContractSignedDate === "number" &&
-                Number.isFinite(item.sourceContractSignedDate)
-                  ? item.sourceContractSignedDate
-                  : null;
-              const payoutTs =
-                typeof item.payoutDate === "number" && Number.isFinite(item.payoutDate)
-                  ? item.payoutDate
-                  : null;
-              const productionTs = signedTs ?? payoutTs;
-              if (productionTs == null) return;
-              if (
-                productionTs < monthStart.getTime() ||
-                productionTs >= nextMonthStart.getTime()
-              ) {
-                return;
-              }
-              const amount =
-                typeof item.amount === "number" && Number.isFinite(item.amount)
-                  ? item.amount
-                  : 0;
-              if (!(amount > 0)) return;
-              const sourceToken =
-                typeof item.sourceToken === "string" && item.sourceToken.trim()
-                  ? item.sourceToken.trim()
-                  : `payout:${String(item.id ?? "").trim() || String(payoutTs ?? "")}`;
-              tipSourcesInMonth.add(sourceToken);
-              myTipImmediate += amount;
-            });
-
-            cursor = normalizeCursorToken(
-              response.nextCursorToken,
-              response.nextCursor
-            );
-            hasMore = Boolean(response.hasMore) && Boolean(cursor);
-          }
-          myTipCount = tipSourcesInMonth.size;
-        } catch (tipErr) {
-          console.warn("[home] načtení TIP výplat selhalo, pokračuji bez nich.", tipErr);
-        }
+        const tipSummary = await tipSummaryPromise;
 
         const payload: HomeCachePayload = {
           userMeta: {
@@ -528,8 +546,8 @@ export function useHomeData({
           hasTeam: hasTeamValue,
           myContractsCount: myCount,
           myImmediateSum: myImmediate,
-          myTipContractsCount: myTipCount,
-          myTipImmediateSum: myTipImmediate,
+          myTipContractsCount: tipSummary.tipContractsCount,
+          myTipImmediateSum: tipSummary.tipImmediateSum,
           teamContractsCount: teamCount,
           teamImmediateSum: teamImmediate,
         };

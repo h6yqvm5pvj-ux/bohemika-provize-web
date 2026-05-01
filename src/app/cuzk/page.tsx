@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import Image from "next/image";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import type { LucideIcon } from "lucide-react";
@@ -1210,12 +1209,6 @@ export default function CuzkPage() {
                 <Building2 className="h-9 w-9 text-slate-700 sm:h-11 sm:w-11" />
                 <span>Katastr nemovitostí</span>
               </h1>
-              <Link
-                href="/pomucky"
-                className="inline-flex items-center text-xs text-slate-600 hover:text-slate-900 transition"
-              >
-                ← Zpět na pomůcky
-              </Link>
             </div>
             <Image
               src="/icons/icon_domex.png"

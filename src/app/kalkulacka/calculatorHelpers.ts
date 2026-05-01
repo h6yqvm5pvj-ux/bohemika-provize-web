@@ -598,7 +598,7 @@ export function resultIconForTitle(title: string): string | null {
     return "/icons/kalendar.png";
   }
 
-  if (t.startsWith("následná provize")) {
+  if (t.startsWith("následná provize") || t.startsWith("pečovatelská provize")) {
     return "/icons/nasledna.png";
   }
 

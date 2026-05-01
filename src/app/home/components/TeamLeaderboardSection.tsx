@@ -4,6 +4,7 @@ import { AnimatedMoney } from "./AnimatedNumbers";
 import { type TeamLeaderboardEntry } from "../types";
 
 type Props = {
+  loading: boolean;
   entries: TeamLeaderboardEntry[];
   leaderboardLabel: string;
   lbProductFilter: "life" | "other";
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export function TeamLeaderboardSection({
+  loading,
   entries,
   leaderboardLabel,
   lbProductFilter,
@@ -154,7 +156,17 @@ export function TeamLeaderboardSection({
         </div>
       </div>
 
-      {entries.length === 0 ? (
+      {loading ? (
+        <div className="relative z-10 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-7 text-center">
+          <div className="inline-flex items-center gap-2 text-sm text-slate-600">
+            <span
+              className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700"
+              aria-hidden="true"
+            />
+            <span>Načítám týmovou produkci…</span>
+          </div>
+        </div>
+      ) : entries.length === 0 ? (
         <div className="relative z-10 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-7 text-center">
           <p className="text-sm text-slate-600">
             Pro zvolené období a typ produktu zatím nemá tým žádnou produkci.

@@ -15,6 +15,18 @@ type Props = {
   isLiteUI: boolean;
 };
 
+function LoadingIndicator() {
+  return (
+    <div className="inline-flex items-center gap-2 text-sm text-slate-300">
+      <span
+        className="h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-sky-200"
+        aria-hidden="true"
+      />
+      <span>Načítám…</span>
+    </div>
+  );
+}
+
 export function ProductionSummarySection({
   loading,
   showTeamBox,
@@ -61,7 +73,7 @@ export function ProductionSummarySection({
               </span>
             </h2>
             {loading ? (
-              <p className="text-base text-slate-300">Načítám…</p>
+              <LoadingIndicator />
             ) : (
               <>
                 <dl className="space-y-1.5">
@@ -97,7 +109,7 @@ export function ProductionSummarySection({
                 </span>
               </h2>
               {loading ? (
-                <p className="text-base text-slate-300">Načítám…</p>
+                <LoadingIndicator />
               ) : (
                 <>
                 <dl className="space-y-1.5">
@@ -157,7 +169,7 @@ export function ProductionSummarySection({
               </h2>
             </div>
           {loading ? (
-            <p className="text-base text-slate-300">Načítám…</p>
+            <LoadingIndicator />
           ) : (
             <dl className="space-y-6">
               <div>
@@ -191,7 +203,7 @@ export function ProductionSummarySection({
               </h2>
             </div>
           {loading ? (
-            <p className="text-base text-slate-300">Načítám…</p>
+            <LoadingIndicator />
           ) : (
             <dl className="space-y-6">
               <div>
@@ -226,7 +238,7 @@ export function ProductionSummarySection({
               </h2>
             </div>
             {loading ? (
-              <p className="text-base text-slate-300">Načítám…</p>
+              <LoadingIndicator />
             ) : (
               <dl className="space-y-6">
                 <div>
@@ -261,7 +273,7 @@ export function ProductionSummarySection({
               </h2>
             </div>
           {loading ? (
-            <p className="text-base text-slate-300">Načítám…</p>
+            <LoadingIndicator />
           ) : (
             <dl className="space-y-6">
               <div>

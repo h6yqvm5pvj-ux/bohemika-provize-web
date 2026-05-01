@@ -39,6 +39,15 @@ function normalizeSearchValue(value: string): string {
     .trim();
 }
 
+const CATEGORY_RANK: Record<string, number> = {
+  "Pojištění majetku": 0,
+  "Pojištění vozidel": 1,
+  "Životní pojištění": 2,
+  Finance: 3,
+  Investice: 4,
+  Obecné: 5,
+};
+
 export default function ToolsPage() {
   const FILTERS = [
     "Všechny",
@@ -50,12 +59,93 @@ export default function ToolsPage() {
     "Obecné",
   ] as const;
 
-  const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>("Všechny");
+  type FilterKey = (typeof FILTERS)[number];
+  type ToolCategory = Exclude<FilterKey, "Všechny">;
+
+  const FILTER_VISUALS: Record<FilterKey, { active: string; inactive: string }> = {
+    Všechny: {
+      active: "border-slate-900 bg-slate-900 text-slate-50",
+      inactive: "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50",
+    },
+    "Pojištění majetku": {
+      active: "border-cyan-700 bg-cyan-700 text-white",
+      inactive: "border-cyan-200 bg-white text-cyan-700 hover:border-cyan-300 hover:bg-cyan-50",
+    },
+    "Pojištění vozidel": {
+      active: "border-blue-700 bg-blue-700 text-white",
+      inactive: "border-blue-200 bg-white text-blue-700 hover:border-blue-300 hover:bg-blue-50",
+    },
+    "Životní pojištění": {
+      active: "border-rose-700 bg-rose-700 text-white",
+      inactive: "border-rose-200 bg-white text-rose-700 hover:border-rose-300 hover:bg-rose-50",
+    },
+    Finance: {
+      active: "border-emerald-700 bg-emerald-700 text-white",
+      inactive: "border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50",
+    },
+    Investice: {
+      active: "border-amber-700 bg-amber-700 text-white",
+      inactive: "border-amber-200 bg-white text-amber-700 hover:border-amber-300 hover:bg-amber-50",
+    },
+    Obecné: {
+      active: "border-indigo-700 bg-indigo-700 text-white",
+      inactive: "border-indigo-200 bg-white text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50",
+    },
+  };
+
+  const CATEGORY_VISUALS: Record<
+    ToolCategory,
+    {
+      badge: string;
+      icon: string;
+      cardHover: string;
+      arrow: string;
+    }
+  > = {
+    "Pojištění majetku": {
+      badge: "text-cyan-700",
+      icon: "border-cyan-200 bg-cyan-50 text-cyan-700 group-hover:border-cyan-300 group-hover:bg-cyan-100 group-hover:text-cyan-900",
+      cardHover: "hover:border-cyan-300 hover:bg-cyan-50/60 hover:shadow-[0_12px_24px_rgba(8,145,178,0.16)]",
+      arrow: "group-hover:border-cyan-300 group-hover:text-cyan-800",
+    },
+    "Pojištění vozidel": {
+      badge: "text-blue-700",
+      icon: "border-blue-200 bg-blue-50 text-blue-700 group-hover:border-blue-300 group-hover:bg-blue-100 group-hover:text-blue-900",
+      cardHover: "hover:border-blue-300 hover:bg-blue-50/60 hover:shadow-[0_12px_24px_rgba(37,99,235,0.14)]",
+      arrow: "group-hover:border-blue-300 group-hover:text-blue-800",
+    },
+    "Životní pojištění": {
+      badge: "text-rose-700",
+      icon: "border-rose-200 bg-rose-50 text-rose-700 group-hover:border-rose-300 group-hover:bg-rose-100 group-hover:text-rose-900",
+      cardHover: "hover:border-rose-300 hover:bg-rose-50/60 hover:shadow-[0_12px_24px_rgba(225,29,72,0.14)]",
+      arrow: "group-hover:border-rose-300 group-hover:text-rose-800",
+    },
+    Finance: {
+      badge: "text-emerald-700",
+      icon: "border-emerald-200 bg-emerald-50 text-emerald-700 group-hover:border-emerald-300 group-hover:bg-emerald-100 group-hover:text-emerald-900",
+      cardHover: "hover:border-emerald-300 hover:bg-emerald-50/60 hover:shadow-[0_12px_24px_rgba(5,150,105,0.15)]",
+      arrow: "group-hover:border-emerald-300 group-hover:text-emerald-800",
+    },
+    Investice: {
+      badge: "text-amber-700",
+      icon: "border-amber-200 bg-amber-50 text-amber-700 group-hover:border-amber-300 group-hover:bg-amber-100 group-hover:text-amber-900",
+      cardHover: "hover:border-amber-300 hover:bg-amber-50/65 hover:shadow-[0_12px_24px_rgba(180,83,9,0.15)]",
+      arrow: "group-hover:border-amber-300 group-hover:text-amber-800",
+    },
+    Obecné: {
+      badge: "text-indigo-700",
+      icon: "border-indigo-200 bg-indigo-50 text-indigo-700 group-hover:border-indigo-300 group-hover:bg-indigo-100 group-hover:text-indigo-900",
+      cardHover: "hover:border-indigo-300 hover:bg-indigo-50/60 hover:shadow-[0_12px_24px_rgba(79,70,229,0.14)]",
+      arrow: "group-hover:border-indigo-300 group-hover:text-indigo-800",
+    },
+  };
+
+  const [activeFilter, setActiveFilter] = useState<FilterKey>("Všechny");
   const [searchQuery, setSearchQuery] = useState("");
 
   type Tool = {
     key: string;
-    category: (typeof FILTERS)[number];
+    category: ToolCategory;
     title: string;
     description: string;
     icon: LucideIcon;
@@ -253,7 +343,7 @@ export default function ToolsPage() {
   const filteredTools = useMemo(
     () => {
       const q = normalizeSearchValue(searchQuery);
-      return tools.filter((tool) => {
+      const filtered = tools.filter((tool) => {
         const categoryMatch =
           activeFilter === "Všechny" || tool.category === activeFilter;
         if (!categoryMatch) return false;
@@ -262,6 +352,14 @@ export default function ToolsPage() {
         return [tool.title, tool.description, tool.category]
           .map(normalizeSearchValue)
           .some((value) => value.includes(q));
+      });
+
+      return filtered.sort((a, b) => {
+        if (activeFilter === "Všechny") {
+          const rankDiff = CATEGORY_RANK[a.category] - CATEGORY_RANK[b.category];
+          if (rankDiff !== 0) return rankDiff;
+        }
+        return a.title.localeCompare(b.title, "cs");
       });
     },
     [activeFilter, searchQuery, tools]
@@ -297,14 +395,15 @@ export default function ToolsPage() {
         <div className="mb-6 flex flex-wrap gap-2.5">
           {FILTERS.map((filter) => {
             const active = filter === activeFilter;
+            const style = FILTER_VISUALS[filter];
             return (
               <button
                 key={filter}
                 onClick={() => setActiveFilter(filter)}
                 className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
                   active
-                    ? "border-slate-900 bg-slate-900 text-[#f8fafc]"
-                    : "border-slate-900 bg-white text-slate-900 hover:bg-slate-50"
+                    ? style.active
+                    : style.inactive
                 }`}
               >
                 {filter}
@@ -327,6 +426,7 @@ export default function ToolsPage() {
 
             const CardWrapper = tool.external ? "a" : Link;
             const ToolIcon = tool.icon;
+            const style = CATEGORY_VISUALS[tool.category];
             const wrapperProps = tool.external
               ? { href: tool.href ?? "#", target: "_blank", rel: "noreferrer" }
               : { href: tool.href ?? "#" };
@@ -335,20 +435,20 @@ export default function ToolsPage() {
               <CardWrapper
                 key={tool.key}
                 {...wrapperProps}
-                className="group relative flex h-full items-center gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-[1px] hover:border-slate-300 hover:bg-slate-50/80 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                className={`group relative flex h-full items-center gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-[1px] ${style.cardHover} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300`}
               >
-                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition group-hover:border-slate-300 group-hover:bg-white group-hover:text-slate-900">
+                <span className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${style.icon}`}>
                   <ToolIcon className="h-5 w-5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${style.badge}`}>
                     {tool.category}
                   </p>
                   <h2 className="mt-1 text-lg font-semibold leading-snug tracking-tight text-slate-900">
                     {tool.title}
                   </h2>
                 </div>
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition group-hover:border-slate-300 group-hover:text-slate-900">
+                <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition ${style.arrow}`}>
                   <ArrowUpRight className="h-4 w-4" />
                 </span>
               </CardWrapper>

@@ -1,12 +1,7 @@
 import { useEffect, useState } from "react";
-import { Pencil, Shuffle, Target } from "lucide-react";
+import { Pencil, Target } from "lucide-react";
 
-import { type CommissionMode, type Position } from "@/app/types/domain";
 import { formatMoney } from "../homeUtils";
-import {
-  generateMonthlyGoalPlan,
-  type GoalSuggestionPlan,
-} from "../monthlyGoalPlan";
 
 type Props = {
   monthlyGoal: number | null;
@@ -14,9 +9,6 @@ type Props = {
   progressTone: string;
   loading: boolean;
   isLiteUI: boolean;
-  remainingToGoal: number;
-  position?: Position | null;
-  commissionMode?: CommissionMode | null;
   onSaveGoal: (value: number) => Promise<void>;
 };
 
@@ -26,22 +18,13 @@ export function MonthlyGoalSection({
   progressTone,
   loading,
   isLiteUI,
-  remainingToGoal,
-  position,
-  commissionMode,
   onSaveGoal,
 }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [plan, setPlan] = useState<GoalSuggestionPlan | null>(null);
-  const [planError, setPlanError] = useState<string | null>(null);
-  const [planning, setPlanning] = useState(false);
 
-  const hasGoal = monthlyGoal != null && monthlyGoal > 0;
-  const remainingImmediate = Math.max(0, Number(remainingToGoal) || 0);
-  const canGeneratePlan = hasGoal && remainingImmediate > 0 && !!position;
   const normalizedProgress = Math.max(0, Math.min(100, Number(progress) || 0));
   const progressFillClass = normalizedProgress >= 51 ? "bg-emerald-600" : "bg-rose-600";
   const goalDisplayValue = monthlyGoal ? formatMoney(monthlyGoal) : "Není nastaven";
@@ -51,13 +34,6 @@ export function MonthlyGoalSection({
       monthlyGoal != null && Number.isFinite(monthlyGoal) ? String(monthlyGoal) : ""
     );
   }, [monthlyGoal]);
-
-  useEffect(() => {
-    if (!hasGoal || remainingImmediate <= 0) {
-      setPlan(null);
-      setPlanError(null);
-    }
-  }, [hasGoal, remainingImmediate]);
 
   const handleSave = async () => {
     const raw = (inputValue ?? "").toString().replace(/\s+/g, "");
@@ -78,50 +54,6 @@ export function MonthlyGoalSection({
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleGeneratePlan = () => {
-    setPlanError(null);
-    if (!hasGoal) {
-      setPlan(null);
-      setPlanError("Nejdřív si nastav měsíční cíl.");
-      return;
-    }
-    if (remainingImmediate <= 0) {
-      setPlan(null);
-      return;
-    }
-    if (!position) {
-      setPlan(null);
-      setPlanError("Abych spočítal návrh, je potřeba mít nastavenou pozici v Nastavení.");
-      return;
-    }
-
-    setPlanning(true);
-    try {
-      const generated = generateMonthlyGoalPlan({
-        remainingImmediate,
-        position,
-        mode: commissionMode ?? "accelerated",
-      });
-      if (generated.items.length === 0) {
-        setPlan(null);
-        setPlanError("Nepodařilo se sestavit návrh. Zkus to prosím znovu.");
-        return;
-      }
-      setPlan(generated);
-    } catch (err) {
-      console.error("Generování návrhu pro měsíční cíl selhalo", err);
-      setPlan(null);
-      setPlanError("Návrh se nepodařilo spočítat. Zkus to prosím znovu.");
-    } finally {
-      setPlanning(false);
-    }
-  };
-
-  const handleHidePlan = () => {
-    setPlan(null);
-    setPlanError(null);
   };
 
   const goalCardClass = isLiteUI
@@ -187,21 +119,22 @@ export function MonthlyGoalSection({
           <div className="self-start sm:self-auto sm:text-right">
             <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Splněno</div>
             <div className="text-3xl font-semibold text-slate-900">
-              {loading ? "Načítám…" : `${normalizedProgress}%`}
+              {loading ? (
+                <span className="inline-flex items-center gap-2 text-base font-medium text-slate-500">
+                  <span
+                    className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700"
+                    aria-hidden="true"
+                  />
+                  <span>Načítám…</span>
+                </span>
+              ) : (
+                `${normalizedProgress}%`
+              )}
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          <button
-            type="button"
-            onClick={handleGeneratePlan}
-            disabled={!canGeneratePlan || planning}
-            className="whitespace-nowrap inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Shuffle className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-            {planning ? "Počítám…" : "Náhodný plán do 100 %"}
-          </button>
           <button
             type="button"
             onClick={() => setEditOpen(true)}
@@ -224,85 +157,6 @@ export function MonthlyGoalSection({
             <span>100 %</span>
           </div>
         </div>
-
-        {hasGoal && (planError || (plan && plan.items.length > 0)) ? (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
-            {plan ? (
-              <div className="mb-2 flex justify-end">
-                <button
-                  type="button"
-                  onClick={handleGeneratePlan}
-                  disabled={planning || !canGeneratePlan}
-                  className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Přegenerovat
-                </button>
-              </div>
-            ) : null}
-
-            {planError ? <p className="mt-1 text-xs text-rose-600">{planError}</p> : null}
-
-            {plan && plan.items.length > 0 ? (
-              <div className="mt-3 space-y-2">
-                {plan.items.map((item, idx) => (
-                  <div
-                    key={item.id}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <div className="text-sm font-semibold text-slate-900">
-                          {idx + 1}. {item.productLabel}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          Pojistné {formatMoney(item.premium)}{" "}
-                          {item.premiumUnit === "monthly" ? "/ měsíc" : "/ rok"}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">
-                          Okamžitá
-                        </div>
-                        <div className="text-sm font-semibold text-slate-900">
-                          +{formatMoney(item.immediate)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                <div className="rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-xs text-white">
-                  <div>
-                    Součet návrhu:{" "}
-                    <span className="font-semibold">{formatMoney(plan.totalImmediate)}</span>
-                  </div>
-                  {plan.overshoot > 0 ? (
-                    <div>
-                      Přesah nad cíl:{" "}
-                      <span className="font-semibold">{formatMoney(plan.overshoot)}</span>
-                    </div>
-                  ) : null}
-                  {plan.missingAfterPlan > 0 ? (
-                    <div>
-                      Po návrhu ještě chybí:{" "}
-                      <span className="font-semibold">{formatMoney(plan.missingAfterPlan)}</span>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={handleHidePlan}
-                    className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
-                  >
-                    Skrýt náhodný plán
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
       </div>
     </section>
   );

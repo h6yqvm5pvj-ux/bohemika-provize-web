@@ -1,13 +1,11 @@
 // src/app/pomucky/srovnavac-trvalych-nasledku/page.tsx
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
 import {
   Calculator,
   ChartNoAxesColumn,
-  ChevronLeft,
   FileDown,
   Files,
   SlidersHorizontal,
@@ -1739,13 +1737,6 @@ export default function SrovnavacTrvalychNasledkuPage() {
             <SplitTitle text="Srovnavač" className="leading-[1.05]" />
             <SplitTitle text="Trvalých následků" className="leading-[1.05]" />
           </div>
-          <Link
-            href="/pomucky"
-            className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 transition"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-            <span>Zpět na pomůcky</span>
-          </Link>
         </header>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(360px,430px)_1fr]">

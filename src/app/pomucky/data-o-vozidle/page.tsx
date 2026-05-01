@@ -539,9 +539,6 @@ export default function VehicleDataPage() {
               <CarFront className="h-7 w-7 text-slate-700" />
               <span>Data o vozidle</span>
             </h1>
-            <Link href="/pomucky" className="inline-flex text-xs text-slate-600 transition hover:text-slate-900">
-              ← Zpět na pomůcky
-            </Link>
           </div>
           {searchActivated && (
             <div className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 text-xs text-slate-600">

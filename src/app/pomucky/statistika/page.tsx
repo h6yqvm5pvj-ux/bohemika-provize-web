@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -728,12 +727,6 @@ function StatistikaPageInner() {
               <span className="font-semibold text-slate-900">{modeLabel(commissionMode)}</span>.
             </p>
           </div>
-          <Link
-            href="/pomucky"
-            className="text-xs text-slate-800 border border-slate-300 rounded-full px-3 py-1.5 hover:bg-slate-100 transition"
-          >
-            ← Zpět na pomůcky
-          </Link>
         </header>
 
         <div className="flex flex-wrap gap-3">

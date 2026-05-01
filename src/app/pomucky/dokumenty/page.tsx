@@ -93,12 +93,6 @@ export default function DokumentyPage() {
           <p className="max-w-3xl text-sm text-slate-600">
             Centrální místo pro interní dokumenty a pracovní podklady. Obsah můžeš postupně doplňovat podle svého workflow.
           </p>
-          <Link
-            href="/pomucky"
-            className="inline-flex items-center text-xs text-slate-600 transition hover:text-slate-900"
-          >
-            ← Zpět na pomůcky
-          </Link>
         </header>
 
         <section className="rounded-3xl border border-slate-300 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">

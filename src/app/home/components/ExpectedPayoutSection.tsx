@@ -55,6 +55,13 @@ export function ExpectedPayoutSection({
 
         {loading ? (
           <>
+            <div className="inline-flex items-center gap-2 text-sm text-slate-600">
+              <span
+                className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700"
+                aria-hidden="true"
+              />
+              <span>Načítám data výplaty…</span>
+            </div>
             <div className="h-32 animate-pulse rounded-3xl border border-slate-700 bg-slate-900/90 sm:h-36" />
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div className="h-12 animate-pulse rounded-xl border border-white/20 bg-white/10" />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { BarChart3, CheckCircle2, FileText, Sigma } from "lucide-react";
@@ -47,6 +48,84 @@ function formatMoneyResult(value: number | undefined | null): string {
     minFractionDigits: 2,
     maxFractionDigits: 2,
   });
+}
+
+function usePrefersReducedMotion(): boolean {
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReducedMotion(query.matches);
+    sync();
+
+    if (typeof query.addEventListener === "function") {
+      query.addEventListener("change", sync);
+      return () => query.removeEventListener("change", sync);
+    }
+
+    query.addListener(sync);
+    return () => query.removeListener(sync);
+  }, []);
+
+  return reducedMotion;
+}
+
+function AnimatedMoneyValue({
+  value,
+  className,
+}: {
+  value: number;
+  className: string;
+}) {
+  const reducedMotion = usePrefersReducedMotion();
+  const previousRef = useRef(value);
+  const [displayValue, setDisplayValue] = useState(value);
+
+  useEffect(() => {
+    if (!Number.isFinite(value)) {
+      setDisplayValue(0);
+      previousRef.current = 0;
+      return;
+    }
+
+    if (reducedMotion) {
+      setDisplayValue(value);
+      previousRef.current = value;
+      return;
+    }
+
+    const start = previousRef.current;
+    const delta = value - start;
+    if (Math.abs(delta) < 0.01) {
+      setDisplayValue(value);
+      previousRef.current = value;
+      return;
+    }
+
+    const durationMs = 650;
+    const startAt = performance.now();
+    let rafId = 0;
+
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - startAt) / durationMs);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplayValue(start + delta * eased);
+      if (progress < 1) {
+        rafId = window.requestAnimationFrame(tick);
+        return;
+      }
+      previousRef.current = value;
+      setDisplayValue(value);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [reducedMotion, value]);
+
+  return <span className={className}>{formatMoneyResult(displayValue)}</span>;
 }
 
 export function CalculatorResultsSection({
@@ -226,16 +305,19 @@ export function CalculatorResultsSection({
                     </span>
                     <span>Okamžitá provize ({tipsterPercent} %)</span>
                   </span>
-                  <span className="text-lg font-semibold text-slate-900 sm:text-2xl">
+                  <span className="whitespace-nowrap text-lg font-semibold text-slate-900 sm:text-2xl">
                     {formatMoneyResult(tipsterImmediateCommission)}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between pt-2">
-                  <span className="font-semibold text-slate-900">Celkem</span>
-                  <span className="text-2xl font-bold text-slate-900 sm:text-3xl">
-                    {formatMoneyResult(tipsterImmediateCommission)}
-                  </span>
+                <div className="rounded-2xl border border-emerald-500/60 bg-slate-950 px-3 py-3 shadow-[0_10px_24px_rgba(2,6,23,0.3)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold text-emerald-300">Celkem</span>
+                    <AnimatedMoneyValue
+                      value={tipsterImmediateCommission}
+                      className="whitespace-nowrap text-2xl font-bold text-emerald-300 sm:text-3xl"
+                    />
+                  </div>
                 </div>
               </div>
             );
@@ -265,7 +347,7 @@ export function CalculatorResultsSection({
                       )}
                       <span>{title}</span>
                     </span>
-                    <span className="text-lg font-semibold text-slate-900 sm:text-2xl">
+                    <span className="whitespace-nowrap text-lg font-semibold text-slate-900 sm:text-2xl">
                       {formatMoneyResult(item.amount)}
                     </span>
                   </div>
@@ -302,29 +384,36 @@ export function CalculatorResultsSection({
                   product === "koopmajetekobcan" ||
                   product === "maxdomov") &&
                 paymentBasedTotalsMemo ? (
-                  <div className="w-full space-y-1 text-slate-900">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">Celkem v 1. roce{tipContractConfig ? " po TIPU" : ""}</span>
-                      <span className="text-2xl font-bold text-slate-900 sm:text-3xl">
-                        {formatMoneyResult(
-                          tipContractConfig ? tipContractImmediateNetFirstYear : paymentBasedTotalsMemo.immediate
-                        )}
+                  <div className="w-full space-y-1 rounded-2xl border border-emerald-500/60 bg-slate-950 px-3 py-3 shadow-[0_10px_24px_rgba(2,6,23,0.3)]">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold text-emerald-300">
+                        Celkem v 1. roce{tipContractConfig ? " po TIPU" : ""}
                       </span>
+                      <AnimatedMoneyValue
+                        value={tipContractConfig ? tipContractImmediateNetFirstYear : paymentBasedTotalsMemo.immediate}
+                        className="whitespace-nowrap text-2xl font-bold text-emerald-300 sm:text-3xl"
+                      />
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">Celkem ročně následně</span>
-                      <span className="text-2xl font-bold text-slate-900 sm:text-3xl">
-                        {formatMoneyResult(paymentBasedTotalsMemo.subsequent)}
-                      </span>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold text-emerald-300">Celkem ročně následně</span>
+                      <AnimatedMoneyValue
+                        value={paymentBasedTotalsMemo.subsequent}
+                        className="whitespace-nowrap text-2xl font-bold text-emerald-300 sm:text-3xl"
+                      />
                     </div>
                   </div>
                 ) : (
-                  <>
-                    <span className="font-semibold text-slate-900">Celkem{tipContractConfig ? " po TIPU" : ""}</span>
-                    <span className="text-2xl font-bold text-slate-900 sm:text-3xl">
-                      {formatMoneyResult(tipContractConfig ? tipContractTotalNet : total)}
-                    </span>
-                  </>
+                  <div className="w-full rounded-2xl border border-emerald-500/60 bg-slate-950 px-3 py-3 shadow-[0_10px_24px_rgba(2,6,23,0.3)]">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold text-emerald-300">
+                        Celkem{tipContractConfig ? " po TIPU" : ""}
+                      </span>
+                      <AnimatedMoneyValue
+                        value={tipContractConfig ? tipContractTotalNet : total}
+                        className="whitespace-nowrap text-2xl font-bold text-emerald-300 sm:text-3xl"
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

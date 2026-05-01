@@ -1,7 +1,7 @@
 // src/app/smlouvy/page.tsx
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -449,12 +449,13 @@ type ContractsApiResponse = {
   teamNextCursor?: number | null;
 };
 
-type ContractsFindApiResponse = {
-  ok: boolean;
-  error?: string;
-  scope?: "my" | "team";
-  query?: string;
-  contracts?: (ContractDoc & { adviserEmail: string | null })[];
+type ContractsListFilters = {
+  query: string;
+  filterMode: FilterMode;
+  showUnpaidOnly: boolean;
+  selectedCategories: ProductCategory[];
+  selectedInstitutions: Institution[];
+  selectedSubordinates: string[];
 };
 
 const CONTRACTS_CACHE_KEY = "contracts_cache_v2";
@@ -634,10 +635,8 @@ function ContractsPageContent() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [autoScanPaused, setAutoScanPaused] = useState(false);
-  const [searchFallbackContracts, setSearchFallbackContracts] = useState<DisplayedContract[]>([]);
-  const [searchFallbackLoading, setSearchFallbackLoading] = useState(false);
-  const searchFallbackRequestRef = useRef(0);
+  const serverFilterRequestRef = useRef(0);
+  const previousServerFilterActiveRef = useRef(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -659,9 +658,48 @@ function ContractsPageContent() {
   const lastListTransitionSignatureRef = useRef<string | null>(null);
   const shouldRestoreView = searchParams?.get("restore") === "1";
   const normalizedUserEmail = normalizeEmail(user?.email);
-  const hasSearchQuery = normalizeSearchValue(searchText).length > 0;
+  const deferredSearchText = useDeferredValue(searchText);
+  const hasSearchQuery = normalizeSearchValue(deferredSearchText).length > 0;
+  const canShowTeamToggle =
+    isManagerPosition(currentUserPosition) || teamUsersRef.current.length > 0;
   const anniversaryModeActive = filterMode === "anniversary" && !hasSearchQuery;
-  const wantsFullScan = anniversaryModeActive || hasSearchQuery || showUnpaidOnly;
+  const selectedCategoryList = useMemo(
+    () => Array.from(selectedCategories).sort(),
+    [selectedCategories]
+  );
+  const selectedInstitutionList = useMemo(
+    () => Array.from(selectedInstitutions).sort(),
+    [selectedInstitutions]
+  );
+  const selectedSubordinateList = useMemo(
+    () => Array.from(selectedSubordinates).sort(),
+    [selectedSubordinates]
+  );
+  const serverFilterActive =
+    hasSearchQuery ||
+    anniversaryModeActive ||
+    showUnpaidOnly ||
+    selectedCategoryList.length > 0 ||
+    selectedInstitutionList.length > 0 ||
+    (showTeam && canShowTeamToggle && selectedSubordinateList.length > 0);
+  const activeListFilters = useMemo<ContractsListFilters>(
+    () => ({
+      query: deferredSearchText.trim(),
+      filterMode: anniversaryModeActive ? "anniversary" : "latest",
+      showUnpaidOnly,
+      selectedCategories: selectedCategoryList,
+      selectedInstitutions: selectedInstitutionList,
+      selectedSubordinates: selectedSubordinateList,
+    }),
+    [
+      deferredSearchText,
+      anniversaryModeActive,
+      showUnpaidOnly,
+      selectedCategoryList,
+      selectedInstitutionList,
+      selectedSubordinateList,
+    ]
+  );
 
   const mergeContracts = <T extends { id: string }>(prev: T[], next: T[]): T[] => {
     const seen = new Set(prev.map((c) => c.id));
@@ -678,10 +716,12 @@ function ContractsPageContent() {
       scope,
       cursor,
       includeTeam,
+      filters,
     }: {
       scope: "my" | "team";
       cursor?: string | null;
       includeTeam?: boolean;
+      filters?: ContractsListFilters;
     }) => {
       if (!user) {
         throw new Error("Nejsi přihlášený.");
@@ -689,6 +729,25 @@ function ContractsPageContent() {
       const params = new URLSearchParams({ scope });
       if (cursor) params.set("cursor", cursor);
       if (includeTeam) params.set("includeTeam", "1");
+      if (filters) {
+        const query = filters.query.trim();
+        if (query) params.set("q", query);
+        if (filters.filterMode === "anniversary") {
+          params.set("mode", "anniversary");
+        }
+        if (filters.showUnpaidOnly) {
+          params.set("unpaidOnly", "1");
+        }
+        if (filters.selectedCategories.length > 0) {
+          params.set("categories", filters.selectedCategories.join(","));
+        }
+        if (filters.selectedInstitutions.length > 0) {
+          params.set("institutions", filters.selectedInstitutions.join(","));
+        }
+        if (scope === "team" && filters.selectedSubordinates.length > 0) {
+          params.set("subordinates", filters.selectedSubordinates.join(","));
+        }
+      }
 
       const requestWithToken = async (token: string) =>
         fetch(`/api/contracts/list?${params.toString()}`, {
@@ -734,14 +793,27 @@ function ContractsPageContent() {
   );
 
   const fetchMyPage = useCallback(
-    async (startBefore: string | null, append: boolean) => {
+    async (
+      startBefore: string | null,
+      append: boolean,
+      filters?: ContractsListFilters,
+      requestId?: number
+    ) => {
       if (!user?.email) {
         return { list: [] as ContractDoc[], oldest: null as Date | null, hasMore: false };
       }
-      const data = await apiFetchContracts({ scope: "my", cursor: startBefore });
+      const data = await apiFetchContracts({
+        scope: "my",
+        cursor: startBefore,
+        filters,
+      });
       const list = (data.contracts as ContractDoc[]) ?? [];
       const oldest = getOldestContractDate(list);
       const hasMore = Boolean(data.hasMore);
+
+      if (requestId != null && serverFilterRequestRef.current !== requestId) {
+        return { list, oldest, hasMore };
+      }
 
       setMyContracts((prev) => (append ? mergeContracts(prev, list) : list));
       setMyHasMore(hasMore);
@@ -753,19 +825,35 @@ function ContractsPageContent() {
   );
 
   const fetchTeamPage = useCallback(
-    async (startBefore: string | null, append: boolean) => {
+    async (
+      startBefore: string | null,
+      append: boolean,
+      filters?: ContractsListFilters,
+      requestId?: number
+    ) => {
       const teamEmails = teamUsersRef.current.map((u) => u.email).filter(Boolean);
       if (teamEmails.length === 0) {
+        if (requestId != null && serverFilterRequestRef.current !== requestId) {
+          return { list: [] as (ContractDoc & { adviserEmail: string | null })[], oldest: null as Date | null, hasMore: false };
+        }
         setTeamContracts([]);
         setTeamHasMore(false);
         setTeamCursorDate(null);
         return { list: [] as (ContractDoc & { adviserEmail: string | null })[], oldest: null as Date | null, hasMore: false };
       }
 
-      const data = await apiFetchContracts({ scope: "team", cursor: startBefore });
+      const data = await apiFetchContracts({
+        scope: "team",
+        cursor: startBefore,
+        filters,
+      });
       const list = (data.contracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
       const oldest = getOldestContractDate(list);
       const hasMore = Boolean(data.hasMore);
+
+      if (requestId != null && serverFilterRequestRef.current !== requestId) {
+        return { list, oldest, hasMore };
+      }
 
       setTeamContracts((prev) => (append ? mergeContracts(prev, list) : list));
       setTeamHasMore(hasMore);
@@ -820,9 +908,9 @@ function ContractsPageContent() {
     async ({ silent = false }: { silent?: boolean } = {}) => {
       const email = (user?.email ?? "").toLowerCase();
       if (!email) return;
-      // Při aktivním full-scanu (hledání / výročí / nezaplacené) by tichý refresh
-      // přepsal lokální dataset první stránkou a UI by viditelně "probliklo".
-      if (silent && wantsFullScan) return;
+      // Při aktivních serverových filtrech by tichý refresh přepsal filtrovaný dataset
+      // první nefiltrouvanou stránkou a UI by viditelně probliklo.
+      if (silent && serverFilterActive) return;
       if (silent && Date.now() - lastSilentRefreshAtRef.current < CONTRACTS_SILENT_REFRESH_COOLDOWN_MS) {
         return;
       }
@@ -863,7 +951,7 @@ function ContractsPageContent() {
         }
       }
     },
-    [user?.email, apiFetchContracts, applyContractsPayload, wantsFullScan]
+    [user?.email, apiFetchContracts, applyContractsPayload, serverFilterActive]
   );
 
   // auth
@@ -894,6 +982,9 @@ function ContractsPageContent() {
         setTeamCursorDate(null);
         setLoadError(null);
         setLoading(false);
+        return;
+      }
+      if (serverFilterActive) {
         return;
       }
 
@@ -943,7 +1034,69 @@ function ContractsPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [user?.email, refreshContracts]);
+  }, [user?.email, refreshContracts, serverFilterActive]);
+
+  useEffect(() => {
+    if (!user?.email) return;
+
+    if (!serverFilterActive) {
+      if (previousServerFilterActiveRef.current) {
+        previousServerFilterActiveRef.current = false;
+        void refreshContracts({ silent: false });
+      }
+      return;
+    }
+
+    previousServerFilterActiveRef.current = true;
+    const requestId = serverFilterRequestRef.current + 1;
+    serverFilterRequestRef.current = requestId;
+    let cancelled = false;
+
+    const loadFiltered = async () => {
+      setLoading(true);
+      setLoadError(null);
+      setBulkError(null);
+      setSelectedKeys(new Set());
+      setSelectMode(false);
+
+      try {
+        const scope: "my" | "team" =
+          showTeam && canShowTeamToggle ? "team" : "my";
+        if (scope === "team") {
+          await fetchTeamPage(null, false, activeListFilters, requestId);
+        } else {
+          await fetchMyPage(null, false, activeListFilters, requestId);
+        }
+      } catch (e) {
+        if (cancelled || serverFilterRequestRef.current !== requestId) return;
+        const msg = getErrorMessage(e, "Nepodařilo se načíst filtrované smlouvy.");
+        if (msg.toLowerCase().includes("síť") || msg.toLowerCase().includes("network")) {
+          console.warn("Dočasný výpadek sítě při filtrování smluv:", msg);
+        } else {
+          console.error("Chyba při filtrování smluv:", e);
+        }
+        setLoadError(msg);
+      } finally {
+        if (!cancelled && serverFilterRequestRef.current === requestId) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadFiltered();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    user?.email,
+    serverFilterActive,
+    activeListFilters,
+    showTeam,
+    canShowTeamToggle,
+    fetchMyPage,
+    fetchTeamPage,
+    refreshContracts,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !user?.email) return;
@@ -978,9 +1131,6 @@ function ContractsPageContent() {
       window.removeEventListener("storage", onStorage);
     };
   }, [user?.email, refreshContracts]);
-
-  const canShowTeamToggle =
-    isManagerPosition(currentUserPosition) || teamUsersRef.current.length > 0;
 
   const subordinateFilterOptions = useMemo(() => {
     if (!canShowTeamToggle) return [] as { email: string; label: string }[];
@@ -1150,8 +1300,8 @@ function ContractsPageContent() {
   }, [showTeam, canShowTeamToggle, teamContracts, myContracts]);
 
   const filteredContracts = useMemo(() => {
-    const q = normalizeSearchValue(searchText);
-    const qContract = normalizeContractNumberForSearch(searchText);
+    const q = normalizeSearchValue(deferredSearchText);
+    const qContract = normalizeContractNumberForSearch(deferredSearchText);
     const anniversaryOnly = filterMode === "anniversary" && q.length === 0;
     let base = displayedContracts;
     const teamScopeActive = showTeam && canShowTeamToggle;
@@ -1237,49 +1387,14 @@ function ContractsPageContent() {
     showTeam,
     canShowTeamToggle,
     selectedSubordinates,
-    searchText,
+    deferredSearchText,
     showUnpaidOnly,
     filterMode,
     selectedCategories,
     selectedInstitutions,
   ]);
 
-  const effectiveFilteredContracts = useMemo(() => {
-    if (!hasSearchQuery) return filteredContracts;
-    if (filteredContracts.length > 0) return filteredContracts;
-    if (searchFallbackContracts.length === 0) return filteredContracts;
-
-    const fallbackBase = showUnpaidOnly
-      ? searchFallbackContracts.filter(
-          (c) => c.paid !== true && !isContractStorno(c) && !isContractDozita(c)
-        )
-      : searchFallbackContracts;
-
-    const scopedFallback =
-      showTeam && canShowTeamToggle && selectedSubordinates.size > 0
-        ? fallbackBase.filter((c) =>
-            contractMatchesSelectedSubordinates(c, selectedSubordinates)
-          )
-        : fallbackBase;
-
-    return scopedFallback.filter((c) =>
-      productMatchesFilters(
-        c.productKey as Product | undefined,
-        selectedCategories,
-        selectedInstitutions
-      )
-    );
-  }, [
-    hasSearchQuery,
-    filteredContracts,
-    searchFallbackContracts,
-    showUnpaidOnly,
-    showTeam,
-    canShowTeamToggle,
-    selectedSubordinates,
-    selectedCategories,
-    selectedInstitutions,
-  ]);
+  const effectiveFilteredContracts = filteredContracts;
 
   const virtualizedContracts = useMemo(() => {
     const total = effectiveFilteredContracts.length;
@@ -1420,14 +1535,26 @@ function ContractsPageContent() {
     if (!user?.email) return;
     setLoadingMore(true);
     try {
+      const requestId = serverFilterActive
+        ? serverFilterRequestRef.current
+        : undefined;
       if (showTeam && canShowTeamToggle) {
         if (!teamHasMore) return;
-        await fetchTeamPage(teamCursorDate, true);
+        await fetchTeamPage(
+          teamCursorDate,
+          true,
+          serverFilterActive ? activeListFilters : undefined,
+          requestId
+        );
       } else {
         if (!myHasMore) return;
-        await fetchMyPage(myCursorDate, true);
+        await fetchMyPage(
+          myCursorDate,
+          true,
+          serverFilterActive ? activeListFilters : undefined,
+          requestId
+        );
       }
-      setAutoScanPaused(false);
     } catch (e) {
       const msg = getErrorMessage(e, "Nepodařilo se načíst další smlouvy. Zkus to prosím znovu.");
       if (msg.toLowerCase().includes("síť") || msg.toLowerCase().includes("network")) {
@@ -1436,7 +1563,6 @@ function ContractsPageContent() {
         console.error("Chyba při načítání dalších smluv:", e);
       }
       setLoadError(msg);
-      setAutoScanPaused(true);
     } finally {
       setLoadingMore(false);
     }
@@ -1451,6 +1577,8 @@ function ContractsPageContent() {
     myHasMore,
     fetchMyPage,
     myCursorDate,
+    serverFilterActive,
+    activeListFilters,
     setLoadError,
   ]);
 
@@ -1461,11 +1589,16 @@ function ContractsPageContent() {
     showTeam && canShowTeamToggle ? teamHasMore : myHasMore;
   const isAnniversaryLoading =
     anniversaryModeActive &&
-    (isFilterPending || loadingMore || hasMoreActive);
+    effectiveFilteredContracts.length === 0 &&
+    (loading || isFilterPending || loadingMore);
   const isSearchLoading =
     hasSearchQuery &&
     effectiveFilteredContracts.length === 0 &&
-    (((loadingMore || hasMoreActive) && !autoScanPaused) || searchFallbackLoading);
+    (loading || loadingMore);
+  const isFilteredListLoading =
+    serverFilterActive &&
+    effectiveFilteredContracts.length === 0 &&
+    (loading || loadingMore || isFilterPending);
 
   const persistContractsViewState = useCallback(() => {
     if (!normalizedUserEmail) return;
@@ -1524,157 +1657,23 @@ function ContractsPageContent() {
   }, [loading, loadingMore, hasMoreActive, effectiveFilteredContracts.length]);
 
   useEffect(() => {
-    if (!wantsFullScan) return;
-    if (!user?.email) return;
-    if (loading || loadingMore) return;
-    if (autoScanPaused) return;
-    if (!hasMoreActive) return;
-    void handleLoadMore(); // při vyhledávání/anniversary postupně načti vše, ne jen první stránku
-  }, [
-    wantsFullScan,
-    user?.email,
-    loading,
-    loadingMore,
-    autoScanPaused,
-    hasMoreActive,
-    showTeam,
-    canShowTeamToggle,
-    handleLoadMore,
-  ]);
-
-  useEffect(() => {
     if (!filterModalOpen) {
       setSubordinateSearchText("");
     }
   }, [filterModalOpen]);
 
   useEffect(() => {
-    if (!user) {
-      setSearchFallbackContracts([]);
-      setSearchFallbackLoading(false);
-      return;
-    }
-    if (!hasSearchQuery) {
-      setSearchFallbackContracts([]);
-      setSearchFallbackLoading(false);
-      return;
-    }
-
-    const compactQuery = normalizeContractNumberForSearch(searchText);
-    if (compactQuery.length < 5) {
-      setSearchFallbackContracts([]);
-      setSearchFallbackLoading(false);
-      return;
-    }
-
-    if (filteredContracts.length > 0) {
-      setSearchFallbackContracts([]);
-      setSearchFallbackLoading(false);
-      return;
-    }
-
-    if (loading || loadingMore) {
-      setSearchFallbackContracts([]);
-      setSearchFallbackLoading(false);
-      return;
-    }
-
-    if (!autoScanPaused && hasMoreActive) {
-      setSearchFallbackContracts([]);
-      setSearchFallbackLoading(false);
-      return;
-    }
-
-    const requestId = searchFallbackRequestRef.current + 1;
-    searchFallbackRequestRef.current = requestId;
-    const scope: "my" | "team" =
-      showTeam && canShowTeamToggle ? "team" : "my";
-    const rawQuery = searchText.trim();
-
-    if (!rawQuery) {
-      setSearchFallbackContracts([]);
-      setSearchFallbackLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setSearchFallbackContracts([]);
-    setSearchFallbackLoading(true);
-
-    const timer = window.setTimeout(() => {
-      (async () => {
-        try {
-          const token = await user.getIdToken();
-          const params = new URLSearchParams({
-            scope,
-            q: rawQuery,
-          });
-          const res = await fetch(`/api/contracts/find?${params.toString()}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const data = (await res.json()) as ContractsFindApiResponse;
-          if (cancelled || searchFallbackRequestRef.current !== requestId) return;
-          if (!res.ok || data.ok === false) {
-            setSearchFallbackContracts([]);
-            return;
-          }
-
-          const mapped: DisplayedContract[] = (data.contracts ?? []).map((contract) => {
-            const normalizedClient = normalizeSearchValue(contract.clientName);
-            const normalizedContract = normalizeSearchValue(contract.contractNumber);
-            const compactContract = normalizeContractNumberForSearch(
-              contract.contractNumber
-            );
-            return {
-              ...contract,
-              groupedEntryCount: Number(contract.groupedEntryCount ?? 1),
-              groupedEndorsementCount: Number(
-                contract.groupedEndorsementCount ??
-                  (contract.entryType === "endorsement" ? 1 : 0)
-              ),
-              searchClientTokens:
-                normalizedClient.length > 0 ? [normalizedClient] : [],
-              searchContractTokens:
-                normalizedContract.length > 0 ? [normalizedContract] : [],
-              searchContractCompactTokens:
-                compactContract.length > 0 ? [compactContract] : [],
-            } satisfies DisplayedContract;
-          });
-          setSearchFallbackContracts(mapped);
-        } catch (err) {
-          if (cancelled || searchFallbackRequestRef.current !== requestId) return;
-          console.warn("Fallback vyhledání smlouvy selhalo:", err);
-          setSearchFallbackContracts([]);
-        } finally {
-          if (!cancelled && searchFallbackRequestRef.current === requestId) {
-            setSearchFallbackLoading(false);
-          }
-        }
-      })();
-    }, 200);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [
-    user,
-    hasSearchQuery,
-    searchText,
-    filteredContracts.length,
-    loading,
-    loadingMore,
-    autoScanPaused,
-    hasMoreActive,
-    showTeam,
-    canShowTeamToggle,
-  ]);
-
-  useEffect(() => {
     setSelectedKeys(new Set());
     setSelectMode(false);
-    setAutoScanPaused(false);
-  }, [filterMode, searchText, showTeam, showUnpaidOnly]);
+  }, [
+    filterMode,
+    searchText,
+    showTeam,
+    showUnpaidOnly,
+    selectedCategoryList,
+    selectedInstitutionList,
+    selectedSubordinateList,
+  ]);
 
   useEffect(() => {
     persistContractsViewState();
@@ -1982,7 +1981,7 @@ function ContractsPageContent() {
               {loadError}
             </div>
           )}
-          {loading ? (
+          {loading && !serverFilterActive ? (
             <p className="mt-4 text-sm text-slate-600">
               Načítám smlouvy…
             </p>
@@ -1991,7 +1990,7 @@ function ContractsPageContent() {
               <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
               <p className="font-medium">Vyhledávám blížící se výročí…</p>
               <p className="text-xs text-slate-500">
-                Procházím další smlouvy, může to chvíli trvat.
+                Načítám filtrovaný seznam ze serveru.
               </p>
             </div>
           ) : isSearchLoading ? (
@@ -1999,7 +1998,15 @@ function ContractsPageContent() {
               <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
               <p className="font-medium">Vyhledávám smlouvu…</p>
               <p className="text-xs text-slate-500">
-                Procházím další stránky smluv, může to chvíli trvat.
+                Vyhledávám podle filtrů na serveru.
+              </p>
+            </div>
+          ) : isFilteredListLoading ? (
+            <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
+              <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+              <p className="font-medium">Načítám filtrované smlouvy…</p>
+              <p className="text-xs text-slate-500">
+                Filtry se vyhodnocují na serveru.
               </p>
             </div>
           ) : effectiveFilteredContracts.length === 0 ? (
@@ -2020,39 +2027,18 @@ function ContractsPageContent() {
                   </p>
                 </>
               ) : searchText.trim() !== "" ? (
-                autoScanPaused && hasMoreActive ? (
-                  <>
-                    <p className="font-medium">Vyhledávání se dočasně zastavilo</p>
+                <>
+                  <p className="font-medium">Nic nenalezeno</p>
+                  <p className="text-xs text-slate-500">
+                    Zkus upravit hledaný text (klient nebo číslo smlouvy).
+                  </p>
+                  {!showTeam && canShowTeamToggle && (
                     <p className="text-xs text-slate-500">
-                      Při načítání dalších smluv došlo k chybě. Zkus pokračovat znovu.
+                      Pokud smlouvu sjednal někdo z týmu, přepni nahoře na
+                      týmové smlouvy.
                     </p>
-                    <div className="pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAutoScanPaused(false);
-                          void handleLoadMore();
-                        }}
-                        className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
-                      >
-                        Pokračovat ve vyhledávání
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-medium">Nic nenalezeno</p>
-                    <p className="text-xs text-slate-500">
-                      Zkus upravit hledaný text (klient nebo číslo smlouvy).
-                    </p>
-                    {!showTeam && canShowTeamToggle && (
-                      <p className="text-xs text-slate-500">
-                        Pokud smlouvu sjednal někdo z týmu, přepni nahoře na
-                        týmové smlouvy.
-                      </p>
-                    )}
-                  </>
-                )
+                  )}
+                </>
               ) : showTeam && hasTeamContracts ? (
                 <>
                   <p className="font-medium">Žádné týmové smlouvy</p>
@@ -2075,10 +2061,10 @@ function ContractsPageContent() {
             </div>
           ) : (
             <div className="mt-4 space-y-3">
-              {isAnniversaryLoading && (
+              {serverFilterActive && loadingMore && (
                 <div className="ui-card ui-card-quiet flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-xs text-slate-700">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
-                  <span>Dohledávám další výročí…</span>
+                  <span>Načítám další filtrované smlouvy…</span>
                 </div>
               )}
               {bulkError && (

@@ -12,6 +12,7 @@ import {
 } from "firebase/auth";
 import type { LucideIcon } from "lucide-react";
 import {
+  ArrowLeft,
   ArrowRight,
   BriefcaseBusiness,
   Calculator,
@@ -65,6 +66,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [backgroundColor, setBackgroundColor] = useState<"white">("white");
   const pathname = usePathname();
   const router = useRouter();
+  const showToolsBackToIndex = active === "tools" && pathname !== "/pomucky";
   const lastActiveUpdateRef = useRef(0);
   const isFullBleedPage =
     pathname?.startsWith("/pomucky/zlato") ||
@@ -701,7 +703,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           {/* CONTENT / PAYWALL */}
           <div
             className={[
-              "app-content flex-1 flex items-start font-mono",
+              "app-content relative flex-1 flex items-start font-mono",
               isFullBleedPage
                 ? "justify-start px-0 py-6 sm:py-8 lg:px-0"
                 : "justify-center px-3 py-6 sm:px-4 sm:py-8 lg:px-8",
@@ -767,7 +769,20 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 </div>
               </div>
             ) : (
-              children
+              <>
+                {showToolsBackToIndex ? (
+                  <div className="pointer-events-none absolute left-3 top-1 z-10 sm:left-4 sm:top-2 lg:left-8">
+                    <Link
+                      href="/pomucky"
+                      className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
+                    >
+                      <ArrowLeft size={15} strokeWidth={2} aria-hidden="true" />
+                      <span>Zpět na pomůcky</span>
+                    </Link>
+                  </div>
+                ) : null}
+                {children}
+              </>
             )}
           </div>
         </div>

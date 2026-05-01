@@ -268,6 +268,7 @@ function PersonalProductionChart({ data }: { data: PersonalSeriesPoint[] }) {
 type Subordinate = { email: string; name: string };
 
 type ProductionChartSectionProps = {
+  loading: boolean;
   chartMode: ChartMode;
   setChartMode: (mode: ChartMode) => void;
   hasTeam: boolean;
@@ -283,6 +284,7 @@ type ProductionChartSectionProps = {
 };
 
 export function ProductionChartSection({
+  loading,
   chartMode,
   setChartMode,
   hasTeam,
@@ -379,42 +381,56 @@ export function ProductionChartSection({
         </div>
       </div>
 
-      {chartMode === "specific" && hasTeam && (
-        <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-xs text-slate-700">
-              {selectedSubordinate
-                ? `Vybraný podřízený: ${
-                    subordinates.find((s) => s.email === selectedSubordinate)?.name ??
-                    selectedSubordinate
-                  }`
-                : "Vyber podřízeného"}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setSubPickerOpen(true)}
-                className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs text-white transition hover:bg-black"
-              >
-                Změnit výběr
-              </button>
-              {selectedSubordinate && (
-                <button
-                  type="button"
-                  onClick={() => onSelectSubordinate(null)}
-                  className="rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] text-slate-700 transition hover:bg-slate-50"
-                >
-                  Vymazat
-                </button>
-              )}
-            </div>
+      {loading ? (
+        <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-10 text-center">
+          <div className="inline-flex items-center gap-2 text-sm text-slate-600">
+            <span
+              className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700"
+              aria-hidden="true"
+            />
+            <span>Načítám data pro graf produkce…</span>
           </div>
         </div>
+      ) : (
+        <>
+          {chartMode === "specific" && hasTeam && (
+            <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-xs text-slate-700">
+                  {selectedSubordinate
+                    ? `Vybraný podřízený: ${
+                        subordinates.find((s) => s.email === selectedSubordinate)?.name ??
+                        selectedSubordinate
+                      }`
+                    : "Vyber podřízeného"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSubPickerOpen(true)}
+                    className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs text-white transition hover:bg-black"
+                  >
+                    Změnit výběr
+                  </button>
+                  {selectedSubordinate && (
+                    <button
+                      type="button"
+                      onClick={() => onSelectSubordinate(null)}
+                      className="rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Vymazat
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <PersonalProductionChart data={personalProductionSeries} />
+        </>
       )}
 
-      <PersonalProductionChart data={personalProductionSeries} />
-
-      {chartMode === "specific" && hasTeam && subPickerOpen && (
+      {chartMode === "specific" && hasTeam && subPickerOpen && !loading && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <div
             className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"

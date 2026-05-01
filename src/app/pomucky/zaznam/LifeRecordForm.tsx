@@ -3,7 +3,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { LucideIcon } from "lucide-react";
 import {
   Accessibility,
   FileCheck2,
@@ -60,7 +59,7 @@ function normalizeLabel(value: string): string {
     .toLowerCase();
 }
 
-function getBenefitCardIcon(title: string): LucideIcon {
+function getBenefitCardIcon(title: string): React.ReactNode {
   const normalized = normalizeLabel(title);
 
   if (
@@ -68,7 +67,7 @@ function getBenefitCardIcon(title: string): LucideIcon {
     normalized.includes("zavislost") ||
     normalized.includes("telesne")
   ) {
-    return Accessibility;
+    return <Accessibility className="h-4 w-4" />;
   }
 
   if (
@@ -76,7 +75,7 @@ function getBenefitCardIcon(title: string): LucideIcon {
     normalized.includes("dite") ||
     normalized.includes("asistence")
   ) {
-    return UsersRound;
+    return <UsersRound className="h-4 w-4" />;
   }
 
   if (
@@ -85,7 +84,7 @@ function getBenefitCardIcon(title: string): LucideIcon {
     normalized.includes("pripojisteni") ||
     normalized.includes("prispevek")
   ) {
-    return FileSignature;
+    return <FileSignature className="h-4 w-4" />;
   }
 
   if (
@@ -98,10 +97,10 @@ function getBenefitCardIcon(title: string): LucideIcon {
     normalized.includes("ockovani") ||
     normalized.includes("operace")
   ) {
-    return HeartPulse;
+    return <HeartPulse className="h-4 w-4" />;
   }
 
-  return Shield;
+  return <Shield className="h-4 w-4" />;
 }
 
 const LIFE_RECORD_DRAFT_KEY = "lifeRecordFormDraft";
@@ -304,6 +303,7 @@ export function LifeRecordForm() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    let frameId: number | null = null;
 
     try {
       const raw = window.localStorage.getItem(LIFE_RECORD_DRAFT_KEY);
@@ -312,308 +312,316 @@ export function LifeRecordForm() {
       const draft = JSON.parse(raw) as any;
       if (!draft || typeof draft !== "object") return;
 
-      if (typeof draft.deathOn === "boolean") {
-        setDeathOn(draft.deathOn);
-      }
-      if (typeof draft.deathAmount === "string") {
-        setDeathAmount(draft.deathAmount);
-      }
-      if (typeof draft.terminalOn === "boolean") {
-        setTerminalOn(draft.terminalOn);
-      }
-      if (typeof draft.terminalAmount === "string") {
-        setTerminalAmount(draft.terminalAmount);
-      }
-      if (typeof draft.extraDeathOn === "boolean") {
-        setExtraDeathOn(draft.extraDeathOn);
-      }
-      if (typeof draft.extraDeathConstantOn === "boolean") {
-        setExtraDeathConstantOn(draft.extraDeathConstantOn);
-      }
-      if (typeof draft.extraDeathConstantAmount === "string") {
-        setExtraDeathConstantAmount(draft.extraDeathConstantAmount);
-      }
-      if (typeof draft.extraDeathDecreasingOn === "boolean") {
-        setExtraDeathDecreasingOn(draft.extraDeathDecreasingOn);
-      }
-      if (typeof draft.extraDeathDecreasingAmount === "string") {
-        setExtraDeathDecreasingAmount(draft.extraDeathDecreasingAmount);
-      }
-      if (typeof draft.extraDeathInterestOn === "boolean") {
-        setExtraDeathInterestOn(draft.extraDeathInterestOn);
-      }
-      if (typeof draft.extraDeathInterestAmount === "string") {
-        setExtraDeathInterestAmount(draft.extraDeathInterestAmount);
-      }
-      if (typeof draft.survivorPensionOn === "boolean") {
-        setSurvivorPensionOn(draft.survivorPensionOn);
-      }
-      if (typeof draft.survivorPensionAmount === "string") {
-        setSurvivorPensionAmount(draft.survivorPensionAmount);
-      }
-      if (typeof draft.waiverOn === "boolean") {
-        setWaiverOn(draft.waiverOn);
-      }
-      if (typeof draft.waiverInvalidityOn === "boolean") {
-        setWaiverInvalidityOn(draft.waiverInvalidityOn);
-      }
-      if (typeof draft.waiverInvalidityScope === "string") {
-        setWaiverInvalidityScope(draft.waiverInvalidityScope);
-      }
-      if (typeof draft.waiverJobLossOn === "boolean") {
-        setWaiverJobLossOn(draft.waiverJobLossOn);
-      }
-      if (typeof draft.invalid1On === "boolean") {
-        setInvalid1On(draft.invalid1On);
-      }
-      if (typeof draft.invalid1Degrees === "string") {
-        setInvalid1Degrees(draft.invalid1Degrees);
-      }
-      if (typeof draft.invalid1Type === "string") {
-        setInvalid1Type(draft.invalid1Type);
-      }
-      if (typeof draft.invalid1Amount1 === "string") {
-        setInvalid1Amount1(draft.invalid1Amount1);
-      }
-      if (typeof draft.invalid1Amount2 === "string") {
-        setInvalid1Amount2(draft.invalid1Amount2);
-      }
-      if (typeof draft.invalid1Amount3 === "string") {
-        setInvalid1Amount3(draft.invalid1Amount3);
-      }
-      if (typeof draft.invalid2On === "boolean") {
-        setInvalid2On(draft.invalid2On);
-      }
-      if (typeof draft.invalid2Degrees === "string") {
-        setInvalid2Degrees(draft.invalid2Degrees);
-      }
-      if (typeof draft.invalid2Type === "string") {
-        setInvalid2Type(draft.invalid2Type);
-      }
-      if (typeof draft.invalid2Amount1 === "string") {
-        setInvalid2Amount1(draft.invalid2Amount1);
-      }
-      if (typeof draft.invalid2Amount2 === "string") {
-        setInvalid2Amount2(draft.invalid2Amount2);
-      }
-      if (typeof draft.invalid2Amount3 === "string") {
-        setInvalid2Amount3(draft.invalid2Amount3);
-      }
-      if (typeof draft.ci1On === "boolean") {
-        setCi1On(draft.ci1On);
-      }
-      if (typeof draft.ci1Type === "string") {
-        setCi1Type(draft.ci1Type);
-      }
-      if (typeof draft.ci1Repeat === "boolean") {
-        setCi1Repeat(draft.ci1Repeat);
-      }
-      if (typeof draft.ci1Amount === "string") {
-        setCi1Amount(draft.ci1Amount);
-      }
-      if (typeof draft.ci2On === "boolean") {
-        setCi2On(draft.ci2On);
-      }
-      if (typeof draft.ci2Type === "string") {
-        setCi2Type(draft.ci2Type);
-      }
-      if (typeof draft.ci2Repeat === "boolean") {
-        setCi2Repeat(draft.ci2Repeat);
-      }
-      if (typeof draft.ci2Amount === "string") {
-        setCi2Amount(draft.ci2Amount);
-      }
-      if (typeof draft.seriousHimOn === "boolean") {
-        setSeriousHimOn(draft.seriousHimOn);
-      }
-      if (typeof draft.seriousHimAmount === "string") {
-        setSeriousHimAmount(draft.seriousHimAmount);
-      }
-      if (typeof draft.seriousHerOn === "boolean") {
-        setSeriousHerOn(draft.seriousHerOn);
-      }
-      if (typeof draft.seriousHerAmount === "string") {
-        setSeriousHerAmount(draft.seriousHerAmount);
-      }
-      if (typeof draft.diabetesOn === "boolean") {
-        setDiabetesOn(draft.diabetesOn);
-      }
-      if (typeof draft.diabetesAmount === "string") {
-        setDiabetesAmount(draft.diabetesAmount);
-      }
-      if (typeof draft.vaccinationOn === "boolean") {
-        setVaccinationOn(draft.vaccinationOn);
-      }
-      if (typeof draft.vaccinationAmount === "string") {
-        setVaccinationAmount(draft.vaccinationAmount);
-      }
-      if (typeof draft.deathAccOn === "boolean") {
-        setDeathAccOn(draft.deathAccOn);
-      }
-      if (typeof draft.deathAccAmount === "string") {
-        setDeathAccAmount(draft.deathAccAmount);
-      }
-      if (typeof draft.deathAccDoubleCar === "boolean") {
-        setDeathAccDoubleCar(draft.deathAccDoubleCar);
-      }
-      if (typeof draft.perm1On === "boolean") {
-        setPerm1On(draft.perm1On);
-      }
-      if (typeof draft.perm1Progress === "string") {
-        setPerm1Progress(draft.perm1Progress);
-      }
-      if (typeof draft.perm1From === "string") {
-        setPerm1From(draft.perm1From);
-      }
-      if (typeof draft.perm1Amount === "string") {
-        setPerm1Amount(draft.perm1Amount);
-      }
-      if (typeof draft.perm2On === "boolean") {
-        setPerm2On(draft.perm2On);
-      }
-      if (typeof draft.perm2Progress === "string") {
-        setPerm2Progress(draft.perm2Progress);
-      }
-      if (typeof draft.perm2From === "string") {
-        setPerm2From(draft.perm2From);
-      }
-      if (typeof draft.perm2Amount === "string") {
-        setPerm2Amount(draft.perm2Amount);
-      }
-      if (typeof draft.dailyOn === "boolean") {
-        setDailyOn(draft.dailyOn);
-      }
-      if (typeof draft.dailyFrom === "string") {
-        setDailyFrom(draft.dailyFrom);
-      }
-      if (typeof draft.dailyProgress === "string") {
-        setDailyProgress(draft.dailyProgress);
-      }
-      if (typeof draft.dailyAmount === "string") {
-        setDailyAmount(draft.dailyAmount);
-      }
-      if (typeof draft.bodilyOn === "boolean") {
-        setBodilyOn(draft.bodilyOn);
-      }
-      if (typeof draft.bodilyFrom === "string") {
-        setBodilyFrom(draft.bodilyFrom);
-      }
-      if (typeof draft.bodilyAmount === "string") {
-        setBodilyAmount(draft.bodilyAmount);
-      }
-      if (typeof draft.sick1On === "boolean") {
-        setSick1On(draft.sick1On);
-      }
-      if (typeof draft.sick1From === "string") {
-        setSick1From(draft.sick1From);
-      }
-      if (typeof draft.sick1Variant === "string") {
-        setSick1Variant(draft.sick1Variant);
-      }
-      if (typeof draft.sick1Amount === "string") {
-        setSick1Amount(draft.sick1Amount);
-      }
-      if (typeof draft.sickAccident1 === "boolean") {
-        setSickAccident1(draft.sickAccident1);
-      }
-      if (typeof draft.sickIllness1 === "boolean") {
-        setSickIllness1(draft.sickIllness1);
-      }
-      if (typeof draft.sick2On === "boolean") {
-        setSick2On(draft.sick2On);
-      }
-      if (typeof draft.sick2From === "string") {
-        setSick2From(draft.sick2From);
-      }
-      if (typeof draft.sick2Variant === "string") {
-        setSick2Variant(draft.sick2Variant);
-      }
-      if (typeof draft.sick2Amount === "string") {
-        setSick2Amount(draft.sick2Amount);
-      }
-      if (typeof draft.sickAccident2 === "boolean") {
-        setSickAccident2(draft.sickAccident2);
-      }
-      if (typeof draft.sickIllness2 === "boolean") {
-        setSickIllness2(draft.sickIllness2);
-      }
-      if (typeof draft.hospitalOn === "boolean") {
-        setHospitalOn(draft.hospitalOn);
-      }
-      if (typeof draft.hospitalAccidentOn === "boolean") {
-        setHospitalAccidentOn(draft.hospitalAccidentOn);
-      }
-      if (typeof draft.hospitalAccidentAmount === "string") {
-        setHospitalAccidentAmount(draft.hospitalAccidentAmount);
-      }
-      if (typeof draft.hospitalIllnessOn === "boolean") {
-        setHospitalIllnessOn(draft.hospitalIllnessOn);
-      }
-      if (typeof draft.hospitalIllnessAmount === "string") {
-        setHospitalIllnessAmount(draft.hospitalIllnessAmount);
-      }
-      if (typeof draft.hospitalProgressive === "boolean") {
-        setHospitalProgressive(draft.hospitalProgressive);
-      }
-      if (typeof draft.childOperationOn === "boolean") {
-        setChildOperationOn(draft.childOperationOn);
-      }
-      if (typeof draft.hasExistingContract === "string") {
-        setHasExistingContract(draft.hasExistingContract);
-      }
-      if (typeof draft.isChangeOnExistingContract === "string") {
-        setIsChangeOnExistingContract(draft.isChangeOnExistingContract);
-      }
-      if (typeof draft.isRefreshOrRenovation === "string") {
-        setIsRefreshOrRenovation(draft.isRefreshOrRenovation);
-      }
-      if (typeof draft.isContractTerminationDueToNewOne === "string") {
-        setIsContractTerminationDueToNewOne(
-          draft.isContractTerminationDueToNewOne
-        );
-      }
-      if (typeof draft.childOperationAmount === "string") {
-        setChildOperationAmount(draft.childOperationAmount);
-      }
-      if (typeof draft.childrenAccidentOn === "boolean") {
-        setChildrenAccidentOn(draft.childrenAccidentOn);
-      }
-      if (typeof draft.childrenAccidentType === "string") {
-        setChildrenAccidentType(draft.childrenAccidentType);
-      }
-      if (typeof draft.childrenAccidentAmount === "string") {
-        setChildrenAccidentAmount(draft.childrenAccidentAmount);
-      }
-      if (typeof draft.assistedOn === "boolean") {
-        setAssistedOn(draft.assistedOn);
-      }
-      if (typeof draft.assistedAmount === "string") {
-        setAssistedAmount(draft.assistedAmount);
-      }
-      if (typeof draft.careDependenceOn === "boolean") {
-        setCareDependenceOn(draft.careDependenceOn);
-      }
-      if (typeof draft.careDependenceAmount === "string") {
-        setCareDependenceAmount(draft.careDependenceAmount);
-      }
-      if (typeof draft.fullCareOn === "boolean") {
-        setFullCareOn(draft.fullCareOn);
-      }
-      if (typeof draft.fullCareAmount === "string") {
-        setFullCareAmount(draft.fullCareAmount);
-      }
-      if (typeof draft.specialAidOn === "boolean") {
-        setSpecialAidOn(draft.specialAidOn);
-      }
-      if (typeof draft.specialAidAmount === "string") {
-        setSpecialAidAmount(draft.specialAidAmount);
-      }
-      if (typeof draft.healthSocialOn === "boolean") {
-        setHealthSocialOn(draft.healthSocialOn);
-      }
+      frameId = window.requestAnimationFrame(() => {
+        if (typeof draft.deathOn === "boolean") {
+          setDeathOn(draft.deathOn);
+        }
+        if (typeof draft.deathAmount === "string") {
+          setDeathAmount(draft.deathAmount);
+        }
+        if (typeof draft.terminalOn === "boolean") {
+          setTerminalOn(draft.terminalOn);
+        }
+        if (typeof draft.terminalAmount === "string") {
+          setTerminalAmount(draft.terminalAmount);
+        }
+        if (typeof draft.extraDeathOn === "boolean") {
+          setExtraDeathOn(draft.extraDeathOn);
+        }
+        if (typeof draft.extraDeathConstantOn === "boolean") {
+          setExtraDeathConstantOn(draft.extraDeathConstantOn);
+        }
+        if (typeof draft.extraDeathConstantAmount === "string") {
+          setExtraDeathConstantAmount(draft.extraDeathConstantAmount);
+        }
+        if (typeof draft.extraDeathDecreasingOn === "boolean") {
+          setExtraDeathDecreasingOn(draft.extraDeathDecreasingOn);
+        }
+        if (typeof draft.extraDeathDecreasingAmount === "string") {
+          setExtraDeathDecreasingAmount(draft.extraDeathDecreasingAmount);
+        }
+        if (typeof draft.extraDeathInterestOn === "boolean") {
+          setExtraDeathInterestOn(draft.extraDeathInterestOn);
+        }
+        if (typeof draft.extraDeathInterestAmount === "string") {
+          setExtraDeathInterestAmount(draft.extraDeathInterestAmount);
+        }
+        if (typeof draft.survivorPensionOn === "boolean") {
+          setSurvivorPensionOn(draft.survivorPensionOn);
+        }
+        if (typeof draft.survivorPensionAmount === "string") {
+          setSurvivorPensionAmount(draft.survivorPensionAmount);
+        }
+        if (typeof draft.waiverOn === "boolean") {
+          setWaiverOn(draft.waiverOn);
+        }
+        if (typeof draft.waiverInvalidityOn === "boolean") {
+          setWaiverInvalidityOn(draft.waiverInvalidityOn);
+        }
+        if (typeof draft.waiverInvalidityScope === "string") {
+          setWaiverInvalidityScope(draft.waiverInvalidityScope);
+        }
+        if (typeof draft.waiverJobLossOn === "boolean") {
+          setWaiverJobLossOn(draft.waiverJobLossOn);
+        }
+        if (typeof draft.invalid1On === "boolean") {
+          setInvalid1On(draft.invalid1On);
+        }
+        if (typeof draft.invalid1Degrees === "string") {
+          setInvalid1Degrees(draft.invalid1Degrees);
+        }
+        if (typeof draft.invalid1Type === "string") {
+          setInvalid1Type(draft.invalid1Type);
+        }
+        if (typeof draft.invalid1Amount1 === "string") {
+          setInvalid1Amount1(draft.invalid1Amount1);
+        }
+        if (typeof draft.invalid1Amount2 === "string") {
+          setInvalid1Amount2(draft.invalid1Amount2);
+        }
+        if (typeof draft.invalid1Amount3 === "string") {
+          setInvalid1Amount3(draft.invalid1Amount3);
+        }
+        if (typeof draft.invalid2On === "boolean") {
+          setInvalid2On(draft.invalid2On);
+        }
+        if (typeof draft.invalid2Degrees === "string") {
+          setInvalid2Degrees(draft.invalid2Degrees);
+        }
+        if (typeof draft.invalid2Type === "string") {
+          setInvalid2Type(draft.invalid2Type);
+        }
+        if (typeof draft.invalid2Amount1 === "string") {
+          setInvalid2Amount1(draft.invalid2Amount1);
+        }
+        if (typeof draft.invalid2Amount2 === "string") {
+          setInvalid2Amount2(draft.invalid2Amount2);
+        }
+        if (typeof draft.invalid2Amount3 === "string") {
+          setInvalid2Amount3(draft.invalid2Amount3);
+        }
+        if (typeof draft.ci1On === "boolean") {
+          setCi1On(draft.ci1On);
+        }
+        if (typeof draft.ci1Type === "string") {
+          setCi1Type(draft.ci1Type);
+        }
+        if (typeof draft.ci1Repeat === "boolean") {
+          setCi1Repeat(draft.ci1Repeat);
+        }
+        if (typeof draft.ci1Amount === "string") {
+          setCi1Amount(draft.ci1Amount);
+        }
+        if (typeof draft.ci2On === "boolean") {
+          setCi2On(draft.ci2On);
+        }
+        if (typeof draft.ci2Type === "string") {
+          setCi2Type(draft.ci2Type);
+        }
+        if (typeof draft.ci2Repeat === "boolean") {
+          setCi2Repeat(draft.ci2Repeat);
+        }
+        if (typeof draft.ci2Amount === "string") {
+          setCi2Amount(draft.ci2Amount);
+        }
+        if (typeof draft.seriousHimOn === "boolean") {
+          setSeriousHimOn(draft.seriousHimOn);
+        }
+        if (typeof draft.seriousHimAmount === "string") {
+          setSeriousHimAmount(draft.seriousHimAmount);
+        }
+        if (typeof draft.seriousHerOn === "boolean") {
+          setSeriousHerOn(draft.seriousHerOn);
+        }
+        if (typeof draft.seriousHerAmount === "string") {
+          setSeriousHerAmount(draft.seriousHerAmount);
+        }
+        if (typeof draft.diabetesOn === "boolean") {
+          setDiabetesOn(draft.diabetesOn);
+        }
+        if (typeof draft.diabetesAmount === "string") {
+          setDiabetesAmount(draft.diabetesAmount);
+        }
+        if (typeof draft.vaccinationOn === "boolean") {
+          setVaccinationOn(draft.vaccinationOn);
+        }
+        if (typeof draft.vaccinationAmount === "string") {
+          setVaccinationAmount(draft.vaccinationAmount);
+        }
+        if (typeof draft.deathAccOn === "boolean") {
+          setDeathAccOn(draft.deathAccOn);
+        }
+        if (typeof draft.deathAccAmount === "string") {
+          setDeathAccAmount(draft.deathAccAmount);
+        }
+        if (typeof draft.deathAccDoubleCar === "boolean") {
+          setDeathAccDoubleCar(draft.deathAccDoubleCar);
+        }
+        if (typeof draft.perm1On === "boolean") {
+          setPerm1On(draft.perm1On);
+        }
+        if (typeof draft.perm1Progress === "string") {
+          setPerm1Progress(draft.perm1Progress);
+        }
+        if (typeof draft.perm1From === "string") {
+          setPerm1From(draft.perm1From);
+        }
+        if (typeof draft.perm1Amount === "string") {
+          setPerm1Amount(draft.perm1Amount);
+        }
+        if (typeof draft.perm2On === "boolean") {
+          setPerm2On(draft.perm2On);
+        }
+        if (typeof draft.perm2Progress === "string") {
+          setPerm2Progress(draft.perm2Progress);
+        }
+        if (typeof draft.perm2From === "string") {
+          setPerm2From(draft.perm2From);
+        }
+        if (typeof draft.perm2Amount === "string") {
+          setPerm2Amount(draft.perm2Amount);
+        }
+        if (typeof draft.dailyOn === "boolean") {
+          setDailyOn(draft.dailyOn);
+        }
+        if (typeof draft.dailyFrom === "string") {
+          setDailyFrom(draft.dailyFrom);
+        }
+        if (typeof draft.dailyProgress === "string") {
+          setDailyProgress(draft.dailyProgress);
+        }
+        if (typeof draft.dailyAmount === "string") {
+          setDailyAmount(draft.dailyAmount);
+        }
+        if (typeof draft.bodilyOn === "boolean") {
+          setBodilyOn(draft.bodilyOn);
+        }
+        if (typeof draft.bodilyFrom === "string") {
+          setBodilyFrom(draft.bodilyFrom);
+        }
+        if (typeof draft.bodilyAmount === "string") {
+          setBodilyAmount(draft.bodilyAmount);
+        }
+        if (typeof draft.sick1On === "boolean") {
+          setSick1On(draft.sick1On);
+        }
+        if (typeof draft.sick1From === "string") {
+          setSick1From(draft.sick1From);
+        }
+        if (typeof draft.sick1Variant === "string") {
+          setSick1Variant(draft.sick1Variant);
+        }
+        if (typeof draft.sick1Amount === "string") {
+          setSick1Amount(draft.sick1Amount);
+        }
+        if (typeof draft.sickAccident1 === "boolean") {
+          setSickAccident1(draft.sickAccident1);
+        }
+        if (typeof draft.sickIllness1 === "boolean") {
+          setSickIllness1(draft.sickIllness1);
+        }
+        if (typeof draft.sick2On === "boolean") {
+          setSick2On(draft.sick2On);
+        }
+        if (typeof draft.sick2From === "string") {
+          setSick2From(draft.sick2From);
+        }
+        if (typeof draft.sick2Variant === "string") {
+          setSick2Variant(draft.sick2Variant);
+        }
+        if (typeof draft.sick2Amount === "string") {
+          setSick2Amount(draft.sick2Amount);
+        }
+        if (typeof draft.sickAccident2 === "boolean") {
+          setSickAccident2(draft.sickAccident2);
+        }
+        if (typeof draft.sickIllness2 === "boolean") {
+          setSickIllness2(draft.sickIllness2);
+        }
+        if (typeof draft.hospitalOn === "boolean") {
+          setHospitalOn(draft.hospitalOn);
+        }
+        if (typeof draft.hospitalAccidentOn === "boolean") {
+          setHospitalAccidentOn(draft.hospitalAccidentOn);
+        }
+        if (typeof draft.hospitalAccidentAmount === "string") {
+          setHospitalAccidentAmount(draft.hospitalAccidentAmount);
+        }
+        if (typeof draft.hospitalIllnessOn === "boolean") {
+          setHospitalIllnessOn(draft.hospitalIllnessOn);
+        }
+        if (typeof draft.hospitalIllnessAmount === "string") {
+          setHospitalIllnessAmount(draft.hospitalIllnessAmount);
+        }
+        if (typeof draft.hospitalProgressive === "boolean") {
+          setHospitalProgressive(draft.hospitalProgressive);
+        }
+        if (typeof draft.childOperationOn === "boolean") {
+          setChildOperationOn(draft.childOperationOn);
+        }
+        if (typeof draft.hasExistingContract === "string") {
+          setHasExistingContract(draft.hasExistingContract);
+        }
+        if (typeof draft.isChangeOnExistingContract === "string") {
+          setIsChangeOnExistingContract(draft.isChangeOnExistingContract);
+        }
+        if (typeof draft.isRefreshOrRenovation === "string") {
+          setIsRefreshOrRenovation(draft.isRefreshOrRenovation);
+        }
+        if (typeof draft.isContractTerminationDueToNewOne === "string") {
+          setIsContractTerminationDueToNewOne(
+            draft.isContractTerminationDueToNewOne
+          );
+        }
+        if (typeof draft.childOperationAmount === "string") {
+          setChildOperationAmount(draft.childOperationAmount);
+        }
+        if (typeof draft.childrenAccidentOn === "boolean") {
+          setChildrenAccidentOn(draft.childrenAccidentOn);
+        }
+        if (typeof draft.childrenAccidentType === "string") {
+          setChildrenAccidentType(draft.childrenAccidentType);
+        }
+        if (typeof draft.childrenAccidentAmount === "string") {
+          setChildrenAccidentAmount(draft.childrenAccidentAmount);
+        }
+        if (typeof draft.assistedOn === "boolean") {
+          setAssistedOn(draft.assistedOn);
+        }
+        if (typeof draft.assistedAmount === "string") {
+          setAssistedAmount(draft.assistedAmount);
+        }
+        if (typeof draft.careDependenceOn === "boolean") {
+          setCareDependenceOn(draft.careDependenceOn);
+        }
+        if (typeof draft.careDependenceAmount === "string") {
+          setCareDependenceAmount(draft.careDependenceAmount);
+        }
+        if (typeof draft.fullCareOn === "boolean") {
+          setFullCareOn(draft.fullCareOn);
+        }
+        if (typeof draft.fullCareAmount === "string") {
+          setFullCareAmount(draft.fullCareAmount);
+        }
+        if (typeof draft.specialAidOn === "boolean") {
+          setSpecialAidOn(draft.specialAidOn);
+        }
+        if (typeof draft.specialAidAmount === "string") {
+          setSpecialAidAmount(draft.specialAidAmount);
+        }
+        if (typeof draft.healthSocialOn === "boolean") {
+          setHealthSocialOn(draft.healthSocialOn);
+        }
+      });
     } catch {
       // ignore broken draft
     }
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
   }, []);
 
   // --------------------------------------------------
@@ -2189,7 +2197,7 @@ function BenefitCard({
   onToggle,
   children,
 }: BenefitCardProps) {
-  const Icon = getBenefitCardIcon(title);
+  const icon = getBenefitCardIcon(title);
 
   return (
     <section className="rounded-3xl border border-slate-300 bg-white px-4 py-4 sm:px-5 sm:py-5 shadow-[0_8px_22px_rgba(15,23,42,0.08)] transition hover:-translate-y-[1px] hover:shadow-[0_12px_26px_rgba(15,23,42,0.12)]">
@@ -2208,12 +2216,15 @@ function BenefitCard({
           {enabled ? "✓" : ""}
         </div>
         <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
-          <Icon className="h-4 w-4" />
+          {icon}
         </div>
         <div className="flex-1">
           <h3 className="text-sm sm:text-base font-semibold text-slate-900">
             {title}
           </h3>
+          {subtitle ? (
+            <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
+          ) : null}
         </div>
       </button>
 

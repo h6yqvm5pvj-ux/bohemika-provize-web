@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import {
   Bebas_Neue,
   DM_Sans,
@@ -1768,12 +1767,6 @@ export default function TvorbaPage() {
       <div className="w-full max-w-[1360px] space-y-7">
         <header className="space-y-3 sm:flex sm:items-end sm:justify-between sm:space-y-0">
           <SplitTitle text="Tvorba" />
-          <Link
-            href="/pomucky"
-            className="inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black"
-          >
-            ← Zpět na pomůcky
-          </Link>
         </header>
 
         <div className="grid items-start gap-6 xl:grid-cols-[352px_1fr]">
