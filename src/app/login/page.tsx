@@ -24,8 +24,18 @@ const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
   "auth/too-many-requests",
   "auth/user-not-found",
   "auth/wrong-password",
+  "auth/invalid-credential",
+  "auth/invalid-login-credentials",
+  "auth/invalid-email",
   "auth/network-request-failed",
   "auth/timeout",
+]);
+
+const PASSWORD_ATTEMPT_ERROR_CODES = new Set<string>([
+  "auth/user-not-found",
+  "auth/wrong-password",
+  "auth/invalid-credential",
+  "auth/invalid-login-credentials",
 ]);
 
 const logAuthIssue = (context: string, error: unknown) => {
@@ -61,6 +71,60 @@ async function withTimeout<T>(
       }
     );
   });
+}
+
+type LoginAttemptAction = "check" | "failure" | "success";
+
+type LoginAttemptResponse = {
+  ok?: boolean;
+  locked?: boolean;
+  limit?: number;
+  attemptsRemaining?: number;
+  retryAfterSeconds?: number;
+  message?: string;
+  error?: string;
+};
+
+function attemptWord(count: number): string {
+  if (count === 1) return "pokus";
+  if (count >= 2 && count <= 4) return "pokusy";
+  return "pokusů";
+}
+
+function formatRetryAfter(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "chvíli";
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.ceil(seconds / 60);
+  return `${minutes} min`;
+}
+
+function buildLoginAttemptMessage(payload: LoginAttemptResponse | null): string {
+  if (payload?.locked) {
+    const retryAfter = Number(payload.retryAfterSeconds ?? 0);
+    return `Příliš mnoho neúspěšných pokusů. Zkus to znovu za ${formatRetryAfter(retryAfter)}.`;
+  }
+
+  const attemptsRemaining = Number(payload?.attemptsRemaining);
+  if (Number.isFinite(attemptsRemaining) && attemptsRemaining > 0) {
+    return `Nesprávný e-mail nebo heslo. Zbývá ${attemptsRemaining} ${attemptWord(attemptsRemaining)}.`;
+  }
+
+  return "Nesprávný e-mail nebo heslo.";
+}
+
+async function postLoginAttempt(
+  action: LoginAttemptAction,
+  email: string
+): Promise<LoginAttemptResponse> {
+  const response = await fetch("/api/auth/login-attempts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ action, email }),
+  });
+  const payload = (await response.json().catch(() => null)) as LoginAttemptResponse | null;
+  if (payload && typeof payload === "object") return payload;
+  throw new Error("Nepodařilo se ověřit bezpečnostní limit přihlášení.");
 }
 
 export default function LoginPage() {
@@ -211,10 +275,26 @@ export default function LoginPage() {
       const trimmedEmail = email.trim().toLowerCase();
       const trimmedPassword = password.trim();
 
+      if (!trimmedEmail || !trimmedPassword) {
+        setError("Zadej e-mail i heslo.");
+        setLoading(false);
+        return;
+      }
+
+      const gate = await postLoginAttempt("check", trimmedEmail);
+      if (!gate.ok || gate.locked) {
+        setError(buildLoginAttemptMessage(gate));
+        setLoading(false);
+        return;
+      }
+
       await withTimeout(
         signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword),
         20000,
         "Přihlášení trvá příliš dlouho."
+      );
+      void postLoginAttempt("success", trimmedEmail).catch((successError) =>
+        logAuthIssue("loginAttemptSuccess", successError)
       );
       // dál už to řeší onAuthStateChanged výše:
       // ověří subscription a podle toho buď router.replace("/"),
@@ -226,6 +306,10 @@ export default function LoginPage() {
 
       if (authErr?.code === "auth/multi-factor-auth-required") {
         try {
+          await postLoginAttempt("success", email.trim().toLowerCase()).catch((successError) =>
+            logAuthIssue("loginAttemptMfaSuccess", successError)
+          );
+
           const resolver = getMultiFactorResolver(auth, authErr as MultiFactorError);
           const totpHint = resolver.hints.find(
             (hint) => hint.factorId === FactorId.TOTP
@@ -251,10 +335,17 @@ export default function LoginPage() {
           logAuthIssue("handleSubmitResolver", resolverError);
           msg = "Nepodařilo se zahájit 2FA ověření. Zkus přihlášení znovu.";
         }
-      } else if (authErr?.code === "auth/user-not-found") {
-        msg = "Účet s tímto e-mailem neexistuje.";
-      } else if (authErr?.code === "auth/wrong-password") {
-        msg = "Nesprávné heslo.";
+      } else if (authErr?.code && PASSWORD_ATTEMPT_ERROR_CODES.has(authErr.code)) {
+        const attemptState = await postLoginAttempt(
+          "failure",
+          email.trim().toLowerCase()
+        ).catch((attemptError) => {
+          logAuthIssue("loginAttemptFailure", attemptError);
+          return null;
+        });
+        msg = buildLoginAttemptMessage(attemptState);
+      } else if (authErr?.code === "auth/invalid-email") {
+        msg = "Zadej platný e-mail.";
       } else if (authErr?.code === "auth/network-request-failed") {
         msg = "Síťová chyba při přihlášení. Zkontroluj připojení a zkus to znovu.";
       } else if (authErr?.code === "auth/timeout") {
