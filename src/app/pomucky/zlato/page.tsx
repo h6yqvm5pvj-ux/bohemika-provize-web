@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Minus, Plus, RefreshCw, RotateCcw } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "../plan-produkce/SplitTitle";
@@ -483,9 +483,21 @@ function GoldChart({ points }: { points: Point[] }) {
   const visibleCount = prepared ? prepared.windowEnd - prepared.windowStart + 1 : 0;
 
   const getMousePoint = (e: React.MouseEvent<SVGSVGElement> | React.WheelEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const xRaw = ((e.clientX - rect.left) / rect.width) * w;
-    const yRaw = ((e.clientY - rect.top) / rect.height) * h;
+    const svg = e.currentTarget;
+    const ctm = svg.getScreenCTM();
+    let xRaw: number;
+    let yRaw: number;
+
+    if (ctm) {
+      const point = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+      xRaw = point.x;
+      yRaw = point.y;
+    } else {
+      const rect = svg.getBoundingClientRect();
+      xRaw = ((e.clientX - rect.left) / rect.width) * w;
+      yRaw = ((e.clientY - rect.top) / rect.height) * h;
+    }
+
     const x = Math.min(w - pad.r, Math.max(pad.l, xRaw));
     const y = Math.min(h - pad.b, Math.max(pad.t, yRaw));
     return { x, y };
@@ -599,7 +611,7 @@ function GoldChart({ points }: { points: Point[] }) {
     hoveredCandle && hoveredCandle.open > 0
       ? ((hoveredCandle.close - hoveredCandle.open) / hoveredCandle.open) * 100
       : null;
-  const candleBadgeLightClass =
+  const candleBadgeClass =
     candleDelta == null
       ? "border border-slate-300 bg-slate-100 text-slate-700"
       : candleDelta > 0
@@ -610,177 +622,198 @@ function GoldChart({ points }: { points: Point[] }) {
   const candleTrendSign = candleDelta != null && candleDelta > 0 ? "+" : "";
   const canZoomOut = visibleCount < prepared.totalCandles;
   const canZoomIn = visibleCount > minVisibleCandles;
+  const totalChangeText =
+    prepared.totalChangePct == null
+      ? "—"
+      : `${prepared.totalChangePct >= 0 ? "+" : ""}${formatNum(prepared.totalChangePct, 2)} %`;
+  const totalChangeClass =
+    prepared.totalChangePct == null
+      ? "border-slate-200 bg-slate-50 text-slate-700"
+      : prepared.totalChangePct >= 0
+        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+        : "border-rose-300 bg-rose-50 text-rose-700";
+  const zoomButtonClass =
+    "inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35";
 
   return (
-    <div className="relative rounded-3xl border border-slate-700 bg-slate-950 px-4 py-4">
-      <div className="absolute right-5 top-5 z-10 flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => zoomTo(0.8)}
-          disabled={!canZoomIn}
-          className="h-7 w-7 rounded-md border border-slate-500 bg-slate-900/90 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
-          aria-label="Přiblížit graf"
-          title="Přiblížit"
-        >
-          +
-        </button>
-        <button
-          type="button"
-          onClick={() => zoomTo(1.2)}
-          disabled={!canZoomOut}
-          className="h-7 w-7 rounded-md border border-slate-500 bg-slate-900/90 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
-          aria-label="Oddálit graf"
-          title="Oddálit"
-        >
-          −
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setViewRange({ start: 0, end: prepared.totalCandles - 1 });
-            setHover(null);
-          }}
-          disabled={!canZoomOut}
-          className="rounded-md border border-slate-500 bg-slate-900/90 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-40"
-          title="Reset zoomu"
-        >
-          Reset
-        </button>
-      </div>
+    <div className="relative overflow-hidden rounded-2xl border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_58%,#eef2f7_100%)] p-3 shadow-[0_20px_48px_rgba(15,23,42,0.10),inset_0_1px_0_rgba(255,255,255,0.70)]">
+      <div className="absolute left-0 top-0 h-1 w-full bg-[linear-gradient(90deg,#c89d2e_0%,#f6d36b_45%,#64748b_100%)]" />
 
-      <svg
-        viewBox={`0 0 ${w} ${h}`}
-        className={`h-[320px] w-full select-none ${isPanning ? "cursor-grabbing" : "cursor-crosshair"}`}
-        role="img"
-        aria-label="Graf ceny zlata"
-        onMouseMove={onMove}
-        onMouseDown={onDown}
-        onMouseUp={stopPan}
-        onMouseLeave={onLeave}
-        onWheel={onWheel}
-      >
-        <rect x={pad.l} y={pad.t} width={w - pad.l - pad.r} height={h - pad.t - pad.b} fill="#0b1220" rx="8" />
-
-        <g stroke="rgba(148,163,184,0.22)" strokeWidth="1">
-          {prepared.yTicks.map((t, i) => (
-            <line key={`gy-${i}`} x1={pad.l} y1={t.y} x2={w - pad.r} y2={t.y} strokeDasharray="3 3" />
-          ))}
-        </g>
-
-        <g className="fill-slate-300" fontSize="11">
-          {prepared.yTicks.map((t, i) => (
-            <text key={`yl-${i}`} x={8} y={t.y + 4} opacity={0.9}>
-              {formatCzk(t.v)}
-            </text>
-          ))}
-        </g>
-
-        <g className="fill-slate-300" fontSize="11">
-          {prepared.xTicks.map((t, i) => (
-            <text
-              key={`xl-${i}`}
-              x={t.x}
-              y={h - 10}
-              textAnchor={i === 0 ? "start" : i === prepared.xTicks.length - 1 ? "end" : "middle"}
-              opacity={0.9}
-            >
-              {prepared.fmtTickDate(t.t)}
-            </text>
-          ))}
-        </g>
-
-        <g stroke="rgba(148,163,184,0.2)" strokeDasharray="4 4" strokeWidth="1">
-          <line x1={pad.l} y1={prepared.minPoint.y} x2={w - pad.r} y2={prepared.minPoint.y} />
-          <line x1={pad.l} y1={prepared.maxPoint.y} x2={w - pad.r} y2={prepared.maxPoint.y} />
-        </g>
-
-        <g>
-          {prepared.candles.map((c, i) => {
-            const bodyTop = Math.min(c.yOpen, c.yClose);
-            const bodyHeight = Math.max(1.5, Math.abs(c.yClose - c.yOpen));
-            const color = c.up ? "#34d399" : "#f87171";
-            const stroke = c.up ? "#10b981" : "#ef4444";
-            return (
-              <g key={`c-${i}-${c.t}`}>
-                <line x1={c.x} y1={c.yHigh} x2={c.x} y2={c.yLow} stroke={stroke} strokeWidth={1.2} />
-                <rect
-                  x={c.x - prepared.candleWidth / 2}
-                  y={bodyTop}
-                  width={prepared.candleWidth}
-                  height={bodyHeight}
-                  fill={color}
-                  stroke={stroke}
-                  strokeWidth={1}
-                  rx={1}
-                />
-              </g>
-            );
-          })}
-        </g>
-
-        {safeHover ? (
-          <g>
-            <line x1={safeHover.x} y1={pad.t} x2={safeHover.x} y2={h - pad.b} stroke="rgba(226,232,240,0.28)" strokeWidth="1" />
-            <line x1={pad.l} y1={safeHover.y} x2={w - pad.r} y2={safeHover.y} stroke="rgba(226,232,240,0.2)" strokeWidth="1" />
-            {hp ? (
-              <circle cx={hp.x} cy={hp.y} r={4} fill="#f8fafc" stroke="rgba(226,232,240,0.6)" />
-            ) : null}
-            {hoveredCandle ? (
-              <rect
-                x={hoveredCandle.x - prepared.candleWidth / 2 - 1}
-                y={Math.min(hoveredCandle.yOpen, hoveredCandle.yClose) - 1}
-                width={prepared.candleWidth + 2}
-                height={Math.max(2, Math.abs(hoveredCandle.yClose - hoveredCandle.yOpen) + 2)}
-                fill="none"
-                stroke="rgba(248,250,252,0.8)"
-                strokeWidth="1"
-                rx={1}
-              />
-            ) : null}
-          </g>
-        ) : null}
-      </svg>
-
-      <div className="mt-3 space-y-2 text-[13px] tabular-nums">
-        <div className="rounded-xl border border-slate-300 bg-slate-100 px-3 py-2">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-800">
-            <span>
-              Bodů: <span className="font-semibold text-slate-950">{prepared.pts.length}</span>
-            </span>
-            <span>
-              Min: <span className="font-semibold text-slate-950">{formatCzk(prepared.minPoint.v)}</span>
-            </span>
-            <span>
-              Max: <span className="font-semibold text-slate-950">{formatCzk(prepared.maxPoint.v)}</span>
-            </span>
-            <span>
-              Změna:{" "}
-              <span className="font-semibold text-slate-950">
-                {prepared.totalChangePct == null
-                  ? "—"
-                  : `${prepared.totalChangePct >= 0 ? "+" : ""}${formatNum(prepared.totalChangePct, 2)} %`}
-              </span>
-            </span>
+      <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="grid gap-2 sm:grid-cols-4 lg:flex lg:flex-wrap">
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Bodů</div>
+            <div className="mt-0.5 text-sm font-semibold text-slate-950">{prepared.pts.length}</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Minimum</div>
+            <div className="mt-0.5 text-sm font-semibold text-slate-950">{formatCzk(prepared.minPoint.v)}</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Maximum</div>
+            <div className="mt-0.5 text-sm font-semibold text-slate-950">{formatCzk(prepared.maxPoint.v)}</div>
+          </div>
+          <div className={["rounded-xl border px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]", totalChangeClass].join(" ")}>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] opacity-75">Změna</div>
+            <div className="mt-0.5 text-sm font-semibold">{totalChangeText}</div>
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-300 bg-white px-3 py-2">
-          {hoveredCandle && hp ? (
+        <div className="flex w-fit items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100/80 p-1">
+          <button
+            type="button"
+            onClick={() => zoomTo(0.8)}
+            disabled={!canZoomIn}
+            className={zoomButtonClass}
+            aria-label="Přiblížit graf"
+            title="Přiblížit"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomTo(1.2)}
+            disabled={!canZoomOut}
+            className={zoomButtonClass}
+            aria-label="Oddálit graf"
+            title="Oddálit"
+          >
+            <Minus className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewRange({ start: 0, end: prepared.totalCandles - 1 });
+              setHover(null);
+            }}
+            disabled={!canZoomOut}
+            className={zoomButtonClass}
+            aria-label="Resetovat zoom grafu"
+            title="Reset"
+          >
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.90)]">
+        <svg
+          viewBox={`0 0 ${w} ${h}`}
+          className={`h-[330px] w-full select-none ${isPanning ? "cursor-grabbing" : "cursor-crosshair"}`}
+          role="img"
+          aria-label="Graf ceny zlata"
+          onMouseMove={onMove}
+          onMouseDown={onDown}
+          onMouseUp={stopPan}
+          onMouseLeave={onLeave}
+          onWheel={onWheel}
+        >
+          <rect x={pad.l} y={pad.t} width={w - pad.l - pad.r} height={h - pad.t - pad.b} fill="#f8fafc" rx="8" />
+
+          <g stroke="rgba(100,116,139,0.24)" strokeWidth="1">
+            {prepared.yTicks.map((t, i) => (
+              <line key={`gy-${i}`} x1={pad.l} y1={t.y} x2={w - pad.r} y2={t.y} strokeDasharray="3 3" />
+            ))}
+          </g>
+
+          <g className="fill-slate-500" fontSize="11">
+            {prepared.yTicks.map((t, i) => (
+              <text key={`yl-${i}`} x={8} y={t.y + 4} opacity={0.9}>
+                {formatCzk(t.v)}
+              </text>
+            ))}
+          </g>
+
+          <g className="fill-slate-500" fontSize="11">
+            {prepared.xTicks.map((t, i) => (
+              <text
+                key={`xl-${i}`}
+                x={t.x}
+                y={h - 10}
+                textAnchor={i === 0 ? "start" : i === prepared.xTicks.length - 1 ? "end" : "middle"}
+                opacity={0.9}
+              >
+                {prepared.fmtTickDate(t.t)}
+              </text>
+            ))}
+          </g>
+
+          <g stroke="rgba(100,116,139,0.24)" strokeDasharray="4 4" strokeWidth="1">
+            <line x1={pad.l} y1={prepared.minPoint.y} x2={w - pad.r} y2={prepared.minPoint.y} />
+            <line x1={pad.l} y1={prepared.maxPoint.y} x2={w - pad.r} y2={prepared.maxPoint.y} />
+          </g>
+
+          <g>
+            {prepared.candles.map((c, i) => {
+              const bodyTop = Math.min(c.yOpen, c.yClose);
+              const bodyHeight = Math.max(1.5, Math.abs(c.yClose - c.yOpen));
+              const color = c.up ? "#34d399" : "#f87171";
+              const stroke = c.up ? "#10b981" : "#ef4444";
+              return (
+                <g key={`c-${i}-${c.t}`}>
+                  <line x1={c.x} y1={c.yHigh} x2={c.x} y2={c.yLow} stroke={stroke} strokeWidth={1.2} />
+                  <rect
+                    x={c.x - prepared.candleWidth / 2}
+                    y={bodyTop}
+                    width={prepared.candleWidth}
+                    height={bodyHeight}
+                    fill={color}
+                    stroke={stroke}
+                    strokeWidth={1}
+                    rx={1}
+                  />
+                </g>
+              );
+            })}
+          </g>
+
+          {safeHover ? (
+            <g>
+              <line x1={safeHover.x} y1={pad.t} x2={safeHover.x} y2={h - pad.b} stroke="rgba(15,23,42,0.26)" strokeWidth="1" />
+              <line x1={pad.l} y1={safeHover.y} x2={w - pad.r} y2={safeHover.y} stroke="rgba(15,23,42,0.18)" strokeWidth="1" />
+              {hp ? (
+                <circle cx={hp.x} cy={hp.y} r={4} fill="#0f172a" stroke="rgba(255,255,255,0.9)" />
+              ) : null}
+              {hoveredCandle ? (
+                <rect
+                  x={hoveredCandle.x - prepared.candleWidth / 2 - 1}
+                  y={Math.min(hoveredCandle.yOpen, hoveredCandle.yClose) - 1}
+                  width={prepared.candleWidth + 2}
+                  height={Math.max(2, Math.abs(hoveredCandle.yClose - hoveredCandle.yOpen) + 2)}
+                  fill="none"
+                  stroke="rgba(15,23,42,0.72)"
+                  strokeWidth="1"
+                  rx={1}
+                />
+              ) : null}
+            </g>
+          ) : null}
+        </svg>
+      </div>
+
+      <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+        {hoveredCandle && hp ? (
+          <>
             <div className="flex flex-wrap items-center gap-2 tabular-nums">
               <span className="inline-flex rounded-full border border-slate-900 bg-slate-900 px-2.5 py-1 font-semibold text-white">
                 {prepared.fmtDate(hp.t)}
               </span>
-              <span className={["inline-flex rounded-full px-2.5 py-1 font-semibold", candleBadgeLightClass].join(" ")}>
+              <span className={["inline-flex rounded-full px-2.5 py-1 font-semibold", candleBadgeClass].join(" ")}>
                 Změna svíčky:{" "}
                 {candleDelta == null
                   ? "—"
                   : `${candleTrendSign}${formatCzk(candleDelta)} (${candleTrendSign}${formatNum(candleDeltaPct ?? 0, 2)} %)`}
               </span>
             </div>
-          ) : (
-            <span className="text-slate-600">Najetím na svíčku zobrazíš datum a její změnu. Kolečkem myši zoomuješ, tažením posouváš.</span>
-          )}
-        </div>
+          </>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 tabular-nums">
+            <span className="inline-flex rounded-full border border-slate-900 bg-slate-900 px-2.5 py-1 font-semibold text-white">
+              Detail svíčky
+            </span>
+            <span className="text-slate-500">Bez vybrané svíčky</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1174,106 +1207,140 @@ export default function GoldToolPage() {
             ) : null}
 
             {view === "movement" ? (
-              <div className="space-y-3">
-                <div className="relative space-y-3 overflow-hidden rounded-2xl border border-slate-300 bg-slate-100 px-4 py-4">
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_420px] md:items-start">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wider text-slate-500">Cena ({selected.label})</div>
-                      <div className="text-5xl font-semibold leading-none tracking-tight text-slate-900 sm:text-6xl lg:text-[4.5rem]">
-                        {loading ? "Načítám…" : formatCzk(displayPrice ?? czkForSelectedUnit)}
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        {lastUpdated ? `Aktualizováno: ${lastUpdated.toLocaleString("cs-CZ")}` : ""}
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                        <span
-                          className={[
-                            "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                            dataBadge.className,
-                          ].join(" ")}
-                        >
-                          {dataBadge.label}
-                        </span>
-                        <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] text-slate-600">
-                          {isWeekendPause ? "Auto-refresh pozastaven (víkend)" : `Další auto-refresh za ${secondsToRefresh}s`}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={manualRefresh}
-                          disabled={loading || loadingRange || refreshingNow}
-                          className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {refreshingNow ? "Obnovuji…" : "Obnovit teď"}
-                        </button>
-                      </div>
+              <div className="relative overflow-hidden rounded-2xl border border-slate-300 bg-[linear-gradient(180deg,#f8fafc_0%,#eef2f7_100%)] px-4 py-4 shadow-[0_18px_46px_rgba(15,23,42,0.08)]">
+                <div className="flex flex-col gap-4 border-b border-slate-300 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.10)]">
+                      <Image
+                        src="/icons/gold1.png"
+                        alt="Zlato"
+                        width={160}
+                        height={160}
+                        className="h-10 w-10 object-contain"
+                        priority
+                      />
                     </div>
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Pohyb ceny</div>
+                      <div className="text-2xl font-semibold tracking-tight text-slate-950">Tržní cena zlata</div>
+                    </div>
+                  </div>
 
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-[11px] uppercase tracking-wider text-slate-500">Nárůst / pokles (CZK / unce)</div>
-                        <div className="inline-flex items-center gap-2 text-[10px]">
-                          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-800">
-                            ▲ {positiveChanges}
+                  <button
+                    type="button"
+                    onClick={manualRefresh}
+                    disabled={loading || loadingRange || refreshingNow}
+                    className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <RefreshCw className={["h-3.5 w-3.5", refreshingNow ? "animate-spin" : ""].join(" ")} aria-hidden="true" />
+                    {refreshingNow ? "Obnovuji…" : "Obnovit teď"}
+                  </button>
+                </div>
+
+                <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+                  <section className="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-[0_18px_46px_rgba(15,23,42,0.08)]">
+                    <div className="h-1 bg-[linear-gradient(90deg,#c89d2e_0%,#f6d36b_45%,#94a3b8_100%)]" />
+                    <div className="relative overflow-hidden px-5 py-5">
+                      <div className="absolute right-0 top-0 h-full w-44 bg-[linear-gradient(130deg,rgba(248,250,252,0)_0%,rgba(203,213,225,0.42)_100%)]" />
+                      <div className="relative">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Cena ({selected.label})</div>
+                        <div className="mt-2 text-5xl font-semibold leading-none tracking-tight text-slate-950 sm:text-6xl lg:text-[4.25rem]">
+                          {loading ? "Načítám…" : formatCzk(displayPrice ?? czkForSelectedUnit)}
+                        </div>
+                        <div className="mt-2 text-xs text-slate-500">
+                          {lastUpdated ? `Aktualizováno: ${lastUpdated.toLocaleString("cs-CZ")}` : ""}
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                          <span
+                            className={[
+                              "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                              dataBadge.className,
+                            ].join(" ")}
+                          >
+                            {dataBadge.label}
                           </span>
-                          <span className="rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 font-semibold text-rose-800">
-                            ▼ {negativeChanges}
+                          <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">
+                            {isWeekendPause ? "Auto-refresh pozastaven (víkend)" : `Další auto-refresh za ${secondsToRefresh}s`}
                           </span>
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
-                        {changeRows.map((row) => (
-                          <ChangeChip key={row.label} label={row.label} value={row.value} />
-                        ))}
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-300 bg-white px-4 py-4 shadow-[0_18px_46px_rgba(15,23,42,0.08)]">
+                    <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Nárůst / pokles</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-950">CZK / unce</div>
+                      </div>
+                      <div className="inline-flex items-center gap-1.5 text-[10px]">
+                        <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-800">
+                          ▲ {positiveChanges}
+                        </span>
+                        <span className="rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 font-semibold text-rose-800">
+                          ▼ {negativeChanges}
+                        </span>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-2.5">
-                    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-[11px] uppercase tracking-wider text-slate-500">
+                    <div className="mt-2 grid grid-cols-1 gap-x-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                      {changeRows.map((row) => (
+                        <ChangeChip key={row.label} label={row.label} value={row.value} />
+                      ))}
+                    </div>
+                  </section>
+                </div>
+
+                <section className="mt-4 rounded-2xl border border-slate-300 bg-white px-4 py-4 shadow-[0_18px_46px_rgba(15,23,42,0.08)]">
+                  <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                         Graf ({RANGES[range].label})
                         {loadingRange ? <span className="ml-2 text-slate-500">• načítám…</span> : null}
                       </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        {(Object.keys(RANGES) as RangeKey[]).map((k) => (
-                          <button
-                            key={k}
-                            type="button"
-                            onClick={() => setRange(k)}
-                            className={[
-                              "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                              range === k ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
-                            ].join(" ")}
-                          >
-                            {RANGES[k].label}
-                          </button>
-                        ))}
-                      </div>
+                      <div className="mt-1 text-sm font-semibold text-slate-950">Historie zvolené gramáže</div>
                     </div>
 
+                    <div className="flex flex-wrap gap-2">
+                      {(Object.keys(RANGES) as RangeKey[]).map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setRange(k)}
+                          className={[
+                            "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                            range === k ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+                          ].join(" ")}
+                        >
+                          {RANGES[k].label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
                     <GoldChart points={chartPoints} />
                   </div>
-                  <div className="flex items-center justify-between rounded-xl border border-slate-300 bg-white px-3 py-2 text-[11px] text-slate-600">
-                    <span className="text-slate-600">Data jsou orientační.</span>
+                </section>
 
-                    <span className="relative group">
-                      <span
-                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-[12px] font-bold text-white"
-                        aria-label="Info"
-                        title=""
-                      >
-                        i
-                      </span>
+                <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-300 bg-white px-3 py-2 text-[11px] text-slate-600">
+                  <span className="text-slate-600">Data jsou orientační.</span>
 
-                      <span className="pointer-events-none absolute right-0 top-0 z-10 hidden w-[320px] -translate-y-[calc(100%+10px)] rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 shadow-[0_12px_30px_rgba(15,23,42,0.15)] group-hover:block">
-                        Zdroj: /api/gold (server-side). Spot XAU (USD/oz) + USD/CZK + historie (CZK/oz). Výstup je pouze
-                        informativní.
-                      </span>
+                  <span className="relative group">
+                    <span
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-[12px] font-bold text-white"
+                      aria-label="Info"
+                      title=""
+                    >
+                      i
                     </span>
-                  </div>
+
+                    <span className="pointer-events-none absolute right-0 top-0 z-10 hidden w-[320px] -translate-y-[calc(100%+10px)] rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 shadow-[0_12px_30px_rgba(15,23,42,0.15)] group-hover:block">
+                      Zdroj: /api/gold (server-side). Spot XAU (USD/oz) + USD/CZK + historie (CZK/oz). Výstup je pouze
+                      informativní.
+                    </span>
+                  </span>
                 </div>
               </div>
             ) : (
