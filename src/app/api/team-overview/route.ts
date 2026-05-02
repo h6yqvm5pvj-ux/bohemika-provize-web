@@ -71,7 +71,20 @@ type TeamOverviewError = {
 type TeamOverviewPatchSuccess = {
   ok: true;
   targetEmail: string;
-  updated: Array<"position" | "positionTimeline">;
+  updated: Array<
+    "position" | "positionTimeline" | "collaborationEnded" | "collaborationPreview"
+  >;
+  summary?: {
+    successorEmail: string;
+    transferredContracts: number;
+    reassignedSubordinates: number;
+  };
+  preview?: {
+    successorEmail: string;
+    transferableContracts: number;
+    directSubordinates: number;
+    generatedAtMs: number;
+  };
 };
 
 const TEAM_OVERVIEW_RATE_LIMIT = 120;
@@ -82,9 +95,11 @@ const TEAM_OVERVIEW_MODEL_VERSION = 2;
 const TEAM_OVERVIEW_MODEL_STALE_MS = 5 * 60 * 1000;
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
+const CONTRACT_REFS_COLLECTION = "contractRefs";
 const FIRESTORE_IN_LIMIT = 10;
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_TIMELINE_ROWS = 150;
+const TRANSFER_BATCH_LIMIT = 360;
 const POSITION_VALUES: Position[] = [
   "poradce1",
   "poradce2",
@@ -457,6 +472,65 @@ function currentYearMonth(now: Date): string {
 
 function monthDocId(ownerEmail: string, yearMonth: string): string {
   return `${ownerEmail}___${yearMonth}`;
+}
+
+const normalizeContractNumber = (value: string | null | undefined): string =>
+  (value ?? "").replace(/\s+/g, "").trim();
+
+const normalizeContractNumberLoose = (value: string | null | undefined): string =>
+  normalizeContractNumber(value).replace(/^0+/, "");
+
+const contractRefDocId = (ownerEmail: string, entryId: string): string =>
+  `${normalizeEmail(ownerEmail)}___${entryId.trim()}`;
+
+const entryRefPath = (ownerEmail: string, entryId: string): string =>
+  `users/${normalizeEmail(ownerEmail)}/entries/${entryId.trim()}`;
+
+function buildContractRefPayload({
+  ownerEmail,
+  entryId,
+  contractNumber,
+  productKey,
+  now,
+}: {
+  ownerEmail: string;
+  entryId: string;
+  contractNumber: unknown;
+  productKey: unknown;
+  now: Date;
+}):
+  | {
+      ownerEmail: string;
+      entryId: string;
+      entryPath: string;
+      contractNumberRaw: string;
+      contractNumberNormalized: string;
+      contractNumberLoose: string;
+      productKey: string | null;
+      updatedAt: Date;
+    }
+  | null {
+  const normalizedOwner = normalizeEmail(ownerEmail);
+  const trimmedEntryId = entryId.trim();
+  const contractNumberRaw =
+    typeof contractNumber === "string" ? contractNumber.trim() : "";
+  const contractNumberNormalized = normalizeContractNumber(contractNumberRaw);
+  const contractNumberLoose = normalizeContractNumberLoose(contractNumberRaw);
+
+  if (!normalizedOwner || !trimmedEntryId || !contractNumberNormalized) {
+    return null;
+  }
+
+  return {
+    ownerEmail: normalizedOwner,
+    entryId: trimmedEntryId,
+    entryPath: entryRefPath(normalizedOwner, trimmedEntryId),
+    contractNumberRaw,
+    contractNumberNormalized,
+    contractNumberLoose,
+    productKey: typeof productKey === "string" ? productKey.trim() || null : null,
+    updatedAt: now,
+  };
 }
 
 async function getAuthEmail(req: NextRequest): Promise<string> {
@@ -904,33 +978,446 @@ async function persistContractStatsToReadModel(
   await commit();
 }
 
-function parsePatchPayload(body: unknown):
-  | {
-      targetEmail: string;
-      position?: Position;
-      positionTimeline?: Array<{
-        id: string;
-        position: Position;
-        validFrom: string;
-        validTo: string | null;
-      }>;
+async function invalidateTeamOverviewOwners(ownerEmails: Iterable<string>): Promise<void> {
+  if (!adminDb) return;
+
+  const owners = Array.from(
+    new Set(
+      Array.from(ownerEmails)
+        .map((email) => normalizeEmail(email))
+        .filter(Boolean)
+    )
+  );
+  if (owners.length === 0) return;
+
+  const db = adminDb;
+  const yearMonth = currentYearMonth(new Date());
+
+  let batch = db.batch();
+  let ops = 0;
+
+  const commit = async () => {
+    if (ops === 0) return;
+    await batch.commit();
+    batch = db.batch();
+    ops = 0;
+  };
+
+  for (const ownerEmail of owners) {
+    batch.delete(db.collection(TEAM_OVERVIEW_TOTALS_COLLECTION).doc(ownerEmail));
+    batch.delete(db.collection(TEAM_OVERVIEW_MONTHLY_COLLECTION).doc(monthDocId(ownerEmail, yearMonth)));
+    ops += 2;
+    if (ops >= TRANSFER_BATCH_LIMIT) {
+      await commit();
     }
+  }
+
+  await commit();
+}
+
+async function loadSuccessorUserId(successorEmail: string): Promise<string | null> {
+  if (!adminDb) return null;
+  const snap = await adminDb.collection("users").doc(successorEmail).get();
+  if (!snap.exists) return null;
+  const data = (snap.data() ?? {}) as Record<string, unknown>;
+  const userIdRaw = typeof data.userId === "string" ? data.userId.trim() : "";
+  return userIdRaw || null;
+}
+
+async function transferOwnerEntriesToSuccessor({
+  fromOwnerEmail,
+  toOwnerEmail,
+  successorUserId,
+  actorEmail,
+}: {
+  fromOwnerEmail: string;
+  toOwnerEmail: string;
+  successorUserId: string | null;
+  actorEmail: string;
+}): Promise<number> {
+  if (!adminDb) {
+    throw new Error("Firebase Admin credentials are not configured.");
+  }
+
+  const db = adminDb;
+  const fromRef = db.collection("users").doc(fromOwnerEmail).collection("entries");
+  const toRef = db.collection("users").doc(toOwnerEmail).collection("entries");
+  const oldPrefix = `users/${fromOwnerEmail}/entries/`;
+  const newPrefix = `users/${toOwnerEmail}/entries/`;
+  const now = new Date();
+
+  let transferredContracts = 0;
+  let cursorId: string | null = null;
+  let batch = db.batch();
+  let ops = 0;
+
+  const commit = async () => {
+    if (ops === 0) return;
+    await batch.commit();
+    batch = db.batch();
+    ops = 0;
+  };
+
+  const PAGE_SIZE = 250;
+
+  while (true) {
+    let query = fromRef.orderBy("__name__").limit(PAGE_SIZE);
+    if (cursorId) {
+      query = query.startAfter(cursorId);
+    }
+    const page = await query.get();
+    if (page.empty) break;
+
+    for (const entrySnap of page.docs) {
+      const entryData = (entrySnap.data() ?? {}) as Record<string, unknown>;
+      const entryId = entrySnap.id;
+
+      const originalAdviserEmail =
+        normalizeEmail(
+          typeof entryData.originalAdviserEmail === "string"
+            ? entryData.originalAdviserEmail
+            : typeof entryData.userEmail === "string"
+            ? entryData.userEmail
+            : fromOwnerEmail
+        ) || fromOwnerEmail;
+
+      const nextData: Record<string, unknown> = {
+        ...entryData,
+        userEmail: toOwnerEmail,
+        originalAdviserEmail,
+        servicingOwnerEmail: toOwnerEmail,
+        commissionOwnerEmail: toOwnerEmail,
+        transferReason: "career_end",
+        transferFromEmail: fromOwnerEmail,
+        transferToEmail: toOwnerEmail,
+        transferAt: now,
+        transferredByEmail: actorEmail,
+        ownershipTransfer: {
+          type: "career_end",
+          fromEmail: fromOwnerEmail,
+          toEmail: toOwnerEmail,
+          transferredAt: now,
+          transferredByEmail: actorEmail,
+        },
+      };
+
+      if (successorUserId) {
+        nextData.userId = successorUserId;
+      } else if ("userId" in nextData) {
+        delete nextData.userId;
+      }
+
+      const parentPathRaw =
+        typeof entryData.parentContractEntryPath === "string"
+          ? entryData.parentContractEntryPath
+          : "";
+      if (parentPathRaw.startsWith(oldPrefix)) {
+        nextData.parentContractEntryPath = `${newPrefix}${parentPathRaw.slice(oldPrefix.length)}`;
+      }
+
+      const destinationRef = toRef.doc(entryId);
+      batch.set(destinationRef, nextData, { merge: false });
+      ops += 1;
+
+      batch.delete(entrySnap.ref);
+      ops += 1;
+
+      batch.delete(
+        db.collection(CONTRACT_REFS_COLLECTION).doc(contractRefDocId(fromOwnerEmail, entryId))
+      );
+      ops += 1;
+
+      const contractRefPayload = buildContractRefPayload({
+        ownerEmail: toOwnerEmail,
+        entryId,
+        contractNumber: entryData.contractNumber,
+        productKey: entryData.productKey,
+        now,
+      });
+      const newContractRef = db
+        .collection(CONTRACT_REFS_COLLECTION)
+        .doc(contractRefDocId(toOwnerEmail, entryId));
+      if (contractRefPayload) {
+        batch.set(newContractRef, contractRefPayload, { merge: true });
+      } else {
+        batch.delete(newContractRef);
+      }
+      ops += 1;
+
+      transferredContracts += 1;
+
+      if (ops >= TRANSFER_BATCH_LIMIT) {
+        await commit();
+      }
+    }
+
+    cursorId = page.docs[page.docs.length - 1]?.id ?? null;
+    if (page.size < PAGE_SIZE) break;
+  }
+
+  await commit();
+  return transferredContracts;
+}
+
+async function countOwnerEntriesExact(ownerEmail: string): Promise<number> {
+  if (!adminDb) {
+    throw new Error("Firebase Admin credentials are not configured.");
+  }
+
+  const entriesRef = adminDb.collection("users").doc(ownerEmail).collection("entries");
+  const PAGE_SIZE = 400;
+  let cursorId: string | null = null;
+  let total = 0;
+
+  while (true) {
+    let query = entriesRef.orderBy("__name__").limit(PAGE_SIZE);
+    if (cursorId) {
+      query = query.startAfter(cursorId);
+    }
+    const snap = await query.get();
+    if (snap.empty) break;
+
+    total += snap.size;
+    cursorId = snap.docs[snap.docs.length - 1]?.id ?? null;
+    if (snap.size < PAGE_SIZE) break;
+  }
+
+  return total;
+}
+
+async function buildEndCollaborationPreview(target: TeamMember): Promise<{
+  successorEmail: string;
+  transferableContracts: number;
+  directSubordinates: number;
+  generatedAtMs: number;
+}> {
+  if (!adminDb) {
+    throw new Error("Firebase Admin credentials are not configured.");
+  }
+
+  const db = adminDb;
+  const targetEmail = normalizeEmail(target.email);
+  const successorEmail = normalizeEmail(target.managerEmail);
+
+  if (!targetEmail) {
+    throw Object.assign(new Error("Neplatný cílový uživatel."), { status: 400 });
+  }
+  if (!successorEmail) {
+    throw Object.assign(
+      new Error("Vybraný podřízený nemá přímého nadřízeného pro převod."),
+      { status: 400 }
+    );
+  }
+  if (successorEmail === targetEmail) {
+    throw Object.assign(new Error("Nelze převádět uživatele na sebe samotného."), {
+      status: 400,
+    });
+  }
+
+  const successorSnap = await db.collection("users").doc(successorEmail).get();
+  if (!successorSnap.exists) {
+    throw Object.assign(
+      new Error("Přímý nadřízený nebyl v systému nalezen."),
+      { status: 404 }
+    );
+  }
+
+  const [transferableContracts, directSubsSnap] = await Promise.all([
+    countOwnerEntriesExact(targetEmail),
+    db.collection("users").where("managerEmail", "==", targetEmail).get(),
+  ]);
+
+  const directSubordinates = directSubsSnap.docs.reduce((count, docSnap) => {
+    const subordinateEmail = normalizeEmail(docSnap.id);
+    if (!subordinateEmail || subordinateEmail === targetEmail) return count;
+    return count + 1;
+  }, 0);
+
+  return {
+    successorEmail,
+    transferableContracts,
+    directSubordinates,
+    generatedAtMs: Date.now(),
+  };
+}
+
+async function endCollaborationAndTransfer({
+  target,
+  actorEmail,
+}: {
+  target: TeamMember;
+  actorEmail: string;
+}): Promise<{
+  successorEmail: string;
+  transferredContracts: number;
+  reassignedSubordinates: number;
+}> {
+  if (!adminDb) {
+    throw new Error("Firebase Admin credentials are not configured.");
+  }
+
+  const db = adminDb;
+  const targetEmail = normalizeEmail(target.email);
+  const successorEmail = normalizeEmail(target.managerEmail);
+
+  if (!targetEmail) {
+    throw Object.assign(new Error("Neplatný cílový uživatel."), { status: 400 });
+  }
+  if (!successorEmail) {
+    throw Object.assign(
+      new Error("Vybraný uživatel nemá přímého nadřízeného pro převod."),
+      { status: 400 }
+    );
+  }
+  if (successorEmail === targetEmail) {
+    throw Object.assign(new Error("Nelze převádět uživatele na sebe samotného."), {
+      status: 400,
+    });
+  }
+
+  const successorSnap = await db.collection("users").doc(successorEmail).get();
+  if (!successorSnap.exists) {
+    throw Object.assign(
+      new Error("Přímý nadřízený nebyl v systému nalezen."),
+      { status: 404 }
+    );
+  }
+
+  const successorUserId = await loadSuccessorUserId(successorEmail);
+  const transferredContracts = await transferOwnerEntriesToSuccessor({
+    fromOwnerEmail: targetEmail,
+    toOwnerEmail: successorEmail,
+    successorUserId,
+    actorEmail,
+  });
+
+  const directSubsSnap = await db
+    .collection("users")
+    .where("managerEmail", "==", targetEmail)
+    .get();
+
+  let reassignedSubordinates = 0;
+  let batch = db.batch();
+  let ops = 0;
+  const now = new Date();
+
+  const commit = async () => {
+    if (ops === 0) return;
+    await batch.commit();
+    batch = db.batch();
+    ops = 0;
+  };
+
+  for (const subDoc of directSubsSnap.docs) {
+    const subordinateEmail = normalizeEmail(subDoc.id);
+    if (!subordinateEmail || subordinateEmail === targetEmail) continue;
+    batch.set(
+      subDoc.ref,
+      {
+        managerEmail: successorEmail,
+        collaborationReassignedAt: now,
+        collaborationReassignedFromEmail: targetEmail,
+      },
+      { merge: true }
+    );
+    ops += 1;
+    reassignedSubordinates += 1;
+    if (ops >= TRANSFER_BATCH_LIMIT) {
+      await commit();
+    }
+  }
+
+  const targetRef = db.collection("users").doc(target.docId || targetEmail);
+  batch.set(
+    targetRef,
+    {
+      managerEmail: null,
+      careerStatus: "ended",
+      careerEndedAt: now,
+      careerEndedByEmail: actorEmail,
+      bookTransferredToEmail: successorEmail,
+      activeCollaboration: false,
+    },
+    { merge: true }
+  );
+  ops += 1;
+
+  await commit();
+  await invalidateTeamOverviewOwners([targetEmail, successorEmail]);
+
+  return {
+    successorEmail,
+    transferredContracts,
+    reassignedSubordinates,
+  };
+}
+
+type ParsedUpdatePatchPayload = {
+  action: "update";
+  targetEmail: string;
+  position?: Position;
+  positionTimeline?: Array<{
+    id: string;
+    position: Position;
+    validFrom: string;
+    validTo: string | null;
+  }>;
+};
+
+type ParsedEndCollaborationPayload = {
+  action: "endCollaboration";
+  targetEmail: string;
+  confirmEmail: string;
+  confirmCascade: boolean;
+  expectedManagerEmail: string | null;
+};
+
+type ParsedEndCollaborationPreviewPayload = {
+  action: "endCollaborationPreview";
+  targetEmail: string;
+  expectedManagerEmail: string | null;
+};
+
+function parsePatchPayload(
+  body: unknown
+):
+  | ParsedUpdatePatchPayload
+  | ParsedEndCollaborationPayload
+  | ParsedEndCollaborationPreviewPayload
   | { error: string } {
   if (!isPlainObject(body)) return { error: "Neplatný payload." };
 
   const targetEmail = normalizeEmail(body.targetEmail as string | undefined);
   if (!targetEmail) return { error: "Chybí targetEmail." };
 
-  const output: {
-    targetEmail: string;
-    position?: Position;
-    positionTimeline?: Array<{
-      id: string;
-      position: Position;
-      validFrom: string;
-      validTo: string | null;
-    }>;
-  } = { targetEmail };
+  const actionRaw =
+    typeof body.action === "string" ? body.action.trim() : "";
+  if (actionRaw === "endCollaboration") {
+    return {
+      action: "endCollaboration",
+      targetEmail,
+      confirmEmail: normalizeEmail(body.confirmEmail as string | undefined),
+      confirmCascade: body.confirmCascade === true,
+      expectedManagerEmail:
+        normalizeEmail(body.expectedManagerEmail as string | undefined) || null,
+    };
+  }
+  if (actionRaw === "endCollaborationPreview") {
+    return {
+      action: "endCollaborationPreview",
+      targetEmail,
+      expectedManagerEmail:
+        normalizeEmail(body.expectedManagerEmail as string | undefined) || null,
+    };
+  }
+  if (actionRaw && actionRaw !== "update") {
+    return { error: "Nepodporovaná akce." };
+  }
+
+  const output: ParsedUpdatePatchPayload = {
+    action: "update",
+    targetEmail,
+  };
 
   if (body.position != null) {
     const positionRaw = typeof body.position === "string" ? body.position.trim() : "";
@@ -997,7 +1484,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Nemáš oprávnění upravovat pozice nebo timeline v týmu.",
+          error: "Nemáš oprávnění upravovat tým nebo ukončovat spolupráci.",
         } satisfies TeamOverviewError,
         { status: 403 }
       );
@@ -1022,6 +1509,90 @@ export async function PATCH(req: NextRequest) {
         } satisfies TeamOverviewError,
         { status: 404 }
       );
+    }
+
+    if (parsed.action === "endCollaborationPreview") {
+      const currentManagerEmail = normalizeEmail(target.managerEmail);
+      if (
+        parsed.expectedManagerEmail &&
+        parsed.expectedManagerEmail !== currentManagerEmail
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Struktura týmu se mezitím změnila. Obnov stránku a akci zopakuj.",
+          } satisfies TeamOverviewError,
+          { status: 409 }
+        );
+      }
+
+      const preview = await buildEndCollaborationPreview(target);
+      const response = NextResponse.json({
+        ok: true,
+        targetEmail: target.email,
+        updated: ["collaborationPreview"],
+        preview,
+      } satisfies TeamOverviewPatchSuccess);
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
+    }
+
+    if (parsed.action === "endCollaboration") {
+      if (!parsed.confirmCascade) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Potvrď převod podřízených i smluv.",
+          } satisfies TeamOverviewError,
+          { status: 400 }
+        );
+      }
+      if (parsed.confirmEmail !== target.email) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Potvrzovací e-mail nesouhlasí s vybraným podřízeným.",
+          } satisfies TeamOverviewError,
+          { status: 400 }
+        );
+      }
+      const currentManagerEmail = normalizeEmail(target.managerEmail);
+      if (!currentManagerEmail) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Vybraný podřízený nemá přímého nadřízeného, nelze automaticky převést kmen.",
+          } satisfies TeamOverviewError,
+          { status: 400 }
+        );
+      }
+      if (
+        parsed.expectedManagerEmail &&
+        parsed.expectedManagerEmail !== currentManagerEmail
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Struktura týmu se mezitím změnila. Obnov stránku a akci zopakuj.",
+          } satisfies TeamOverviewError,
+          { status: 409 }
+        );
+      }
+
+      const summary = await endCollaborationAndTransfer({
+        target,
+        actorEmail: email,
+      });
+      const response = NextResponse.json({
+        ok: true,
+        targetEmail: target.email,
+        updated: ["collaborationEnded"],
+        summary,
+      } satisfies TeamOverviewPatchSuccess);
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
     }
 
     const patch: Record<string, unknown> = {};

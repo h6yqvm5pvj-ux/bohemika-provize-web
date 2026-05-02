@@ -49,14 +49,13 @@ export function GoldWidget({
       <div className="relative flex flex-col gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3 sm:gap-4">
-            <div className="relative overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-100 p-2.5 shadow-[0_10px_24px_rgba(245,158,11,0.2)]">
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.9),transparent_55%)]" />
+            <div className="shrink-0">
               <Image
-                src="/icons/gold1.png"
-                alt="Zlatá cihla"
-                width={96}
-                height={96}
-                className="relative h-[74px] w-[74px] object-contain sm:h-[84px] sm:w-[84px]"
+                src="/icons/1oZpredni.png"
+                alt="Zlatá mince 1 oz"
+                width={1000}
+                height={1000}
+                className="h-[108px] w-auto object-contain sm:h-[122px]"
                 priority
               />
             </div>

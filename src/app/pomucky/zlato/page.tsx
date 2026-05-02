@@ -72,6 +72,16 @@ const RANGES = {
 type UnitKey = keyof typeof UNITS;
 type RangeKey = keyof typeof RANGES;
 
+const COMFORT_ARGOR_REFERENCE = {
+  asOf: "2. 5. 2026",
+  spotCzkPerOz: 95911.45,
+  products: [
+    { label: "ARGOR 1 oz", grams: OUNCE_G, sellCzk: 102832, buybackCzk: 95822 },
+    { label: "ARGOR 20 g", grams: 20, sellCzk: 67951, buybackCzk: 62011 },
+    { label: "ARGOR 5 g", grams: 5, sellCzk: 18355, buybackCzk: 15622 },
+  ],
+} as const;
+
 function downsamplePoints(pts: Point[], maxPoints = 1400): Point[] {
   if (!pts || pts.length <= maxPoints) return pts;
   const step = Math.ceil(pts.length / maxPoints);
@@ -98,6 +108,12 @@ function formatNum(v: number | null | undefined, digits = 2): string {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
+}
+
+function formatSignedPercent(v: number | null | undefined, digits = 1): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  const sign = v > 0 ? "+" : "";
+  return `${sign}${formatNum(v, digits)} %`;
 }
 
 function isWeekendDay(date = new Date()): boolean {
@@ -763,6 +779,40 @@ export default function GoldToolPage() {
     return (czkPerOz / OUNCE_G) * selected.grams;
   }, [czkPerOz, selected.grams]);
 
+  const comfortRows = useMemo(() => {
+    if (czkPerOz == null || !Number.isFinite(czkPerOz) || czkPerOz <= 0) {
+      return COMFORT_ARGOR_REFERENCE.products.map((product) => ({
+        ...product,
+        spotValue: null,
+        sell: null,
+        buyback: null,
+        spread: null,
+        sellPremiumPct: null,
+        buybackPremiumPct: null,
+      }));
+    }
+
+    const scale = czkPerOz / COMFORT_ARGOR_REFERENCE.spotCzkPerOz;
+
+    return COMFORT_ARGOR_REFERENCE.products.map((product) => {
+      const spotValue = (czkPerOz / OUNCE_G) * product.grams;
+      const sell = Math.round(product.sellCzk * scale);
+      const buyback = Math.round(product.buybackCzk * scale);
+      const sellPremiumPct = spotValue > 0 ? (sell / spotValue - 1) * 100 : null;
+      const buybackPremiumPct = spotValue > 0 ? (buyback / spotValue - 1) * 100 : null;
+
+      return {
+        ...product,
+        spotValue,
+        sell,
+        buyback,
+        spread: sell - buyback,
+        sellPremiumPct,
+        buybackPremiumPct,
+      };
+    });
+  }, [czkPerOz]);
+
   // animovaný „counter“ pro hlavní cenu
   const [displayPrice, setDisplayPrice] = useState<number | null>(null);
   const animRef = useRef<number | null>(null);
@@ -1056,6 +1106,65 @@ export default function GoldToolPage() {
                         <ChangeChip key={row.label} label={row.label} value={row.value} />
                       ))}
                     </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-300 bg-white px-3 py-3">
+                  <div className="flex flex-col gap-2 border-b border-slate-200 pb-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider text-slate-500">Comfort Commodity</div>
+                      <div className="text-base font-semibold text-slate-900">ARGOR orientační ceny podle spotu</div>
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      Kalibrace {COMFORT_ARGOR_REFERENCE.asOf} při spotu{" "}
+                      {formatCzk(COMFORT_ARGOR_REFERENCE.spotCzkPerOz)}
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full border-collapse text-left text-sm tabular-nums">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-500">
+                          <th className="whitespace-nowrap py-2 pr-4 font-semibold">Produkt</th>
+                          <th className="whitespace-nowrap px-4 py-2 text-right font-semibold">Spot kovu</th>
+                          <th className="whitespace-nowrap px-4 py-2 text-right font-semibold">Nákup</th>
+                          <th className="whitespace-nowrap px-4 py-2 text-right font-semibold">Výkup</th>
+                          <th className="whitespace-nowrap px-4 py-2 text-right font-semibold">Rozdíl</th>
+                          <th className="whitespace-nowrap py-2 pl-4 text-right font-semibold">Vs. spot</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {comfortRows.map((row) => (
+                          <tr key={row.label} className="border-b border-slate-100 last:border-b-0">
+                            <td className="whitespace-nowrap py-2 pr-4 font-semibold text-slate-900">{row.label}</td>
+                            <td className="whitespace-nowrap px-4 py-2 text-right text-slate-600">
+                              {formatCzk(row.spotValue)}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-2 text-right font-semibold text-slate-900">
+                              {formatCzk(row.sell)}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-2 text-right font-semibold text-slate-900">
+                              {formatCzk(row.buyback)}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-2 text-right text-slate-600">
+                              {formatCzk(row.spread)}
+                            </td>
+                            <td className="whitespace-nowrap py-2 pl-4 text-right text-xs text-slate-600">
+                              <span className="font-semibold text-slate-800">
+                                {formatSignedPercent(row.sellPremiumPct)}
+                              </span>
+                              <span className="mx-1 text-slate-400">/</span>
+                              <span>{formatSignedPercent(row.buybackPremiumPct)}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mt-2 text-[11px] text-slate-500">
+                    Model: kalibrační cena × aktuální spot / kalibrační spot. Comfort může ceny fixovat dávkově, proto
+                    ber tyto hodnoty jako orientační.
                   </div>
                 </div>
 

@@ -245,6 +245,25 @@ type TeamOverviewApiError = {
   error?: string;
 };
 
+type TeamOverviewEndCollaborationSuccess = {
+  ok: true;
+  targetEmail: string;
+  updated: Array<
+    "collaborationEnded" | "collaborationPreview" | "position" | "positionTimeline"
+  >;
+  summary?: {
+    successorEmail?: string | null;
+    transferredContracts?: number | null;
+    reassignedSubordinates?: number | null;
+  };
+  preview?: {
+    successorEmail?: string | null;
+    transferableContracts?: number | null;
+    directSubordinates?: number | null;
+    generatedAtMs?: number | null;
+  };
+};
+
 const TEAM_CACHE_TTL_MS = 60 * 1000;
 const teamDataCache: Record<string, { ts: number; payload: TeamCachePayload }> = {};
 
@@ -286,9 +305,32 @@ export default function TeamPage() {
   const [careerTimelineSaving, setCareerTimelineSaving] = useState(false);
   const [careerTimelineError, setCareerTimelineError] = useState<string | null>(null);
   const [careerTimelineSaved, setCareerTimelineSaved] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [endCollaborationModalOpen, setEndCollaborationModalOpen] = useState(false);
+  const [endCollaborationConfirmEmail, setEndCollaborationConfirmEmail] = useState("");
+  const [endCollaborationConfirmCascade, setEndCollaborationConfirmCascade] =
+    useState(false);
+  const [endCollaborationPreviewLoading, setEndCollaborationPreviewLoading] =
+    useState(false);
+  const [endCollaborationPreviewError, setEndCollaborationPreviewError] =
+    useState<string | null>(null);
+  const [endCollaborationPreview, setEndCollaborationPreview] = useState<{
+    successorEmail: string;
+    transferableContracts: number;
+    directSubordinates: number;
+    generatedAtMs: number;
+  } | null>(null);
+  const [endingCollaboration, setEndingCollaboration] = useState(false);
+  const [endCollaborationError, setEndCollaborationError] = useState<string | null>(
+    null
+  );
+  const [endCollaborationSuccess, setEndCollaborationSuccess] = useState<string | null>(
+    null
+  );
   const copyEmailTimerRef = useRef<number | null>(null);
   const positionSaveTimerRef = useRef<number | null>(null);
   const careerSaveTimerRef = useRef<number | null>(null);
+  const endCollaborationTimerRef = useRef<number | null>(null);
   const membersListRef = useRef<HTMLDivElement | null>(null);
   const [membersScrollTop, setMembersScrollTop] = useState(0);
   const [membersViewportHeight, setMembersViewportHeight] = useState(0);
@@ -491,7 +533,7 @@ export default function TeamPage() {
 
     void loadTeam();
     // only depends on signed-in user; selection should not retrigger fetch
-  }, [userEmail, cacheKey]);
+  }, [userEmail, cacheKey, refreshNonce]);
 
   const filteredMembers = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -628,6 +670,14 @@ export default function TeamPage() {
     setCareerTimelineDraft([]);
     setCareerTimelineError(null);
     setCareerTimelineSaved(false);
+    setEndCollaborationModalOpen(false);
+    setEndCollaborationConfirmEmail("");
+    setEndCollaborationConfirmCascade(false);
+    setEndCollaborationPreview(null);
+    setEndCollaborationPreviewLoading(false);
+    setEndCollaborationPreviewError(null);
+    setEndCollaborationError(null);
+    setEndCollaborationSuccess(null);
   }, [selectedEmail]);
 
   useEffect(() => {
@@ -635,6 +685,9 @@ export default function TeamPage() {
       if (copyEmailTimerRef.current) window.clearTimeout(copyEmailTimerRef.current);
       if (positionSaveTimerRef.current) window.clearTimeout(positionSaveTimerRef.current);
       if (careerSaveTimerRef.current) window.clearTimeout(careerSaveTimerRef.current);
+      if (endCollaborationTimerRef.current) {
+        window.clearTimeout(endCollaborationTimerRef.current);
+      }
     };
   }, []);
 
@@ -738,6 +791,10 @@ export default function TeamPage() {
   );
   const canEditSelectedPosition = canManagePositions && isSelectedSubordinate;
   const canEditSelectedCareer = canManagePositions && isSelectedSubordinate;
+  const canEndSelectedCollaboration =
+    canManagePositions &&
+    isSelectedSubordinate &&
+    Boolean((selected?.managerEmail ?? "").trim());
 
   useEffect(() => {
     const loadSelectedCareerTimeline = async () => {
@@ -936,6 +993,163 @@ export default function TeamPage() {
       }
     } finally {
       setSavingPosition(false);
+    }
+  };
+
+  const loadEndCollaborationPreview = async (member: Member) => {
+    setEndCollaborationPreviewLoading(true);
+    setEndCollaborationPreviewError(null);
+    setEndCollaborationPreview(null);
+
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Nejsi přihlášený.");
+
+      const payload = await fetchAuthedJsonOrThrow<TeamOverviewEndCollaborationSuccess>(
+        currentUser,
+        "/api/team-overview",
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            action: "endCollaborationPreview",
+            targetEmail: member.email,
+            expectedManagerEmail: member.managerEmail ?? null,
+          }),
+        }
+      );
+
+      const preview = payload.preview;
+      const successorEmail = (preview?.successorEmail ?? member.managerEmail ?? "")
+        .trim()
+        .toLowerCase();
+      const transferableContracts = Number(preview?.transferableContracts ?? NaN);
+      const directSubordinates = Number(preview?.directSubordinates ?? NaN);
+      const generatedAtMs = Number(preview?.generatedAtMs ?? Date.now());
+
+      if (
+        !successorEmail ||
+        !Number.isFinite(transferableContracts) ||
+        !Number.isFinite(directSubordinates)
+      ) {
+        throw new Error("Nepodařilo se načíst přesný náhled převodu.");
+      }
+
+      setEndCollaborationPreview({
+        successorEmail,
+        transferableContracts,
+        directSubordinates,
+        generatedAtMs: Number.isFinite(generatedAtMs) ? generatedAtMs : Date.now(),
+      });
+    } catch (e: any) {
+      if (e?.status === 409) {
+        setEndCollaborationPreviewError(
+          "Struktura týmu se změnila. Obnov stránku a načti náhled znovu."
+        );
+      } else if (typeof e?.message === "string" && e.message.trim()) {
+        setEndCollaborationPreviewError(e.message.trim());
+      } else {
+        setEndCollaborationPreviewError(
+          "Nepodařilo se načíst přesný náhled převodu. Zkus to prosím znovu."
+        );
+      }
+    } finally {
+      setEndCollaborationPreviewLoading(false);
+    }
+  };
+
+  const openEndCollaborationModal = () => {
+    if (!selected || !canEndSelectedCollaboration) return;
+    setEndCollaborationError(null);
+    setEndCollaborationConfirmEmail("");
+    setEndCollaborationConfirmCascade(false);
+    setEndCollaborationPreview(null);
+    setEndCollaborationPreviewError(null);
+    setEndCollaborationModalOpen(true);
+    void loadEndCollaborationPreview(selected);
+  };
+
+  const closeEndCollaborationModal = () => {
+    if (endingCollaboration) return;
+    setEndCollaborationModalOpen(false);
+    setEndCollaborationError(null);
+    setEndCollaborationPreviewError(null);
+  };
+
+  const confirmEndCollaboration = async () => {
+    if (!selected || !canEndSelectedCollaboration) return;
+
+    const selectedEmailNormalized = selected.email.trim().toLowerCase();
+    const confirmNormalized = endCollaborationConfirmEmail.trim().toLowerCase();
+
+    if (confirmNormalized !== selectedEmailNormalized) {
+      setEndCollaborationError("Pro potvrzení opiš přesně e-mail podřízeného.");
+      return;
+    }
+    if (!endCollaborationConfirmCascade) {
+      setEndCollaborationError("Potvrď převod podřízených i smluv.");
+      return;
+    }
+    if (!endCollaborationPreview) {
+      setEndCollaborationError("Nejdřív načti přesný náhled převodu z backendu.");
+      return;
+    }
+
+    setEndingCollaboration(true);
+    setEndCollaborationError(null);
+
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Nejsi přihlášený.");
+
+      const payload = await fetchAuthedJsonOrThrow<TeamOverviewEndCollaborationSuccess>(
+        currentUser,
+        "/api/team-overview",
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            action: "endCollaboration",
+            targetEmail: selected.email,
+            confirmEmail: endCollaborationConfirmEmail,
+            confirmCascade: true,
+            expectedManagerEmail: endCollaborationPreview.successorEmail ?? null,
+          }),
+        }
+      );
+
+      const successorEmail =
+        (payload.summary?.successorEmail ?? selected.managerEmail ?? "").trim().toLowerCase();
+      const transferredContracts = Number(payload.summary?.transferredContracts ?? 0);
+      const reassignedSubordinates = Number(payload.summary?.reassignedSubordinates ?? 0);
+
+      const successMessage = `Ukončeno. Převod na ${successorEmail || "nadřízeného"}: ${transferredContracts} smluv, ${reassignedSubordinates} podřízených.`;
+      setEndCollaborationSuccess(successMessage);
+      setEndCollaborationModalOpen(false);
+      setEndCollaborationConfirmEmail("");
+      setEndCollaborationConfirmCascade(false);
+
+      if (cacheKey) {
+        delete teamDataCache[cacheKey];
+      }
+      setRefreshNonce((prev) => prev + 1);
+
+      if (endCollaborationTimerRef.current) {
+        window.clearTimeout(endCollaborationTimerRef.current);
+      }
+      endCollaborationTimerRef.current = window.setTimeout(() => {
+        setEndCollaborationSuccess(null);
+      }, 5000);
+    } catch (e: any) {
+      if (e?.status === 409) {
+        setEndCollaborationError(
+          "Struktura týmu se změnila. Obnov stránku a akci zopakuj."
+        );
+      } else if (typeof e?.message === "string" && e.message.trim()) {
+        setEndCollaborationError(e.message.trim());
+      } else {
+        setEndCollaborationError("Ukončení spolupráce se nepovedlo. Zkus to prosím znovu.");
+      }
+    } finally {
+      setEndingCollaboration(false);
     }
   };
 
@@ -1281,9 +1495,23 @@ export default function TeamPage() {
                                 Změnit pozici
                               </button>
                             ) : null}
+                            {canEndSelectedCollaboration ? (
+                              <button
+                                type="button"
+                                onClick={openEndCollaborationModal}
+                                className="rounded-full border border-rose-700 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700"
+                              >
+                                Ukončit spolupráci
+                              </button>
+                            ) : null}
                           </div>
                           {positionSaveSuccess ? (
                             <div className="mt-2 text-sm font-semibold text-emerald-700">Pozice změněna.</div>
+                          ) : null}
+                          {endCollaborationSuccess ? (
+                            <div className="mt-2 text-sm font-semibold text-emerald-700">
+                              {endCollaborationSuccess}
+                            </div>
                           ) : null}
                           <div className="ui-chip-group mt-3 inline-flex gap-2">
                             <button
@@ -1686,6 +1914,119 @@ export default function TeamPage() {
                 disabled={savingPosition}
               >
                 {savingPosition ? "Ukládám..." : "Uložit změny"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {endCollaborationModalOpen && selected ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-rose-300 bg-white p-4 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold uppercase tracking-[0.14em] text-rose-700">
+                Ukončit spolupráci
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadEndCollaborationPreview(selected)}
+                disabled={endCollaborationPreviewLoading || endingCollaboration}
+                className="rounded-xl border border-rose-300 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-800 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {endCollaborationPreviewLoading ? "Načítám..." : "Obnovit náhled"}
+              </button>
+            </div>
+            <div className="mt-2 text-lg font-bold text-slate-900">{selected.name}</div>
+            <div className="text-sm text-slate-500">{selected.email}</div>
+
+            <div className="mt-4 space-y-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-900">
+              <div>
+                Smlouvy k převodu:{" "}
+                <span className="font-semibold">
+                  {endCollaborationPreview
+                    ? endCollaborationPreview.transferableContracts
+                    : "—"}
+                </span>
+              </div>
+              <div>
+                Přímí podřízení k přeřazení:{" "}
+                <span className="font-semibold">
+                  {endCollaborationPreview
+                    ? endCollaborationPreview.directSubordinates
+                    : "—"}
+                </span>
+              </div>
+              <div>
+                Převod na nadřízeného:{" "}
+                <span className="font-semibold">
+                  {(endCollaborationPreview?.successorEmail ?? "—").toLowerCase()}
+                </span>
+              </div>
+              {endCollaborationPreview ? (
+                <div className="text-xs text-rose-700">
+                  Náhled načten:{" "}
+                  {new Date(endCollaborationPreview.generatedAtMs).toLocaleString("cs-CZ")}
+                </div>
+              ) : null}
+            </div>
+
+            {endCollaborationPreviewError ? (
+              <div className="mt-3 text-sm font-medium text-rose-700">
+                {endCollaborationPreviewError}
+              </div>
+            ) : null}
+
+            <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Potvrď e-mail podřízeného
+            </label>
+            <input
+              type="text"
+              value={endCollaborationConfirmEmail}
+              onChange={(e) => setEndCollaborationConfirmEmail(e.target.value)}
+              disabled={endingCollaboration}
+              placeholder={selected.email}
+              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+            />
+
+            <label className="mt-3 flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={endCollaborationConfirmCascade}
+                onChange={(e) => setEndCollaborationConfirmCascade(e.target.checked)}
+                disabled={endingCollaboration}
+                className="mt-1"
+              />
+              <span>
+                Potvrzuji ukončení spolupráce, převod všech smluv na přímého nadřízeného a
+                přeřazení přímých podřízených na tohoto nadřízeného.
+              </span>
+            </label>
+
+            {endCollaborationError ? (
+              <div className="mt-3 text-sm font-medium text-rose-700">
+                {endCollaborationError}
+              </div>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEndCollaborationModal}
+                className="ui-btn-secondary ui-focus rounded-xl px-3 py-2 text-sm"
+                disabled={endingCollaboration}
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmEndCollaboration()}
+                className="rounded-xl border border-rose-800 bg-rose-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={
+                  endingCollaboration ||
+                  endCollaborationPreviewLoading ||
+                  !endCollaborationPreview
+                }
+              >
+                {endingCollaboration ? "Provádím převod..." : "Ukončit a převést"}
               </button>
             </div>
           </div>
