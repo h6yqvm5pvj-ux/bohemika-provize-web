@@ -30,7 +30,13 @@ type SubordinateInput = {
   autoAnnual: string;
   propAnnual: string;
 };
-type ManagerPosition = "manazer4" | "manazer5" | "manazer6" | "manazer7";
+type ManagerPosition =
+  | "manazer4"
+  | "manazer5"
+  | "manazer6"
+  | "manazer7"
+  | "manazer8"
+  | "manazer9";
 type AdvisorPosition =
   | "poradce1"
   | "poradce2"
@@ -56,6 +62,15 @@ const MONTH_LABELS = [
   "Prosinec",
 ];
 
+const PANEL_CLASS =
+  "rounded-[28px] border border-slate-300 bg-white px-5 py-5 shadow-[0_12px_30px_rgba(15,23,42,0.08)]";
+const PANEL_SOFT_CLASS =
+  "rounded-[28px] border border-slate-200 bg-[linear-gradient(140deg,rgba(248,250,252,0.95)_0%,rgba(255,255,255,1)_52%,rgba(238,242,255,0.8)_100%)] px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]";
+const FIELD_CLASS =
+  "w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
+const BADGE_BUTTON_BASE =
+  "rounded-full border px-2.5 py-1 text-[12px] font-semibold transition";
+
 function parseNumber(text: string): number {
   if (!text) return 0;
   const v = parseFloat(text.replace(",", "."));
@@ -72,17 +87,19 @@ function StornoPicker({
   onChange: (v: StornoPct) => void;
 }) {
   return (
-    <div className="flex items-center gap-2 text-[11px] text-slate-800">
-      <span className="text-slate-500">{label}:</span>
+    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-800">
+      <span className="min-w-[76px] text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+        {label}
+      </span>
       {[0, 5, 10].map((val) => (
         <button
           key={val}
           type="button"
           onClick={() => onChange(val as StornoPct)}
-          className={`px-2.5 py-1 rounded-full border transition ${
+          className={`${BADGE_BUTTON_BASE} ${
             value === val
-              ? "bg-emerald-500 text-white border-emerald-400 shadow-sm shadow-emerald-500/40"
-              : "border-slate-300 text-slate-800 hover:bg-white"
+              ? "border-emerald-500 bg-emerald-500 text-white shadow-[0_8px_18px_rgba(16,185,129,0.3)]"
+              : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"
           }`}
         >
           {val}%
@@ -453,63 +470,67 @@ export default function ProjectionPage() {
     return (
       <AppLayout active="tools">
         <div className="w-full max-w-4xl mx-auto">
-          <p className="text-sm text-slate-800">
-            Přihlas se, abys viděl projekci následných provizí.
-          </p>
+          <section className={`${PANEL_SOFT_CLASS} text-center`}>
+            <p className="text-sm text-slate-700">
+              Přihlas se, abys viděl projekci následných provizí.
+            </p>
+          </section>
         </div>
       </AppLayout>
     );
   }
 
   const renderIntro = () => (
-    <div className="w-full max-w-4xl mx-auto py-16 text-center space-y-6">
-      <div className="space-y-3">
-        <div className="flex justify-center">
-          <SplitTitle text="Vizualizuj si výplatu do budoucna" wrap={false} />
+    <div className="w-full max-w-5xl mx-auto py-8">
+      <section className={`${PANEL_SOFT_CLASS} px-6 py-8 text-center space-y-6 sm:px-8`}>
+        <div className="space-y-3">
+          <div className="flex justify-center">
+            <SplitTitle text="Vizualizuj si výplatu do budoucna" wrap={false} />
+          </div>
+          <div className="text-2xl sm:text-3xl font-semibold text-slate-900 leading-tight">
+            Pravidelná péče o klienta zajistí pravidelný příjem!
+          </div>
+          <p className="text-sm text-slate-600 max-w-2xl mx-auto">
+            Vyber, zda modeluješ pouze vlastní produkci, nebo chceš řešit budování
+            týmu. V další kroku nastavíš vstupy a uvidíš projekci na 15 let.
+          </p>
         </div>
-        <div className="text-2xl sm:text-3xl font-semibold text-slate-900/90 leading-tight">
-          Pravidelná péče o klienta zajistí pravidelný příjem!
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
+          <button
+            type="button"
+            onClick={() => setViewMode("individual")}
+            className="inline-flex min-w-[170px] items-center justify-center rounded-full border border-slate-900 bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(15,23,42,0.26)] transition hover:bg-black"
+          >
+            Vlastní produkce
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("team")}
+            className="inline-flex min-w-[170px] items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+          >
+            Budování týmu
+          </button>
         </div>
-        <p className="text-sm text-slate-600 max-w-2xl mx-auto">
-          Vyber, zda modeluješ pouze vlastní produkci, nebo chceš řešit i budování
-          týmu. V další kroku nastavíš vstupní data a uvidíš projekci na 15 let.
-        </p>
-      </div>
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
-        <button
-          type="button"
-          onClick={() => setViewMode("individual")}
-          className="rounded-full bg-emerald-500/90 px-6 py-3 text-sm font-semibold text-white shadow-[0_15px_40px_rgba(16,185,129,0.35)] hover:bg-emerald-400/90 transition"
-        >
-          Vlastní
-        </button>
-        <button
-          type="button"
-          onClick={() => setViewMode("team")}
-          className="rounded-full border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100 transition"
-        >
-          Chci budovat tým
-        </button>
-      </div>
+      </section>
     </div>
   );
 
   const renderIndividual = () => (
     <div className="w-full max-w-5xl space-y-6">
-      <header className="space-y-2">
+      <header className={`${PANEL_SOFT_CLASS} space-y-3`}>
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-900 leading-tight">
             Poznej kouzlo následných provizí!
           </h1>
           <button
             type="button"
             onClick={() => setViewMode("none")}
-            className="text-xs text-slate-600 hover:text-slate-900"
+            className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
           >
             Změnit volbu
           </button>
         </div>
-        <div className="text-lg sm:text-xl font-semibold text-slate-900/90">
+        <div className="text-lg sm:text-xl font-semibold text-slate-900">
           Pravidelná péče o klienta zajistí pravidelný příjem!
         </div>
         <p className="text-sm text-slate-600">
@@ -526,6 +547,7 @@ export default function ProjectionPage() {
           subtitle="Měsíční pojistné (NEON)"
           value={lifeMonthly}
           onChange={setLifeMonthly}
+          tone="life"
           extra={
             <StornoPicker
               label="Stornovost"
@@ -539,19 +561,22 @@ export default function ProjectionPage() {
           subtitle="Roční pojistné (průměr ČPP/Allianz Auto)"
           value={autoAnnual}
           onChange={setAutoAnnual}
+          tone="auto"
           extra={
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-[11px] text-slate-800">
-                <span className="text-slate-500">Zdražení:</span>
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-800">
+                <span className="min-w-[76px] text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Zdražení
+                </span>
                 {[0, 5, 10].map((val) => (
                   <button
                     key={val}
                     type="button"
                     onClick={() => setAutoInflation(val as AutoInflation)}
-                    className={`px-2.5 py-1 rounded-full border transition ${
+                    className={`${BADGE_BUTTON_BASE} ${
                       autoInflation === val
-                        ? "bg-emerald-500 text-white border-emerald-400 shadow-sm shadow-emerald-500/40"
-                        : "border-slate-300 text-slate-800 hover:bg-white"
+                        ? "border-emerald-500 bg-emerald-500 text-white shadow-[0_8px_18px_rgba(16,185,129,0.3)]"
+                        : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"
                     }`}
                   >
                     {val}%
@@ -571,6 +596,7 @@ export default function ProjectionPage() {
           subtitle="Roční pojistné (DOMEX, výplata dle platby)"
           value={propAnnual}
           onChange={setPropAnnual}
+          tone="property"
           extra={
             <StornoPicker
               label="Stornovost"
@@ -581,7 +607,7 @@ export default function ProjectionPage() {
         />
       </section>
 
-      <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
+      <section className={`${PANEL_CLASS} space-y-3`}>
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-[0.18em] text-slate-600">
@@ -599,7 +625,7 @@ export default function ProjectionPage() {
           </div>
         </div>
 
-        <div className="mt-2 flex items-end gap-2 overflow-x-auto pb-2">
+        <div className="mt-2 flex items-end gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3">
           {years.map((y, idx) => {
             const h =
               maxYearValue > 0
@@ -616,8 +642,8 @@ export default function ProjectionPage() {
                   {formatMoney(y.total)}
                 </div>
                 <div
-                  className={`w-[38px] rounded-2xl bg-gradient-to-t from-sky-600 to-sky-400 shadow-[0_10px_22px_rgba(56,189,248,0.35)] transition-all ${
-                    isActive ? "ring-2 ring-sky-300/70" : ""
+                  className={`w-[38px] rounded-2xl bg-gradient-to-t from-slate-800 to-slate-500 shadow-[0_10px_20px_rgba(15,23,42,0.24)] transition-all ${
+                    isActive ? "ring-2 ring-slate-400/70" : ""
                   }`}
                   style={{ height: `${h}px`, transform: isActive ? "translateY(-4px)" : "translateY(0)" }}
                   title={`Rok ${idx + 1}`}
@@ -632,7 +658,7 @@ export default function ProjectionPage() {
       </section>
 
       {selectedYear != null && monthlyByYear[selectedYear] && (
-        <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
+        <section className={`${PANEL_CLASS} space-y-3`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] uppercase tracking-[0.18em] text-slate-600">
@@ -648,7 +674,7 @@ export default function ProjectionPage() {
             {monthlyByYear[selectedYear].map((val, idx) => (
               <div
                 key={idx}
-                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 flex items-center justify-between text-sm text-slate-900"
+                className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 flex items-center justify-between text-sm text-slate-900"
               >
                 <span className="text-slate-600">{MONTH_LABELS[idx]}</span>
                 <span className="font-semibold">
@@ -700,7 +726,7 @@ export default function ProjectionPage() {
 
     return (
       <div className="w-full max-w-5xl space-y-6">
-        <header className="space-y-2">
+        <header className={`${PANEL_SOFT_CLASS} space-y-3`}>
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
               Chci budovat tým
@@ -708,7 +734,7 @@ export default function ProjectionPage() {
             <button
               type="button"
               onClick={() => setViewMode("none")}
-              className="text-xs text-slate-600 hover:text-slate-900"
+              className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
             >
               Změnit volbu
             </button>
@@ -719,7 +745,7 @@ export default function ProjectionPage() {
           </p>
         </header>
 
-        <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-4">
+        <section className={`${PANEL_CLASS} space-y-4`}>
           <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-600">
             Zvol manažerskou pozici
           </h2>
@@ -727,7 +753,7 @@ export default function ProjectionPage() {
             <div className="space-y-1">
               <label className="text-xs text-slate-500">Manažerská pozice</label>
               <select
-                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className={FIELD_CLASS}
                 value={managerPos}
                 onChange={(e) =>
                   setManagerPos(e.target.value as ManagerPosition)
@@ -737,6 +763,8 @@ export default function ProjectionPage() {
                 <option value="manazer5">Manažer 5</option>
                 <option value="manazer6">Manažer 6</option>
                 <option value="manazer7">Manažer 7</option>
+                <option value="manazer8">Manažer 8</option>
+                <option value="manazer9">Manažer 9</option>
               </select>
             </div>
 
@@ -747,7 +775,7 @@ export default function ProjectionPage() {
               <input
                 type="number"
                 min={0}
-                className="w-full rounded-2xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className={FIELD_CLASS}
                 value={managerLifeMonthly}
                 onChange={(e) => setManagerLifeMonthly(e.target.value)}
               />
@@ -760,7 +788,7 @@ export default function ProjectionPage() {
               <input
                 type="number"
                 min={0}
-                className="w-full rounded-2xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className={FIELD_CLASS}
                 value={managerAutoAnnual}
                 onChange={(e) => setManagerAutoAnnual(e.target.value)}
               />
@@ -773,7 +801,7 @@ export default function ProjectionPage() {
               <input
                 type="number"
                 min={0}
-                className="w-full rounded-2xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className={FIELD_CLASS}
                 value={managerPropAnnual}
                 onChange={(e) => setManagerPropAnnual(e.target.value)}
               />
@@ -785,7 +813,7 @@ export default function ProjectionPage() {
           {subordinates.map((sub, idx) => (
             <div
               key={sub.id}
-              className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-4"
+              className={`${PANEL_CLASS} space-y-4`}
             >
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-800">
@@ -795,7 +823,7 @@ export default function ProjectionPage() {
                   <button
                     type="button"
                     onClick={() => removeSub(sub.id)}
-                    className="text-xs text-slate-600 hover:text-slate-900"
+                    className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
                   >
                     Odebrat
                   </button>
@@ -808,7 +836,7 @@ export default function ProjectionPage() {
                     Zvol pozici
                   </label>
                   <select
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className={FIELD_CLASS}
                     value={sub.position}
                     onChange={(e) =>
                       updateSub(
@@ -834,7 +862,7 @@ export default function ProjectionPage() {
                   <input
                     type="number"
                     min={0}
-                    className="w-full rounded-2xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className={FIELD_CLASS}
                     value={sub.lifeMonthly}
                     onChange={(e) =>
                       updateSub(sub.id, "lifeMonthly", e.target.value)
@@ -849,7 +877,7 @@ export default function ProjectionPage() {
                   <input
                     type="number"
                     min={0}
-                    className="w-full rounded-2xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className={FIELD_CLASS}
                     value={sub.autoAnnual}
                     onChange={(e) =>
                       updateSub(sub.id, "autoAnnual", e.target.value)
@@ -864,7 +892,7 @@ export default function ProjectionPage() {
                   <input
                     type="number"
                     min={0}
-                    className="w-full rounded-2xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className={FIELD_CLASS}
                     value={sub.propAnnual}
                     onChange={(e) =>
                       updateSub(sub.id, "propAnnual", e.target.value)
@@ -880,14 +908,14 @@ export default function ProjectionPage() {
               type="button"
               onClick={addSub}
               disabled={subordinates.length >= 20}
-              className="rounded-2xl border border-emerald-400/60 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-500/30 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               + Přidat dalšího
             </button>
           </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
+        <section className={`${PANEL_CLASS} space-y-3`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] uppercase tracking-[0.18em] text-slate-600">
@@ -911,7 +939,7 @@ export default function ProjectionPage() {
               Zadej produkci podřízených, abychom mohli spočítat meziprovizi.
             </p>
           ) : (
-            <div className="mt-2 flex items-end gap-2 overflow-x-auto pb-2">
+            <div className="mt-2 flex items-end gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3">
               {teamYears.map((y, idx) => {
                 const h =
                   teamMaxYearValue > 0
@@ -928,7 +956,7 @@ export default function ProjectionPage() {
                       {formatMoney(y.total)}
                     </div>
                     <div
-                      className={`w-[38px] rounded-2xl bg-gradient-to-t from-emerald-600 to-emerald-400 shadow-[0_10px_22px_rgba(16,185,129,0.35)] transition-all ${
+                      className={`w-[38px] rounded-2xl bg-gradient-to-t from-emerald-700 to-emerald-500 shadow-[0_10px_22px_rgba(16,185,129,0.25)] transition-all ${
                         isActive ? "ring-2 ring-emerald-300/70" : ""
                       }`}
                       style={{
@@ -950,7 +978,7 @@ export default function ProjectionPage() {
         {selectedTeamYear != null &&
           teamMonthlyByYear[selectedTeamYear] &&
           hasTeamData && (
-            <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
+            <section className={`${PANEL_CLASS} space-y-3`}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.18em] text-slate-600">
@@ -966,7 +994,7 @@ export default function ProjectionPage() {
                 {teamMonthlyByYear[selectedTeamYear].map((val, idx) => (
                   <div
                     key={idx}
-                    className="rounded-2xl border border-slate-300 bg-white px-4 py-3 flex items-center justify-between text-sm text-slate-900"
+                    className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 flex items-center justify-between text-sm text-slate-900"
                   >
                     <span className="text-slate-600">{MONTH_LABELS[idx]}</span>
                     <span className="font-semibold">
@@ -1003,15 +1031,46 @@ function InputCard({
   value,
   onChange,
   extra,
+  tone = "neutral",
 }: {
   title: string;
   subtitle: string;
   value: string;
   onChange: (v: string) => void;
   extra?: React.ReactNode;
+  tone?: "life" | "auto" | "property" | "neutral";
 }) {
+  const toneStyles: Record<
+    "life" | "auto" | "property" | "neutral",
+    { panel: string; accent: string }
+  > = {
+    life: {
+      panel:
+        "border-rose-200 bg-[linear-gradient(150deg,rgba(255,241,242,0.88)_0%,rgba(255,255,255,1)_60%)]",
+      accent: "bg-rose-500/80",
+    },
+    auto: {
+      panel:
+        "border-blue-200 bg-[linear-gradient(150deg,rgba(239,246,255,0.9)_0%,rgba(255,255,255,1)_60%)]",
+      accent: "bg-blue-500/80",
+    },
+    property: {
+      panel:
+        "border-cyan-200 bg-[linear-gradient(150deg,rgba(236,254,255,0.9)_0%,rgba(255,255,255,1)_60%)]",
+      accent: "bg-cyan-500/80",
+    },
+    neutral: {
+      panel: "border-slate-300 bg-white",
+      accent: "bg-slate-400",
+    },
+  };
+  const toneStyle = toneStyles[tone];
+
   return (
-    <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
+    <section
+      className={`relative overflow-hidden rounded-[28px] border px-5 py-5 shadow-[0_12px_30px_rgba(15,23,42,0.08)] space-y-3 ${toneStyle.panel}`}
+    >
+      <span className={`absolute inset-x-0 top-0 h-1 ${toneStyle.accent}`} aria-hidden />
       <div>
         <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
         <p className="text-xs text-slate-600">{subtitle}</p>
@@ -1019,7 +1078,7 @@ function InputCard({
       <input
         type="number"
         min={0}
-        className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+        className={FIELD_CLASS}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
