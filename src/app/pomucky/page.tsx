@@ -100,43 +100,57 @@ export default function ToolsPage() {
       icon: string;
       cardHover: string;
       arrow: string;
+      accent: string;
+      wash: string;
     }
   > = {
     "Pojištění majetku": {
       badge: "text-cyan-700",
       icon: "border-cyan-200 bg-cyan-50 text-cyan-700 group-hover:border-cyan-300 group-hover:bg-cyan-100 group-hover:text-cyan-900",
-      cardHover: "hover:border-cyan-300 hover:bg-cyan-50/60 hover:shadow-[0_12px_24px_rgba(8,145,178,0.16)]",
-      arrow: "group-hover:border-cyan-300 group-hover:text-cyan-800",
+      cardHover: "hover:border-cyan-300 hover:shadow-[0_18px_40px_rgba(8,145,178,0.14)]",
+      arrow: "group-hover:border-cyan-300 group-hover:bg-cyan-700 group-hover:text-white",
+      accent: "bg-[linear-gradient(90deg,#0891b2_0%,#67e8f9_100%)]",
+      wash: "bg-[linear-gradient(135deg,rgba(236,254,255,0.96)_0%,rgba(255,255,255,1)_58%,rgba(248,250,252,1)_100%)]",
     },
     "Pojištění vozidel": {
       badge: "text-blue-700",
       icon: "border-blue-200 bg-blue-50 text-blue-700 group-hover:border-blue-300 group-hover:bg-blue-100 group-hover:text-blue-900",
-      cardHover: "hover:border-blue-300 hover:bg-blue-50/60 hover:shadow-[0_12px_24px_rgba(37,99,235,0.14)]",
-      arrow: "group-hover:border-blue-300 group-hover:text-blue-800",
+      cardHover: "hover:border-blue-300 hover:shadow-[0_18px_40px_rgba(37,99,235,0.13)]",
+      arrow: "group-hover:border-blue-300 group-hover:bg-blue-700 group-hover:text-white",
+      accent: "bg-[linear-gradient(90deg,#2563eb_0%,#93c5fd_100%)]",
+      wash: "bg-[linear-gradient(135deg,rgba(239,246,255,0.98)_0%,rgba(255,255,255,1)_58%,rgba(248,250,252,1)_100%)]",
     },
     "Životní pojištění": {
       badge: "text-rose-700",
       icon: "border-rose-200 bg-rose-50 text-rose-700 group-hover:border-rose-300 group-hover:bg-rose-100 group-hover:text-rose-900",
-      cardHover: "hover:border-rose-300 hover:bg-rose-50/60 hover:shadow-[0_12px_24px_rgba(225,29,72,0.14)]",
-      arrow: "group-hover:border-rose-300 group-hover:text-rose-800",
+      cardHover: "hover:border-rose-300 hover:shadow-[0_18px_40px_rgba(225,29,72,0.13)]",
+      arrow: "group-hover:border-rose-300 group-hover:bg-rose-700 group-hover:text-white",
+      accent: "bg-[linear-gradient(90deg,#be123c_0%,#fda4af_100%)]",
+      wash: "bg-[linear-gradient(135deg,rgba(255,241,242,0.98)_0%,rgba(255,255,255,1)_58%,rgba(248,250,252,1)_100%)]",
     },
     Finance: {
       badge: "text-emerald-700",
       icon: "border-emerald-200 bg-emerald-50 text-emerald-700 group-hover:border-emerald-300 group-hover:bg-emerald-100 group-hover:text-emerald-900",
-      cardHover: "hover:border-emerald-300 hover:bg-emerald-50/60 hover:shadow-[0_12px_24px_rgba(5,150,105,0.15)]",
-      arrow: "group-hover:border-emerald-300 group-hover:text-emerald-800",
+      cardHover: "hover:border-emerald-300 hover:shadow-[0_18px_40px_rgba(5,150,105,0.14)]",
+      arrow: "group-hover:border-emerald-300 group-hover:bg-emerald-700 group-hover:text-white",
+      accent: "bg-[linear-gradient(90deg,#059669_0%,#86efac_100%)]",
+      wash: "bg-[linear-gradient(135deg,rgba(236,253,245,0.98)_0%,rgba(255,255,255,1)_58%,rgba(248,250,252,1)_100%)]",
     },
     Investice: {
       badge: "text-amber-700",
       icon: "border-amber-200 bg-amber-50 text-amber-700 group-hover:border-amber-300 group-hover:bg-amber-100 group-hover:text-amber-900",
-      cardHover: "hover:border-amber-300 hover:bg-amber-50/65 hover:shadow-[0_12px_24px_rgba(180,83,9,0.15)]",
-      arrow: "group-hover:border-amber-300 group-hover:text-amber-800",
+      cardHover: "hover:border-amber-300 hover:shadow-[0_18px_40px_rgba(180,83,9,0.14)]",
+      arrow: "group-hover:border-amber-300 group-hover:bg-amber-700 group-hover:text-white",
+      accent: "bg-[linear-gradient(90deg,#b45309_0%,#facc15_100%)]",
+      wash: "bg-[linear-gradient(135deg,rgba(255,251,235,0.98)_0%,rgba(255,255,255,1)_58%,rgba(248,250,252,1)_100%)]",
     },
     Obecné: {
       badge: "text-indigo-700",
       icon: "border-indigo-200 bg-indigo-50 text-indigo-700 group-hover:border-indigo-300 group-hover:bg-indigo-100 group-hover:text-indigo-900",
-      cardHover: "hover:border-indigo-300 hover:bg-indigo-50/60 hover:shadow-[0_12px_24px_rgba(79,70,229,0.14)]",
-      arrow: "group-hover:border-indigo-300 group-hover:text-indigo-800",
+      cardHover: "hover:border-indigo-300 hover:shadow-[0_18px_40px_rgba(79,70,229,0.13)]",
+      arrow: "group-hover:border-indigo-300 group-hover:bg-indigo-700 group-hover:text-white",
+      accent: "bg-[linear-gradient(90deg,#4f46e5_0%,#a5b4fc_100%)]",
+      wash: "bg-[linear-gradient(135deg,rgba(238,242,255,0.98)_0%,rgba(255,255,255,1)_58%,rgba(248,250,252,1)_100%)]",
     },
   };
 
@@ -370,15 +384,9 @@ export default function ToolsPage() {
       <div className="w-full max-w-6xl px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
         <header className="mb-5">
           <SplitTitle text="Pomůcky" className="font-mono !text-slate-900" />
-          <p className="mt-2 text-base text-slate-600">
-            Rychlé nástroje pro efektivnější práci.
-          </p>
         </header>
 
         <div className="mb-4 max-w-xl">
-          <label htmlFor="tools-search" className="mb-1 block text-sm text-slate-600">
-            Hledat pomůcku
-          </label>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
@@ -435,22 +443,29 @@ export default function ToolsPage() {
               <CardWrapper
                 key={tool.key}
                 {...wrapperProps}
-                className={`group relative flex h-full items-center gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-[1px] ${style.cardHover} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300`}
+                className={`group relative flex min-h-[132px] overflow-hidden rounded-2xl border border-slate-200 ${style.wash} px-5 py-5 shadow-[0_10px_26px_rgba(15,23,42,0.05)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 ${style.cardHover} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300`}
               >
-                <span className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${style.icon}`}>
-                  <ToolIcon className="h-5 w-5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${style.badge}`}>
-                    {tool.category}
-                  </p>
-                  <h2 className="mt-1 text-lg font-semibold leading-snug tracking-tight text-slate-900">
-                    {tool.title}
-                  </h2>
+                <span className={`absolute inset-x-0 top-0 h-1 ${style.accent}`} aria-hidden="true" />
+                <div className="flex w-full flex-col justify-between gap-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <span className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-[0_10px_22px_rgba(15,23,42,0.08)] transition ${style.icon}`}>
+                      <ToolIcon className="h-5 w-5" />
+                    </span>
+
+                    <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-500 shadow-[0_8px_18px_rgba(15,23,42,0.06)] transition ${style.arrow}`}>
+                      <ArrowUpRight className="h-4 w-4" />
+                    </span>
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className={`text-[10px] font-semibold uppercase tracking-[0.2em] ${style.badge}`}>
+                      {tool.category}
+                    </p>
+                    <h2 className="mt-1.5 text-xl font-semibold leading-tight tracking-tight text-slate-950">
+                      {tool.title}
+                    </h2>
+                  </div>
                 </div>
-                <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition ${style.arrow}`}>
-                  <ArrowUpRight className="h-4 w-4" />
-                </span>
               </CardWrapper>
             );
           })}

@@ -1224,10 +1224,7 @@ function ContractsPageContent() {
           : `${ownerEmail}___${productKey}___${contractNo}`
         : `${ownerEmail}___entry___${contract.id}`;
       const sortMs =
-        toDate((contract as any).policyStartDate)?.getTime() ??
-        toDate((contract as any).contractSignedDate)?.getTime() ??
-        toDate((contract as any).createdAt)?.getTime() ??
-        0;
+        getContractDate(contract)?.getTime() ?? 0;
       const createdMs = toDate((contract as any).createdAt)?.getTime() ?? 0;
       const isEndorsement = contract.entryType === "endorsement";
       const normalizedClient = normalizeSearchValue(contract.clientName);
@@ -1291,11 +1288,15 @@ function ContractsPageContent() {
         searchContractCompactTokens: Array.from(group.searchContractCompactTokens),
       }))
       .sort((a, b) => {
-        const da =
-          toDate((a as any).policyStartDate) ?? getContractDate(a) ?? new Date(0);
-        const db =
-          toDate((b as any).policyStartDate) ?? getContractDate(b) ?? new Date(0);
-        return db.getTime() - da.getTime();
+        const da = getContractDate(a)?.getTime() ?? 0;
+        const db = getContractDate(b)?.getTime() ?? 0;
+        if (db !== da) return db - da;
+
+        const ca = toDate((a as any).createdAt)?.getTime() ?? 0;
+        const cb = toDate((b as any).createdAt)?.getTime() ?? 0;
+        if (cb !== ca) return cb - ca;
+
+        return String(b.id ?? "").localeCompare(String(a.id ?? ""), "cs");
       });
   }, [showTeam, canShowTeamToggle, teamContracts, myContracts]);
 

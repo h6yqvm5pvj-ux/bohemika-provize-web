@@ -764,4 +764,85 @@ body {
   :root[data-box-theme] .focus\:ring-slate-900\/30:focus {
     --tw-ring-color: var(--ui-focus) !important;
   }
+
+  /*
+    Some dashboard widgets are intentionally branded as fixed dark panels.
+    They should not follow the user-selected accent color from Nastavení.
+  */
+  :root[data-box-theme] [data-fixed-box-theme="slate"].bg-slate-900,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .bg-slate-900 {
+    background-color: #0f172a !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"].bg-slate-950,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .bg-slate-950 {
+    background-color: #020617 !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"].bg-slate-900\/90,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .bg-slate-900\/90 {
+    background-color: rgba(15, 23, 42, 0.9) !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"].bg-slate-950\/90,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .bg-slate-950\/90 {
+    background-color: rgba(2, 6, 23, 0.9) !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"].bg-slate-900\/80,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .bg-slate-900\/80 {
+    background-color: rgba(15, 23, 42, 0.8) !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"].bg-slate-950\/80,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .bg-slate-950\/80 {
+    background-color: rgba(2, 6, 23, 0.8) !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"].bg-slate-900\/75,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .bg-slate-900\/75 {
+    background-color: rgba(15, 23, 42, 0.75) !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"].bg-slate-950\/75,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .bg-slate-950\/75 {
+    background-color: rgba(2, 6, 23, 0.75) !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"].bg-slate-900\/70,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .bg-slate-900\/70 {
+    background-color: rgba(15, 23, 42, 0.7) !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"].bg-slate-950\/70,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .bg-slate-950\/70 {
+    background-color: rgba(2, 6, 23, 0.7) !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"].bg-slate-900\/60,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .bg-slate-900\/60 {
+    background-color: rgba(15, 23, 42, 0.6) !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"].bg-slate-950\/60,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .bg-slate-950\/60 {
+    background-color: rgba(2, 6, 23, 0.6) !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"].border-slate-900,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .border-slate-900 {
+    border-color: #0f172a !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .hover\:bg-black:hover,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .hover\:bg-slate-800:hover,
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .hover\:bg-slate-900:hover {
+    background-color: #020617 !important;
+  }
+
+  :root[data-box-theme] [data-fixed-box-theme="slate"] .ui-chip-active {
+    background: #0f172a !important;
+    color: #f8fafc !important;
+    border-color: rgba(255, 255, 255, 0.18) !important;
+  }
 }

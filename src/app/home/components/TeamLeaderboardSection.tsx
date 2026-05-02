@@ -78,7 +78,7 @@ export function TeamLeaderboardSection({
   };
 
   return (
-    <section className={leaderboardClass}>
+    <section className={leaderboardClass} data-fixed-box-theme="slate">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_0%,rgba(16,185,129,0.12),transparent_42%)]" />
 
       <div className="relative z-10 mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

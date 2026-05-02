@@ -32,7 +32,7 @@ export function ExpectedPayoutSection({
     : "relative min-w-0 h-full overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.07)] sm:px-8 sm:py-7";
 
   return (
-    <section className={cardClass}>
+    <section className={cardClass} data-fixed-box-theme="slate">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_12%,rgba(16,185,129,0.12),transparent_46%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_100%,rgba(15,23,42,0.08),transparent_40%)]" />
 

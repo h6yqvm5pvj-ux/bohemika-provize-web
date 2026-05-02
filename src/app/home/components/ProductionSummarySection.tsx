@@ -50,7 +50,7 @@ export function ProductionSummarySection({
   if (!showTeamBox) {
     const hasTipIncome = myTipImmediateSum > 0;
     return (
-      <section className={compactSummaryCardClass}>
+      <section className={compactSummaryCardClass} data-fixed-box-theme="slate">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_12%,rgba(16,185,129,0.12),transparent_46%)]" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_100%,rgba(34,211,238,0.12),transparent_40%)]" />
 
@@ -149,7 +149,7 @@ export function ProductionSummarySection({
     : "mt-2 whitespace-nowrap text-[2.45rem] font-semibold sm:text-[3.1rem]";
 
   return (
-    <section className={summaryCardClass}>
+    <section className={summaryCardClass} data-fixed-box-theme="slate">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_12%,rgba(16,185,129,0.12),transparent_46%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_100%,rgba(34,211,238,0.12),transparent_40%)]" />
 

@@ -1210,17 +1210,17 @@ export default function SettingsPage() {
   const modeDisplay = COMMISSION_MODES.find((m) => m.id === mode)?.label ?? mode;
   const enabledNotificationTypes = Object.values(notificationSettings.types).filter(Boolean).length;
   const panelClass =
-    "rounded-[24px] border border-slate-200 bg-white px-6 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:px-8 sm:py-6";
+    "relative overflow-hidden rounded-2xl border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-6 py-5 shadow-[0_18px_46px_rgba(15,23,42,0.08)] sm:px-8 sm:py-6";
   const compactPanelClass =
-    "rounded-[24px] border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:px-6 sm:py-5";
+    "relative overflow-hidden rounded-2xl border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-4 py-4 shadow-[0_18px_46px_rgba(15,23,42,0.08)] sm:px-6 sm:py-5";
   const fieldClass =
-    "w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
+    "w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.04)] outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
   const toggleOffClass =
-    "border-slate-300 bg-white text-slate-700 hover:bg-slate-50";
+    "border-slate-300 bg-white text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)] hover:bg-slate-50";
 
   return (
     <AppLayout active="settings">
-      <div className="w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+      <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
         {timelineSaveFlashVisible && (
           <div aria-live="polite" className="fixed bottom-6 right-6 z-50 pointer-events-none">
@@ -1251,30 +1251,30 @@ export default function SettingsPage() {
           </div>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <span className="inline-flex min-h-[58px] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                 <UserRound size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                 Pozice: {positionDisplay}
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+              <span className="inline-flex min-h-[58px] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                 <Calculator size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                 Režim: {modeDisplay}
               </span>
               <span
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold ${
+                className={`inline-flex min-h-[58px] items-center gap-3 rounded-2xl border px-4 py-3 text-xs font-semibold shadow-[0_10px_24px_rgba(15,23,42,0.05)] ${
                   tipsterMode ? "border-slate-900 bg-slate-900 text-white" : toggleOffClass
                 }`}
               >
                 <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
                 Tipař: {tipsterMode ? "ON" : "OFF"}
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
+              <span className="inline-flex min-h-[58px] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                 <BellRing size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                 Notifikace: {enabledNotificationTypes}/4
               </span>
             </div>
 
-            <div className="inline-flex w-full flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2">
+            <div className="flex w-fit max-w-full flex-wrap gap-1 overflow-x-auto rounded-full border border-slate-900 bg-slate-950 p-1 shadow-[0_16px_34px_rgba(15,23,42,0.16)]">
               {SETTINGS_TABS.map((tab) => {
                 const active = activeTab === tab.id;
                 return (
@@ -1282,10 +1282,10 @@ export default function SettingsPage() {
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
-                    className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                    className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
                       active
-                        ? "border border-slate-900 bg-slate-900 text-white"
-                        : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                        ? "bg-white text-slate-950"
+                        : "text-white hover:bg-white/10"
                     }`}
                   >
                     {tab.label}
@@ -1297,6 +1297,7 @@ export default function SettingsPage() {
             <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
               {activeTab === "career" && (
               <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
+                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
                 <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
                   <Calculator size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                   <span>Výchozí kalkulačka</span>
@@ -1419,8 +1420,9 @@ export default function SettingsPage() {
               {activeTab === "career" && (
               <section
                 id="timeline-kariery"
-                className="h-full space-y-4 scroll-mt-24 lg:col-span-2 rounded-[24px] border border-slate-300 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_55%)] px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:px-6 sm:py-6"
+                className="relative h-full space-y-4 overflow-hidden scroll-mt-24 rounded-2xl border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-5 py-5 shadow-[0_18px_46px_rgba(15,23,42,0.08)] sm:px-6 sm:py-6 lg:col-span-2"
               >
+                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
                     <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
@@ -1662,6 +1664,7 @@ export default function SettingsPage() {
 
               {activeTab === "notifications" && (
               <section className={`h-full space-y-3 ${compactPanelClass}`}>
+                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
                 <div className="flex flex-col gap-2.5">
                   <div className="flex items-center justify-between">
                     <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
@@ -1761,6 +1764,7 @@ export default function SettingsPage() {
 
             {activeTab === "design" && (
             <section className={`space-y-3 ${compactPanelClass}`}>
+                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
                 <div className="space-y-2.5">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                     <div>
@@ -1845,6 +1849,7 @@ export default function SettingsPage() {
             {/* Účet */}
             {activeTab === "account" && (
             <section className={`space-y-4 ${panelClass}`}>
+              <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
               <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
                 <UserRound size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                 <span>Účet</span>
