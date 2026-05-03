@@ -14,6 +14,7 @@ import {
   query,
   setDoc,
 } from "firebase/firestore";
+import { CalendarDays, History, Plus, Save, X } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
@@ -734,19 +735,21 @@ function StatistikaPageInner() {
             type="button"
             onClick={saveMonth}
             disabled={!canEdit || !!savingState["month"]}
-            className={`inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-semibold transition ${
+            className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
               !canEdit
-                ? "border-slate-300 bg-white text-slate-900 cursor-not-allowed"
-                : "border-emerald-300/60 bg-emerald-500/15 text-emerald-800 hover:border-emerald-200 hover:bg-emerald-500/25"
+                ? "border-slate-300 bg-white text-slate-400 cursor-not-allowed"
+                : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100"
             } ${savingState["month"] ? "opacity-70 cursor-wait" : ""}`}
           >
+            <Save className="h-4 w-4" />
             {savingState["month"] ? "Ukládám měsíc…" : "Uložit měsíc"}
           </button>
           <button
             type="button"
             onClick={() => setHistoryOpen(true)}
-            className="inline-flex items-center gap-2 rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:border-sky-300/60 hover:bg-sky-500/15 transition"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.06)] transition hover:border-slate-900 hover:text-slate-900"
           >
+            <History className="h-4 w-4" />
             Historie (posledních 12)
           </button>
           {!canEdit && ownerEmail ? (
@@ -756,41 +759,43 @@ function StatistikaPageInner() {
           ) : null}
         </div>
 
-        <div className="grid gap-4 rounded-3xl border border-slate-300 bg-white p-4 shadow-[0_18px_60px_rgba(0,0,0,0.65)] sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-          <div className="space-y-1 rounded-2xl border border-slate-300 bg-white p-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-500">Měsíc</div>
+        <div className="relative overflow-hidden grid gap-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+          <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-sky-400 to-emerald-400" />
+          <div className="space-y-1 rounded-2xl border border-slate-200 bg-slate-50/40 p-3">
+            <div className="text-[11px] uppercase tracking-[0.08em] text-slate-500">Měsíc</div>
             <div className="text-lg font-semibold text-slate-900">{monthLabel}</div>
           </div>
-          <div className="space-y-1 rounded-2xl border border-slate-300 bg-white p-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-500">Osloveno</div>
+          <div className="space-y-1 rounded-2xl border border-slate-200 bg-slate-50/40 p-3">
+            <div className="text-[11px] uppercase tracking-[0.08em] text-slate-500">Osloveno</div>
             <div className="text-lg font-semibold text-slate-900">{totals.outreach}</div>
           </div>
-          <div className="space-y-1 rounded-2xl border border-slate-300 bg-white p-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-500">Schůzky</div>
+          <div className="space-y-1 rounded-2xl border border-slate-200 bg-slate-50/40 p-3">
+            <div className="text-[11px] uppercase tracking-[0.08em] text-slate-500">Schůzky</div>
             <div className="text-lg font-semibold text-slate-900">{totals.meetings}</div>
           </div>
-          <div className="space-y-1 rounded-2xl border border-slate-300 bg-white p-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-500">Odpracováno (h)</div>
+          <div className="space-y-1 rounded-2xl border border-slate-200 bg-slate-50/40 p-3">
+            <div className="text-[11px] uppercase tracking-[0.08em] text-slate-500">Odpracováno (h)</div>
             <div className="text-lg font-semibold text-slate-900">
               {totals.hours.toLocaleString("cs-CZ", { maximumFractionDigits: 1 })}
             </div>
           </div>
-          <div className="space-y-1 rounded-2xl border border-slate-300 bg-white p-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-500">Provize (odhad)</div>
-            <div className="text-lg font-semibold text-emerald-800 drop-shadow-[0_0_12px_rgba(16,185,129,0.25)]">
+          <div className="space-y-1 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-3">
+            <div className="text-[11px] uppercase tracking-[0.08em] text-slate-500">Provize (odhad)</div>
+            <div className="text-lg font-semibold text-emerald-700">
               {formatMoney(totals.commission)}
             </div>
           </div>
-          <div className="space-y-1 rounded-2xl border border-slate-300 bg-white p-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-500">Průměrná hodinová mzda</div>
-            <div className="text-lg font-semibold text-emerald-800 drop-shadow-[0_0_12px_rgba(16,185,129,0.25)]">
+          <div className="space-y-1 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-3">
+            <div className="text-[11px] uppercase tracking-[0.08em] text-slate-500">Průměrná hodinová mzda</div>
+            <div className="text-lg font-semibold text-emerald-700">
               {hourlyWage > 0 ? formatMoney(hourlyWage) : "—"}
             </div>
           </div>
         </div>
 
         {historyOpen ? (
-          <div className="rounded-3xl border border-slate-300 bg-white p-4 shadow-[0_18px_60px_rgba(0,0,0,0.5)] space-y-3">
+          <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_14px_30px_rgba(15,23,42,0.08)] space-y-3">
+            <span className="absolute inset-x-0 top-0 h-1 bg-slate-900" />
             <div className="flex items-center justify-between">
               <div className="text-xs uppercase tracking-wider text-slate-500">Historie uložených statistik</div>
               <div className="text-xs text-slate-500">Max. 12 záznamů</div>
@@ -802,7 +807,7 @@ function StatistikaPageInner() {
                 {historyItems.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-2xl border border-slate-300 bg-white p-3 flex flex-col gap-1"
+                    className="rounded-2xl border border-slate-200 bg-slate-50/40 p-3 flex flex-col gap-1"
                   >
                     <div className="text-sm font-semibold text-slate-900">{item.label}</div>
                     <div className="text-xs text-slate-500">
@@ -837,10 +842,12 @@ function StatistikaPageInner() {
         ) : null}
 
         <section className="space-y-3">
-          <div className="rounded-2xl border border-slate-300 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+          <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+            <span className="absolute inset-x-0 top-0 h-1 bg-sky-400" />
             <div className="mb-2 flex items-center justify-between">
-              <div className="text-xs uppercase tracking-wider text-slate-500">
-                Kalendář {label} • klikni na den pro detail
+              <div className="inline-flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500">
+                <CalendarDays className="h-3.5 w-3.5 text-slate-500" />
+                <span>Kalendář {label} • klikni na den pro detail</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span className="inline-flex h-3 w-3 rounded-full bg-emerald-400/80"></span>
@@ -857,11 +864,11 @@ function StatistikaPageInner() {
                 const cls = [
                   "flex flex-col items-center justify-center rounded-xl border px-2 py-1.5 text-sm font-semibold transition",
                   isSelected
-                    ? "border-sky-300/80 bg-sky-100 text-slate-900 shadow-[0_0_16px_rgba(59,130,246,0.25)]"
+                    ? "border-sky-300 bg-sky-50 text-slate-900 shadow-[0_2px_10px_rgba(56,189,248,0.16)]"
                     : isSaved
-                      ? "border-emerald-300/60 bg-emerald-500/15 text-emerald-800"
-                      : "border-slate-300 bg-white text-slate-900 hover:border-slate-300",
-                  isToday ? "ring-1 ring-white/30" : "",
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50",
+                  isToday ? "ring-1 ring-slate-300/80" : "",
                 ].join(" ");
                 return (
                   <button
@@ -878,7 +885,8 @@ function StatistikaPageInner() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-[0_18px_60px_rgba(0,0,0,0.5)]">
+          <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
+            <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-slate-900" />
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-wider text-slate-500">
@@ -913,7 +921,7 @@ function StatistikaPageInner() {
                   value={selectedEntry.outreach}
                   onChange={(e) => handleDayFieldChange(safeSelectedIdx, "outreach", e.target.value)}
                   disabled={!canEdit}
-                  className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
                 />
               </label>
               <label className="space-y-1">
@@ -924,7 +932,7 @@ function StatistikaPageInner() {
                   value={selectedEntry.agreed}
                   onChange={(e) => handleDayFieldChange(safeSelectedIdx, "agreed", e.target.value)}
                   disabled={!canEdit}
-                  className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
                 />
               </label>
               <label className="space-y-1">
@@ -935,7 +943,7 @@ function StatistikaPageInner() {
                   value={selectedEntry.meetings}
                   onChange={(e) => handleDayFieldChange(safeSelectedIdx, "meetings", e.target.value)}
                   disabled={!canEdit}
-                  className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
                 />
               </label>
               <label className="space-y-1">
@@ -947,7 +955,7 @@ function StatistikaPageInner() {
                   value={selectedEntry.workedHours}
                   onChange={(e) => handleDayFieldChange(safeSelectedIdx, "workedHours", e.target.value)}
                   disabled={!canEdit}
-                  className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
                 />
               </label>
               <div className="flex items-end justify-end">
@@ -955,9 +963,10 @@ function StatistikaPageInner() {
                   type="button"
                   onClick={() => handleAddContract(safeSelectedIdx)}
                   disabled={!canEdit}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-emerald-300/50 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-800 shadow-[0_0_18px_rgba(16,185,129,0.25)] transition hover:border-emerald-200 hover:bg-emerald-500/25"
+                  className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  + Přidat smlouvu
+                  <Plus className="h-4 w-4" />
+                  Přidat smlouvu
                 </button>
               </div>
             </div>
@@ -980,12 +989,13 @@ function StatistikaPageInner() {
                 type="button"
                 disabled={!canEdit || !!savingState[safeSelectedIdx]}
                 onClick={() => saveDay(safeSelectedIdx)}
-                className={`inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-semibold transition ${
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
                   !canEdit
-                    ? "border-slate-300 bg-white text-slate-900 cursor-not-allowed"
-                    : "border-sky-300/60 bg-sky-500/15 text-sky-50 hover:border-sky-200 hover:bg-sky-500/25"
+                    ? "border-slate-300 bg-white text-slate-400 cursor-not-allowed"
+                    : "border-slate-900 bg-slate-900 text-white hover:bg-slate-950"
                 } ${savingState[safeSelectedIdx] ? "opacity-70 cursor-wait" : ""}`}
               >
+                <Save className="h-4 w-4" />
                 {savingState[safeSelectedIdx] ? "Ukládám…" : "Uložit den"}
               </button>
             </div>
@@ -997,7 +1007,7 @@ function StatistikaPageInner() {
                 selectedEntry.contracts.map((contract) => (
                   <div
                     key={contract.id}
-                    className="grid gap-3 rounded-2xl border border-slate-300 bg-white p-3 md:grid-cols-[2fr_1fr_1fr_auto]"
+                    className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/40 p-3 md:grid-cols-[2fr_1fr_1fr_auto]"
                   >
                     <label className="space-y-1">
                       <span className="text-xs text-slate-600">Produkt</span>
@@ -1009,7 +1019,7 @@ function StatistikaPageInner() {
                           })
                         }
                         disabled={!canEdit}
-                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
                       >
                         {PRODUCT_OPTIONS.map((opt) => (
                           <option key={opt.value} value={opt.value}>
@@ -1031,13 +1041,13 @@ function StatistikaPageInner() {
                           })
                         }
                         disabled={!canEdit}
-                        className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
                       />
                     </div>
 
                     {contract.product === "comfortcc" ? (
                       <div className="space-y-2">
-                        <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
+                        <div className="inline-flex rounded-full border border-slate-200 bg-white p-1">
                           <button
                             type="button"
                             onClick={() =>
@@ -1085,7 +1095,7 @@ function StatistikaPageInner() {
                                 })
                               }
                               disabled={!canEdit}
-                              className="w-full rounded-2xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-500/40 focus:border-emerald-300/70 focus:ring-2"
+                              className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
                             />
                           </label>
                         ) : null}
@@ -1093,7 +1103,7 @@ function StatistikaPageInner() {
                     ) : (
                       <div className="space-y-1">
                         <span className="text-xs text-slate-600">Provize (odhad)</span>
-                        <div className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-800">
+                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-700">
                           {formatMoney(contract.commission)}
                         </div>
                       </div>
@@ -1102,7 +1112,7 @@ function StatistikaPageInner() {
                     {contract.product === "comfortcc" ? (
                       <div className="space-y-1">
                         <span className="text-xs text-slate-600">Provize (odhad)</span>
-                        <div className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-800">
+                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-700">
                           {formatMoney(contract.commission)}
                         </div>
                       </div>
@@ -1113,7 +1123,7 @@ function StatistikaPageInner() {
                           type="button"
                           onClick={() => handleRemoveContract(safeSelectedIdx, contract.id)}
                           disabled={!canEdit}
-                          className="rounded-2xl border border-slate-900 bg-slate-100 px-3 py-2 text-sm text-slate-900 transition hover:border-rose-400/60 hover:text-rose-100"
+                          className="rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 transition hover:border-rose-300 hover:text-rose-700 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           Odebrat
                         </button>
@@ -1128,13 +1138,14 @@ function StatistikaPageInner() {
 
       {historyOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-white px-4 py-6"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/45 px-4 py-6 backdrop-blur-[1px]"
           onClick={() => setHistoryOpen(false)}
         >
           <div
-            className="w-full max-w-4xl rounded-3xl border border-slate-900 bg-white p-5 shadow-[0_30px_120px_rgba(0,0,0,0.6)] space-y-3"
+            className="relative w-full max-w-4xl overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_22px_60px_rgba(15,23,42,0.2)] space-y-3"
             onClick={(e) => e.stopPropagation()}
           >
+            <span className="absolute inset-x-0 top-0 h-1 bg-slate-900" />
             <div className="flex items-center justify-between gap-2">
               <div>
                 <div className="text-xs uppercase tracking-wider text-slate-500">Historie uložených statistik</div>
@@ -1143,8 +1154,9 @@ function StatistikaPageInner() {
               <button
                 type="button"
                 onClick={() => setHistoryOpen(false)}
-                className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-sm text-slate-900 hover:border-sky-300/60 hover:bg-sky-500/20 transition"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
               >
+                <X className="h-3.5 w-3.5" />
                 Zavřít
               </button>
             </div>
@@ -1156,7 +1168,7 @@ function StatistikaPageInner() {
                 {historyItems.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-2xl border border-slate-300 bg-white p-3 flex flex-col gap-1"
+                    className="rounded-2xl border border-slate-200 bg-slate-50/40 p-3 flex flex-col gap-1"
                   >
                     <div className="text-sm font-semibold text-slate-900">{item.label}</div>
                     <div className="text-xs text-slate-500">

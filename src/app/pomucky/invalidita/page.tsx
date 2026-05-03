@@ -14,6 +14,45 @@ const SCENARIOS = [
 ] as const;
 
 const DEGREE_LABELS = ["1. stupeň", "2. stupeň", "3. stupeň"];
+const DEGREE_CARD_HEIGHT_CLASSES = [
+  "md:min-h-[280px]",
+  "md:min-h-[320px]",
+  "md:min-h-[360px]",
+] as const;
+const DEGREE_CARD_STYLES = [
+  {
+    stripClass: "bg-[linear-gradient(90deg,#10b981_0%,#86efac_100%)]",
+    badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    accentClass: "text-emerald-700",
+  },
+  {
+    stripClass: "bg-[linear-gradient(90deg,#0ea5e9_0%,#7dd3fc_100%)]",
+    badgeClass: "border-sky-200 bg-sky-50 text-sky-700",
+    accentClass: "text-sky-700",
+  },
+  {
+    stripClass: "bg-[linear-gradient(90deg,#c89d2e_0%,#f6d36b_100%)]",
+    badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
+    accentClass: "text-amber-700",
+  },
+] as const;
+const INPUT_FIELD_STYLES = [
+  {
+    stripClass: "bg-[linear-gradient(90deg,#10b981_0%,#86efac_100%)]",
+    badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    focusClass: "focus-within:border-emerald-300 focus-within:shadow-[0_10px_24px_rgba(16,185,129,0.12)]",
+  },
+  {
+    stripClass: "bg-[linear-gradient(90deg,#0ea5e9_0%,#7dd3fc_100%)]",
+    badgeClass: "border-sky-200 bg-sky-50 text-sky-700",
+    focusClass: "focus-within:border-sky-300 focus-within:shadow-[0_10px_24px_rgba(14,165,233,0.12)]",
+  },
+  {
+    stripClass: "bg-[linear-gradient(90deg,#c89d2e_0%,#f6d36b_100%)]",
+    badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
+    focusClass: "focus-within:border-amber-300 focus-within:shadow-[0_10px_24px_rgba(200,157,46,0.12)]",
+  },
+] as const;
 const INVESTIKA_RETURN_RANGE = { min: 0.055, max: 0.06 };
 const INVESTMENT_PRODUCT_NAME = "INVESTIKA Realitní Fond";
 
@@ -81,86 +120,148 @@ export default function InvaliditaPage() {
           <SplitTitle text="Kalkulačka Invalidita" />
         </header>
 
-        <section className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">
-                Vstupní parametry
-              </h2>
-              <p className="text-xs text-slate-600">
-                Věk, čistý příjem a délka krytí (maximálně do 65 let).
-              </p>
+        <section className="space-y-4 px-5 py-1">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Nastavení výpočtu
+                </div>
+                <h2 className="mt-1 text-xl font-semibold text-slate-950">
+                  Vstupní parametry
+                </h2>
+                <p className="mt-1 text-xs text-slate-600">
+                  Věk, čistý příjem a délka krytí maximálně do 65 let.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <div className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_14px_rgba(15,23,42,0.06)]">
+                  Zbývá do 65: {maxCoverage} let
+                </div>
+                <div className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_14px_rgba(15,23,42,0.06)]">
+                  {totalMonths > 0
+                    ? `${totalMonths.toLocaleString("cs-CZ")} měsíců`
+                    : "Nastav parametry"}
+                </div>
+              </div>
             </div>
-            <div className="text-xs text-slate-600">
-              {totalMonths > 0
-                ? `Počet měsíců: ${totalMonths.toLocaleString("cs-CZ")} (≈ ${safeCoverageYears} let)`
-                : "Nastav věk a délku krytí"}
-            </div>
-          </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <label className="space-y-1 text-sm text-slate-800">
-              <span className="block text-xs uppercase tracking-wide text-slate-600">
-                Věk klienta
-              </span>
-              <input
-                type="number"
-                value={ageInput}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  setAgeInput(raw);
-                  if (raw === "") {
-                    setAge(0);
-                    return;
-                  }
-                  const v = handleNumber(raw, age);
-                  setAge(Math.max(1, Math.round(v)));
-                }}
-                className="w-full rounded-xl bg-white border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-              />
-              <p className="text-[11px] text-slate-500">
-                Délka krytí se omezí do 65 let (max {maxCoverage} let).
-              </p>
-            </label>
+            <div className="grid gap-4 lg:grid-cols-[0.9fr_1.15fr_1fr]">
+              <label
+                className={[
+                  "group overflow-hidden rounded-2xl border border-slate-200 bg-white transition",
+                  INPUT_FIELD_STYLES[0].focusClass,
+                ].join(" ")}
+              >
+                <div className={`h-1 ${INPUT_FIELD_STYLES[0].stripClass}`} />
+                <div className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Věk klienta
+                    </span>
+                    <span
+                      className={[
+                        "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                        INPUT_FIELD_STYLES[0].badgeClass,
+                      ].join(" ")}
+                    >
+                      zbývá {maxCoverage} let
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    value={ageInput}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setAgeInput(raw);
+                      if (raw === "") {
+                        setAge(0);
+                        return;
+                      }
+                      const v = handleNumber(raw, age);
+                      setAge(Math.max(1, Math.round(v)));
+                    }}
+                    className="mt-3 w-full border-0 border-b border-slate-200 bg-transparent px-0 pb-2 text-2xl font-semibold leading-none text-slate-950 outline-none transition focus:border-emerald-300 focus:ring-0"
+                  />
+                  <p className="mt-2 text-[11px] leading-snug text-slate-500">
+                    Délka krytí se automaticky omezí do 65 let.
+                  </p>
+                </div>
+              </label>
 
-            <label className="space-y-1 text-sm text-slate-800">
-              <span className="block text-xs uppercase tracking-wide text-slate-600">
-                Čistý měsíční příjem
-              </span>
-              <input
-                type="number"
-                min={0}
-                value={netIncome}
-                onChange={(e) => {
-                  const v = handleNumber(e.target.value, netIncome);
-                  setNetIncome(Math.max(0, Math.round(v)));
-                }}
-                className="w-full rounded-xl bg-white border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-              />
-              <p className="text-[11px] text-slate-500">
-                Částka, ze které počítáme pokrytí příjmu.
-              </p>
-            </label>
+              <label
+                className={[
+                  "group overflow-hidden rounded-2xl border border-slate-200 bg-white transition",
+                  INPUT_FIELD_STYLES[1].focusClass,
+                ].join(" ")}
+              >
+                <div className={`h-1 ${INPUT_FIELD_STYLES[1].stripClass}`} />
+                <div className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Čistý měsíční příjem
+                    </span>
+                    <span
+                      className={[
+                        "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                        INPUT_FIELD_STYLES[1].badgeClass,
+                      ].join(" ")}
+                    >
+                      základ
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    value={netIncome}
+                    onChange={(e) => {
+                      const v = handleNumber(e.target.value, netIncome);
+                      setNetIncome(Math.max(0, Math.round(v)));
+                    }}
+                    className="mt-3 w-full border-0 border-b border-slate-200 bg-transparent px-0 pb-2 text-2xl font-semibold leading-none text-slate-950 outline-none transition focus:border-sky-300 focus:ring-0"
+                  />
+                  <p className="mt-2 text-[11px] leading-snug text-slate-500">
+                    Částka, ze které počítáme pokrytí příjmu.
+                  </p>
+                </div>
+              </label>
 
-            <label className="space-y-1 text-sm text-slate-800">
-              <span className="block text-xs uppercase tracking-wide text-slate-600">
-                Délka krytí v letech
-              </span>
-              <input
-                type="number"
-                min={0}
-                max={maxCoverage}
-                value={safeCoverageYears}
-                onChange={(e) => {
-                  const v = handleNumber(e.target.value, safeCoverageYears);
-                  setCoverageYears(Math.max(0, Math.min(maxCoverage, Math.round(v))));
-                }}
-                className="w-full rounded-xl bg-white border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-              />
-              <p className="text-[11px] text-slate-500">
-                Maximálně do 65 let (zbývá {maxCoverage} let).
-              </p>
-            </label>
+              <label
+                className={[
+                  "group overflow-hidden rounded-2xl border border-slate-200 bg-white transition",
+                  INPUT_FIELD_STYLES[2].focusClass,
+                ].join(" ")}
+              >
+                <div className={`h-1 ${INPUT_FIELD_STYLES[2].stripClass}`} />
+                <div className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Délka krytí v letech
+                    </span>
+                    <span
+                      className={[
+                        "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                        INPUT_FIELD_STYLES[2].badgeClass,
+                      ].join(" ")}
+                    >
+                      do 65
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    max={maxCoverage}
+                    value={safeCoverageYears}
+                    onChange={(e) => {
+                      const v = handleNumber(e.target.value, safeCoverageYears);
+                      setCoverageYears(Math.max(0, Math.min(maxCoverage, Math.round(v))));
+                    }}
+                    className="mt-3 w-full border-0 border-b border-slate-200 bg-transparent px-0 pb-2 text-2xl font-semibold leading-none text-slate-950 outline-none transition focus:border-amber-300 focus:ring-0"
+                  />
+                  <p className="mt-2 text-[11px] leading-snug text-slate-500">
+                    Maximálně do 65 let, aktuálně zbývá {maxCoverage} let.
+                  </p>
+                </div>
+              </label>
           </div>
         </section>
 
@@ -238,7 +339,7 @@ export default function InvaliditaPage() {
               </div>
 
               {activeModel === "insurance" ? (
-                <div className="mx-auto w-full max-w-5xl rounded-[30px] border border-slate-200 bg-white px-5 py-5 shadow-[0_16px_36px_rgba(15,23,42,0.1)]">
+                <div className="mx-auto w-full max-w-5xl">
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -257,42 +358,81 @@ export default function InvaliditaPage() {
                       </div>
                     </div>
 
-                    <div className="mx-auto grid w-full max-w-4xl gap-4 md:grid-cols-3">
-                      {activeScenario.monthly.map((m, idx) => (
-                        <article
-                          key={`${activeScenario.id}-${idx}`}
-                          className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
-                              {DEGREE_LABELS[idx]}
+                    <div className="mx-auto grid w-full max-w-5xl items-end gap-4 md:grid-cols-3">
+                      {activeScenario.monthly.map((m, idx) => {
+                        const style = DEGREE_CARD_STYLES[idx];
+                        return (
+                          <article
+                            key={`${activeScenario.id}-${idx}`}
+                            className={[
+                              "overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.08)]",
+                              DEGREE_CARD_HEIGHT_CLASSES[idx],
+                            ].join(" ")}
+                          >
+                            <div className={`h-1.5 ${style.stripClass}`} />
+
+                            <div className="px-4 py-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    Stupeň invalidity
+                                  </div>
+                                  <h3 className="mt-1 text-lg font-semibold leading-tight text-slate-950">
+                                    {DEGREE_LABELS[idx]}
+                                  </h3>
+                                </div>
+                                <div
+                                  className={[
+                                    "shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                                    style.badgeClass,
+                                  ].join(" ")}
+                                >
+                                  {Math.round(activeScenario.ratios[idx] * 100)} %
+                                </div>
+                              </div>
+
+                              <div className="mt-4 divide-y divide-slate-200 border-y border-slate-100">
+                                <div className="flex items-start justify-between gap-4 py-3">
+                                  <div className="min-w-0 text-sm text-slate-700">
+                                    <div className="font-semibold text-slate-950">
+                                      Měsíční renta
+                                    </div>
+                                    <div className="mt-0.5 text-[11px] leading-snug text-slate-500">
+                                      Doplnění příjmu podle zvolené varianty
+                                    </div>
+                                  </div>
+                                  <div className="shrink-0 text-right text-sm text-slate-950">
+                                    <div className={`text-xl font-semibold tabular-nums ${style.accentClass}`}>
+                                      {formatMoney(m)}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-start justify-between gap-4 py-3">
+                                  <div className="min-w-0 text-sm text-slate-700">
+                                    <div className="font-semibold text-slate-950">
+                                      Celkem do 65 let
+                                    </div>
+                                    <div className="mt-0.5 text-[11px] leading-snug text-slate-500">
+                                      Měsíční renta × počet měsíců krytí
+                                    </div>
+                                  </div>
+                                  <div className="shrink-0 text-right text-sm text-slate-950">
+                                    <div className={`font-semibold tabular-nums ${style.accentClass}`}>
+                                      {formatMoney(activeScenario.lump[idx])}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                            <div className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                              {Math.round(activeScenario.ratios[idx] * 100)} %
-                            </div>
-                          </div>
-                          <div className="mt-3 text-2xl sm:text-3xl font-bold leading-none tabular-nums text-emerald-800">
-                            {formatMoney(m)}
-                          </div>
-                          <div className="mt-1 text-xs font-semibold tracking-[0.08em] text-slate-600 uppercase">
-                            měsíční renta
-                          </div>
-                          <div className="mt-3 h-px bg-slate-200" />
-                          <div className="mt-3 text-right">
-                            <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                              Celkem do 65 let
-                            </div>
-                            <div className="mt-1 text-lg font-bold tabular-nums text-emerald-800 whitespace-nowrap">
-                              {formatMoney(activeScenario.lump[idx])}
-                            </div>
-                          </div>
-                        </article>
-                      ))}
+                          </article>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="mx-auto w-full max-w-5xl rounded-[30px] border border-slate-200 bg-white px-5 py-5 shadow-[0_16px_36px_rgba(15,23,42,0.1)]">
+                <div className="mx-auto w-full max-w-5xl">
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -313,8 +453,11 @@ export default function InvaliditaPage() {
                       </span>
                     </div>
 
-                    <div className="mx-auto grid w-full max-w-4xl gap-4 md:grid-cols-3">
+                    <div className="mx-auto grid w-full max-w-5xl items-end gap-4 md:grid-cols-3">
                       {activeScenario.monthly.map((m, idx) => {
+                        const style = DEGREE_CARD_STYLES[idx];
+                        const coveragePct =
+                          netIncome > 0 ? Math.round((m / netIncome) * 100) : 0;
                         const minCapital = Math.round(
                           requiredCapitalForRenta(
                             m,
@@ -333,32 +476,68 @@ export default function InvaliditaPage() {
                         return (
                           <article
                             key={`investika-${activeScenario.id}-${idx}`}
-                            className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
+                            className={[
+                              "overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.08)]",
+                              DEGREE_CARD_HEIGHT_CLASSES[idx],
+                            ].join(" ")}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
-                                {DEGREE_LABELS[idx]}
+                            <div className={`h-1.5 ${style.stripClass}`} />
+
+                            <div className="px-4 py-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    Stupeň invalidity
+                                  </div>
+                                  <h3 className="mt-1 text-lg font-semibold leading-tight text-slate-950">
+                                    {DEGREE_LABELS[idx]}
+                                  </h3>
+                                </div>
+                                <div
+                                  className={[
+                                    "shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                                    style.badgeClass,
+                                  ].join(" ")}
+                                >
+                                  Pokrytí {coveragePct} %
+                                </div>
                               </div>
-                              <div className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                                {Math.round(activeScenario.ratios[idx] * 100)} %
-                              </div>
-                            </div>
-                            <div className="mt-3 text-2xl sm:text-3xl font-bold leading-none tabular-nums text-emerald-800">
-                              {formatMoney(m)}
-                            </div>
-                            <div className="mt-1 text-xs font-semibold tracking-[0.08em] text-slate-600 uppercase">
-                              měsíční renta
-                            </div>
-                            <div className="mt-3 h-px bg-slate-200" />
-                            <div className="mt-3 text-right">
-                              <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                                Potřebný vklad
-                              </div>
-                              <div className="mt-1 text-base sm:text-lg font-bold tabular-nums text-emerald-800 whitespace-nowrap">
-                                od {formatMoney(minCapital)}
-                              </div>
-                              <div className="text-base sm:text-lg font-bold tabular-nums text-emerald-800 whitespace-nowrap">
-                                do {formatMoney(maxCapital)}
+
+                              <div className="mt-4 divide-y divide-slate-200 border-y border-slate-100">
+                                <div className="flex items-start justify-between gap-4 py-3">
+                                  <div className="min-w-0 text-sm text-slate-700">
+                                    <div className="font-semibold text-slate-950">
+                                      Měsíční renta
+                                    </div>
+                                    <div className="mt-0.5 text-[11px] leading-snug text-slate-500">
+                                      Cílový výběr z investice
+                                    </div>
+                                  </div>
+                                  <div className="shrink-0 text-right text-sm text-slate-950">
+                                    <div className={`text-xl font-semibold tabular-nums ${style.accentClass}`}>
+                                      {formatMoney(m)}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-start justify-between gap-4 py-3">
+                                  <div className="min-w-0 text-sm text-slate-700">
+                                    <div className="font-semibold text-slate-950">
+                                      Potřebný vklad
+                                    </div>
+                                    <div className="mt-0.5 text-[11px] leading-snug text-slate-500">
+                                      Při modelovaném výnosu 5,5-6 % p.a.
+                                    </div>
+                                  </div>
+                                  <div className="shrink-0 text-right text-sm text-slate-950">
+                                    <div className={`font-semibold tabular-nums ${style.accentClass}`}>
+                                      od {formatMoney(minCapital)}
+                                    </div>
+                                    <div className={`font-semibold tabular-nums ${style.accentClass}`}>
+                                      do {formatMoney(maxCapital)}
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           </article>

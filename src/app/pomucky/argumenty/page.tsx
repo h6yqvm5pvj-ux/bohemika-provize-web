@@ -2,6 +2,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ChevronDown, ChevronUp, Search, Tag } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 
 type ObjectionCategory = "life" | "nonLife" | "investment" | "gold" | "general";
@@ -26,6 +27,53 @@ const CATEGORY_META: {
   { id: "gold", label: "Zlato", shortLabel: "Zlato" },
   { id: "general", label: "Obecné námitky", shortLabel: "Obecné" },
 ];
+
+const CATEGORY_TONE: Record<
+  ObjectionCategory,
+  {
+    bar: string;
+    dot: string;
+    dotGlow: string;
+    bullet: string;
+    badge: string;
+  }
+> = {
+  life: {
+    bar: "bg-emerald-400",
+    dot: "bg-emerald-500",
+    dotGlow: "bg-emerald-300",
+    bullet: "bg-emerald-400",
+    badge: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
+  nonLife: {
+    bar: "bg-sky-400",
+    dot: "bg-sky-500",
+    dotGlow: "bg-sky-300",
+    bullet: "bg-sky-400",
+    badge: "bg-sky-50 text-sky-700 border-sky-200",
+  },
+  investment: {
+    bar: "bg-teal-400",
+    dot: "bg-teal-500",
+    dotGlow: "bg-teal-300",
+    bullet: "bg-teal-400",
+    badge: "bg-teal-50 text-teal-700 border-teal-200",
+  },
+  gold: {
+    bar: "bg-amber-400",
+    dot: "bg-amber-500",
+    dotGlow: "bg-amber-300",
+    bullet: "bg-amber-400",
+    badge: "bg-amber-50 text-amber-700 border-amber-200",
+  },
+  general: {
+    bar: "bg-slate-400",
+    dot: "bg-slate-500",
+    dotGlow: "bg-slate-300",
+    bullet: "bg-slate-400",
+    badge: "bg-slate-100 text-slate-700 border-slate-200",
+  },
+};
 
 const OBJECTIONS: Objection[] = [
   // -------- Obecné --------
@@ -219,7 +267,7 @@ export default function ArgumentsPage() {
     <AppLayout active="tools">
       <div className="w-full max-w-4xl space-y-6">
         {/* Header */}
-        <header className="space-y-1">
+        <header className="space-y-2">
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
             Argumenty & námitky
           </h1>
@@ -227,12 +275,17 @@ export default function ArgumentsPage() {
             Rychlý tahák k nejčastějším námitkám klientů – Život, Neživot,
             Investice, Zlato a obecné situace.
           </p>
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.06)]">
+            <Tag className="h-3.5 w-3.5" />
+            <span>{filtered.length} námit{filtered.length === 1 ? "ka" : filtered.length < 5 ? "ky" : "ek"}</span>
+          </div>
         </header>
 
         {/* Vyhledávání */}
-        <section className="rounded-3xl bg-white border border-slate-300  px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+        <section className="relative overflow-hidden rounded-3xl bg-white border border-slate-200 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+          <span className="absolute inset-x-0 top-0 h-1 bg-slate-900" />
           <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-600">🔍</span>
+            <Search className="h-4 w-4 text-slate-500" />
             <input
               type="text"
               value={search}
@@ -244,8 +297,9 @@ export default function ArgumentsPage() {
         </section>
 
         {/* Kategorie */}
-        <section className="rounded-3xl bg-white border border-slate-300  px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-2">
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+        <section className="relative overflow-hidden rounded-3xl bg-white border border-slate-200 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)] space-y-2">
+          <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-amber-400" />
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
             Kategorie
           </p>
           <div className="flex flex-wrap gap-2">
@@ -254,10 +308,10 @@ export default function ArgumentsPage() {
                 key={cat.id}
                 type="button"
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs transition ${
+                className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                   selectedCategory === cat.id
-                    ? "bg-white text-slate-900 shadow-md"
-                    : "bg-white text-slate-800 hover:bg-white"
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white"
                 }`}
               >
                 <span>{cat.shortLabel}</span>
@@ -273,12 +327,14 @@ export default function ArgumentsPage() {
               (c) => c.id === obj.category
             );
             const open = openId === obj.id;
+            const tone = CATEGORY_TONE[obj.category];
 
             return (
               <article
                 key={obj.id}
-                className="rounded-3xl bg-white border border-slate-300  px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]"
+                className="relative overflow-hidden rounded-3xl bg-white border border-slate-200 px-4 py-3 shadow-[0_10px_22px_rgba(15,23,42,0.06)]"
               >
+                <span className={`absolute left-0 top-0 h-full w-1 ${tone.bar}`} />
                 <button
                   type="button"
                   onClick={() =>
@@ -288,33 +344,39 @@ export default function ArgumentsPage() {
                 >
                   <div className="flex-1 flex items-center gap-2">
                     <span className="relative inline-flex h-3.5 w-3.5">
-                      <span className="absolute inset-0 rounded-full bg-emerald-300 opacity-70 blur-[2px]" />
-                      <span className="relative inline-block h-full w-full rounded-full bg-emerald-400" />
+                      <span className={`absolute inset-0 rounded-full ${tone.dotGlow} opacity-70 blur-[2px]`} />
+                      <span className={`relative inline-block h-full w-full rounded-full ${tone.dot}`} />
                     </span>
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">
+                      <p className="text-sm sm:text-base font-semibold text-slate-900 leading-tight">
                         {obj.title}
                       </p>
                       {catMeta && (
-                        <p className="text-[11px] text-slate-400">
+                        <p
+                          className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] ${tone.badge}`}
+                        >
                           {catMeta.label}
                         </p>
                       )}
                     </div>
                   </div>
-                  <span className="text-xs text-slate-400">
-                    {open ? "▴" : "▾"}
-                  </span>
+                  {open ? (
+                    <ChevronUp className="h-4 w-4 text-slate-500" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-slate-500" />
+                  )}
                 </button>
 
                 {open && (
-                  <div className="pt-3 space-y-2">
+                  <div className="pt-3 space-y-2 border-t border-slate-100 mt-3">
                     {obj.bullets.map((b, idx) => (
                       <div
                         key={idx}
                         className="flex items-start gap-2 text-sm text-slate-900"
                       >
-                        <span className="mt-[6px] inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]" />
+                        <span
+                          className={`mt-[7px] inline-flex h-2.5 w-2.5 rounded-full ${tone.bullet}`}
+                        />
                         <p className="leading-snug">
                           {renderWithBold(b)}
                         </p>
@@ -327,9 +389,11 @@ export default function ArgumentsPage() {
           })}
 
           {filtered.length === 0 && (
-            <p className="text-xs text-slate-600 text-center pt-2">
-              Nenašel jsem žádnou námitku, která by odpovídala hledání.
-            </p>
+            <div className="rounded-3xl border border-slate-200 bg-white px-4 py-5 text-center shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+              <p className="text-xs text-slate-600">
+                Nenašel jsem žádnou námitku, která by odpovídala hledání.
+              </p>
+            </div>
           )}
         </section>
       </div>

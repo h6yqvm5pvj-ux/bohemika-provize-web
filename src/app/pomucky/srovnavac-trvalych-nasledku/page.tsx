@@ -1723,9 +1723,23 @@ export default function SrovnavacTrvalychNasledkuPage() {
     {
       title: "1. místo",
       subtitle: "Nejvyšší plnění",
-      border: "border-[1.5px] [border-color:rgba(100,116,139,0.85)]",
-      badgeBg: "bg-white text-slate-900",
+      border: "border-[1.5px] border-amber-300/80",
+      badgeBg: "bg-amber-100 text-amber-800",
       badgeText: "TOP",
+    },
+    {
+      title: "2. místo",
+      subtitle: "Druhé nejvyšší plnění",
+      border: "border-[1.5px] border-sky-300/70",
+      badgeBg: "bg-sky-100 text-sky-800",
+      badgeText: "2",
+    },
+    {
+      title: "3. místo",
+      subtitle: "Třetí nejvyšší plnění",
+      border: "border-[1.5px] border-slate-300/70",
+      badgeBg: "bg-slate-100 text-slate-800",
+      badgeText: "3",
     },
   ];
 
@@ -1739,8 +1753,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
           </div>
         </header>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(360px,430px)_1fr]">
-          <section className="w-full rounded-3xl border border-slate-900 bg-white px-5 py-5 space-y-4">
+        <div className="grid gap-5 lg:grid-cols-[minmax(360px,430px)_1fr]">
+          <section className="w-full space-y-4 px-5 py-1">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
                 <Calculator className="h-4 w-4 text-slate-600" />
@@ -1749,55 +1763,71 @@ export default function SrovnavacTrvalychNasledkuPage() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-              <label className="space-y-1 text-sm text-slate-800">
-                <span className="block text-xs uppercase tracking-wide text-slate-600">
-                  Pojistná částka (Kč)
-                </span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  min={0}
-                  value={sumInsuredInput}
-                  onChange={(e) => {
-                    setSumInsuredInput(e.target.value);
-                  }}
-                  onBlur={() => {
-                    const parsed = parseNumber(sumInsuredInput);
-                    if (Number.isFinite(parsed) && parsed > 0) {
-                      setSumInsuredInput(formatKcInput(parsed));
-                    }
-                  }}
-                  className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                />
+              <label className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition shadow-[0_10px_24px_rgba(15,23,42,0.06)] focus-within:border-emerald-300 focus-within:shadow-[0_10px_24px_rgba(16,185,129,0.12)]">
+                <div className="h-1 bg-[linear-gradient(90deg,#10b981_0%,#86efac_100%)]" />
+                <div className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Pojistná částka
+                    </span>
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      Kč
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    min={0}
+                    value={sumInsuredInput}
+                    onChange={(e) => {
+                      setSumInsuredInput(e.target.value);
+                    }}
+                    onBlur={() => {
+                      const parsed = parseNumber(sumInsuredInput);
+                      if (Number.isFinite(parsed) && parsed > 0) {
+                        setSumInsuredInput(formatKcInput(parsed));
+                      }
+                    }}
+                    className="mt-3 w-full border-0 border-b border-slate-200 bg-transparent px-0 pb-2 text-2xl font-semibold leading-none text-slate-950 outline-none transition focus:border-emerald-300 focus:ring-0"
+                  />
+                </div>
               </label>
 
-              <label className="space-y-1 text-sm text-slate-800">
-                <span className="block text-xs uppercase tracking-wide text-slate-600">
-                  Rozsah trvalých následků (%)
-                </span>
-                <input
-                  type="number"
-                  max={100}
-                  value={rangePercentInput}
-                  onChange={(e) => setRangePercentInput(e.target.value)}
-                  onBlur={() => {
-                    const parsed = parseNumber(rangePercentInput);
-                    if (!Number.isFinite(parsed)) return;
-                    const limited = Math.min(100, Math.max(0, parsed));
-                    setRangePercentInput(formatKcInput(limited));
-                  }}
-                  className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                />
-                {Number.isFinite(rangePercentRaw) && rangePercentRaw > 100 && (
-                  <p className="text-[11px] text-amber-800">
-                    Max 100 %. Počítám s {rangePercentValue}%.
-                  </p>
-                )}
+              <label className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition shadow-[0_10px_24px_rgba(15,23,42,0.06)] focus-within:border-sky-300 focus-within:shadow-[0_10px_24px_rgba(14,165,233,0.12)]">
+                <div className="h-1 bg-[linear-gradient(90deg,#0ea5e9_0%,#7dd3fc_100%)]" />
+                <div className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Rozsah trvalých následků
+                    </span>
+                    <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                      %
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    max={100}
+                    value={rangePercentInput}
+                    onChange={(e) => setRangePercentInput(e.target.value)}
+                    onBlur={() => {
+                      const parsed = parseNumber(rangePercentInput);
+                      if (!Number.isFinite(parsed)) return;
+                      const limited = Math.min(100, Math.max(0, parsed));
+                      setRangePercentInput(formatKcInput(limited));
+                    }}
+                    className="mt-3 w-full border-0 border-b border-slate-200 bg-transparent px-0 pb-2 text-2xl font-semibold leading-none text-slate-950 outline-none transition focus:border-sky-300 focus:ring-0"
+                  />
+                  {Number.isFinite(rangePercentRaw) && rangePercentRaw > 100 && (
+                    <p className="mt-2 text-[11px] text-amber-800">
+                      Max 100 %. Počítám s {rangePercentValue}%.
+                    </p>
+                  )}
+                </div>
               </label>
             </div>
           </section>
 
-          <section className="w-full rounded-3xl border border-slate-900 bg-white px-5 py-5 space-y-3">
+          <section className="w-full space-y-4 px-5 py-1">
             <div className="flex flex-wrap items-center gap-3 justify-between">
               <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
                 <SlidersHorizontal className="h-4 w-4 text-slate-600" />
@@ -1807,7 +1837,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white"
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.06)] transition hover:border-slate-900"
                 >
                   <FileDown className="h-3.5 w-3.5" />
                   <span>Export PDF</span>
@@ -1816,7 +1846,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   type="button"
                   onClick={handleExportThreeScenarioPdf}
                   disabled={scenarioExporting}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_22px_rgba(15,23,42,0.18)] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Files className="h-3.5 w-3.5" />
                   <span>{scenarioExporting ? "Generuji…" : "Export 3 scénáře PDF"}</span>
@@ -1824,7 +1854,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
                 <span className="font-semibold text-slate-700">
                   {activeFilterCount === 0
@@ -1857,56 +1887,59 @@ export default function SrovnavacTrvalychNasledkuPage() {
               </button>
             </div>
 
-            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                Scénáře pro klientský PDF výstup
-              </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <label className="space-y-1 text-xs text-slate-700">
-                  <span>Nižší rozsah (%)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.1}
-                    value={scenarioAInput}
-                    onChange={(e) => setScenarioAInput(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  />
-                </label>
-                <label className="space-y-1 text-xs text-slate-700">
-                  <span>Střední rozsah (%)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.1}
-                    value={scenarioBInput}
-                    onChange={(e) => setScenarioBInput(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  />
-                </label>
-                <label className="space-y-1 text-xs text-slate-700">
-                  <span>Vysoký rozsah (%)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.1}
-                    value={scenarioCInput}
-                    onChange={(e) => setScenarioCInput(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  />
-                </label>
-              </div>
-              <div className="text-[11px] text-slate-500">
-                Export se pokusí vše zkompaktovat na co nejmenší počet stran.
-              </div>
-              {scenarioExportError && (
-                <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                  {scenarioExportError}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+              <div className="h-1 bg-[linear-gradient(90deg,#c89d2e_0%,#f6d36b_45%,#94a3b8_100%)]" />
+              <div className="space-y-3 px-4 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Scénáře pro klientský PDF výstup
                 </div>
-              )}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <label className="space-y-1 text-xs text-slate-700">
+                    <span>Nižší rozsah (%)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      value={scenarioAInput}
+                      onChange={(e) => setScenarioAInput(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs text-slate-700">
+                    <span>Střední rozsah (%)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      value={scenarioBInput}
+                      onChange={(e) => setScenarioBInput(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs text-slate-700">
+                    <span>Vysoký rozsah (%)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      value={scenarioCInput}
+                      onChange={(e) => setScenarioCInput(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    />
+                  </label>
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Export se pokusí vše zkompaktovat na co nejmenší počet stran.
+                </div>
+                {scenarioExportError && (
+                  <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                    {scenarioExportError}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
         </div>
@@ -2041,8 +2074,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
             {sortedCards.map((card, idx) => {
               const podium = podiumStyles[idx];
               const borderClass = podium
-                ? `${podium.border} border`
-                : "border [border-color:rgba(71,85,105,0.75)]";
+                ? podium.border
+                : "border border-slate-200";
               const logoPath = getInsurerLogoPath(card.insurer);
               const logoKey = institutionLogoKeyFromInsurerName(card.insurer);
               const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
@@ -2050,7 +2083,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
               return (
                 <div
                   key={card.key}
-                  className={`relative print-card rounded-3xl bg-[#020617] text-[#f8fafc] shadow-[0_12px_30px_rgba(2,6,23,0.38)] ${compactList ? "px-4 py-4" : "px-5 py-5"} ${borderClass} ${
+                  className={`relative print-card rounded-3xl bg-white text-slate-950 shadow-[0_14px_34px_rgba(15,23,42,0.10)] ${compactList ? "px-4 py-4" : "px-5 py-5"} ${borderClass} ${
                     compactList ? "md:flex md:items-center md:gap-4" : ""
                   }`}
                 >
@@ -2070,7 +2103,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   >
                     <div className="flex items-start gap-3">
                       <span
-                        className={`relative inline-flex shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white ${institutionLogoFrameClass(
+                        className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_8px_18px_rgba(15,23,42,0.08)] ${institutionLogoFrameClass(
                           logoKey,
                           "compact"
                         )}`}
@@ -2084,35 +2117,45 @@ export default function SrovnavacTrvalychNasledkuPage() {
                             className={institutionLogoImageClass(logoKey)}
                           />
                         ) : (
-                          <span className="text-[10px] font-semibold text-[#cbd5e1]">LOGO</span>
+                          <span className="text-[10px] font-semibold text-slate-400">LOGO</span>
                         )}
                       </span>
                       <div className="space-y-0.5">
-                        <div className="text-xs uppercase tracking-wide text-[#94a3b8]">
+                        <div className="text-xs uppercase tracking-wide text-slate-500">
                           Pojišťovna
                         </div>
-                        <div className="text-xl font-semibold text-[#f8fafc]">{insurerName}</div>
-                        <div className="text-sm text-[#cbd5e1]">{productName}</div>
+                        <div className="text-xl font-semibold text-slate-950">{insurerName}</div>
+                        <div className="text-sm text-slate-600">{productName}</div>
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                    {card.badges.map((badge) => (
-                      <div
-                        key={badge}
-                        className="rounded-full border [border-color:rgba(148,163,184,0.55)] bg-[#0f172a] px-3 py-1 text-[11px] text-[#e2e8f0]"
+                      {card.badges.map((badge) => (
+                        <div
+                          key={badge}
+                          className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700"
+                        >
+                          {badge}
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setInfoOpen(infoOpen === card.key ? null : card.key)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 shadow-[0_6px_14px_rgba(15,23,42,0.08)] transition hover:border-slate-900 hover:text-slate-950"
+                        aria-label={`Zobrazit výpočet pro ${card.insurer}`}
+                        aria-expanded={infoOpen === card.key}
+                        title="Výpočet"
                       >
-                        {badge}
-                      </div>
-                    ))}
-                  </div>
+                        i
+                      </button>
+                    </div>
                 </div>
 
                   <div
                     className={`mt-4 space-y-2 ${compactList ? "md:mt-0 md:w-1/3" : ""}`}
                   >
-                    <div className="text-sm text-[#94a3b8]">Plnění</div>
+                    <div className="text-sm text-slate-500">Plnění</div>
                     <div
-                      className={`font-bold text-[#34d399] ${
+                      className={`font-bold text-emerald-700 ${
                         compactList ? "text-2xl" : "text-3xl"
                       }`}
                     >
@@ -2120,23 +2163,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     </div>
                   </div>
 
-                <div
-                  className={`flex items-end ${compactList ? "md:ml-auto md:w-1/3 md:justify-end" : ""}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setInfoOpen(infoOpen === card.key ? null : card.key)}
-                    className="relative bottom-0 right-0 mt-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white bg-white text-xs font-semibold text-slate-900 transition hover:bg-slate-100"
-                    aria-label={`Zobrazit výpočet pro ${card.insurer}`}
-                  >
-                    i
-                  </button>
-                </div>
-
                 {infoOpen === card.key && (
                   <div
-                    className="absolute bottom-16 right-4 z-10 w-56 rounded-2xl border border-slate-900 bg-white px-3 py-2"
-                    style={compactList ? { bottom: "auto", top: "100%", marginTop: "8px" } : {}}
+                    className="absolute right-4 top-14 z-10 w-56 rounded-2xl border border-slate-900 bg-white px-3 py-2 shadow-[0_18px_40px_rgba(2,6,23,0.24)]"
+                    style={compactList ? { top: "100%", marginTop: "8px" } : {}}
                   >
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <span className="text-[11px] uppercase tracking-wide text-slate-500">

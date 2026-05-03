@@ -1359,9 +1359,10 @@ export default function TeamPage() {
               }`}
             >
               {showTeamSidebar ? (
-              <aside className="ui-card rounded-3xl p-3 h-full">
+              <aside className="ui-card relative h-full overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+                <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-slate-900" />
                 <div className="flex h-full flex-col gap-3">
-                  <div className="flex min-w-[220px] items-center gap-2 rounded-xl border border-slate-900 bg-white px-3 py-2">
+                  <div className="flex min-w-[220px] items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-[0_6px_14px_rgba(15,23,42,0.05)]">
                     <Search className="h-4 w-4 text-slate-500" aria-hidden="true" />
                     <input
                       type="text"
@@ -1375,7 +1376,7 @@ export default function TeamPage() {
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as SortKey)}
-                    className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none hover:bg-slate-50"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition hover:bg-slate-50 focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
                   >
                     {SORT_OPTIONS.map((option) => (
                       <option key={option.key} value={option.key}>
@@ -1387,7 +1388,7 @@ export default function TeamPage() {
                   <div className="grid grid-cols-1 gap-2">
                     <Link
                       href="/pomucky/struktura"
-                      className="ui-btn-primary ui-focus inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm"
+                      className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
                     >
                       <Network size={14} strokeWidth={2} aria-hidden="true" />
                       Struktura
@@ -1395,7 +1396,7 @@ export default function TeamPage() {
                     {canSendTeamMessage ? (
                       <Link
                         href="/pomucky/zprava-tymu"
-                        className="ui-btn-primary ui-focus inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm"
+                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
                       >
                         <MessageSquare size={14} strokeWidth={2} aria-hidden="true" />
                         Zpráva týmu
@@ -1404,7 +1405,7 @@ export default function TeamPage() {
                     {showTeamSidebar ? (
                       <Link
                         href="/muj-tym/sin-slavy"
-                        className="ui-btn-primary ui-focus inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm"
+                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
                       >
                         <Trophy size={14} strokeWidth={2} aria-hidden="true" />
                         Síň slávy
@@ -1444,12 +1445,15 @@ export default function TeamPage() {
                             key={m.email}
                             onClick={() => setSelectedEmail(m.email)}
                             className={[
-                              "w-full min-h-[72px] rounded-xl border px-3 py-1.5 text-left transition",
+                              "relative w-full min-h-[72px] overflow-hidden rounded-xl border px-3 py-1.5 text-left transition",
                               isSelected
-                                ? "border-slate-900 bg-[linear-gradient(160deg,#f8fafc_0%,#eef2ff_100%)] text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.12)]"
-                                : "border-slate-300 bg-white text-slate-900 hover:border-slate-900 hover:bg-slate-50",
+                                ? "border-slate-900 bg-slate-50 text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.10)]"
+                                : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50",
                             ].join(" ")}
                           >
+                            {isSelected ? (
+                              <span className="absolute inset-y-0 left-0 w-1 bg-emerald-400" />
+                            ) : null}
                             <div className="flex w-full items-start gap-2">
                               <div
                                 className={[
@@ -1498,7 +1502,8 @@ export default function TeamPage() {
               </aside>
               ) : null}
 
-              <div className="ui-card space-y-4 rounded-3xl p-4 sm:p-5">
+              <div className="ui-card relative space-y-4 overflow-hidden rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:p-5">
+                  <span className="absolute inset-x-0 top-0 h-1 bg-slate-900" />
                   {selected ? (
                     <>
                       <div className="relative z-10 flex flex-col gap-3 border-b border-slate-200 pb-4">
@@ -1510,44 +1515,46 @@ export default function TeamPage() {
                             <div className="text-2xl font-bold leading-tight text-slate-900">{positionLabel(selected.position)}</div>
                           </div>
                           <p className="text-sm text-slate-500 mt-1">{selected.email}</p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={handleCopySelectedEmail}
-                              className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
-                            >
-                              <Copy size={12} strokeWidth={2} aria-hidden="true" />
-                              {copiedEmail ? "Zkopírováno" : "Kopírovat e-mail"}
-                            </button>
-                            <a
-                              href={`mailto:${selected.email}`}
-                              className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
-                            >
-                              <Mail size={12} strokeWidth={2} aria-hidden="true" />
-                              Napsat e-mail
-                            </a>
-                            <Link
-                              href={`/pomucky/statistika?user=${encodeURIComponent(selected.email)}`}
-                              className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
-                            >
-                              <BarChart3 size={12} strokeWidth={2} aria-hidden="true" />
-                              Statistiky
-                            </Link>
-                            {canEditSelectedPosition ? (
+                          <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                            <div className="flex flex-wrap gap-2">
                               <button
                                 type="button"
-                                onClick={openPositionModal}
-                                className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
+                                onClick={handleCopySelectedEmail}
+                                className="ui-focus inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-slate-900 hover:text-slate-900"
                               >
-                                <UserCog size={12} strokeWidth={2} aria-hidden="true" />
-                                Změnit pozici
+                                <Copy size={12} strokeWidth={2} aria-hidden="true" />
+                                {copiedEmail ? "Zkopírováno" : "Kopírovat e-mail"}
                               </button>
-                            ) : null}
+                              <a
+                                href={`mailto:${selected.email}`}
+                                className="ui-focus inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-slate-900 hover:text-slate-900"
+                              >
+                                <Mail size={12} strokeWidth={2} aria-hidden="true" />
+                                Napsat e-mail
+                              </a>
+                              <Link
+                                href={`/pomucky/statistika?user=${encodeURIComponent(selected.email)}`}
+                                className="ui-focus inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-slate-900 hover:text-slate-900"
+                              >
+                                <BarChart3 size={12} strokeWidth={2} aria-hidden="true" />
+                                Statistiky
+                              </Link>
+                              {canEditSelectedPosition ? (
+                                <button
+                                  type="button"
+                                  onClick={openPositionModal}
+                                  className="ui-focus inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-slate-900 hover:text-slate-900"
+                                >
+                                  <UserCog size={12} strokeWidth={2} aria-hidden="true" />
+                                  Změnit pozici
+                                </button>
+                              ) : null}
+                            </div>
                             {canEndSelectedCollaboration ? (
                               <button
                                 type="button"
                                 onClick={openEndCollaborationModal}
-                                className="rounded-full border border-rose-700 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700"
+                                className="ui-focus inline-flex items-center justify-center rounded-full border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
                               >
                                 Ukončit spolupráci
                               </button>
@@ -1561,25 +1568,37 @@ export default function TeamPage() {
                               {endCollaborationSuccess}
                             </div>
                           ) : null}
-                          <div className="ui-chip-group mt-3 inline-flex gap-2">
+                          <div className="mt-3 inline-flex flex-wrap items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1">
                             <button
                               type="button"
                               onClick={() => setDetailTab("overview")}
-                              className={`ui-chip ui-focus px-3 py-1 text-xs ${detailTab === "overview" ? "ui-chip-active" : ""}`}
+                              className={`ui-focus rounded-full px-3 py-1 text-xs font-semibold transition ${
+                                detailTab === "overview"
+                                  ? "bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.24)]"
+                                  : "text-slate-600 hover:bg-white hover:text-slate-900"
+                              }`}
                             >
                               Přehled
                             </button>
                             <button
                               type="button"
                               onClick={() => setDetailTab("subordinates")}
-                              className={`ui-chip ui-focus px-3 py-1 text-xs ${detailTab === "subordinates" ? "ui-chip-active" : ""}`}
+                              className={`ui-focus rounded-full px-3 py-1 text-xs font-semibold transition ${
+                                detailTab === "subordinates"
+                                  ? "bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.24)]"
+                                  : "text-slate-600 hover:bg-white hover:text-slate-900"
+                              }`}
                             >
                               Podřízení ({subordinatesOfSelected.length})
                             </button>
                             <button
                               type="button"
                               onClick={() => setDetailTab("career")}
-                              className={`ui-chip ui-focus px-3 py-1 text-xs ${detailTab === "career" ? "ui-chip-active" : ""}`}
+                              className={`ui-focus rounded-full px-3 py-1 text-xs font-semibold transition ${
+                                detailTab === "career"
+                                  ? "bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.24)]"
+                                  : "text-slate-600 hover:bg-white hover:text-slate-900"
+                              }`}
                             >
                               Kariéra
                             </button>
@@ -1589,27 +1608,25 @@ export default function TeamPage() {
 
                       {detailTab === "overview" ? (
                         <>
-                          <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4">
-                            <div className="space-y-1">
+                          <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4 sm:grid-cols-3">
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
                               <div className="text-[11px] uppercase tracking-wide text-slate-500">Naposledy aktivní</div>
-                              <div className="text-sm font-semibold text-slate-900" title={formatLastActive(selected.email)}>
+                              <div className="text-base font-semibold text-slate-900" title={formatLastActive(selected.email)}>
                                 {formatRelative(lastActive[selected.email])}
                               </div>
                             </div>
-                          </div>
-
-                          <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4 sm:grid-cols-2">
-                            <div>
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
                               <div className="text-[11px] uppercase tracking-wide text-slate-500">Celkem smluv</div>
-                              <div className="text-xl font-bold text-slate-900">{contractCountLabel(selected.email, "total")}</div>
+                              <div className="text-2xl font-bold text-slate-900">{contractCountLabel(selected.email, "total")}</div>
                             </div>
-                            <div>
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
                               <div className="text-[11px] uppercase tracking-wide text-slate-500">Smluv tento měsíc</div>
-                              <div className="text-xl font-bold text-slate-900">{contractCountLabel(selected.email, "month")}</div>
+                              <div className="text-2xl font-bold text-slate-900">{contractCountLabel(selected.email, "month")}</div>
                             </div>
                           </div>
 
-                          <div className="relative space-y-3 border-b border-slate-200 py-4">
+                          <div className="relative overflow-hidden space-y-3 rounded-2xl border border-slate-200 bg-slate-50/40 px-3 py-4">
+                            <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-slate-900" />
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Produkce</div>
                               <div className="text-xs font-semibold text-slate-500">
@@ -1619,7 +1636,7 @@ export default function TeamPage() {
                               </div>
                             </div>
 
-                            <div className="ui-chip-group flex w-fit flex-wrap gap-2">
+                            <div className="inline-flex w-fit flex-wrap items-center gap-1 rounded-full border border-slate-200 bg-white p-1">
                               {PRODUCTION_CATEGORY_TABS.map((tab) => {
                                 const active = productionCategory === tab.key;
                                 return (
@@ -1627,7 +1644,11 @@ export default function TeamPage() {
                                     key={tab.key}
                                     type="button"
                                     onClick={() => setProductionCategory(tab.key)}
-                                    className={`ui-chip ui-focus px-3 py-1 text-xs ${active ? "ui-chip-active" : ""}`}
+                                    className={`ui-focus rounded-full px-3 py-1 text-xs font-semibold transition ${
+                                      active
+                                        ? "bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.22)]"
+                                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                    }`}
                                   >
                                     {tab.label}
                                   </button>
@@ -1717,18 +1738,9 @@ export default function TeamPage() {
                               {subordinatesOfSelected.map((sub) => (
                                 <div
                                   key={sub.email}
-                                  className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 space-y-1"
+                                  className="rounded-2xl border border-slate-200 bg-white px-3 py-3"
                                 >
-                                  <div className="text-sm font-semibold text-slate-900">{sub.name}</div>
-                                  <div className="text-xs text-slate-500">{sub.email}</div>
-                                  <div className="text-xs text-slate-500">
-                                    Úroveň {sub.depth}
-                                    {sub.managerName ? ` · Nadřízený: ${sub.managerName}` : ""}
-                                  </div>
-                                  <div className="text-xs text-slate-500">
-                                    {positionLabel(sub.position)} · Celkem: {contractCountLabel(sub.email, "total")} · Tento měsíc:{" "}
-                                    {contractCountLabel(sub.email, "month")}
-                                  </div>
+                                  <div className="text-base font-semibold text-slate-900">{sub.name}</div>
                                 </div>
                               ))}
                             </div>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
+import { Download, Eye } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
@@ -480,12 +481,19 @@ export default function PlanProdukcePage() {
               provizi (pozice: {position ?? "neznámá"}).
             </p>
           </div>
+          <div className="inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
+            <span className="text-xs uppercase tracking-[0.14em] text-slate-500">Celkem</span>
+            <span className="text-base font-semibold text-slate-900">
+              {formatMoney(estimates.total)}
+            </span>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <PlanCard
             title="Životní pojištění"
             premiumLabel="Celkové měsíční pojistné (Kč)"
+            tone="emerald"
             contracts={lifeContracts}
             premium={lifePremium}
             onContractsChange={setLifeContracts}
@@ -496,6 +504,7 @@ export default function PlanProdukcePage() {
           <PlanCard
             title="Auta"
             premiumLabel="Celkové roční pojistné (Kč)"
+            tone="sky"
             contracts={autoContracts}
             premium={autoPremium}
             onContractsChange={setAutoContracts}
@@ -506,6 +515,7 @@ export default function PlanProdukcePage() {
           <PlanCard
             title="Majetek"
             premiumLabel="Celkové roční pojistné (Kč)"
+            tone="amber"
             contracts={propertyContracts}
             premium={propertyPremium}
             onContractsChange={setPropertyContracts}
@@ -514,7 +524,8 @@ export default function PlanProdukcePage() {
           />
         </div>
 
-        <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-2">
+        <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] space-y-2">
+          <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-amber-400" />
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-slate-600">
@@ -538,45 +549,48 @@ export default function PlanProdukcePage() {
             type="button"
             onClick={handlePreview}
             disabled={generating}
-            className="inline-flex items-center gap-2 rounded-full border border-sky-300/70 bg-sky-500/25 px-7 py-2.5 text-sm sm:text-base font-semibold text-sky-50 shadow-[0_0_22px_rgba(56,189,248,0.55)] hover:bg-sky-500/35 hover:border-sky-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-7 py-2.5 text-sm sm:text-base font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.06)] transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-60 disabled:cursor-not-allowed"
           >
+            <Eye className="h-4 w-4" />
             {generating ? "Připravuji PDF…" : "Náhled PDF"}
           </button>
           <button
             type="button"
             onClick={handleGeneratePdf}
             disabled={generating}
-            className="inline-flex items-center gap-2 rounded-full border border-emerald-400/70 bg-emerald-500/30 px-8 py-2.5 text-sm sm:text-base font-semibold text-emerald-800 shadow-[0_0_25px_rgba(16,185,129,0.55)] hover:bg-emerald-500/40 hover:border-emerald-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-8 py-2.5 text-sm sm:text-base font-semibold text-white shadow-[0_10px_20px_rgba(15,23,42,0.18)] transition hover:bg-slate-950 disabled:opacity-60 disabled:cursor-not-allowed"
           >
+            <Download className="h-4 w-4" />
             {generating ? "Generuji PDF…" : "Vygenerovat PDF"}
           </button>
         </div>
 
         {errorText && (
-          <p className="text-xs text-amber-800 bg-amber-900/40 border border-amber-500/60 rounded-xl px-3 py-2">
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl px-3 py-2">
             {errorText}
           </p>
         )}
 
         {position === null && (
-          <p className="text-xs text-amber-800 bg-amber-900/40 border border-amber-500/60 rounded-xl px-3 py-2">
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl px-3 py-2">
             Nepodařilo se načíst tvoji pozici. Odhad provize může být nepřesný.
           </p>
         )}
 
         {previewHtml && (
-          <section className="mt-2 rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.9)] space-y-3">
+          <section className="mt-2 relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] space-y-3">
+            <span className="absolute inset-x-0 top-0 h-1 bg-slate-900" />
             <h2 className="text-sm font-semibold text-slate-900">
               Náhled PDF
             </h2>
             <p className="text-xs text-slate-600">
               Náhled odpovídá tomu, co stáhneš jako PDF.
             </p>
-            <div className="mt-2 h-[640px] rounded-2xl border border-slate-300 overflow-hidden bg-white">
+            <div className="mt-2 h-[640px] rounded-2xl border border-slate-200 overflow-hidden bg-white">
               <iframe
                 srcDoc={previewHtml}
                 title="Náhled PDF Plán produkce"
-                className="w-full h-full bg-slate-900"
+                className="w-full h-full bg-white"
               />
             </div>
           </section>
@@ -589,6 +603,7 @@ export default function PlanProdukcePage() {
 function PlanCard({
   title,
   premiumLabel,
+  tone,
   contracts,
   premium,
   onContractsChange,
@@ -597,26 +612,52 @@ function PlanCard({
 }: {
   title: string;
   premiumLabel: string;
+  tone: "emerald" | "sky" | "amber";
   contracts: string;
   premium: string;
   onContractsChange: (v: string) => void;
   onPremiumChange: (v: string) => void;
   estimate: BlockEstimate;
 }) {
+  const toneStyles = {
+    emerald: {
+      strip: "bg-emerald-400",
+      focus: "focus:ring-emerald-500 focus:border-emerald-500",
+      metric: "text-emerald-700",
+      summaryBorder: "border-emerald-100",
+      summaryBg: "bg-emerald-50/40",
+    },
+    sky: {
+      strip: "bg-sky-400",
+      focus: "focus:ring-sky-500 focus:border-sky-500",
+      metric: "text-sky-700",
+      summaryBorder: "border-sky-100",
+      summaryBg: "bg-sky-50/40",
+    },
+    amber: {
+      strip: "bg-amber-400",
+      focus: "focus:ring-amber-500 focus:border-amber-500",
+      metric: "text-amber-700",
+      summaryBorder: "border-amber-100",
+      summaryBg: "bg-amber-50/40",
+    },
+  }[tone];
+
   return (
-    <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.85)] space-y-3">
-      <div className="text-center">
-        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+    <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_30px_rgba(15,23,42,0.08)] space-y-4">
+      <span className={`absolute inset-x-0 top-0 h-1 ${toneStyles.strip}`} />
+      <div className="pt-1 text-center">
+        <h2 className="text-2xl font-semibold text-slate-900">{title}</h2>
       </div>
 
       <div className="space-y-2">
-        <label className="block text-xs font-semibold text-slate-800">
+        <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
           Počet smluv
         </label>
         <input
           type="number"
           min={0}
-          className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+          className={`w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-xl font-semibold text-slate-900 outline-none focus:ring-2 ${toneStyles.focus}`}
           value={contracts}
           onChange={(e) => onContractsChange(e.target.value)}
           placeholder="např. 5"
@@ -624,39 +665,43 @@ function PlanCard({
       </div>
 
       <div className="space-y-2">
-        <label className="block text-xs font-semibold text-slate-800">
+        <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
           {premiumLabel}
         </label>
         <input
           type="number"
           min={0}
-          className="w-full rounded-xl bg-white border border-slate-900 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+          className={`w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-xl font-semibold text-slate-900 outline-none focus:ring-2 ${toneStyles.focus}`}
           value={premium}
           onChange={(e) => onPremiumChange(e.target.value)}
           placeholder="např. 10000"
         />
       </div>
 
-      <div className="rounded-2xl border border-slate-900 bg-slate-100 px-4 py-3 text-sm text-slate-900 space-y-1">
+      <div
+        className={`rounded-2xl border px-4 py-3 text-sm text-slate-900 space-y-2 ${toneStyles.summaryBorder} ${toneStyles.summaryBg}`}
+      >
         <div className="flex items-center justify-between">
-          <span>Průměr pojistného / smlouva</span>
-          <span className="font-semibold">
+          <span className="text-slate-600">Průměr pojistného / smlouva</span>
+          <span className="font-semibold text-slate-900">
             {estimate.perContractPremium > 0
               ? formatMoney(estimate.perContractPremium)
               : "—"}
           </span>
         </div>
+        <div className="border-t border-slate-200" />
         <div className="flex items-center justify-between">
-          <span>Okamžitá provize / smlouva</span>
-          <span className="font-semibold">
+          <span className="text-slate-600">Okamžitá provize / smlouva</span>
+          <span className="font-semibold text-slate-900">
             {estimate.immediatePerContract > 0
               ? formatMoney(estimate.immediatePerContract)
               : "—"}
           </span>
         </div>
+        <div className="border-t border-slate-200" />
         <div className="flex items-center justify-between">
-          <span>Celková provize</span>
-          <span className="text-lg font-semibold">
+          <span className="text-slate-700 font-medium">Celková provize</span>
+          <span className={`text-xl font-semibold ${toneStyles.metric}`}>
             {estimate.totalImmediate > 0
               ? formatMoney(estimate.totalImmediate)
               : "—"}

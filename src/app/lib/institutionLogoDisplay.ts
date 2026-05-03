@@ -100,6 +100,8 @@ export function institutionLogoImageClass(
     case "csob":
     case "uniqa":
       return "object-contain object-center scale-[1.05]";
+    case "simplea":
+      return "object-contain object-center scale-[1.34]";
     default:
       return "object-contain object-center";
   }

@@ -156,6 +156,13 @@ function formatSignedPercent(value: number | null | undefined): string {
   return `${rounded > 0 ? "+" : ""}${rounded} %`;
 }
 
+function confidenceToneClass(value: string): string {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("vysok")) return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (normalized.includes("střed")) return "border-sky-200 bg-sky-50 text-sky-700";
+  return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
 function readObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
@@ -176,9 +183,11 @@ function isSautoMarketResponse(payload: unknown): payload is SautoMarketResponse
 
 function StatBox({ label, value, icon }: { label: string; value: ReactNode; icon: ReactNode }) {
   return (
-    <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2.5">
+    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
       <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-        {icon}
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600">
+          {icon}
+        </span>
         <span>{label}</span>
       </div>
       <div className="mt-1 text-base font-semibold text-slate-900">{value}</div>
@@ -632,17 +641,20 @@ export default function VehicleValuationPage() {
 
         {searchActivated && (
           <>
-            <section className="space-y-4 rounded-xl border border-slate-100 bg-white px-4 py-4">
+            <section className="relative space-y-4 overflow-hidden rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
+              <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-sky-400 to-emerald-400" />
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2">
-                  <Calculator className="h-5 w-5 text-slate-700" />
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50">
+                    <Calculator className="h-4 w-4 text-slate-700" />
+                  </span>
                   <h2 className="text-lg font-semibold text-slate-900">Výsledek</h2>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => setInputsPanelOpen(true)}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
                   >
                     <Settings2 className="h-4 w-4" />
                     Upravit vstupy
@@ -650,7 +662,7 @@ export default function VehicleValuationPage() {
                   <button
                     type="button"
                     onClick={() => void handleCopyResult()}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
                   >
                     <ClipboardCopy className="h-4 w-4" />
                     {copied ? "Zkopírováno" : "Kopírovat"}
@@ -659,13 +671,18 @@ export default function VehicleValuationPage() {
               </div>
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.48fr)]">
-                <div className="min-h-[230px] rounded-2xl border border-emerald-200 bg-emerald-50/60 px-6 py-6 shadow-[0_12px_28px_rgba(16,185,129,0.10)]">
+                <div className="relative min-h-[230px] overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-emerald-50/70 to-white px-6 py-6 shadow-[0_12px_28px_rgba(16,185,129,0.10)]">
+                  <span className="absolute inset-x-0 top-0 h-1 bg-emerald-400" />
                   <div className="flex h-full flex-col justify-between gap-6">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-800">
                         Doporučená cena pro pojištění
                       </div>
-                      <div className="rounded-full border border-emerald-200 bg-white/80 px-3 py-1 text-xs font-semibold text-emerald-800">
+                      <div
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold ${confidenceToneClass(
+                          estimate.confidence
+                        )}`}
+                      >
                         {estimate.confidence}
                       </div>
                     </div>
@@ -677,7 +694,7 @@ export default function VehicleValuationPage() {
 
                     <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
                       <span>Obvyklé rozpětí</span>
-                      <span className="rounded-full border border-emerald-200 bg-white/80 px-3 py-1 font-semibold text-slate-900">
+                      <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 font-semibold text-slate-900">
                         {formatCurrency(estimate.rangeLow)} - {formatCurrency(estimate.rangeHigh)}
                       </span>
                     </div>
@@ -687,10 +704,15 @@ export default function VehicleValuationPage() {
                 <button
                   type="button"
                   onClick={() => setInputsPanelOpen(true)}
-                  className={`rounded-xl border px-4 py-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
-                    isMileageFilled ? "border-emerald-200 bg-emerald-50/60" : "border-amber-300 bg-amber-50"
+                  className={`relative overflow-hidden rounded-2xl border px-4 py-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
+                    isMileageFilled ? "border-emerald-200 bg-emerald-50/50" : "border-amber-200 bg-amber-50/70"
                   }`}
                 >
+                  <span
+                    className={`absolute inset-x-0 top-0 h-1 ${
+                      isMileageFilled ? "bg-emerald-400" : "bg-amber-400"
+                    }`}
+                  />
                   <div className="flex items-center justify-between gap-3">
                     <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
                       <Settings2 className="h-4 w-4" />
@@ -732,12 +754,12 @@ export default function VehicleValuationPage() {
                 <StatBox label="Základ nového" value={formatCurrency(estimate.baseNewPrice)} icon={<TrendingDown className="h-3.5 w-3.5" />} />
               </div>
 
-              <div className="rounded-lg border border-slate-100">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/40">
                 <button
                   type="button"
                   onClick={() => setAdjustmentsOpen((value) => !value)}
                   aria-expanded={adjustmentsOpen}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-slate-50"
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-white"
                 >
                   <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
                     <Settings2 className="h-4 w-4" />
@@ -750,7 +772,7 @@ export default function VehicleValuationPage() {
                 </button>
 
                 {adjustmentsOpen && (
-                  <div className="divide-y divide-slate-100 border-t border-slate-100">
+                  <div className="divide-y divide-slate-200 border-t border-slate-200 bg-white/70">
                     {estimate.adjustments.map((item) => (
                       <div key={`${item.label}-${item.note}`} className="grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-sm">
                         <div>

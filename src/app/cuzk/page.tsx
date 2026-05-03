@@ -544,11 +544,11 @@ type DateInsight = {
 function dateInsightToneClass(tone: DateInsightTone): string {
   switch (tone) {
     case "fresh":
-      return "border-emerald-300 bg-emerald-50";
+      return "border-emerald-200 bg-emerald-50/70";
     case "warning":
-      return "border-amber-300 bg-amber-50";
+      return "border-amber-200 bg-amber-50/70";
     default:
-      return "border-slate-300 bg-white";
+      return "border-slate-200 bg-slate-50/50";
   }
 }
 
@@ -721,10 +721,10 @@ function SummaryPill({
   value: React.ReactNode;
 }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[11px] text-slate-100">
+    <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-700 shadow-[0_6px_14px_rgba(15,23,42,0.05)]">
       <Icon className="h-3.5 w-3.5 opacity-90" />
-      <span className="font-semibold text-slate-200">{label}:</span>
-      <span className="font-semibold text-white">{value}</span>
+      <span className="font-semibold text-slate-500">{label}:</span>
+      <span className="font-semibold text-slate-900">{value}</span>
     </div>
   );
 }
@@ -734,7 +734,6 @@ export default function CuzkPage() {
 
   const [addressQuery, setAddressQuery] = useState("");
   const [addressFromQuery, setAddressFromQuery] = useState("");
-  const [includeUnits, setIncludeUnits] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -906,7 +905,7 @@ export default function CuzkPage() {
       const structuredCandidates = parseStructuredAddressCandidates(rawQuery);
       const seenAddressKod = new Set<number>();
       let lastError: unknown = null;
-      const includeUnitsVariants = includeUnits ? [true, false] : [false];
+      const includeUnitsVariants = [true];
 
       for (const includeUnitsValue of includeUnitsVariants) {
         for (const structured of structuredCandidates) {
@@ -999,7 +998,7 @@ export default function CuzkPage() {
         new Error("Adresní místo se podle zadaných údajů nenašlo.")
       );
     },
-    [includeUnits]
+    []
   );
 
   const handleSearchAddress = useCallback(async () => {
@@ -1075,7 +1074,7 @@ export default function CuzkPage() {
     setGmapsEmbedError(null);
 
     try {
-      const data = await cuzkLookupByAdresniMisto(selectedKod, includeUnits);
+      const data = await cuzkLookupByAdresniMisto(selectedKod, true);
       setMatches([]);
       setSelectedKod(null);
       setResult(data);
@@ -1224,24 +1223,33 @@ export default function CuzkPage() {
         {/* ✅ vždy NAD výsledkem (kvůli dropdownu) */}
         <div className="grid gap-5 lg:grid-cols-[1.35fr_0.85fr] items-start">
           {/* Levý box: dotaz */}
-          <section className="relative z-30 isolate overflow-visible rounded-3xl border border-slate-200 bg-white px-6 py-6 space-y-5 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+          <section className="relative z-30 isolate overflow-visible rounded-3xl border border-slate-200 bg-white px-6 py-6 space-y-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
+              <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-sky-400 to-emerald-400" />
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
                     <Search className="h-4 w-4 text-slate-600" />
                     <span>Vyhledávání v katastru ČÚZK</span>
                   </h2>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Našeptávání adres z RÚIAN, detail se načte včetně jednotek.
+                  </div>
                 </div>
-              {!user && (
-                <span className="text-[11px] text-amber-800 bg-amber-50 border border-amber-500/50 rounded-full px-3 py-1">
-                  Přihlaš se, aby šlo volat ČÚZK.
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">
+                  Jednotky: automaticky
                 </span>
-              )}
+                {!user && (
+                  <span className="text-[11px] text-amber-800 bg-amber-50 border border-amber-500/50 rounded-full px-3 py-1">
+                    Přihlaš se, aby šlo volat ČÚZK.
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="space-y-4">
               {/* Adresa + našeptávač (full width) */}
-              <div className="space-y-2 text-sm text-slate-800" ref={suggestWrapRef}>
+              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/40 p-3 text-sm text-slate-800" ref={suggestWrapRef}>
                 <span className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-600">
                   <MapPin className="h-3.5 w-3.5" />
                   <span>Adresa</span>
@@ -1322,40 +1330,13 @@ export default function CuzkPage() {
 
               </div>
 
-              {/* Akce: 3 tlačítka vedle sebe */}
-              <div className="grid gap-2 sm:grid-cols-3">
-                <button
-                  type="button"
-                  onClick={() => setIncludeUnits((v) => !v)}
-                  aria-pressed={includeUnits}
-                  className={[
-                    "w-full inline-flex items-center justify-between gap-3 rounded-full px-4 py-2 text-sm font-semibold transition",
-                    includeUnits
-                      ? "border border-emerald-600 bg-emerald-100 text-emerald-900 hover:bg-emerald-100 hover:border-emerald-100"
-                      : "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50 hover:border-slate-300",
-                  ].join(" ")}
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <span
-                      className={[
-                        "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold",
-                        includeUnits
-                          ? "bg-emerald-500 text-slate-950 border border-emerald-200"
-                          : "bg-white text-slate-500 border border-slate-400",
-                      ].join(" ")}
-                      aria-hidden="true"
-                    >
-                      {includeUnits ? "✓" : ""}
-                    </span>
-                    <span>Jednotky</span>
-                  </span>
-                </button>
-
+              {/* Akce */}
+              <div className="grid gap-2 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={handleSearchAddress}
                   disabled={loading || !canSearch}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-sky-100 hover:border-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Search className="h-4 w-4" />
                   {loading ? "Hledám…" : "Vyhledat"}
@@ -1365,7 +1346,7 @@ export default function CuzkPage() {
                   type="button"
                   onClick={clearAll}
                   disabled={loading || (result === null && matches.length === 0 && !error)}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <X className="h-4 w-4" />
                   Vyčistit
@@ -1498,10 +1479,11 @@ export default function CuzkPage() {
         </div>
 
         {/* Výsledek */}
-        <section className="relative z-0 rounded-2xl bg-white px-5 py-5 space-y-6">
+        <section className="relative z-0 overflow-hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] space-y-6">
+          <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-sky-400 to-emerald-400" />
           <div className="flex items-center justify-between gap-3">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50">
                 <Building2 className="h-4 w-4 text-slate-700" />
               </span>
               <span>Výsledek</span>
@@ -1511,7 +1493,7 @@ export default function CuzkPage() {
                 <button
                   type="button"
                   onClick={() => setShowJson((s) => !s)}
-                  className="text-[11px] rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:bg-slate-100"
+                  className="text-[11px] rounded-full border border-slate-300 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
                 >
                   {showJson ? "Skrýt JSON" : "Zobrazit JSON"}
                 </button>
@@ -1520,22 +1502,23 @@ export default function CuzkPage() {
           </div>
 
           {loading ? (
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800">Načítám data…</div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">Načítám data…</div>
           ) : !hasAnyResult ? (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               Zatím nic nezobrazuji. Zadej adresu a klikni na „Vyhledat adresu“.
             </div>
           ) : (
             <>
-              <div className="rounded-2xl bg-slate-900 px-4 py-4 text-white sm:px-5">
+              <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-4 sm:px-5">
+                <span className="absolute inset-x-0 top-0 h-1 bg-slate-900" />
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="space-y-2">
-                    <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-200">
-                      <Sparkles className="h-3.5 w-3.5" />
+                    <div className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                      <Sparkles className="h-3.5 w-3.5 text-slate-500" />
                       Přehled nemovitosti
                     </div>
-                    <div className="text-lg font-bold leading-tight text-white sm:text-xl">{summaryAddress}</div>
-                    <div className="text-[12px] text-slate-300">
+                    <div className="text-lg font-bold leading-tight text-slate-900 sm:text-xl">{summaryAddress}</div>
+                    <div className="text-[12px] text-slate-600">
                       Detail z RÚIAN s technickými údaji a vazbami na parcelu.
                     </div>
                   </div>
@@ -1546,7 +1529,7 @@ export default function CuzkPage() {
                       alt="Ilustrace nemovitosti"
                       width={140}
                       height={96}
-                      className="h-20 w-auto opacity-90 drop-shadow-[0_8px_14px_rgba(2,6,23,0.35)]"
+                      className="h-20 w-auto opacity-95"
                     />
                   </div>
                 </div>
@@ -1575,7 +1558,7 @@ export default function CuzkPage() {
                     {dateInsights.map((item) => (
                       <div
                         key={item.key}
-                        className={`rounded-xl px-3 py-2.5 ${dateInsightToneClass(item.tone)}`}
+                        className={`rounded-xl border px-3 py-2.5 ${dateInsightToneClass(item.tone)}`}
                       >
                         <div className="text-[11px] uppercase tracking-wide text-slate-500">{item.label}</div>
                         <div className="mt-1 text-sm font-bold text-slate-900">{formatDateCs(item.date)}</div>
@@ -1611,7 +1594,7 @@ export default function CuzkPage() {
                     Metadata odpovědi
                   </div>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/40 p-3 sm:grid-cols-2">
                   <Field label="Aktuálnost dat k" value={formatDateTimeCs(obj?.aktualnostDatK)} />
                   <Field label="Pro uživatele" value={summaryOwner} />
                 </div>
