@@ -14,14 +14,9 @@ import {
   UserCog,
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
-import {
-  doc,
-  getDoc,
-  getDocFromServer,
-} from "firebase/firestore";
 
 import { AppLayout } from "@/components/AppLayout";
-import { auth, db } from "@/app/firebase";
+import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
   formatMoney as formatMoneyValue,
@@ -272,6 +267,13 @@ type TeamOverviewEndCollaborationSuccess = {
     directSubordinates?: number | null;
     generatedAtMs?: number | null;
   };
+};
+
+type TeamOverviewPositionTimelineReadSuccess = {
+  ok: true;
+  targetEmail?: string;
+  updated?: Array<"positionTimelineRead">;
+  positionTimeline?: unknown;
 };
 
 const TEAM_CACHE_TTL_MS = 60 * 1000;
@@ -826,41 +828,22 @@ export default function TeamPage() {
       setCareerTimelineError(null);
 
       try {
-        const candidateIds = Array.from(
-          new Set([selected.docId, selected.email].filter(Boolean))
-        ) as string[];
-        let resolvedTimeline: PositionTimelineItem[] = [];
-        let timelineFound = false;
-
-        for (const docIdCandidate of candidateIds) {
-          const ref = doc(db, "users", docIdCandidate);
-          let snap = await getDoc(ref);
-          if (!snap.exists()) {
-            try {
-              snap = await getDocFromServer(ref);
-            } catch {
-              // fallback na cache už proběhl přes getDoc
-            }
-          }
-          if (!snap.exists()) continue;
-
-          const data = snap.data() as Record<string, unknown>;
-          const parsed = parsePositionTimeline(data.positionTimeline);
-          if (parsed.length > 0) {
-            resolvedTimeline = parsed;
-            timelineFound = true;
-            break;
-          }
-
-          if (!timelineFound) {
-            resolvedTimeline = parsed;
-          }
-        }
-
-        setCareerTimelineDraft(resolvedTimeline);
+        const currentUser = auth.currentUser;
+        if (!currentUser) throw new Error("Nejsi přihlášený.");
+        const payload =
+          await fetchAuthedJsonOrThrow<TeamOverviewPositionTimelineReadSuccess>(
+            currentUser,
+            `/api/team-overview?action=positionTimelineRead&targetEmail=${encodeURIComponent(selected.email)}`
+          );
+        setCareerTimelineDraft(parsePositionTimeline(payload.positionTimeline));
       } catch (error) {
-        console.error("Chyba při načítání timeline kariéry člena týmu:", error);
-        setCareerTimelineError("Nepodařilo se načíst kariéru vybraného člena.");
+        console.error("Chyba při načítání kariéry člena týmu přes API:", error);
+        const message =
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message.trim()
+            : "Nepodařilo se načíst kariéru vybraného člena.";
+        setCareerTimelineError(message);
+        setCareerTimelineDraft([]);
       } finally {
         setCareerTimelineLoading(false);
       }

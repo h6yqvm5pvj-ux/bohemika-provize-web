@@ -72,7 +72,11 @@ type TeamOverviewPatchSuccess = {
   ok: true;
   targetEmail: string;
   updated: Array<
-    "position" | "positionTimeline" | "collaborationEnded" | "collaborationPreview"
+    | "position"
+    | "positionTimeline"
+    | "collaborationEnded"
+    | "collaborationPreview"
+    | "positionTimelineRead"
   >;
   summary?: {
     successorEmail: string;
@@ -85,6 +89,12 @@ type TeamOverviewPatchSuccess = {
     directSubordinates: number;
     generatedAtMs: number;
   };
+  positionTimeline?: Array<{
+    id: string;
+    position: Position;
+    validFrom: string;
+    validTo: string | null;
+  }>;
 };
 
 const TEAM_OVERVIEW_RATE_LIMIT = 120;
@@ -1442,6 +1452,46 @@ function parsePatchPayload(
   return output;
 }
 
+async function loadPositionTimelineForMember(
+  member: TeamMember
+): Promise<
+  Array<{
+    id: string;
+    position: Position;
+    validFrom: string;
+    validTo: string | null;
+  }>
+> {
+  if (!adminDb) return [];
+  const usersCol = adminDb.collection("users");
+  const candidateDocIds = Array.from(
+    new Set(
+      [member.docId, member.email]
+        .map((value) => normalizeEmail(value))
+        .filter(Boolean)
+    )
+  );
+
+  for (const docId of candidateDocIds) {
+    const snap = await usersCol.doc(docId).get();
+    if (!snap.exists) continue;
+    const data = snap.data() as Record<string, unknown>;
+    const timeline = sanitizePositionTimeline(data.positionTimeline);
+    return timeline ?? [];
+  }
+
+  try {
+    const byEmailSnap = await usersCol.where("email", "==", member.email).limit(1).get();
+    const first = byEmailSnap.docs[0];
+    if (!first) return [];
+    const data = first.data() as Record<string, unknown>;
+    const timeline = sanitizePositionTimeline(data.positionTimeline);
+    return timeline ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function PATCH(req: NextRequest) {
   try {
     if (!adminDb) {
@@ -1653,6 +1703,48 @@ export async function GET(req: NextRequest) {
     }
 
     const context = await loadTeamContext(email);
+    const action = (req.nextUrl.searchParams.get("action") ?? "").trim();
+    if (action === "positionTimelineRead") {
+      const targetEmail = normalizeEmail(req.nextUrl.searchParams.get("targetEmail"));
+      if (!targetEmail) {
+        return NextResponse.json(
+          { ok: false, error: "Chybí targetEmail." } satisfies TeamOverviewError,
+          { status: 400 }
+        );
+      }
+
+      const target = context.members.find((member) => member.email === targetEmail);
+      if (!target) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Uživatel není ve tvé týmové struktuře.",
+          } satisfies TeamOverviewError,
+          { status: 404 }
+        );
+      }
+
+      if (target.email !== email && !context.canManagePositions) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Nemáš oprávnění zobrazit kariéru tohoto uživatele.",
+          } satisfies TeamOverviewError,
+          { status: 403 }
+        );
+      }
+
+      const timeline = await loadPositionTimelineForMember(target);
+      const response = NextResponse.json({
+        ok: true,
+        targetEmail: target.email,
+        updated: ["positionTimelineRead"],
+        positionTimeline: timeline,
+      } satisfies TeamOverviewPatchSuccess);
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
+    }
+
     const owners = Array.from(
       new Set(context.members.map((member) => member.email).filter(Boolean))
     );
