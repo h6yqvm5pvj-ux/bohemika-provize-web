@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Network,
   Search,
+  Trophy,
   UserCog,
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -56,6 +57,15 @@ function nameFromEmail(email: string | null | undefined): string {
   if (!parts.length) return email;
   const cap = (s: string) => (s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1).toLowerCase());
   return parts.map(cap).join(" ");
+}
+
+function initialsFromName(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
 }
 
 const POSITION_OPTIONS: { id: Position; label: string }[] = [
@@ -276,7 +286,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "name", label: "Jméno A-Z" },
 ];
 
-const MEMBER_LIST_ESTIMATED_ROW_HEIGHT = 104;
+const MEMBER_LIST_ESTIMATED_ROW_HEIGHT = 76;
 const MEMBER_LIST_OVERSCAN = 6;
 
 export default function TeamPage() {
@@ -305,6 +315,7 @@ export default function TeamPage() {
   const [careerTimelineSaving, setCareerTimelineSaving] = useState(false);
   const [careerTimelineError, setCareerTimelineError] = useState<string | null>(null);
   const [careerTimelineSaved, setCareerTimelineSaved] = useState(false);
+  const [careerTimelineEditing, setCareerTimelineEditing] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [endCollaborationModalOpen, setEndCollaborationModalOpen] = useState(false);
   const [endCollaborationConfirmEmail, setEndCollaborationConfirmEmail] = useState("");
@@ -670,6 +681,7 @@ export default function TeamPage() {
     setCareerTimelineDraft([]);
     setCareerTimelineError(null);
     setCareerTimelineSaved(false);
+    setCareerTimelineEditing(false);
     setEndCollaborationModalOpen(false);
     setEndCollaborationConfirmEmail("");
     setEndCollaborationConfirmCascade(false);
@@ -679,6 +691,12 @@ export default function TeamPage() {
     setEndCollaborationError(null);
     setEndCollaborationSuccess(null);
   }, [selectedEmail]);
+
+  useEffect(() => {
+    if (detailTab !== "career") {
+      setCareerTimelineEditing(false);
+    }
+  }, [detailTab]);
 
   useEffect(() => {
     return () => {
@@ -879,8 +897,7 @@ export default function TeamPage() {
     const now = Date.now();
     if (!ts) {
       return {
-        statusLabel: "Bez aktivity",
-        relativeLabel: "bez záznamu",
+        statusLabel: "Aktivní před delší dobou",
         className: "bg-white text-slate-600 border-slate-300",
         dotClassName: "bg-slate-400",
         title: "Bez záznamu o aktivitě",
@@ -890,7 +907,6 @@ export default function TeamPage() {
     if (diff <= ONLINE_THRESHOLD_MS) {
       return {
         statusLabel: "Online",
-        relativeLabel: formatRelative(ts),
         className: "bg-emerald-50 text-emerald-700 border-emerald-600",
         dotClassName: "bg-emerald-500",
         title: `Aktivní ${new Date(ts).toLocaleString("cs-CZ")}`,
@@ -898,16 +914,14 @@ export default function TeamPage() {
     }
     if (diff <= RECENT_THRESHOLD_MS) {
       return {
-        statusLabel: "Aktivní dnes",
-        relativeLabel: formatRelative(ts),
+        statusLabel: `Aktivní ${formatRelative(ts)}`,
         className: "bg-amber-50 text-amber-700 border-amber-600",
         dotClassName: "bg-amber-500",
         title: `Naposledy ${new Date(ts).toLocaleString("cs-CZ")}`,
       };
     }
     return {
-      statusLabel: "Bez aktivity",
-      relativeLabel: formatRelative(ts),
+      statusLabel: `Aktivní ${formatRelative(ts)}`,
       className: "bg-white text-slate-600 border-slate-300",
       dotClassName: "bg-slate-400",
       title: `Naposledy ${new Date(ts).toLocaleString("cs-CZ")}`,
@@ -1154,7 +1168,7 @@ export default function TeamPage() {
   };
 
   const addCareerTimelineRow = () => {
-    if (!selected) return;
+    if (!selected || !careerTimelineEditing) return;
     setCareerTimelineError(null);
     setCareerTimelineSaved(false);
     setCareerTimelineDraft((prev) => [
@@ -1172,6 +1186,7 @@ export default function TeamPage() {
     rowId: string,
     patch: Partial<PositionTimelineItem>
   ) => {
+    if (!careerTimelineEditing) return;
     setCareerTimelineError(null);
     setCareerTimelineSaved(false);
     setCareerTimelineDraft((prev) =>
@@ -1180,6 +1195,7 @@ export default function TeamPage() {
   };
 
   const removeCareerTimelineRow = (rowId: string) => {
+    if (!careerTimelineEditing) return;
     setCareerTimelineError(null);
     setCareerTimelineSaved(false);
     setCareerTimelineDraft((prev) => prev.filter((row) => row.id !== rowId));
@@ -1189,6 +1205,9 @@ export default function TeamPage() {
     if (!selected) return;
     if (!canEditSelectedCareer) {
       setCareerTimelineError("Nemáš oprávnění upravovat kariéru tohoto uživatele.");
+      return;
+    }
+    if (!careerTimelineEditing) {
       return;
     }
 
@@ -1303,6 +1322,7 @@ export default function TeamPage() {
         }))
       );
       setCareerTimelineSaved(true);
+      setCareerTimelineEditing(false);
       if (careerSaveTimerRef.current) window.clearTimeout(careerSaveTimerRef.current);
       careerSaveTimerRef.current = window.setTimeout(
         () => setCareerTimelineSaved(false),
@@ -1381,6 +1401,15 @@ export default function TeamPage() {
                         Zpráva týmu
                       </Link>
                     ) : null}
+                    {showTeamSidebar ? (
+                      <Link
+                        href="/muj-tym/sin-slavy"
+                        className="ui-btn-primary ui-focus inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm"
+                      >
+                        <Trophy size={14} strokeWidth={2} aria-hidden="true" />
+                        Síň slávy
+                      </Link>
+                    ) : null}
                   </div>
 
                   <div className="space-y-2 border-t border-slate-200 pt-3">
@@ -1409,29 +1438,48 @@ export default function TeamPage() {
                       {virtualizedMembers.items.map((m) => {
                         const isSelected = m.email === selectedEmail;
                         const last = lastActiveBadge(m.email);
+                        const initials = initialsFromName(m.name);
                         return (
                           <button
                             key={m.email}
                             onClick={() => setSelectedEmail(m.email)}
                             className={[
-                              "w-full min-h-[88px] rounded-xl border px-3 py-2 text-left transition flex flex-col items-start gap-2",
+                              "w-full min-h-[72px] rounded-xl border px-3 py-1.5 text-left transition",
                               isSelected
-                                ? "border-slate-900 bg-slate-100 text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.1)]"
+                                ? "border-slate-900 bg-[linear-gradient(160deg,#f8fafc_0%,#eef2ff_100%)] text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.12)]"
                                 : "border-slate-300 bg-white text-slate-900 hover:border-slate-900 hover:bg-slate-50",
                             ].join(" ")}
                           >
-                            <div className="w-full">
-                              <div className="text-[15px] font-semibold leading-tight break-words">{m.name}</div>
-                            </div>
-                            <div className="flex w-full flex-col items-start gap-1">
-                              <span
-                                className={`text-[11px] inline-flex items-center justify-center gap-1.5 rounded-full border px-2 py-0.5 ${last.className}`}
-                                aria-label={last.title}
+                            <div className="flex w-full items-start gap-2">
+                              <div
+                                className={[
+                                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[9px] font-semibold",
+                                  isSelected
+                                    ? "border-slate-900 bg-slate-900 text-white"
+                                    : "border-slate-300 bg-slate-100 text-slate-700",
+                                ].join(" ")}
+                                aria-hidden="true"
                               >
-                                <span className={`h-1.5 w-1.5 rounded-full ${last.dotClassName}`} />
-                                {last.statusLabel}
-                              </span>
-                              <span className="text-[11px] leading-none text-slate-500">{last.relativeLabel}</span>
+                                {initials || "?"}
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="truncate text-[13px] font-semibold leading-tight">
+                                    {m.name}
+                                  </div>
+                                </div>
+
+                                <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                                  <span
+                                    className={`text-[10px] inline-flex items-center justify-center gap-1 rounded-full border px-1.5 py-0.5 ${last.className}`}
+                                    aria-label={last.title}
+                                  >
+                                    <span className={`h-1.5 w-1.5 rounded-full ${last.dotClassName}`} />
+                                    {last.statusLabel}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
                           </button>
                         );
@@ -1693,13 +1741,29 @@ export default function TeamPage() {
                               Historie kariéry
                             </div>
                             {canEditSelectedCareer ? (
-                              <button
-                                type="button"
-                                onClick={addCareerTimelineRow}
-                                className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
-                              >
-                                Přidat pozici
-                              </button>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {!careerTimelineEditing ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setCareerTimelineEditing(true);
+                                      setCareerTimelineError(null);
+                                      setCareerTimelineSaved(false);
+                                    }}
+                                    className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
+                                  >
+                                    Upravit
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={addCareerTimelineRow}
+                                    className="ui-btn-primary ui-focus rounded-full px-3 py-1.5 text-xs"
+                                  >
+                                    Přidat pozici
+                                  </button>
+                                )}
+                              </div>
                             ) : null}
                           </div>
 
@@ -1711,7 +1775,7 @@ export default function TeamPage() {
                             <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                               Vybraný člen zatím nemá vyplněnou historii kariéry.
                             </div>
-                          ) : canEditSelectedCareer ? (
+                          ) : canEditSelectedCareer && careerTimelineEditing ? (
                             <div className="space-y-2.5">
                               {careerTimelineDraft.map((row, rowIndex) => {
                                 const rowRangeError = hasInvalidRangeOrder(
@@ -1837,7 +1901,7 @@ export default function TeamPage() {
                             </p>
                           ) : null}
 
-                          {canEditSelectedCareer ? (
+                          {canEditSelectedCareer && careerTimelineEditing ? (
                             <div className="flex flex-wrap items-center justify-end gap-2">
                               {careerTimelineSaved ? (
                                 <span className="text-xs font-semibold text-emerald-700">
@@ -1853,6 +1917,10 @@ export default function TeamPage() {
                                 {careerTimelineSaving ? "Ukládám..." : "Uložit kariéru"}
                               </button>
                             </div>
+                          ) : canEditSelectedCareer ? (
+                            <p className="text-xs text-slate-500">
+                              Kariéra je uzamčená. Klikni na Upravit pro změny.
+                            </p>
                           ) : (
                             <p className="text-xs text-slate-500">
                               Tento profil můžeš jen zobrazit.

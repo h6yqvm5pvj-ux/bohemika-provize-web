@@ -3682,7 +3682,6 @@ export default function CalculatorPage() {
         onSelectProduct={selectProduct}
       />
 
-      {/* vnější glassy box je pryč – jen čistý container */}
       <div className="w-full max-w-6xl space-y-6">
         {/* Header */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -3693,7 +3692,7 @@ export default function CalculatorPage() {
         </header>
 
         <div className="grid gap-6 items-start lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-6 w-full lg:max-w-3xl">
+          <div className="space-y-5 w-full lg:max-w-3xl">
             {/* Produkt + PDF import */}
             <CalculatorProductAndPdfSection
               canImportFromPdf={canImportFromPdf}

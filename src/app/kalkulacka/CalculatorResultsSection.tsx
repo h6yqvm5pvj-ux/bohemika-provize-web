@@ -85,24 +85,26 @@ function AnimatedMoneyValue({
   const [displayValue, setDisplayValue] = useState(value);
 
   useEffect(() => {
+    const syncOnNextFrame = (nextValue: number) => {
+      const rafId = window.requestAnimationFrame(() => {
+        setDisplayValue(nextValue);
+        previousRef.current = nextValue;
+      });
+      return () => window.cancelAnimationFrame(rafId);
+    };
+
     if (!Number.isFinite(value)) {
-      setDisplayValue(0);
-      previousRef.current = 0;
-      return;
+      return syncOnNextFrame(0);
     }
 
     if (reducedMotion) {
-      setDisplayValue(value);
-      previousRef.current = value;
-      return;
+      return syncOnNextFrame(value);
     }
 
     const start = previousRef.current;
     const delta = value - start;
     if (Math.abs(delta) < 0.01) {
-      setDisplayValue(value);
-      previousRef.current = value;
-      return;
+      return syncOnNextFrame(value);
     }
 
     const durationMs = 650;
@@ -157,10 +159,14 @@ export function CalculatorResultsSection({
 }: CalculatorResultsSectionProps) {
   return (
     <div className="self-start space-y-3 lg:sticky lg:top-6">
-      <section className="ui-card overflow-hidden rounded-3xl bg-white px-5 py-4 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="inline-flex items-center gap-1.5 text-lg font-semibold text-slate-900">
-            <BarChart3 size={18} strokeWidth={2} className="text-slate-700" aria-hidden="true" />
+      <section className="relative overflow-hidden rounded-[1.65rem] border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_58%,#eef2f7_100%)] px-4 py-4 shadow-[0_22px_55px_rgba(15,23,42,0.10)] space-y-3 sm:px-5">
+        <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_50%,#7dd3fc_100%)]" aria-hidden="true" />
+        <div className="pointer-events-none absolute -right-20 top-12 h-44 w-44 rounded-full bg-emerald-100/70 blur-3xl" aria-hidden="true" />
+        <div className="relative flex items-center justify-between gap-3">
+          <h2 className="inline-flex items-center gap-2 text-lg font-bold text-slate-900">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm">
+              <BarChart3 size={19} strokeWidth={2.2} aria-hidden="true" />
+            </span>
             <span>Výsledky</span>
           </h2>
 
@@ -169,7 +175,7 @@ export function CalculatorResultsSection({
               type="button"
               onClick={onOpenCoefModal}
               disabled={unsupported}
-              className={`ui-btn-secondary ui-focus inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm ${
+              className={`ui-btn-secondary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs sm:text-sm ${
                 unsupported ? "opacity-60 cursor-not-allowed" : ""
               }`}
             >
@@ -192,7 +198,7 @@ export function CalculatorResultsSection({
         </div>
 
         {tipsterModeEnabled && tipsterPercentPanelOpen && (
-          <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 space-y-3">
+          <div className="relative rounded-2xl border border-slate-300 bg-white/85 px-3 py-3 space-y-3 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <label className="block text-xs uppercase tracking-wide text-slate-600">
                 Zobrazované procento provize
@@ -297,10 +303,10 @@ export function CalculatorResultsSection({
         {items.length > 0 && !unsupported && (() => {
           if (tipsterModeEnabled) {
             return (
-              <div className="space-y-2">
-                <div className="flex items-baseline justify-between gap-3 border-b border-slate-200 py-1.5">
-                  <span className="flex items-center gap-3 text-sm text-slate-900">
-                    <span className="relative h-5 w-5 flex-shrink-0 sm:h-6 sm:w-6">
+              <div className="relative space-y-2">
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/85 px-3 py-3 shadow-sm">
+                  <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-900">
+                    <span className="relative h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7">
                       <Image src="/icons/penize2.png" alt="" fill className="object-contain" />
                     </span>
                     <span>Okamžitá provize ({tipsterPercent} %)</span>
@@ -310,7 +316,7 @@ export function CalculatorResultsSection({
                   </span>
                 </div>
 
-                <div className="rounded-2xl border border-emerald-500/60 bg-slate-950 px-3 py-3 shadow-[0_10px_24px_rgba(2,6,23,0.3)]">
+                <div className="rounded-2xl border border-emerald-400/60 bg-slate-950 px-4 py-4 shadow-[0_16px_32px_rgba(2,6,23,0.28)]">
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-semibold text-emerald-300">Celkem</span>
                     <AnimatedMoneyValue
@@ -329,7 +335,7 @@ export function CalculatorResultsSection({
           });
 
           return (
-            <div className="space-y-2">
+            <div className="relative space-y-2">
               {displayItems.map((item, idx) => {
                 const iconSrc = resultIconForTitle(item.title);
                 const title = cleanResultTitle(item.title);
@@ -337,15 +343,15 @@ export function CalculatorResultsSection({
                 return (
                   <div
                     key={idx}
-                    className="flex items-baseline justify-between gap-3 border-b border-slate-200 py-1.5 last:border-b-0"
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/85 px-3 py-3 shadow-sm"
                   >
-                    <span className="flex items-center gap-3 text-sm text-slate-900">
+                    <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-900">
                       {iconSrc && (
-                        <div className="relative h-5 w-5 flex-shrink-0 sm:h-6 sm:w-6">
+                        <div className="relative h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7">
                           <Image src={iconSrc} alt="" fill className="object-contain" />
                         </div>
                       )}
-                      <span>{title}</span>
+                      <span className="min-w-0">{title}</span>
                     </span>
                     <span className="whitespace-nowrap text-lg font-semibold text-slate-900 sm:text-2xl">
                       {formatMoneyResult(item.amount)}
@@ -355,7 +361,7 @@ export function CalculatorResultsSection({
               })}
 
               {tipContractConfig && (
-                <div className="space-y-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-slate-900">
+                <div className="space-y-1 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-3 py-3 text-slate-900 shadow-sm">
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
                     Smlouva z TIPU
                   </p>
@@ -384,7 +390,7 @@ export function CalculatorResultsSection({
                   product === "koopmajetekobcan" ||
                   product === "maxdomov") &&
                 paymentBasedTotalsMemo ? (
-                  <div className="w-full space-y-1 rounded-2xl border border-emerald-500/60 bg-slate-950 px-3 py-3 shadow-[0_10px_24px_rgba(2,6,23,0.3)]">
+                  <div className="w-full space-y-2 rounded-[1.25rem] border border-emerald-400/60 bg-slate-950 px-4 py-4 shadow-[0_16px_32px_rgba(2,6,23,0.28)]">
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-semibold text-emerald-300">
                         Celkem v 1. roce{tipContractConfig ? " po TIPU" : ""}
@@ -403,7 +409,7 @@ export function CalculatorResultsSection({
                     </div>
                   </div>
                 ) : (
-                  <div className="w-full rounded-2xl border border-emerald-500/60 bg-slate-950 px-3 py-3 shadow-[0_10px_24px_rgba(2,6,23,0.3)]">
+                  <div className="w-full rounded-[1.25rem] border border-emerald-400/60 bg-slate-950 px-4 py-4 shadow-[0_16px_32px_rgba(2,6,23,0.28)]">
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-semibold text-emerald-300">
                         Celkem{tipContractConfig ? " po TIPU" : ""}
@@ -426,7 +432,7 @@ export function CalculatorResultsSection({
             type="button"
             onClick={onSaveContract}
             disabled={!canSaveContract}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(16,185,129,0.22)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <CheckCircle2 size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
             {saving ? "Ukládám…" : "Sepsáno"}
@@ -434,7 +440,7 @@ export function CalculatorResultsSection({
           {lastSavedContractHref && (
             <Link
               href={lastSavedContractHref}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-100"
             >
               <FileText size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
               Zobrazit smlouvu

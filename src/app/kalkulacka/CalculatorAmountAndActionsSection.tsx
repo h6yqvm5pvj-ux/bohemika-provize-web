@@ -49,13 +49,18 @@ export function CalculatorAmountAndActionsSection({
   onPrepareEndorsement,
 }: CalculatorAmountAndActionsSectionProps) {
   return (
-    <section className="space-y-3">
+    <section className="rounded-[1.35rem] border border-slate-300 bg-white/90 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-bold text-slate-900">Výpočet provize</h2>
+        <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />
+      </div>
+      <div className="space-y-4">
       {product === "comfortcc" && (
         <section className="space-y-2">
-          <div className="text-sm font-medium">Comfort Commodity</div>
+          <div className="text-sm font-semibold text-slate-800">Comfort Commodity</div>
           <div className="flex gap-3">
             <div className="flex-1">
-              <div className="mb-1 text-[12px] uppercase tracking-wide text-slate-400">Poplatek</div>
+              <div className="mb-1 text-[12px] uppercase text-slate-400">Poplatek</div>
               <div className="ui-chip-group">
                 <button
                   type="button"
@@ -78,7 +83,7 @@ export function CalculatorAmountAndActionsSection({
       )}
 
       <div className="space-y-1">
-        <label className="block text-sm font-medium">
+        <label className="block text-sm font-semibold text-slate-800">
           {product === "comfortcc"
             ? comfortGradual
               ? "1% z Poplatku v 1. platbě"
@@ -87,7 +92,7 @@ export function CalculatorAmountAndActionsSection({
         </label>
         <input
           type="number"
-          className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+          className={`w-full rounded-2xl border bg-white px-4 py-3 text-base font-semibold text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_18px_rgba(15,23,42,0.06)] outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
             missingFields.includes("částku") ? "border-rose-400/70" : "border-slate-300"
           }`}
           value={amountText}
@@ -99,10 +104,10 @@ export function CalculatorAmountAndActionsSection({
       {product === "comfortcc" && (
         <div className="space-y-3">
           <div className="space-y-1">
-            <label className="block text-sm font-medium">Pravidelná platba</label>
+            <label className="block text-sm font-semibold text-slate-800">Pravidelná platba</label>
             <input
               type="number"
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+              className="w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
               value={comfortPaymentText}
               onChange={(event) => onComfortPaymentTextChange(event.target.value)}
               placeholder="Zadejte pravidelnou platbu"
@@ -111,10 +116,10 @@ export function CalculatorAmountAndActionsSection({
 
           {comfortGradual && (
             <div className="space-y-1">
-              <label className="block text-sm font-medium">Cílová částka (volitelné)</label>
+              <label className="block text-sm font-semibold text-slate-800">Cílová částka (volitelné)</label>
               <input
                 type="number"
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
                 value={comfortTargetAmountText}
                 onChange={(event) => onComfortTargetAmountTextChange(event.target.value)}
                 placeholder="Např. 200000"
@@ -130,7 +135,7 @@ export function CalculatorAmountAndActionsSection({
       )}
 
       {!tipsterModeEnabled && (
-        <div className="space-y-2">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -169,12 +174,13 @@ export function CalculatorAmountAndActionsSection({
             )}
           </div>
           {isLifeProduct && product === "neon" && refreshOriginalOpen && (
-            <p className="text-[11px] text-slate-600">
+            <p className="mt-2 text-[11px] text-slate-600">
               Při uložení se nová smlouva označí jako Refresh.
             </p>
           )}
         </div>
       )}
+      </div>
     </section>
   );
 }

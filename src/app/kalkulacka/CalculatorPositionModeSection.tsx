@@ -33,11 +33,12 @@ export function CalculatorPositionModeSection({
   if (!isVisible) return null;
 
   return (
-    <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <section className="rounded-[1.35rem] border border-slate-300 bg-white/90 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div className="space-y-1">
-        <label className="block text-sm font-medium">Sjednána jako (pozice)</label>
+        <label className="block text-sm font-semibold text-slate-800">Sjednána jako (pozice)</label>
         <select
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+          className="w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
           value={position}
           onChange={(event) => onPositionChange(event.target.value as Position)}
         >
@@ -56,9 +57,9 @@ export function CalculatorPositionModeSection({
 
       {canChooseMode && (
         <div className="space-y-1">
-          <label className="block text-sm font-medium">Režim provize</label>
+          <label className="block text-sm font-semibold text-slate-800">Režim provize</label>
           <select
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+            className="w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
             value={mode}
             onChange={(event) => onModeChange(event.target.value as CommissionMode)}
           >
@@ -73,12 +74,13 @@ export function CalculatorPositionModeSection({
 
       {product === "neon" && isNeonHistoricalBySignedDate && (
         <div className="space-y-1">
-          <label className="block text-sm font-medium">Režim provize</label>
+          <label className="block text-sm font-semibold text-slate-800">Režim provize</label>
           <p className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-600">
             U NEON smluv sjednaných od 01.10.2019 do 30.06.2024 se režim zrychlený/běžný nepoužívá.
           </p>
         </div>
       )}
+      </div>
     </section>
   );
 }

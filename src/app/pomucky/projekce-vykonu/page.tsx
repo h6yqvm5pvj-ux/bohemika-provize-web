@@ -3,17 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
+import { CarFront, Heart, House, Minus, Plus, TrendingDown, TrendingUp, UserRound, Users } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth, db } from "@/app/firebase";
 import {
   formatMoney as formatMoneyValue,
-  positionLabel as positionLabelValue,
 } from "@/app/lib/formatters";
 import {
   calculateNeon,
   calculateCppAuto,
-  calculateAllianzAuto,
   calculateDomex,
 } from "@/app/lib/productFormulas";
 import { type Position, type CommissionMode } from "@/app/types/domain";
@@ -22,7 +21,7 @@ import SplitTitle from "../plan-produkce/SplitTitle";
 type YearRow = { year: number; total: number };
 type MonthlyTotals = Record<number, number[]>;
 type AutoInflation = 0 | 5 | 10;
-type StornoPct = 0 | 5 | 10;
+type StornoPct = 0 | 3 | 5 | 10;
 type SubordinateInput = {
   id: string;
   position: Position;
@@ -68,6 +67,8 @@ const PANEL_SOFT_CLASS =
   "rounded-[28px] border border-slate-200 bg-[linear-gradient(140deg,rgba(248,250,252,0.95)_0%,rgba(255,255,255,1)_52%,rgba(238,242,255,0.8)_100%)] px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]";
 const FIELD_CLASS =
   "w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
+const STRUCTURE_FIELD_CLASS =
+  "h-8 w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12px] text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
 const BADGE_BUTTON_BASE =
   "rounded-full border px-2.5 py-1 text-[12px] font-semibold transition";
 
@@ -75,6 +76,21 @@ function parseNumber(text: string): number {
   if (!text) return 0;
   const v = parseFloat(text.replace(",", "."));
   return Number.isNaN(v) ? 0 : v;
+}
+
+function displayNameFromUser(user: User | null): string {
+  const fromProfile = user?.displayName?.trim();
+  if (fromProfile) return fromProfile;
+
+  const localPart = user?.email?.split("@")[0] ?? "";
+  if (!localPart) return "Uživatel";
+
+  const words = localPart.split(/[._-]+/).filter(Boolean);
+  if (!words.length) return localPart;
+
+  return words
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function StornoPicker({
@@ -91,7 +107,7 @@ function StornoPicker({
       <span className="min-w-[76px] text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
         {label}
       </span>
-      {[0, 5, 10].map((val) => (
+      {[0, 3, 5, 10].map((val) => (
         <button
           key={val}
           type="button"
@@ -111,10 +127,6 @@ function StornoPicker({
 
 function formatMoney(v: number): string {
   return formatMoneyValue(v);
-}
-
-function positionLabel(pos?: Position | null): string {
-  return positionLabelValue(pos, { emptyLabel: "neznámá" });
 }
 
 function estimatePayoutDate(policyStart: Date, cutoffDay = 25): Date {
@@ -168,8 +180,7 @@ function projectAuto(
   inflationPct: AutoInflation,
   storno: StornoPct
 ) {
-  const one = calculateCppAuto(annualPremium, "annual", pos).total;
-  const two = calculateAllianzAuto(annualPremium, "annual", pos).total;
+  const autoCommission = calculateCppAuto(annualPremium, "annual", pos).total;
   const res: { date: Date; amount: number }[] = [];
   // první výplata až následující měsíc (prosincová produkce se vyplatí v lednu)
   const first = new Date(start);
@@ -177,8 +188,8 @@ function projectAuto(
   for (let y = 0; y < YEARS; y++) {
     const infl = Math.pow(1 + inflationPct / 100, y);
     const stor = Math.pow(1 - storno / 100, y);
-    const avg = ((one + two) / 2) * infl * stor;
-    res.push({ date: new Date(first.getFullYear() + y, first.getMonth(), first.getDate()), amount: avg });
+    const payout = autoCommission * infl * stor;
+    res.push({ date: new Date(first.getFullYear() + y, first.getMonth(), first.getDate()), amount: payout });
   }
   return res;
 }
@@ -481,46 +492,40 @@ export default function ProjectionPage() {
   }
 
   const renderIntro = () => (
-    <div className="w-full max-w-5xl mx-auto py-8">
-      <section className={`${PANEL_SOFT_CLASS} px-6 py-8 text-center space-y-6 sm:px-8`}>
-        <div className="space-y-3">
-          <div className="flex justify-center">
-            <SplitTitle text="Vizualizuj si výplatu do budoucna" wrap={false} />
-          </div>
-          <div className="text-2xl sm:text-3xl font-semibold text-slate-900 leading-tight">
-            Pravidelná péče o klienta zajistí pravidelný příjem!
-          </div>
-          <p className="text-sm text-slate-600 max-w-2xl mx-auto">
-            Vyber, zda modeluješ pouze vlastní produkci, nebo chceš řešit budování
-            týmu. V další kroku nastavíš vstupy a uvidíš projekci na 15 let.
-          </p>
+    <div className="w-full max-w-5xl mx-auto min-h-[56vh] py-8 text-center space-y-6 flex flex-col items-center justify-center">
+      <div className="space-y-3">
+        <div className="flex justify-center">
+          <SplitTitle text="Vizualizuj si výplatu do budoucna" wrap={false} />
         </div>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
-          <button
-            type="button"
-            onClick={() => setViewMode("individual")}
-            className="inline-flex min-w-[170px] items-center justify-center rounded-full border border-slate-900 bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(15,23,42,0.26)] transition hover:bg-black"
-          >
-            Vlastní produkce
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("team")}
-            className="inline-flex min-w-[170px] items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
-          >
-            Budování týmu
-          </button>
+        <div className="text-2xl sm:text-3xl font-semibold text-slate-900 leading-tight">
+          Pravidelná péče o klienta zajistí pravidelný příjem!
         </div>
-      </section>
+      </div>
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
+        <button
+          type="button"
+          onClick={() => setViewMode("individual")}
+          className="inline-flex min-w-[170px] items-center justify-center rounded-full border border-slate-900 bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(15,23,42,0.26)] transition hover:bg-black"
+        >
+          Vlastní produkce
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode("team")}
+          className="inline-flex min-w-[170px] items-center justify-center rounded-full border border-emerald-700 bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(5,150,105,0.34)] transition hover:bg-emerald-500"
+        >
+          Budování týmu
+        </button>
+      </div>
     </div>
   );
 
   const renderIndividual = () => (
     <div className="w-full max-w-5xl space-y-6">
-      <header className={`${PANEL_SOFT_CLASS} space-y-3`}>
+      <header className="space-y-3">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-semibold tracking-tight text-slate-900 leading-tight">
-            Poznej kouzlo následných provizí!
+            Poznej sílu následných provizí!
           </h1>
           <button
             type="button"
@@ -533,18 +538,12 @@ export default function ProjectionPage() {
         <div className="text-lg sm:text-xl font-semibold text-slate-900">
           Pravidelná péče o klienta zajistí pravidelný příjem!
         </div>
-        <p className="text-sm text-slate-600">
-          Modelace vychází u Života z provize NEONU, u Auta průměr z provize
-          ČPP a Allianz, u Majetku z DOMEXU. Modelace počítá s tím, že produkce
-          je každý měsíc stejná. Lze započítat každoroční zdražování i míru
-          stornovosti. Pozice: {positionLabel(position)}.
-        </p>
       </header>
 
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <InputCard
           title="Životní pojištění"
-          subtitle="Měsíční pojistné (NEON)"
+          subtitle="Měsíční pojistné"
           value={lifeMonthly}
           onChange={setLifeMonthly}
           tone="life"
@@ -558,7 +557,7 @@ export default function ProjectionPage() {
         />
         <InputCard
           title="Auto pojištění"
-          subtitle="Roční pojistné (průměr ČPP/Allianz Auto)"
+          subtitle="Roční pojistné"
           value={autoAnnual}
           onChange={setAutoAnnual}
           tone="auto"
@@ -593,7 +592,7 @@ export default function ProjectionPage() {
         />
         <InputCard
           title="Pojištění majetku"
-          subtitle="Roční pojistné (DOMEX, výplata dle platby)"
+          subtitle="Roční pojistné"
           value={propAnnual}
           onChange={setPropAnnual}
           tone="property"
@@ -625,36 +624,13 @@ export default function ProjectionPage() {
           </div>
         </div>
 
-        <div className="mt-2 flex items-end gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3">
-          {years.map((y, idx) => {
-            const h =
-              maxYearValue > 0
-                ? Math.max(8, Math.round((y.total / maxYearValue) * 160))
-                : 8;
-            const isActive = y.year === selectedYear;
-            return (
-              <div
-                key={y.year}
-                className="flex flex-col items-center gap-1 min-w-[48px] cursor-pointer"
-                onClick={() => setSelectedYear(y.year)}
-              >
-                <div className="text-[10px] text-slate-800 font-semibold">
-                  {formatMoney(y.total)}
-                </div>
-                <div
-                  className={`w-[38px] rounded-2xl bg-gradient-to-t from-slate-800 to-slate-500 shadow-[0_10px_20px_rgba(15,23,42,0.24)] transition-all ${
-                    isActive ? "ring-2 ring-slate-400/70" : ""
-                  }`}
-                  style={{ height: `${h}px`, transform: isActive ? "translateY(-4px)" : "translateY(0)" }}
-                  title={`Rok ${idx + 1}`}
-                />
-                <div className="text-[10px] text-slate-500">
-                  {idx + 1}. rok
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <ProjectionYearBarChart
+          years={years}
+          maxYearValue={maxYearValue}
+          selectedYear={selectedYear}
+          onSelect={setSelectedYear}
+          tone="emerald"
+        />
       </section>
 
       {selectedYear != null && monthlyByYear[selectedYear] && (
@@ -670,25 +646,13 @@ export default function ProjectionPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {monthlyByYear[selectedYear].map((val, idx) => (
-              <div
-                key={idx}
-                className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 flex items-center justify-between text-sm text-slate-900"
-              >
-                <span className="text-slate-600">{MONTH_LABELS[idx]}</span>
-                <span className="font-semibold">
-                  {val > 0 ? formatMoney(val) : "—"}
-                </span>
-              </div>
-            ))}
-          </div>
+          <MonthPayoutGrid months={monthlyByYear[selectedYear]} />
         </section>
       )}
 
       <div className="text-xs text-slate-500">
-        Odhad provize je orientační: Život dle NEON (měsíční), Auta průměr ČPP/Allianz
-        Auto, Majetek DOMEX (výplata dle platby). Výkon se opakuje každý měsíc po celou dobu.
+        Odhad provize je orientační: Život dle NEON (měsíční), Auto dle ČPP Auto,
+        Majetek DOMEX (výplata dle platby). Výkon se opakuje každý měsíc po celou dobu.
       </div>
     </div>
   );
@@ -723,10 +687,11 @@ export default function ProjectionPage() {
     };
 
     const hasTeamData = teamYears.some((y) => y.total > 0);
+    const managerName = displayNameFromUser(user);
 
     return (
-      <div className="w-full max-w-5xl space-y-6">
-        <header className={`${PANEL_SOFT_CLASS} space-y-3`}>
+      <div className="w-full max-w-none space-y-6">
+        <header className="space-y-3">
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
               Chci budovat tým
@@ -739,183 +704,362 @@ export default function ProjectionPage() {
               Změnit volbu
             </button>
           </div>
-          <p className="text-sm text-slate-600">
-            Začni zvolením manažerské pozice, následně přidej podřízené, ať už jednoho či více
-             a urči libovolný pravidelný výkon aby jsi viděl co ti budování týmu přinese.
-          </p>
         </header>
 
-        <section className={`${PANEL_CLASS} space-y-4`}>
-          <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-600">
-            Zvol manažerskou pozici
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs text-slate-500">Manažerská pozice</label>
-              <select
-                className={FIELD_CLASS}
-                value={managerPos}
-                onChange={(e) =>
-                  setManagerPos(e.target.value as ManagerPosition)
-                }
-              >
-                <option value="manazer4">Manažer 4</option>
-                <option value="manazer5">Manažer 5</option>
-                <option value="manazer6">Manažer 6</option>
-                <option value="manazer7">Manažer 7</option>
-                <option value="manazer8">Manažer 8</option>
-                <option value="manazer9">Manažer 9</option>
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs text-slate-500">
-                Tvůj Život (měsíční pojistné)
-              </label>
-              <input
-                type="number"
-                min={0}
-                className={FIELD_CLASS}
-                value={managerLifeMonthly}
-                onChange={(e) => setManagerLifeMonthly(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs text-slate-500">
-                Tvé Auto (roční pojistné)
-              </label>
-              <input
-                type="number"
-                min={0}
-                className={FIELD_CLASS}
-                value={managerAutoAnnual}
-                onChange={(e) => setManagerAutoAnnual(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs text-slate-500">
-                Tvůj Majetek (roční pojistné)
-              </label>
-              <input
-                type="number"
-                min={0}
-                className={FIELD_CLASS}
-                value={managerPropAnnual}
-                onChange={(e) => setManagerPropAnnual(e.target.value)}
-              />
-            </div>
-          </div>
-        </section>
-
         <section className="space-y-4">
-          {subordinates.map((sub, idx) => (
-            <div
-              key={sub.id}
-              className={`${PANEL_CLASS} space-y-4`}
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-800">
-                  {idx + 1}. Podřízený
-                </h3>
-                {subordinates.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeSub(sub.id)}
-                    className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
-                  >
-                    Odebrat
-                  </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs text-slate-500">
-                    Zvol pozici
-                  </label>
-                  <select
-                    className={FIELD_CLASS}
-                    value={sub.position}
-                    onChange={(e) =>
-                      updateSub(
-                        sub.id,
-                        "position",
-                        e.target.value as AdvisorPosition
-                      )
-                    }
-                  >
-                    <option value="poradce1">Poradce 1</option>
-                    <option value="poradce2">Poradce 2</option>
-                    <option value="poradce3">Poradce 3</option>
-                    <option value="poradce4">Poradce 4</option>
-                    <option value="poradce5">Poradce 5</option>
-                    <option value="poradce6">Poradce 6</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs text-slate-500">
-                    Život (měsíční pojistné)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    className={FIELD_CLASS}
-                    value={sub.lifeMonthly}
-                    onChange={(e) =>
-                      updateSub(sub.id, "lifeMonthly", e.target.value)
-                    }
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs text-slate-500">
-                    Auto (roční pojistné)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    className={FIELD_CLASS}
-                    value={sub.autoAnnual}
-                    onChange={(e) =>
-                      updateSub(sub.id, "autoAnnual", e.target.value)
-                    }
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs text-slate-500">
-                    Majetek (roční pojistné)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    className={FIELD_CLASS}
-                    value={sub.propAnnual}
-                    onChange={(e) =>
-                      updateSub(sub.id, "propAnnual", e.target.value)
-                    }
-                  />
-                </div>
-              </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                Týmová struktura
+              </p>
             </div>
-          ))}
-
-          <div className="flex justify-start">
             <button
               type="button"
               onClick={addSub}
               disabled={subordinates.length >= 20}
-              className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 rounded-full border border-emerald-700 bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(5,150,105,0.28)] transition hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              + Přidat dalšího
+              <Plus className="h-4 w-4" />
+              Přidat poradce
             </button>
           </div>
+
+          {(() => {
+            const managerCardWidth = 198;
+            const managerCardHeight = 186;
+            const subordinateCardWidth = 182;
+            const subordinateCardHeight = 190;
+            const stagePadding = 24;
+            const stageGap = 10;
+            const sideHorizontalGap = 12;
+            const stageBottomSpace = 240;
+            const count = subordinates.length;
+            const bottomCount = Math.max(0, count - 2);
+            const sideWidthNeeded =
+              managerCardWidth +
+              subordinateCardWidth * 2 +
+              sideHorizontalGap * 2 +
+              stagePadding * 2;
+            const bottomWidthNeeded =
+              bottomCount > 0
+                ? bottomCount * subordinateCardWidth +
+                  (bottomCount - 1) * stageGap +
+                  stagePadding * 2
+                : 0;
+            const stageWidth = Math.max(
+              680,
+              sideWidthNeeded,
+              bottomWidthNeeded
+            );
+            const managerLeft = stageWidth / 2 - managerCardWidth / 2;
+            const managerTop = 12;
+            const lineStartX = stageWidth / 2;
+            const lineStartY = managerTop + managerCardHeight - 4;
+            const sideTop = managerTop + 26;
+            const subBaseTop = managerTop + managerCardHeight + 34;
+
+            const layout: Array<{
+              sub: SubordinateInput;
+              idx: number;
+              left: number;
+              top: number;
+              targetX: number;
+              targetY: number;
+            }> = [];
+
+            if (count >= 1) {
+              const left = managerLeft - sideHorizontalGap - subordinateCardWidth;
+              const top = sideTop;
+              layout.push({
+                sub: subordinates[0],
+                idx: 0,
+                left,
+                top,
+                targetX: left + subordinateCardWidth + 2,
+                targetY: top + subordinateCardHeight * 0.5,
+              });
+            }
+
+            if (count >= 2) {
+              const left = managerLeft + managerCardWidth + sideHorizontalGap;
+              const top = sideTop;
+              layout.push({
+                sub: subordinates[1],
+                idx: 1,
+                left,
+                top,
+                targetX: left - 2,
+                targetY: top + subordinateCardHeight * 0.5,
+              });
+            }
+
+            const bottomSubs = subordinates.slice(2);
+            if (bottomSubs.length > 0) {
+              const rowWidth =
+                bottomSubs.length * subordinateCardWidth +
+                (bottomSubs.length - 1) * stageGap;
+              const rowLeft = stageWidth / 2 - rowWidth / 2;
+              const rowCenterIndex = (bottomSubs.length - 1) / 2;
+              bottomSubs.forEach((sub, offset) => {
+                const distanceFromCenter = Math.abs(offset - rowCenterIndex);
+                const left = rowLeft + offset * (subordinateCardWidth + stageGap);
+                const top = subBaseTop + distanceFromCenter * 10;
+                layout.push({
+                  sub,
+                  idx: offset + 2,
+                  left,
+                  top,
+                  targetX: left + subordinateCardWidth / 2,
+                  targetY: top - 8,
+                });
+              });
+            }
+
+            const maxTop = layout.length
+              ? Math.max(...layout.map((item) => item.top))
+              : managerTop;
+            const stageHeight = maxTop + subordinateCardHeight + stageBottomSpace;
+
+            return (
+              <div className="overflow-x-auto pb-2">
+                <div
+                  className="relative mx-auto"
+                  style={{ width: `${stageWidth}px`, minHeight: `${stageHeight}px` }}
+                >
+                  <svg
+                    className="pointer-events-none absolute inset-0"
+                    width={stageWidth}
+                    height={stageHeight}
+                    viewBox={`0 0 ${stageWidth} ${stageHeight}`}
+                    aria-hidden
+                  >
+                    {layout.map((item) => {
+                      const controlY = lineStartY + (item.targetY - lineStartY) * 0.44;
+                      const controlX1 = lineStartX + (item.targetX - lineStartX) * 0.12;
+                      const controlX2 = lineStartX + (item.targetX - lineStartX) * 0.88;
+                      return (
+                        <g key={`${item.sub.id}-line`}>
+                          <path
+                            d={`M ${lineStartX} ${lineStartY} C ${controlX1} ${controlY}, ${controlX2} ${controlY}, ${item.targetX} ${item.targetY}`}
+                            fill="none"
+                            stroke="rgba(148, 163, 184, 0.85)"
+                            strokeWidth="2"
+                          />
+                          <circle
+                            cx={item.targetX}
+                            cy={item.targetY}
+                            r="4"
+                            fill="rgba(14, 116, 144, 0.85)"
+                          />
+                        </g>
+                      );
+                    })}
+                    <circle cx={lineStartX} cy={lineStartY} r="5" fill="rgba(16, 185, 129, 0.9)" />
+                  </svg>
+
+                  <article
+                    className="absolute overflow-hidden rounded-[16px] border border-emerald-300 bg-[linear-gradient(160deg,rgba(236,253,245,0.95)_0%,rgba(255,255,255,1)_58%,rgba(220,252,231,0.65)_100%)] px-2 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.10)]"
+                    style={{
+                      width: `${managerCardWidth}px`,
+                      minHeight: `${managerCardHeight}px`,
+                      left: `${managerLeft}px`,
+                      top: `${managerTop}px`,
+                    }}
+                  >
+                    <span className="absolute inset-x-0 top-0 h-1 bg-emerald-500/80" aria-hidden />
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700">
+                        <UserRound className="h-3.5 w-3.5" />
+                      </span>
+                      <div>
+                        <div className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          Uživatel
+                        </div>
+                        <div className="text-sm font-semibold leading-tight text-slate-900">{managerName}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-1.5 space-y-1.5">
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-slate-500">Pozice</label>
+                        <select
+                          className={STRUCTURE_FIELD_CLASS}
+                          value={managerPos}
+                          onChange={(e) =>
+                            setManagerPos(e.target.value as ManagerPosition)
+                          }
+                        >
+                          <option value="manazer4">Manažer 4</option>
+                          <option value="manazer5">Manažer 5</option>
+                          <option value="manazer6">Manažer 6</option>
+                          <option value="manazer7">Manažer 7</option>
+                          <option value="manazer8">Manažer 8</option>
+                          <option value="manazer9">Manažer 9</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <div>
+                          <label className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                            <Heart className="h-3 w-3 text-rose-500" />
+                            Život
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            className={`${STRUCTURE_FIELD_CLASS} mt-1`}
+                            value={managerLifeMonthly}
+                            onChange={(e) => setManagerLifeMonthly(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                            <CarFront className="h-3 w-3 text-blue-500" />
+                            Auto
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            className={`${STRUCTURE_FIELD_CLASS} mt-1`}
+                            value={managerAutoAnnual}
+                            onChange={(e) => setManagerAutoAnnual(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                            <House className="h-3 w-3 text-cyan-600" />
+                            Maj.
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            className={`${STRUCTURE_FIELD_CLASS} mt-1`}
+                            value={managerPropAnnual}
+                            onChange={(e) => setManagerPropAnnual(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+
+                  {layout.map((item) => (
+                    <article
+                      key={item.sub.id}
+                      className="absolute overflow-hidden rounded-[16px] border border-sky-300 bg-[linear-gradient(160deg,rgba(239,246,255,0.96)_0%,rgba(255,255,255,1)_58%,rgba(224,242,254,0.62)_100%)] px-2 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.10)]"
+                      style={{
+                        width: `${subordinateCardWidth}px`,
+                        minHeight: `${subordinateCardHeight}px`,
+                        left: `${item.left}px`,
+                        top: `${item.top}px`,
+                      }}
+                    >
+                      <span className="absolute inset-x-0 top-0 h-1 bg-sky-500/75" aria-hidden />
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700">
+                            <Users className="h-3.5 w-3.5" />
+                          </span>
+                          <div>
+                            <div className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                              Podřízený {item.idx + 1}
+                            </div>
+                            <div className="text-sm font-semibold leading-tight text-slate-900">Poradce</div>
+                          </div>
+                        </div>
+
+                        {subordinates.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeSub(item.sub.id)}
+                            className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
+                          >
+                            Odebrat
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="mt-1.5 space-y-1.5">
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-slate-500">
+                            Pozice
+                          </label>
+                          <select
+                            className={STRUCTURE_FIELD_CLASS}
+                            value={item.sub.position}
+                            onChange={(e) =>
+                              updateSub(
+                                item.sub.id,
+                                "position",
+                                e.target.value as AdvisorPosition
+                              )
+                            }
+                          >
+                            <option value="poradce1">Poradce 1</option>
+                            <option value="poradce2">Poradce 2</option>
+                            <option value="poradce3">Poradce 3</option>
+                            <option value="poradce4">Poradce 4</option>
+                            <option value="poradce5">Poradce 5</option>
+                            <option value="poradce6">Poradce 6</option>
+                          </select>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <div>
+                            <label className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                              <Heart className="h-3 w-3 text-rose-500" />
+                              Život
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              className={`${STRUCTURE_FIELD_CLASS} mt-1`}
+                              value={item.sub.lifeMonthly}
+                              onChange={(e) =>
+                                updateSub(item.sub.id, "lifeMonthly", e.target.value)
+                              }
+                            />
+                          </div>
+                          <div>
+                            <label className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                              <CarFront className="h-3 w-3 text-blue-500" />
+                              Auto
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              className={`${STRUCTURE_FIELD_CLASS} mt-1`}
+                              value={item.sub.autoAnnual}
+                              onChange={(e) =>
+                                updateSub(item.sub.id, "autoAnnual", e.target.value)
+                              }
+                            />
+                          </div>
+                          <div>
+                            <label className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                              <House className="h-3 w-3 text-cyan-600" />
+                              Maj.
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              className={`${STRUCTURE_FIELD_CLASS} mt-1`}
+                              value={item.sub.propAnnual}
+                              onChange={(e) =>
+                                updateSub(item.sub.id, "propAnnual", e.target.value)
+                              }
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </section>
 
-        <section className={`${PANEL_CLASS} space-y-3`}>
+        <section className={`${PANEL_CLASS} mt-32 space-y-3`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] uppercase tracking-[0.18em] text-slate-600">
@@ -939,39 +1083,13 @@ export default function ProjectionPage() {
               Zadej produkci podřízených, abychom mohli spočítat meziprovizi.
             </p>
           ) : (
-            <div className="mt-2 flex items-end gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3">
-              {teamYears.map((y, idx) => {
-                const h =
-                  teamMaxYearValue > 0
-                    ? Math.max(8, Math.round((y.total / teamMaxYearValue) * 160))
-                    : 8;
-                const isActive = y.year === selectedTeamYear;
-                return (
-                  <div
-                    key={y.year}
-                    className="flex flex-col items-center gap-1 min-w-[48px] cursor-pointer"
-                    onClick={() => setSelectedTeamYear(y.year)}
-                  >
-                    <div className="text-[10px] text-slate-800 font-semibold">
-                      {formatMoney(y.total)}
-                    </div>
-                    <div
-                      className={`w-[38px] rounded-2xl bg-gradient-to-t from-emerald-700 to-emerald-500 shadow-[0_10px_22px_rgba(16,185,129,0.25)] transition-all ${
-                        isActive ? "ring-2 ring-emerald-300/70" : ""
-                      }`}
-                      style={{
-                        height: `${h}px`,
-                        transform: isActive ? "translateY(-4px)" : "translateY(0)",
-                      }}
-                      title={`Rok ${idx + 1}`}
-                    />
-                    <div className="text-[10px] text-slate-500">
-                      {idx + 1}. rok
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <ProjectionYearBarChart
+              years={teamYears}
+              maxYearValue={teamMaxYearValue}
+              selectedYear={selectedTeamYear}
+              onSelect={setSelectedTeamYear}
+              tone="emerald"
+            />
           )}
         </section>
 
@@ -990,25 +1108,13 @@ export default function ProjectionPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {teamMonthlyByYear[selectedTeamYear].map((val, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 flex items-center justify-between text-sm text-slate-900"
-                  >
-                    <span className="text-slate-600">{MONTH_LABELS[idx]}</span>
-                    <span className="font-semibold">
-                      {val > 0 ? formatMoney(val) : "—"}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <MonthPayoutGrid months={teamMonthlyByYear[selectedTeamYear]} />
             </section>
           )}
 
         <div className="text-xs text-slate-500">
           ŽIVOT vychází z provize produktu ČPP NEON a dobou trvání smlouvy alespoň 15 let. 
-          AUTO vychází z provize vyprůměrované všech AUTO Produktů, MAJETEK vychází z provize 
+          AUTO vychází z provize ČPP AUTO, MAJETEK vychází z provize 
           z produktu DOMEX. Výpočty jsou orientační a není započten 
           odvod části provize do stornofondu!
         </div>
@@ -1022,6 +1128,188 @@ export default function ProjectionPage() {
       {viewMode === "individual" && renderIndividual()}
       {viewMode === "team" && renderTeam()}
     </AppLayout>
+  );
+}
+
+function ProjectionYearBarChart({
+  years,
+  maxYearValue,
+  selectedYear,
+  onSelect,
+  tone,
+}: {
+  years: YearRow[];
+  maxYearValue: number;
+  selectedYear: number | null;
+  onSelect: (year: number) => void;
+  tone: "slate" | "emerald";
+}) {
+  const activeRingClass =
+    tone === "emerald" ? "ring-2 ring-emerald-300/70" : "ring-2 ring-slate-400/70";
+  const activeBarClass =
+    tone === "emerald"
+      ? "border-emerald-500/60 bg-gradient-to-t from-emerald-700 to-emerald-500 shadow-[0_16px_24px_rgba(16,185,129,0.24)]"
+      : "border-slate-500/70 bg-gradient-to-t from-slate-800 to-slate-500 shadow-[0_16px_24px_rgba(15,23,42,0.22)]";
+  const idleBarClass =
+    tone === "emerald"
+      ? "border-emerald-400/40 bg-gradient-to-t from-emerald-600/90 to-emerald-400/85 shadow-[0_10px_18px_rgba(16,185,129,0.16)]"
+      : "border-slate-500/35 bg-gradient-to-t from-slate-700/90 to-slate-500/80 shadow-[0_10px_18px_rgba(15,23,42,0.14)]";
+
+  return (
+    <div className="mt-2 overflow-x-auto pb-1">
+      <div className="relative min-w-max rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,rgba(248,250,252,0.95)_0%,rgba(241,245,249,0.72)_100%)] px-4 pb-3 pt-4">
+        <div className="pointer-events-none absolute inset-x-4 top-4 bottom-11">
+          {[1, 2, 3, 4].map((step) => (
+            <div
+              key={step}
+              className="absolute left-0 right-0 border-t border-slate-200/80"
+              style={{ bottom: `${step * 25}%` }}
+            />
+          ))}
+        </div>
+
+        <div className="relative z-10 flex items-end gap-3">
+          {years.map((y, idx) => {
+            const h =
+              maxYearValue > 0
+                ? Math.max(14, Math.round((y.total / maxYearValue) * 164))
+                : 14;
+            const isActive = y.year === selectedYear;
+
+            return (
+              <button
+                key={y.year}
+                type="button"
+                className="group flex min-w-[64px] flex-col items-center gap-1"
+                onClick={() => onSelect(y.year)}
+                aria-pressed={isActive}
+                title={`Rok ${idx + 1}`}
+              >
+                <div
+                  className={`text-[10px] font-semibold transition ${
+                    isActive ? "text-slate-900" : "text-slate-700"
+                  }`}
+                >
+                  {formatMoney(y.total)}
+                </div>
+
+                <div className="relative flex h-[174px] w-[46px] items-end justify-center">
+                  <div
+                    className={`w-full rounded-[16px] border transition-all duration-300 ${
+                      isActive ? activeBarClass : idleBarClass
+                    } ${isActive ? activeRingClass : ""}`}
+                    style={{
+                      height: `${h}px`,
+                      transform: isActive ? "translateY(-4px)" : "translateY(0)",
+                      opacity: isActive ? 1 : 0.9,
+                    }}
+                  />
+                </div>
+
+                <div
+                  className={`text-[11px] font-medium transition ${
+                    isActive ? "text-slate-800" : "text-slate-500"
+                  }`}
+                >
+                  {idx + 1}. rok
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonthPayoutGrid({ months }: { months: number[] }) {
+  const normalizedMonths = Array.from({ length: 12 }, (_, idx) => months[idx] ?? 0);
+  const maxMonthValue = Math.max(...normalizedMonths, 1);
+  const percentFormatter = new Intl.NumberFormat("cs-CZ", {
+    maximumFractionDigits: 1,
+  });
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {normalizedMonths.map((amount, idx) => {
+        const prevAmount = idx > 0 ? normalizedMonths[idx - 1] : null;
+        const diff = prevAmount == null ? 0 : amount - prevAmount;
+        const hasPrev = prevAmount != null;
+        const moved = Math.abs(diff) > 0.5;
+
+        const trend: "up" | "down" | "flat" =
+          !hasPrev || !moved ? "flat" : diff > 0 ? "up" : "down";
+        const quarterLabel = `Q${Math.floor(idx / 3) + 1}`;
+        const barWidthPercent = Math.max(8, Math.round((amount / maxMonthValue) * 100));
+
+        const trendMeta: Record<
+          "up" | "down" | "flat",
+          {
+            box: string;
+            icon: React.ReactNode;
+            text: string;
+          }
+        > = {
+          up: {
+            box: "border-emerald-300/80 bg-emerald-50 text-emerald-700",
+            icon: <TrendingUp className="h-3.5 w-3.5" />,
+            text:
+              hasPrev && (prevAmount ?? 0) > 0
+                ? `+${percentFormatter.format((diff / (prevAmount ?? 1)) * 100)} %`
+                : "+",
+          },
+          down: {
+            box: "border-rose-300/80 bg-rose-50 text-rose-700",
+            icon: <TrendingDown className="h-3.5 w-3.5" />,
+            text:
+              hasPrev && (prevAmount ?? 0) > 0
+                ? `${percentFormatter.format((diff / (prevAmount ?? 1)) * 100)} %`
+                : "-",
+          },
+          flat: {
+            box: "border-slate-300 bg-slate-50 text-slate-600",
+            icon: <Minus className="h-3.5 w-3.5" />,
+            text: hasPrev ? "Beze změny" : "Start roku",
+          },
+        };
+
+        return (
+          <article
+            key={`${MONTH_LABELS[idx]}-${idx}`}
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.06)] transition hover:-translate-y-[1px] hover:shadow-[0_12px_24px_rgba(15,23,42,0.1)]"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  {quarterLabel}
+                </p>
+                <p className="text-xl font-semibold text-slate-900">{MONTH_LABELS[idx]}</p>
+              </div>
+              <div
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold ${trendMeta[trend].box}`}
+                title="Změna oproti předchozímu měsíci"
+              >
+                {trendMeta[trend].icon}
+                <span>{trendMeta[trend].text}</span>
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-end justify-between gap-2">
+              <p className="text-[30px] font-semibold leading-none text-slate-900">{formatMoney(amount)}</p>
+            </div>
+
+            <div className="mt-3">
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all"
+                  style={{ width: `${barWidthPercent}%` }}
+                />
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
   );
 }
 

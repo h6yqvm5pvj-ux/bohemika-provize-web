@@ -79,6 +79,7 @@ type ComfortBrand = "argor" | "pamp";
 const COMFORT_BRAND_REFERENCES = {
   argor: {
     label: "ARGOR",
+    cardLabel: "ARGOR HERAEUS",
     asOf: "2. 5. 2026",
     spotCzkPerOz: 95911.45,
     purity: "999.9 Au",
@@ -110,10 +111,20 @@ const COMFORT_BRAND_REFERENCES = {
         imageSrc: "/icons/argor5g.png",
         spotCzkPerOz: 95911.45,
       },
+      {
+        label: "ARGOR 2 g",
+        displayWeight: "2 g",
+        grams: 2,
+        sellCzk: 7447,
+        buybackCzk: 6214,
+        imageSrc: "/icons/argor2g.png",
+        spotCzkPerOz: 95911.45,
+      },
     ],
   },
   pamp: {
     label: "PAMP",
+    cardLabel: "PAMP",
     asOf: "20. 4. 2026",
     spotCzkPerOz: 98810.8,
     purity: "999.9 Au",
@@ -148,6 +159,12 @@ const COMFORT_BRAND_REFERENCES = {
     ],
   },
 } as const;
+
+function getDefaultComfortIndex(brand: ComfortBrand): number {
+  const products = COMFORT_BRAND_REFERENCES[brand].products;
+  const oneOzIndex = products.findIndex((product) => Math.abs(product.grams - OUNCE_G) < 0.001);
+  return oneOzIndex >= 0 ? oneOzIndex : 0;
+}
 
 function downsamplePoints(pts: Point[], maxPoints = 1400): Point[] {
   if (!pts || pts.length <= maxPoints) return pts;
@@ -844,7 +861,7 @@ function ChangeChip({ label, value }: { label: string; value: number | null | un
 export default function GoldToolPage() {
   const [view, setView] = useState<GoldView>("movement");
   const [comfortBrand, setComfortBrand] = useState<ComfortBrand>("argor");
-  const [activeComfortIndex, setActiveComfortIndex] = useState(0);
+  const [activeComfortIndex, setActiveComfortIndex] = useState(() => getDefaultComfortIndex("argor"));
   const [unit, setUnit] = useState<UnitKey>("oz");
   const [range, setRange] = useState<RangeKey>("y1");
   const [loadingRange, setLoadingRange] = useState(false);
@@ -925,8 +942,14 @@ export default function GoldToolPage() {
   }, [comfortReference, czkPerOz]);
 
   useEffect(() => {
-    setActiveComfortIndex(0);
+    setActiveComfortIndex(getDefaultComfortIndex(comfortBrand));
   }, [comfortBrand]);
+
+  useEffect(() => {
+    if (view === "comfort") {
+      setActiveComfortIndex(getDefaultComfortIndex(comfortBrand));
+    }
+  }, [comfortBrand, view]);
 
   useEffect(() => {
     setActiveComfortIndex((prev) => {
@@ -1400,7 +1423,7 @@ export default function GoldToolPage() {
                             <div className="relative z-10 flex items-start justify-between gap-3">
                               <div>
                                 <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                                  {comfortReference.label}
+                                  {comfortReference.cardLabel}
                                 </div>
                                 <div className="text-2xl font-semibold tracking-tight text-slate-950">{row.displayWeight}</div>
                               </div>

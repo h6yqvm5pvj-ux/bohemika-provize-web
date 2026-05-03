@@ -60,18 +60,21 @@ export function CalculatorContractDetailsSection({
   if (!isVisible) return null;
 
   return (
-    <section className="space-y-3">
-      <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-        <FileText size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+    <section className="relative overflow-hidden rounded-[1.35rem] border border-slate-300 bg-white/90 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+      <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#94a3b8_56%,#e2e8f0_100%)]" aria-hidden="true" />
+      <h2 className="mb-3 inline-flex items-center gap-2 text-sm font-bold text-slate-900">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700">
+          <FileText size={14} strokeWidth={2} aria-hidden="true" />
+        </span>
         <span>Detaily smlouvy</span>
       </h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-1">
-          <label className="block text-sm font-medium">Jméno a příjmení klienta</label>
+          <label className="block text-sm font-semibold text-slate-800">Jméno a příjmení klienta</label>
           <div className="relative">
             <input
               type="text"
-              className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 ${
+              className={`w-full rounded-2xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:ring-2 ${
                 missingFields.includes("jméno klienta")
                   ? "border-rose-400/70 focus:border-rose-500 focus:ring-rose-500"
                   : pdfMatchedClientName
@@ -93,7 +96,7 @@ export function CalculatorContractDetailsSection({
               </p>
             )}
             {filteredClientSuggestions.length > 0 && clientSuggestionsOpen && (
-              <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-slate-300 bg-white shadow-[0_14px_40px_rgba(0,0,0,0.7)] backdrop-blur-2xl">
+              <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-slate-300 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-2xl">
                 {filteredClientSuggestions.map((name) => (
                   <button
                     key={name}
@@ -111,10 +114,10 @@ export function CalculatorContractDetailsSection({
         </div>
 
         <div className="space-y-1">
-          <label className="block text-sm font-medium">Datum sjednání smlouvy</label>
+          <label className="block text-sm font-semibold text-slate-800">Datum sjednání smlouvy</label>
           <input
             type="date"
-            className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+            className={`w-full rounded-2xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
               missingFields.includes("datum sjednání") ? "border-rose-400/70" : "border-slate-300"
             }`}
             value={contractSignedDate}
@@ -123,10 +126,10 @@ export function CalculatorContractDetailsSection({
         </div>
 
         <div className="space-y-1">
-          <label className="block text-sm font-medium">Číslo smlouvy</label>
+          <label className="block text-sm font-semibold text-slate-800">Číslo smlouvy</label>
           <input
             type="text"
-            className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+            className={`w-full rounded-2xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
               missingFields.includes("číslo smlouvy") ? "border-rose-400/70" : "border-slate-300"
             }`}
             value={contractNumber}
@@ -147,10 +150,10 @@ export function CalculatorContractDetailsSection({
         </div>
 
         <div className="space-y-1">
-          <label className="block text-sm font-medium">Datum počátku smlouvy</label>
+          <label className="block text-sm font-semibold text-slate-800">Datum počátku smlouvy</label>
           <input
             type="date"
-            className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+            className={`w-full rounded-2xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
               missingFields.includes("datum počátku") ? "border-rose-400/70" : "border-slate-300"
             }`}
             value={policyStartDate}
@@ -164,10 +167,10 @@ export function CalculatorContractDetailsSection({
 
         {showPolicyEndDateField && (
           <div className="space-y-1">
-            <label className="block text-sm font-medium">Pojištění do (volitelné)</label>
+            <label className="block text-sm font-semibold text-slate-800">Pojištění do (volitelné)</label>
             <input
               type="date"
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+              className="w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
               value={policyEndDate}
               onChange={(event) => onPolicyEndDateChange(event.target.value)}
             />

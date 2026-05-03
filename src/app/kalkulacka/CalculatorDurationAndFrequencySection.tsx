@@ -62,10 +62,15 @@ export function CalculatorDurationAndFrequencySection({
   onFrequencyChange,
 }: CalculatorDurationAndFrequencySectionProps) {
   return (
-    <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <section className="rounded-[1.35rem] border border-slate-300 bg-white/85 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-bold text-slate-900">Parametry smlouvy</h2>
+        <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       {shouldShowDuration(product) && (
         <div className="space-y-1">
-          <label className="block text-sm font-medium">
+          <label className="block text-sm font-semibold text-slate-800">
             <span className="inline-flex items-center gap-2">
               Doba trvání smlouvy
               {durationHelp && (
@@ -88,7 +93,7 @@ export function CalculatorDurationAndFrequencySection({
           )}
           <input
             type="number"
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+            className="w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
             value={durationYears ?? ""}
             onChange={(event) => {
               const raw = event.target.value.trim();
@@ -110,9 +115,9 @@ export function CalculatorDurationAndFrequencySection({
 
       {product === "maxcizinkomplex" && (
         <div className="space-y-1">
-          <label className="block text-sm font-medium">Varianta produktu</label>
+          <label className="block text-sm font-semibold text-slate-800">Varianta produktu</label>
           <select
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+            className="w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
             value={maxCizinKomplexVariant}
             onChange={(event) => onMaxCizinVariantChange(event.target.value as MaxCizinKomplexVariant)}
           >
@@ -127,12 +132,12 @@ export function CalculatorDurationAndFrequencySection({
 
       {shouldShowDurationMonths(product) && (
         <div className="space-y-1">
-          <label className="block text-sm font-medium">Doba trvání smlouvy (měsíce)</label>
+          <label className="block text-sm font-semibold text-slate-800">Doba trvání smlouvy (měsíce)</label>
           <input
             type="number"
             min={durationMonthsRange(product)[0]}
             max={durationMonthsRange(product)[1]}
-            className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+            className={`w-full rounded-2xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
               missingFields.includes("dobu trvání v měsících")
                 ? "border-rose-400/70"
                 : "border-slate-300"
@@ -157,7 +162,7 @@ export function CalculatorDurationAndFrequencySection({
       )}
 
       <div className="space-y-1">
-        <label className="block text-sm font-medium">
+        <label className="block text-sm font-semibold text-slate-800">
           <span className="inline-flex items-center gap-1.5">
             <SlidersHorizontal size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
             <span>Parametry platby</span>
@@ -165,7 +170,7 @@ export function CalculatorDurationAndFrequencySection({
         </label>
         {hasFrequencyPicker ? (
           <select
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+            className="w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
             value={frequency}
             onChange={(event) => onFrequencyChange(event.target.value as PaymentFrequency)}
           >
@@ -178,6 +183,7 @@ export function CalculatorDurationAndFrequencySection({
         ) : !isLifeProduct ? (
           <p className="text-sm text-slate-700">{defaultFrequencyText(product)}</p>
         ) : null}
+      </div>
       </div>
     </section>
   );
