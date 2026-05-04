@@ -33,7 +33,6 @@ import { AppLayout } from "@/components/AppLayout";
 import { formatMoney, toDate } from "@/app/lib/formatters";
 import {
   contractLifecycleStatus,
-  contractMaturityDate,
 } from "@/app/lib/contractLifecycle";
 import {
   AUTO_PRODUCTS,
@@ -316,23 +315,6 @@ function isContractDozita(
     | undefined
 ): boolean {
   return contractLifecycleStatus(contract) === "dozita";
-}
-
-function stornoDateLabel(value: unknown): string | null {
-  const d = toDate(value);
-  if (!d) return null;
-  return d.toLocaleDateString("cs-CZ");
-}
-
-function dozitaDateLabel(
-  contract:
-    | ContractDoc
-    | null
-    | undefined
-): string | null {
-  const d = contractMaturityDate(contract);
-  if (!d) return null;
-  return d.toLocaleDateString("cs-CZ");
 }
 
 function formatDaysLeft(days: number): string {
@@ -2127,8 +2109,6 @@ function ContractsPageContent() {
                 const lifecycleStatus = contractLifecycleStatus(c as ContractDoc);
                 const isStorno = lifecycleStatus === "storno";
                 const isDozita = lifecycleStatus === "dozita";
-                const stornoDate = stornoDateLabel((c as ContractDoc).stornoDate);
-                const dozitaDate = isDozita ? dozitaDateLabel(c as ContractDoc) : null;
                 const groupedEntryCount = Number((c as ContractDoc).groupedEntryCount ?? 1);
                 const groupedEndorsementCount = Number(
                   (c as ContractDoc).groupedEndorsementCount ?? 0
@@ -2197,16 +2177,6 @@ function ContractsPageContent() {
                         {isRefreshContract && (
                           <span className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-800">
                             Refresh
-                          </span>
-                        )}
-                        {isStorno && (
-                          <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-                            {stornoDate ? `Storno ${stornoDate}` : "Storno"}
-                          </span>
-                        )}
-                        {isDozita && (
-                          <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
-                            {dozitaDate ? `Dožitá ${dozitaDate}` : "Dožitá"}
                           </span>
                         )}
                         {groupedEndorsementCount > 0 && (

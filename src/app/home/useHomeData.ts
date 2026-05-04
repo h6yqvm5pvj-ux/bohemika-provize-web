@@ -58,10 +58,13 @@ type HomeCachePayload = {
   hasTeam: boolean;
   myContractsCount: number;
   myImmediateSum: number;
+  myImmediatePrevSum: number;
   myTipContractsCount: number;
   myTipImmediateSum: number;
+  myTipImmediatePrevSum: number;
   teamContractsCount: number;
   teamImmediateSum: number;
+  teamImmediatePrevSum: number;
 };
 
 export type HomeDataState = {
@@ -72,10 +75,13 @@ export type HomeDataState = {
   hasTeam: boolean;
   myContractsCount: number;
   myImmediateSum: number;
+  myImmediatePrevSum: number;
   myTipContractsCount: number;
   myTipImmediateSum: number;
+  myTipImmediatePrevSum: number;
   teamContractsCount: number;
   teamImmediateSum: number;
+  teamImmediatePrevSum: number;
   summaryLoading: boolean;
   historyLoading: boolean;
   loading: boolean;
@@ -206,10 +212,13 @@ export function useHomeData({
   const [hasTeam, setHasTeam] = useState(false);
   const [myContractsCount, setMyContractsCount] = useState(0);
   const [myImmediateSum, setMyImmediateSum] = useState(0);
+  const [myImmediatePrevSum, setMyImmediatePrevSum] = useState(0);
   const [myTipContractsCount, setMyTipContractsCount] = useState(0);
   const [myTipImmediateSum, setMyTipImmediateSum] = useState(0);
+  const [myTipImmediatePrevSum, setMyTipImmediatePrevSum] = useState(0);
   const [teamContractsCount, setTeamContractsCount] = useState(0);
   const [teamImmediateSum, setTeamImmediateSum] = useState(0);
+  const [teamImmediatePrevSum, setTeamImmediatePrevSum] = useState(0);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -226,10 +235,13 @@ export function useHomeData({
       setHasTeam(payload.hasTeam);
       setMyContractsCount(payload.myContractsCount);
       setMyImmediateSum(payload.myImmediateSum);
+      setMyImmediatePrevSum(payload.myImmediatePrevSum ?? 0);
       setMyTipContractsCount(payload.myTipContractsCount ?? 0);
       setMyTipImmediateSum(payload.myTipImmediateSum ?? 0);
+      setMyTipImmediatePrevSum(payload.myTipImmediatePrevSum ?? 0);
       setTeamContractsCount(payload.teamContractsCount);
       setTeamImmediateSum(payload.teamImmediateSum);
+      setTeamImmediatePrevSum(payload.teamImmediatePrevSum ?? 0);
     };
 
     const load = async () => {
@@ -247,6 +259,21 @@ export function useHomeData({
         }
 
         let bearerToken = await currentUser.getIdToken();
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        const monthStart = new Date(currentYear, currentMonth, 1);
+        const previousMonthStart = new Date(currentYear, currentMonth - 1, 1);
+        const nextMonthStart = new Date(currentYear, currentMonth + 1, 1);
+        const personalRangeStart = loadPersonalHistory
+          ? new Date(currentYear, currentMonth - 11, 1)
+          : monthStart;
+        const teamRangeStart = loadTeamHistory
+          ? new Date(currentYear, currentMonth - 11, 1)
+          : monthStart;
+        const summaryRangeStartMs = previousMonthStart.getTime();
+        const personalRangeStartMs = personalRangeStart.getTime();
+        const teamRangeStartMs = teamRangeStart.getTime();
 
         const requestContracts = async (
           scope: "my" | "team",
@@ -287,7 +314,7 @@ export function useHomeData({
           cursor?: string | null
         ): Promise<TipPayoutsApiResponse> => {
           const params = new URLSearchParams({ limit: "100" });
-          params.set("payoutFrom", String(monthStart.getTime()));
+          params.set("payoutFrom", String(summaryRangeStartMs));
           if (cursor) params.set("cursor", cursor);
 
           const requestWithToken = async (token: string) =>
@@ -313,12 +340,14 @@ export function useHomeData({
           return data;
         };
 
-        const collectTipSummaryForCurrentMonth = async (): Promise<{
+        const collectTipSummaryForRecentMonths = async (): Promise<{
           tipContractsCount: number;
           tipImmediateSum: number;
+          tipImmediatePrevSum: number;
         }> => {
-          const tipSourcesInMonth = new Set<string>();
+          const tipSourcesInCurrentMonth = new Set<string>();
           let tipImmediateSum = 0;
+          let tipImmediatePrevSum = 0;
           let cursor: string | null = null;
           let hasMore = true;
           let pages = 0;
@@ -341,10 +370,7 @@ export function useHomeData({
                   : null;
               const productionTs = signedTs ?? payoutTs;
               if (productionTs == null) return;
-              if (
-                productionTs < monthStart.getTime() ||
-                productionTs >= nextMonthStart.getTime()
-              ) {
+              if (productionTs < previousMonthStart.getTime()) {
                 return;
               }
               const amount =
@@ -352,11 +378,24 @@ export function useHomeData({
                   ? item.amount
                   : 0;
               if (!(amount > 0)) return;
+              if (
+                productionTs >= previousMonthStart.getTime() &&
+                productionTs < monthStart.getTime()
+              ) {
+                tipImmediatePrevSum += amount;
+                return;
+              }
+              if (
+                productionTs < monthStart.getTime() ||
+                productionTs >= nextMonthStart.getTime()
+              ) {
+                return;
+              }
               const sourceToken =
                 typeof item.sourceToken === "string" && item.sourceToken.trim()
                   ? item.sourceToken.trim()
                   : `payout:${String(item.id ?? "").trim() || String(payoutTs ?? "")}`;
-              tipSourcesInMonth.add(sourceToken);
+              tipSourcesInCurrentMonth.add(sourceToken);
               tipImmediateSum += amount;
             });
 
@@ -368,26 +407,13 @@ export function useHomeData({
           }
 
           return {
-            tipContractsCount: tipSourcesInMonth.size,
+            tipContractsCount: tipSourcesInCurrentMonth.size,
             tipImmediateSum,
+            tipImmediatePrevSum,
           };
         };
 
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        const monthStart = new Date(currentYear, currentMonth, 1);
-        const nextMonthStart = new Date(currentYear, currentMonth + 1, 1);
-        const personalRangeStart = loadPersonalHistory
-          ? new Date(currentYear, currentMonth - 11, 1)
-          : monthStart;
-        const teamRangeStart = loadTeamHistory
-          ? new Date(currentYear, currentMonth - 11, 1)
-          : monthStart;
-        const monthStartMs = monthStart.getTime();
-        const personalRangeStartMs = personalRangeStart.getTime();
-        const teamRangeStartMs = teamRangeStart.getTime();
-        const tipSummaryPromise = collectTipSummaryForCurrentMonth().catch(
+        const tipSummaryPromise = collectTipSummaryForRecentMonths().catch(
           (tipErr) => {
             console.warn(
               "[home] načtení TIP výplat selhalo, pokračuji bez nich.",
@@ -396,6 +422,7 @@ export function useHomeData({
             return {
               tipContractsCount: 0,
               tipImmediateSum: 0,
+              tipImmediatePrevSum: 0,
             };
           }
         );
@@ -479,13 +506,17 @@ export function useHomeData({
           return { entries, hasTeamHint, teamEmailsHint, positionHint };
         };
 
-        const summarizeOwnMonth = (entries: EntryDoc[]) => {
+        const summarizeOwnRange = (
+          entries: EntryDoc[],
+          rangeStart: Date,
+          rangeEnd: Date
+        ) => {
           let count = 0;
           let immediate = 0;
           entries.forEach((data) => {
             const signed = entrySignedDate(data);
             if (!signed) return;
-            if (signed < monthStart || signed >= nextMonthStart) return;
+            if (signed < rangeStart || signed >= rangeEnd) return;
             count += 1;
 
             const items = (data.items ?? []) as CommissionResultItemDTO[];
@@ -497,13 +528,17 @@ export function useHomeData({
           return { count, immediate };
         };
 
-        const summarizeTeamMonth = (entries: EntryDoc[]) => {
+        const summarizeTeamRange = (
+          entries: EntryDoc[],
+          rangeStart: Date,
+          rangeEnd: Date
+        ) => {
           let count = 0;
           let immediate = 0;
           entries.forEach((data) => {
             const signed = entrySignedDate(data);
             if (!signed) return;
-            if (!(signed >= monthStart && signed < nextMonthStart)) return;
+            if (!(signed >= rangeStart && signed < rangeEnd)) return;
             count += 1;
 
             const override = (data.managerOverrides as ManagerOverrideSnapshot[] | undefined)?.find(
@@ -523,7 +558,7 @@ export function useHomeData({
         };
 
         // Fáze 1: rychlé souhrny za aktuální měsíc (UI dostane čísla co nejdřív)
-        const ownSummaryResult = await collectScope("my", monthStartMs);
+        const ownSummaryResult = await collectScope("my", summaryRangeStartMs);
         if (!position && ownSummaryResult.positionHint) {
           position = ownSummaryResult.positionHint;
         }
@@ -533,7 +568,7 @@ export function useHomeData({
         let teamSummaryEntries: EntryDoc[] = [];
         if (hasTeamValue) {
           try {
-            const teamSummaryResult = await collectScope("team", monthStartMs);
+            const teamSummaryResult = await collectScope("team", summaryRangeStartMs);
             teamSummaryEntries = teamSummaryResult.entries;
             hasTeamValue = hasTeamValue || teamSummaryEntries.length > 0;
           } catch (teamErr) {
@@ -546,30 +581,51 @@ export function useHomeData({
           }
         }
 
-        const ownMonth = summarizeOwnMonth(ownSummaryResult.entries);
-        const teamMonth = summarizeTeamMonth(teamSummaryEntries);
+        const ownMonth = summarizeOwnRange(
+          ownSummaryResult.entries,
+          monthStart,
+          nextMonthStart
+        );
+        const ownPrevMonth = summarizeOwnRange(
+          ownSummaryResult.entries,
+          previousMonthStart,
+          monthStart
+        );
+        const teamMonth = summarizeTeamRange(
+          teamSummaryEntries,
+          monthStart,
+          nextMonthStart
+        );
+        const teamPrevMonth = summarizeTeamRange(
+          teamSummaryEntries,
+          previousMonthStart,
+          monthStart
+        );
         const tipSummary = await tipSummaryPromise;
 
         if (!cancelled) {
           setHasTeam(hasTeamValue);
           setMyContractsCount(ownMonth.count);
           setMyImmediateSum(ownMonth.immediate);
+          setMyImmediatePrevSum(ownPrevMonth.immediate);
           setMyTipContractsCount(tipSummary.tipContractsCount);
           setMyTipImmediateSum(tipSummary.tipImmediateSum);
+          setMyTipImmediatePrevSum(tipSummary.tipImmediatePrevSum);
           setTeamContractsCount(teamMonth.count);
           setTeamImmediateSum(teamMonth.immediate);
+          setTeamImmediatePrevSum(teamPrevMonth.immediate);
           setSummaryLoading(false);
           setLoading(false);
         }
 
         // Fáze 2: historie pro graf/leaderboard (může doběhnout později)
         const ownHistoryResult =
-          loadPersonalHistory && personalRangeStartMs < monthStartMs
+          loadPersonalHistory && personalRangeStartMs < summaryRangeStartMs
             ? await collectScope("my", personalRangeStartMs)
             : ownSummaryResult;
 
         let teamHistoryEntriesAll: EntryDoc[] = teamSummaryEntries;
-        if (hasTeamValue && loadTeamHistory && teamRangeStartMs < monthStartMs) {
+        if (hasTeamValue && loadTeamHistory && teamRangeStartMs < summaryRangeStartMs) {
           try {
             const teamHistoryResult = await collectScope("team", teamRangeStartMs);
             teamHistoryEntriesAll = teamHistoryResult.entries;
@@ -602,10 +658,13 @@ export function useHomeData({
           hasTeam: hasTeamValue,
           myContractsCount: ownMonth.count,
           myImmediateSum: ownMonth.immediate,
+          myImmediatePrevSum: ownPrevMonth.immediate,
           myTipContractsCount: tipSummary.tipContractsCount,
           myTipImmediateSum: tipSummary.tipImmediateSum,
+          myTipImmediatePrevSum: tipSummary.tipImmediatePrevSum,
           teamContractsCount: teamMonth.count,
           teamImmediateSum: teamMonth.immediate,
+          teamImmediatePrevSum: teamPrevMonth.immediate,
         };
 
         if (!cancelled) {
@@ -753,10 +812,13 @@ export function useHomeData({
     hasTeam,
     myContractsCount,
     myImmediateSum,
+    myImmediatePrevSum,
     myTipContractsCount,
     myTipImmediateSum,
+    myTipImmediatePrevSum,
     teamContractsCount,
     teamImmediateSum,
+    teamImmediatePrevSum,
     summaryLoading,
     historyLoading,
     loading,

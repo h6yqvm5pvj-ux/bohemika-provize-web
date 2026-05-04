@@ -507,7 +507,17 @@ function collectChainEmailsFromUsers(firstManagerEmail, usersByEmail) {
     }
     return emails;
 }
-function resolveChainEmailsForEntry(entry, ownerEmail, usersByEmail) {
+function resolveChainEmailsForEntry(entry, ownerEmail, usersByEmail, options) {
+    const forcedFirstManager = normalizeEmail(options?.forcedFirstManagerEmail ?? null);
+    if (forcedFirstManager) {
+        return collectChainEmailsFromUsers(forcedFirstManager, usersByEmail);
+    }
+    if (options?.preferOwnerManager) {
+        const ownerForced = usersByEmail.get(ownerEmail)?.managerEmail ?? null;
+        if (ownerForced) {
+            return collectChainEmailsFromUsers(ownerForced, usersByEmail);
+        }
+    }
     const chainFromEntry = normalizeManagerChain(entry.managerChain).map((row) => row.email);
     if (chainFromEntry.length > 0)
         return chainFromEntry;
@@ -521,9 +531,9 @@ function resolveChainEmailsForEntry(entry, ownerEmail, usersByEmail) {
     }
     return [];
 }
-function buildManagerChainForEntry(entry, ownerEmail, usersByEmail, signedDateIso) {
+function buildManagerChainForEntry(entry, ownerEmail, usersByEmail, signedDateIso, options) {
     const existingChain = normalizeManagerChain(entry.managerChain);
-    const chainEmails = resolveChainEmailsForEntry(entry, ownerEmail, usersByEmail);
+    const chainEmails = resolveChainEmailsForEntry(entry, ownerEmail, usersByEmail, options);
     return chainEmails.map((email, idx) => {
         const existingNode = existingChain.find((node) => node.email === email) ?? existingChain[idx] ?? null;
         const userData = usersByEmail.get(email);
@@ -657,6 +667,17 @@ function collectSubordinates(managerEmail, childrenByManager) {
 async function main() {
     const args = process.argv.slice(2);
     const apply = args.includes("--apply");
+    const preferOwnerManager = args.includes("--prefer-owner-manager");
+    const forceOwnerManager = args.includes("--force-owner-manager");
+    const forcedFirstManagerEmail = normalizeEmail(parseArgValue(args, "--force-manager-email"));
+    const ownersArg = parseArgValue(args, "--owners");
+    const ownerEmailsFilter = ownersArg
+        ? ownersArg
+            .split(",")
+            .map((item) => normalizeEmail(item))
+            .filter((item) => !!item)
+        : [];
+    const ownerEmailsFilterSet = new Set(ownerEmailsFilter);
     const managerEmail = normalizeEmail(parseArgValue(args, "--manager") ?? "jakub.rauscher@bohemika.eu");
     if (!managerEmail) {
         throw new Error("Missing --manager email.");
@@ -725,17 +746,35 @@ async function main() {
         arr.push(user.email);
         childrenByManager.set(mgr, Array.from(new Set(arr)));
     });
-    const subordinateEmails = collectSubordinates(managerEmail, childrenByManager);
+    const subordinateEmails = ownerEmailsFilter.length > 0
+        ? ownerEmailsFilter
+        : collectSubordinates(managerEmail, childrenByManager);
     if (subordinateEmails.length === 0) {
         console.log(`No subordinates found for ${managerEmail}.`);
         return;
     }
+    const missingOwners = subordinateEmails.filter((email) => !usersByEmail.has(email));
+    if (missingOwners.length > 0) {
+        throw new Error(`Owner emails not found in users collection: ${missingOwners.join(", ")}`);
+    }
     console.log(`Manager ${managerEmail}: ${subordinateEmails.length} subordinate users found.`);
+    if (ownerEmailsFilter.length > 0) {
+        console.log(`Owner filter active: ${ownerEmailsFilter.join(", ")}`);
+    }
+    if (forcedFirstManagerEmail) {
+        console.log(`Forced first manager email: ${forcedFirstManagerEmail}`);
+    }
+    if (forceOwnerManager || preferOwnerManager) {
+        console.log(`Manager chain source: ${forceOwnerManager ? "owner.managerEmail (forced)" : "owner.managerEmail (preferred)"}`);
+    }
     const plannedUpdates = [];
     let scannedEntries = 0;
     let skippedUnsupportedProduct = 0;
     let skippedMissingSignedDate = 0;
     for (const ownerEmail of subordinateEmails) {
+        if (ownerEmailsFilterSet.size > 0 && !ownerEmailsFilterSet.has(ownerEmail)) {
+            continue;
+        }
         const ownerRecord = usersByEmail.get(ownerEmail);
         const ownerDocIds = ownerRecord?.docIds?.length ? ownerRecord.docIds : [ownerEmail];
         for (const ownerDocId of ownerDocIds) {
@@ -757,7 +796,10 @@ async function main() {
                     skippedMissingSignedDate += 1;
                     continue;
                 }
-                const managerChain = buildManagerChainForEntry(entry, ownerEmail, usersByEmail, signedDateIso);
+                const managerChain = buildManagerChainForEntry(entry, ownerEmail, usersByEmail, signedDateIso, {
+                    preferOwnerManager: forceOwnerManager || preferOwnerManager,
+                    forcedFirstManagerEmail,
+                });
                 const managerOverrides = computeManagerOverridesForEntry(entry, managerChain);
                 const managerEmailSnapshot = managerChain[0]?.email ?? null;
                 const managerPositionSnapshot = managerChain[0]?.position ?? null;

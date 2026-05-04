@@ -191,7 +191,7 @@ export function CalculatorProductPickerModal({
                               <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                 {productInstitutionLabel(productId)}
                               </span>
-                              <span className="block truncate text-sm font-semibold text-slate-900">
+                              <span className="block whitespace-normal break-words text-sm font-semibold leading-5 text-slate-900">
                                 {option.label}
                               </span>
                             </span>

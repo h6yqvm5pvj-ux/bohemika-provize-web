@@ -275,10 +275,13 @@ export default function HomePage() {
     hasTeam,
     myContractsCount,
     myImmediateSum,
+    myImmediatePrevSum,
     myTipContractsCount,
     myTipImmediateSum,
+    myTipImmediatePrevSum,
     teamContractsCount,
     teamImmediateSum,
+    teamImmediatePrevSum,
     summaryLoading,
     historyLoading,
   } = useHomeData({
@@ -620,8 +623,12 @@ export default function HomePage() {
   const showTeamBox = hasTeam;
 
   const baseProduction = myImmediateSum;
+  const prevBaseProduction = myImmediatePrevSum;
   const totalWithTeam =
     baseProduction + (showTeamBox ? teamImmediateSum + myTipImmediateSum : 0);
+  const totalPrevWithTeam =
+    prevBaseProduction +
+    (showTeamBox ? teamImmediatePrevSum + myTipImmediatePrevSum : 0);
   const totalContractsCount =
     myContractsCount + (showTeamBox ? teamContractsCount : 0);
 
@@ -737,12 +744,16 @@ export default function HomePage() {
             showTeamBox={showTeamBox}
             myContractsCount={myContractsCount}
             myImmediateSum={myImmediateSum}
+            myImmediatePrevSum={myImmediatePrevSum}
             myTipContractsCount={myTipContractsCount}
             myTipImmediateSum={myTipImmediateSum}
+            myTipImmediatePrevSum={myTipImmediatePrevSum}
             teamContractsCount={teamContractsCount}
             teamImmediateSum={teamImmediateSum}
+            teamImmediatePrevSum={teamImmediatePrevSum}
             totalContractsCount={totalContractsCount}
             totalWithTeam={totalWithTeam}
+            totalPrevWithTeam={totalPrevWithTeam}
             isLiteUI={isLiteUI}
           />
         );
