@@ -1,7 +1,12 @@
 // src/app/api/contracts/route.ts
 import { NextResponse, type NextRequest } from "next/server";
+import { createHash } from "node:crypto";
 
-import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { adminDb } from "@/lib/server/firebaseAdmin";
+import {
+  requireAuthedRateLimited,
+  withRateLimitHeaders,
+} from "@/lib/server/apiEntryGuard";
 import {
   type CommissionMode,
   type CommissionResultItemDTO,
@@ -57,7 +62,6 @@ import {
   calculateComfortCC,
   normalizeNeonDurationYears,
 } from "@/app/lib/productFormulas";
-import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
 type FirestoreTimestamp = {
   seconds: number;
@@ -99,6 +103,9 @@ type ContractDoc = {
   clientPhone?: string | null;
   clientAddress?: string | null;
   contractNumber?: string | null;
+  duplicateLookupKey?: string | null;
+  cppExtranetEntityTypeId?: string | number | null;
+  cppExtranetEntityId?: string | number | null;
   tipContractTipsterEmail?: string | null;
   tipContractTipsterName?: string | null;
   tipContractTipsterPercent?: number | null;
@@ -241,6 +248,20 @@ type ContractsFindResponse = {
   contracts: ContractResponseItem[];
 };
 
+type ContractsPrecheckEntry = {
+  id: string;
+  contractNumber: string | null;
+  ownerEmail: string;
+};
+
+type ContractsPrecheckResponse = {
+  ok: true;
+  productKey: Product | null;
+  clientName: string | null;
+  signedDate: string | null;
+  similarContracts: ContractsPrecheckEntry[];
+};
+
 type ErrorResponse = { ok: false; error: string };
 type ContractListFilterMode = "latest" | "anniversary";
 type ContractListResponseShape = "full" | "home";
@@ -310,6 +331,8 @@ const CONTRACT_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONTRACTS_CREATE_RATE_LIMIT = 30;
 const CONTRACTS_CREATE_RATE_LIMIT_WINDOW_MS = 60_000;
+const CONTRACTS_CREATE_IDEMPOTENCY_HEADER = "x-idempotency-key";
+const CONTRACTS_CREATE_IDEMPOTENCY_MAX_LEN = 200;
 const TIP_CONTRACT_PERCENT_MIN = 5;
 const TIP_CONTRACT_PERCENT_MAX = 95;
 const TIP_CONTRACT_PERCENT_STEP = 5;
@@ -518,6 +541,8 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "clientPhone",
   "clientAddress",
   "contractNumber",
+  "cppExtranetEntityTypeId",
+  "cppExtranetEntityId",
   "contractSignedDate",
   "policyStartDate",
   "policyEndDate",
@@ -588,6 +613,8 @@ const UPDATE_FIELDS_OPTIONAL_TEXT_FIELDS = new Set<string>([
   "carAssistancePlan",
   "carHullSumInsuredText",
   "carHullDeductibleText",
+  "cppExtranetEntityTypeId",
+  "cppExtranetEntityId",
   "note",
 ]);
 const UPDATE_FIELDS_OPTIONAL_NUMBER_FIELDS = new Set<string>([
@@ -1259,6 +1286,7 @@ type NormalizedCreateEntryPayload = {
   maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
   userEmail: string;
   contractNumber: string;
+  duplicateLookupKey: string | null;
   tipContractTipsterEmail: string | null;
   tipContractTipsterName: string | null;
   tipContractTipsterPercent: number | null;
@@ -1764,6 +1792,7 @@ const normalizeCreateEntryPayload = ({
           : null,
       userEmail: ownerEmail,
       contractNumber: contractNumberParsed.value,
+      duplicateLookupKey: null,
       tipContractTipsterEmail: tipContractTipsterEmail || null,
       tipContractTipsterName: null,
       tipContractTipsterPercent,
@@ -3259,6 +3288,22 @@ const normalizeContractNumber = (value: string | null | undefined): string =>
 const normalizeContractNumberLoose = (value: string | null | undefined): string =>
   normalizeContractNumber(value).replace(/^0+/, "");
 
+const parseIdempotencyKeyFromRequest = (req: NextRequest): string | null => {
+  const raw = req.headers.get(CONTRACTS_CREATE_IDEMPOTENCY_HEADER);
+  if (!raw) return null;
+  const normalized = raw.trim();
+  if (!normalized) return null;
+  return normalized.slice(0, CONTRACTS_CREATE_IDEMPOTENCY_MAX_LEN);
+};
+
+const buildIdempotentEntryId = (ownerEmail: string, idempotencyKey: string): string => {
+  const hash = createHash("sha256")
+    .update(`${normalizeEmail(ownerEmail)}::${idempotencyKey}`)
+    .digest("hex")
+    .slice(0, 40);
+  return `idem_${hash}`;
+};
+
 const contractNumberClaimDocId = (value: string | null | undefined): string =>
   encodeURIComponent(normalizeContractNumber(value).toLowerCase());
 
@@ -3275,6 +3320,26 @@ const isFirestoreFailedPrecondition = (error: unknown): boolean => {
   return /FAILED_PRECONDITION/i.test(message);
 };
 
+const isFirestoreAlreadyExists = (error: unknown): boolean => {
+  const numericCode =
+    typeof (error as { code?: unknown })?.code === "number"
+      ? (error as { code?: number }).code
+      : null;
+  if (numericCode === 6) return true;
+
+  const stringCode =
+    typeof (error as { code?: unknown })?.code === "string"
+      ? ((error as { code?: string }).code ?? "").toLowerCase()
+      : "";
+  if (stringCode === "already-exists" || stringCode === "already_exists") return true;
+
+  const message =
+    typeof (error as { message?: unknown })?.message === "string"
+      ? (error as { message?: string }).message ?? ""
+      : "";
+  return /already exists/i.test(message) || /ALREADY_EXISTS/i.test(message);
+};
+
 const normalizeContractEntryType = (
   value: unknown
 ): "contract" | "endorsement" | null => {
@@ -3284,6 +3349,38 @@ const normalizeContractEntryType = (
     return normalized;
   }
   return null;
+};
+
+const normalizeClientNameForDuplicate = (
+  value: string | null | undefined
+): string => (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+
+const isoDayFromUnknown = (value: unknown): string | null => {
+  const date = toDate(value);
+  if (!date) return null;
+  return date.toISOString().slice(0, 10);
+};
+
+const buildDuplicateLookupKey = ({
+  entryType,
+  productKey,
+  clientName,
+  contractSignedDate,
+}: {
+  entryType: unknown;
+  productKey: unknown;
+  clientName: unknown;
+  contractSignedDate: unknown;
+}): string | null => {
+  if (normalizeContractEntryType(entryType) !== "contract") return null;
+  if (typeof productKey !== "string" || !productKey.trim()) return null;
+  const client = normalizeClientNameForDuplicate(
+    typeof clientName === "string" ? clientName : null
+  );
+  if (!client) return null;
+  const signedDay = isoDayFromUnknown(contractSignedDate);
+  if (!signedDay) return null;
+  return `${productKey.trim()}___${client}___${signedDay}`;
 };
 
 type ExistingContractByNumber = {
@@ -4248,7 +4345,11 @@ const loadUserSubscriptionStatus = async ({
 };
 
 async function getAuthContext(
-  req: NextRequest,
+  identity: {
+    email: string;
+    uid: string;
+    rawTokenEmail: string;
+  },
   options: AuthContextOptions = {}
 ) {
   const {
@@ -4256,31 +4357,14 @@ async function getAuthContext(
     requireActiveSubscription = false,
   } = options;
 
-  if (!adminAuth || !adminDb) {
+  if (!adminDb) {
     return { error: "Server není správně nakonfigurován (chybí Firebase Admin credentials).", status: 500 } as const;
   }
-  const authHeader = req.headers.get("authorization") ?? "";
-  const token = authHeader.toLowerCase().startsWith("bearer ")
-    ? authHeader.slice(7).trim()
-    : null;
-  if (!token) {
-    return { error: "Missing bearer token", status: 401 } as const;
-  }
-
-  let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
-  try {
-    decoded = await adminAuth.verifyIdToken(token, true);
-  } catch (err: any) {
-    const msg = err?.message || "Invalid or expired token";
-    const code = err?.code || "auth/invalid-token";
-    return { error: `Invalid or expired token (${code}): ${msg}`, status: 401 } as const;
-  }
-
-  const email = normalizeEmail(decoded.email);
+  const email = normalizeEmail(identity.email);
   if (!email) {
     return { error: "User e-mail missing in token", status: 401 } as const;
   }
-  const rawTokenEmail = typeof decoded.email === "string" ? decoded.email.trim() : "";
+  const rawTokenEmail = identity.rawTokenEmail;
 
   const { users, childrenByManager } = await getCachedUserTree();
   const me = users.find((u) => u.email === email) ?? null;
@@ -4292,7 +4376,7 @@ async function getAuthContext(
     const subscriptionStatus = await loadUserSubscriptionStatus({
       email,
       rawTokenEmail,
-      uid: decoded.uid,
+      uid: identity.uid,
     });
     if (subscriptionStatus === "expired") {
       return { error: "Účet má expirované předplatné.", status: 403 } as const;
@@ -4308,7 +4392,7 @@ async function getAuthContext(
 
   return {
     email,
-    uid: decoded.uid,
+    uid: identity.uid,
     position,
     teamEmails,
     users,
@@ -4316,37 +4400,74 @@ async function getAuthContext(
   };
 }
 
+type ContractsEntryGuardResult =
+  | { ok: false; response: NextResponse }
+  | {
+      ok: true;
+      ctx: Awaited<ReturnType<typeof getAuthContext>> extends infer T
+        ? T extends { error: string; status: number }
+          ? never
+          : T
+        : never;
+      withRateLimit: (response: NextResponse) => NextResponse;
+    };
+
+async function requireContractsEntryGuard(
+  req: NextRequest,
+  rateLimit: {
+    namespace: string;
+    limit: number;
+    windowMs: number;
+  }
+): Promise<ContractsEntryGuardResult> {
+  const guard = await requireAuthedRateLimited(req, rateLimit);
+  if (!guard.ok) return guard;
+
+  const rawTokenEmail =
+    typeof guard.ctx.decoded.email === "string"
+      ? guard.ctx.decoded.email.trim()
+      : "";
+  const authCtx = await getAuthContext(
+    {
+      email: guard.ctx.email,
+      uid: guard.ctx.uid,
+      rawTokenEmail,
+    },
+    {
+      requireKnownUser: true,
+      requireActiveSubscription: true,
+    }
+  );
+  if ("error" in authCtx) {
+    return {
+      ok: false,
+      response: withRateLimitHeaders(
+        NextResponse.json({ ok: false, error: authCtx.error }, { status: authCtx.status }),
+        guard.ctx
+      ),
+    };
+  }
+
+  return {
+    ok: true,
+    ctx: authCtx,
+    withRateLimit: (response: NextResponse) =>
+      withRateLimitHeaders(response, guard.ctx),
+  };
+}
+
 export async function handleContractsGet(
   req: NextRequest,
   mode: ContractsGetMode = "auto"
 ) {
-  const ctx = await getAuthContext(req, {
-    requireKnownUser: true,
-    requireActiveSubscription: true,
-  });
-  if ("error" in ctx) {
-    return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
-  }
-
-  const { email, position, teamEmails, users } = ctx;
-  const rateLimitResult = consumeRateLimit({
+  const guard = await requireContractsEntryGuard(req, {
     namespace: "api:contracts:get",
-    key: email,
     limit: CONTRACTS_GET_RATE_LIMIT,
     windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,
   });
-  if (!rateLimitResult.allowed) {
-    const response = NextResponse.json(
-      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
-      { status: 429 }
-    );
-    applyRateLimitHeaders(response.headers, rateLimitResult);
-    return response;
-  }
-  const withGetRateLimitHeaders = (response: NextResponse) => {
-    applyRateLimitHeaders(response.headers, rateLimitResult);
-    return response;
-  };
+  if (!guard.ok) return guard.response;
+  const { ctx, withRateLimit } = guard;
+  const { email, position, teamEmails, users } = ctx;
 
   const search = req.nextUrl.searchParams;
   const detailOwnerEmail = normalizeEmail(search.get("ownerEmail"));
@@ -4503,7 +4624,7 @@ export async function handleContractsGet(
       },
     };
 
-    return withGetRateLimitHeaders(NextResponse.json(response));
+    return withRateLimit(NextResponse.json(response));
   }
 
   const scopeParam = search.get("scope") === "team" ? "team" : "my";
@@ -4589,37 +4710,18 @@ export async function handleContractsGet(
     teamNextCursorToken,
   };
 
-  return withGetRateLimitHeaders(NextResponse.json(response));
+  return withRateLimit(NextResponse.json(response));
 }
 
 export async function handleContractsFind(req: NextRequest) {
-  const ctx = await getAuthContext(req, {
-    requireKnownUser: true,
-    requireActiveSubscription: true,
-  });
-  if ("error" in ctx) {
-    return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
-  }
-
-  const { email, teamEmails } = ctx;
-  const rateLimitResult = consumeRateLimit({
+  const guard = await requireContractsEntryGuard(req, {
     namespace: "api:contracts:find",
-    key: email,
     limit: CONTRACTS_GET_RATE_LIMIT,
     windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,
   });
-  if (!rateLimitResult.allowed) {
-    const response = NextResponse.json(
-      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
-      { status: 429 }
-    );
-    applyRateLimitHeaders(response.headers, rateLimitResult);
-    return response;
-  }
-  const withFindRateLimitHeaders = (response: NextResponse) => {
-    applyRateLimitHeaders(response.headers, rateLimitResult);
-    return response;
-  };
+  if (!guard.ok) return guard.response;
+  const { ctx, withRateLimit } = guard;
+  const { email, teamEmails } = ctx;
 
   const search = req.nextUrl.searchParams;
   const queryRaw = (search.get("q") ?? "").trim();
@@ -4646,7 +4748,7 @@ export async function handleContractsFind(req: NextRequest) {
       query: queryRaw,
       contracts: [],
     };
-    return withFindRateLimitHeaders(NextResponse.json(emptyResponse));
+    return withRateLimit(NextResponse.json(emptyResponse));
   }
 
   const allowedOwners =
@@ -4719,34 +4821,163 @@ export async function handleContractsFind(req: NextRequest) {
     query: queryRaw,
     contracts,
   };
-  return withFindRateLimitHeaders(NextResponse.json(response));
+  return withRateLimit(NextResponse.json(response));
+}
+
+export async function handleContractsPrecheck(req: NextRequest) {
+  const guard = await requireContractsEntryGuard(req, {
+    namespace: "api:contracts:precheck",
+    limit: CONTRACTS_GET_RATE_LIMIT,
+    windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!guard.ok) return guard.response;
+  const { ctx, withRateLimit } = guard;
+  const { email } = ctx;
+
+  const search = req.nextUrl.searchParams;
+  const productRaw = (search.get("productKey") ?? "").trim();
+  const signedDateRaw = (search.get("signedDate") ?? "").trim();
+  const clientNameRaw = (search.get("clientName") ?? "").trim();
+
+  const productKey = productRaw ? (productRaw as Product) : null;
+  if (productKey && !SUPPORTED_PRODUCTS.has(productKey)) {
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "Pole productKey má nepodporovanou hodnotu." } satisfies ErrorResponse,
+        { status: 400 }
+      )
+    );
+  }
+
+  if (signedDateRaw && !isIsoDay(signedDateRaw)) {
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "Pole signedDate musí být ve formátu YYYY-MM-DD." } satisfies ErrorResponse,
+        { status: 400 }
+      )
+    );
+  }
+
+  const signedDate = signedDateRaw || null;
+  const normalizedClient = normalizeClientNameForDuplicate(clientNameRaw);
+
+  if (!productKey || !signedDate || !normalizedClient) {
+    const emptyResponse: ContractsPrecheckResponse = {
+      ok: true,
+      productKey,
+      clientName: clientNameRaw || null,
+      signedDate,
+      similarContracts: [],
+    };
+    return withRateLimit(NextResponse.json(emptyResponse));
+  }
+
+  if (!adminDb) {
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "Server není správně nakonfigurován (chybí Firebase Admin credentials)." } satisfies ErrorResponse,
+        { status: 500 }
+      )
+    );
+  }
+
+  const entriesRef = adminDb.collection("users").doc(email).collection("entries");
+  const lookupKey = buildDuplicateLookupKey({
+    entryType: "contract",
+    productKey,
+    clientName: clientNameRaw,
+    contractSignedDate: signedDate,
+  });
+  if (!lookupKey) {
+    const emptyResponse: ContractsPrecheckResponse = {
+      ok: true,
+      productKey,
+      clientName: clientNameRaw || null,
+      signedDate,
+      similarContracts: [],
+    };
+    return withRateLimit(NextResponse.json(emptyResponse));
+  }
+
+  const similarContracts: ContractsPrecheckEntry[] = [];
+  const keyedSnap = await entriesRef.where("duplicateLookupKey", "==", lookupKey).get();
+  keyedSnap.docs.forEach((docSnap) => {
+    const data = (docSnap.data() ?? {}) as ContractDoc;
+    if (normalizeContractEntryType(data.entryType) !== "contract") return;
+    similarContracts.push({
+      id: docSnap.id,
+      contractNumber:
+        typeof data.contractNumber === "string" && data.contractNumber.trim()
+          ? data.contractNumber.trim()
+          : null,
+      ownerEmail: email,
+    });
+  });
+
+  if (similarContracts.length === 0) {
+    // Fallback pro starší záznamy bez duplicateLookupKey; zároveň průběžný backfill indexu.
+    const productSnap = await entriesRef.where("productKey", "==", productKey).get();
+    const backfillBatch = adminDb.batch();
+    let backfillOps = 0;
+
+    productSnap.docs.forEach((docSnap) => {
+      const data = (docSnap.data() ?? {}) as ContractDoc;
+      const resolvedLookupKey = buildDuplicateLookupKey({
+        entryType: data.entryType,
+        productKey: data.productKey,
+        clientName: data.clientName,
+        contractSignedDate: data.contractSignedDate,
+      });
+      if (resolvedLookupKey && !data.duplicateLookupKey && backfillOps < 350) {
+        backfillBatch.set(docSnap.ref, { duplicateLookupKey: resolvedLookupKey }, { merge: true });
+        backfillOps += 1;
+      }
+
+      if (normalizeContractEntryType(data.entryType) !== "contract") return;
+      if (normalizeClientNameForDuplicate(data.clientName) !== normalizedClient) return;
+      if (isoDayFromUnknown(data.contractSignedDate) !== signedDate) return;
+
+      similarContracts.push({
+        id: docSnap.id,
+        contractNumber:
+          typeof data.contractNumber === "string" && data.contractNumber.trim()
+            ? data.contractNumber.trim()
+            : null,
+        ownerEmail: email,
+      });
+    });
+
+    if (backfillOps > 0) {
+      try {
+        await backfillBatch.commit();
+      } catch (backfillErr) {
+        console.warn("GET /api/contracts/precheck: duplicateLookupKey backfill selhal:", backfillErr);
+      }
+    }
+  }
+
+  const response: ContractsPrecheckResponse = {
+    ok: true,
+    productKey,
+    clientName: clientNameRaw || null,
+    signedDate,
+    similarContracts,
+  };
+  return withRateLimit(NextResponse.json(response));
 }
 
 export async function handleContractsCreate(req: NextRequest) {
+  let withRateLimit: ((response: NextResponse) => NextResponse) | null = null;
   try {
-    const ctx = await getAuthContext(req, {
-      requireKnownUser: true,
-      requireActiveSubscription: true,
-    });
-    if ("error" in ctx) {
-      return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
-    }
-    const { email, uid } = ctx;
-
-    const rateLimitResult = consumeRateLimit({
+    const guard = await requireContractsEntryGuard(req, {
       namespace: "api:contracts:create",
-      key: email,
       limit: CONTRACTS_CREATE_RATE_LIMIT,
       windowMs: CONTRACTS_CREATE_RATE_LIMIT_WINDOW_MS,
     });
-    if (!rateLimitResult.allowed) {
-      const response = NextResponse.json(
-        { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
-        { status: 429 }
-      );
-      applyRateLimitHeaders(response.headers, rateLimitResult);
-      return response;
-    }
+    if (!guard.ok) return guard.response;
+    withRateLimit = guard.withRateLimit;
+    const ctx = guard.ctx;
+    const { email, uid } = ctx;
 
     let body: unknown;
     try {
@@ -4781,6 +5012,15 @@ export async function handleContractsCreate(req: NextRequest) {
         { status: 500 }
       );
     }
+    const db = adminDb;
+    const ownerEntriesRef = db.collection("users").doc(email).collection("entries");
+    const idempotencyKey = parseIdempotencyKeyFromRequest(req);
+    const idempotentEntryId = idempotencyKey
+      ? buildIdempotentEntryId(email, idempotencyKey)
+      : null;
+    const idempotentEntryRef = idempotentEntryId
+      ? ownerEntriesRef.doc(idempotentEntryId)
+      : null;
 
     const signedDateIso = toIsoDay(normalizedEntry.payload.contractSignedDate);
     const callerProfile = await loadCallerProfile({
@@ -4938,7 +5178,24 @@ export async function handleContractsCreate(req: NextRequest) {
       managerChain: trustedManagerChain,
       managerOverrides: trustedManagerOverrides,
       allowedEmails: trustedAllowedEmails,
+      duplicateLookupKey: buildDuplicateLookupKey({
+        entryType: normalizedEntry.payload.entryType,
+        productKey: normalizedEntry.payload.productKey,
+        clientName: normalizedEntry.payload.clientName,
+        contractSignedDate: normalizedEntry.payload.contractSignedDate,
+      }),
     };
+
+    if (idempotentEntryRef) {
+      const existingIdempotentSnap = await idempotentEntryRef.get();
+      if (existingIdempotentSnap.exists) {
+        return withRateLimit(NextResponse.json({
+          ok: true,
+          entryId: existingIdempotentSnap.id,
+          idempotentReplay: true,
+        }));
+      }
+    }
 
     if (trustedPayload.entryType === "contract") {
       const existingContract = await findExistingContractByNumber(
@@ -4957,9 +5214,7 @@ export async function handleContractsCreate(req: NextRequest) {
     }
 
     try {
-      const db = adminDb;
-      const ownerEntriesRef = db.collection("users").doc(email).collection("entries");
-      const createdRef = ownerEntriesRef.doc();
+      const createdRef = idempotentEntryRef ?? ownerEntriesRef.doc();
 
       if (trustedPayload.entryType === "contract") {
         const contractNumberNormalized = normalizeContractNumber(
@@ -5070,9 +5325,23 @@ export async function handleContractsCreate(req: NextRequest) {
         ok: true,
         entryId: createdRef.id,
       });
-      applyRateLimitHeaders(response.headers, rateLimitResult);
-      return response;
+      return withRateLimit(response);
     } catch (createErr: any) {
+      if (idempotentEntryRef && isFirestoreAlreadyExists(createErr)) {
+        try {
+          const replaySnap = await idempotentEntryRef.get();
+          if (replaySnap.exists) {
+            return withRateLimit(NextResponse.json({
+              ok: true,
+              entryId: replaySnap.id,
+              idempotentReplay: true,
+            }));
+          }
+        } catch (replayErr) {
+          console.warn("POST /api/contracts create: idempotent replay read selhal:", replayErr);
+        }
+      }
+
       const message =
         typeof createErr?.message === "string" && createErr.message.trim()
           ? createErr.message.trim()
@@ -5103,10 +5372,11 @@ export async function handleContractsCreate(req: NextRequest) {
         ? unexpectedErr.message.trim()
         : "Neznámá neočekávaná chyba při ukládání smlouvy.";
     console.error("POST /api/contracts create neočekávaně selhal:", unexpectedErr);
-    return NextResponse.json(
+    const response = NextResponse.json(
       { ok: false, error: `Uložení smlouvy selhalo: ${message}` },
       { status: 500 }
     );
+    return withRateLimit ? withRateLimit(response) : response;
   }
 }
 
@@ -5114,29 +5384,14 @@ export async function handleContractsPatch(
   req: NextRequest,
   forcedAction?: ContractsPatchAction
 ) {
-  const ctx = await getAuthContext(req, {
-    requireKnownUser: true,
-    requireActiveSubscription: true,
-  });
-  if ("error" in ctx) {
-    return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
-  }
-  const { email, teamEmails } = ctx;
-
-  const rateLimitResult = consumeRateLimit({
+  const guard = await requireContractsEntryGuard(req, {
     namespace: "api:contracts:patch",
-    key: email,
     limit: CONTRACTS_MUTATION_RATE_LIMIT,
     windowMs: CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS,
   });
-  if (!rateLimitResult.allowed) {
-    const response = NextResponse.json(
-      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
-      { status: 429 }
-    );
-    applyRateLimitHeaders(response.headers, rateLimitResult);
-    return response;
-  }
+  if (!guard.ok) return guard.response;
+  const { ctx, withRateLimit } = guard;
+  const { email, teamEmails } = ctx;
 
   let body: any;
   try {
@@ -5194,6 +5449,13 @@ export async function handleContractsPatch(
       const batch = adminDb.batch();
       if (entrySnap.exists) {
         const data = (entrySnap.data() ?? {}) as ContractDoc;
+        const duplicateLookupKey = buildDuplicateLookupKey({
+          entryType: data.entryType,
+          productKey: data.productKey,
+          clientName: data.clientName,
+          contractSignedDate: data.contractSignedDate,
+        });
+        batch.set(entryRef, { duplicateLookupKey }, { merge: true });
         applyContractRefToBatch({
           batch,
           ownerEmail,
@@ -5221,10 +5483,10 @@ export async function handleContractsPatch(
         );
       }
 
-      return NextResponse.json({
+      return withRateLimit(NextResponse.json({
         ok: true,
         indexed: entrySnap.exists,
-      });
+      }));
     } catch (syncErr: any) {
       const message =
         typeof syncErr?.message === "string" && syncErr.message.trim()
@@ -5238,11 +5500,11 @@ export async function handleContractsPatch(
     }
   }
   if (action === "syncCppStatus" && !CPP_STATUS_SYNC_ENABLED) {
-    return NextResponse.json({
+    return withRateLimit(NextResponse.json({
       ok: true,
       skipped: true,
       reason: "cpp-sync-disabled",
-    });
+    }));
   }
 
   if (action === "syncCppStatus") {
@@ -5299,11 +5561,11 @@ export async function handleContractsPatch(
       const entryData = entrySnap.data() as ContractDoc | undefined;
       const productKey = entryData?.productKey as Product | undefined;
       if (!productKey || !CPP_STATUS_SYNC_PRODUCTS.has(productKey)) {
-        return NextResponse.json({
+        return withRateLimit(NextResponse.json({
           ok: true,
           skipped: true,
           reason: "unsupported-product",
-        });
+        }));
       }
 
       const contractNumberRaw =
@@ -5357,12 +5619,12 @@ export async function handleContractsPatch(
       }
 
       if (!matched) {
-        return NextResponse.json({
+        return withRateLimit(NextResponse.json({
           ok: true,
           matched: false,
           contractNumber,
           dateFrom: fallbackDateFrom ?? primaryDateFrom,
-        });
+        }));
       }
 
       const remoteStatus = normalizeCppContractState(matched.status);
@@ -5465,7 +5727,7 @@ export async function handleContractsPatch(
         }
       }
 
-      return NextResponse.json({
+      return withRateLimit(NextResponse.json({
         ok: true,
         matched: true,
         contractNumber,
@@ -5473,7 +5735,7 @@ export async function handleContractsPatch(
         appliedStatus,
         stornoDateMs: stornoDateValue ? stornoDateValue.getTime() : null,
         updated,
-      });
+      }));
     } catch (cppSyncErr: any) {
       const message =
         typeof cppSyncErr?.message === "string" && cppSyncErr.message.trim()
@@ -5602,8 +5864,21 @@ export async function handleContractsPatch(
 
     const batch = db.batch();
     entryRefs.forEach((ref, idx) => {
-      batch.update(ref, payload);
       const currentData = (entrySnaps[idx]?.data() ?? {}) as ContractDoc;
+      const updatePayload: Record<string, unknown> = { ...payload };
+      const finalDuplicateLookupKey = buildDuplicateLookupKey({
+        entryType: currentData.entryType ?? "contract",
+        productKey: currentData.productKey,
+        clientName: hasOwn(updatePayload, "clientName")
+          ? updatePayload.clientName
+          : currentData.clientName,
+        contractSignedDate: hasOwn(updatePayload, "contractSignedDate")
+          ? updatePayload.contractSignedDate
+          : currentData.contractSignedDate,
+      });
+      updatePayload.duplicateLookupKey = finalDuplicateLookupKey;
+
+      batch.update(ref, updatePayload);
       const hasContractNumberUpdate = Object.prototype.hasOwnProperty.call(
         payload,
         "contractNumber"
@@ -5646,7 +5921,7 @@ export async function handleContractsPatch(
       }
     }
 
-    return NextResponse.json({ ok: true, updated: entryRefs.length });
+    return withRateLimit(NextResponse.json({ ok: true, updated: entryRefs.length }));
   }
 
   const entries = Array.isArray(body.entries) ? body.entries : [];
@@ -5697,33 +5972,18 @@ export async function handleContractsPatch(
     }
   }
 
-  return NextResponse.json({ ok: true, updated });
+  return withRateLimit(NextResponse.json({ ok: true, updated }));
 }
 
 export async function handleContractsDelete(req: NextRequest) {
-  const ctx = await getAuthContext(req, {
-    requireKnownUser: true,
-    requireActiveSubscription: true,
-  });
-  if ("error" in ctx) {
-    return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
-  }
-  const { email, teamEmails } = ctx;
-
-  const rateLimitResult = consumeRateLimit({
+  const guard = await requireContractsEntryGuard(req, {
     namespace: "api:contracts:delete",
-    key: email,
     limit: CONTRACTS_MUTATION_RATE_LIMIT,
     windowMs: CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS,
   });
-  if (!rateLimitResult.allowed) {
-    const response = NextResponse.json(
-      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
-      { status: 429 }
-    );
-    applyRateLimitHeaders(response.headers, rateLimitResult);
-    return response;
-  }
+  if (!guard.ok) return guard.response;
+  const { ctx, withRateLimit } = guard;
+  const { email, teamEmails } = ctx;
 
   let body: any;
   try {
@@ -5845,7 +6105,7 @@ export async function handleContractsDelete(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, deleted });
+  return withRateLimit(NextResponse.json({ ok: true, deleted }));
 }
 
 export async function handleContractsList(req: NextRequest) {

@@ -19,8 +19,7 @@ import {
   type ChangeEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
   AlignCenter,
   AlignJustify,
@@ -42,9 +41,9 @@ import {
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import { auth } from "@/app/firebase-auth";
-import { db } from "@/app/firebase";
 
 const modernSans = Manrope({
   subsets: ["latin", "latin-ext"],
@@ -307,6 +306,20 @@ type FooterProfile = {
   officeAddress: string;
 };
 
+type UserProfileApiResponse = {
+  ok?: boolean;
+  profile?: {
+    tvorbaFooterProfile?: Partial<FooterProfile>;
+    [key: string]: unknown;
+  };
+};
+
+type AiAssistantApiResponse = {
+  ok?: boolean;
+  reply?: string;
+  error?: string;
+};
+
 type PlacedImage = {
   id: string;
   src: string;
@@ -490,8 +503,7 @@ const FONT_OPTIONS: FontOption[] = [
 ];
 
 const DEFAULT_FONT_KEY = FONT_OPTIONS[0]?.key ?? "manrope";
-const AI_ASSISTANT_ENDPOINT =
-  "https://europe-central2-bohemikasmlouvy.cloudfunctions.net/aiAssistant";
+const AI_ASSISTANT_ENDPOINT = "/api/ai-assistant";
 const PDF_QUALITY_PRESETS: Record<
   PdfQualityPreset,
   {
@@ -624,6 +636,18 @@ function writeLocalFooterProfile(email: string | null, profile: FooterProfile) {
   }
 }
 
+async function syncFooterProfileToCloud(
+  user: FirebaseUser,
+  profile: FooterProfile
+): Promise<void> {
+  await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+    method: "PATCH",
+    body: JSON.stringify({
+      tvorbaFooterProfile: profile,
+    }),
+  });
+}
+
 export default function TvorbaPage() {
   const pageRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -710,17 +734,10 @@ export default function TvorbaPage() {
     const nextProfile = collectFooterProfile();
     writeLocalFooterProfile(userEmail, nextProfile);
     if (syncCloud && userEmail) {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
       try {
-        await setDoc(
-          doc(db, "users", userEmail),
-          {
-            tvorbaFooterProfile: {
-              ...nextProfile,
-              updatedAt: new Date().toISOString(),
-            },
-          },
-          { merge: true }
-        );
+        await syncFooterProfileToCloud(currentUser, nextProfile);
       } catch (error) {
         console.warn("Nepodařilo se synchronizovat draft patičky do cloudu:", error);
       }
@@ -812,25 +829,29 @@ export default function TvorbaPage() {
       return;
     }
 
+    const activeUser = auth.currentUser;
+    if (!activeUser) {
+      setAiError("Pro AI asistenta je potřeba přihlášení.");
+      return;
+    }
+
     setAiLoading(true);
     setAiError(null);
 
     try {
-      const response = await fetch(AI_ASSISTANT_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: buildAiPrompt(),
-        }),
-      });
-
-      const payload = (await response.json().catch(() => ({}))) as {
-        reply?: string;
-        error?: string;
-      };
+      const payload = await fetchAuthedJsonOrThrow<AiAssistantApiResponse>(
+        activeUser,
+        AI_ASSISTANT_ENDPOINT,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            prompt: buildAiPrompt(),
+          }),
+        }
+      );
 
       const reply = String(payload.reply ?? "").trim();
-      if (!response.ok) {
+      if (payload?.ok === false) {
         throw new Error(reply || payload.error || "AI asistent neodpověděl.");
       }
       if (!reply) {
@@ -962,6 +983,8 @@ export default function TvorbaPage() {
 
         const normalized = normalizeEmail(authEmail);
         if (!normalized) return;
+        const activeUser = user;
+        if (!activeUser) return;
 
         if (!cancelled) {
           setUserEmail(normalized);
@@ -974,24 +997,13 @@ export default function TvorbaPage() {
         }
 
         try {
-          const ref = doc(db, "users", normalized);
-          let snap = await getDoc(ref);
-          if (!snap.exists() && authEmail !== normalized) {
-            const rawRef = doc(db, "users", authEmail);
-            const rawSnap = await getDoc(rawRef);
-            if (rawSnap.exists()) {
-              snap = rawSnap;
-              try {
-                await setDoc(ref, rawSnap.data(), { merge: true });
-              } catch (error) {
-                console.warn("Nepodařilo se migrovat user profil na lowercase email:", error);
-              }
-            }
-          }
-          if (!snap.exists() || cancelled) return;
-
-          const data = snap.data() as { tvorbaFooterProfile?: Partial<FooterProfile> };
-          const profile = data.tvorbaFooterProfile;
+          const payload = await fetchAuthedJsonOrThrow<UserProfileApiResponse>(
+            activeUser,
+            "/api/user/profile",
+            { method: "GET" }
+          );
+          if (cancelled) return;
+          const profile = payload.profile?.tvorbaFooterProfile;
           if (!profile) return;
 
           const merged: FooterProfile = {
@@ -1736,16 +1748,10 @@ export default function TvorbaPage() {
       writeLocalFooterProfile(userEmail, profileToSave);
 
       if (userEmail) {
-        await setDoc(
-          doc(db, "users", userEmail),
-          {
-            tvorbaFooterProfile: {
-              ...profileToSave,
-              updatedAt: new Date().toISOString(),
-            },
-          },
-          { merge: true }
-        );
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          await syncFooterProfileToCloud(currentUser, profileToSave);
+        }
       }
 
       setSaveStatus(

@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
 import { Download, Eye } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
-import { auth, db } from "@/app/firebase";
+import { auth } from "@/app/firebase";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
   formatMoney,
   positionLabel as positionLabelValue,
@@ -99,6 +99,13 @@ type BlockEstimate = {
   totalImmediate: number;
 };
 
+type UserProfileApiResponse = {
+  ok?: boolean;
+  profile?: {
+    position?: Position | null;
+  };
+};
+
 export default function PlanProdukcePage() {
   const [user, setUser] = useState<User | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
@@ -123,12 +130,20 @@ export default function PlanProdukcePage() {
         setPosition(null);
         return;
       }
-      const ref = doc(db, "users", current.email.toLowerCase());
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const data = snap.data() as { position?: Position };
-        setPosition(data.position ?? null);
-      } else {
+      try {
+        const payload = await fetchAuthedJsonOrThrow<UserProfileApiResponse>(
+          current,
+          "/api/user/profile",
+          { method: "GET" }
+        );
+        const profilePosition = payload?.profile?.position;
+        if (typeof profilePosition === "string") {
+          setPosition(profilePosition as Position);
+        } else {
+          setPosition(null);
+        }
+      } catch (err) {
+        console.error("Načtení profilu pro plán produkce selhalo:", err);
         setPosition(null);
       }
     });

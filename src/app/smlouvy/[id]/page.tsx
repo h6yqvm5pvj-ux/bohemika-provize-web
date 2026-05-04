@@ -89,6 +89,29 @@ import {
   type MeziprovisionCard,
 } from "./ContractCommissionSection";
 
+const CPP_EXTRANET_REDIRECT_URL =
+  "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
+
+const normalizeCppExtranetParam = (
+  value: string | number | null | undefined
+): string | null => {
+  const normalized = String(value ?? "").trim();
+  return /^\d+$/.test(normalized) ? normalized : null;
+};
+
+const buildCppExtranetDetailUrl = (contract: ContractDoc | null): string | null => {
+  const entityTypeId = normalizeCppExtranetParam(contract?.cppExtranetEntityTypeId);
+  const entityId = normalizeCppExtranetParam(contract?.cppExtranetEntityId);
+  if (!entityTypeId || !entityId) return null;
+
+  const params = new URLSearchParams({
+    type: "detail",
+    p_EntityTypeID: entityTypeId,
+    p_EntityID: entityId,
+  });
+  return `${CPP_EXTRANET_REDIRECT_URL}?${params.toString()}`;
+};
+
 
 export default function ContractDetailPage() {
   const router = useRouter();
@@ -541,6 +564,7 @@ export default function ContractDetailPage() {
       : prod && KOOPERATIVA_PAYMENT_CHECK_PRODUCTS.has(prod)
       ? KOOPERATIVA_PAYMENT_CHECK_URL
       : null;
+  const cppExtranetDetailUrl = buildCppExtranetDetailUrl(contract);
   const canEmbedPaymentVerification =
     paymentVerificationUrl === KOOPERATIVA_PAYMENT_CHECK_URL ||
     paymentVerificationUrl === CPP_PAYMENT_CHECK_URL;
@@ -3166,6 +3190,18 @@ export default function ContractDetailPage() {
                     <PencilLine size={16} strokeWidth={2} aria-hidden="true" />
                     <span>Upravit údaje</span>
                   </button>
+                )}
+
+                {cppExtranetDetailUrl && (
+                  <a
+                    href={cppExtranetDetailUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
+                  >
+                    <ExternalLink size={16} strokeWidth={2} aria-hidden="true" />
+                    <span>Otevřít ČPP extranet</span>
+                  </a>
                 )}
 
                 {paymentVerificationUrl && !canEmbedPaymentVerification && (

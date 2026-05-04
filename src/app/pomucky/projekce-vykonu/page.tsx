@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
 import { CarFront, Heart, House, Minus, Plus, TrendingDown, TrendingUp, UserRound, Users } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
-import { auth, db } from "@/app/firebase";
+import { auth } from "@/app/firebase";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
   formatMoney as formatMoneyValue,
 } from "@/app/lib/formatters";
@@ -43,6 +43,13 @@ type AdvisorPosition =
   | "poradce4"
   | "poradce5"
   | "poradce6";
+
+type UserProfileApiResponse = {
+  ok?: boolean;
+  profile?: {
+    position?: Position | null;
+  };
+};
 
 const MONTHS = 15 * 12;
 const YEARS = 15;
@@ -306,9 +313,22 @@ export default function ProjectionPage() {
         setPosition(null);
         return;
       }
-      const snap = await getDoc(doc(db, "users", current.email.toLowerCase()));
-      const pos = (snap.data() as { position?: Position } | undefined)?.position;
-      setPosition(pos ?? null);
+      try {
+        const payload = await fetchAuthedJsonOrThrow<UserProfileApiResponse>(
+          current,
+          "/api/user/profile",
+          { method: "GET" }
+        );
+        const profilePosition = payload?.profile?.position;
+        if (typeof profilePosition === "string") {
+          setPosition(profilePosition as Position);
+        } else {
+          setPosition(null);
+        }
+      } catch (err) {
+        console.error("Načtení profilu pro projekci výkonu selhalo:", err);
+        setPosition(null);
+      }
     });
     return () => unsub();
   }, []);

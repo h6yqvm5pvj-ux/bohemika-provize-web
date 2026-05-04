@@ -5,15 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { positionLabel as positionLabelValue } from "@/app/lib/formatters";
 import SplitTitle from "../plan-produkce/SplitTitle";
-import { auth, db } from "../../firebase";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-} from "firebase/firestore";
+import { auth } from "../../firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import type { Position } from "../../types/domain";
 
@@ -88,88 +80,6 @@ function buildTree(
   return { ...node, children };
 }
 
-async function loadStructureFallback(email: string): Promise<Map<string, UserNode>> {
-  const map = new Map<string, UserNode>();
-
-  const toNode = (docId: string, data: any): UserNode => {
-    const resolvedEmail = normalizeEmail((data?.email as string | undefined) ?? docId);
-    return {
-      email: resolvedEmail,
-      name: data?.name ?? nameFromEmail(resolvedEmail),
-      position: (data?.position as Position | undefined) ?? null,
-      managerEmail: normalizeEmail(data?.managerEmail as string | undefined) || null,
-    };
-  };
-
-  try {
-    const meSnap = await getDoc(doc(db, "users", email));
-    if (meSnap.exists()) {
-      map.set(email, toNode(email, meSnap.data()));
-    } else {
-      map.set(email, {
-        email,
-        name: nameFromEmail(email),
-        position: null,
-        managerEmail: null,
-      });
-    }
-  } catch {
-    map.set(email, {
-      email,
-      name: nameFromEmail(email),
-      position: null,
-      managerEmail: null,
-    });
-  }
-
-  // ancestor chain
-  let currentMgr = map.get(email)?.managerEmail ?? null;
-  const seenAncestors = new Set<string>();
-  let depth = 0;
-  while (currentMgr && !seenAncestors.has(currentMgr) && depth < 10) {
-    seenAncestors.add(currentMgr);
-    try {
-      const mgrSnap = await getDoc(doc(db, "users", currentMgr));
-      if (!mgrSnap.exists()) break;
-      const node = toNode(currentMgr, mgrSnap.data());
-      map.set(node.email, node);
-      currentMgr = node.managerEmail;
-    } catch {
-      break;
-    }
-    depth += 1;
-  }
-
-  // subordinate tree (best-effort)
-  const managerQueue: string[] = [email];
-  const visitedManagers = new Set<string>();
-  let guard = 0;
-  while (managerQueue.length > 0 && guard < 200) {
-    guard += 1;
-    const managerEmail = managerQueue.shift();
-    if (!managerEmail) continue;
-    const normalizedManager = normalizeEmail(managerEmail);
-    if (!normalizedManager || visitedManagers.has(normalizedManager)) continue;
-    visitedManagers.add(normalizedManager);
-
-    try {
-      const subsSnap = await getDocs(
-        query(collection(db, "users"), where("managerEmail", "==", normalizedManager))
-      );
-      subsSnap.forEach((docSnap) => {
-        const node = toNode(docSnap.id, docSnap.data());
-        if (!node.email) return;
-        map.set(node.email, node);
-        managerQueue.push(node.email);
-      });
-    } catch {
-      // ignore one broken branch
-    }
-  }
-
-  return map;
-}
-
 export default function StructurePage() {
   const treeScrollRef = useRef<HTMLDivElement | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -196,7 +106,6 @@ export default function StructurePage() {
         const email = normalizeEmail(user.email);
 
         const map = new Map<string, UserNode>();
-        let usedApi = false;
         try {
           let bearerToken = await user.getIdToken();
           const requestWithToken = async (token: string) =>
@@ -237,14 +146,8 @@ export default function StructurePage() {
               managerEmail: normalizeEmail(member.managerEmail) || null,
             });
           });
-          usedApi = map.size > 0;
         } catch (apiErr) {
-          console.warn("Načtení struktury přes API selhalo, přepínám na fallback:", apiErr);
-        }
-
-        if (!usedApi || map.size === 0) {
-          const fallbackMap = await loadStructureFallback(email);
-          fallbackMap.forEach((node, key) => map.set(key, node));
+          console.warn("Načtení struktury přes API selhalo:", apiErr);
         }
 
         if (!map.has(email)) {
@@ -273,30 +176,7 @@ export default function StructurePage() {
             depth += 1;
             continue;
           }
-
-          try {
-            const ancestorSnap = await getDoc(doc(db, "users", current));
-            if (!ancestorSnap.exists()) {
-              break;
-            }
-            const data = ancestorSnap.data() as any;
-            const resolvedEmail = normalizeEmail(
-              (data?.email as string | undefined) ?? current
-            );
-            const managerEmail =
-              normalizeEmail(data?.managerEmail as string | undefined) || null;
-            map.set(resolvedEmail, {
-              email: resolvedEmail,
-              name: data?.name ?? nameFromEmail(resolvedEmail),
-              position: (data?.position as Position | undefined) ?? null,
-              managerEmail,
-            });
-            visible.add(resolvedEmail);
-            current = managerEmail;
-          } catch {
-            break;
-          }
-          depth += 1;
+          break;
         }
 
         setNodes(map);

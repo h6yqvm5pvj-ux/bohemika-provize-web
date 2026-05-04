@@ -7,7 +7,7 @@ import Image from "next/image";
 import {
   Download,
 } from "lucide-react";
-import { auth, db } from "../firebase";
+import { auth } from "../firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
 import {
@@ -72,13 +72,6 @@ import {
   institutionLogoFrameClass,
   institutionLogoImageClass,
 } from "@/app/lib/institutionLogoDisplay";
-import {
-  collection,
-  doc,
-  getDocs,
-  query,
-  where,
-} from "firebase/firestore";
 import { AppLayout } from "@/components/AppLayout";
 import { formatMoney, positionLabel, toDate } from "@/app/lib/formatters";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
@@ -122,10 +115,7 @@ import {
   toNonNegativeNumber,
   compareSourceEntriesByRecency,
   resolveEffectivePremium,
-  normalizeClientNameForDuplicate,
   normalizeClientNameForSystemMatch,
-  normalizeContractEntryType,
-  isoDayFromUnknown,
 } from "./calculatorHelpers";
 import { useCalculatorProductPicker } from "./useCalculatorProductPicker";
 import { CalculatorProductPickerModal } from "./CalculatorProductPickerModal";
@@ -167,12 +157,46 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
   { id: "exclusiveStandard", label: "EXCLUSIVE / STANDARD" },
   { id: "premium", label: "PREMIUM" },
 ];
+const CONTRACTS_CREATE_IDEMPOTENCY_HEADER = "x-idempotency-key";
 
 type NeonCoefficientView = "current" | "historical";
 
 function formatCoefficientNumber(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
   return value.toLocaleString("cs-CZ", { maximumFractionDigits: 6 });
+}
+
+function stableSerializeForIdempotency(value: unknown): string {
+  if (value == null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerializeForIdempotency(item)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const row = value as Record<string, unknown>;
+    const keys = Object.keys(row).sort();
+    return `{${keys
+      .map((key) => `${JSON.stringify(key)}:${stableSerializeForIdempotency(row[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(String(value));
+}
+
+function hashFnv1a32(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function buildContractsCreateIdempotencyKey(entry: Record<string, unknown>): string {
+  const stable = stableSerializeForIdempotency(entry);
+  const forward = hashFnv1a32(stable);
+  const backward = hashFnv1a32(stable.split("").reverse().join(""));
+  return `contracts-create:v1:${forward}${backward}`;
 }
 
 function formatMoneyResult(value: number | undefined | null): string {
@@ -210,6 +234,26 @@ type ContractsFindApiResponse = {
   contracts?: Array<{
     id?: string;
     contractNumber?: string | null;
+    adviserEmail?: string | null;
+    userEmail?: string | null;
+    productKey?: Product | null;
+    rootContractEntryId?: string | null;
+    effectiveInputAmount?: number | null;
+    newInputAmount?: number | null;
+    inputAmount?: number | null;
+    policyStartDate?: unknown;
+    contractSignedDate?: unknown;
+    createdAt?: unknown;
+  }>;
+};
+
+type ContractsPrecheckApiResponse = {
+  ok?: boolean;
+  error?: string;
+  similarContracts?: Array<{
+    id?: string;
+    contractNumber?: string | null;
+    ownerEmail?: string | null;
   }>;
 };
 
@@ -268,11 +312,13 @@ async function requestContractsMutationWithAuth({
   path,
   method,
   payload,
+  idempotencyKey,
 }: {
   user: User;
   path: string;
   method: "POST" | "PATCH" | "DELETE";
   payload: unknown;
+  idempotencyKey?: string | null;
 }): Promise<{
   response: Response;
   data: ContractsMutationResponse | null;
@@ -284,6 +330,9 @@ async function requestContractsMutationWithAuth({
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${idToken}`,
+        ...(idempotencyKey
+          ? { [CONTRACTS_CREATE_IDEMPOTENCY_HEADER]: idempotencyKey }
+          : {}),
       },
       body: JSON.stringify(payload),
     });
@@ -446,6 +495,16 @@ function getContractsMutationError({
 
 const productLabel = (p: Product | null) =>
   productLabelFromCatalog(p, p ?? "—");
+
+const normalizeEmailValue = (value: unknown): string =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const entryPathFromContractOwner = (ownerEmail: unknown, entryId: unknown): string => {
+  const owner = normalizeEmailValue(ownerEmail);
+  const id = typeof entryId === "string" ? entryId.trim() : "";
+  if (!owner || !id) return "";
+  return `users/${owner}/entries/${id}`;
+};
 
 // ---------- Kalkulačka ----------
 
@@ -2380,35 +2439,43 @@ export default function CalculatorPage() {
     }
 
     try {
-      const email = (user.email ?? "").toLowerCase();
-      const userRef = doc(db, "users", email);
-      const entriesRef = collection(userRef, "entries");
-      const contractSnap = await getDocs(
-        query(entriesRef, where("contractNumber", "==", trimmedContractNumber))
+      const params = new URLSearchParams({
+        scope: "my",
+        q: trimmedContractNumber,
+      });
+      const payload = await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
+        user,
+        `/api/contracts/find?${params.toString()}`,
+        { method: "GET" }
       );
+      const contracts = Array.isArray(payload?.contracts) ? payload.contracts : [];
 
-      if (contractSnap.empty) {
+      if (contracts.length === 0) {
         setValidationError(
           `Smlouvu č. ${trimmedContractNumber} jsem nenašel. Nejdřív musí být uložená jako původní smlouva.`
         );
         return;
       }
 
-      const productMatches: EndorsementSourceEntry[] = contractSnap.docs
-        .map((entryDoc) => {
-          const data = entryDoc.data() as any;
+      const productMatches: EndorsementSourceEntry[] = contracts
+        .map((entry) => {
+          const entryId = typeof entry.id === "string" ? entry.id.trim() : "";
+          if (!entryId) return null;
           return {
-            id: entryDoc.id,
-            path: entryDoc.ref.path,
-            productKey: (data?.productKey as Product | undefined) ?? null,
+            id: entryId,
+            path: entryPathFromContractOwner(entry.userEmail ?? entry.adviserEmail, entryId),
+            productKey: (entry?.productKey as Product | undefined) ?? null,
             rootContractEntryId:
-              (data?.rootContractEntryId as string | undefined) ?? null,
-            effectiveInputAmount: resolveEffectivePremium(data),
-            policyStartDate: toDate(data?.policyStartDate),
-            contractSignedDate: toDate(data?.contractSignedDate),
-            createdAt: toDate(data?.createdAt),
+              (typeof entry?.rootContractEntryId === "string"
+                ? entry.rootContractEntryId
+                : null) ?? null,
+            effectiveInputAmount: resolveEffectivePremium(entry),
+            policyStartDate: toDate(entry?.policyStartDate),
+            contractSignedDate: toDate(entry?.contractSignedDate),
+            createdAt: toDate(entry?.createdAt),
           };
         })
+        .filter((entry): entry is EndorsementSourceEntry => Boolean(entry))
         .filter((entry) => entry.productKey === product);
 
       if (productMatches.length === 0) {
@@ -2557,46 +2624,47 @@ export default function CalculatorPage() {
         return;
       }
 
+      const endorsementEntryPayload = {
+        productKey: endorsementDraft.productKey,
+        entryType: "endorsement" as ContractEntryType,
+        rootContractEntryId: endorsementDraft.rootContractEntryId,
+        parentContractEntryId: endorsementDraft.sourceEntryId,
+        parentContractEntryPath: endorsementDraft.sourceEntryPath,
+        inputAmount: endorsementDraft.calculationAmount,
+        calculationInputAmount: endorsementDraft.calculationAmount,
+        previousInputAmount: endorsementDraft.previousPremiumAmount,
+        newInputAmount: endorsementDraft.newPremiumAmount,
+        effectiveInputAmount: endorsementDraft.newPremiumAmount,
+        premiumDelta: endorsementDraft.deltaAmount,
+        premiumIncreaseAmount:
+          endorsementDraft.deltaAmount > 0 ? endorsementDraft.deltaAmount : 0,
+        premiumDecreaseAmount:
+          endorsementDraft.deltaAmount < 0 ? Math.abs(endorsementDraft.deltaAmount) : 0,
+        changeType: endorsementDraft.changeType,
+        frequencyRaw: frequency,
+        clientName: clientName || null,
+        contractSignedDate: contractSignedDate.trim(),
+        policyStartDate: policyStartDate.trim(),
+        policyEndDate: policyEndDate.trim() || null,
+        durationYears: shouldShowDuration(endorsementDraft.productKey)
+          ? durationYears
+          : null,
+        durationMonths: shouldShowDurationMonths(endorsementDraft.productKey)
+          ? normalizedDurationMonths(endorsementDraft.productKey, durationMonths)
+          : null,
+        maxCizinKomplexVariant:
+          endorsementDraft.productKey === "maxcizinkomplex"
+            ? maxCizinKomplexVariant
+            : null,
+        contractNumber: endorsementDraft.contractNumber,
+      };
+
       const { response, data } = await requestContractsMutationWithAuth({
         user,
         path: "/api/contracts",
         method: "POST",
-        payload: {
-          entry: {
-            productKey: endorsementDraft.productKey,
-            entryType: "endorsement" as ContractEntryType,
-            rootContractEntryId: endorsementDraft.rootContractEntryId,
-            parentContractEntryId: endorsementDraft.sourceEntryId,
-            parentContractEntryPath: endorsementDraft.sourceEntryPath,
-            inputAmount: endorsementDraft.calculationAmount,
-            calculationInputAmount: endorsementDraft.calculationAmount,
-            previousInputAmount: endorsementDraft.previousPremiumAmount,
-            newInputAmount: endorsementDraft.newPremiumAmount,
-            effectiveInputAmount: endorsementDraft.newPremiumAmount,
-            premiumDelta: endorsementDraft.deltaAmount,
-            premiumIncreaseAmount:
-              endorsementDraft.deltaAmount > 0 ? endorsementDraft.deltaAmount : 0,
-            premiumDecreaseAmount:
-              endorsementDraft.deltaAmount < 0 ? Math.abs(endorsementDraft.deltaAmount) : 0,
-            changeType: endorsementDraft.changeType,
-            frequencyRaw: frequency,
-            clientName: clientName || null,
-            contractSignedDate: contractSignedDate.trim(),
-            policyStartDate: policyStartDate.trim(),
-            policyEndDate: policyEndDate.trim() || null,
-            durationYears: shouldShowDuration(endorsementDraft.productKey)
-              ? durationYears
-              : null,
-            durationMonths: shouldShowDurationMonths(endorsementDraft.productKey)
-              ? normalizedDurationMonths(endorsementDraft.productKey, durationMonths)
-              : null,
-            maxCizinKomplexVariant:
-              endorsementDraft.productKey === "maxcizinkomplex"
-                ? maxCizinKomplexVariant
-                : null,
-            contractNumber: endorsementDraft.contractNumber,
-          },
-        },
+        payload: { entry: endorsementEntryPayload },
+        idempotencyKey: buildContractsCreateIdempotencyKey(endorsementEntryPayload),
       });
       const apiError = getContractsMutationError({
         response,
@@ -2689,10 +2757,6 @@ export default function CalculatorPage() {
     }
     if (!validateContractDatesBeforeSave()) return;
 
-    const email = (user.email ?? "").toLowerCase();
-    const userRef = doc(db, "users", email);
-    const entriesRef = collection(userRef, "entries");
-
     // kontrola duplicitního čísla smlouvy
     const trimmedContractNumber = contractNumber.trim();
     const trimmedClientName = clientName.trim();
@@ -2704,20 +2768,47 @@ export default function CalculatorPage() {
     if (!skipDuplicateCheck) {
       try {
         if (trimmedContractNumber) {
-          const dupSnap = await getDocs(
-            query(entriesRef, where("contractNumber", "==", trimmedContractNumber))
+          const findParams = new URLSearchParams({
+            scope: "my",
+            q: trimmedContractNumber,
+          });
+          const findPayload = await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
+            user,
+            `/api/contracts/find?${findParams.toString()}`,
+            { method: "GET" }
           );
-          if (!dupSnap.empty) {
-            const entries = dupSnap.docs.map((d) => ({
-              id: d.id,
-              path: d.ref.path,
-              contractNumber: trimmedContractNumber,
-            }));
+          const duplicateContracts = Array.isArray(findPayload?.contracts)
+            ? findPayload.contracts
+            : [];
+          if (duplicateContracts.length > 0) {
+            const entries = duplicateContracts
+              .map((item) => {
+                const id = typeof item.id === "string" ? item.id.trim() : "";
+                if (!id) return null;
+                const ownerEmail =
+                  normalizeEmailValue(item.userEmail) ||
+                  normalizeEmailValue(item.adviserEmail) ||
+                  normalizeEmailValue(user.email);
+                const existingNumber =
+                  typeof item.contractNumber === "string" ? item.contractNumber.trim() : "";
+                return {
+                  id,
+                  path: entryPathFromContractOwner(ownerEmail, id),
+                  contractNumber: existingNumber || trimmedContractNumber,
+                };
+              })
+              .filter(
+                (
+                  entry
+                ): entry is { id: string; path: string; contractNumber: string } =>
+                  Boolean(entry)
+              );
+            if (entries.length === 0) return;
             setDuplicateModal({
               mode: "overwrite",
-              description: `Smlouva s číslem ${trimmedContractNumber} už existuje (${dupSnap.size}×).`,
+              description: `Smlouva s číslem ${trimmedContractNumber} už existuje (${entries.length}×).`,
               contractNumber: trimmedContractNumber,
-              count: dupSnap.size,
+              count: entries.length,
               entries,
             });
             setSaving(false);
@@ -2725,33 +2816,43 @@ export default function CalculatorPage() {
           }
         }
 
-        const normalizedClientName = normalizeClientNameForDuplicate(trimmedClientName);
-        if (product && signedDateIsoDay && normalizedClientName) {
-          const productSnap = await getDocs(
-            query(entriesRef, where("productKey", "==", product))
-          );
-          const similarEntries = productSnap.docs.filter((docSnap) => {
-            const data = docSnap.data() as any;
-            if (normalizeContractEntryType(data?.entryType) !== "contract") return false;
-            const clientNameNormalized = normalizeClientNameForDuplicate(data?.clientName);
-            if (clientNameNormalized !== normalizedClientName) return false;
-            const entrySignedDay = isoDayFromUnknown(data?.contractSignedDate);
-            return entrySignedDay === signedDateIsoDay;
+        if (product && signedDateIsoDay && trimmedClientName) {
+          const precheckParams = new URLSearchParams({
+            productKey: product,
+            clientName: trimmedClientName,
+            signedDate: signedDateIsoDay,
           });
+          const precheckPayload = await fetchAuthedJsonOrThrow<ContractsPrecheckApiResponse>(
+            user,
+            `/api/contracts/precheck?${precheckParams.toString()}`,
+            { method: "GET" }
+          );
+          const similarEntries = Array.isArray(precheckPayload?.similarContracts)
+            ? precheckPayload.similarContracts
+            : [];
 
           if (similarEntries.length > 0) {
-            const entries = similarEntries.map((d) => {
-              const data = d.data() as any;
-              const existingNumber =
-                typeof data?.contractNumber === "string"
-                  ? data.contractNumber.trim()
-                  : null;
-              return {
-                id: d.id,
-                path: d.ref.path,
-                contractNumber: existingNumber || null,
-              };
-            });
+            const entries = similarEntries
+              .map((item) => {
+                const id = typeof item.id === "string" ? item.id.trim() : "";
+                if (!id) return null;
+                const existingNumber =
+                  typeof item.contractNumber === "string"
+                    ? item.contractNumber.trim()
+                    : null;
+                return {
+                  id,
+                  path: entryPathFromContractOwner(item.ownerEmail, id),
+                  contractNumber: existingNumber || null,
+                };
+              })
+              .filter(
+                (
+                  entry
+                ): entry is { id: string; path: string; contractNumber: string | null } =>
+                  Boolean(entry)
+              );
+            if (entries.length === 0) return;
             const displayDate = formatIsoDay(signedDateIsoDay);
             setDuplicateModal({
               mode: "saveAnyway",
@@ -2759,7 +2860,7 @@ export default function CalculatorPage() {
                 product
               )} se stejným datem sjednání ${displayDate} (${similarEntries.length}×).`,
               contractNumber: trimmedContractNumber || null,
-              count: similarEntries.length,
+              count: entries.length,
               entries,
             });
             setSaving(false);
@@ -3036,6 +3137,18 @@ export default function CalculatorPage() {
             refreshOriginalContractNumber: null,
           },
         },
+        idempotencyKey: buildContractsCreateIdempotencyKey({
+          entryType: "contract",
+          productKey: product,
+          contractNumber: trimmedContractNumber || null,
+          clientName: clientName.trim() || null,
+          contractSignedDate: contractSignedDate.trim(),
+          policyStartDate: policyStartDate.trim(),
+          policyEndDate: policyEndDate.trim() || null,
+          inputAmount: value,
+          frequencyRaw: frequency,
+          isRefresh: shouldRefreshOriginalNeon,
+        }),
       });
       const apiError = getContractsMutationError({
         response,

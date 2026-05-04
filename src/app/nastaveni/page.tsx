@@ -8,11 +8,14 @@ import {
   BellRing,
   Calculator,
   CircleHelp,
+  Copy,
   ExternalLink,
   KeyRound,
+  RefreshCw,
   ShieldCheck,
   Snail,
   Sparkles,
+  UserPlus,
   UserRound,
   X,
   Zap,
@@ -186,6 +189,8 @@ const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
 const normalizeEmail = (email?: string | null) =>
   (email ?? "").trim().toLowerCase();
 
+const CREATE_USER_ALLOWED_EMAIL = "jakub.rauscher@bohemika.eu";
+
 const hasNonEmptyToken = (value: unknown): boolean =>
   typeof value === "string" && value.trim().length > 0;
 
@@ -217,6 +222,19 @@ const hasAnyPushToken = (data: Record<string, unknown>): boolean => {
 type InlineStatus = {
   type: "success" | "error" | "info";
   message: string;
+};
+
+type CreateUserResponse = {
+  ok?: boolean;
+  email?: string;
+  uid?: string;
+  error?: string;
+};
+
+type TestPushApiResponse = {
+  ok?: boolean;
+  error?: string;
+  detail?: string;
 };
 
 const EXPECTED_MFA_ERROR_CODES = new Set<string>([
@@ -275,6 +293,25 @@ const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
+const generateTemporaryPassword = (): string => {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz2345678923456789";
+  const length = 14;
+
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = new Uint8Array(length);
+    crypto.getRandomValues(bytes);
+    return (
+      Array.from(bytes, (byte) => chars[byte % chars.length]).join("") + "A7"
+    );
+  }
+
+  return (
+    Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join("") +
+    "A7"
+  );
+};
+
 export default function SettingsPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
@@ -284,6 +321,7 @@ export default function SettingsPage() {
   const [, setMonthlyGoal] = useState<number>(0);
 
   const [canChangePosition, setCanChangePosition] = useState(true);
+  const [canCreateUsers, setCanCreateUsers] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -320,6 +358,14 @@ export default function SettingsPage() {
   const [positionTimelineLocked, setPositionTimelineLocked] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>("career");
   const [showCareerTimelineHelp, setShowCareerTimelineHelp] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserFullName, setNewUserFullName] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserManagerEmail, setNewUserManagerEmail] = useState("");
+  const [newUserPosition, setNewUserPosition] = useState<Position>("poradce1");
+  const [newUserMode, setNewUserMode] = useState<CommissionMode>("standard");
+  const [createUserBusy, setCreateUserBusy] = useState(false);
+  const [createUserStatus, setCreateUserStatus] = useState<InlineStatus | null>(null);
 
   const applyMotionPreference = (off: boolean) => {
     if (typeof document === "undefined") return;
@@ -346,9 +392,14 @@ export default function SettingsPage() {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
       if (!fbUser) {
         setUser(null);
+        setCanCreateUsers(false);
         return;
       }
       setUser(fbUser);
+      const email = normalizeEmail(fbUser.email);
+      if (email) {
+        setNewUserManagerEmail((prev) => prev || email);
+      }
     });
     return () => unsub();
   }, []);
@@ -585,11 +636,13 @@ export default function SettingsPage() {
           setCanChangePosition(
             data.canChangePosition === false ? false : true
           );
+          setCanCreateUsers(email === CREATE_USER_ALLOWED_EMAIL);
           const parsedTimeline = parsePositionTimeline(data.positionTimeline);
           setPositionTimelineDraft(parsedTimeline);
           setPositionTimelineLocked(parsedTimeline.length > 0);
         } else {
           // user dokument neexistuje → zkusíme aspoň natáhnout z localStorage
+          setCanCreateUsers(false);
           setPositionTimelineDraft([]);
           setPositionTimelineLocked(false);
           if (typeof window !== "undefined") {
@@ -628,6 +681,7 @@ export default function SettingsPage() {
         }
       } catch (e) {
         console.error("Chyba při načítání nastavení:", e);
+        setCanCreateUsers(false);
       } finally {
         setLoadingMeta(false);
       }
@@ -872,22 +926,16 @@ export default function SettingsPage() {
     setTestPushStatus("Posílám testovací notifikaci…");
 
     try {
-      const idToken = await user.getIdToken();
-      const res = await fetch(
-        "https://europe-central2-bohemikasmlouvy.cloudfunctions.net/sendTestPush",
+      const payload = await fetchAuthedJsonOrThrow<TestPushApiResponse>(
+        user,
+        "/api/test-push",
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${idToken}`,
-          },
           body: JSON.stringify({ message: "Test push z Nastavení" }),
         }
       );
-
-      const json = (await res.json()) as any;
-      if (!res.ok || json?.ok !== true) {
-        const msg = json?.error || json?.detail || "Odeslání selhalo.";
+      if (payload?.ok !== true) {
+        const msg = payload?.error || payload?.detail || "Odeslání selhalo.";
         setTestPushStatus(`Chyba: ${msg}`);
         return;
       }
@@ -1191,6 +1239,93 @@ export default function SettingsPage() {
       });
     } finally {
       setMfaBusy(false);
+    }
+  };
+
+  const handleGenerateNewUserPassword = () => {
+    setNewUserPassword(generateTemporaryPassword());
+    setCreateUserStatus(null);
+  };
+
+  const handleCopyNewUserPassword = async () => {
+    if (!newUserPassword) return;
+    try {
+      await navigator.clipboard.writeText(newUserPassword);
+      setCreateUserStatus({
+        type: "info",
+        message: "Dočasné heslo zkopírováno.",
+      });
+    } catch {
+      setCreateUserStatus({
+        type: "error",
+        message: "Heslo se nepodařilo zkopírovat.",
+      });
+    }
+  };
+
+  const handleCreateUser = async () => {
+    if (!user) return;
+
+    const email = normalizeEmail(newUserEmail);
+    const managerEmail = normalizeEmail(newUserManagerEmail);
+    if (!email) {
+      setCreateUserStatus({ type: "error", message: "Vyplň e-mail nového uživatele." });
+      return;
+    }
+    if (newUserPassword.length < 8) {
+      setCreateUserStatus({
+        type: "error",
+        message: "Dočasné heslo musí mít alespoň 8 znaků.",
+      });
+      return;
+    }
+    if (managerEmail && managerEmail === email) {
+      setCreateUserStatus({
+        type: "error",
+        message: "Nadřízený nemůže být stejný jako nový uživatel.",
+      });
+      return;
+    }
+
+    setCreateUserBusy(true);
+    setCreateUserStatus(null);
+    try {
+      const payload = await fetchAuthedJsonOrThrow<CreateUserResponse>(
+        user,
+        "/api/user/create",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            email,
+            password: newUserPassword,
+            fullName: newUserFullName,
+            managerEmail,
+            position: newUserPosition,
+            commissionMode: newUserMode,
+          }),
+        }
+      );
+
+      setCreateUserStatus({
+        type: "success",
+        message: `Uživatel ${payload?.email ?? email} byl vytvořen.`,
+      });
+      setNewUserEmail("");
+      setNewUserFullName("");
+      setNewUserPosition("poradce1");
+      setNewUserMode("standard");
+      const ownEmail = normalizeEmail(user.email);
+      setNewUserManagerEmail(ownEmail || managerEmail);
+    } catch (error) {
+      setCreateUserStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Nového uživatele se nepodařilo vytvořit.",
+      });
+    } finally {
+      setCreateUserBusy(false);
     }
   };
 
@@ -2122,6 +2257,184 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
+            </section>
+            )}
+
+            {activeTab === "account" && canCreateUsers && (
+            <section className={`space-y-4 ${panelClass}`}>
+              <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
+                    <UserPlus size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                    <span>Přidat uživatele</span>
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Vytvoří Firebase Auth účet, veřejný profil a aktivní interní profil.
+                  </p>
+                </div>
+              </div>
+
+              <form
+                className="grid gap-3 lg:grid-cols-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleCreateUser();
+                }}
+              >
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    E-mail
+                  </label>
+                  <input
+                    type="email"
+                    autoComplete="off"
+                    className={fieldClass}
+                    value={newUserEmail}
+                    onChange={(event) => setNewUserEmail(event.target.value)}
+                    placeholder="jmeno.prijmeni@bohemika.eu"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    Jméno
+                  </label>
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    className={fieldClass}
+                    value={newUserFullName}
+                    onChange={(event) => setNewUserFullName(event.target.value)}
+                    placeholder="Jméno Příjmení"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    Dočasné heslo
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      autoComplete="new-password"
+                      className={fieldClass}
+                      value={newUserPassword}
+                      onChange={(event) => setNewUserPassword(event.target.value)}
+                      placeholder="Min. 8 znaků"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleGenerateNewUserPassword}
+                      className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100"
+                      title="Vygenerovat heslo"
+                      aria-label="Vygenerovat heslo"
+                    >
+                      <RefreshCw size={15} strokeWidth={2.2} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyNewUserPassword()}
+                      disabled={!newUserPassword}
+                      className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Zkopírovat heslo"
+                      aria-label="Zkopírovat heslo"
+                    >
+                      <Copy size={15} strokeWidth={2.2} aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    Nadřízený
+                  </label>
+                  <input
+                    type="email"
+                    autoComplete="off"
+                    className={fieldClass}
+                    value={newUserManagerEmail}
+                    onChange={(event) => setNewUserManagerEmail(event.target.value)}
+                    placeholder="Bez nadřízeného nech prázdné"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    Výchozí pozice
+                  </label>
+                  <select
+                    className={fieldClass}
+                    value={newUserPosition}
+                    onChange={(event) => setNewUserPosition(event.target.value as Position)}
+                  >
+                    {POSITIONS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    Režim provizí
+                  </label>
+                  <div
+                    className="inline-flex w-full rounded-2xl border border-slate-300 bg-slate-100 p-1"
+                    role="radiogroup"
+                    aria-label="Režim provizí nového uživatele"
+                  >
+                    {COMMISSION_MODES.map((m) => {
+                      const active = newUserMode === m.id;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setNewUserMode(m.id)}
+                          className={`inline-flex flex-1 items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                            active
+                              ? "border border-slate-900 bg-white text-slate-900 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
+                              : "border border-transparent text-slate-600 hover:text-slate-900"
+                          }`}
+                          role="radio"
+                          aria-checked={active}
+                        >
+                          {m.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 pt-1 lg:col-span-2 sm:flex-row sm:items-center sm:justify-between">
+                  {createUserStatus ? (
+                    <p
+                      className={`text-xs font-medium ${
+                        createUserStatus.type === "success"
+                          ? "text-emerald-700"
+                          : createUserStatus.type === "info"
+                            ? "text-slate-700"
+                            : "text-rose-700"
+                      }`}
+                    >
+                      {createUserStatus.message}
+                    </p>
+                  ) : (
+                    <span className="text-xs text-slate-500">
+                      Nový účet se po vytvoření může rovnou přihlásit do aplikace.
+                    </span>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={createUserBusy}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <UserPlus size={15} strokeWidth={2.2} aria-hidden="true" />
+                    {createUserBusy ? "Vytvářím..." : "Vytvořit uživatele"}
+                  </button>
+                </div>
+              </form>
             </section>
             )}
           </>

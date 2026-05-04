@@ -3,16 +3,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { auth, db } from "../firebase";
+import { auth } from "../firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-} from "firebase/firestore";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import type { Position } from "../types/domain";
 
 function isManagerPosition(pos?: Position | null): boolean {
@@ -24,6 +17,18 @@ export function TeamMessageToolCard() {
   const [shouldShow, setShouldShow] = useState(false);
   const [checked, setChecked] = useState(false);
 
+  type TeamOverviewApiResponse = {
+    ok?: boolean;
+    position?: Position | null;
+    members?: Array<{
+      email?: string | null;
+      managerEmail?: string | null;
+    }>;
+  };
+
+  const normalizeEmail = (value: unknown): string =>
+    typeof value === "string" ? value.trim().toLowerCase() : "";
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user?.email) {
@@ -33,14 +38,13 @@ export function TeamMessageToolCard() {
       }
 
       try {
-        const email = user.email.trim().toLowerCase();
-        const usersRef = collection(db, "users");
-
-        // načtení pozice
-        const meSnap = await getDoc(doc(usersRef, email));
-        const position = meSnap.exists()
-          ? (meSnap.data().position as Position | undefined)
-          : undefined;
+        const email = normalizeEmail(user.email);
+        const payload = await fetchAuthedJsonOrThrow<TeamOverviewApiResponse>(
+          user,
+          "/api/team-overview",
+          { method: "GET" }
+        );
+        const position = payload?.position ?? null;
 
         if (!isManagerPosition(position)) {
           setShouldShow(false);
@@ -48,11 +52,12 @@ export function TeamMessageToolCard() {
           return;
         }
 
-        // kontrola, jestli máš podřízené
-        const subsQ = query(usersRef, where("managerEmail", "==", email));
-        const subsSnap = await getDocs(subsQ);
+        const members = Array.isArray(payload?.members) ? payload.members : [];
+        const directSubCount = members.filter(
+          (member) => normalizeEmail(member.managerEmail) === email
+        ).length;
 
-        setShouldShow(subsSnap.docs.length > 0);
+        setShouldShow(directSubCount > 0);
       } catch (err) {
         console.error("TeamMessageToolCard – chyba při ověřování:", err);
         setShouldShow(false);

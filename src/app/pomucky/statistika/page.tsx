@@ -2,22 +2,12 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { onAuthStateChanged } from "firebase/auth";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  limit as fbLimit,
-  orderBy,
-  query,
-  setDoc,
-} from "firebase/firestore";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { CalendarDays, History, Plus, Save, X } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
-import { auth, db } from "@/app/firebase";
+import { auth } from "@/app/firebase";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
   formatMoney as formatMoneyValue,
   positionLabel as positionLabelValue,
@@ -71,6 +61,74 @@ type DayEntry = {
   meetings: string;
   workedHours: string;
   contracts: ContractEntry[];
+};
+
+type UserStatsProfileResponse = {
+  ok: true;
+  ownerEmail: string;
+  position: Position | null;
+  commissionMode: CommissionMode | null;
+};
+
+type UserStatsDailyResponse = {
+  ok: true;
+  ownerEmail: string;
+  year: number;
+  month: number;
+  dailyStats: Array<{
+    dayIndex: number;
+    outreach: number;
+    agreed: number;
+    meetings: number;
+    workedHours: number;
+    contracts: Array<{
+      product: string;
+      premium: number;
+      comfortGradual: boolean;
+      comfortPayment: number;
+    }>;
+    updatedAt: number | null;
+  }>;
+};
+
+type UserStatsHistoryResponse = {
+  ok: true;
+  ownerEmail: string;
+  history: Array<{
+    id: string;
+    label: string;
+    outreach: number;
+    meetings: number;
+    commission: number;
+    hours: number;
+    savedAt: number | null;
+  }>;
+};
+
+type UserStatsMonthResponse = {
+  ok: true;
+  ownerEmail: string;
+  year: number;
+  month: number;
+  monthKey: string;
+  savedAt: number | null;
+};
+
+type UserStatsSaveMonthResponse = {
+  ok: true;
+  action: "saveMonth";
+  ownerEmail: string;
+  monthKey: string;
+  savedAt: number;
+  history: Array<{
+    id: string;
+    label: string;
+    outreach: number;
+    meetings: number;
+    commission: number;
+    hours: number;
+    savedAt: number | null;
+  }>;
 };
 
 const DEFAULT_POSITION: Position = "poradce1";
@@ -232,6 +290,7 @@ function StatistikaPageInner() {
     return 0;
   }, [year, month]);
   const searchParams = useSearchParams();
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
@@ -250,6 +309,7 @@ function StatistikaPageInner() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (current) => {
+      setCurrentUser(current);
       if (!current?.email) {
         setCurrentUserEmail(null);
         return;
@@ -286,37 +346,7 @@ function StatistikaPageInner() {
       setCommissionMode(null);
       return;
     }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const ref = doc(db, "users", ownerEmail);
-        const snap = await getDoc(ref);
-        if (!snap.exists()) {
-          if (!cancelled) {
-            setPosition(null);
-            setCommissionMode(null);
-          }
-          return;
-        }
-        const data = snap.data() as { position?: Position | null; commissionMode?: CommissionMode | null };
-        if (cancelled) return;
-        setPosition((data.position as Position | null | undefined) ?? null);
-        setCommissionMode((data.commissionMode as CommissionMode | null | undefined) ?? null);
-      } catch {
-        if (cancelled) return;
-        setPosition(null);
-        setCommissionMode(null);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [ownerEmail]);
-
-  useEffect(() => {
-    if (!ownerEmail) {
+    if (!currentUser) {
       setPosition(null);
       setCommissionMode(null);
       return;
@@ -325,19 +355,18 @@ function StatistikaPageInner() {
     let cancelled = false;
     (async () => {
       try {
-        const ref = doc(db, "users", ownerEmail);
-        const snap = await getDoc(ref);
-        if (!snap.exists()) {
-          if (!cancelled) {
-            setPosition(null);
-            setCommissionMode(null);
-          }
-          return;
-        }
-        const data = snap.data() as { position?: Position | null; commissionMode?: CommissionMode | null };
+        const params = new URLSearchParams({
+          mode: "profile",
+          owner: ownerEmail,
+        });
+        const data = await fetchAuthedJsonOrThrow<UserStatsProfileResponse>(
+          currentUser,
+          `/api/user-stats?${params.toString()}`,
+          { method: "GET" }
+        );
         if (cancelled) return;
-        setPosition((data.position as Position | null | undefined) ?? null);
-        setCommissionMode((data.commissionMode as CommissionMode | null | undefined) ?? null);
+        setPosition(data.position ?? null);
+        setCommissionMode(data.commissionMode ?? null);
       } catch {
         if (cancelled) return;
         setPosition(null);
@@ -348,7 +377,7 @@ function StatistikaPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [ownerEmail]);
+  }, [ownerEmail, currentUser]);
 
   useEffect(() => {
     setDays((prev) =>
@@ -363,32 +392,32 @@ function StatistikaPageInner() {
   }, [positionForCalc, modeForCalc]);
 
   useEffect(() => {
-    if (!ownerEmail) return;
+    if (!ownerEmail || !currentUser) return;
     let cancelled = false;
 
     const load = async () => {
       try {
         const loaded: Record<number, DayEntry> = {};
         const loadedSaved: Record<number, boolean> = {};
-        const promises = Array.from({ length: daysInMonth }, (_, idx) => idx).map(async (idx) => {
-          const key = dayKey(year, month, idx);
-          const ref = doc(db, "userStats", ownerEmail, "dailyStats", key);
-          const snap = await getDoc(ref);
-          if (!snap.exists()) return;
-          const data = snap.data() as any;
+        const params = new URLSearchParams({
+          mode: "daily",
+          owner: ownerEmail,
+          year: String(year),
+          month: String(month + 1),
+        });
+        const payload = await fetchAuthedJsonOrThrow<UserStatsDailyResponse>(
+          currentUser,
+          `/api/user-stats?${params.toString()}`,
+          { method: "GET" }
+        );
 
-          const contractsRaw = Array.isArray(data.contracts) ? data.contracts : [];
-          const contracts: ContractEntry[] = contractsRaw.map((c: any) => {
-            const product = normalizeProduct((c as any)?.product);
-            const premiumStr =
-              typeof (c as any)?.premium === "string"
-                ? ((c as any)?.premium as string)
-                : toInputValue((c as any)?.premium);
-            const comfortGradual = Boolean((c as any)?.comfortGradual);
-            const comfortPaymentStr =
-              typeof (c as any)?.comfortPayment === "string"
-                ? ((c as any)?.comfortPayment as string)
-                : toInputValue((c as any)?.comfortPayment);
+        payload.dailyStats.forEach((row) => {
+          if (row.dayIndex < 0 || row.dayIndex >= daysInMonth) return;
+          const contracts: ContractEntry[] = row.contracts.map((c) => {
+            const product = normalizeProduct(c.product);
+            const premiumStr = toInputValue(c.premium);
+            const comfortGradual = Boolean(c.comfortGradual);
+            const comfortPaymentStr = toInputValue(c.comfortPayment);
             return {
               id: makeId(),
               product,
@@ -410,19 +439,16 @@ function StatistikaPageInner() {
             };
           });
 
-          const dayEntry: DayEntry = {
-            outreach: toInputValue((data as any)?.outreach),
-            agreed: toInputValue((data as any)?.agreed),
-            meetings: toInputValue((data as any)?.meetings),
-            workedHours: toInputValue((data as any)?.workedHours),
+          loaded[row.dayIndex] = {
+            outreach: toInputValue(row.outreach),
+            agreed: toInputValue(row.agreed),
+            meetings: toInputValue(row.meetings),
+            workedHours: toInputValue(row.workedHours),
             contracts,
           };
-          loaded[idx] = dayEntry;
-          // Pokud existuje uložený dokument, považujeme den za uložený i při nulových hodnotách
-          loadedSaved[idx] = true;
+          loadedSaved[row.dayIndex] = true;
         });
 
-        await Promise.all(promises);
         if (cancelled) return;
 
         setDays((prev) =>
@@ -450,7 +476,7 @@ function StatistikaPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [ownerEmail, daysInMonth, year, month, positionForCalc, modeForCalc]);
+  }, [ownerEmail, currentUser, daysInMonth, year, month, positionForCalc, modeForCalc]);
 
   const monthLabel = useMemo(() => label.charAt(0).toUpperCase() + label.slice(1), [label]);
 
@@ -545,29 +571,27 @@ function StatistikaPageInner() {
 
   const loadHistory = useCallback(
     async (email: string) => {
+      if (!currentUser) {
+        setHistoryItems([]);
+        return;
+      }
       try {
-        const col = collection(db, "userStats", email, "monthlySnapshots");
-        const snap = await getDocs(query(col, orderBy("savedAt", "desc"), fbLimit(12)));
-        const items =
-          snap.docs.map((d) => {
-            const data = d.data() as any;
-            return {
-              id: d.id,
-              label: (data.label as string | undefined) ?? (data.monthLabel as string | undefined) ?? d.id,
-              outreach: Number(data.outreach) || 0,
-              meetings: Number(data.meetings) || 0,
-              commission: Number(data.commission) || 0,
-              hours: Number(data.hours) || 0,
-              savedAt: Number(data.savedAt) || null,
-            };
-          }) ?? [];
-        setHistoryItems(items);
+        const params = new URLSearchParams({
+          mode: "history",
+          owner: email,
+        });
+        const payload = await fetchAuthedJsonOrThrow<UserStatsHistoryResponse>(
+          currentUser,
+          `/api/user-stats?${params.toString()}`,
+          { method: "GET" }
+        );
+        setHistoryItems(payload.history ?? []);
       } catch (e) {
         console.error("Chyba při načítání historie statistik", e);
         setHistoryItems([]);
       }
     },
-    []
+    [currentUser]
   );
 
   useEffect(() => {
@@ -579,15 +603,13 @@ function StatistikaPageInner() {
   }, [ownerEmail, loadHistory]);
 
   const saveDay = async (idx: number) => {
-    if (!ownerEmail || !canEdit) {
+    if (!ownerEmail || !canEdit || !currentUser) {
       return;
     }
     const day = days[idx];
     setSavingState((prev) => ({ ...prev, [idx]: true }));
     setSaveStatus((prev) => ({ ...prev, [idx]: null }));
     try {
-      const key = dayKey(year, month, idx);
-      const ref = doc(db, "userStats", ownerEmail, "dailyStats", key);
       const payload = {
         outreach: Number(day.outreach) || 0,
         agreed: Number(day.agreed) || 0,
@@ -601,7 +623,17 @@ function StatistikaPageInner() {
         })),
         updatedAt: Date.now(),
       };
-      await setDoc(ref, payload, { merge: true });
+      await fetchAuthedJsonOrThrow(currentUser, "/api/user-stats", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "saveDay",
+          ownerEmail,
+          year,
+          month: month + 1,
+          dayIndex: idx,
+          payload,
+        }),
+      });
       setSaveStatus((prev) => ({ ...prev, [idx]: "ok" }));
       // Označ jako uložené i když jsou hodnoty nulové
       setSavedDays((prev) => ({ ...prev, [idx]: true }));
@@ -614,15 +646,11 @@ function StatistikaPageInner() {
   };
 
   const saveMonth = async () => {
-    if (!ownerEmail || !canEdit) return;
+    if (!ownerEmail || !canEdit || !currentUser) return;
     setSavingState((prev) => ({ ...prev, month: true }));
     try {
-      const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
       const snapshot = {
-        monthKey,
         label: monthLabel,
-        year,
-        month,
         outreach: totals.outreach,
         agreed: totals.agreed,
         meetings: totals.meetings,
@@ -632,20 +660,22 @@ function StatistikaPageInner() {
         commission: totals.commission,
         positionSnapshot: positionForCalc,
         modeSnapshot: modeForCalc,
-        savedAt: Date.now(),
       };
-
-      const col = collection(db, "userStats", ownerEmail, "monthlySnapshots");
-      await setDoc(doc(col, monthKey), snapshot, { merge: true });
-
-      const allSnap = await getDocs(query(col, orderBy("savedAt", "desc")));
-      if (allSnap.docs.length > 12) {
-        for (let i = 12; i < allSnap.docs.length; i++) {
-          await deleteDoc(allSnap.docs[i].ref);
+      const result = await fetchAuthedJsonOrThrow<UserStatsSaveMonthResponse>(
+        currentUser,
+        "/api/user-stats",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action: "saveMonth",
+            ownerEmail,
+            year,
+            month: month + 1,
+            snapshot,
+          }),
         }
-      }
-
-      await loadHistory(ownerEmail);
+      );
+      setHistoryItems(result.history ?? []);
       setHistoryOpen(true);
     } catch (e) {
       console.error("Chyba při ukládání měsíční statistiky", e);
@@ -667,18 +697,33 @@ function StatistikaPageInner() {
 
   useEffect(() => {
     const autoSave = async () => {
-      if (!ownerEmail || !canEdit || !isLastDayOfMonth || autoSavedRef.current) return;
+      if (
+        !ownerEmail ||
+        !canEdit ||
+        !isLastDayOfMonth ||
+        autoSavedRef.current ||
+        !currentUser
+      ) {
+        return;
+      }
       try {
-        const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-        const ref = doc(db, "userStats", ownerEmail, "monthlySnapshots", monthKey);
-        const snap = await getDoc(ref);
+        const monthParams = new URLSearchParams({
+          mode: "month",
+          owner: ownerEmail,
+          year: String(year),
+          month: String(month + 1),
+        });
+        const monthState = await fetchAuthedJsonOrThrow<UserStatsMonthResponse>(
+          currentUser,
+          `/api/user-stats?${monthParams.toString()}`,
+          { method: "GET" }
+        );
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const alreadyToday =
-          snap.exists() &&
+          monthState.savedAt != null &&
           (() => {
-            const ts = (snap.data() as any)?.savedAt;
-            const d = ts ? new Date(Number(ts)) : null;
+            const d = new Date(Number(monthState.savedAt));
             if (!d || Number.isNaN(d.getTime())) return false;
             d.setHours(0, 0, 0, 0);
             return d.getTime() === today.getTime();
@@ -689,10 +734,7 @@ function StatistikaPageInner() {
         }
 
         const summary = {
-          monthKey,
           label: monthLabel,
-          year,
-          month,
           outreach: totals.outreach,
           agreed: totals.agreed,
           meetings: totals.meetings,
@@ -702,10 +744,18 @@ function StatistikaPageInner() {
           commission: totals.commission,
           positionSnapshot: positionForCalc,
           modeSnapshot: modeForCalc,
-          savedAt: Date.now(),
         };
 
-        await setDoc(ref, summary, { merge: true });
+        await fetchAuthedJsonOrThrow(currentUser, "/api/user-stats", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "saveMonth",
+            ownerEmail,
+            year,
+            month: month + 1,
+            snapshot: summary,
+          }),
+        });
         autoSavedRef.current = true;
         await loadHistory(ownerEmail);
       } catch (e) {
@@ -714,7 +764,19 @@ function StatistikaPageInner() {
     };
 
     void autoSave();
-  }, [ownerEmail, canEdit, isLastDayOfMonth, year, month, monthLabel, totals, positionForCalc, modeForCalc, loadHistory]);
+  }, [
+    ownerEmail,
+    canEdit,
+    isLastDayOfMonth,
+    currentUser,
+    year,
+    month,
+    monthLabel,
+    totals,
+    positionForCalc,
+    modeForCalc,
+    loadHistory,
+  ]);
 
   return (
     <AppLayout active="tools">

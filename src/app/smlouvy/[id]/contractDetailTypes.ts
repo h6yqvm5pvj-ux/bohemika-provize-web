@@ -69,6 +69,8 @@ export type ContractDoc = {
   clientPhone?: string | null;
   clientAddress?: string | null;
   contractNumber?: string | null;
+  cppExtranetEntityTypeId?: string | number | null;
+  cppExtranetEntityId?: string | number | null;
   tipContractTipsterEmail?: string | null;
   tipContractTipsterName?: string | null;
   tipContractTipsterPercent?: number | null;

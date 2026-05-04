@@ -3,17 +3,22 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { auth, db } from "../app/firebase";
+import { auth } from "../app/firebase";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-} from "firebase/firestore";
+
+type TeamOverviewApiResponse = {
+  ok?: boolean;
+  members?: Array<{
+    managerEmail?: string | null;
+  }>;
+};
+
+const normalizeEmail = (value: unknown): string =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
 
 export function TeamMessageToolCard() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -32,12 +37,17 @@ export function TeamMessageToolCard() {
       }
 
       try {
-        const email = user.email.trim().toLowerCase();
-        const usersRef = collection(db, "users");
-        const subsQ = query(usersRef, where("managerEmail", "==", email));
-        const snap = await getDocs(subsQ);
-
-        setHasTeam(!snap.empty); // true jen když máš alespoň jednoho podřízeného
+        const email = normalizeEmail(user.email);
+        const payload = await fetchAuthedJsonOrThrow<TeamOverviewApiResponse>(
+          user,
+          "/api/team-overview",
+          { method: "GET" }
+        );
+        const members = Array.isArray(payload?.members) ? payload.members : [];
+        const directSubCount = members.filter(
+          (member) => normalizeEmail(member.managerEmail) === email
+        ).length;
+        setHasTeam(directSubCount > 0);
       } catch (e) {
         console.error("Chyba při načítání podřízených:", e);
         setHasTeam(false);

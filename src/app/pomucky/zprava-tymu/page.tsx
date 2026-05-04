@@ -11,16 +11,33 @@ import {
   X,
 } from "lucide-react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { collection, getDocs, query, where } from "firebase/firestore";
 
 import { AppLayout } from "@/components/AppLayout";
-import { auth, db } from "@/app/firebase";
+import { auth } from "@/app/firebase";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 
 type TargetMode = "all" | "selected";
 
 type Subordinate = {
   email: string;
   name: string;
+};
+
+type TeamOverviewApiResponse = {
+  ok?: boolean;
+  error?: string;
+  members?: Array<{
+    email?: string | null;
+    name?: string | null;
+    managerEmail?: string | null;
+  }>;
+};
+
+type TeamMessageApiResponse = {
+  ok?: boolean;
+  error?: string;
+  message?: string;
+  detail?: string;
 };
 
 const MAX_MESSAGE_LENGTH = 200;
@@ -56,6 +73,10 @@ function formatNameFromEmail(email: string): string {
   return parts.map(cap).join(" ");
 }
 
+function normalizeEmail(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
 export default function TeamMessagePage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -83,7 +104,7 @@ export default function TeamMessagePage() {
   }, []);
 
   useEffect(() => {
-    if (!userEmail) {
+    if (!user || !userEmail) {
       setSubordinates([]);
       return;
     }
@@ -93,22 +114,26 @@ export default function TeamMessagePage() {
       setErrorText(null);
 
       try {
-        const usersRef = collection(db, "users");
-        const subsQ = query(usersRef, where("managerEmail", "==", userEmail));
-        const snap = await getDocs(subsQ);
-
-        const items = snap.docs.map((docSnap) => {
-          const data = docSnap.data() as Record<string, unknown>;
-          const email =
-            typeof data.email === "string" && data.email.trim().length > 0
-              ? data.email.trim().toLowerCase()
-              : docSnap.id.toLowerCase();
-          const name =
-            typeof data.name === "string" && data.name.trim().length > 0
-              ? data.name.trim()
-              : formatNameFromEmail(email);
-          return { email, name };
-        });
+        const payload = await fetchAuthedJsonOrThrow<TeamOverviewApiResponse>(
+          user,
+          "/api/team-overview",
+          { method: "GET" }
+        );
+        const members = Array.isArray(payload?.members) ? payload.members : [];
+        const items = members
+          .filter((member) => normalizeEmail(member.managerEmail) === userEmail)
+          .map((member) => {
+            const email = normalizeEmail(member.email);
+            const nameRaw =
+              typeof member.name === "string" && member.name.trim().length > 0
+                ? member.name.trim()
+                : formatNameFromEmail(email);
+            return {
+              email,
+              name: nameRaw,
+            };
+          })
+          .filter((row) => row.email.length > 0);
 
         const deduped = new Map<string, Subordinate>();
         items.forEach((item) => {
@@ -128,7 +153,7 @@ export default function TeamMessagePage() {
     };
 
     void load();
-  }, [userEmail]);
+  }, [user, userEmail]);
 
   useEffect(() => {
     setSelectedEmails((prev) =>
@@ -223,7 +248,7 @@ export default function TeamMessagePage() {
   };
 
   const handleSend = async () => {
-    if (!canSend || !userEmail) return;
+    if (!canSend || !user || !userEmail) return;
 
     setSending(true);
     setErrorText(null);
@@ -245,20 +270,18 @@ export default function TeamMessagePage() {
         payload.recipients = selectedEmails;
       }
 
-      const res = await fetch(
-        "https://europe-central2-bohemikasmlouvy.cloudfunctions.net/sendTeamMessage",
+      const json = await fetchAuthedJsonOrThrow<TeamMessageApiResponse>(
+        user,
+        "/api/team-message",
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
           body: JSON.stringify(payload),
         }
       );
-
-      const json = (await res.json()) as { ok?: boolean; error?: string } | null;
       if (!json?.ok) {
-        throw new Error(json?.error || "Server nevrátil úspěšnou odpověď.");
+        throw new Error(
+          json?.error || json?.message || json?.detail || "Server nevrátil úspěšnou odpověď."
+        );
       }
 
       setSendSuccess(true);

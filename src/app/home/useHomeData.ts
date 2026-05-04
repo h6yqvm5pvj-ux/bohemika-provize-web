@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { auth, db } from "@/app/firebase";
+import { auth } from "@/app/firebase";
 import {
   type CommissionMode,
   type CommissionResultItemDTO,
@@ -12,11 +12,6 @@ import {
 import {
   entrySignedDate,
 } from "./homeUtils";
-import {
-  collection,
-  doc,
-  getDoc,
-} from "firebase/firestore";
 
 export type EntryDoc = {
   id: string;
@@ -119,6 +114,16 @@ type TipPayoutsApiResponse = {
   hasMore?: boolean;
   nextCursorToken?: string | null;
   nextCursor?: number | null;
+};
+
+type UserProfileApiResponse = {
+  ok?: boolean;
+  error?: string;
+  profile?: {
+    position?: Position | null;
+    commissionMode?: CommissionMode | null;
+    monthlyGoal?: number | null;
+  };
 };
 
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -657,15 +662,47 @@ export function useHomeData({
           setHistoryLoading(false);
         }
 
-        const usersRef = collection(db, "users");
-
         try {
-          const meSnap = await getDoc(doc(usersRef, email));
-          if (meSnap.exists()) {
-            const d = meSnap.data() as any;
-            position = d.position as Position | undefined;
-            monthlyGoal = (d.monthlyGoal as number | undefined) ?? null;
-            myMode = (d.commissionMode as CommissionMode | undefined) ?? null;
+          const currentUser = auth.currentUser;
+          if (currentUser) {
+            let bearerToken = await currentUser.getIdToken();
+            const requestWithToken = async (token: string) =>
+              fetch("/api/user/profile", {
+                method: "GET",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+                cache: "no-store",
+              });
+
+            let profileRes = await requestWithToken(bearerToken);
+            if (profileRes.status === 401) {
+              bearerToken = await currentUser.getIdToken(true);
+              profileRes = await requestWithToken(bearerToken);
+            }
+
+            const profilePayload = (await profileRes
+              .json()
+              .catch(() => null)) as UserProfileApiResponse | null;
+            if (!profileRes.ok || profilePayload?.ok === false) {
+              throw new Error(
+                profilePayload?.error ||
+                  `API user-profile selhalo (${profileRes.status}).`
+              );
+            }
+
+            const profile = profilePayload?.profile ?? {};
+            if (typeof profile.position === "string") {
+              position = profile.position as Position;
+            }
+            if (profile.commissionMode === "accelerated" || profile.commissionMode === "standard") {
+              myMode = profile.commissionMode;
+            }
+            if (typeof profile.monthlyGoal === "number" && Number.isFinite(profile.monthlyGoal)) {
+              monthlyGoal = profile.monthlyGoal;
+            } else {
+              monthlyGoal = null;
+            }
           }
         } catch (err) {
           if (process.env.NODE_ENV !== "production") {

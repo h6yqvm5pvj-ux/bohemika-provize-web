@@ -88,6 +88,7 @@ const ALLOWED_PATCH_KEYS = new Set([
   "homeWidgets",
   "homePerformanceMode",
   "homeQuickActions",
+  "tvorbaFooterProfile",
   "lastActivePing",
 ]);
 
@@ -387,6 +388,50 @@ function sanitizeHomeQuickActions(
   return out;
 }
 
+function sanitizeTvorbaFooterProfile(
+  value: unknown
+):
+  | {
+      fullName: string;
+      jobTitle: string;
+      companyId: string;
+      phone: string;
+      email: string;
+      officeAddress: string;
+      updatedAt: string;
+    }
+  | null {
+  if (!isPlainObject(value)) return null;
+
+  const fullName = normalizeOptionalText(value.fullName, 160);
+  const jobTitle = normalizeOptionalText(value.jobTitle, 160);
+  const companyId = normalizeOptionalText(value.companyId, 80);
+  const phone = normalizeOptionalText(value.phone, 80);
+  const email = normalizeOptionalText(value.email, 160);
+  const officeAddress = normalizeOptionalText(value.officeAddress, 220);
+
+  if (
+    fullName == null ||
+    jobTitle == null ||
+    companyId == null ||
+    phone == null ||
+    email == null ||
+    officeAddress == null
+  ) {
+    return null;
+  }
+
+  return {
+    fullName,
+    jobTitle,
+    companyId,
+    phone,
+    email,
+    officeAddress,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function sanitizePositionTimeline(value: unknown): Array<{
   id: string;
   position: Position;
@@ -583,6 +628,12 @@ function buildPatchFromBody(
     const value = sanitizeHomeQuickActions(body.homeQuickActions);
     if (!value) return { error: "Pole homeQuickActions má neplatný formát." };
     patch.homeQuickActions = value;
+  }
+
+  if (body.tvorbaFooterProfile != null) {
+    const value = sanitizeTvorbaFooterProfile(body.tvorbaFooterProfile);
+    if (!value) return { error: "Pole tvorbaFooterProfile má neplatný formát." };
+    patch.tvorbaFooterProfile = value;
   }
 
   return { patch, wantsPositionEdit };

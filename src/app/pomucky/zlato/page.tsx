@@ -75,8 +75,28 @@ type UnitKey = keyof typeof UNITS;
 type RangeKey = keyof typeof RANGES;
 type GoldView = "movement" | "comfort";
 type ComfortBrand = "argor" | "pamp";
+type ComfortPriceMode = "spot-scaled" | "official";
+type ComfortProductReference = {
+  label: string;
+  displayWeight: string;
+  grams: number;
+  sellCzk: number;
+  buybackCzk: number;
+  imageSrc: string;
+  spotCzkPerOz?: number;
+  priceMode?: ComfortPriceMode;
+  asOf?: string;
+};
+type ComfortBrandReference = {
+  label: string;
+  cardLabel: string;
+  asOf: string;
+  spotCzkPerOz: number;
+  purity: string;
+  products: readonly ComfortProductReference[];
+};
 
-const COMFORT_BRAND_REFERENCES = {
+const COMFORT_BRAND_REFERENCES: Record<ComfortBrand, ComfortBrandReference> = {
   argor: {
     label: "ARGOR",
     cardLabel: "ARGOR HERAEUS",
@@ -88,10 +108,12 @@ const COMFORT_BRAND_REFERENCES = {
         label: "ARGOR 1 oz",
         displayWeight: "1 oZ",
         grams: OUNCE_G,
-        sellCzk: 102832,
-        buybackCzk: 95822,
+        sellCzk: 102197,
+        buybackCzk: 95214,
         imageSrc: "/icons/argor1OZ.png",
         spotCzkPerOz: 95911.45,
+        priceMode: "official",
+        asOf: "4. 5. 2026",
       },
       {
         label: "ARGOR 20 g",
@@ -133,10 +155,12 @@ const COMFORT_BRAND_REFERENCES = {
         label: "PAMP 1 oz",
         displayWeight: "1 oZ",
         grams: OUNCE_G,
-        sellCzk: 108055,
-        buybackCzk: 99281,
+        sellCzk: 104277,
+        buybackCzk: 95514,
         imageSrc: "/icons/1oZpredni.png",
         spotCzkPerOz: 98810.8,
+        priceMode: "official",
+        asOf: "4. 5. 2026",
       },
       {
         label: "PAMP 20 g",
@@ -158,7 +182,7 @@ const COMFORT_BRAND_REFERENCES = {
       },
     ],
   },
-} as const;
+};
 
 function getDefaultComfortIndex(brand: ComfortBrand): number {
   const products = COMFORT_BRAND_REFERENCES[brand].products;
@@ -900,9 +924,12 @@ export default function GoldToolPage() {
       return comfortReference.products.map((product) => ({
         ...product,
         spotValue: null,
-        sell: null,
-        buyback: null,
-        spread: null,
+        sell: product.priceMode === "official" ? product.sellCzk : null,
+        buyback: product.priceMode === "official" ? product.buybackCzk : null,
+        spread:
+          product.priceMode === "official"
+            ? product.sellCzk - product.buybackCzk
+            : null,
         sellPremiumPct: null,
         buybackPremiumPct: null,
       }));
@@ -922,10 +949,11 @@ export default function GoldToolPage() {
 
     return comfortReference.products.map((product) => {
       const referenceSpot = product.spotCzkPerOz ?? comfortReference.spotCzkPerOz;
-      const scale = czkPerOz / referenceSpot;
       const spotValue = (czkPerOz / OUNCE_G) * product.grams;
-      const sell = product.sellCzk == null ? null : Math.round(product.sellCzk * scale);
-      const buyback = product.buybackCzk == null ? null : Math.round(product.buybackCzk * scale);
+      const isOfficial = product.priceMode === "official";
+      const scale = isOfficial ? 1 : czkPerOz / referenceSpot;
+      const sell = isOfficial ? product.sellCzk : Math.round(product.sellCzk * scale);
+      const buyback = isOfficial ? product.buybackCzk : Math.round(product.buybackCzk * scale);
       const sellPremiumPct = sell != null && spotValue > 0 ? (sell / spotValue - 1) * 100 : null;
       const buybackPremiumPct = buyback != null && spotValue > 0 ? (buyback / spotValue - 1) * 100 : null;
 
@@ -965,6 +993,18 @@ export default function GoldToolPage() {
       return (prev + direction + total) % total;
     });
   };
+
+  const activeComfortRow = comfortRows[activeComfortIndex] ?? null;
+  const comfortSourceText =
+    activeComfortRow?.priceMode === "official" && activeComfortRow.asOf
+      ? `${activeComfortRow.label}: ceník Comfort Commodity ${activeComfortRow.asOf}`
+      : comfortReference.asOf && comfortReference.spotCzkPerOz
+        ? `Kalibrace ${comfortReference.asOf} při spotu ${formatCzk(comfortReference.spotCzkPerOz)}`
+        : "Kalibrace bude doplněna";
+  const comfortModelText =
+    activeComfortRow?.priceMode === "official"
+      ? "Tato položka drží ručně zadaný ceník Comfort Commodity; ostatní gramáže se dál přepočítávají modelově."
+      : "Model: kalibrační cena × aktuální spot / kalibrační spot. Comfort může ceny fixovat dávkově.";
 
   // animovaný „counter“ pro hlavní cenu
   const [displayPrice, setDisplayPrice] = useState<number | null>(null);
@@ -1510,12 +1550,10 @@ export default function GoldToolPage() {
                 <div className="mt-3 flex flex-col gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[11px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
                   <div className="space-y-0.5">
                     <div>
-                      {comfortReference.asOf && comfortReference.spotCzkPerOz
-                        ? `Kalibrace ${comfortReference.asOf} při spotu ${formatCzk(comfortReference.spotCzkPerOz)}`
-                        : "Kalibrace bude doplněna"}
+                      {comfortSourceText}
                       {lastUpdated ? ` • aktualizováno ${lastUpdated.toLocaleString("cs-CZ")}` : ""}
                     </div>
-                    <div>Model: kalibrační cena × aktuální spot / kalibrační spot. Comfort může ceny fixovat dávkově.</div>
+                    <div>{comfortModelText}</div>
                   </div>
                   <button
                     type="button"
