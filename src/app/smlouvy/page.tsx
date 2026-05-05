@@ -440,7 +440,7 @@ type ContractsListFilters = {
   selectedSubordinates: string[];
 };
 
-const CONTRACTS_CACHE_KEY = "contracts_cache_v2";
+const CONTRACTS_CACHE_KEY = "contracts_cache_v3";
 const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 const CONTRACTS_VIEW_STATE_KEY = "contracts_view_state_v1";
 const CONTRACTS_SILENT_REFRESH_COOLDOWN_MS = 60_000;

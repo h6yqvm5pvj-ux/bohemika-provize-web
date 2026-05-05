@@ -153,6 +153,7 @@ const QUICK_ACTION_OPTIONS: QuickAction[] = [
   { key: "projekce-vykonu", title: "Projekce výkonu", href: "/pomucky/projekce-vykonu", category: "Finance" },
   { key: "pracovni-neschopenka", title: "Pracovní neschopnost", href: "/pomucky/pracovni-neschopenka", category: "Životní pojištění" },
   { key: "invalidita", title: "Invalidita", href: "/pomucky/invalidita", category: "Životní pojištění" },
+  { key: "srovnavac-zivotniho-pojisteni", title: "Srovnavač životního pojištění", href: "/pomucky/srovnavac-zivotniho-pojisteni", category: "Životní pojištění" },
 ];
 
 const readLocalHomeWidgets = (email?: string | null): HomeWidgets | null => {

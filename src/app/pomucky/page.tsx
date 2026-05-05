@@ -22,6 +22,7 @@ import {
   PenTool,
   Scale,
   Search,
+  ShieldCheck,
   TrendingUp,
   Trophy,
   WalletCards,
@@ -349,6 +350,14 @@ export default function ToolsPage() {
         description: "Otevři srovnavač pro trvalé následky úrazu.",
         icon: Bike,
         href: "/pomucky/srovnavac-trvalych-nasledku",
+      },
+      {
+        key: "srovnavac-zivotniho-pojisteni",
+        category: "Životní pojištění",
+        title: "Srovnavač životního pojištění",
+        description: "Porovnání produktových podmínek životního pojištění podle pojišťoven a kategorií.",
+        icon: ShieldCheck,
+        href: "/pomucky/srovnavac-zivotniho-pojisteni",
       },
     ],
     []

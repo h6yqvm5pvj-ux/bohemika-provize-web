@@ -2433,7 +2433,7 @@ export default function ContractDetailPage() {
       );
       if (typeof window !== "undefined") {
         try {
-          sessionStorage.removeItem("contracts_cache_v2");
+          sessionStorage.removeItem("contracts_cache_v3");
           localStorage.setItem("contracts_last_updated", String(Date.now()));
           window.dispatchEvent(new Event("contracts:updated"));
         } catch {
@@ -2494,7 +2494,7 @@ export default function ContractDetailPage() {
 
       if (typeof window !== "undefined") {
         try {
-          sessionStorage.removeItem("contracts_cache_v2");
+          sessionStorage.removeItem("contracts_cache_v3");
           localStorage.setItem("contracts_last_updated", String(Date.now()));
           window.dispatchEvent(new Event("contracts:updated"));
         } catch {
@@ -2552,7 +2552,7 @@ export default function ContractDetailPage() {
 
       if (typeof window !== "undefined") {
         try {
-          sessionStorage.removeItem("contracts_cache_v2");
+          sessionStorage.removeItem("contracts_cache_v3");
           localStorage.setItem("contracts_last_updated", String(Date.now()));
           window.dispatchEvent(new Event("contracts:updated"));
         } catch {

@@ -4062,6 +4062,57 @@ async function fetchContractsForOwners(
     return itemKey < cursorKey;
   };
 
+  // Stable path for single-owner lists: load all entries and paginate in-memory.
+  // This avoids pagination gaps when many docs share identical date values.
+  if (owners.length === 1) {
+    const ownerEmail = owners[0]!;
+    const ownerSnap = await db.collection("users").doc(ownerEmail).collection("entries").get();
+
+    ownerSnap.docs.forEach((doc) => {
+      const data = doc.data() as ContractDoc;
+      if (!shouldIncludeByCursor(data, doc.id, ownerEmail)) return;
+      if (filtersActive && filters && !contractMatchesListFilters(data, filters)) return;
+      collected.push(
+        toContractListResponseItem({
+          docId: doc.id,
+          ownerEmail,
+          data,
+          shape: responseShape,
+        })
+      );
+    });
+
+    collected.sort((a, b) => {
+      const da = contractSortDate(a);
+      const dbDate = contractSortDate(b);
+      if (!da && !dbDate) return 0;
+      if (!da) return 1;
+      if (!dbDate) return -1;
+      const diff = dbDate.getTime() - da.getTime();
+      if (diff !== 0) return diff;
+      const keyA = responseCursorKey(a);
+      const keyB = responseCursorKey(b);
+      if (keyA === keyB) return 0;
+      return keyA > keyB ? -1 : 1;
+    });
+
+    const page = collected.slice(0, pageSize);
+    const hasMore = collected.length > pageSize;
+    const oldest = page.length > 0 ? contractSortDate(page[page.length - 1]) : null;
+    const oldestKey =
+      page.length > 0 ? responseCursorKey(page[page.length - 1]) : null;
+    const nextCursor = oldest ? oldest.getTime() : null;
+    const nextCursorToken =
+      oldest && oldestKey ? encodeCursorToken(oldest.getTime(), oldestKey) : null;
+
+    return {
+      list: page,
+      hasMore,
+      nextCursor,
+      nextCursorToken,
+    };
+  }
+
   const pushCollected = (docId: string, ownerEmail: string, data: ContractDoc) => {
     if (!shouldIncludeByCursor(data, docId, ownerEmail)) return;
     if (filtersActive && filters && !contractMatchesListFilters(data, filters)) return;
