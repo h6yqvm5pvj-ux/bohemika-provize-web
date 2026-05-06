@@ -187,7 +187,7 @@ const PRODUCTION_CATEGORY_TABS: { key: ProductionCategory; label: string }[] = [
 function insurerLogoPath(insurer: string): string | null {
   const normalized = insurer.toLowerCase();
   if (normalized.includes("čpp") || normalized.includes("cpp")) return "/icons/cpp.png";
-  if (normalized.includes("kooperativa")) return "/icons/koop.png";
+  if (normalized.includes("kooperativa")) return "/icons/koop-v2.png";
   if (normalized.includes("maxima")) return "/icons/maxima.png";
   if (normalized.includes("allianz")) return "/icons/allianz.png";
   if (normalized.includes("slavia")) return "/icons/slavialogo.png";

@@ -48,7 +48,7 @@ export type ProductMetadata = {
 
 const INSTITUTIONS: Record<ProductInstitutionId, ProductInstitutionMeta> = {
   cpp: { id: "cpp", label: "ČPP", logoPath: "/icons/cpp.png" },
-  kooperativa: { id: "kooperativa", label: "Kooperativa", logoPath: "/icons/koop.png" },
+  kooperativa: { id: "kooperativa", label: "Kooperativa", logoPath: "/icons/koop-v2.png" },
   maxima: { id: "maxima", label: "Maxima", logoPath: "/icons/maxima.png" },
   allianz: { id: "allianz", label: "Allianz", logoPath: "/icons/allianz.png" },
   slavia: { id: "slavia", label: "SLAVIA", logoPath: "/icons/slavialogo.png" },

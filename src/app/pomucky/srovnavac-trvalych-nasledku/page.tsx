@@ -65,7 +65,7 @@ const getInsurerLogoPath = (insurer: string): string | null => {
   if (normalized.includes("čpp") || normalized.includes("cpp")) return "/icons/cpp.png";
   if (normalized.includes("uniqa")) return "/icons/uniqa.png";
   if (normalized.includes("nn")) return "/icons/nn.png";
-  if (normalized.includes("kooperativa")) return "/icons/koop.png";
+  if (normalized.includes("kooperativa")) return "/icons/koop-v2.png";
   if (normalized.includes("pillow")) return "/icons/pillow.png";
   if (normalized.includes("generali")) return "/icons/generali.png";
   if (normalized.includes("metlife")) return "/icons/metlife.png";

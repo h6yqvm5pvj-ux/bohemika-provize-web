@@ -31,7 +31,7 @@ const INSURERS: readonly InsurerCard[] = [
   {
     key: "kooperativa",
     title: "Kooperativa",
-    logo: "/icons/koop.png",
+    logo: "/icons/koop-v2.png",
     description: "Dokumenty a materiály pro životní pojištění Kooperativa.",
   },
 ];

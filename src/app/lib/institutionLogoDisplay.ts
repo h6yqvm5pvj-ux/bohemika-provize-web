@@ -12,7 +12,7 @@ export type InstitutionLogoSize = "card" | "compact" | "chip";
 
 const LOGO_KEY_BY_PATH: Record<string, InstitutionLogoKey> = {
   "/icons/cpp.png": "cpp",
-  "/icons/koop.png": "kooperativa",
+  "/icons/koop-v2.png": "kooperativa",
   "/icons/maxima.png": "maxima",
   "/icons/allianz.png": "allianz",
   "/icons/slavialogo.png": "slavia",

@@ -1,0 +1,331 @@
+{
+  "source": "esrovnani-life-products-export",
+  "generatedAt": "2026-05-06T10:23:56.513Z",
+  "products": [
+    {
+      "id": "prod-699ffc663aae522705869be2",
+      "insurer": "Allianz",
+      "name": "Partners Život (IŽP)",
+      "version": "27.02.2026",
+      "sourceInsuranceCompanyId": "5e8c21f6ac15e82b2f34e8aa",
+      "sourceProductId": "699ffc663aae522705869be2",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "prod-691da1a2debfc07c1842625a",
+      "insurer": "Allianz",
+      "name": "Partners Život (RŽP)",
+      "version": "28.11.2025",
+      "sourceInsuranceCompanyId": "5e8c21f6ac15e82b2f34e8aa",
+      "sourceProductId": "691da1a2debfc07c1842625a",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-699ffb183aae522705869777",
+      "insurer": "Allianz",
+      "name": "Život (IŽP)",
+      "version": "27.02.2026",
+      "sourceInsuranceCompanyId": "5e8c21f6ac15e82b2f34e8aa",
+      "sourceProductId": "699ffb183aae522705869777",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "prod-691da085debfc07c18425c27",
+      "insurer": "Allianz",
+      "name": "Život (RŽP)",
+      "version": "28.11.2025",
+      "sourceInsuranceCompanyId": "5e8c21f6ac15e82b2f34e8aa",
+      "sourceProductId": "691da085debfc07c18425c27",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-66aa2155f218f5664e613b7e",
+      "insurer": "ČPP",
+      "name": "Maximum Invest (IŽP)",
+      "version": "01.06.2024",
+      "sourceInsuranceCompanyId": "5e8da1efac15e82b2f34e95f",
+      "sourceProductId": "66aa2155f218f5664e613b7e",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "prod-69ae8b7a7e8c7ec6f69d691c",
+      "insurer": "ČPP",
+      "name": "Maximum Life (RŽP)",
+      "version": "01.04.2026",
+      "sourceInsuranceCompanyId": "5e8da1efac15e82b2f34e95f",
+      "sourceProductId": "69ae8b7a7e8c7ec6f69d691c",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-664c74ba5754d7095931466b",
+      "insurer": "ČPP",
+      "name": "NEON Invest (IŽP)",
+      "version": "01.06.2024",
+      "sourceInsuranceCompanyId": "5e8da1efac15e82b2f34e95f",
+      "sourceProductId": "664c74ba5754d7095931466b",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "cpp-neon",
+      "insurer": "ČPP",
+      "name": "NEON Life (RŽP)",
+      "version": "01.04.2026",
+      "sourceInsuranceCompanyId": "5e8da1efac15e82b2f34e95f",
+      "sourceProductId": "6989cf8a6db70856f7156660",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-6639dce85754d70959314033",
+      "insurer": "ČPP",
+      "name": "NEON Risk (RPO)",
+      "version": "01.06.2024",
+      "sourceInsuranceCompanyId": "5e8da1efac15e82b2f34e95f",
+      "sourceProductId": "6639dce85754d70959314033",
+      "sourceSubType": "RPO"
+    },
+    {
+      "id": "prod-64884c489886d23a6bbdef54",
+      "insurer": "ČSOB",
+      "name": "Náš život (IŽP)",
+      "version": "18.06.2023",
+      "sourceInsuranceCompanyId": "5e8da1ddac15e82b2f34e95d",
+      "sourceProductId": "64884c489886d23a6bbdef54",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "prod-64884c1f9886d23a6bbdede5",
+      "insurer": "ČSOB",
+      "name": "Náš život (RŽP)",
+      "version": "18.06.2023",
+      "sourceInsuranceCompanyId": "5e8da1ddac15e82b2f34e95d",
+      "sourceProductId": "64884c1f9886d23a6bbdede5",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-65c397b48d15db5a8735eeb3",
+      "insurer": "Generali Česká",
+      "name": "Allegro 20 (RŽP)",
+      "version": "25.02.2024",
+      "sourceInsuranceCompanyId": "5e8c222aac15e82b2f34e8ab",
+      "sourceProductId": "65c397b48d15db5a8735eeb3",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-65c3977d8d15db5a8735ecfb",
+      "insurer": "Generali Česká",
+      "name": "Bel Mondo 20 (IŽP)",
+      "version": "25.02.2024",
+      "sourceInsuranceCompanyId": "5e8c222aac15e82b2f34e8ab",
+      "sourceProductId": "65c3977d8d15db5a8735ecfb",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "generali-bel-mondo-20",
+      "insurer": "Generali Česká",
+      "name": "Bel Mondo 20 (RŽP)",
+      "version": "25.02.2024",
+      "sourceInsuranceCompanyId": "5e8c222aac15e82b2f34e8ab",
+      "sourceProductId": "65c397f28d15db5a8735f05e",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-65c398388d15db5a8735f209",
+      "insurer": "Generali Česká",
+      "name": "Můj Život 2 (IŽP)",
+      "version": "25.02.2024",
+      "sourceInsuranceCompanyId": "5e8c222aac15e82b2f34e8ab",
+      "sourceProductId": "65c398388d15db5a8735f209",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "prod-65c398638d15db5a8735f3c1",
+      "insurer": "Generali Česká",
+      "name": "Můj Život 2 (RŽP)",
+      "version": "25.02.2024",
+      "sourceInsuranceCompanyId": "5e8c222aac15e82b2f34e8ab",
+      "sourceProductId": "65c398638d15db5a8735f3c1",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-68b988432fbf59f38e01210c",
+      "insurer": "Komerční pojišťovna",
+      "name": "Elán (RŽP)",
+      "version": "15.10.2025",
+      "sourceInsuranceCompanyId": "5e8d8a9bac15e82b2f34e954",
+      "sourceProductId": "68b988432fbf59f38e01210c",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-65263ef4d7326f540180e070",
+      "insurer": "Komerční pojišťovna",
+      "name": "Mutumutu (RŽP)",
+      "version": "01.02.2023",
+      "sourceInsuranceCompanyId": "5e8d8a9bac15e82b2f34e954",
+      "sourceProductId": "65263ef4d7326f540180e070",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-69eb56befabbca9df0c26eb5",
+      "insurer": "Kooperativa",
+      "name": "Pojištění soběstačnosti FLEXI (LTC)",
+      "version": "25.04.2025",
+      "sourceInsuranceCompanyId": "5e8da1f5ac15e82b2f34e960",
+      "sourceProductId": "69eb56befabbca9df0c26eb5",
+      "sourceSubType": "LTC"
+    },
+    {
+      "id": "koop-flexi",
+      "insurer": "Kooperativa",
+      "name": "RŽP FLEXI (RŽP)",
+      "version": "24.10.2025",
+      "sourceInsuranceCompanyId": "5e8da1f5ac15e82b2f34e960",
+      "sourceProductId": "68f73a6e0dc473e6d9d7cbc7",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-68f23934aba9a5023d9f1b49",
+      "insurer": "Kooperativa",
+      "name": "ŽP FLEXI (IŽP)",
+      "version": "24.10.2025",
+      "sourceInsuranceCompanyId": "5e8da1f5ac15e82b2f34e960",
+      "sourceProductId": "68f23934aba9a5023d9f1b49",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "prod-66d023bd407f8f0078f61c1c",
+      "insurer": "Maxima",
+      "name": "MaxEfekt (RŽP)",
+      "version": "22.04.2026",
+      "sourceInsuranceCompanyId": "5e8d8532ac15e82b2f34e952",
+      "sourceProductId": "66d023bd407f8f0078f61c1c",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-65a525517241f9425aa2e89e",
+      "insurer": "MetLife",
+      "name": "Garde 6.0 (IŽP)",
+      "version": "01.01.2024",
+      "sourceInsuranceCompanyId": "5e8c93beac15e82b2f34e94a",
+      "sourceProductId": "65a525517241f9425aa2e89e",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "prod-65a525937241f9425aa2ea56",
+      "insurer": "MetLife",
+      "name": "Garde 6.0 (RŽP)",
+      "version": "01.01.2024",
+      "sourceInsuranceCompanyId": "5e8c93beac15e82b2f34e94a",
+      "sourceProductId": "65a525937241f9425aa2ea56",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-66fe514dae995615caebd2f2",
+      "insurer": "MetLife",
+      "name": "OneGuard (RŽP)",
+      "version": "14.10.2024",
+      "sourceInsuranceCompanyId": "5e8c93beac15e82b2f34e94a",
+      "sourceProductId": "66fe514dae995615caebd2f2",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-6614f01aef85721a0e49f2d3",
+      "insurer": "MetLife",
+      "name": "Vision 8.0 (IŽP)",
+      "version": "01.04.2024",
+      "sourceInsuranceCompanyId": "5e8c93beac15e82b2f34e94a",
+      "sourceProductId": "6614f01aef85721a0e49f2d3",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "prod-6989924d6db70856f7154e31",
+      "insurer": "NN",
+      "name": "Orange Benefit (IŽP)",
+      "version": "01.12.2025",
+      "sourceInsuranceCompanyId": "5e8d6943ac15e82b2f34e94d",
+      "sourceProductId": "6989924d6db70856f7154e31",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "prod-6924541edd4999835d328864",
+      "insurer": "NN",
+      "name": "Orange Bonus (IŽP)",
+      "version": "01.12.2025",
+      "sourceInsuranceCompanyId": "5e8d6943ac15e82b2f34e94d",
+      "sourceProductId": "6924541edd4999835d328864",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "prod-6989addf6db70856f7155f1a",
+      "insurer": "NN",
+      "name": "Orange Care (LTC)",
+      "version": "01.09.2025",
+      "sourceInsuranceCompanyId": "5e8d6943ac15e82b2f34e94d",
+      "sourceProductId": "6989addf6db70856f7155f1a",
+      "sourceSubType": "LTC"
+    },
+    {
+      "id": "prod-692453c8dd4999835d32842d",
+      "insurer": "NN",
+      "name": "Orange Invest (IŽP)",
+      "version": "01.12.2025",
+      "sourceInsuranceCompanyId": "5e8d6943ac15e82b2f34e94d",
+      "sourceProductId": "692453c8dd4999835d32842d",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "nn-orange-risk",
+      "insurer": "NN",
+      "name": "Orange Risk (RŽP)",
+      "version": "01.12.2025",
+      "sourceInsuranceCompanyId": "5e8d6943ac15e82b2f34e94d",
+      "sourceProductId": "6924533add4999835d327f25",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-63f717ec6fd5e2071aff0f32",
+      "insurer": "Pillow",
+      "name": "Pojištění úrazu a nemoci (RPO)",
+      "version": "01.03.2023",
+      "sourceInsuranceCompanyId": "5f312c0e841e23093bd63517",
+      "sourceProductId": "63f717ec6fd5e2071aff0f32",
+      "sourceSubType": "RPO"
+    },
+    {
+      "id": "prod-67b3290b5cce348781673434",
+      "insurer": "Simplea",
+      "name": "Simplea (RŽP)",
+      "version": "09.04.2025",
+      "sourceInsuranceCompanyId": "5e8d9aebac15e82b2f34e959",
+      "sourceProductId": "67b3290b5cce348781673434",
+      "sourceSubType": "RŽP"
+    },
+    {
+      "id": "prod-6488254d9886d23a6bbdec78",
+      "insurer": "Slavia",
+      "name": "PRO Zdraví (RPO)",
+      "version": "01.03.2023",
+      "sourceInsuranceCompanyId": "619f6d5eebca9b3a50b1c884",
+      "sourceProductId": "6488254d9886d23a6bbdec78",
+      "sourceSubType": "RPO"
+    },
+    {
+      "id": "prod-69ce2635a5470c9ecf0504ae",
+      "insurer": "UNIQA",
+      "name": "Život & radost (IŽP)",
+      "version": "07.04.2026",
+      "sourceInsuranceCompanyId": "5e8c5863ac15e82b2f34e948",
+      "sourceProductId": "69ce2635a5470c9ecf0504ae",
+      "sourceSubType": "IŽP"
+    },
+    {
+      "id": "uniqa-zivot-radost",
+      "insurer": "UNIQA",
+      "name": "Život & radost (RŽP)",
+      "version": "07.04.2026",
+      "sourceInsuranceCompanyId": "5e8c5863ac15e82b2f34e948",
+      "sourceProductId": "69ce26a0a5470c9ecf0507ec",
+      "sourceSubType": "RŽP"
+    }
+  ],
+  "sections": []
+}
