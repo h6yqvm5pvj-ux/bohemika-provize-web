@@ -2,14 +2,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Accessibility,
+  AlertTriangle,
+  Download,
   FileCheck2,
   FileSignature,
   HeartPulse,
   Shield,
   UsersRound,
+  X,
 } from "lucide-react";
 
 type WaiverInvalidityScope = "twoAndThree" | "threeOnly";
@@ -23,6 +27,7 @@ type PermanentStart = "from0" | "from0001" | "from05" | "from10";
 
 type DailyStart = "from1" | "from22";
 type DailyProgress = "none" | "with";
+type MaxDailyPreviewCarrier = "cpp" | "kooperativa";
 
 type BodilyStart = "from0" | "from6";
 
@@ -300,6 +305,18 @@ export function LifeRecordForm() {
 
   // Zdravotní a sociální asistence
   const [healthSocialOn, setHealthSocialOn] = useState(false);
+  const [showMaxDailyPreview, setShowMaxDailyPreview] = useState(false);
+  const [maxDailyPreviewCarrier, setMaxDailyPreviewCarrier] =
+    useState<MaxDailyPreviewCarrier>("cpp");
+
+  const openMaxDailyPreview = (carrier: MaxDailyPreviewCarrier = "cpp") => {
+    setMaxDailyPreviewCarrier(carrier);
+    setShowMaxDailyPreview(true);
+  };
+  const maxDailyPreviewSrc =
+    maxDailyPreviewCarrier === "kooperativa"
+      ? "/dokumenty/koopprijem.jpg"
+      : "/dokumenty/maxdenni.jpg";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -953,83 +970,128 @@ export function LifeRecordForm() {
     setAccident: (v: boolean) => void,
     illness: boolean,
     setIllness: (v: boolean) => void
-  ) => (
-    <BenefitCard
-      title="Pracovní neschopnost"
-      enabled={enabled}
-      onToggle={onToggle}
-    >
-      {enabled && (
-        <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
-          {renderAmountInput(amount, setAmount, "Denní dávka (Kč)")}
+  ) => {
+    const limit = from === "day60" ? 800 : 600;
+    const normalizedAmount = parseAmount(amount);
+    const isOverLimit = normalizedAmount > limit;
+    const fromLabel =
+      from === "day15" ? "od 15. dne" : from === "day29" ? "od 29. dne" : "od 60. dne";
 
-          <div className="space-y-1">
-            <p className="text-[11px] sm:text-xs text-slate-900">
-              Plnění od:
-            </p>
-            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
-              <ChipButton
-                active={from === "day15"}
-                onClick={() => setFrom("day15")}
-              >
-                od 15. dne
-              </ChipButton>
-              <ChipButton
-                active={from === "day29"}
-                onClick={() => setFrom("day29")}
-              >
-                od 29. dne
-              </ChipButton>
-              <ChipButton
-                active={from === "day60"}
-                onClick={() => setFrom("day60")}
-              >
-                od 60. dne
-              </ChipButton>
+    return (
+      <BenefitCard
+        title="Pracovní neschopnost"
+        enabled={enabled}
+        onToggle={onToggle}
+      >
+        {enabled && (
+          <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
+            <div className="space-y-1">
+              <p className="text-[11px] sm:text-xs text-slate-900">Denní dávka (Kč)</p>
+              <div className="relative">
+                <input
+                  {...moneyInputProps}
+                  className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
+                    isOverLimit
+                      ? "border-amber-500 bg-amber-50 pr-10 focus:border-amber-500 focus:ring-amber-300/80"
+                      : "border-slate-900 bg-white focus:border-sky-500/80 focus:ring-sky-500/80"
+                  }`}
+                  value={amount}
+                  onChange={(e) => setAmount(normalizeAmountInput(e.target.value))}
+                  placeholder="Denní dávka (Kč)"
+                />
+                {isOverLimit ? (
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-amber-700">
+                    <AlertTriangle className="h-4 w-4" />
+                  </span>
+                ) : null}
+              </div>
+                {isOverLimit ? (
+                  <div className="mt-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs">
+                    <p className="font-semibold text-amber-900">
+                      Nad limitem {limit} Kč pro variantu {fromLabel} je potřeba doložit příjem.
+                    </p>
+                    <p className="mt-1 text-amber-900">
+                      Platí pro ČPP. U Kooperativa FLEXI se příjem dokládá nad 650 Kč / den.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => openMaxDailyPreview("cpp")}
+                      className="mt-2 inline-flex items-center rounded-lg border border-amber-400 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 transition hover:border-amber-500 hover:bg-amber-100"
+                  >
+                    Zobrazit tabulku max. částek
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] sm:text-xs text-slate-900">
+                Plnění od:
+              </p>
+              <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+                <ChipButton
+                  active={from === "day15"}
+                  onClick={() => setFrom("day15")}
+                >
+                  od 15. dne
+                </ChipButton>
+                <ChipButton
+                  active={from === "day29"}
+                  onClick={() => setFrom("day29")}
+                >
+                  od 29. dne
+                </ChipButton>
+                <ChipButton
+                  active={from === "day60"}
+                  onClick={() => setFrom("day60")}
+                >
+                  od 60. dne
+                </ChipButton>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] sm:text-xs text-slate-900">
+                Varianta plnění:
+              </p>
+              <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+                <ChipButton
+                  active={variant === "retroFrom1"}
+                  onClick={() => setVariant("retroFrom1")}
+                >
+                  Zpětně od 1. dne
+                </ChipButton>
+                <ChipButton
+                  active={variant === "nonRetro"}
+                  onClick={() => setVariant("nonRetro")}
+                >
+                  Nezpětně
+                </ChipButton>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] sm:text-xs text-slate-900">Plnění:</p>
+              <div className="flex flex-wrap gap-2">
+                <ChipButton
+                  active={accident}
+                  onClick={() => setAccident(!accident)}
+                >
+                  Úrazem
+                </ChipButton>
+                <ChipButton
+                  active={illness}
+                  onClick={() => setIllness(!illness)}
+                >
+                  Nemocí
+                </ChipButton>
+              </div>
             </div>
           </div>
-
-          <div className="space-y-1">
-            <p className="text-[11px] sm:text-xs text-slate-900">
-              Varianta plnění:
-            </p>
-            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
-              <ChipButton
-                active={variant === "retroFrom1"}
-                onClick={() => setVariant("retroFrom1")}
-              >
-                Zpětně od 1. dne
-              </ChipButton>
-              <ChipButton
-                active={variant === "nonRetro"}
-                onClick={() => setVariant("nonRetro")}
-              >
-                Nezpětně
-              </ChipButton>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <p className="text-[11px] sm:text-xs text-slate-900">Plnění:</p>
-            <div className="flex flex-wrap gap-2">
-              <ChipButton
-                active={accident}
-                onClick={() => setAccident(!accident)}
-              >
-                Úrazem
-              </ChipButton>
-              <ChipButton
-                active={illness}
-                onClick={() => setIllness(!illness)}
-              >
-                Nemocí
-              </ChipButton>
-            </div>
-          </div>
-        </div>
-      )}
-    </BenefitCard>
-  );
+        )}
+      </BenefitCard>
+    );
+  };
 
   // --------------------------------------------------
   // VÝSLEDKY – klik na zelené tlačítko
@@ -1479,6 +1541,7 @@ export function LifeRecordForm() {
   // --------------------------------------------------
 
   return (
+    <>
     <div className="space-y-4">
       {/* Header sekce */}
       <div className="mb-1">
@@ -1806,11 +1869,44 @@ export function LifeRecordForm() {
         >
           {dailyOn && (
             <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
-              {renderAmountInput(
-                dailyAmount,
-                setDailyAmount,
-                "Denní dávka (Kč)"
-              )}
+              <div className="space-y-1">
+                <p className="text-[11px] sm:text-xs text-slate-900">Denní dávka (Kč)</p>
+                <div className="relative">
+                  <input
+                    {...moneyInputProps}
+                    className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
+                      parseAmount(dailyAmount) > 600
+                        ? "border-amber-500 bg-amber-50 pr-10 focus:border-amber-500 focus:ring-amber-300/80"
+                        : "border-slate-900 bg-white focus:border-sky-500/80 focus:ring-sky-500/80"
+                    }`}
+                    value={dailyAmount}
+                    onChange={(e) => setDailyAmount(normalizeAmountInput(e.target.value))}
+                    placeholder="Denní dávka (Kč)"
+                  />
+                  {parseAmount(dailyAmount) > 600 ? (
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-amber-700">
+                      <AlertTriangle className="h-4 w-4" />
+                    </span>
+                  ) : null}
+                </div>
+                {parseAmount(dailyAmount) > 600 ? (
+                  <div className="mt-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs">
+                    <p className="font-semibold text-amber-900">
+                      Nad limitem 600 Kč je potřeba doložit příjem.
+                    </p>
+                    <p className="mt-1 text-amber-900">
+                      Platí pro ČPP. U Kooperativa FLEXI se příjem dokládá nad 650 Kč / den.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => openMaxDailyPreview("cpp")}
+                      className="mt-2 inline-flex items-center rounded-lg border border-amber-400 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 transition hover:border-amber-500 hover:bg-amber-100"
+                    >
+                      Zobrazit tabulku max. částek
+                    </button>
+                  </div>
+                ) : null}
+              </div>
 
               <div className="space-y-1">
                 <p className="text-[11px] sm:text-xs text-slate-900">
@@ -2175,6 +2271,77 @@ export function LifeRecordForm() {
         </button>
       </div>
     </div>
+    {showMaxDailyPreview ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 px-3 py-6 sm:px-6">
+        <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_30px_80px_rgba(15,23,42,0.35)] sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-xl font-semibold text-slate-900">
+                MAXIMÁLNÍ POJISTNÉ ČÁSTKY DENNÍHO ODŠKODNÉHO
+              </h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Tabulka maximálních částek ve vztahu k příjmu.
+              </p>
+              <div className="mt-3 inline-flex rounded-full border border-slate-300 bg-slate-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setMaxDailyPreviewCarrier("cpp")}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                    maxDailyPreviewCarrier === "cpp"
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  ČPP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMaxDailyPreviewCarrier("kooperativa")}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                    maxDailyPreviewCarrier === "kooperativa"
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  KOOPERATIVA
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <a
+                href={maxDailyPreviewSrc}
+                download
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
+              >
+                <Download className="h-4 w-4" />
+                Stáhnout
+              </a>
+              <button
+                type="button"
+                onClick={() => setShowMaxDailyPreview(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Zavřít"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+              <Image
+                src={maxDailyPreviewSrc}
+                alt="Maximální pojistné částky denního odškodného"
+                width={2481}
+                height={3508}
+                className="h-auto w-full object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }
 

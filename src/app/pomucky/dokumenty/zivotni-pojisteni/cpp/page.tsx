@@ -56,7 +56,7 @@ const STORNO_RULES = [
 
 export default function CppLifeDocumentsPage() {
   const [activeTab, setActiveTab] = useState<"prehled" | "vypoved">("prehled");
-  const [activeModal, setActiveModal] = useState<"storno" | "vypoved" | null>(null);
+  const [activeModal, setActiveModal] = useState<"storno" | "vypoved" | "maxdenni" | null>(null);
 
   return (
     <AppLayout active="tools">
@@ -134,20 +134,34 @@ export default function CppLifeDocumentsPage() {
         </section>
 
         {activeTab === "prehled" ? (
-          <section className="grid gap-4 md:grid-cols-3">
-            {CPP_DOCUMENT_GROUPS.map((group) => (
-              <article
-                key={group.key}
-                className="rounded-3xl border border-slate-300 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-              >
-                <h3 className="text-sm font-semibold text-slate-900">{group.title}</h3>
-                <ul className="mt-3 space-y-1 text-xs text-slate-500">
-                  {group.items.map((item) => (
-                    <li key={item}>• {item}</li>
-                  ))}
-                </ul>
-              </article>
-            ))}
+          <section className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-3">
+              {CPP_DOCUMENT_GROUPS.map((group) => (
+                <article
+                  key={group.key}
+                  className="rounded-3xl border border-slate-300 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                >
+                  <h3 className="text-sm font-semibold text-slate-900">{group.title}</h3>
+                  <ul className="mt-3 space-y-1 text-xs text-slate-500">
+                    {group.items.map((item) => (
+                      <li key={item}>• {item}</li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setActiveModal("maxdenni")}
+              className="w-full rounded-3xl border border-slate-900 bg-slate-900 px-4 py-4 text-left text-white shadow-[0_12px_26px_rgba(15,23,42,0.25)] transition hover:-translate-y-0.5 hover:bg-black"
+            >
+              <div className="text-xs uppercase tracking-[0.18em] text-slate-300">Náhled dokumentu</div>
+              <div className="mt-1 text-lg font-semibold">
+                MAXIMÁLNÍ POJISTNÉ ČÁSTKY DENNÍHO ODŠKODNÉHO
+              </div>
+              <div className="mt-1 text-xs text-slate-300">Otevřít náhled JPEG a stáhnout</div>
+            </button>
           </section>
         ) : (
           <section className="space-y-3">
@@ -185,16 +199,26 @@ export default function CppLifeDocumentsPage() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-xl font-semibold text-slate-900">
-                  {activeModal === "storno" ? "STORNO Dohodou" : "Výpověď smlouvy"}
+                  {activeModal === "storno"
+                    ? "STORNO Dohodou"
+                    : activeModal === "vypoved"
+                      ? "Výpověď smlouvy"
+                      : "MAXIMÁLNÍ POJISTNÉ ČÁSTKY DENNÍHO ODŠKODNÉHO"}
                 </h3>
-                <p className="mt-1 text-sm text-slate-600">Výpověď smlouvy - ČPP Životní pojištění</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {activeModal === "maxdenni"
+                    ? "ČPP Životní pojištění"
+                    : "Výpověď smlouvy - ČPP Životní pojištění"}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <a
                   href={
                     activeModal === "storno"
                       ? "/dokumenty/zpneonstornodohodou.pdf"
-                      : "/dokumenty/Výpověď_PS_ŽP_062023.pdf"
+                      : activeModal === "vypoved"
+                        ? "/dokumenty/Výpověď_PS_ŽP_062023.pdf"
+                        : "/dokumenty/maxdenni.jpg"
                   }
                   download
                   className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
@@ -228,9 +252,21 @@ export default function CppLifeDocumentsPage() {
                 <p>Děkuji</p>
                 <p className="font-semibold">Jindřich Hájek.</p>
               </div>
-            ) : (
+            ) : activeModal === "vypoved" ? (
               <div className="mt-5 text-[15px] leading-7 text-slate-800">
                 Formulář k Výpovědi pojistné smlouvy
+              </div>
+            ) : (
+              <div className="mt-5">
+                <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                  <Image
+                    src="/dokumenty/maxdenni.jpg"
+                    alt="Maximální pojistné částky denního odškodného"
+                    width={2481}
+                    height={3508}
+                    className="h-auto w-full object-contain"
+                  />
+                </div>
               </div>
             )}
           </div>
