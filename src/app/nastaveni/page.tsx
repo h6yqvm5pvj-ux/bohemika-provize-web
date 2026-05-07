@@ -37,6 +37,13 @@ import { auth } from "../firebase";
 import { AppLayout } from "@/components/AppLayout";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
+  deleteBrowserFcmToken,
+  getBrowserFcmToken,
+  getPushDeviceId,
+  getPushPermission,
+  isPushSupportedInBrowser,
+} from "@/app/lib/pushNotifications";
+import {
   BOX_THEME_EVENT,
   BOX_THEME_LOCAL_STORAGE_KEY,
   BOX_THEME_OPTIONS,
@@ -229,11 +236,21 @@ type TestPushApiResponse = {
   ok?: boolean;
   error?: string;
   detail?: string;
+  sent?: number;
+  failed?: number;
+  cleanedTokens?: number;
+};
+
+type PushTokenApiResponse = {
+  ok?: boolean;
+  error?: string;
+  tokenStored?: boolean;
+  tokenRemoved?: boolean;
 };
 
 type UserRequestSubject = "userCreation" | "other";
 type UserRequestPriority = "normal" | "urgent";
-type UserRequestStatus = "pending" | "accepted" | "rejected";
+type UserRequestStatus = "pending" | "needsInfo" | "accepted" | "rejected";
 
 type UserCreationRequestDraft = {
   fullName: string | null;
@@ -271,6 +288,12 @@ type UserRequestCreateApiResponse = {
   error?: string;
 };
 
+type UserRequestUpdateApiResponse = {
+  ok?: boolean;
+  request?: UserRequestPayload;
+  error?: string;
+};
+
 type UserRequestDeleteApiResponse = {
   ok?: boolean;
   id?: string;
@@ -299,14 +322,61 @@ const USER_REQUEST_PRIORITY_LABEL: Record<UserRequestPriority, string> = {
 
 const USER_REQUEST_STATUS_LABEL: Record<UserRequestStatus, string> = {
   pending: "Čeká",
+  needsInfo: "Potřeba doplnit",
   accepted: "Akceptováno",
   rejected: "Odmítnuto",
 };
 
 const USER_REQUEST_STATUS_CLASS: Record<UserRequestStatus, string> = {
   pending: "border-amber-300 bg-amber-50 text-amber-800",
+  needsInfo: "border-sky-300 bg-sky-50 text-sky-800",
   accepted: "border-emerald-300 bg-emerald-50 text-emerald-700",
   rejected: "border-rose-300 bg-rose-50 text-rose-700",
+};
+
+const USER_REQUEST_SLA_NORMAL_MS = 72 * 60 * 60 * 1000;
+const USER_REQUEST_SLA_URGENT_MS = 8 * 60 * 60 * 1000;
+
+const sortUserRequestsByActivity = (rows: UserRequestPayload[]): UserRequestPayload[] =>
+  [...rows].sort((a, b) => {
+    const aActivity = Math.max(a.updatedAtMs || 0, a.createdAtMs || 0);
+    const bActivity = Math.max(b.updatedAtMs || 0, b.createdAtMs || 0);
+    return bActivity - aActivity;
+  });
+
+const formatDurationCompact = (durationMs: number): string => {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return "0 min";
+  const totalMinutes = Math.floor(durationMs / 60_000);
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const totalHours = Math.floor(totalMinutes / 60);
+  if (totalHours < 24) return `${totalHours} h`;
+  const totalDays = Math.floor(totalHours / 24);
+  return `${totalDays} d`;
+};
+
+const formatSlaLimit = (priority: UserRequestPriority): string =>
+  priority === "urgent" ? "8 h" : "3 dny";
+
+const buildUserRequestSlaInfo = (request: UserRequestPayload, nowMs: number) => {
+  const status = request.status;
+  const waitingStatuses: UserRequestStatus[] = ["pending", "needsInfo"];
+  const waiting = waitingStatuses.includes(status);
+  const sinceMs = waiting ? request.updatedAtMs || request.createdAtMs : null;
+  const elapsedMs =
+    sinceMs && Number.isFinite(sinceMs) ? Math.max(0, nowMs - sinceMs) : 0;
+
+  const slaLimitMs =
+    request.priority === "urgent" ? USER_REQUEST_SLA_URGENT_MS : USER_REQUEST_SLA_NORMAL_MS;
+  const isUrgentPending = status === "pending" && request.priority === "urgent";
+  const isOverdueUrgent =
+    isUrgentPending && elapsedMs > slaLimitMs;
+
+  return {
+    waiting,
+    elapsedLabel: formatDurationCompact(elapsedMs),
+    slaLimitLabel: formatSlaLimit(request.priority),
+    isOverdueUrgent,
+  };
 };
 
 const EXPECTED_MFA_ERROR_CODES = new Set<string>([
@@ -396,6 +466,11 @@ export default function SettingsPage() {
   const [mfaQrCodeLoading, setMfaQrCodeLoading] = useState(false);
   const [mfaQrCodeError, setMfaQrCodeError] = useState<string | null>(null);
   const [fcmActive, setFcmActive] = useState<boolean | null>(null);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">(
+    "unsupported"
+  );
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
   const [notifyMinutes, setNotifyMinutes] = useState<number>(60);
   const [notificationSettings, setNotificationSettings] =
     useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
@@ -427,6 +502,8 @@ export default function SettingsPage() {
   const [userRequestSubmitting, setUserRequestSubmitting] = useState(false);
   const [userRequestStatus, setUserRequestStatus] = useState<InlineStatus | null>(null);
   const [userRequestDeletingId, setUserRequestDeletingId] = useState<string | null>(null);
+  const [editingUserRequestId, setEditingUserRequestId] = useState<string | null>(null);
+  const [userRequestsNowMs, setUserRequestsNowMs] = useState(() => Date.now());
 
   const applyMotionPreference = (off: boolean) => {
     if (typeof document === "undefined") return;
@@ -458,6 +535,20 @@ export default function SettingsPage() {
       setUser(fbUser);
     });
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setUserRequestsNowMs(Date.now());
+    }, 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const supported = isPushSupportedInBrowser();
+    setPushSupported(supported);
+    setPushPermission(getPushPermission());
   }, []);
 
   const clearMfaDraft = () => {
@@ -971,6 +1062,97 @@ export default function SettingsPage() {
     await persistNotificationSettings(next);
   };
 
+  const setPushChannelEnabled = async (enabled: boolean) => {
+    if (notificationSettings.channels.push === enabled) return;
+    const next = {
+      ...notificationSettings,
+      channels: {
+        ...notificationSettings.channels,
+        push: enabled,
+      },
+    };
+    await persistNotificationSettings(next);
+  };
+
+  const handleEnableBrowserPush = async () => {
+    if (!user) {
+      setTestPushStatus("Nejsi přihlášený.");
+      return;
+    }
+    if (!pushSupported) {
+      setTestPushStatus("Tento prohlížeč nepodporuje web push notifikace.");
+      return;
+    }
+
+    setPushBusy(true);
+    setTestPushStatus("Aktivuju push notifikace pro toto zařízení…");
+    try {
+      const token = await getBrowserFcmToken();
+      const payload = await fetchAuthedJsonOrThrow<PushTokenApiResponse>(user, "/api/push/token", {
+        method: "POST",
+        body: JSON.stringify({
+          token,
+          deviceId: getPushDeviceId(),
+          userAgent: navigator.userAgent,
+        }),
+      });
+      if (payload?.ok !== true) {
+        const msg = payload?.error || "Push token se nepodařilo uložit.";
+        setTestPushStatus(`Chyba: ${msg}`);
+        return;
+      }
+
+      setPushPermission(getPushPermission());
+      setFcmActive(true);
+      await setPushChannelEnabled(true);
+      setTestPushStatus("Push notifikace jsou aktivní pro toto zařízení.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setPushPermission(getPushPermission());
+      setTestPushStatus(`Chyba: ${message}`);
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const handleDisableBrowserPush = async () => {
+    if (!user) {
+      setTestPushStatus("Nejsi přihlášený.");
+      return;
+    }
+    if (!pushSupported) {
+      setTestPushStatus("Tento prohlížeč nepodporuje web push notifikace.");
+      return;
+    }
+
+    setPushBusy(true);
+    setTestPushStatus("Odpojuju push notifikace pro toto zařízení…");
+    try {
+      const { previousToken } = await deleteBrowserFcmToken();
+      if (previousToken) {
+        await fetchAuthedJsonOrThrow<PushTokenApiResponse>(user, "/api/push/token", {
+          method: "DELETE",
+          body: JSON.stringify({
+            token: previousToken,
+            deviceId: getPushDeviceId(),
+            userAgent: navigator.userAgent,
+          }),
+        });
+      }
+
+      setPushPermission(getPushPermission());
+      setFcmActive(false);
+      await setPushChannelEnabled(false);
+      setTestPushStatus("Push notifikace jsou pro toto zařízení vypnuté.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setPushPermission(getPushPermission());
+      setTestPushStatus(`Chyba: ${message}`);
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
   const handleTestPush = async () => {
     if (!user) {
       setTestPushStatus("Nejsi přihlášený.");
@@ -993,11 +1175,29 @@ export default function SettingsPage() {
         return;
       }
 
-      setTestPushStatus("Testovací notifikace odeslána.");
+      const sent = typeof payload?.sent === "number" ? payload.sent : null;
+      const failed = typeof payload?.failed === "number" ? payload.failed : null;
+      if (sent != null && failed != null) {
+        setTestPushStatus(`Test odeslán (doručeno ${sent}, chybně ${failed}).`);
+      } else {
+        setTestPushStatus("Testovací notifikace odeslána.");
+      }
     } catch (err) {
       setTestPushStatus(`Chyba: ${(err as any)?.message || String(err)}`);
     }
   };
+
+  const resetUserRequestForm = useCallback(() => {
+    setUserRequestMessage("");
+    setUserRequestCorporateEmail("");
+    setUserRequestFullName("");
+    setUserRequestManagerEmail("");
+    setUserRequestPosition("poradce1");
+    setUserRequestMode("standard");
+    setUserRequestSubject("userCreation");
+    setUserRequestPriority("normal");
+    setEditingUserRequestId(null);
+  }, []);
 
   const loadUserRequests = useCallback(async () => {
     if (!user) return;
@@ -1011,7 +1211,7 @@ export default function SettingsPage() {
         { method: "GET" }
       );
       const requests = Array.isArray(payload.requests) ? payload.requests : [];
-      setUserRequests(requests.sort((a, b) => b.createdAtMs - a.createdAtMs));
+      setUserRequests(sortUserRequestsByActivity(requests));
     } catch (error) {
       setUserRequestsError(
         error instanceof Error
@@ -1035,6 +1235,7 @@ export default function SettingsPage() {
     const requestedCorporateEmail = normalizeEmail(userRequestCorporateEmail);
     const requestedManagerEmail = normalizeEmail(userRequestManagerEmail);
     const requestedFullName = userRequestFullName.trim();
+    const isEditingReturnedRequest = Boolean(editingUserRequestId);
     if (userRequestSubject === "userCreation") {
       if (!requestedCorporateEmail) {
         setUserRequestStatus({
@@ -1057,10 +1258,24 @@ export default function SettingsPage() {
         });
         return;
       }
+      if (!requestedFullName) {
+        setUserRequestStatus({
+          type: "error",
+          message: "Pro založení uživatele vyplň jméno a příjmení.",
+        });
+        return;
+      }
       if (requestedFullName.length > USER_REQUEST_FULL_NAME_MAX_LEN) {
         setUserRequestStatus({
           type: "error",
           message: `Jméno může mít maximálně ${USER_REQUEST_FULL_NAME_MAX_LEN} znaků.`,
+        });
+        return;
+      }
+      if (!requestedManagerEmail) {
+        setUserRequestStatus({
+          type: "error",
+          message: "Pro založení uživatele vyplň e-mail přímého nadřízeného.",
         });
         return;
       }
@@ -1108,12 +1323,15 @@ export default function SettingsPage() {
     setUserRequestStatus(null);
 
     try {
-      const payload = await fetchAuthedJsonOrThrow<UserRequestCreateApiResponse>(
+      const payload = await fetchAuthedJsonOrThrow<
+        UserRequestCreateApiResponse | UserRequestUpdateApiResponse
+      >(
         user,
         "/api/user-requests",
         {
-          method: "POST",
+          method: isEditingReturnedRequest ? "PUT" : "POST",
           body: JSON.stringify({
+            id: editingUserRequestId,
             subject: userRequestSubject,
             requestedCorporateEmail:
               userRequestSubject === "userCreation" ? requestedCorporateEmail : null,
@@ -1132,26 +1350,23 @@ export default function SettingsPage() {
       );
 
       if (payload?.request) {
-        const createdRequest = payload.request;
-        setUserRequests((prev) => [
-          createdRequest,
-          ...prev.filter((item) => item.id !== createdRequest.id),
-        ]);
+        const updatedRequest = payload.request;
+        setUserRequests((prev) =>
+          sortUserRequestsByActivity([
+            updatedRequest,
+            ...prev.filter((item) => item.id !== updatedRequest.id),
+          ])
+        );
       } else {
         await loadUserRequests();
       }
 
-      setUserRequestMessage("");
-      setUserRequestCorporateEmail("");
-      setUserRequestFullName("");
-      setUserRequestManagerEmail("");
-      setUserRequestPosition("poradce1");
-      setUserRequestMode("standard");
-      setUserRequestSubject("userCreation");
-      setUserRequestPriority("normal");
+      resetUserRequestForm();
       setUserRequestStatus({
         type: "success",
-        message: "Žádost byla odeslána.",
+        message: isEditingReturnedRequest
+          ? "Žádost byla doplněna a znovu odeslána."
+          : "Žádost byla odeslána.",
       });
     } catch (error) {
       setUserRequestStatus({
@@ -1159,11 +1374,30 @@ export default function SettingsPage() {
         message:
           error instanceof Error
             ? error.message
-            : "Žádost se nepodařilo odeslat.",
+            : isEditingReturnedRequest
+              ? "Doplněnou žádost se nepodařilo odeslat."
+              : "Žádost se nepodařilo odeslat.",
       });
     } finally {
       setUserRequestSubmitting(false);
     }
+  };
+
+  const handleStartEditUserRequest = (request: UserRequestPayload) => {
+    if (request.status !== "needsInfo") return;
+    setEditingUserRequestId(request.id);
+    setUserRequestSubject(request.subject);
+    setUserRequestCorporateEmail(request.requestedCorporateEmail ?? "");
+    setUserRequestFullName(request.requestedUserDraft?.fullName ?? "");
+    setUserRequestManagerEmail(request.requestedUserDraft?.managerEmail ?? "");
+    setUserRequestPosition(request.requestedUserDraft?.position ?? "poradce1");
+    setUserRequestMode(request.requestedUserDraft?.commissionMode ?? "standard");
+    setUserRequestPriority(request.priority);
+    setUserRequestMessage(request.message);
+    setUserRequestStatus({
+      type: "info",
+      message: "Žádost je vrácená k doplnění. Uprav ji a odešli znovu.",
+    });
   };
 
   const handleDeleteUserRequest = async (requestId: string) => {
@@ -1175,7 +1409,13 @@ export default function SettingsPage() {
       return;
     }
 
-    const confirmed = window.confirm("Opravdu chceš tuto žádost smazat?");
+    const targetRequest = userRequests.find((request) => request.id === requestId) ?? null;
+    const cancellableByRequester =
+      targetRequest?.status === "pending" || targetRequest?.status === "needsInfo";
+    const confirmText = cancellableByRequester
+      ? "Opravdu chceš tuto žádost stornovat?"
+      : "Opravdu chceš tuto žádost smazat?";
+    const confirmed = window.confirm(confirmText);
     if (!confirmed) return;
 
     setUserRequestDeletingId(requestId);
@@ -1192,9 +1432,12 @@ export default function SettingsPage() {
         }
       );
       setUserRequests((prev) => prev.filter((item) => item.id !== requestId));
+      if (editingUserRequestId === requestId) {
+        resetUserRequestForm();
+      }
       setUserRequestStatus({
         type: "success",
-        message: "Žádost byla smazána.",
+        message: cancellableByRequester ? "Žádost byla stornována." : "Žádost byla smazána.",
       });
     } catch (error) {
       setUserRequestStatus({
@@ -1215,16 +1458,12 @@ export default function SettingsPage() {
       setUserRequestsLoading(false);
       setUserRequestsError(null);
       setUserRequestStatus(null);
-      setUserRequestCorporateEmail("");
-      setUserRequestFullName("");
-      setUserRequestManagerEmail("");
-      setUserRequestPosition("poradce1");
-      setUserRequestMode("standard");
+      resetUserRequestForm();
       setUserRequestDeletingId(null);
       return;
     }
     void loadUserRequests();
-  }, [user, loadUserRequests]);
+  }, [user, loadUserRequests, resetUserRequestForm]);
 
   const handleBoxThemeChange = async (nextTheme: BoxTheme) => {
     const resolved = applyBoxThemePreference(nextTheme);
@@ -1558,10 +1797,12 @@ export default function SettingsPage() {
   const requestManagerEmailValid =
     !requestNeedsCorporateEmail ||
     (normalizedRequestManagerEmail.length <= USER_REQUEST_MANAGER_EMAIL_MAX_LEN &&
-      (!normalizedRequestManagerEmail || isValidEmail(normalizedRequestManagerEmail)) &&
+      normalizedRequestManagerEmail.length > 0 &&
+      isValidEmail(normalizedRequestManagerEmail) &&
       normalizedRequestManagerEmail !== normalizedRequestCorporateEmail);
   const requestFullNameValid =
-    !requestNeedsCorporateEmail || requestFullNameLength <= USER_REQUEST_FULL_NAME_MAX_LEN;
+    !requestNeedsCorporateEmail ||
+    (requestFullNameLength > 0 && requestFullNameLength <= USER_REQUEST_FULL_NAME_MAX_LEN);
   const canSubmitUserRequest =
     requestMessageLength >= USER_REQUEST_MESSAGE_MIN_LEN &&
     requestMessageLength <= USER_REQUEST_MESSAGE_MAX_LEN &&
@@ -2033,10 +2274,44 @@ export default function SettingsPage() {
                     </span>
                   </div>
 
-                  {!fcmActive && (
+                  {!pushSupported ? (
                     <p className="text-sm text-slate-700">
-                      Otevři mobilní appku a přihlas se – FCM token se uloží do profilu.
+                      Tento prohlížeč nepodporuje web push notifikace.
                     </p>
+                  ) : (
+                    <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-xs text-slate-600">
+                        Oprávnění prohlížeče:
+                        {" "}
+                        <span className="font-semibold text-slate-900">
+                          {pushPermission === "granted"
+                            ? "povoleno"
+                            : pushPermission === "denied"
+                              ? "zamítnuto"
+                              : pushPermission === "default"
+                                ? "nepotvrzeno"
+                                : "nepodporováno"}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleEnableBrowserPush()}
+                          disabled={pushBusy}
+                          className="rounded-full border border-emerald-700 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {pushBusy ? "Nastavuju…" : "Zapnout push na tomto zařízení"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDisableBrowserPush()}
+                          disabled={pushBusy}
+                          className="rounded-full border border-slate-900 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Vypnout push na tomto zařízení
+                        </button>
+                      </div>
+                    </div>
                   )}
 
                   <div className="space-y-1.5 max-w-sm">
@@ -2092,7 +2367,7 @@ export default function SettingsPage() {
                     <div>
                       <div className="text-xs uppercase tracking-wide text-slate-500">Testovací push</div>
                       <p className="text-[11px] text-slate-500">
-                        Ověř, že push chodí. Pokud nepřijde, zkontroluj FCM token v mobilní appce.
+                        Ověř, že push chodí přes webový token tohoto účtu.
                       </p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
@@ -2121,6 +2396,21 @@ export default function SettingsPage() {
                       <ShieldCheck size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                       <span>Nová žádost</span>
                     </h2>
+                    {editingUserRequestId ? (
+                      <div className="flex flex-col gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 sm:flex-row sm:items-center sm:justify-between">
+                        <span>Upravuješ vrácenou žádost k doplnění.</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetUserRequestForm();
+                            setUserRequestStatus(null);
+                          }}
+                          className="inline-flex items-center justify-center rounded-full border border-sky-300 bg-white px-3 py-1 font-semibold text-sky-800 transition hover:bg-sky-100"
+                        >
+                          Zrušit úpravu
+                        </button>
+                      </div>
+                    ) : null}
 
                     <div className="space-y-1.5">
                       <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
@@ -2335,7 +2625,13 @@ export default function SettingsPage() {
                         disabled={userRequestSubmitting || !canSubmitUserRequest}
                         className="inline-flex items-center justify-center rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {userRequestSubmitting ? "Odesílám..." : "Odeslat"}
+                        {userRequestSubmitting
+                          ? editingUserRequestId
+                            ? "Odesílám změny..."
+                            : "Odesílám..."
+                          : editingUserRequestId
+                            ? "Uložit a odeslat znovu"
+                            : "Odeslat"}
                       </button>
                     </div>
                   </div>
@@ -2368,98 +2664,149 @@ export default function SettingsPage() {
                     ) : null}
 
                     <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
-                      {userRequests.map((request) => (
-                        <article
-                          key={request.id}
-                          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-xs font-semibold text-slate-800">
-                              {USER_REQUEST_SUBJECT_LABEL[request.subject]}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                                  USER_REQUEST_STATUS_CLASS[request.status]
-                                }`}
-                              >
-                                {USER_REQUEST_STATUS_LABEL[request.status]}
+                      {userRequests.map((request) => {
+                        const slaInfo = buildUserRequestSlaInfo(request, userRequestsNowMs);
+                        const cancellableByRequester =
+                          request.status === "pending" || request.status === "needsInfo";
+                        const decisionDurationMs =
+                          request.decidedAtMs && Number.isFinite(request.decidedAtMs)
+                            ? Math.max(0, request.decidedAtMs - request.createdAtMs)
+                            : 0;
+
+                        return (
+                          <article
+                            key={request.id}
+                            className={`rounded-xl border px-3 py-3 ${
+                              slaInfo.isOverdueUrgent
+                                ? "border-rose-300 bg-rose-50"
+                                : "border-slate-200 bg-slate-50"
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-slate-800">
+                                {USER_REQUEST_SUBJECT_LABEL[request.subject]}
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => void handleDeleteUserRequest(request.id)}
-                                disabled={userRequestDeletingId === request.id}
-                                className="rounded-full border border-rose-300 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {userRequestDeletingId === request.id ? "Mažu..." : "Smazat"}
-                              </button>
-                            </div>
-                          </div>
-
-                          <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
-                            {request.message}
-                          </p>
-
-                          <dl className="mt-3 space-y-1 text-[11px] text-slate-500">
-                            <div className="flex flex-wrap items-baseline gap-1">
-                              <dt className="font-semibold text-slate-600">Priorita:</dt>
-                              <dd>{USER_REQUEST_PRIORITY_LABEL[request.priority]}</dd>
-                            </div>
-                            {request.requestedCorporateEmail ? (
-                              <div className="flex flex-wrap items-baseline gap-1">
-                                <dt className="font-semibold text-slate-600">Firemní e-mail:</dt>
-                                <dd>{request.requestedCorporateEmail}</dd>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                                    USER_REQUEST_STATUS_CLASS[request.status]
+                                  }`}
+                                >
+                                  {USER_REQUEST_STATUS_LABEL[request.status]}
+                                </span>
+                                {request.status === "needsInfo" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditUserRequest(request)}
+                                    disabled={Boolean(userRequestDeletingId) || userRequestSubmitting}
+                                    className="rounded-full border border-sky-300 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-700 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    Doplnit
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteUserRequest(request.id)}
+                                  disabled={userRequestDeletingId === request.id}
+                                  className="rounded-full border border-rose-300 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {userRequestDeletingId === request.id
+                                    ? "Mažu..."
+                                    : cancellableByRequester
+                                      ? "Stornovat"
+                                      : "Smazat"}
+                                </button>
                               </div>
-                            ) : null}
-                            {request.requestedUserDraft ? (
-                              <>
-                                {request.requestedUserDraft.fullName ? (
-                                  <div className="flex flex-wrap items-baseline gap-1">
-                                    <dt className="font-semibold text-slate-600">Jméno:</dt>
-                                    <dd>{request.requestedUserDraft.fullName}</dd>
-                                  </div>
-                                ) : null}
-                                {request.requestedUserDraft.managerEmail ? (
-                                  <div className="flex flex-wrap items-baseline gap-1">
-                                    <dt className="font-semibold text-slate-600">Nadřízený:</dt>
-                                    <dd>{request.requestedUserDraft.managerEmail}</dd>
-                                  </div>
-                                ) : null}
+                            </div>
+
+                            <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
+                              {request.message}
+                            </p>
+
+                            <dl className="mt-3 space-y-1 text-[11px] text-slate-500">
+                              <div className="flex flex-wrap items-baseline gap-1">
+                                <dt className="font-semibold text-slate-600">Priorita:</dt>
+                                <dd>{USER_REQUEST_PRIORITY_LABEL[request.priority]}</dd>
+                              </div>
+                              {slaInfo.waiting ? (
                                 <div className="flex flex-wrap items-baseline gap-1">
-                                  <dt className="font-semibold text-slate-600">Pozice:</dt>
-                                  <dd>
-                                    {POSITIONS.find(
-                                      (p) => p.id === request.requestedUserDraft?.position
-                                    )?.label ?? request.requestedUserDraft.position}
+                                  <dt className="font-semibold text-slate-600">Čeká:</dt>
+                                  <dd
+                                    className={
+                                      slaInfo.isOverdueUrgent
+                                        ? "font-semibold text-rose-700"
+                                        : "text-slate-600"
+                                    }
+                                  >
+                                    {slaInfo.elapsedLabel} (SLA {slaInfo.slaLimitLabel})
                                   </dd>
                                 </div>
+                              ) : (
                                 <div className="flex flex-wrap items-baseline gap-1">
-                                  <dt className="font-semibold text-slate-600">Režim:</dt>
-                                  <dd>
-                                    {COMMISSION_MODES.find(
-                                      (m) => m.id === request.requestedUserDraft?.commissionMode
-                                    )?.label ?? request.requestedUserDraft.commissionMode}
-                                  </dd>
+                                  <dt className="font-semibold text-slate-600">Vyřízeno za:</dt>
+                                  <dd>{formatDurationCompact(decisionDurationMs)}</dd>
                                 </div>
-                              </>
-                            ) : null}
-                            {request.createdUserEmail ? (
+                              )}
+                              {request.requestedCorporateEmail ? (
+                                <div className="flex flex-wrap items-baseline gap-1">
+                                  <dt className="font-semibold text-slate-600">Firemní e-mail:</dt>
+                                  <dd>{request.requestedCorporateEmail}</dd>
+                                </div>
+                              ) : null}
+                              {request.requestedUserDraft ? (
+                                <>
+                                  {request.requestedUserDraft.fullName ? (
+                                    <div className="flex flex-wrap items-baseline gap-1">
+                                      <dt className="font-semibold text-slate-600">Jméno:</dt>
+                                      <dd>{request.requestedUserDraft.fullName}</dd>
+                                    </div>
+                                  ) : null}
+                                  {request.requestedUserDraft.managerEmail ? (
+                                    <div className="flex flex-wrap items-baseline gap-1">
+                                      <dt className="font-semibold text-slate-600">Nadřízený:</dt>
+                                      <dd>{request.requestedUserDraft.managerEmail}</dd>
+                                    </div>
+                                  ) : null}
+                                  <div className="flex flex-wrap items-baseline gap-1">
+                                    <dt className="font-semibold text-slate-600">Pozice:</dt>
+                                    <dd>
+                                      {POSITIONS.find(
+                                        (p) => p.id === request.requestedUserDraft?.position
+                                      )?.label ?? request.requestedUserDraft.position}
+                                    </dd>
+                                  </div>
+                                  <div className="flex flex-wrap items-baseline gap-1">
+                                    <dt className="font-semibold text-slate-600">Režim:</dt>
+                                    <dd>
+                                      {COMMISSION_MODES.find(
+                                        (m) => m.id === request.requestedUserDraft?.commissionMode
+                                      )?.label ?? request.requestedUserDraft.commissionMode}
+                                    </dd>
+                                  </div>
+                                </>
+                              ) : null}
+                              {request.createdUserEmail ? (
+                                <div className="flex flex-wrap items-baseline gap-1">
+                                  <dt className="font-semibold text-slate-600">Vytvořený účet:</dt>
+                                  <dd>{request.createdUserEmail}</dd>
+                                </div>
+                              ) : null}
                               <div className="flex flex-wrap items-baseline gap-1">
-                                <dt className="font-semibold text-slate-600">Vytvořený účet:</dt>
-                                <dd>{request.createdUserEmail}</dd>
+                                <dt className="font-semibold text-slate-600">Vytvořeno:</dt>
+                                <dd>{formatDateTime(request.createdAtMs)}</dd>
                               </div>
-                            ) : null}
-                            <div className="flex flex-wrap items-baseline gap-1">
-                              <dt className="font-semibold text-slate-600">Vytvořeno:</dt>
-                              <dd>{formatDateTime(request.createdAtMs)}</dd>
-                            </div>
-                            <div className="flex flex-wrap items-baseline gap-1">
-                              <dt className="font-semibold text-slate-600">Zpětná vazba:</dt>
-                              <dd>{request.feedback?.trim() ? request.feedback : "Zatím bez zpětné vazby."}</dd>
-                            </div>
-                          </dl>
-                        </article>
-                      ))}
+                              <div className="flex flex-wrap items-baseline gap-1">
+                                <dt className="font-semibold text-slate-600">Zpětná vazba:</dt>
+                                <dd>
+                                  {request.feedback?.trim()
+                                    ? request.feedback
+                                    : "Zatím bez zpětné vazby."}
+                                </dd>
+                              </div>
+                            </dl>
+                          </article>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
