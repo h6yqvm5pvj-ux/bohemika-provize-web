@@ -299,6 +299,7 @@ type UserProfileSnapshot = {
   docId: string;
   email: string;
   name: string | null;
+  userId: string | null;
   managerEmail: string | null;
   position: Position | null;
   commissionMode: CommissionMode | null;
@@ -778,10 +779,11 @@ const CONTRACT_REFS_COLLECTION = "contractRefs";
 const CONTRACT_NUMBER_CLAIMS_COLLECTION = "contractNumberClaims";
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
+const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
 
 let cachedUserTree: { value: UserTreeResult; expiresAtMs: number } | null = null;
 let cachedUserTreePromise: Promise<UserTreeResult> | null = null;
-let cachedSubscriptionStatus = new Map<
+const cachedSubscriptionStatus = new Map<
   string,
   { value: SubscriptionStatus | null; expiresAtMs: number }
 >();
@@ -1981,6 +1983,10 @@ const profileFromRaw = (
       normalizeOptionalDisplayName(raw.name) ||
       normalizeOptionalDisplayName(raw.fullName) ||
       null,
+    userId:
+      typeof raw.userId === "string" && raw.userId.trim().length > 0
+        ? raw.userId.trim()
+        : null,
     managerEmail: normalizeEmail(raw.managerEmail as string | null | undefined) || null,
     position: normalizePositionValue(raw.position),
     commissionMode: normalizeCommissionModeValue(raw.commissionMode),
@@ -5028,7 +5034,7 @@ export async function handleContractsCreate(req: NextRequest) {
     if (!guard.ok) return guard.response;
     withRateLimit = guard.withRateLimit;
     const ctx = guard.ctx;
-    const { email, uid } = ctx;
+    const { email, uid, teamEmails } = ctx;
 
     let body: unknown;
     try {
@@ -5045,10 +5051,69 @@ export async function handleContractsCreate(req: NextRequest) {
         ? body.entry
         : body;
 
+    const requestedOwnerRaw =
+      isPlainObject(body) && typeof body.ownerEmail === "string"
+        ? body.ownerEmail.trim()
+        : "";
+    const requestedOwnerEmail = normalizeEmail(requestedOwnerRaw);
+    if (requestedOwnerRaw && (!requestedOwnerEmail || !EMAIL_RE.test(requestedOwnerEmail))) {
+      return NextResponse.json(
+        { ok: false, error: "Pole ownerEmail má neplatný formát." },
+        { status: 400 }
+      );
+    }
+
+    const targetOwnerEmail = requestedOwnerEmail || email;
+    const isOwnerOverride = targetOwnerEmail !== email;
+    if (isOwnerOverride) {
+      if (email !== CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL) {
+        return NextResponse.json(
+          { ok: false, error: "Nemáš oprávnění uložit smlouvu za jiného uživatele." },
+          { status: 403 }
+        );
+      }
+      if (!teamEmails.includes(targetOwnerEmail)) {
+        return NextResponse.json(
+          { ok: false, error: "Vybraný uživatel není mezi tvými podřízenými." },
+          { status: 403 }
+        );
+      }
+    }
+
+    let trustedProfile: UserProfileSnapshot | null = null;
+    if (isOwnerOverride) {
+      trustedProfile = await loadUserProfileByEmail(targetOwnerEmail);
+      if (!trustedProfile) {
+        return NextResponse.json(
+          { ok: false, error: "Nepodařilo se načíst profil vybraného podřízeného." },
+          { status: 404 }
+        );
+      }
+    } else {
+      trustedProfile = await loadCallerProfile({
+        uid,
+        tokenEmail: email,
+      });
+      if (!trustedProfile) {
+        return NextResponse.json(
+          { ok: false, error: "Nepodařilo se načíst profil přihlášeného uživatele." },
+          { status: 403 }
+        );
+      }
+    }
+    if (!trustedProfile) {
+      return NextResponse.json(
+        { ok: false, error: "Nepodařilo se načíst profil vlastníka smlouvy." },
+        { status: 403 }
+      );
+    }
+
+    const ownerUidForPayload = trustedProfile.userId || uid;
+
     const normalizedEntry = normalizeCreateEntryPayload({
       raw: entryRaw,
-      ownerEmail: email,
-      ownerUid: uid,
+      ownerEmail: targetOwnerEmail,
+      ownerUid: ownerUidForPayload,
     });
     if (!normalizedEntry.ok) {
       return NextResponse.json(
@@ -5064,28 +5129,17 @@ export async function handleContractsCreate(req: NextRequest) {
       );
     }
     const db = adminDb;
-    const ownerEntriesRef = db.collection("users").doc(email).collection("entries");
+    const ownerEntriesRef = db.collection("users").doc(targetOwnerEmail).collection("entries");
     const idempotencyKey = parseIdempotencyKeyFromRequest(req);
     const idempotentEntryId = idempotencyKey
-      ? buildIdempotentEntryId(email, idempotencyKey)
+      ? buildIdempotentEntryId(targetOwnerEmail, idempotencyKey)
       : null;
     const idempotentEntryRef = idempotentEntryId
       ? ownerEntriesRef.doc(idempotentEntryId)
       : null;
 
     const signedDateIso = toIsoDay(normalizedEntry.payload.contractSignedDate);
-    const callerProfile = await loadCallerProfile({
-      uid,
-      tokenEmail: email,
-    });
-    if (!callerProfile) {
-      return NextResponse.json(
-        { ok: false, error: "Nepodařilo se načíst profil přihlášeného uživatele." },
-        { status: 403 }
-      );
-    }
-
-    const trustedPosition = resolvePositionForSignedDate(callerProfile, signedDateIso);
+    const trustedPosition = resolvePositionForSignedDate(trustedProfile, signedDateIso);
     if (!trustedPosition) {
       return NextResponse.json(
         { ok: false, error: "Nelze určit důvěryhodnou pozici uživatele pro výpočet." },
@@ -5093,8 +5147,8 @@ export async function handleContractsCreate(req: NextRequest) {
       );
     }
 
-    const trustedMode = callerProfile.commissionMode ?? "standard";
-    const trustedManagerEmail = normalizeEmail(callerProfile.managerEmail) || null;
+    const trustedMode = trustedProfile.commissionMode ?? "standard";
+    const trustedManagerEmail = normalizeEmail(trustedProfile.managerEmail) || null;
     let trustedManagerChain = await buildTrustedManagerChainForSignedDate({
       directManagerEmail: trustedManagerEmail,
       signedDateIso,
@@ -5203,7 +5257,7 @@ export async function handleContractsCreate(req: NextRequest) {
     const trustedManagerPosition = trustedManagerChain[0]?.position ?? null;
     const trustedManagerMode = trustedManagerChain[0]?.commissionMode ?? null;
     const trustedAllowedEmails = collectAllowedEmailsForCreate({
-      ownerEmail: email,
+      ownerEmail: targetOwnerEmail,
       managerEmailSnapshot: trustedManagerEmail,
       managerChain: trustedManagerChain,
       managerOverrides: trustedManagerOverrides,
@@ -5281,7 +5335,7 @@ export async function handleContractsCreate(req: NextRequest) {
           contractNumberRaw: trustedPayload.contractNumber,
           contractNumberNormalized,
           contractNumberLoose,
-          ownerEmail: email,
+          ownerEmail: targetOwnerEmail,
           entryId: createdRef.id,
           entryPath: createdRef.path,
           updatedAt: new Date(),
@@ -5323,14 +5377,14 @@ export async function handleContractsCreate(req: NextRequest) {
           tx.create(createdRef, trustedPayload);
 
           const contractRefPayload = contractRefFromData({
-            ownerEmail: email,
+            ownerEmail: targetOwnerEmail,
             entryId: createdRef.id,
             contractNumber: trustedPayload.contractNumber,
             productKey: trustedPayload.productKey,
           });
           const contractRef = db
             .collection(CONTRACT_REFS_COLLECTION)
-            .doc(contractRefDocId(email, createdRef.id));
+            .doc(contractRefDocId(targetOwnerEmail, createdRef.id));
           if (contractRefPayload) {
             tx.set(contractRef, contractRefPayload, { merge: true });
           } else {
@@ -5342,7 +5396,7 @@ export async function handleContractsCreate(req: NextRequest) {
         const batch = db.batch();
         applyContractRefToBatch({
           batch,
-          ownerEmail: email,
+          ownerEmail: targetOwnerEmail,
           entryId: createdRef.id,
           contractNumber: trustedPayload.contractNumber,
           productKey: trustedPayload.productKey,
@@ -5351,7 +5405,7 @@ export async function handleContractsCreate(req: NextRequest) {
       }
 
       try {
-        await markTeamOverviewOwnersDirty([email]);
+        await markTeamOverviewOwnersDirty([targetOwnerEmail]);
       } catch (markErr) {
         console.warn(
           "POST /api/contracts create: team-overview invalidace selhala:",
@@ -5361,7 +5415,7 @@ export async function handleContractsCreate(req: NextRequest) {
 
       try {
         await syncTipPayoutDocsForEntry({
-          ownerEmail: email,
+          ownerEmail: targetOwnerEmail,
           entryId: createdRef.id,
           entryData: trustedPayload,
         });

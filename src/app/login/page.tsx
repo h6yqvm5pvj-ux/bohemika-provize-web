@@ -378,191 +378,153 @@ export default function LoginPage() {
     }
   };
 
+  const fieldInputClass =
+    "w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.06)] outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
+
   return (
-    <main className="min-h-screen bg-white text-slate-900">
-      <div className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-10">
-        <div className="w-full max-w-xl space-y-8">
+    <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(120%_140%_at_20%_0%,#eef2ff_0%,#f8fafc_46%,#ffffff_100%)] text-slate-900">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_45%,#cbd5e1_100%)]" />
+      <div className="pointer-events-none absolute -top-24 left-1/2 h-64 w-[min(80vw,720px)] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,#c7d2fe_0%,#e2e8f0_44%,transparent_72%)] opacity-60 blur-2xl" />
+
+      <div className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-12 sm:py-16">
+        <div className="w-full max-w-xl space-y-7 font-mono">
           <div className="space-y-2 text-center">
-            <AnimatedHeading text="Bohemka.App" className="font-mono" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+              Přihlášení
+            </div>
+            <h1 className="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
+              Bohemka.App
+            </h1>
             <p className="text-sm text-slate-600">Přihlaš se do svého účtu.</p>
           </div>
 
-          <div className="w-full rounded-3xl border border-slate-900 bg-white px-8 py-9 sm:px-10 sm:py-11">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {!mfaResolver ? (
-              <>
-                <div className="space-y-1">
-                  <label
-                    htmlFor="login-email"
-                    className="text-xs font-medium text-slate-700"
-                  >
-                    E-mail
-                  </label>
-                  <input
-                    id="login-email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0"
-                    placeholder="Zadej email"
-                  />
-                </div>
+          <section className="relative overflow-hidden rounded-[30px] border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_55%,#eff3f8_100%)] px-7 py-8 shadow-[0_26px_56px_rgba(15,23,42,0.12)] sm:px-9 sm:py-9">
+            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_52%,#cbd5e1_100%)]" />
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {!mfaResolver ? (
+                <>
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="login-email"
+                      className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700"
+                    >
+                      E-mail
+                    </label>
+                    <input
+                      id="login-email"
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className={fieldInputClass}
+                      placeholder="Zadej e-mail"
+                    />
+                  </div>
 
-                <div className="space-y-1">
-                  <label
-                    htmlFor="login-password"
-                    className="text-xs font-medium text-slate-700"
-                  >
-                    Heslo
-                  </label>
-                  <input
-                    id="login-password"
-                    name="password"
-                    type="password"
-                    autoComplete="current-password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0"
-                    placeholder="••••••••"
-                  />
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="login-password"
+                      className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700"
+                    >
+                      Heslo
+                    </label>
+                    <input
+                      id="login-password"
+                      name="password"
+                      type="password"
+                      autoComplete="current-password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={fieldInputClass}
+                      placeholder="••••••••"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleReset}
+                        disabled={loading}
+                        className="text-[11px] font-medium text-slate-600 transition hover:text-slate-900 disabled:opacity-60"
+                      >
+                        Zapomenuté heslo?
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                    Přihlášení pokračuje přes 2FA.
+                    {mfaHintLabel
+                      ? ` Faktor: ${mfaHintLabel}.`
+                      : " Potvrď ho kódem z Microsoft Authenticator."}
+                  </div>
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="login-otp"
+                      className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700"
+                    >
+                      Jednorázový kód (2FA)
+                    </label>
+                    <input
+                      id="login-otp"
+                      name="otp"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      required
+                      value={mfaCode}
+                      onChange={(e) =>
+                        setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 8))
+                      }
+                      className={fieldInputClass}
+                      placeholder="123456"
+                    />
+                  </div>
                   <div className="flex justify-end">
                     <button
                       type="button"
-                      onClick={handleReset}
+                      onClick={clearMfaState}
                       disabled={loading}
-                      className="text-[11px] text-slate-600 hover:text-slate-900 transition disabled:opacity-60"
+                      className="text-[11px] font-medium text-slate-600 transition hover:text-slate-900 disabled:opacity-60"
                     >
-                      Zapomenuté heslo?
+                      Zpět na přihlášení heslem
                     </button>
                   </div>
                 </div>
-              </>
-            ) : (
-              <div className="space-y-3">
-                <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                  Přihlášení pokračuje přes 2FA.
-                  {mfaHintLabel
-                    ? ` Faktor: ${mfaHintLabel}.`
-                    : " Potvrď ho kódem z Microsoft Authenticator."}
-                </div>
-                <div className="space-y-1">
-                  <label
-                    htmlFor="login-otp"
-                    className="text-xs font-medium text-slate-700"
-                  >
-                    Jednorázový kód (2FA)
-                  </label>
-                  <input
-                    id="login-otp"
-                    name="otp"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    required
-                    value={mfaCode}
-                    onChange={(e) =>
-                      setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 8))
-                    }
-                    className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0"
-                    placeholder="123456"
-                  />
-                </div>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={clearMfaState}
-                    disabled={loading}
-                    className="text-[11px] text-slate-600 hover:text-slate-900 transition disabled:opacity-60"
-                  >
-                    Zpět na přihlášení heslem
-                  </button>
-                </div>
-              </div>
-            )}
+              )}
 
-            {error && (
-              <p className="rounded-xl border border-rose-600 bg-rose-100 px-3 py-2 text-xs text-rose-800">
-                {error}
-              </p>
-            )}
-            {resetStatus && (
-              <p className="rounded-xl border border-emerald-600 bg-emerald-100 px-3 py-2 text-xs text-emerald-900">
-                {resetStatus}
-              </p>
-            )}
+              {error && (
+                <p className="rounded-2xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                  {error}
+                </p>
+              )}
+              {resetStatus && (
+                <p className="rounded-2xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                  {resetStatus}
+                </p>
+              )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-2 w-full rounded-xl border border-slate-900 bg-slate-900 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading
-                ? mfaResolver
-                  ? "Ověřuji 2FA…"
-                  : "Přihlašuji…"
-                : mfaResolver
-                  ? "Potvrdit 2FA"
-                  : "Přihlásit se"}
-            </button>
-          </form>
-          </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="mt-2 w-full rounded-2xl border border-slate-900 bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading
+                  ? mfaResolver
+                    ? "Ověřuji 2FA…"
+                    : "Přihlašuji…"
+                  : mfaResolver
+                    ? "Potvrdit 2FA"
+                    : "Přihlásit se"}
+              </button>
+            </form>
+          </section>
         </div>
       </div>
-
     </main>
-  );
-}
-
-function AnimatedHeading({
-  text,
-  className,
-}: {
-  text: string;
-  className?: string;
-}) {
-  const chars = Array.from(text);
-  return (
-    <div
-      className={`text-5xl sm:text-6xl font-semibold text-slate-900 leading-tight flex flex-wrap justify-center gap-x-[2px] ${
-        className ?? ""
-      }`}
-    >
-      <style jsx>{`
-        @keyframes floatUpLogin {
-          0% {
-            opacity: 0;
-            transform: translateY(14px) scale(0.98);
-            filter: blur(4px);
-          }
-          65% {
-            opacity: 1;
-            transform: translateY(-4px) scale(1.01);
-            filter: blur(0);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-            filter: blur(0);
-          }
-        }
-      `}</style>
-      {chars.map((ch, idx) => (
-        <span
-          key={`${ch}-${idx}`}
-          className="inline-block"
-          style={{
-            animation: "floatUpLogin 1200ms ease-out forwards",
-            animationDelay: `${idx * 32}ms`,
-            opacity: 0,
-          }}
-        >
-          {ch === " " ? "\u00a0" : ch}
-        </span>
-      ))}
-    </div>
   );
 }

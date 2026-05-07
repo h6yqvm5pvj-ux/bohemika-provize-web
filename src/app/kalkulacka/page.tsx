@@ -6,6 +6,9 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   Download,
+  Search,
+  Users,
+  X,
 } from "lucide-react";
 import { auth } from "../firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
@@ -158,6 +161,7 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
   { id: "premium", label: "PREMIUM" },
 ];
 const CONTRACTS_CREATE_IDEMPOTENCY_HEADER = "x-idempotency-key";
+const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
 
 type NeonCoefficientView = "current" | "historical";
 
@@ -261,6 +265,26 @@ type ContractsMutationResponse = {
   ok?: boolean;
   error?: string;
   [key: string]: unknown;
+};
+
+type TeamOverviewApiResponse = {
+  ok?: boolean;
+  error?: string;
+  members?: Array<{
+    email?: string | null;
+    name?: string | null;
+    managerEmail?: string | null;
+    position?: Position | null;
+    commissionMode?: CommissionMode | null;
+  }>;
+};
+
+type SubordinateOption = {
+  email: string;
+  name: string;
+  managerEmail: string | null;
+  position: Position | null;
+  commissionMode: CommissionMode | null;
 };
 
 type TipsterLookupApiResponse = {
@@ -499,6 +523,22 @@ const productLabel = (p: Product | null) =>
 const normalizeEmailValue = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
+const normalizeSearchTextValue = (value: unknown): string =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const simpleNameFromEmail = (email: string): string => {
+  const local = email.split("@")[0] ?? "";
+  const parts = local.split(/[.\-_]/).filter(Boolean);
+  if (parts.length === 0) return email;
+  return parts
+    .map((part) =>
+      part.length > 0
+        ? `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`
+        : part
+    )
+    .join(" ");
+};
+
 const entryPathFromContractOwner = (ownerEmail: unknown, entryId: unknown): string => {
   const owner = normalizeEmailValue(ownerEmail);
   const id = typeof entryId === "string" ? entryId.trim() : "";
@@ -636,7 +676,7 @@ export default function CalculatorPage() {
     description: string;
     contractNumber: string | null;
     count: number;
-    entries: { id: string; path: string; contractNumber: string | null }[];
+    entries: { id: string; ownerEmail: string; path: string; contractNumber: string | null }[];
   } | null>(null);
   const [endorsementDraft, setEndorsementDraft] = useState<EndorsementDraft | null>(null);
   const [saveSuccessFlash, setSaveSuccessFlash] = useState<{
@@ -647,6 +687,47 @@ export default function CalculatorPage() {
     ownerEmail: string;
     entryId: string;
   } | null>(null);
+  const [subordinatePickerOpen, setSubordinatePickerOpen] = useState(false);
+  const [subordinateSearchText, setSubordinateSearchText] = useState("");
+  const [subordinateOptions, setSubordinateOptions] = useState<SubordinateOption[]>([]);
+  const [subordinateLoading, setSubordinateLoading] = useState(false);
+  const [subordinateLoadError, setSubordinateLoadError] = useState<string | null>(null);
+  const [selectedSubordinateEmail, setSelectedSubordinateEmail] = useState<string | null>(null);
+
+  const normalizedUserEmail = normalizeEmailValue(user?.email);
+  const canOverrideOwnerOnSave =
+    normalizedUserEmail === CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL;
+  const effectiveSaveOwnerEmail =
+    canOverrideOwnerOnSave && selectedSubordinateEmail
+      ? selectedSubordinateEmail
+      : normalizedUserEmail;
+  const isSavingForSubordinate =
+    canOverrideOwnerOnSave &&
+    !!selectedSubordinateEmail &&
+    selectedSubordinateEmail !== normalizedUserEmail;
+  const subordinateOptionsByEmail = useMemo(
+    () => new Map(subordinateOptions.map((item) => [item.email, item] as const)),
+    [subordinateOptions]
+  );
+  const selectedSubordinate =
+    selectedSubordinateEmail && subordinateOptionsByEmail.has(selectedSubordinateEmail)
+      ? subordinateOptionsByEmail.get(selectedSubordinateEmail) ?? null
+      : null;
+  const subordinateSearchQuery = useMemo(
+    () => normalizeSearchTextValue(subordinateSearchText),
+    [subordinateSearchText]
+  );
+  const filteredSubordinateOptions = useMemo(() => {
+    if (!subordinateSearchQuery) return subordinateOptions;
+    return subordinateOptions.filter((option) => {
+      const email = normalizeSearchTextValue(option.email);
+      const name = normalizeSearchTextValue(option.name);
+      return email.includes(subordinateSearchQuery) || name.includes(subordinateSearchQuery);
+    });
+  }, [subordinateOptions, subordinateSearchQuery]);
+  const selectedSaveOwnerLabel = selectedSubordinate
+    ? `${selectedSubordinate.name} (${selectedSubordinate.email})`
+    : "Můj účet";
 
   const contractDateIssues = useMemo(
     () => collectContractDateIssues(contractSignedDate, policyStartDate, policyEndDate),
@@ -1034,6 +1115,113 @@ export default function CalculatorPage() {
   }, [user]);
 
   useEffect(() => {
+    if (!user || !canOverrideOwnerOnSave) {
+      setSubordinateOptions([]);
+      setSelectedSubordinateEmail(null);
+      setSubordinateSearchText("");
+      setSubordinateLoadError(null);
+      setSubordinateLoading(false);
+      setSubordinatePickerOpen(false);
+      return;
+    }
+
+    let cancelled = false;
+    const loadSubordinates = async () => {
+      setSubordinateLoading(true);
+      setSubordinateLoadError(null);
+      try {
+        const payload = await fetchAuthedJsonOrThrow<TeamOverviewApiResponse>(
+          user,
+          "/api/team-overview",
+          { method: "GET" }
+        );
+        const ownEmail = normalizeEmailValue(user.email);
+        const options = (Array.isArray(payload?.members) ? payload.members : [])
+          .map((member) => {
+            const email = normalizeEmailValue(member?.email);
+            if (!email || email === ownEmail) return null;
+            const rawName =
+              typeof member?.name === "string" ? member.name.trim() : "";
+            return {
+              email,
+              name: rawName || simpleNameFromEmail(email),
+              managerEmail: normalizeEmailValue(member?.managerEmail) || null,
+              position: POSITION_ORDER.includes(member?.position as Position)
+                ? (member?.position as Position)
+                : null,
+              commissionMode:
+                member?.commissionMode === "standard" ||
+                member?.commissionMode === "accelerated"
+                  ? member.commissionMode
+                  : null,
+            } satisfies SubordinateOption;
+          })
+          .filter((member): member is SubordinateOption => Boolean(member))
+          .sort((a, b) => a.name.localeCompare(b.name, "cs"));
+
+        if (cancelled) return;
+        setSubordinateOptions(options);
+        setSelectedSubordinateEmail((prev) =>
+          prev && options.some((item) => item.email === prev) ? prev : null
+        );
+      } catch (err) {
+        if (cancelled) return;
+        const message =
+          err instanceof Error && err.message.trim().length > 0
+            ? err.message.trim()
+            : "Nepodařilo se načíst podřízené.";
+        setSubordinateLoadError(message);
+        setSubordinateOptions([]);
+        setSelectedSubordinateEmail(null);
+      } finally {
+        if (!cancelled) {
+          setSubordinateLoading(false);
+        }
+      }
+    };
+
+    void loadSubordinates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, canOverrideOwnerOnSave]);
+
+  useEffect(() => {
+    if (subordinatePickerOpen) {
+      setSubordinateSearchText("");
+    }
+  }, [subordinatePickerOpen]);
+
+  useEffect(() => {
+    if (!canOverrideOwnerOnSave) return;
+
+    if (!selectedSubordinateEmail) {
+      if (baseUserPosition) {
+        setPosition(baseUserPosition);
+      }
+      if (userCommissionMode) {
+        setMode(userCommissionMode);
+      }
+      return;
+    }
+
+    const subordinate = subordinateOptionsByEmail.get(selectedSubordinateEmail) ?? null;
+    if (subordinate?.position) {
+      setPosition(subordinate.position);
+    }
+    if (subordinate?.commissionMode) {
+      setMode(subordinate.commissionMode);
+    }
+  }, [
+    canOverrideOwnerOnSave,
+    selectedSubordinateEmail,
+    subordinateOptionsByEmail,
+    baseUserPosition,
+    userCommissionMode,
+  ]);
+
+  useEffect(() => {
     if (!pdfClientNameLoaded) {
       setPdfMatchedClientName(false);
       return;
@@ -1177,6 +1365,11 @@ export default function CalculatorPage() {
   }, [user]);
 
   useEffect(() => {
+    if (isSavingForSubordinate) {
+      setTimelineMatchedPosition(null);
+      return;
+    }
+
     if (!contractSignedDate.trim() || positionTimeline.length === 0) {
       setTimelineMatchedPosition(null);
       return;
@@ -1203,7 +1396,7 @@ export default function CalculatorPage() {
     if (!unavailable) {
       setPosition((prev) => (prev === match.position ? prev : match.position));
     }
-  }, [contractSignedDate, positionTimeline, baseUserPosition]);
+  }, [contractSignedDate, positionTimeline, baseUserPosition, isSavingForSubordinate]);
 
   useEffect(() => {
     const allowed = allowedFrequencies(product);
@@ -2412,6 +2605,11 @@ export default function CalculatorPage() {
 
   const handlePrepareEndorsement = async () => {
     if (!user) return;
+    const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user.email);
+    if (!targetOwnerEmail) {
+      setValidationError("Chybí cílový vlastník smlouvy.");
+      return;
+    }
 
     if (tipsterModeEnabled) {
       setSaveMessage("V režimu TIPAŘSKÉ spolupráce se smlouvy neukládají.");
@@ -2440,7 +2638,7 @@ export default function CalculatorPage() {
 
     try {
       const params = new URLSearchParams({
-        scope: "my",
+        scope: isSavingForSubordinate ? "team" : "my",
         q: trimmedContractNumber,
       });
       const payload = await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
@@ -2448,11 +2646,14 @@ export default function CalculatorPage() {
         `/api/contracts/find?${params.toString()}`,
         { method: "GET" }
       );
-      const contracts = Array.isArray(payload?.contracts) ? payload.contracts : [];
+      const contracts = (Array.isArray(payload?.contracts) ? payload.contracts : []).filter(
+        (entry) =>
+          normalizeEmailValue(entry.userEmail ?? entry.adviserEmail) === targetOwnerEmail
+      );
 
       if (contracts.length === 0) {
         setValidationError(
-          `Smlouvu č. ${trimmedContractNumber} jsem nenašel. Nejdřív musí být uložená jako původní smlouva.`
+          `Smlouvu č. ${trimmedContractNumber} jsem u vybraného poradce nenašel. Nejdřív musí být uložená jako původní smlouva.`
         );
         return;
       }
@@ -2534,6 +2735,11 @@ export default function CalculatorPage() {
 
   const handleSaveEndorsement = async () => {
     if (!user || !endorsementDraft) return;
+    const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user.email);
+    if (!targetOwnerEmail) {
+      setValidationError("Chybí cílový vlastník smlouvy.");
+      return;
+    }
 
     if (tipsterModeEnabled) {
       setSaveMessage("V režimu TIPAŘSKÉ spolupráce se smlouvy neukládají.");
@@ -2588,40 +2794,41 @@ export default function CalculatorPage() {
     setLastSavedContractRef(null);
 
     try {
-      const signedDateIso = contractSignedDate.trim() || null;
-
-      let mgrEmail = managerEmailSnapshot;
-      let mgrPos = managerPositionSnapshot;
-      let mgrMode = managerModeSnapshot;
-      let managerChainForSave: ManagerChainSnapshotEntry[] = managerChainSnapshot;
-      try {
-        const snapshot = await requestManagerSnapshotWithAuth({
-          user,
-          signedDateIso,
-        });
-        mgrEmail = snapshot.managerEmail ?? mgrEmail ?? null;
-        mgrPos = snapshot.managerPosition ?? mgrPos ?? null;
-        mgrMode = snapshot.managerMode ?? mgrMode ?? null;
-        if (snapshot.managerChain.length > 0) {
-          managerChainForSave = snapshot.managerChain;
+      if (!isSavingForSubordinate) {
+        const signedDateIso = contractSignedDate.trim() || null;
+        let mgrEmail = managerEmailSnapshot;
+        let mgrPos = managerPositionSnapshot;
+        let mgrMode = managerModeSnapshot;
+        let managerChainForSave: ManagerChainSnapshotEntry[] = managerChainSnapshot;
+        try {
+          const snapshot = await requestManagerSnapshotWithAuth({
+            user,
+            signedDateIso,
+          });
+          mgrEmail = snapshot.managerEmail ?? mgrEmail ?? null;
+          mgrPos = snapshot.managerPosition ?? mgrPos ?? null;
+          mgrMode = snapshot.managerMode ?? mgrMode ?? null;
+          if (snapshot.managerChain.length > 0) {
+            managerChainForSave = snapshot.managerChain;
+          }
+        } catch (snapshotErr) {
+          console.error("Failed to snapshot manager info", snapshotErr);
         }
-      } catch (snapshotErr) {
-        console.error("Failed to snapshot manager info", snapshotErr);
-      }
 
-      managerChainForSave = ensureManagerChainWithDirectManager(
-        managerChainForSave,
-        mgrEmail,
-        mgrPos ?? null,
-        mgrMode ?? null
-      );
+        managerChainForSave = ensureManagerChainWithDirectManager(
+          managerChainForSave,
+          mgrEmail,
+          mgrPos ?? null,
+          mgrMode ?? null
+        );
 
-      if (!hasResolvedTopManagerPosition(managerChainForSave, mgrEmail)) {
-        const msg =
-          "Nepodařilo se načíst pozici nadřízeného. Dodatek teď neuložím, aby nechyběla meziprovize.";
-        setValidationError(msg);
-        setSaveMessage(msg);
-        return;
+        if (!hasResolvedTopManagerPosition(managerChainForSave, mgrEmail)) {
+          const msg =
+            "Nepodařilo se načíst pozici nadřízeného. Dodatek teď neuložím, aby nechyběla meziprovize.";
+          setValidationError(msg);
+          setSaveMessage(msg);
+          return;
+        }
       }
 
       const endorsementEntryPayload = {
@@ -2663,7 +2870,10 @@ export default function CalculatorPage() {
         user,
         path: "/api/contracts",
         method: "POST",
-        payload: { entry: endorsementEntryPayload },
+        payload: {
+          ownerEmail: targetOwnerEmail,
+          entry: endorsementEntryPayload,
+        },
         idempotencyKey: buildContractsCreateIdempotencyKey(endorsementEntryPayload),
       });
       const apiError = getContractsMutationError({
@@ -2678,7 +2888,7 @@ export default function CalculatorPage() {
 
       const createdEntryId =
         typeof data?.entryId === "string" ? data.entryId.trim() : "";
-      const ownerEmail = (user.email ?? "").trim().toLowerCase();
+      const ownerEmail = targetOwnerEmail;
       if (createdEntryId && ownerEmail) {
         setLastSavedContractRef({
           ownerEmail,
@@ -2720,6 +2930,11 @@ export default function CalculatorPage() {
 
   const handleSaveContract = async (skipDuplicateCheck = false) => {
     if (!user) return;
+    const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user.email);
+    if (!targetOwnerEmail) {
+      setValidationError("Chybí cílový vlastník smlouvy.");
+      return;
+    }
 
     if (tipsterModeEnabled) {
       setSaveMessage("V režimu TIPAŘSKÉ spolupráce se smlouvy neukládají.");
@@ -2769,7 +2984,7 @@ export default function CalculatorPage() {
       try {
         if (trimmedContractNumber) {
           const findParams = new URLSearchParams({
-            scope: "my",
+            scope: isSavingForSubordinate ? "team" : "my",
             q: trimmedContractNumber,
           });
           const findPayload = await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
@@ -2777,9 +2992,14 @@ export default function CalculatorPage() {
             `/api/contracts/find?${findParams.toString()}`,
             { method: "GET" }
           );
-          const duplicateContracts = Array.isArray(findPayload?.contracts)
+          const duplicateContracts = (Array.isArray(findPayload?.contracts)
             ? findPayload.contracts
-            : [];
+            : []
+          ).filter((item) => {
+            const ownerEmail =
+              normalizeEmailValue(item.userEmail) || normalizeEmailValue(item.adviserEmail);
+            return ownerEmail === targetOwnerEmail;
+          });
           if (duplicateContracts.length > 0) {
             const entries = duplicateContracts
               .map((item) => {
@@ -2788,11 +3008,13 @@ export default function CalculatorPage() {
                 const ownerEmail =
                   normalizeEmailValue(item.userEmail) ||
                   normalizeEmailValue(item.adviserEmail) ||
-                  normalizeEmailValue(user.email);
+                  targetOwnerEmail;
+                if (!ownerEmail || ownerEmail !== targetOwnerEmail) return null;
                 const existingNumber =
                   typeof item.contractNumber === "string" ? item.contractNumber.trim() : "";
                 return {
                   id,
+                  ownerEmail,
                   path: entryPathFromContractOwner(ownerEmail, id),
                   contractNumber: existingNumber || trimmedContractNumber,
                 };
@@ -2800,7 +3022,12 @@ export default function CalculatorPage() {
               .filter(
                 (
                   entry
-                ): entry is { id: string; path: string; contractNumber: string } =>
+                ): entry is {
+                  id: string;
+                  ownerEmail: string;
+                  path: string;
+                  contractNumber: string;
+                } =>
                   Boolean(entry)
               );
             if (entries.length === 0) return;
@@ -2816,7 +3043,7 @@ export default function CalculatorPage() {
           }
         }
 
-        if (product && signedDateIsoDay && trimmedClientName) {
+        if (!isSavingForSubordinate && product && signedDateIsoDay && trimmedClientName) {
           const precheckParams = new URLSearchParams({
             productKey: product,
             clientName: trimmedClientName,
@@ -2840,16 +3067,24 @@ export default function CalculatorPage() {
                   typeof item.contractNumber === "string"
                     ? item.contractNumber.trim()
                     : null;
+                const ownerEmail = normalizeEmailValue(item.ownerEmail);
+                if (!ownerEmail) return null;
                 return {
                   id,
-                  path: entryPathFromContractOwner(item.ownerEmail, id),
+                  ownerEmail,
+                  path: entryPathFromContractOwner(ownerEmail, id),
                   contractNumber: existingNumber || null,
                 };
               })
               .filter(
                 (
                   entry
-                ): entry is { id: string; path: string; contractNumber: string | null } =>
+                ): entry is {
+                  id: string;
+                  ownerEmail: string;
+                  path: string;
+                  contractNumber: string | null;
+                } =>
                   Boolean(entry)
               );
             if (entries.length === 0) return;
@@ -2879,41 +3114,43 @@ export default function CalculatorPage() {
     setLastSavedContractRef(null);
 
     try {
-      const signedDateIso = contractSignedDate.trim() || null;
+      if (!isSavingForSubordinate) {
+        const signedDateIso = contractSignedDate.trim() || null;
 
-      // Snapshot chainu nadřízených k datu sjednání (timeline) – uložíme k záznamu
-      let mgrEmail = managerEmailSnapshot;
-      let mgrPos = managerPositionSnapshot;
-      let mgrMode = managerModeSnapshot;
-      let managerChainForSave: ManagerChainSnapshotEntry[] = managerChainSnapshot;
-      try {
-        const snapshot = await requestManagerSnapshotWithAuth({
-          user,
-          signedDateIso,
-        });
-        mgrEmail = snapshot.managerEmail ?? mgrEmail ?? null;
-        mgrPos = snapshot.managerPosition ?? mgrPos ?? null;
-        mgrMode = snapshot.managerMode ?? mgrMode ?? null;
-        if (snapshot.managerChain.length > 0) {
-          managerChainForSave = snapshot.managerChain;
+        // Snapshot chainu nadřízených k datu sjednání (timeline) – uložíme k záznamu
+        let mgrEmail = managerEmailSnapshot;
+        let mgrPos = managerPositionSnapshot;
+        let mgrMode = managerModeSnapshot;
+        let managerChainForSave: ManagerChainSnapshotEntry[] = managerChainSnapshot;
+        try {
+          const snapshot = await requestManagerSnapshotWithAuth({
+            user,
+            signedDateIso,
+          });
+          mgrEmail = snapshot.managerEmail ?? mgrEmail ?? null;
+          mgrPos = snapshot.managerPosition ?? mgrPos ?? null;
+          mgrMode = snapshot.managerMode ?? mgrMode ?? null;
+          if (snapshot.managerChain.length > 0) {
+            managerChainForSave = snapshot.managerChain;
+          }
+        } catch (snapshotErr) {
+          console.error("Failed to snapshot manager info", snapshotErr);
         }
-      } catch (snapshotErr) {
-        console.error("Failed to snapshot manager info", snapshotErr);
-      }
 
-      managerChainForSave = ensureManagerChainWithDirectManager(
-        managerChainForSave,
-        mgrEmail,
-        mgrPos ?? null,
-        mgrMode ?? null
-      );
+        managerChainForSave = ensureManagerChainWithDirectManager(
+          managerChainForSave,
+          mgrEmail,
+          mgrPos ?? null,
+          mgrMode ?? null
+        );
 
-      if (!hasResolvedTopManagerPosition(managerChainForSave, mgrEmail)) {
-        const msg =
-          "Nepodařilo se načíst pozici nadřízeného. Smlouvu teď neuložím, aby nechyběla meziprovize.";
-        setValidationError(msg);
-        setSaveMessage(msg);
-        return;
+        if (!hasResolvedTopManagerPosition(managerChainForSave, mgrEmail)) {
+          const msg =
+            "Nepodařilo se načíst pozici nadřízeného. Smlouvu teď neuložím, aby nechyběla meziprovize.";
+          setValidationError(msg);
+          setSaveMessage(msg);
+          return;
+        }
       }
 
       const { response, data } = await requestContractsMutationWithAuth({
@@ -2921,6 +3158,7 @@ export default function CalculatorPage() {
         path: "/api/contracts",
         method: "POST",
         payload: {
+          ownerEmail: targetOwnerEmail,
           entry: {
             productKey: product,
             entryType: "contract" as ContractEntryType,
@@ -3162,7 +3400,7 @@ export default function CalculatorPage() {
 
       const createdEntryId =
         typeof data?.entryId === "string" ? data.entryId.trim() : "";
-      const ownerEmail = (user.email ?? "").trim().toLowerCase();
+      const ownerEmail = targetOwnerEmail;
       if (createdEntryId && ownerEmail) {
         setLastSavedContractRef({
           ownerEmail,
@@ -3323,7 +3561,10 @@ export default function CalculatorPage() {
     userCommissionMode === "accelerated" &&
     !(product === "neon" && isNeonHistoricalBySignedDate);
   const allowedPositionOptions = allowedPositionsForUser(baseUserPosition ?? position);
-  const showPositionTimelineHint = contractSignedDate.trim().length > 0 && positionTimeline.length > 0;
+  const showPositionTimelineHint =
+    !isSavingForSubordinate &&
+    contractSignedDate.trim().length > 0 &&
+    positionTimeline.length > 0;
   const positionTimelineHintWarning = Boolean(timelineMatchedPosition?.unavailable);
   const positionTimelineHintText = showPositionTimelineHint
     ? timelineMatchedPosition
@@ -3535,16 +3776,15 @@ export default function CalculatorPage() {
                   setDuplicateModal(null);
                   try {
                     if (modal.mode === "overwrite") {
-                      const ownerEmail = (user.email ?? "").trim().toLowerCase();
-                      if (!ownerEmail) {
-                        throw new Error("Chybí přihlášený e-mail uživatele.");
-                      }
                       const entriesToDelete = modal.entries
                         .map((entry) => ({
-                          ownerEmail,
+                          ownerEmail: normalizeEmailValue(entry.ownerEmail),
                           entryId: entry.id,
                         }))
-                        .filter((entry) => entry.entryId.trim().length > 0);
+                        .filter(
+                          (entry) =>
+                            entry.ownerEmail.length > 0 && entry.entryId.trim().length > 0
+                        );
                       if (entriesToDelete.length > 0) {
                         const { response, data } = await requestContractsMutationWithAuth({
                           user,
@@ -3780,6 +4020,109 @@ export default function CalculatorPage() {
         </div>
       )}
 
+      {canOverrideOwnerOnSave && subordinatePickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSubordinatePickerOpen(false)}
+          />
+          <div className="relative w-full max-w-xl rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  Uložit smlouvu za poradce
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Vyber vlastníka smlouvy. Výpočet i uložení proběhne podle jeho profilu.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubordinatePickerOpen(false)}
+                className="rounded-full border border-slate-300 p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Zavřít výběr poradce"
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="relative mt-4">
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                value={subordinateSearchText}
+                onChange={(event) => setSubordinateSearchText(event.target.value)}
+                placeholder="Hledat podřízeného (jméno nebo e-mail)"
+                className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+              />
+            </div>
+
+            {subordinateLoading ? (
+              <p className="mt-4 text-sm text-slate-600">Načítám podřízené…</p>
+            ) : subordinateLoadError ? (
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {subordinateLoadError}
+              </div>
+            ) : (
+              <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedSubordinateEmail(null);
+                    setSubordinatePickerOpen(false);
+                  }}
+                  className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                    !selectedSubordinateEmail
+                      ? "border-slate-900 bg-slate-950 text-white"
+                      : "border-slate-300 bg-white text-slate-900 hover:bg-slate-100"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Users size={14} aria-hidden="true" />
+                    <span className="font-semibold">Můj účet</span>
+                  </div>
+                  <div className="mt-0.5 text-xs opacity-80">{normalizedUserEmail}</div>
+                </button>
+
+                {filteredSubordinateOptions.map((option) => {
+                  const active = selectedSubordinateEmail === option.email;
+                  return (
+                    <button
+                      key={option.email}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSubordinateEmail(option.email);
+                        setSubordinatePickerOpen(false);
+                      }}
+                      className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                        active
+                          ? "border-slate-900 bg-slate-950 text-white"
+                          : "border-slate-300 bg-white text-slate-900 hover:bg-slate-100"
+                      }`}
+                    >
+                      <div className="font-semibold">{option.name}</div>
+                      <div className="mt-0.5 text-xs opacity-80">{option.email}</div>
+                    </button>
+                  );
+                })}
+
+                {filteredSubordinateOptions.length === 0 && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                    {subordinateSearchQuery
+                      ? "Žádný podřízený neodpovídá hledání."
+                      : "Zatím nejsou načtení žádní podřízení."}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <CalculatorProductPickerModal
         isOpen={productOpen}
         product={product}
@@ -3934,6 +4277,30 @@ export default function CalculatorPage() {
           </div>
 
           <CalculatorResultsSection
+            topTools={
+              canOverrideOwnerOnSave ? (
+                <div className="rounded-2xl border border-slate-300 bg-white px-3 py-3 shadow-[0_14px_35px_rgba(15,23,42,0.08)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Uložení smlouvy
+                      </p>
+                      <p className="truncate text-sm font-semibold text-slate-900">
+                        {selectedSaveOwnerLabel}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSubordinatePickerOpen(true)}
+                      className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-900 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800"
+                    >
+                      <Users size={14} aria-hidden="true" />
+                      Vybrat poradce
+                    </button>
+                  </div>
+                </div>
+              ) : null
+            }
             tipsterModeEnabled={tipsterModeEnabled}
             tipsterPercentPanelOpen={tipsterPercentPanelOpen}
             tipsterPercent={tipsterPercent}

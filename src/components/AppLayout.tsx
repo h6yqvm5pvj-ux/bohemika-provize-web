@@ -20,6 +20,7 @@ import {
   FileText,
   Home,
   Settings,
+  ShieldCheck,
   UsersRound,
   Wrench,
 } from "lucide-react";
@@ -30,7 +31,7 @@ import {
   applyBoxThemeToRoot,
 } from "@/lib/boxTheme";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
-import { getUserProfileCached, type UserProfileResponse } from "@/app/lib/userProfileCache";
+import { getUserProfileCached } from "@/app/lib/userProfileCache";
 
 type ActivePage =
   | "home"
@@ -39,7 +40,8 @@ type ActivePage =
   | "cashflow"
   | "team"
   | "tools"
-  | "settings";
+  | "settings"
+  | "admin";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -59,6 +61,11 @@ const hasCareerTimelineConfigured = (data: Record<string, unknown>): boolean => 
     return position.length > 0 && validFrom.length > 0;
   });
 };
+
+const normalizeEmail = (value: string | null | undefined): string =>
+  (value ?? "").trim().toLowerCase();
+
+const ADMIN_REQUESTS_EMAIL = "jakub.rauscher@bohemika.eu";
 
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -418,6 +425,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     label: string;
     icon: LucideIcon;
     requiresTeam?: boolean;
+    requiresAdmin?: boolean;
   }[] = [
     { key: "home", href: "/", label: "Domů", icon: Home },
     {
@@ -435,6 +443,13 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       icon: CalendarDays,
     },
     { key: "tools", href: "/pomucky", label: "Pomůcky", icon: Wrench },
+    {
+      key: "admin",
+      href: "/admin/zadosti",
+      label: "Admin",
+      icon: ShieldCheck,
+      requiresAdmin: true,
+    },
     { key: "settings", href: "/nastaveni", label: "Nastavení", icon: Settings },
   ];
 
@@ -458,6 +473,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     !!user &&
     subscriptionStatus === "expired" &&
     !loadingProfile;
+  const isAdminRequestsUser = normalizeEmail(user?.email) === ADMIN_REQUESTS_EMAIL;
 
   // Pokud auth není připravené, nerenderuj obsah (zamezení blikání nechráněného UI)
   if (!authReady) {
@@ -529,6 +545,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           <nav className="flex-1 space-y-2 px-3 py-5 text-base">
             {navItems.map((item) => {
               if (item.requiresTeam && !hasTeam) return null;
+              if (item.requiresAdmin && !isAdminRequestsUser) return null;
               const isActive = active === item.key;
               return (
                 <Link
@@ -639,6 +656,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 <nav className="space-y-2">
                   {navItems.map((item) => {
                     if (item.requiresTeam && !hasTeam) return null;
+                    if (item.requiresAdmin && !isAdminRequestsUser) return null;
                     const isActive = active === item.key;
                     return (
                       <Link

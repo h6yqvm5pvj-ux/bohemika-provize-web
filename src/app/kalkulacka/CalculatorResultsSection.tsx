@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { BarChart3, CheckCircle2, FileText, Sigma } from "lucide-react";
@@ -16,6 +16,7 @@ type TipContractConfigSummary = {
 };
 
 type CalculatorResultsSectionProps = {
+  topTools?: ReactNode;
   tipsterModeEnabled: boolean;
   tipsterPercentPanelOpen: boolean;
   tipsterPercent: number;
@@ -131,6 +132,7 @@ function AnimatedMoneyValue({
 }
 
 export function CalculatorResultsSection({
+  topTools,
   tipsterModeEnabled,
   tipsterPercentPanelOpen,
   tipsterPercent,
@@ -159,6 +161,7 @@ export function CalculatorResultsSection({
 }: CalculatorResultsSectionProps) {
   return (
     <div className="self-start space-y-3 lg:sticky lg:top-6">
+      {topTools}
       <section className="relative overflow-hidden rounded-[1.65rem] border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_58%,#eef2f7_100%)] px-4 py-4 shadow-[0_22px_55px_rgba(15,23,42,0.10)] space-y-3 sm:px-5">
         <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_50%,#7dd3fc_100%)]" aria-hidden="true" />
         <div className="pointer-events-none absolute -right-20 top-12 h-44 w-44 rounded-full bg-emerald-100/70 blur-3xl" aria-hidden="true" />

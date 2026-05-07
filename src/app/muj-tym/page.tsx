@@ -254,12 +254,24 @@ type TeamOverviewEndCollaborationSuccess = {
   ok: true;
   targetEmail: string;
   updated: Array<
-    "collaborationEnded" | "collaborationPreview" | "position" | "positionTimeline"
+    | "collaborationEnded"
+    | "collaborationPreview"
+    | "position"
+    | "positionTimeline"
+    | "collaborationRequestQueued"
+    | "collaborationRequestApproved"
+    | "collaborationRequestRejected"
   >;
   summary?: {
     successorEmail?: string | null;
     transferredContracts?: number | null;
     reassignedSubordinates?: number | null;
+  };
+  request?: {
+    id?: string | null;
+    successorEmail?: string | null;
+    transferableContracts?: number | null;
+    directSubordinates?: number | null;
   };
   preview?: {
     successorEmail?: string | null;
@@ -1113,12 +1125,11 @@ export default function TeamPage() {
         }
       );
 
-      const successorEmail =
-        (payload.summary?.successorEmail ?? selected.managerEmail ?? "").trim().toLowerCase();
-      const transferredContracts = Number(payload.summary?.transferredContracts ?? 0);
-      const reassignedSubordinates = Number(payload.summary?.reassignedSubordinates ?? 0);
-
-      const successMessage = `Ukončeno. Převod na ${successorEmail || "nadřízeného"}: ${transferredContracts} smluv, ${reassignedSubordinates} podřízených.`;
+      const queuedSuccessorEmail =
+        (payload.request?.successorEmail ?? selected.managerEmail ?? "").trim().toLowerCase();
+      const queuedContracts = Number(payload.request?.transferableContracts ?? 0);
+      const queuedSubordinates = Number(payload.request?.directSubordinates ?? 0);
+      const successMessage = `Žádost o ukončení spolupráce byla odeslána ke schválení (${queuedContracts} smluv, ${queuedSubordinates} podřízených, převod na ${queuedSuccessorEmail || "nadřízeného"}).`;
       setEndCollaborationSuccess(successMessage);
       setEndCollaborationModalOpen(false);
       setEndCollaborationConfirmEmail("");

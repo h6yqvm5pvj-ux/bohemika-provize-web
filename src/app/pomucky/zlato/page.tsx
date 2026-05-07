@@ -75,6 +75,7 @@ type UnitKey = keyof typeof UNITS;
 type RangeKey = keyof typeof RANGES;
 type GoldView = "movement" | "comfort";
 type ComfortBrand = "argor" | "pamp";
+type ComfortPriceKey = "argor-1oz" | "argor-20g" | "pamp-1oz";
 type ComfortPriceMode = "spot-scaled" | "official";
 type ComfortProductReference = {
   label: string;
@@ -85,6 +86,7 @@ type ComfortProductReference = {
   imageSrc: string;
   spotCzkPerOz?: number;
   priceMode?: ComfortPriceMode;
+  priceKey?: ComfortPriceKey;
   asOf?: string;
 };
 type ComfortBrandReference = {
@@ -94,6 +96,21 @@ type ComfortBrandReference = {
   spotCzkPerOz: number;
   purity: string;
   products: readonly ComfortProductReference[];
+};
+type ComfortLivePrice = {
+  sellCzk: number | null;
+  buybackCzk: number | null;
+  productId: number;
+  productLabel: string;
+};
+type ComfortPricesApiResponse = {
+  ok: boolean;
+  source?: "live" | "fallback";
+  stale?: boolean;
+  fetchedAt?: number;
+  prices?: Partial<Record<ComfortPriceKey, ComfortLivePrice>>;
+  message?: string;
+  error?: string;
 };
 
 const COMFORT_BRAND_REFERENCES: Record<ComfortBrand, ComfortBrandReference> = {
@@ -110,6 +127,7 @@ const COMFORT_BRAND_REFERENCES: Record<ComfortBrand, ComfortBrandReference> = {
         grams: OUNCE_G,
         sellCzk: 102197,
         buybackCzk: 95214,
+        priceKey: "argor-1oz",
         imageSrc: "/icons/argor1OZ.png",
         spotCzkPerOz: 95911.45,
         priceMode: "official",
@@ -121,8 +139,10 @@ const COMFORT_BRAND_REFERENCES: Record<ComfortBrand, ComfortBrandReference> = {
         grams: 20,
         sellCzk: 67951,
         buybackCzk: 62011,
+        priceKey: "argor-20g",
         imageSrc: "/icons/argor20g.png",
         spotCzkPerOz: 95911.45,
+        priceMode: "official",
       },
       {
         label: "ARGOR 5 g",
@@ -157,6 +177,7 @@ const COMFORT_BRAND_REFERENCES: Record<ComfortBrand, ComfortBrandReference> = {
         grams: OUNCE_G,
         sellCzk: 104277,
         buybackCzk: 95514,
+        priceKey: "pamp-1oz",
         imageSrc: "/icons/1oZpredni.png",
         spotCzkPerOz: 98810.8,
         priceMode: "official",
@@ -367,6 +388,29 @@ async function fetchGold(input?: { days?: number; range?: RangeKey }): Promise<{
     asOfDate: typeof (j as GoldApiResponse).asOfDate === "string" ? (j as GoldApiResponse).asOfDate! : null,
     history,
     changes,
+  };
+}
+
+async function fetchComfortPrices(): Promise<{
+  source: "live" | "fallback";
+  stale: boolean;
+  message: string | null;
+  prices: Partial<Record<ComfortPriceKey, ComfortLivePrice>>;
+}> {
+  const response = await fetch("/api/comfort-prices", { cache: "no-store" });
+  const payload = (await response.json().catch(() => null)) as ComfortPricesApiResponse | null;
+
+  if (!response.ok || !payload || payload.ok !== true) {
+    throw new Error(
+      String(payload?.error || payload?.message || "Nepodařilo se načíst ceník Comfort Commodity.")
+    );
+  }
+
+  return {
+    source: payload.source ?? "live",
+    stale: Boolean(payload.stale),
+    message: typeof payload.message === "string" ? payload.message : null,
+    prices: payload.prices ?? {},
   };
 }
 
@@ -906,6 +950,11 @@ export default function GoldToolPage() {
   const [series, setSeries] = useState<Point[]>([]);
 
   const [changes, setChanges] = useState<GoldApiResponse["changes"] | null>(null);
+  const [comfortLivePrices, setComfortLivePrices] = useState<
+    Partial<Record<ComfortPriceKey, ComfortLivePrice>>
+  >({});
+  const [comfortSyncState, setComfortSyncState] = useState<"idle" | "live" | "fallback" | "error">("idle");
+  const [comfortSyncMessage, setComfortSyncMessage] = useState<string | null>(null);
 
   const timerRef = useRef<number | null>(null);
   const secondRef = useRef<number | null>(null);
@@ -921,39 +970,54 @@ export default function GoldToolPage() {
 
   const comfortRows = useMemo(() => {
     if (czkPerOz == null || !Number.isFinite(czkPerOz) || czkPerOz <= 0) {
-      return comfortReference.products.map((product) => ({
-        ...product,
-        spotValue: null,
-        sell: product.priceMode === "official" ? product.sellCzk : null,
-        buyback: product.priceMode === "official" ? product.buybackCzk : null,
-        spread:
-          product.priceMode === "official"
-            ? product.sellCzk - product.buybackCzk
-            : null,
-        sellPremiumPct: null,
-        buybackPremiumPct: null,
-      }));
+      return comfortReference.products.map((product) => {
+        const livePrice = product.priceKey ? comfortLivePrices[product.priceKey] : null;
+        const officialSell = livePrice?.sellCzk ?? product.sellCzk;
+        const officialBuyback = livePrice?.buybackCzk ?? product.buybackCzk;
+
+        return {
+          ...product,
+          spotValue: null,
+          sell: product.priceMode === "official" ? officialSell : null,
+          buyback: product.priceMode === "official" ? officialBuyback : null,
+          spread:
+            product.priceMode === "official"
+              ? officialSell - officialBuyback
+              : null,
+          sellPremiumPct: null,
+          buybackPremiumPct: null,
+        };
+      });
     }
 
     if (comfortReference.spotCzkPerOz == null || !Number.isFinite(comfortReference.spotCzkPerOz) || comfortReference.spotCzkPerOz <= 0) {
-      return comfortReference.products.map((product) => ({
-        ...product,
-        spotValue: (czkPerOz / OUNCE_G) * product.grams,
-        sell: null,
-        buyback: null,
-        spread: null,
-        sellPremiumPct: null,
-        buybackPremiumPct: null,
-      }));
+      return comfortReference.products.map((product) => {
+        const livePrice = product.priceKey ? comfortLivePrices[product.priceKey] : null;
+        const officialSell = livePrice?.sellCzk ?? product.sellCzk;
+        const officialBuyback = livePrice?.buybackCzk ?? product.buybackCzk;
+
+        return {
+          ...product,
+          spotValue: (czkPerOz / OUNCE_G) * product.grams,
+          sell: product.priceMode === "official" ? officialSell : null,
+          buyback: product.priceMode === "official" ? officialBuyback : null,
+          spread: product.priceMode === "official" ? officialSell - officialBuyback : null,
+          sellPremiumPct: null,
+          buybackPremiumPct: null,
+        };
+      });
     }
 
     return comfortReference.products.map((product) => {
+      const livePrice = product.priceKey ? comfortLivePrices[product.priceKey] : null;
+      const officialSell = livePrice?.sellCzk ?? product.sellCzk;
+      const officialBuyback = livePrice?.buybackCzk ?? product.buybackCzk;
       const referenceSpot = product.spotCzkPerOz ?? comfortReference.spotCzkPerOz;
       const spotValue = (czkPerOz / OUNCE_G) * product.grams;
       const isOfficial = product.priceMode === "official";
       const scale = isOfficial ? 1 : czkPerOz / referenceSpot;
-      const sell = isOfficial ? product.sellCzk : Math.round(product.sellCzk * scale);
-      const buyback = isOfficial ? product.buybackCzk : Math.round(product.buybackCzk * scale);
+      const sell = isOfficial ? officialSell : Math.round(product.sellCzk * scale);
+      const buyback = isOfficial ? officialBuyback : Math.round(product.buybackCzk * scale);
       const sellPremiumPct = sell != null && spotValue > 0 ? (sell / spotValue - 1) * 100 : null;
       const buybackPremiumPct = buyback != null && spotValue > 0 ? (buyback / spotValue - 1) * 100 : null;
 
@@ -967,7 +1031,7 @@ export default function GoldToolPage() {
         buybackPremiumPct,
       };
     });
-  }, [comfortReference, czkPerOz]);
+  }, [comfortLivePrices, comfortReference, czkPerOz]);
 
   useEffect(() => {
     setActiveComfortIndex(getDefaultComfortIndex(comfortBrand));
@@ -995,15 +1059,26 @@ export default function GoldToolPage() {
   };
 
   const activeComfortRow = comfortRows[activeComfortIndex] ?? null;
+  const activeComfortApiOverride = Boolean(
+    activeComfortRow?.priceMode === "official" &&
+      activeComfortRow?.priceKey &&
+      comfortLivePrices[activeComfortRow.priceKey]
+  );
   const comfortSourceText =
-    activeComfortRow?.priceMode === "official" && activeComfortRow.asOf
-      ? `${activeComfortRow.label}: ceník Comfort Commodity ${activeComfortRow.asOf}`
+    activeComfortRow?.priceMode === "official" && activeComfortApiOverride && comfortSyncState === "live"
+      ? `${activeComfortRow.label}: živé ceny z Comfort Commodity API`
+      : activeComfortRow?.priceMode === "official" && activeComfortApiOverride && comfortSyncState === "fallback"
+        ? `${activeComfortRow.label}: ceny z cache Comfort Commodity API`
+      : activeComfortRow?.priceMode === "official" && activeComfortRow.asOf
+        ? `${activeComfortRow.label}: ceník Comfort Commodity ${activeComfortRow.asOf}`
       : comfortReference.asOf && comfortReference.spotCzkPerOz
         ? `Kalibrace ${comfortReference.asOf} při spotu ${formatCzk(comfortReference.spotCzkPerOz)}`
         : "Kalibrace bude doplněna";
   const comfortModelText =
-    activeComfortRow?.priceMode === "official"
-      ? "Tato položka drží ručně zadaný ceník Comfort Commodity; ostatní gramáže se dál přepočítávají modelově."
+    activeComfortRow?.priceMode === "official" && activeComfortApiOverride
+      ? "Ceny 1 oz se synchronizují přímo z Comfort Commodity; ostatní gramáže se dál přepočítávají modelově."
+      : activeComfortRow?.priceMode === "official"
+        ? "Tato položka drží ručně zadaný ceník Comfort Commodity; ostatní gramáže se dál přepočítávají modelově."
       : "Model: kalibrační cena × aktuální spot / kalibrační spot. Comfort může ceny fixovat dávkově.";
 
   // animovaný „counter“ pro hlavní cenu
@@ -1086,6 +1161,22 @@ export default function GoldToolPage() {
     return downsamplePoints(scaled, 1400);
   }, [history, series, selected.grams]);
 
+  const loadComfortTick = async (isCancelled?: () => boolean) => {
+    try {
+      const snap = await fetchComfortPrices();
+      if (isCancelled?.()) return;
+      setComfortLivePrices(snap.prices);
+      setComfortSyncState(snap.source === "fallback" ? "fallback" : "live");
+      setComfortSyncMessage(snap.message);
+    } catch (e: any) {
+      if (isCancelled?.()) return;
+      setComfortSyncState("error");
+      setComfortSyncMessage(
+        String(e?.message || "Nepodařilo se načíst ceník Comfort Commodity.")
+      );
+    }
+  };
+
   const loadTick = async () => {
     const snap = await fetchGold({ days: 0 });
 
@@ -1099,6 +1190,8 @@ export default function GoldToolPage() {
       const next = [...prev, { t: snap.ts, v: snap.czkPerOz }];
       return next.slice(Math.max(0, next.length - 120));
     });
+
+    await loadComfortTick();
   };
 
   useEffect(() => {
@@ -1124,6 +1217,7 @@ export default function GoldToolPage() {
 
         // fallback (jen aby UI neumřelo, když historie není)
         setSeries([{ t: snap.ts, v: snap.czkPerOz }]);
+        await loadComfortTick(() => cancelled);
         if (cancelled) return;
       } catch (e: any) {
         if (cancelled) return;
@@ -1206,6 +1300,26 @@ export default function GoldToolPage() {
           label: "Live data",
           className: "border-emerald-700 bg-emerald-600 text-white",
         };
+  const comfortSyncBadge =
+    comfortSyncState === "live"
+      ? {
+          label: "Comfort sync: LIVE",
+          className: "border-emerald-300 bg-emerald-50 text-emerald-800",
+        }
+      : comfortSyncState === "fallback"
+        ? {
+            label: "Comfort sync: CACHE",
+            className: "border-amber-300 bg-amber-50 text-amber-800",
+          }
+        : comfortSyncState === "error"
+          ? {
+              label: "Comfort sync: ERROR",
+              className: "border-rose-300 bg-rose-50 text-rose-800",
+            }
+          : {
+              label: "Comfort sync: INIT",
+              className: "border-slate-300 bg-slate-50 text-slate-700",
+            };
 
   return (
     <AppLayout active="tools">
@@ -1554,6 +1668,19 @@ export default function GoldToolPage() {
                       {lastUpdated ? ` • aktualizováno ${lastUpdated.toLocaleString("cs-CZ")}` : ""}
                     </div>
                     <div>{comfortModelText}</div>
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      <span
+                        className={[
+                          "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
+                          comfortSyncBadge.className,
+                        ].join(" ")}
+                      >
+                        {comfortSyncBadge.label}
+                      </span>
+                      {comfortSyncMessage ? (
+                        <span className="text-[10px] text-slate-500">{comfortSyncMessage}</span>
+                      ) : null}
+                    </div>
                   </div>
                   <button
                     type="button"

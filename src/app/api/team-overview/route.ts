@@ -8,6 +8,7 @@ import {
   productInstitutionLabel,
 } from "@/app/lib/productCatalog";
 import {
+  type CommissionMode,
   type PaymentFrequency,
   type Position,
   type Product,
@@ -21,6 +22,7 @@ type TeamMember = {
   email: string;
   name: string;
   position: Position | null;
+  commissionMode: CommissionMode | null;
   managerEmail: string | null;
   docId: string;
   lastActiveTs: number | null;
@@ -57,6 +59,7 @@ type TeamOverviewSuccess = {
     email: string;
     name: string;
     position: Position | null;
+    commissionMode: CommissionMode | null;
     managerEmail: string | null;
     docId: string;
   }>;
@@ -68,6 +71,37 @@ type TeamOverviewError = {
   ok: false;
   error: string;
 };
+
+type EndCollaborationRequestStatus =
+  | "pending"
+  | "processing"
+  | "approved"
+  | "rejected"
+  | "failed";
+
+type EndCollaborationRequestPayload = {
+  id: string;
+  status: EndCollaborationRequestStatus;
+  requestedByEmail: string;
+  targetEmail: string;
+  targetName: string;
+  expectedManagerEmail: string | null;
+  successorEmail: string;
+  transferableContracts: number;
+  directSubordinates: number;
+  createdAtMs: number;
+  updatedAtMs: number;
+  decidedAtMs: number | null;
+  decidedByEmail: string | null;
+  decisionReason: string | null;
+  summary: {
+    successorEmail: string;
+    transferredContracts: number;
+    reassignedSubordinates: number;
+  } | null;
+  failureReason: string | null;
+};
+
 type TeamOverviewPatchSuccess = {
   ok: true;
   targetEmail: string;
@@ -77,6 +111,9 @@ type TeamOverviewPatchSuccess = {
     | "collaborationEnded"
     | "collaborationPreview"
     | "positionTimelineRead"
+    | "collaborationRequestQueued"
+    | "collaborationRequestApproved"
+    | "collaborationRequestRejected"
   >;
   summary?: {
     successorEmail: string;
@@ -95,6 +132,12 @@ type TeamOverviewPatchSuccess = {
     validFrom: string;
     validTo: string | null;
   }>;
+  request?: EndCollaborationRequestPayload;
+};
+
+type TeamOverviewEndCollaborationRequestsSuccess = {
+  ok: true;
+  requests: EndCollaborationRequestPayload[];
 };
 
 const TEAM_OVERVIEW_RATE_LIMIT = 120;
@@ -110,6 +153,9 @@ const FIRESTORE_IN_LIMIT = 10;
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_TIMELINE_ROWS = 150;
 const TRANSFER_BATCH_LIMIT = 360;
+const END_COLLAB_APPROVER_EMAIL = "jakub.rauscher@bohemika.eu";
+const END_COLLAB_REQUESTS_COLLECTION = "endCollaborationRequests";
+const END_COLLAB_DECISION_REASON_MAX_LEN = 400;
 const POSITION_VALUES: Position[] = [
   "poradce1",
   "poradce2",
@@ -133,6 +179,21 @@ const POSITION_SET = new Set<Position>(POSITION_VALUES);
 
 const normalizeEmail = (value: string | null | undefined): string =>
   (value ?? "").trim().toLowerCase();
+
+const normalizeOptionalText = (value: unknown, maxLen: number): string | null => {
+  if (value == null) return null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > maxLen) return null;
+  return trimmed;
+};
+
+const isEndCollaborationApprover = (email: string): boolean =>
+  normalizeEmail(email) === END_COLLAB_APPROVER_EMAIL;
+
+const endCollaborationRequestDocId = (targetEmail: string): string =>
+  `end-collaboration:${encodeURIComponent(targetEmail)}`;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
@@ -589,6 +650,10 @@ function candidateFromDoc(
     email,
     name: nameFromEmail(email),
     position: (data.position as Position | undefined) ?? null,
+    commissionMode:
+      data.commissionMode === "standard" || data.commissionMode === "accelerated"
+        ? (data.commissionMode as CommissionMode)
+        : null,
     managerEmail: normalizeEmail(data.managerEmail as string | undefined) || null,
     docId: String(docSnap.id ?? email),
     lastActiveTs: (() => {
@@ -656,6 +721,7 @@ async function loadTeamContext(ownEmail: string): Promise<{
       email: ownEmail,
       name: nameFromEmail(ownEmail),
       position: null,
+      commissionMode: null,
       managerEmail: null,
       docId: ownEmail,
       lastActiveTs: null,
@@ -1388,20 +1454,58 @@ type ParsedEndCollaborationPreviewPayload = {
   expectedManagerEmail: string | null;
 };
 
+type ParsedEndCollaborationApprovePayload = {
+  action: "endCollaborationApprove";
+  requestId: string;
+};
+
+type ParsedEndCollaborationRejectPayload = {
+  action: "endCollaborationReject";
+  requestId: string;
+  reason: string | null;
+};
+
 function parsePatchPayload(
   body: unknown
 ):
   | ParsedUpdatePatchPayload
   | ParsedEndCollaborationPayload
   | ParsedEndCollaborationPreviewPayload
+  | ParsedEndCollaborationApprovePayload
+  | ParsedEndCollaborationRejectPayload
   | { error: string } {
   if (!isPlainObject(body)) return { error: "Neplatný payload." };
+
+  const actionRaw =
+    typeof body.action === "string" ? body.action.trim() : "";
+  if (actionRaw === "endCollaborationApprove") {
+    const requestId = typeof body.requestId === "string" ? body.requestId.trim() : "";
+    if (!requestId) return { error: "Chybí requestId." };
+    return {
+      action: "endCollaborationApprove",
+      requestId,
+    };
+  }
+  if (actionRaw === "endCollaborationReject") {
+    const requestId = typeof body.requestId === "string" ? body.requestId.trim() : "";
+    if (!requestId) return { error: "Chybí requestId." };
+    const reason = normalizeOptionalText(body.reason, END_COLLAB_DECISION_REASON_MAX_LEN);
+    if (body.reason != null && typeof body.reason !== "string") {
+      return { error: "Důvod zamítnutí musí být text." };
+    }
+    if (typeof body.reason === "string" && body.reason.trim().length > END_COLLAB_DECISION_REASON_MAX_LEN) {
+      return { error: "Důvod zamítnutí je příliš dlouhý." };
+    }
+    return {
+      action: "endCollaborationReject",
+      requestId,
+      reason,
+    };
+  }
 
   const targetEmail = normalizeEmail(body.targetEmail as string | undefined);
   if (!targetEmail) return { error: "Chybí targetEmail." };
 
-  const actionRaw =
-    typeof body.action === "string" ? body.action.trim() : "";
   if (actionRaw === "endCollaboration") {
     return {
       action: "endCollaboration",
@@ -1492,6 +1596,382 @@ async function loadPositionTimelineForMember(
   }
 }
 
+function parseEndCollaborationRequestStatus(value: unknown): EndCollaborationRequestStatus {
+  switch (value) {
+    case "pending":
+    case "processing":
+    case "approved":
+    case "rejected":
+    case "failed":
+      return value;
+    default:
+      return "pending";
+  }
+}
+
+function parseEndCollaborationRequestDoc(
+  docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
+): EndCollaborationRequestPayload | null {
+  if (!docSnap.exists) return null;
+  const data = docSnap.data() as Record<string, unknown>;
+
+  const requestedByEmail = normalizeEmail(data.requestedByEmail as string | undefined);
+  const targetEmail = normalizeEmail(data.targetEmail as string | undefined);
+  const successorEmail = normalizeEmail(data.successorEmail as string | undefined);
+  if (!requestedByEmail || !targetEmail || !successorEmail) {
+    return null;
+  }
+
+  const nowMs = Date.now();
+  const createdAtMs = toDate(data.createdAt)?.getTime() ?? nowMs;
+  const updatedAtMs = toDate(data.updatedAt)?.getTime() ?? createdAtMs;
+  const decidedAtMs = toDate(data.decidedAt)?.getTime() ?? null;
+  const transferableContractsRaw = Number(data.transferableContracts ?? NaN);
+  const directSubordinatesRaw = Number(data.directSubordinates ?? NaN);
+  const expectedManagerEmail =
+    normalizeEmail(data.expectedManagerEmail as string | undefined) || null;
+  const decidedByEmail = normalizeEmail(data.decidedByEmail as string | undefined) || null;
+  const decisionReasonRaw = data.decisionReason;
+  const failureReasonRaw = data.failureReason;
+  const targetNameRaw = typeof data.targetName === "string" ? data.targetName.trim() : "";
+
+  const summaryRaw = isPlainObject(data.summary) ? data.summary : null;
+  let summary: EndCollaborationRequestPayload["summary"] = null;
+  if (summaryRaw) {
+    const summarySuccessor = normalizeEmail(summaryRaw.successorEmail as string | undefined);
+    const transferredContracts = Number(summaryRaw.transferredContracts ?? NaN);
+    const reassignedSubordinates = Number(summaryRaw.reassignedSubordinates ?? NaN);
+    if (
+      summarySuccessor &&
+      Number.isFinite(transferredContracts) &&
+      Number.isFinite(reassignedSubordinates)
+    ) {
+      summary = {
+        successorEmail: summarySuccessor,
+        transferredContracts,
+        reassignedSubordinates,
+      };
+    }
+  }
+
+  return {
+    id: docSnap.id,
+    status: parseEndCollaborationRequestStatus(data.status),
+    requestedByEmail,
+    targetEmail,
+    targetName: targetNameRaw || nameFromEmail(targetEmail),
+    expectedManagerEmail,
+    successorEmail,
+    transferableContracts: Number.isFinite(transferableContractsRaw)
+      ? transferableContractsRaw
+      : 0,
+    directSubordinates: Number.isFinite(directSubordinatesRaw) ? directSubordinatesRaw : 0,
+    createdAtMs,
+    updatedAtMs,
+    decidedAtMs,
+    decidedByEmail,
+    decisionReason:
+      typeof decisionReasonRaw === "string" && decisionReasonRaw.trim().length > 0
+        ? decisionReasonRaw.trim()
+        : null,
+    summary,
+    failureReason:
+      typeof failureReasonRaw === "string" && failureReasonRaw.trim().length > 0
+        ? failureReasonRaw.trim()
+        : null,
+  };
+}
+
+async function listEndCollaborationRequests(options?: {
+  pendingOnly?: boolean;
+}): Promise<EndCollaborationRequestPayload[]> {
+  if (!adminDb) {
+    throw new Error("Firebase Admin credentials are not configured.");
+  }
+  const pendingOnly = options?.pendingOnly === true;
+  const snap = await adminDb.collection(END_COLLAB_REQUESTS_COLLECTION).get();
+  const all = snap.docs
+    .map((docSnap) => parseEndCollaborationRequestDoc(docSnap))
+    .filter((item): item is EndCollaborationRequestPayload => item != null);
+
+  const filtered = pendingOnly
+    ? all.filter((request) => request.status === "pending" || request.status === "processing")
+    : all;
+
+  filtered.sort((a, b) => {
+    if (b.createdAtMs !== a.createdAtMs) return b.createdAtMs - a.createdAtMs;
+    return b.updatedAtMs - a.updatedAtMs;
+  });
+  return filtered;
+}
+
+async function createEndCollaborationRequest(params: {
+  requestedByEmail: string;
+  target: TeamMember;
+  preview: {
+    successorEmail: string;
+    transferableContracts: number;
+    directSubordinates: number;
+    generatedAtMs: number;
+  };
+  expectedManagerEmail: string | null;
+}): Promise<EndCollaborationRequestPayload> {
+  if (!adminDb) {
+    throw new Error("Firebase Admin credentials are not configured.");
+  }
+
+  const { requestedByEmail, target, preview, expectedManagerEmail } = params;
+  const db = adminDb;
+  const requestId = endCollaborationRequestDocId(target.email);
+  const requestRef = db.collection(END_COLLAB_REQUESTS_COLLECTION).doc(requestId);
+  const now = new Date();
+
+  await db.runTransaction(async (tx) => {
+    const existingSnap = await tx.get(requestRef);
+    if (existingSnap.exists) {
+      const existingData = existingSnap.data() as Record<string, unknown>;
+      const existingStatus = parseEndCollaborationRequestStatus(existingData.status);
+      if (existingStatus === "pending" || existingStatus === "processing") {
+        throw Object.assign(
+          new Error("Pro tohoto podřízeného už čeká žádost na schválení."),
+          { status: 409 }
+        );
+      }
+    }
+
+    tx.set(requestRef, {
+      status: "pending",
+      requestedByEmail,
+      targetEmail: target.email,
+      targetName: target.name || nameFromEmail(target.email),
+      expectedManagerEmail,
+      successorEmail: preview.successorEmail,
+      transferableContracts: preview.transferableContracts,
+      directSubordinates: preview.directSubordinates,
+      previewGeneratedAtMs: preview.generatedAtMs,
+      createdAt: now,
+      updatedAt: now,
+      decidedAt: null,
+      decidedByEmail: null,
+      decisionReason: null,
+      summary: null,
+      failureReason: null,
+    });
+  });
+
+  const savedSnap = await requestRef.get();
+  const request = parseEndCollaborationRequestDoc(savedSnap);
+  if (!request) {
+    throw Object.assign(new Error("Nepodařilo se uložit žádost o schválení."), {
+      status: 500,
+    });
+  }
+  return request;
+}
+
+async function loadTeamMemberByEmail(email: string): Promise<TeamMember | null> {
+  if (!adminDb) return null;
+  const usersCol = adminDb.collection("users");
+  const direct = candidateFromDoc(await usersCol.doc(email).get());
+  if (direct) return direct;
+
+  const byEmailSnap = await usersCol.where("email", "==", email).limit(1).get();
+  const first = byEmailSnap.docs[0];
+  if (!first) return null;
+  return candidateFromDoc(first);
+}
+
+async function approveEndCollaborationRequest(params: {
+  requestId: string;
+  actorEmail: string;
+}): Promise<{
+  request: EndCollaborationRequestPayload;
+  summary: {
+    successorEmail: string;
+    transferredContracts: number;
+    reassignedSubordinates: number;
+  };
+}> {
+  if (!adminDb) {
+    throw new Error("Firebase Admin credentials are not configured.");
+  }
+  const db = adminDb;
+  const requestRef = db.collection(END_COLLAB_REQUESTS_COLLECTION).doc(params.requestId);
+  let claimedRequest: EndCollaborationRequestPayload | null = null;
+
+  try {
+    claimedRequest = await db.runTransaction(async (tx) => {
+      const requestSnap = await tx.get(requestRef);
+      const parsed = parseEndCollaborationRequestDoc(requestSnap);
+      if (!parsed) {
+        if (!requestSnap.exists) {
+          throw Object.assign(new Error("Žádost nebyla nalezena."), { status: 404 });
+        }
+        throw Object.assign(new Error("Žádost má neplatný formát."), { status: 500 });
+      }
+      if (parsed.status !== "pending") {
+        throw Object.assign(
+          new Error("Žádost už není ve stavu čekající na schválení."),
+          { status: 409 }
+        );
+      }
+
+      const now = new Date();
+      tx.set(
+        requestRef,
+        {
+          status: "processing",
+          updatedAt: now,
+          decidedByEmail: params.actorEmail,
+          decisionReason: null,
+          failureReason: null,
+        },
+        { merge: true }
+      );
+
+      return {
+        ...parsed,
+        status: "processing",
+        updatedAtMs: now.getTime(),
+        decidedByEmail: params.actorEmail,
+      };
+    });
+
+    const target = await loadTeamMemberByEmail(claimedRequest.targetEmail);
+    if (!target) {
+      throw Object.assign(new Error("Cílový uživatel žádosti nebyl v systému nalezen."), {
+        status: 404,
+      });
+    }
+
+    const currentManagerEmail = normalizeEmail(target.managerEmail);
+    if (!currentManagerEmail) {
+      throw Object.assign(
+        new Error("Vybraný podřízený už nemá přímého nadřízeného pro převod."),
+        { status: 409 }
+      );
+    }
+    if (
+      claimedRequest.expectedManagerEmail &&
+      claimedRequest.expectedManagerEmail !== currentManagerEmail
+    ) {
+      throw Object.assign(
+        new Error("Struktura týmu se mezitím změnila. Žádost zamítni a vytvoř novou."),
+        { status: 409 }
+      );
+    }
+
+    const summary = await endCollaborationAndTransfer({
+      target,
+      actorEmail: params.actorEmail,
+    });
+
+    const now = new Date();
+    await requestRef.set(
+      {
+        status: "approved",
+        updatedAt: now,
+        decidedAt: now,
+        decidedByEmail: params.actorEmail,
+        failureReason: null,
+        summary,
+      },
+      { merge: true }
+    );
+
+    const finalSnap = await requestRef.get();
+    const finalRequest = parseEndCollaborationRequestDoc(finalSnap);
+    return {
+      request:
+        finalRequest ??
+        ({
+          ...claimedRequest,
+          status: "approved",
+          summary,
+          updatedAtMs: now.getTime(),
+          decidedAtMs: now.getTime(),
+          decidedByEmail: params.actorEmail,
+          failureReason: null,
+        } satisfies EndCollaborationRequestPayload),
+      summary,
+    };
+  } catch (err: any) {
+    const status = Number(err?.status) || 500;
+    const message =
+      typeof err?.message === "string" && err.message.trim().length > 0
+        ? err.message.trim()
+        : "Schválení žádosti selhalo.";
+
+    if (claimedRequest) {
+      const now = new Date();
+      await requestRef.set(
+        {
+          status: "failed",
+          updatedAt: now,
+          decidedAt: now,
+          decidedByEmail: params.actorEmail,
+          failureReason: message,
+        },
+        { merge: true }
+      );
+    }
+
+    throw Object.assign(new Error(message), { status });
+  }
+}
+
+async function rejectEndCollaborationRequest(params: {
+  requestId: string;
+  actorEmail: string;
+  reason: string | null;
+}): Promise<EndCollaborationRequestPayload> {
+  if (!adminDb) {
+    throw new Error("Firebase Admin credentials are not configured.");
+  }
+  const db = adminDb;
+  const requestRef = db.collection(END_COLLAB_REQUESTS_COLLECTION).doc(params.requestId);
+  const now = new Date();
+
+  await db.runTransaction(async (tx) => {
+    const requestSnap = await tx.get(requestRef);
+    const parsed = parseEndCollaborationRequestDoc(requestSnap);
+    if (!parsed) {
+      if (!requestSnap.exists) {
+        throw Object.assign(new Error("Žádost nebyla nalezena."), { status: 404 });
+      }
+      throw Object.assign(new Error("Žádost má neplatný formát."), { status: 500 });
+    }
+    if (parsed.status !== "pending") {
+      throw Object.assign(
+        new Error("Žádost už není ve stavu čekající na schválení."),
+        { status: 409 }
+      );
+    }
+
+    tx.set(
+      requestRef,
+      {
+        status: "rejected",
+        updatedAt: now,
+        decidedAt: now,
+        decidedByEmail: params.actorEmail,
+        decisionReason: params.reason ?? null,
+        failureReason: null,
+      },
+      { merge: true }
+    );
+  });
+
+  const finalSnap = await requestRef.get();
+  const finalRequest = parseEndCollaborationRequestDoc(finalSnap);
+  if (!finalRequest) {
+    throw Object.assign(new Error("Nepodařilo se načíst výsledek zamítnutí žádosti."), {
+      status: 500,
+    });
+  }
+  return finalRequest;
+}
+
 export async function PATCH(req: NextRequest) {
   try {
     if (!adminDb) {
@@ -1527,6 +2007,58 @@ export async function PATCH(req: NextRequest) {
         { ok: false, error: parsed.error } satisfies TeamOverviewError,
         { status: 400 }
       );
+    }
+
+    if (parsed.action === "endCollaborationApprove") {
+      if (!isEndCollaborationApprover(email)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Nemáš oprávnění schvalovat ukončení spolupráce.",
+          } satisfies TeamOverviewError,
+          { status: 403 }
+        );
+      }
+
+      const { request, summary } = await approveEndCollaborationRequest({
+        requestId: parsed.requestId,
+        actorEmail: email,
+      });
+      const response = NextResponse.json({
+        ok: true,
+        targetEmail: request.targetEmail,
+        updated: ["collaborationRequestApproved", "collaborationEnded"],
+        request,
+        summary,
+      } satisfies TeamOverviewPatchSuccess);
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
+    }
+
+    if (parsed.action === "endCollaborationReject") {
+      if (!isEndCollaborationApprover(email)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Nemáš oprávnění schvalovat ukončení spolupráce.",
+          } satisfies TeamOverviewError,
+          { status: 403 }
+        );
+      }
+
+      const request = await rejectEndCollaborationRequest({
+        requestId: parsed.requestId,
+        actorEmail: email,
+        reason: parsed.reason,
+      });
+      const response = NextResponse.json({
+        ok: true,
+        targetEmail: request.targetEmail,
+        updated: ["collaborationRequestRejected"],
+        request,
+      } satisfies TeamOverviewPatchSuccess);
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
     }
 
     const context = await loadTeamContext(email);
@@ -1631,15 +2163,18 @@ export async function PATCH(req: NextRequest) {
         );
       }
 
-      const summary = await endCollaborationAndTransfer({
+      const preview = await buildEndCollaborationPreview(target);
+      const request = await createEndCollaborationRequest({
+        requestedByEmail: email,
         target,
-        actorEmail: email,
+        preview,
+        expectedManagerEmail: preview.successorEmail,
       });
       const response = NextResponse.json({
         ok: true,
         targetEmail: target.email,
-        updated: ["collaborationEnded"],
-        summary,
+        updated: ["collaborationRequestQueued"],
+        request,
       } satisfies TeamOverviewPatchSuccess);
       applyRateLimitHeaders(response.headers, rateLimitResult);
       return response;
@@ -1702,8 +2237,32 @@ export async function GET(req: NextRequest) {
       return response;
     }
 
-    const context = await loadTeamContext(email);
     const action = (req.nextUrl.searchParams.get("action") ?? "").trim();
+    if (action === "endCollaborationRequests") {
+      if (!isEndCollaborationApprover(email)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Nemáš oprávnění zobrazit žádosti o ukončení spolupráce.",
+          } satisfies TeamOverviewError,
+          { status: 403 }
+        );
+      }
+
+      const scope = (req.nextUrl.searchParams.get("scope") ?? "pending").trim().toLowerCase();
+      const requests = await listEndCollaborationRequests({
+        pendingOnly: scope !== "all",
+      });
+
+      const response = NextResponse.json({
+        ok: true,
+        requests,
+      } satisfies TeamOverviewEndCollaborationRequestsSuccess);
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
+    }
+
+    const context = await loadTeamContext(email);
     if (action === "positionTimelineRead") {
       const targetEmail = normalizeEmail(req.nextUrl.searchParams.get("targetEmail"));
       if (!targetEmail) {
@@ -1789,6 +2348,7 @@ export async function GET(req: NextRequest) {
         email: member.email,
         name: member.name,
         position: member.position,
+        commissionMode: member.commissionMode,
         managerEmail: member.managerEmail,
         docId: member.docId,
       })),

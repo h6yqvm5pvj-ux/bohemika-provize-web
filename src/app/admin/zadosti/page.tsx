@@ -58,7 +58,7 @@ type EndCollaborationRequestsApiSuccess = {
 
 type UserRequestSubject = "userCreation" | "other";
 type UserRequestPriority = "normal" | "urgent";
-type UserRequestStatus = "pending" | "accepted" | "rejected";
+type UserRequestStatus = "pending" | "needsInfo" | "accepted" | "rejected";
 
 type UserCreationRequestDraft = {
   fullName: string | null;
@@ -96,6 +96,26 @@ type UserRequestUpdateResponse = {
   error?: string;
 };
 
+type UnifiedRequestItem =
+  | {
+      kind: "endCollaboration";
+      id: string;
+      createdAtMs: number;
+      activityAtMs: number;
+      searchable: string;
+      pending: boolean;
+      request: EndCollaborationRequestPayload;
+    }
+  | {
+      kind: "userRequest";
+      id: string;
+      createdAtMs: number;
+      activityAtMs: number;
+      searchable: string;
+      pending: boolean;
+      request: UserRequestPayload;
+    };
+
 const ADMIN_REQUESTS_EMAIL = "jakub.rauscher@bohemika.eu";
 
 const normalizeEmail = (value: string | null | undefined): string =>
@@ -104,6 +124,55 @@ const normalizeEmail = (value: string | null | undefined): string =>
 const formatDateTime = (valueMs: number | null | undefined): string => {
   if (!valueMs || !Number.isFinite(valueMs)) return "—";
   return new Date(valueMs).toLocaleString("cs-CZ");
+};
+
+const USER_REQUEST_SLA_NORMAL_MS = 72 * 60 * 60 * 1000;
+const USER_REQUEST_SLA_URGENT_MS = 8 * 60 * 60 * 1000;
+
+const formatDurationCompact = (durationMs: number): string => {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return "0 min";
+  const totalMinutes = Math.floor(durationMs / 60_000);
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const totalHours = Math.floor(totalMinutes / 60);
+  if (totalHours < 24) return `${totalHours} h`;
+  const totalDays = Math.floor(totalHours / 24);
+  return `${totalDays} d`;
+};
+
+const formatUserRequestSlaLimit = (priority: UserRequestPriority): string =>
+  priority === "urgent" ? "8 h" : "3 dny";
+
+const buildEndCollaborationWaitInfo = (
+  request: EndCollaborationRequestPayload,
+  nowMs: number
+) => {
+  const waiting = request.status === "pending" || request.status === "processing";
+  const sinceMs = waiting ? request.updatedAtMs || request.createdAtMs : null;
+  const elapsedMs =
+    sinceMs && Number.isFinite(sinceMs) ? Math.max(0, nowMs - sinceMs) : 0;
+
+  return {
+    waiting,
+    elapsedLabel: formatDurationCompact(elapsedMs),
+  };
+};
+
+const buildAdminUserRequestSlaInfo = (request: UserRequestPayload, nowMs: number) => {
+  const waiting = request.status === "pending";
+  const sinceMs = waiting ? request.updatedAtMs || request.createdAtMs : null;
+  const elapsedMs =
+    sinceMs && Number.isFinite(sinceMs) ? Math.max(0, nowMs - sinceMs) : 0;
+  const slaLimitMs =
+    request.priority === "urgent" ? USER_REQUEST_SLA_URGENT_MS : USER_REQUEST_SLA_NORMAL_MS;
+  const isOverdueUrgent =
+    waiting && request.priority === "urgent" && elapsedMs > slaLimitMs;
+
+  return {
+    waiting,
+    elapsedLabel: formatDurationCompact(elapsedMs),
+    slaLimitLabel: formatUserRequestSlaLimit(request.priority),
+    isOverdueUrgent,
+  };
 };
 
 const statusPillClass: Record<EndCollaborationRequestStatus, string> = {
@@ -134,12 +203,14 @@ const userRequestPriorityLabel: Record<UserRequestPriority, string> = {
 
 const userRequestStatusPillClass: Record<UserRequestStatus, string> = {
   pending: "border-amber-300 bg-amber-50 text-amber-800",
+  needsInfo: "border-sky-300 bg-sky-50 text-sky-800",
   accepted: "border-emerald-300 bg-emerald-50 text-emerald-800",
   rejected: "border-slate-300 bg-slate-100 text-slate-700",
 };
 
 const userRequestStatusLabel: Record<UserRequestStatus, string> = {
   pending: "Čeká",
+  needsInfo: "Potřeba doplnit",
   accepted: "Akceptováno",
   rejected: "Odmítnuto",
 };
@@ -214,7 +285,6 @@ export default function AdminRequestsPage() {
   const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
   const [busyUserRequestId, setBusyUserRequestId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [userRequestSearch, setUserRequestSearch] = useState("");
   const [userRequestFeedbackDrafts, setUserRequestFeedbackDrafts] = useState<
     Record<string, string>
   >({});
@@ -231,6 +301,7 @@ export default function AdminRequestsPage() {
   const [createUserBusy, setCreateUserBusy] = useState(false);
   const [createUserStatus, setCreateUserStatus] = useState<InlineStatus | null>(null);
   const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>("requests");
+  const [requestsNowMs, setRequestsNowMs] = useState(() => Date.now());
 
   const isAllowedAdmin = normalizeEmail(currentUser?.email) === ADMIN_REQUESTS_EMAIL;
 
@@ -240,6 +311,13 @@ export default function AdminRequestsPage() {
       setAuthReady(true);
     });
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setRequestsNowMs(Date.now());
+    }, 60_000);
+    return () => window.clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
@@ -293,7 +371,13 @@ export default function AdminRequestsPage() {
         { method: "GET" }
       );
       const rows = Array.isArray(payload.requests) ? payload.requests : [];
-      setUserRequests(rows.sort((a, b) => b.createdAtMs - a.createdAtMs));
+      setUserRequests(
+        rows.sort((a, b) => {
+          const aActivity = Math.max(a.updatedAtMs || 0, a.createdAtMs || 0);
+          const bActivity = Math.max(b.updatedAtMs || 0, b.createdAtMs || 0);
+          return bActivity - aActivity;
+        })
+      );
     } catch (err: any) {
       if (typeof err?.message === "string" && err.message.trim()) {
         setUserRequestsError(err.message.trim());
@@ -319,49 +403,55 @@ export default function AdminRequestsPage() {
     void refreshAllRequests();
   }, [authReady, isAllowedAdmin, refreshAllRequests]);
 
-  const filteredRequests = useMemo(() => {
+  const filteredUnifiedRequests = useMemo<UnifiedRequestItem[]>(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return requests;
-    return requests.filter((request) => {
-      const haystack = [
+
+    const endItems: UnifiedRequestItem[] = requests.map((request) => ({
+      kind: "endCollaboration",
+      id: `end-${request.id}`,
+      createdAtMs: request.createdAtMs,
+      activityAtMs: Math.max(request.updatedAtMs || 0, request.createdAtMs || 0),
+      searchable: [
+        "ukonceni spoluprace",
         request.targetName,
         request.targetEmail,
         request.requestedByEmail,
         request.successorEmail,
       ]
         .join(" ")
-        .toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [requests, search]);
+        .toLowerCase(),
+      pending: request.status === "pending" || request.status === "processing",
+      request,
+    }));
 
-  const pendingCount = useMemo(
-    () =>
-      filteredRequests.filter(
-        (request) => request.status === "pending" || request.status === "processing"
-      ).length,
-    [filteredRequests]
-  );
-
-  const filteredUserRequests = useMemo(() => {
-    const q = userRequestSearch.trim().toLowerCase();
-    if (!q) return userRequests;
-    return userRequests.filter((request) => {
-      const haystack = [
+    const userItems: UnifiedRequestItem[] = userRequests.map((request) => ({
+      kind: "userRequest",
+      id: `user-${request.id}`,
+      createdAtMs: request.createdAtMs,
+      activityAtMs: Math.max(request.updatedAtMs || 0, request.createdAtMs || 0),
+      searchable: [
+        "uzivatelska zadost",
         request.requesterEmail,
         request.requestedCorporateEmail ?? "",
+        request.requestedUserDraft?.fullName ?? "",
+        request.requestedUserDraft?.managerEmail ?? "",
         userRequestSubjectLabel[request.subject],
         request.message,
       ]
         .join(" ")
-        .toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [userRequests, userRequestSearch]);
+        .toLowerCase(),
+      pending: request.status === "pending",
+      request,
+    }));
 
-  const pendingUserRequestCount = useMemo(
-    () => filteredUserRequests.filter((request) => request.status === "pending").length,
-    [filteredUserRequests]
+    const merged = [...endItems, ...userItems].sort((a, b) => b.activityAtMs - a.activityAtMs);
+    if (!q) return merged;
+    return merged.filter((item) => item.searchable.includes(q));
+  }, [requests, search, userRequests]);
+
+  const pendingUnifiedCount = useMemo(
+    () => filteredUnifiedRequests.filter((item) => item.pending).length,
+    [filteredUnifiedRequests]
   );
 
   const handleDecision = useCallback(
@@ -401,12 +491,19 @@ export default function AdminRequestsPage() {
   );
 
   const handleUserRequestDecision = useCallback(
-    async (request: UserRequestPayload, status: "accepted" | "rejected") => {
+    async (
+      request: UserRequestPayload,
+      status: "accepted" | "rejected" | "needsInfo"
+    ) => {
       const user = auth.currentUser;
       if (!user || !isAllowedAdmin) return;
 
       const feedback = (userRequestFeedbackDrafts[request.id] ?? "").trim();
       const tempPassword = (userRequestPasswordDrafts[request.id] ?? "").trim();
+      if (status === "needsInfo" && feedback.length < 5) {
+        setUserRequestsError("Pro vrácení k doplnění napiš zpětnou vazbu (min. 5 znaků).");
+        return;
+      }
       if (
         status === "accepted" &&
         request.subject === "userCreation" &&
@@ -460,7 +557,9 @@ export default function AdminRequestsPage() {
         setActionMessage(
           status === "accepted"
             ? "Uživatelská žádost byla akceptována."
-            : "Uživatelská žádost byla odmítnuta."
+            : status === "rejected"
+              ? "Uživatelská žádost byla odmítnuta."
+              : "Žádost byla vrácena k doplnění."
         );
       } catch (err: any) {
         if (typeof err?.message === "string" && err.message.trim()) {
@@ -657,19 +756,19 @@ export default function AdminRequestsPage() {
               {activeAdminSection === "requests" ? (
                 <>
                   <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
-                    Ukončení spolupráce
+                    Žádosti
                   </h2>
                   <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
                     <input
                       type="search"
                       value={search}
                       onChange={(event) => setSearch(event.target.value)}
-                      placeholder="Hledat podle jména nebo e-mailu"
+                      placeholder="Hledat podle jména, e-mailu nebo textu"
                       className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-[0_6px_16px_rgba(15,23,42,0.06)] outline-none transition focus:border-slate-500"
                     />
                     <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700">
                       <Clock3 size={15} strokeWidth={2.2} aria-hidden="true" />
-                      Čeká: <span className="font-semibold text-slate-900">{pendingCount}</span>
+                      Čeká: <span className="font-semibold text-slate-900">{pendingUnifiedCount}</span>
                     </div>
                   </div>
 
@@ -683,162 +782,155 @@ export default function AdminRequestsPage() {
                       {error}
                     </div>
                   ) : null}
-
-                  {loading ? (
-                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-600">
-                      Načítám žádosti…
-                    </div>
-                  ) : filteredRequests.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">
-                      V této chvíli tu nejsou žádné položky.
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {filteredRequests.map((request) => {
-                        const pending = request.status === "pending";
-                        const busy = busyRequestId === request.id;
-                        return (
-                          <article
-                            key={request.id}
-                            className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-                          >
-                            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                              <div className="space-y-1">
-                                <div className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
-                                  <UserCheck2 size={16} strokeWidth={2.2} aria-hidden="true" />
-                                  {request.targetName}
-                                </div>
-                                <div className="text-sm text-slate-600">{request.targetEmail}</div>
-                              </div>
-                              <span
-                                className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${statusPillClass[request.status]}`}
-                              >
-                                {statusLabel[request.status]}
-                              </span>
-                            </div>
-
-                            <div className="grid gap-1 text-sm text-slate-700 sm:grid-cols-2">
-                              <div>
-                                Žádá: <span className="font-medium text-slate-900">{request.requestedByEmail}</span>
-                              </div>
-                              <div>
-                                Převod na:{" "}
-                                <span className="font-medium text-slate-900">
-                                  {request.successorEmail || "—"}
-                                </span>
-                              </div>
-                              <div>
-                                Smlouvy:{" "}
-                                <span className="font-medium text-slate-900">
-                                  {request.transferableContracts}
-                                </span>
-                              </div>
-                              <div>
-                                Podřízení:{" "}
-                                <span className="font-medium text-slate-900">
-                                  {request.directSubordinates}
-                                </span>
-                              </div>
-                              <div>
-                                Vytvořeno:{" "}
-                                <span className="font-medium text-slate-900">
-                                  {formatDateTime(request.createdAtMs)}
-                                </span>
-                              </div>
-                              <div>
-                                Rozhodnuto:{" "}
-                                <span className="font-medium text-slate-900">
-                                  {formatDateTime(request.decidedAtMs)}
-                                </span>
-                              </div>
-                            </div>
-
-                            {request.failureReason ? (
-                              <div className="mt-3 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800">
-                                Chyba: {request.failureReason}
-                              </div>
-                            ) : null}
-                            {request.decisionReason ? (
-                              <div className="mt-3 rounded-xl border border-slate-300 bg-slate-100 px-3 py-2 text-xs text-slate-700">
-                                Důvod zamítnutí: {request.decisionReason}
-                              </div>
-                            ) : null}
-
-                            <div className="mt-4 flex flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => void handleDecision(request.id, "approve")}
-                                disabled={!pending || busy}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-700 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <Check size={14} strokeWidth={2.3} aria-hidden="true" />
-                                Schválit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleDecision(request.id, "reject")}
-                                disabled={!pending || busy}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-500 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <X size={14} strokeWidth={2.3} aria-hidden="true" />
-                                Odmítnout
-                              </button>
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  <div className="my-5 h-px bg-slate-200" />
-
-                  <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
-                    Uživatelské žádosti
-                  </h2>
-                  <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
-                    <input
-                      type="search"
-                      value={userRequestSearch}
-                      onChange={(event) => setUserRequestSearch(event.target.value)}
-                      placeholder="Hledat podle e-mailu nebo textu"
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-[0_6px_16px_rgba(15,23,42,0.06)] outline-none transition focus:border-slate-500"
-                    />
-                    <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700">
-                      <Clock3 size={15} strokeWidth={2.2} aria-hidden="true" />
-                      Čeká:{" "}
-                      <span className="font-semibold text-slate-900">
-                        {pendingUserRequestCount}
-                      </span>
-                    </div>
-                  </div>
-
                   {userRequestsError ? (
                     <div className="mb-3 rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
                       {userRequestsError}
                     </div>
                   ) : null}
 
-                  {userRequestsLoading ? (
+                  {loading || userRequestsLoading ? (
                     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-600">
-                      Načítám uživatelské žádosti…
+                      Načítám žádosti...
                     </div>
-                  ) : filteredUserRequests.length === 0 ? (
+                  ) : filteredUnifiedRequests.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">
-                      Žádný uživatel zatím neposlal obecnou žádost.
+                      V této chvíli tu nejsou žádné žádosti.
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {filteredUserRequests.map((request) => {
+                      {filteredUnifiedRequests.map((item) => {
+                        if (item.kind === "endCollaboration") {
+                          const request = item.request;
+                          const pending = request.status === "pending";
+                          const busy = busyRequestId === request.id;
+                          const waitInfo = buildEndCollaborationWaitInfo(
+                            request,
+                            requestsNowMs
+                          );
+                          return (
+                            <article
+                              key={item.id}
+                              className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                            >
+                              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                                <div className="space-y-1">
+                                  <div className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+                                    <UserCheck2 size={16} strokeWidth={2.2} aria-hidden="true" />
+                                    {request.targetName}
+                                  </div>
+                                  <div className="text-sm text-slate-600">{request.targetEmail}</div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                                    Ukončení spolupráce
+                                  </span>
+                                  <span
+                                    className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${statusPillClass[request.status]}`}
+                                  >
+                                    {statusLabel[request.status]}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="grid gap-1 text-sm text-slate-700 sm:grid-cols-2">
+                                <div>
+                                  Žádá:{" "}
+                                  <span className="font-medium text-slate-900">{request.requestedByEmail}</span>
+                                </div>
+                                <div>
+                                  Převod na:{" "}
+                                  <span className="font-medium text-slate-900">
+                                    {request.successorEmail || "—"}
+                                  </span>
+                                </div>
+                                <div>
+                                  Smlouvy:{" "}
+                                  <span className="font-medium text-slate-900">
+                                    {request.transferableContracts}
+                                  </span>
+                                </div>
+                                <div>
+                                  Podřízení:{" "}
+                                  <span className="font-medium text-slate-900">
+                                    {request.directSubordinates}
+                                  </span>
+                                </div>
+                                <div>
+                                  Vytvořeno:{" "}
+                                  <span className="font-medium text-slate-900">
+                                    {formatDateTime(request.createdAtMs)}
+                                  </span>
+                                </div>
+                                <div>
+                                  Rozhodnuto:{" "}
+                                  <span className="font-medium text-slate-900">
+                                    {formatDateTime(request.decidedAtMs)}
+                                  </span>
+                                </div>
+                                {waitInfo.waiting ? (
+                                  <div>
+                                    Čeká:{" "}
+                                    <span className="font-medium text-slate-900">
+                                      {waitInfo.elapsedLabel}
+                                    </span>
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              {request.failureReason ? (
+                                <div className="mt-3 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                                  Chyba: {request.failureReason}
+                                </div>
+                              ) : null}
+                              {request.decisionReason ? (
+                                <div className="mt-3 rounded-xl border border-slate-300 bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                                  Důvod zamítnutí: {request.decisionReason}
+                                </div>
+                              ) : null}
+
+                              <div className="mt-4 flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDecision(request.id, "approve")}
+                                  disabled={!pending || busy}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-700 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <Check size={14} strokeWidth={2.3} aria-hidden="true" />
+                                  Schválit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDecision(request.id, "reject")}
+                                  disabled={!pending || busy}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-500 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <X size={14} strokeWidth={2.3} aria-hidden="true" />
+                                  Odmítnout
+                                </button>
+                              </div>
+                            </article>
+                          );
+                        }
+
+                        const request = item.request;
                         const pending = request.status === "pending";
                         const busy = busyUserRequestId === request.id;
                         const feedbackDraft = userRequestFeedbackDrafts[request.id] ?? "";
                         const passwordDraft = userRequestPasswordDrafts[request.id] ?? "";
                         const isUserCreation = request.subject === "userCreation";
+                        const slaInfo = buildAdminUserRequestSlaInfo(
+                          request,
+                          requestsNowMs
+                        );
 
                         return (
                           <article
-                            key={request.id}
-                            className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                            key={item.id}
+                            className={`rounded-2xl border bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] ${
+                              slaInfo.isOverdueUrgent
+                                ? "border-rose-300"
+                                : "border-slate-200"
+                            }`}
                           >
                             <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                               <div className="space-y-1">
@@ -847,11 +939,16 @@ export default function AdminRequestsPage() {
                                 </div>
                                 <div className="text-sm text-slate-600">{request.requesterEmail}</div>
                               </div>
-                              <span
-                                className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${userRequestStatusPillClass[request.status]}`}
-                              >
-                                {userRequestStatusLabel[request.status]}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                                  Uživatelská žádost
+                                </span>
+                                <span
+                                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${userRequestStatusPillClass[request.status]}`}
+                                >
+                                  {userRequestStatusLabel[request.status]}
+                                </span>
+                              </div>
                             </div>
 
                             <div className="grid gap-1 text-sm text-slate-700 sm:grid-cols-2">
@@ -861,6 +958,20 @@ export default function AdminRequestsPage() {
                                   {userRequestPriorityLabel[request.priority]}
                                 </span>
                               </div>
+                              {slaInfo.waiting ? (
+                                <div>
+                                  Čeká:{" "}
+                                  <span
+                                    className={`font-medium ${
+                                      slaInfo.isOverdueUrgent
+                                        ? "text-rose-700"
+                                        : "text-slate-900"
+                                    }`}
+                                  >
+                                    {slaInfo.elapsedLabel} (SLA {slaInfo.slaLimitLabel})
+                                  </span>
+                                </div>
+                              ) : null}
                               <div>
                                 Firemní e-mail:{" "}
                                 <span className="font-medium text-slate-900">
@@ -890,8 +1001,7 @@ export default function AdminRequestsPage() {
                                 <span className="font-medium text-slate-900">
                                   {request.requestedUserDraft
                                     ? (COMMISSION_MODES.find(
-                                        (m) =>
-                                          m.id === request.requestedUserDraft?.commissionMode
+                                        (m) => m.id === request.requestedUserDraft?.commissionMode
                                       )?.label ?? request.requestedUserDraft.commissionMode)
                                     : "—"}
                                 </span>
@@ -989,9 +1099,7 @@ export default function AdminRequestsPage() {
                                 <div className="flex flex-wrap items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      void handleUserRequestDecision(request, "accepted")
-                                    }
+                                    onClick={() => void handleUserRequestDecision(request, "accepted")}
                                     disabled={busy}
                                     className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-700 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
@@ -1000,20 +1108,32 @@ export default function AdminRequestsPage() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      void handleUserRequestDecision(request, "rejected")
-                                    }
+                                    onClick={() => void handleUserRequestDecision(request, "rejected")}
                                     disabled={busy}
                                     className="inline-flex items-center gap-1.5 rounded-xl border border-slate-500 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     <X size={14} strokeWidth={2.3} aria-hidden="true" />
                                     Odmítnout
                                   </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleUserRequestDecision(request, "needsInfo")
+                                    }
+                                    disabled={busy}
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-sky-500 bg-white px-3 py-2 text-xs font-semibold text-sky-700 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <RefreshCw size={14} strokeWidth={2.3} aria-hidden="true" />
+                                    Vrátit k doplnění
+                                  </button>
                                 </div>
                               </div>
                             ) : (
                               <div className="mt-3 rounded-xl border border-slate-300 bg-slate-100 px-3 py-2 text-xs text-slate-700">
-                                Zpětná vazba: {request.feedback?.trim() || "Bez zpětné vazby."}
+                                {request.status === "needsInfo"
+                                  ? "Požadované doplnění: "
+                                  : "Zpětná vazba: "}
+                                {request.feedback?.trim() || "Bez zpětné vazby."}
                               </div>
                             )}
                           </article>

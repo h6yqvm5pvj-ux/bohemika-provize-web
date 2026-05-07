@@ -21,6 +21,8 @@ const USER_REQUESTS_POST_LIMIT = 20;
 const USER_REQUESTS_POST_WINDOW_MS = 60_000;
 const USER_REQUESTS_PATCH_LIMIT = 30;
 const USER_REQUESTS_PATCH_WINDOW_MS = 60_000;
+const USER_REQUESTS_PUT_LIMIT = 20;
+const USER_REQUESTS_PUT_WINDOW_MS = 60_000;
 const USER_REQUESTS_DELETE_LIMIT = 40;
 const USER_REQUESTS_DELETE_WINDOW_MS = 60_000;
 
@@ -35,7 +37,7 @@ const USER_REQUEST_TEMP_PASSWORD_MAX_LEN = 128;
 
 type UserRequestSubject = "userCreation" | "other";
 type UserRequestPriority = "normal" | "urgent";
-type UserRequestStatus = "pending" | "accepted" | "rejected";
+type UserRequestStatus = "pending" | "needsInfo" | "accepted" | "rejected";
 
 type UserCreationRequestDraft = {
   fullName: string | null;
@@ -108,7 +110,14 @@ const parsePriority = (value: unknown): UserRequestPriority | null => {
 };
 
 const parseStatus = (value: unknown): UserRequestStatus | null => {
-  if (value === "pending" || value === "accepted" || value === "rejected") return value;
+  if (
+    value === "pending" ||
+    value === "needsInfo" ||
+    value === "accepted" ||
+    value === "rejected"
+  ) {
+    return value;
+  }
   return null;
 };
 
@@ -377,6 +386,9 @@ function parseCreatePayload(raw: unknown):
   }
 
   const requestedFullName = normalizeText(row.requestedFullName);
+  if (subject === "userCreation" && !requestedFullName) {
+    return { error: "Pro založení uživatele vyplň jméno a příjmení." };
+  }
   if (requestedFullName.length > USER_REQUEST_FULL_NAME_MAX_LEN) {
     return {
       error: `Jméno může mít maximálně ${USER_REQUEST_FULL_NAME_MAX_LEN} znaků.`,
@@ -384,6 +396,9 @@ function parseCreatePayload(raw: unknown):
   }
 
   const requestedManagerEmail = normalizeEmail(row.requestedManagerEmail);
+  if (subject === "userCreation" && !requestedManagerEmail) {
+    return { error: "Pro založení uživatele vyplň e-mail přímého nadřízeného." };
+  }
   if (requestedManagerEmail.length > USER_REQUEST_MANAGER_EMAIL_MAX_LEN) {
     return {
       error: `E-mail nadřízeného může mít maximálně ${USER_REQUEST_MANAGER_EMAIL_MAX_LEN} znaků.`,
@@ -445,13 +460,18 @@ function parsePatchPayload(raw: unknown):
   if (!id) return { error: "Chybí id žádosti." };
 
   const status = parseStatus(row.status);
-  if (status !== "accepted" && status !== "rejected") {
-    return { error: "Stav musí být accepted nebo rejected." };
+  if (status !== "accepted" && status !== "rejected" && status !== "needsInfo") {
+    return { error: "Stav musí být accepted, rejected nebo needsInfo." };
   }
 
   const feedbackRaw = normalizeText(row.feedback);
   if (feedbackRaw.length > USER_REQUEST_FEEDBACK_MAX_LEN) {
     return { error: `Zpětná vazba může mít maximálně ${USER_REQUEST_FEEDBACK_MAX_LEN} znaků.` };
+  }
+  if (status === "needsInfo" && feedbackRaw.length < USER_REQUEST_MESSAGE_MIN_LEN) {
+    return {
+      error: `Pro vrácení k doplnění zadej zpětnou vazbu (min. ${USER_REQUEST_MESSAGE_MIN_LEN} znaků).`,
+    };
   }
 
   const tempPasswordRaw =
@@ -478,6 +498,35 @@ function parseDeletePayload(raw: unknown): { id: string } | { error: string } {
   const id = normalizeText(row.id);
   if (!id) return { error: "Chybí id žádosti." };
   return { id };
+}
+
+function parsePutPayload(raw: unknown):
+  | {
+      id: string;
+      subject: UserRequestSubject;
+      requestedCorporateEmail: string | null;
+      requestedUserDraft: UserCreationRequestDraft | null;
+      message: string;
+      priority: UserRequestPriority;
+    }
+  | { error: string } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { error: "Neplatný payload." };
+  }
+
+  const row = raw as Record<string, unknown>;
+  const id = normalizeText(row.id);
+  if (!id) return { error: "Chybí id žádosti." };
+
+  const parsed = parseCreatePayload(row);
+  if ("error" in parsed) {
+    return parsed;
+  }
+
+  return {
+    id,
+    ...parsed,
+  };
 }
 
 export async function GET(req: NextRequest) {
@@ -702,11 +751,117 @@ export async function PATCH(req: NextRequest) {
       {
         status: parsed.status,
         feedback: parsed.feedback,
-        decidedAt: now,
-        decidedByEmail: ctx.email,
+        decidedAt: parsed.status === "needsInfo" ? null : now,
+        decidedByEmail: parsed.status === "needsInfo" ? null : ctx.email,
         updatedAt: now,
-        createdUserEmail: createdUser?.email ?? null,
-        createdUserUid: createdUser?.uid ?? null,
+        createdUserEmail:
+          parsed.status === "accepted" ? createdUser?.email ?? null : null,
+        createdUserUid:
+          parsed.status === "accepted" ? createdUser?.uid ?? null : null,
+      },
+      { merge: true }
+    );
+  });
+
+  const updatedSnap = await requestRef.get();
+  const request = parseRequestDoc(updatedSnap);
+  if (!request) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Nepodařilo se načíst aktualizovanou žádost." },
+        { status: 500 }
+      ),
+      ctx
+    );
+  }
+
+  return withRateLimitHeaders(
+    NextResponse.json({
+      ok: true,
+      request,
+    }),
+    ctx
+  );
+}
+
+export async function PUT(req: NextRequest) {
+  const guard = await requireAuthedRateLimited(req, {
+    namespace: "api:user-requests:put",
+    limit: USER_REQUESTS_PUT_LIMIT,
+    windowMs: USER_REQUESTS_PUT_WINDOW_MS,
+  });
+  if (!guard.ok) return guard.response;
+  const { ctx } = guard;
+
+  if (!adminDb) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Server není správně nakonfigurován (Firebase Admin)." },
+        { status: 500 }
+      ),
+      ctx
+    );
+  }
+
+  const body = await req.json().catch(() => null);
+  const parsed = parsePutPayload(body);
+  if ("error" in parsed) {
+    return withRateLimitHeaders(
+      NextResponse.json({ ok: false, error: parsed.error }, { status: 400 }),
+      ctx
+    );
+  }
+
+  const requestRef = adminDb.collection(USER_REQUESTS_COLLECTION).doc(parsed.id);
+  const existingSnap = await requestRef.get();
+  const existingRequest = parseRequestDoc(existingSnap);
+  if (!existingRequest) {
+    return withRateLimitHeaders(
+      NextResponse.json({ ok: false, error: "Žádost nebyla nalezena." }, { status: 404 }),
+      ctx
+    );
+  }
+
+  if (existingRequest.requesterEmail !== ctx.email) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Nemáš oprávnění upravit tuto žádost." },
+        { status: 403 }
+      ),
+      ctx
+    );
+  }
+
+  if (existingRequest.status !== "needsInfo") {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        {
+          ok: false,
+          error: "Upravit lze jen žádost, která je vrácená k doplnění.",
+        },
+        { status: 409 }
+      ),
+      ctx
+    );
+  }
+
+  const now = new Date();
+  await adminDb.runTransaction(async (tx) => {
+    tx.set(
+      requestRef,
+      {
+        subject: parsed.subject,
+        requestedCorporateEmail: parsed.requestedCorporateEmail,
+        requestedFullName: parsed.requestedUserDraft?.fullName ?? null,
+        requestedManagerEmail: parsed.requestedUserDraft?.managerEmail ?? null,
+        requestedPosition: parsed.requestedUserDraft?.position ?? null,
+        requestedCommissionMode: parsed.requestedUserDraft?.commissionMode ?? null,
+        message: parsed.message,
+        priority: parsed.priority,
+        status: "pending" as UserRequestStatus,
+        updatedAt: now,
+        decidedAt: null,
+        decidedByEmail: null,
       },
       { merge: true }
     );
