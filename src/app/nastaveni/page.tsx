@@ -1,21 +1,18 @@
 // src/app/nastaveni/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import {
   AtSign,
   BellRing,
   Calculator,
   CircleHelp,
-  Copy,
   ExternalLink,
   KeyRound,
-  RefreshCw,
   ShieldCheck,
   Snail,
   Sparkles,
-  UserPlus,
   UserRound,
   X,
   Zap,
@@ -177,19 +174,23 @@ const SETTINGS_KEYS = {
   tipsterMode: "settings.tipsterMode",
 };
 
-type SettingsTab = "account" | "career" | "notifications" | "design";
+type SettingsTab = "account" | "career" | "notifications" | "design" | "requests";
 
 const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
   { id: "account", label: "Účet" },
   { id: "career", label: "Kariéra" },
   { id: "notifications", label: "Notifikace" },
+  { id: "requests", label: "Žádosti" },
   { id: "design", label: "Design" },
 ];
 
 const normalizeEmail = (email?: string | null) =>
   (email ?? "").trim().toLowerCase();
 
-const CREATE_USER_ALLOWED_EMAIL = "jakub.rauscher@bohemika.eu";
+const formatDateTime = (valueMs: number | null | undefined): string => {
+  if (!valueMs || !Number.isFinite(valueMs)) return "—";
+  return new Date(valueMs).toLocaleString("cs-CZ");
+};
 
 const hasNonEmptyToken = (value: unknown): boolean =>
   typeof value === "string" && value.trim().length > 0;
@@ -224,17 +225,88 @@ type InlineStatus = {
   message: string;
 };
 
-type CreateUserResponse = {
-  ok?: boolean;
-  email?: string;
-  uid?: string;
-  error?: string;
-};
-
 type TestPushApiResponse = {
   ok?: boolean;
   error?: string;
   detail?: string;
+};
+
+type UserRequestSubject = "userCreation" | "other";
+type UserRequestPriority = "normal" | "urgent";
+type UserRequestStatus = "pending" | "accepted" | "rejected";
+
+type UserCreationRequestDraft = {
+  fullName: string | null;
+  managerEmail: string | null;
+  position: Position;
+  commissionMode: CommissionMode;
+};
+
+type UserRequestPayload = {
+  id: string;
+  requesterEmail: string;
+  subject: UserRequestSubject;
+  requestedCorporateEmail: string | null;
+  requestedUserDraft: UserCreationRequestDraft | null;
+  message: string;
+  priority: UserRequestPriority;
+  status: UserRequestStatus;
+  feedback: string | null;
+  createdUserEmail: string | null;
+  createdUserUid: string | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+  decidedAtMs: number | null;
+  decidedByEmail: string | null;
+};
+
+type UserRequestsApiResponse = {
+  ok?: boolean;
+  requests?: UserRequestPayload[];
+};
+
+type UserRequestCreateApiResponse = {
+  ok?: boolean;
+  request?: UserRequestPayload;
+  error?: string;
+};
+
+type UserRequestDeleteApiResponse = {
+  ok?: boolean;
+  id?: string;
+  error?: string;
+};
+
+const USER_REQUEST_MESSAGE_MIN_LEN = 5;
+const USER_REQUEST_MESSAGE_MAX_LEN = 2500;
+const USER_REQUEST_CORPORATE_EMAIL_MAX_LEN = 180;
+const USER_REQUEST_MANAGER_EMAIL_MAX_LEN = 180;
+const USER_REQUEST_FULL_NAME_MAX_LEN = 120;
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const isValidEmail = (value: string): boolean => EMAIL_RE.test(value);
+
+const USER_REQUEST_SUBJECT_LABEL: Record<UserRequestSubject, string> = {
+  userCreation: "Založení uživatele",
+  other: "Jiné",
+};
+
+const USER_REQUEST_PRIORITY_LABEL: Record<UserRequestPriority, string> = {
+  normal: "Běžná",
+  urgent: "Urgentní",
+};
+
+const USER_REQUEST_STATUS_LABEL: Record<UserRequestStatus, string> = {
+  pending: "Čeká",
+  accepted: "Akceptováno",
+  rejected: "Odmítnuto",
+};
+
+const USER_REQUEST_STATUS_CLASS: Record<UserRequestStatus, string> = {
+  pending: "border-amber-300 bg-amber-50 text-amber-800",
+  accepted: "border-emerald-300 bg-emerald-50 text-emerald-700",
+  rejected: "border-rose-300 bg-rose-50 text-rose-700",
 };
 
 const EXPECTED_MFA_ERROR_CODES = new Set<string>([
@@ -293,24 +365,6 @@ const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
-const generateTemporaryPassword = (): string => {
-  const chars =
-    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz2345678923456789";
-  const length = 14;
-
-  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-    const bytes = new Uint8Array(length);
-    crypto.getRandomValues(bytes);
-    return (
-      Array.from(bytes, (byte) => chars[byte % chars.length]).join("") + "A7"
-    );
-  }
-
-  return (
-    Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join("") +
-    "A7"
-  );
-};
 
 export default function SettingsPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -321,7 +375,6 @@ export default function SettingsPage() {
   const [, setMonthlyGoal] = useState<number>(0);
 
   const [canChangePosition, setCanChangePosition] = useState(true);
-  const [canCreateUsers, setCanCreateUsers] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -358,14 +411,22 @@ export default function SettingsPage() {
   const [positionTimelineLocked, setPositionTimelineLocked] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>("career");
   const [showCareerTimelineHelp, setShowCareerTimelineHelp] = useState(false);
-  const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserFullName, setNewUserFullName] = useState("");
-  const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserManagerEmail, setNewUserManagerEmail] = useState("");
-  const [newUserPosition, setNewUserPosition] = useState<Position>("poradce1");
-  const [newUserMode, setNewUserMode] = useState<CommissionMode>("standard");
-  const [createUserBusy, setCreateUserBusy] = useState(false);
-  const [createUserStatus, setCreateUserStatus] = useState<InlineStatus | null>(null);
+  const [userRequests, setUserRequests] = useState<UserRequestPayload[]>([]);
+  const [userRequestsLoading, setUserRequestsLoading] = useState(false);
+  const [userRequestsError, setUserRequestsError] = useState<string | null>(null);
+  const [userRequestSubject, setUserRequestSubject] =
+    useState<UserRequestSubject>("userCreation");
+  const [userRequestCorporateEmail, setUserRequestCorporateEmail] = useState("");
+  const [userRequestFullName, setUserRequestFullName] = useState("");
+  const [userRequestManagerEmail, setUserRequestManagerEmail] = useState("");
+  const [userRequestPosition, setUserRequestPosition] = useState<Position>("poradce1");
+  const [userRequestMode, setUserRequestMode] = useState<CommissionMode>("standard");
+  const [userRequestPriority, setUserRequestPriority] =
+    useState<UserRequestPriority>("normal");
+  const [userRequestMessage, setUserRequestMessage] = useState("");
+  const [userRequestSubmitting, setUserRequestSubmitting] = useState(false);
+  const [userRequestStatus, setUserRequestStatus] = useState<InlineStatus | null>(null);
+  const [userRequestDeletingId, setUserRequestDeletingId] = useState<string | null>(null);
 
   const applyMotionPreference = (off: boolean) => {
     if (typeof document === "undefined") return;
@@ -392,14 +453,9 @@ export default function SettingsPage() {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
       if (!fbUser) {
         setUser(null);
-        setCanCreateUsers(false);
         return;
       }
       setUser(fbUser);
-      const email = normalizeEmail(fbUser.email);
-      if (email) {
-        setNewUserManagerEmail((prev) => prev || email);
-      }
     });
     return () => unsub();
   }, []);
@@ -636,13 +692,11 @@ export default function SettingsPage() {
           setCanChangePosition(
             data.canChangePosition === false ? false : true
           );
-          setCanCreateUsers(email === CREATE_USER_ALLOWED_EMAIL);
           const parsedTimeline = parsePositionTimeline(data.positionTimeline);
           setPositionTimelineDraft(parsedTimeline);
           setPositionTimelineLocked(parsedTimeline.length > 0);
         } else {
           // user dokument neexistuje → zkusíme aspoň natáhnout z localStorage
-          setCanCreateUsers(false);
           setPositionTimelineDraft([]);
           setPositionTimelineLocked(false);
           if (typeof window !== "undefined") {
@@ -681,7 +735,6 @@ export default function SettingsPage() {
         }
       } catch (e) {
         console.error("Chyba při načítání nastavení:", e);
-        setCanCreateUsers(false);
       } finally {
         setLoadingMeta(false);
       }
@@ -945,6 +998,233 @@ export default function SettingsPage() {
       setTestPushStatus(`Chyba: ${(err as any)?.message || String(err)}`);
     }
   };
+
+  const loadUserRequests = useCallback(async () => {
+    if (!user) return;
+    setUserRequestsLoading(true);
+    setUserRequestsError(null);
+
+    try {
+      const payload = await fetchAuthedJsonOrThrow<UserRequestsApiResponse>(
+        user,
+        "/api/user-requests",
+        { method: "GET" }
+      );
+      const requests = Array.isArray(payload.requests) ? payload.requests : [];
+      setUserRequests(requests.sort((a, b) => b.createdAtMs - a.createdAtMs));
+    } catch (error) {
+      setUserRequestsError(
+        error instanceof Error
+          ? error.message
+          : "Nepodařilo se načíst podané žádosti."
+      );
+    } finally {
+      setUserRequestsLoading(false);
+    }
+  }, [user]);
+
+  const handleSubmitUserRequest = async () => {
+    if (!user) {
+      setUserRequestStatus({
+        type: "error",
+        message: "Nejsi přihlášený.",
+      });
+      return;
+    }
+
+    const requestedCorporateEmail = normalizeEmail(userRequestCorporateEmail);
+    const requestedManagerEmail = normalizeEmail(userRequestManagerEmail);
+    const requestedFullName = userRequestFullName.trim();
+    if (userRequestSubject === "userCreation") {
+      if (!requestedCorporateEmail) {
+        setUserRequestStatus({
+          type: "error",
+          message: "Pro založení uživatele vyplň firemní e-mail.",
+        });
+        return;
+      }
+      if (!isValidEmail(requestedCorporateEmail)) {
+        setUserRequestStatus({
+          type: "error",
+          message: "Firemní e-mail nemá platný formát.",
+        });
+        return;
+      }
+      if (requestedCorporateEmail.length > USER_REQUEST_CORPORATE_EMAIL_MAX_LEN) {
+        setUserRequestStatus({
+          type: "error",
+          message: `Firemní e-mail může mít maximálně ${USER_REQUEST_CORPORATE_EMAIL_MAX_LEN} znaků.`,
+        });
+        return;
+      }
+      if (requestedFullName.length > USER_REQUEST_FULL_NAME_MAX_LEN) {
+        setUserRequestStatus({
+          type: "error",
+          message: `Jméno může mít maximálně ${USER_REQUEST_FULL_NAME_MAX_LEN} znaků.`,
+        });
+        return;
+      }
+      if (requestedManagerEmail.length > USER_REQUEST_MANAGER_EMAIL_MAX_LEN) {
+        setUserRequestStatus({
+          type: "error",
+          message: `E-mail nadřízeného může mít maximálně ${USER_REQUEST_MANAGER_EMAIL_MAX_LEN} znaků.`,
+        });
+        return;
+      }
+      if (requestedManagerEmail && !isValidEmail(requestedManagerEmail)) {
+        setUserRequestStatus({
+          type: "error",
+          message: "E-mail nadřízeného nemá platný formát.",
+        });
+        return;
+      }
+      if (requestedManagerEmail === requestedCorporateEmail) {
+        setUserRequestStatus({
+          type: "error",
+          message: "Nadřízený nemůže být stejný jako nový uživatel.",
+        });
+        return;
+      }
+    }
+
+    const message = userRequestMessage.trim();
+    if (message.length < USER_REQUEST_MESSAGE_MIN_LEN) {
+      setUserRequestStatus({
+        type: "error",
+        message: `Popis žádosti musí mít alespoň ${USER_REQUEST_MESSAGE_MIN_LEN} znaků.`,
+      });
+      return;
+    }
+
+    if (message.length > USER_REQUEST_MESSAGE_MAX_LEN) {
+      setUserRequestStatus({
+        type: "error",
+        message: `Popis žádosti může mít maximálně ${USER_REQUEST_MESSAGE_MAX_LEN} znaků.`,
+      });
+      return;
+    }
+
+    setUserRequestSubmitting(true);
+    setUserRequestStatus(null);
+
+    try {
+      const payload = await fetchAuthedJsonOrThrow<UserRequestCreateApiResponse>(
+        user,
+        "/api/user-requests",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            subject: userRequestSubject,
+            requestedCorporateEmail:
+              userRequestSubject === "userCreation" ? requestedCorporateEmail : null,
+            requestedFullName:
+              userRequestSubject === "userCreation" ? requestedFullName || null : null,
+            requestedManagerEmail:
+              userRequestSubject === "userCreation" ? requestedManagerEmail || null : null,
+            requestedPosition:
+              userRequestSubject === "userCreation" ? userRequestPosition : null,
+            requestedCommissionMode:
+              userRequestSubject === "userCreation" ? userRequestMode : null,
+            message,
+            priority: userRequestPriority,
+          }),
+        }
+      );
+
+      if (payload?.request) {
+        const createdRequest = payload.request;
+        setUserRequests((prev) => [
+          createdRequest,
+          ...prev.filter((item) => item.id !== createdRequest.id),
+        ]);
+      } else {
+        await loadUserRequests();
+      }
+
+      setUserRequestMessage("");
+      setUserRequestCorporateEmail("");
+      setUserRequestFullName("");
+      setUserRequestManagerEmail("");
+      setUserRequestPosition("poradce1");
+      setUserRequestMode("standard");
+      setUserRequestSubject("userCreation");
+      setUserRequestPriority("normal");
+      setUserRequestStatus({
+        type: "success",
+        message: "Žádost byla odeslána.",
+      });
+    } catch (error) {
+      setUserRequestStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Žádost se nepodařilo odeslat.",
+      });
+    } finally {
+      setUserRequestSubmitting(false);
+    }
+  };
+
+  const handleDeleteUserRequest = async (requestId: string) => {
+    if (!user) {
+      setUserRequestStatus({
+        type: "error",
+        message: "Nejsi přihlášený.",
+      });
+      return;
+    }
+
+    const confirmed = window.confirm("Opravdu chceš tuto žádost smazat?");
+    if (!confirmed) return;
+
+    setUserRequestDeletingId(requestId);
+    setUserRequestStatus(null);
+    setUserRequestsError(null);
+
+    try {
+      await fetchAuthedJsonOrThrow<UserRequestDeleteApiResponse>(
+        user,
+        "/api/user-requests",
+        {
+          method: "DELETE",
+          body: JSON.stringify({ id: requestId }),
+        }
+      );
+      setUserRequests((prev) => prev.filter((item) => item.id !== requestId));
+      setUserRequestStatus({
+        type: "success",
+        message: "Žádost byla smazána.",
+      });
+    } catch (error) {
+      setUserRequestStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Žádost se nepodařilo smazat.",
+      });
+    } finally {
+      setUserRequestDeletingId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!user) {
+      setUserRequests([]);
+      setUserRequestsLoading(false);
+      setUserRequestsError(null);
+      setUserRequestStatus(null);
+      setUserRequestCorporateEmail("");
+      setUserRequestFullName("");
+      setUserRequestManagerEmail("");
+      setUserRequestPosition("poradce1");
+      setUserRequestMode("standard");
+      setUserRequestDeletingId(null);
+      return;
+    }
+    void loadUserRequests();
+  }, [user, loadUserRequests]);
 
   const handleBoxThemeChange = async (nextTheme: BoxTheme) => {
     const resolved = applyBoxThemePreference(nextTheme);
@@ -1242,93 +1522,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleGenerateNewUserPassword = () => {
-    setNewUserPassword(generateTemporaryPassword());
-    setCreateUserStatus(null);
-  };
-
-  const handleCopyNewUserPassword = async () => {
-    if (!newUserPassword) return;
-    try {
-      await navigator.clipboard.writeText(newUserPassword);
-      setCreateUserStatus({
-        type: "info",
-        message: "Dočasné heslo zkopírováno.",
-      });
-    } catch {
-      setCreateUserStatus({
-        type: "error",
-        message: "Heslo se nepodařilo zkopírovat.",
-      });
-    }
-  };
-
-  const handleCreateUser = async () => {
-    if (!user) return;
-
-    const email = normalizeEmail(newUserEmail);
-    const managerEmail = normalizeEmail(newUserManagerEmail);
-    if (!email) {
-      setCreateUserStatus({ type: "error", message: "Vyplň e-mail nového uživatele." });
-      return;
-    }
-    if (newUserPassword.length < 8) {
-      setCreateUserStatus({
-        type: "error",
-        message: "Dočasné heslo musí mít alespoň 8 znaků.",
-      });
-      return;
-    }
-    if (managerEmail && managerEmail === email) {
-      setCreateUserStatus({
-        type: "error",
-        message: "Nadřízený nemůže být stejný jako nový uživatel.",
-      });
-      return;
-    }
-
-    setCreateUserBusy(true);
-    setCreateUserStatus(null);
-    try {
-      const payload = await fetchAuthedJsonOrThrow<CreateUserResponse>(
-        user,
-        "/api/user/create",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            email,
-            password: newUserPassword,
-            fullName: newUserFullName,
-            managerEmail,
-            position: newUserPosition,
-            commissionMode: newUserMode,
-          }),
-        }
-      );
-
-      setCreateUserStatus({
-        type: "success",
-        message: `Uživatel ${payload?.email ?? email} byl vytvořen.`,
-      });
-      setNewUserEmail("");
-      setNewUserFullName("");
-      setNewUserPosition("poradce1");
-      setNewUserMode("standard");
-      const ownEmail = normalizeEmail(user.email);
-      setNewUserManagerEmail(ownEmail || managerEmail);
-    } catch (error) {
-      setCreateUserStatus({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Nového uživatele se nepodařilo vytvořit.",
-      });
-    } finally {
-      setCreateUserBusy(false);
-    }
-  };
-
   if (!user) {
     // redirect už běží, tady jen nic nerenderujeme
     return null;
@@ -1352,6 +1545,29 @@ export default function SettingsPage() {
     "w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.04)] outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
   const toggleOffClass =
     "border-slate-300 bg-white text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)] hover:bg-slate-50";
+  const requestMessageLength = userRequestMessage.trim().length;
+  const requestNeedsCorporateEmail = userRequestSubject === "userCreation";
+  const normalizedRequestCorporateEmail = normalizeEmail(userRequestCorporateEmail);
+  const normalizedRequestManagerEmail = normalizeEmail(userRequestManagerEmail);
+  const requestFullNameLength = userRequestFullName.trim().length;
+  const requestCorporateEmailValid =
+    !requestNeedsCorporateEmail ||
+    (normalizedRequestCorporateEmail.length > 0 &&
+      normalizedRequestCorporateEmail.length <= USER_REQUEST_CORPORATE_EMAIL_MAX_LEN &&
+      isValidEmail(normalizedRequestCorporateEmail));
+  const requestManagerEmailValid =
+    !requestNeedsCorporateEmail ||
+    (normalizedRequestManagerEmail.length <= USER_REQUEST_MANAGER_EMAIL_MAX_LEN &&
+      (!normalizedRequestManagerEmail || isValidEmail(normalizedRequestManagerEmail)) &&
+      normalizedRequestManagerEmail !== normalizedRequestCorporateEmail);
+  const requestFullNameValid =
+    !requestNeedsCorporateEmail || requestFullNameLength <= USER_REQUEST_FULL_NAME_MAX_LEN;
+  const canSubmitUserRequest =
+    requestMessageLength >= USER_REQUEST_MESSAGE_MIN_LEN &&
+    requestMessageLength <= USER_REQUEST_MESSAGE_MAX_LEN &&
+    requestCorporateEmailValid &&
+    requestManagerEmailValid &&
+    requestFullNameValid;
 
   return (
     <AppLayout active="settings">
@@ -1895,6 +2111,360 @@ export default function SettingsPage() {
                 </div>
               </section>
               )}
+
+              {activeTab === "requests" && (
+              <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
+                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
+                      <ShieldCheck size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                      <span>Nová žádost</span>
+                    </h2>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                        Předmět
+                      </label>
+                      <select
+                        className={fieldClass}
+                        value={userRequestSubject}
+                        onChange={(e) => {
+                          setUserRequestSubject(e.target.value as UserRequestSubject);
+                          setUserRequestStatus(null);
+                        }}
+                      >
+                        <option value="userCreation">
+                          {USER_REQUEST_SUBJECT_LABEL.userCreation}
+                        </option>
+                        <option value="other">{USER_REQUEST_SUBJECT_LABEL.other}</option>
+                      </select>
+                    </div>
+
+                    {userRequestSubject === "userCreation" && (
+                      <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                            Firemní e-mail
+                          </label>
+                          <input
+                            type="email"
+                            className={fieldClass}
+                            value={userRequestCorporateEmail}
+                            onChange={(e) => {
+                              setUserRequestCorporateEmail(e.target.value);
+                              setUserRequestStatus(null);
+                            }}
+                            placeholder="jmeno.prijmeni@bohemika.eu"
+                            maxLength={USER_REQUEST_CORPORATE_EMAIL_MAX_LEN}
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                            Jméno a příjmení
+                          </label>
+                          <input
+                            type="text"
+                            className={fieldClass}
+                            value={userRequestFullName}
+                            onChange={(e) => {
+                              setUserRequestFullName(e.target.value);
+                              setUserRequestStatus(null);
+                            }}
+                            placeholder="Jméno Příjmení"
+                            maxLength={USER_REQUEST_FULL_NAME_MAX_LEN}
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                            E-mail přímého nadřízeného
+                          </label>
+                          <input
+                            type="email"
+                            className={fieldClass}
+                            value={userRequestManagerEmail}
+                            onChange={(e) => {
+                              setUserRequestManagerEmail(e.target.value);
+                              setUserRequestStatus(null);
+                            }}
+                            placeholder="jmeno.prijmeni@bohemika.eu"
+                            maxLength={USER_REQUEST_MANAGER_EMAIL_MAX_LEN}
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                            Výchozí pozice
+                          </label>
+                          <select
+                            className={fieldClass}
+                            value={userRequestPosition}
+                            onChange={(event) => {
+                              setUserRequestPosition(event.target.value as Position);
+                              setUserRequestStatus(null);
+                            }}
+                          >
+                            {POSITIONS.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                            Režim provizí
+                          </label>
+                          <div
+                            className="inline-flex w-full rounded-2xl border border-slate-300 bg-slate-100 p-1"
+                            role="radiogroup"
+                            aria-label="Režim provizí žádosti"
+                          >
+                            {COMMISSION_MODES.map((m) => {
+                              const active = userRequestMode === m.id;
+                              const isAccelerated = m.id === "accelerated";
+                              return (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setUserRequestMode(m.id);
+                                    setUserRequestStatus(null);
+                                  }}
+                                  className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                                    active
+                                      ? "border border-slate-900 bg-white text-slate-900 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
+                                      : "border border-transparent text-slate-600 hover:text-slate-900"
+                                  }`}
+                                  role="radio"
+                                  aria-checked={active}
+                                >
+                                  {isAccelerated ? (
+                                    <Zap
+                                      size={14}
+                                      strokeWidth={2.2}
+                                      className={active ? "text-amber-500" : "text-amber-600"}
+                                      aria-hidden="true"
+                                    />
+                                  ) : (
+                                    <Snail
+                                      size={14}
+                                      strokeWidth={2.2}
+                                      className={active ? "text-slate-600" : "text-slate-500"}
+                                      aria-hidden="true"
+                                    />
+                                  )}
+                                  {m.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-slate-500">
+                          Heslo nenastavuješ. Po schválení žádosti ho nastaví admin.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                        Priorita
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {(["normal", "urgent"] as UserRequestPriority[]).map((priority) => {
+                          const active = userRequestPriority === priority;
+                          return (
+                            <button
+                              key={priority}
+                              type="button"
+                              onClick={() => setUserRequestPriority(priority)}
+                              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                                active
+                                  ? "border-slate-900 bg-slate-900 text-white"
+                                  : toggleOffClass
+                              }`}
+                            >
+                              {USER_REQUEST_PRIORITY_LABEL[priority]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                        Popis žádosti
+                      </label>
+                      <textarea
+                        className={`${fieldClass} min-h-[120px] resize-y`}
+                        value={userRequestMessage}
+                        onChange={(e) => {
+                          setUserRequestMessage(e.target.value);
+                          setUserRequestStatus(null);
+                        }}
+                        placeholder="Napiš prosím detaily žádosti."
+                        maxLength={USER_REQUEST_MESSAGE_MAX_LEN}
+                      />
+                      <p className="text-[11px] text-slate-500">
+                        {requestMessageLength}/{USER_REQUEST_MESSAGE_MAX_LEN} znaků (minimum{" "}
+                        {USER_REQUEST_MESSAGE_MIN_LEN}).
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      {userRequestStatus && (
+                        <p
+                          className={`text-xs ${
+                            userRequestStatus.type === "success"
+                              ? "text-emerald-700"
+                              : userRequestStatus.type === "info"
+                                ? "text-slate-700"
+                                : "text-rose-700"
+                          }`}
+                        >
+                          {userRequestStatus.message}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleSubmitUserRequest()}
+                        disabled={userRequestSubmitting || !canSubmitUserRequest}
+                        className="inline-flex items-center justify-center rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {userRequestSubmitting ? "Odesílám..." : "Odeslat"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
+                        Podané žádosti
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => void loadUserRequests()}
+                        disabled={userRequestsLoading}
+                        className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {userRequestsLoading ? "Načítám..." : "Obnovit"}
+                      </button>
+                    </div>
+
+                    {userRequestsError ? (
+                      <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                        {userRequestsError}
+                      </div>
+                    ) : null}
+
+                    {!userRequestsLoading && userRequests.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-xs text-slate-500">
+                        Zatím nemáš podané žádosti.
+                      </div>
+                    ) : null}
+
+                    <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                      {userRequests.map((request) => (
+                        <article
+                          key={request.id}
+                          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-slate-800">
+                              {USER_REQUEST_SUBJECT_LABEL[request.subject]}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                                  USER_REQUEST_STATUS_CLASS[request.status]
+                                }`}
+                              >
+                                {USER_REQUEST_STATUS_LABEL[request.status]}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteUserRequest(request.id)}
+                                disabled={userRequestDeletingId === request.id}
+                                className="rounded-full border border-rose-300 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {userRequestDeletingId === request.id ? "Mažu..." : "Smazat"}
+                              </button>
+                            </div>
+                          </div>
+
+                          <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
+                            {request.message}
+                          </p>
+
+                          <dl className="mt-3 space-y-1 text-[11px] text-slate-500">
+                            <div className="flex flex-wrap items-baseline gap-1">
+                              <dt className="font-semibold text-slate-600">Priorita:</dt>
+                              <dd>{USER_REQUEST_PRIORITY_LABEL[request.priority]}</dd>
+                            </div>
+                            {request.requestedCorporateEmail ? (
+                              <div className="flex flex-wrap items-baseline gap-1">
+                                <dt className="font-semibold text-slate-600">Firemní e-mail:</dt>
+                                <dd>{request.requestedCorporateEmail}</dd>
+                              </div>
+                            ) : null}
+                            {request.requestedUserDraft ? (
+                              <>
+                                {request.requestedUserDraft.fullName ? (
+                                  <div className="flex flex-wrap items-baseline gap-1">
+                                    <dt className="font-semibold text-slate-600">Jméno:</dt>
+                                    <dd>{request.requestedUserDraft.fullName}</dd>
+                                  </div>
+                                ) : null}
+                                {request.requestedUserDraft.managerEmail ? (
+                                  <div className="flex flex-wrap items-baseline gap-1">
+                                    <dt className="font-semibold text-slate-600">Nadřízený:</dt>
+                                    <dd>{request.requestedUserDraft.managerEmail}</dd>
+                                  </div>
+                                ) : null}
+                                <div className="flex flex-wrap items-baseline gap-1">
+                                  <dt className="font-semibold text-slate-600">Pozice:</dt>
+                                  <dd>
+                                    {POSITIONS.find(
+                                      (p) => p.id === request.requestedUserDraft?.position
+                                    )?.label ?? request.requestedUserDraft.position}
+                                  </dd>
+                                </div>
+                                <div className="flex flex-wrap items-baseline gap-1">
+                                  <dt className="font-semibold text-slate-600">Režim:</dt>
+                                  <dd>
+                                    {COMMISSION_MODES.find(
+                                      (m) => m.id === request.requestedUserDraft?.commissionMode
+                                    )?.label ?? request.requestedUserDraft.commissionMode}
+                                  </dd>
+                                </div>
+                              </>
+                            ) : null}
+                            {request.createdUserEmail ? (
+                              <div className="flex flex-wrap items-baseline gap-1">
+                                <dt className="font-semibold text-slate-600">Vytvořený účet:</dt>
+                                <dd>{request.createdUserEmail}</dd>
+                              </div>
+                            ) : null}
+                            <div className="flex flex-wrap items-baseline gap-1">
+                              <dt className="font-semibold text-slate-600">Vytvořeno:</dt>
+                              <dd>{formatDateTime(request.createdAtMs)}</dd>
+                            </div>
+                            <div className="flex flex-wrap items-baseline gap-1">
+                              <dt className="font-semibold text-slate-600">Zpětná vazba:</dt>
+                              <dd>{request.feedback?.trim() ? request.feedback : "Zatím bez zpětné vazby."}</dd>
+                            </div>
+                          </dl>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+              )}
             </div>
 
             {activeTab === "design" && (
@@ -2260,183 +2830,6 @@ export default function SettingsPage() {
             </section>
             )}
 
-            {activeTab === "account" && canCreateUsers && (
-            <section className={`space-y-4 ${panelClass}`}>
-              <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-                    <UserPlus size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                    <span>Přidat uživatele</span>
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Vytvoří Firebase Auth účet, veřejný profil a aktivní interní profil.
-                  </p>
-                </div>
-              </div>
-
-              <form
-                className="grid gap-3 lg:grid-cols-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void handleCreateUser();
-                }}
-              >
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    E-mail
-                  </label>
-                  <input
-                    type="email"
-                    autoComplete="off"
-                    className={fieldClass}
-                    value={newUserEmail}
-                    onChange={(event) => setNewUserEmail(event.target.value)}
-                    placeholder="jmeno.prijmeni@bohemika.eu"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    Jméno
-                  </label>
-                  <input
-                    type="text"
-                    autoComplete="off"
-                    className={fieldClass}
-                    value={newUserFullName}
-                    onChange={(event) => setNewUserFullName(event.target.value)}
-                    placeholder="Jméno Příjmení"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    Dočasné heslo
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      autoComplete="new-password"
-                      className={fieldClass}
-                      value={newUserPassword}
-                      onChange={(event) => setNewUserPassword(event.target.value)}
-                      placeholder="Min. 8 znaků"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleGenerateNewUserPassword}
-                      className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100"
-                      title="Vygenerovat heslo"
-                      aria-label="Vygenerovat heslo"
-                    >
-                      <RefreshCw size={15} strokeWidth={2.2} aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyNewUserPassword()}
-                      disabled={!newUserPassword}
-                      className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      title="Zkopírovat heslo"
-                      aria-label="Zkopírovat heslo"
-                    >
-                      <Copy size={15} strokeWidth={2.2} aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    Nadřízený
-                  </label>
-                  <input
-                    type="email"
-                    autoComplete="off"
-                    className={fieldClass}
-                    value={newUserManagerEmail}
-                    onChange={(event) => setNewUserManagerEmail(event.target.value)}
-                    placeholder="Bez nadřízeného nech prázdné"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    Výchozí pozice
-                  </label>
-                  <select
-                    className={fieldClass}
-                    value={newUserPosition}
-                    onChange={(event) => setNewUserPosition(event.target.value as Position)}
-                  >
-                    {POSITIONS.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    Režim provizí
-                  </label>
-                  <div
-                    className="inline-flex w-full rounded-2xl border border-slate-300 bg-slate-100 p-1"
-                    role="radiogroup"
-                    aria-label="Režim provizí nového uživatele"
-                  >
-                    {COMMISSION_MODES.map((m) => {
-                      const active = newUserMode === m.id;
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          onClick={() => setNewUserMode(m.id)}
-                          className={`inline-flex flex-1 items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                            active
-                              ? "border border-slate-900 bg-white text-slate-900 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
-                              : "border border-transparent text-slate-600 hover:text-slate-900"
-                          }`}
-                          role="radio"
-                          aria-checked={active}
-                        >
-                          {m.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2 pt-1 lg:col-span-2 sm:flex-row sm:items-center sm:justify-between">
-                  {createUserStatus ? (
-                    <p
-                      className={`text-xs font-medium ${
-                        createUserStatus.type === "success"
-                          ? "text-emerald-700"
-                          : createUserStatus.type === "info"
-                            ? "text-slate-700"
-                            : "text-rose-700"
-                      }`}
-                    >
-                      {createUserStatus.message}
-                    </p>
-                  ) : (
-                    <span className="text-xs text-slate-500">
-                      Nový účet se po vytvoření může rovnou přihlásit do aplikace.
-                    </span>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={createUserBusy}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <UserPlus size={15} strokeWidth={2.2} aria-hidden="true" />
-                    {createUserBusy ? "Vytvářím..." : "Vytvořit uživatele"}
-                  </button>
-                </div>
-              </form>
-            </section>
-            )}
           </>
         )}
         </div>
