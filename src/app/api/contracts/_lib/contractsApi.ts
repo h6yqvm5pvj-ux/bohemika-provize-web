@@ -2,7 +2,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createHash } from "node:crypto";
 
-import { adminDb } from "@/lib/server/firebaseAdmin";
+import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
+import { collectPushTokens } from "@/lib/server/pushTokens";
 import {
   requireAuthedRateLimited,
   withRateLimitHeaders,
@@ -780,6 +781,9 @@ const CONTRACT_NUMBER_CLAIMS_COLLECTION = "contractNumberClaims";
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
 const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
+const NEW_CONTRACT_PUSH_MAX_RECIPIENTS = 40;
+const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_USER = 30;
+const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_MULTICAST = 500;
 
 let cachedUserTree: { value: UserTreeResult; expiresAtMs: number } | null = null;
 let cachedUserTreePromise: Promise<UserTreeResult> | null = null;
@@ -2159,6 +2163,169 @@ const hasResolvedTopManagerPosition = (
     null;
 
   return Boolean(directManager?.position);
+};
+
+type NewContractPushRecipient = {
+  email: string;
+  tokens: string[];
+};
+
+const collectManagerNotificationEmailsForNewContract = ({
+  ownerEmail,
+  managerEmailSnapshot,
+  managerChain,
+  managerOverrides,
+}: {
+  ownerEmail: string;
+  managerEmailSnapshot: string | null;
+  managerChain: NormalizedManagerChainEntry[];
+  managerOverrides: NormalizedManagerOverrideEntry[];
+}): string[] => {
+  const normalizedOwner = normalizeEmail(ownerEmail);
+  const out = new Set<string>();
+
+  const pushEmail = (value: unknown) => {
+    const email = extractEmailFromUnknown(value);
+    if (!email || email === normalizedOwner) return;
+    out.add(email);
+  };
+
+  pushEmail(managerEmailSnapshot);
+  managerChain.forEach((row) => pushEmail(row.email));
+  managerOverrides.forEach((row) => pushEmail(row.email));
+
+  return [...out].slice(0, NEW_CONTRACT_PUSH_MAX_RECIPIENTS);
+};
+
+const isNewContractPushEnabled = (profile: Record<string, unknown>): boolean => {
+  const settingsRaw = isPlainObject(profile.notificationSettings)
+    ? profile.notificationSettings
+    : null;
+  if (!settingsRaw) return true;
+
+  const typesRaw = isPlainObject(settingsRaw.types) ? settingsRaw.types : null;
+  const channelsRaw = isPlainObject(settingsRaw.channels)
+    ? settingsRaw.channels
+    : null;
+
+  const newContractFlag = typesRaw?.newContract;
+  const pushChannelFlag = channelsRaw?.push;
+  const isTypeEnabled =
+    typeof newContractFlag === "boolean" ? newContractFlag : true;
+  const isPushChannelEnabled =
+    typeof pushChannelFlag === "boolean" ? pushChannelFlag : true;
+
+  return isTypeEnabled && isPushChannelEnabled;
+};
+
+const loadNewContractPushRecipients = async (
+  emails: string[]
+): Promise<NewContractPushRecipient[]> => {
+  if (!adminDb) return [];
+  const db = adminDb;
+
+  const uniqueEmails = [...new Set(emails.map((value) => normalizeEmail(value)).filter(Boolean))]
+    .slice(0, NEW_CONTRACT_PUSH_MAX_RECIPIENTS);
+  if (uniqueEmails.length === 0) return [];
+
+  const recipients = await Promise.all(
+    uniqueEmails.map(async (email) => {
+      const [publicSnap, privateSnap] = await Promise.all([
+        db.collection("users").doc(email).get(),
+        db.collection("usersPrivate").doc(email).get(),
+      ]);
+
+      const mergedProfile = {
+        ...((publicSnap.data() as Record<string, unknown> | undefined) ?? {}),
+        ...((privateSnap.data() as Record<string, unknown> | undefined) ?? {}),
+      };
+
+      if (!isNewContractPushEnabled(mergedProfile)) return null;
+
+      const tokens = collectPushTokens(mergedProfile).slice(
+        0,
+        NEW_CONTRACT_PUSH_MAX_TOKENS_PER_USER
+      );
+      if (tokens.length === 0) return null;
+
+      return { email, tokens };
+    })
+  );
+
+  return recipients.filter((row): row is NewContractPushRecipient => Boolean(row));
+};
+
+const sendNewContractPushNotification = async ({
+  req,
+  recipientEmails,
+  ownerEmail,
+  ownerName,
+  entryId,
+  contractNumber,
+}: {
+  req: NextRequest;
+  recipientEmails: string[];
+  ownerEmail: string;
+  ownerName: string | null;
+  entryId: string;
+  contractNumber: string | null;
+}) => {
+  if (!adminMessaging) return;
+
+  const recipients = await loadNewContractPushRecipients(recipientEmails);
+  if (recipients.length === 0) return;
+
+  const tokenSet = new Set<string>();
+  recipients.forEach((recipient) => {
+    recipient.tokens.forEach((token) => tokenSet.add(token));
+  });
+  const tokens = [...tokenSet];
+  if (tokens.length === 0) return;
+
+  const ownerDisplayName =
+    typeof ownerName === "string" && ownerName.trim().length > 0
+      ? ownerName.trim()
+      : ownerEmail;
+  const contractSuffix =
+    typeof contractNumber === "string" && contractNumber.trim().length > 0
+      ? ` #${contractNumber.trim()}`
+      : "";
+  const message = `${ownerDisplayName} přidal(a) novou smlouvu${contractSuffix}.`;
+
+  const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+  const webPushLink = `${baseUrl}/smlouvy/${encodeURIComponent(
+    `${ownerEmail}___${entryId}`
+  )}`;
+  const createdAtIso = new Date().toISOString();
+
+  for (let i = 0; i < tokens.length; i += NEW_CONTRACT_PUSH_MAX_TOKENS_PER_MULTICAST) {
+    const chunk = tokens.slice(i, i + NEW_CONTRACT_PUSH_MAX_TOKENS_PER_MULTICAST);
+    await adminMessaging.sendEachForMulticast({
+      tokens: chunk,
+      notification: {
+        title: "Bohemika SmartApp",
+        body: message,
+      },
+      data: {
+        type: "new_contract",
+        ownerEmail,
+        entryId,
+        contractNumber: contractNumber ?? "",
+        createdAt: createdAtIso,
+      },
+      webpush: {
+        fcmOptions: {
+          link: webPushLink,
+        },
+        notification: {
+          icon: "/pwa/icon-192.png",
+          badge: "/pwa/icon-192.png",
+          tag: `bohemika-new-contract-${entryId}`,
+          requireInteraction: false,
+        },
+      },
+    });
+  }
 };
 
 const paymentsPerYear = (frequency: PaymentFrequency): number =>
@@ -5291,6 +5458,16 @@ export async function handleContractsCreate(req: NextRequest) {
       }),
     };
 
+    const newContractPushRecipients =
+      trustedPayload.entryType === "contract"
+        ? collectManagerNotificationEmailsForNewContract({
+            ownerEmail: targetOwnerEmail,
+            managerEmailSnapshot: trustedManagerEmail,
+            managerChain: trustedManagerChain,
+            managerOverrides: trustedManagerOverrides,
+          })
+        : [];
+
     if (idempotentEntryRef) {
       const existingIdempotentSnap = await idempotentEntryRef.get();
       if (existingIdempotentSnap.exists) {
@@ -5424,6 +5601,24 @@ export async function handleContractsCreate(req: NextRequest) {
           "POST /api/contracts create: TIP payout sync selhal:",
           tipSyncErr
         );
+      }
+
+      if (newContractPushRecipients.length > 0) {
+        try {
+          await sendNewContractPushNotification({
+            req,
+            recipientEmails: newContractPushRecipients,
+            ownerEmail: targetOwnerEmail,
+            ownerName: trustedProfile.name,
+            entryId: createdRef.id,
+            contractNumber: trustedPayload.contractNumber,
+          });
+        } catch (pushErr) {
+          console.warn(
+            "POST /api/contracts create: push notifikace o nové smlouvě selhala:",
+            pushErr
+          );
+        }
       }
 
       const response = NextResponse.json({
