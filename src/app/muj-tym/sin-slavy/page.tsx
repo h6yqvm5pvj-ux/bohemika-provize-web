@@ -268,6 +268,7 @@ export default function HallOfFamePage() {
   const deckRows = useMemo(() => rankedRows.slice(0, 10), [rankedRows]);
   const safeActiveIndex =
     deckRows.length > 0 ? ((activeDeckIndex % deckRows.length) + deckRows.length) % deckRows.length : 0;
+  const activeDeckRow = deckRows[safeActiveIndex] ?? null;
 
   const overallContracts = useMemo(
     () => rankedRows.reduce((acc, row) => acc + row.contracts, 0),
@@ -335,7 +336,7 @@ export default function HallOfFamePage() {
                 <div className="text-xs text-slate-500">{categoryHint}</div>
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {HALL_TABS.map((tab) => {
                   const Icon = tab.icon;
                   const active = activeCategory === tab.key;
@@ -347,7 +348,7 @@ export default function HallOfFamePage() {
                         setActiveCategory(tab.key);
                         setActiveDeckIndex(0);
                       }}
-                      className={`ui-chip ui-focus inline-flex items-center gap-2 px-3 py-2 text-xs ${
+                      className={`ui-chip ui-focus inline-flex shrink-0 items-center gap-2 px-3 py-2 text-xs ${
                         active ? "ui-chip-active" : ""
                       }`}
                     >
@@ -389,7 +390,99 @@ export default function HallOfFamePage() {
                 </div>
               ) : (
                 <>
-                  <div className="relative z-10 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/30 px-2 py-6 sm:px-4">
+                  {activeDeckRow && (
+                    <div className="relative z-10 sm:hidden">
+                      <div className="rounded-2xl border border-slate-200/80 bg-white/30 p-2">
+                        <article className="relative mx-auto flex min-h-[378px] w-full max-w-[340px] overflow-hidden rounded-2xl border border-slate-700/70 bg-slate-950 px-4 py-4 shadow-[0_24px_52px_rgba(2,6,23,0.38)]">
+                          <div
+                            className={`pointer-events-none absolute inset-0 bg-gradient-to-r ${
+                              accentForRank(activeDeckRow.rank).glow
+                            }`}
+                          />
+
+                          <div className="relative flex min-w-0 flex-1 flex-col justify-between gap-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div
+                                className={`hof-rank-badge flex h-11 w-11 items-center justify-center rounded-full border text-base font-semibold ${
+                                  accentForRank(activeDeckRow.rank).badge
+                                }`}
+                              >
+                                {activeDeckRow.rank}
+                              </div>
+                              <span
+                                className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                                  accentForRank(activeDeckRow.rank).chip
+                                }`}
+                              >
+                                Top {activeDeckRow.rank}
+                              </span>
+                            </div>
+
+                            <div>
+                              <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/25 bg-white/7 text-[10px] font-semibold text-slate-200">
+                                {getInitials(activeDeckRow.name)}
+                              </div>
+                              <div className="text-[1.65rem] font-semibold leading-tight tracking-tight text-white">
+                                {activeDeckRow.name}
+                              </div>
+                              <div className="mt-1 text-[11px] text-white/65">{activeTab.label}</div>
+                            </div>
+
+                            <div className="rounded-2xl border border-white/10 bg-white/6 px-3 py-3">
+                              <div className="text-[10px] uppercase tracking-[0.14em] text-white/60">
+                                Roční pojistné
+                              </div>
+                              <div
+                                className={`mt-1 text-2xl font-semibold leading-none ${
+                                  accentForRank(activeDeckRow.rank).amount
+                                }`}
+                              >
+                                {formatMoney(activeDeckRow.annualPremium)}
+                              </div>
+                              <div className="mt-3 flex items-center justify-between text-[11px] text-white/65">
+                                <span>Smluv</span>
+                                <span>{activeDeckRow.contracts}</span>
+                              </div>
+                              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/12">
+                                <div
+                                  className={`h-full rounded-full bg-gradient-to-r ${
+                                    accentForRank(activeDeckRow.rank).progress
+                                  }`}
+                                  style={{ width: `${activeDeckRow.leaderRatioPct}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </article>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => moveDeck(-1)}
+                          disabled={deckRows.length <= 1}
+                          className="ui-focus inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-900 shadow-[0_10px_22px_rgba(15,23,42,0.14)] disabled:cursor-not-allowed disabled:opacity-35"
+                          aria-label="Předchozí karta"
+                        >
+                          <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                        </button>
+                        <span className="text-xs font-semibold tracking-[0.12em] text-slate-500">
+                          {safeActiveIndex + 1}/{deckRows.length}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => moveDeck(1)}
+                          disabled={deckRows.length <= 1}
+                          className="ui-focus inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-900 shadow-[0_10px_22px_rgba(15,23,42,0.14)] disabled:cursor-not-allowed disabled:opacity-35"
+                          aria-label="Další karta"
+                        >
+                          <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="relative z-10 hidden overflow-hidden rounded-2xl border border-slate-200/80 bg-white/30 px-4 py-6 sm:block">
                     <button
                       type="button"
                       onClick={() => moveDeck(-1)}
@@ -400,7 +493,7 @@ export default function HallOfFamePage() {
                       <ChevronLeft className="h-5 w-5" aria-hidden="true" />
                     </button>
 
-                    <div className="relative mx-auto h-[500px] max-w-4xl sm:h-[520px]" style={{ perspective: "1200px" }}>
+                    <div className="relative mx-auto h-[520px] max-w-4xl" style={{ perspective: "1200px" }}>
                       {deckRows.map((row, index) => {
                         const total = deckRows.length;
                         let offset = index - safeActiveIndex;
@@ -420,7 +513,7 @@ export default function HallOfFamePage() {
                           <article
                             key={row.email}
                             className={[
-                              "hof-deck-card group absolute left-1/2 top-1/2 flex h-[390px] w-[min(66vw,274px)] cursor-pointer overflow-hidden rounded-2xl border border-slate-700/70 bg-slate-950 px-4 py-4 sm:h-[410px] sm:w-[286px]",
+                              "hof-deck-card group absolute left-1/2 top-1/2 flex h-[410px] w-[286px] cursor-pointer overflow-hidden rounded-2xl border border-slate-700/70 bg-slate-950 px-4 py-4",
                               isActive
                                 ? "hof-deck-card-active shadow-[0_24px_52px_rgba(2,6,23,0.38)]"
                                 : "shadow-[0_14px_30px_rgba(2,6,23,0.26)]",
@@ -486,7 +579,7 @@ export default function HallOfFamePage() {
                     </button>
                   </div>
 
-                  <ol className="relative z-10 mt-4 flex gap-2 overflow-x-auto pb-1">
+                  <ol className="relative z-10 mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {deckRows.map((row, index) => {
                       const active = index === safeActiveIndex;
                       const accent = accentForRank(row.rank);
@@ -496,7 +589,7 @@ export default function HallOfFamePage() {
                             type="button"
                             onClick={() => setActiveDeckIndex(index)}
                             className={[
-                              "ui-focus flex w-[182px] items-center gap-2 rounded-xl border px-3 py-2 text-left transition",
+                              "ui-focus flex w-[160px] items-center gap-2 rounded-xl border px-3 py-2 text-left transition sm:w-[182px]",
                               active
                                 ? "border-slate-900 bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
                                 : "border-slate-200 bg-white/80 text-slate-900 hover:border-slate-300 hover:bg-white",
