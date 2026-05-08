@@ -89,11 +89,12 @@ function TrendInline({
   return (
     <div className="mt-1.5 flex items-center justify-center">
       <div
-        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${trendClass}`}
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${trendClass}`}
       >
         <ArrowIcon className="h-3.5 w-3.5" strokeWidth={2.1} aria-hidden="true" />
         <span>{trend.label}</span>
-        <span className="text-slate-400">vs. minulý měsíc</span>
+        <span className="text-slate-400 sm:hidden">vs. min. měsíc</span>
+        <span className="hidden text-slate-400 sm:inline">vs. minulý měsíc</span>
       </div>
     </div>
   );
@@ -255,14 +256,14 @@ export function ProductionSummarySection({
 
   const hasManagerTipIncome = myTipImmediateSum > 0;
   const managerTitleClass = hasManagerTipIncome
-    ? "text-lg font-semibold text-white sm:text-xl"
-    : "text-lg font-semibold text-white sm:text-[1.35rem]";
+    ? "text-base font-semibold text-white sm:text-xl"
+    : "text-[1.05rem] font-semibold text-white sm:text-[1.35rem]";
   const managerCountClass = hasManagerTipIncome
-    ? "mt-1.5 text-xl font-semibold sm:text-2xl"
-    : "mt-1.5 text-2xl font-semibold sm:text-3xl";
+    ? "mt-1 text-lg font-semibold sm:mt-1.5 sm:text-2xl"
+    : "mt-1 text-[1.35rem] font-semibold sm:mt-1.5 sm:text-3xl";
   const managerAmountClass = hasManagerTipIncome
-    ? "mt-1.5 whitespace-nowrap text-3xl font-semibold sm:text-4xl"
-    : "mt-1.5 whitespace-nowrap text-[2.05rem] font-semibold sm:text-[2.55rem]";
+    ? "mt-1 whitespace-nowrap text-[1.75rem] font-semibold sm:mt-1.5 sm:text-4xl"
+    : "mt-1 whitespace-nowrap text-[1.9rem] font-semibold sm:mt-1.5 sm:text-[2.55rem]";
   const managerDividerColumns: 3 | 4 = hasManagerTipIncome ? 4 : 3;
   const managerDividerVisibility: "md:block" | "lg:block" = hasManagerTipIncome
     ? "lg:block"
@@ -282,10 +283,10 @@ export function ProductionSummarySection({
           columns={managerDividerColumns}
           visibilityClass={managerDividerVisibility}
         />
-        <div className="flex min-h-[134px] h-full flex-col justify-center space-y-1.5 text-center md:px-5">
-          <div className="space-y-1.5">
-              <div className="mx-auto flex h-6 w-6 items-center justify-center">
-                <UserRound className="h-6 w-6 text-sky-300" strokeWidth={1.9} aria-hidden="true" />
+        <div className="flex min-h-[118px] h-full flex-col justify-center space-y-1 text-center md:min-h-[134px] md:space-y-1.5 md:px-5">
+          <div className="space-y-1">
+              <div className="mx-auto flex h-5 w-5 items-center justify-center md:h-6 md:w-6">
+                <UserRound className="h-5 w-5 text-sky-300 md:h-6 md:w-6" strokeWidth={1.9} aria-hidden="true" />
               </div>
               <h2 className={managerTitleClass}>
                 <span className="block">Vlastní</span>
@@ -295,7 +296,7 @@ export function ProductionSummarySection({
           {loading ? (
             <LoadingIndicator />
           ) : (
-            <dl className="space-y-1.5">
+            <dl className="space-y-1">
               <div>
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Počet smluv
@@ -320,10 +321,10 @@ export function ProductionSummarySection({
           )}
         </div>
 
-        <div className="flex min-h-[134px] h-full flex-col justify-center space-y-1.5 text-center md:px-5">
-          <div className="space-y-1.5">
-              <div className="mx-auto flex h-6 w-6 items-center justify-center">
-                <UsersRound className="h-6 w-6 text-amber-300" strokeWidth={1.9} aria-hidden="true" />
+        <div className="flex min-h-[118px] h-full flex-col justify-center space-y-1 text-center md:min-h-[134px] md:space-y-1.5 md:px-5">
+          <div className="space-y-1">
+              <div className="mx-auto flex h-5 w-5 items-center justify-center md:h-6 md:w-6">
+                <UsersRound className="h-5 w-5 text-amber-300 md:h-6 md:w-6" strokeWidth={1.9} aria-hidden="true" />
               </div>
               <h2 className={managerTitleClass}>
                 <span className="block">Týmová</span>
@@ -333,7 +334,7 @@ export function ProductionSummarySection({
           {loading ? (
             <LoadingIndicator />
           ) : (
-            <dl className="space-y-1.5">
+            <dl className="space-y-1">
               <div>
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Počet smluv
@@ -359,10 +360,10 @@ export function ProductionSummarySection({
         </div>
 
         {hasManagerTipIncome && (
-          <div className="flex min-h-[134px] h-full flex-col justify-center space-y-1.5 text-center md:px-5">
-            <div className="space-y-1.5">
-              <div className="mx-auto flex h-6 w-6 items-center justify-center">
-                <Tag className="h-6 w-6 text-fuchsia-300" strokeWidth={1.9} aria-hidden="true" />
+          <div className="flex min-h-[118px] h-full flex-col justify-center space-y-1 text-center md:min-h-[134px] md:space-y-1.5 md:px-5">
+            <div className="space-y-1">
+              <div className="mx-auto flex h-5 w-5 items-center justify-center md:h-6 md:w-6">
+                <Tag className="h-5 w-5 text-fuchsia-300 md:h-6 md:w-6" strokeWidth={1.9} aria-hidden="true" />
               </div>
               <h2 className={managerTitleClass}>
                 <span className="block">Tipařská</span>
@@ -372,7 +373,7 @@ export function ProductionSummarySection({
             {loading ? (
               <LoadingIndicator />
             ) : (
-              <dl className="space-y-1.5">
+              <dl className="space-y-1">
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Počet tipů
@@ -398,10 +399,10 @@ export function ProductionSummarySection({
           </div>
         )}
 
-        <div className="flex min-h-[134px] h-full flex-col justify-center space-y-1.5 text-center md:px-5">
-          <div className="space-y-1.5">
-              <div className="mx-auto flex h-6 w-6 items-center justify-center">
-                <BarChart3 className="h-6 w-6 text-emerald-300" strokeWidth={1.9} aria-hidden="true" />
+        <div className="flex min-h-[118px] h-full flex-col justify-center space-y-1 text-center md:min-h-[134px] md:space-y-1.5 md:px-5">
+          <div className="space-y-1">
+              <div className="mx-auto flex h-5 w-5 items-center justify-center md:h-6 md:w-6">
+                <BarChart3 className="h-5 w-5 text-emerald-300 md:h-6 md:w-6" strokeWidth={1.9} aria-hidden="true" />
               </div>
               <h2 className={managerTitleClass}>
                 <span className="block">Celková</span>
@@ -411,7 +412,7 @@ export function ProductionSummarySection({
           {loading ? (
             <LoadingIndicator />
           ) : (
-            <dl className="space-y-1.5">
+            <dl className="space-y-1">
               <div>
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Počet smluv

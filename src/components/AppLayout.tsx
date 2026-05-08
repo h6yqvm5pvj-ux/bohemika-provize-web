@@ -618,33 +618,35 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
         <div className="flex-1 flex flex-col">
           {/* MOBILE TOP BAR */}
-          <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-900 bg-white px-4 py-3 font-mono lg:hidden">
-            <div className="flex items-center gap-2">
+          <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-900 bg-white px-3 py-2.5 font-mono lg:hidden">
+            <div className="flex min-w-0 items-center gap-2">
               <Image
                 src="/icons/bohemika_logo.png"
                 alt="Bohemika logo"
-                width={110}
-                height={40}
-                className="h-10 w-auto"
+                width={84}
+                height={36}
+                className="h-9 w-auto shrink-0"
                 priority
               />
-              <span className="text-sm font-semibold text-slate-900">Bohemka.App</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {user && (
-                <span className="max-w-[150px] truncate text-xs text-slate-600">
-                  {user.email}
+              <div className="min-w-0">
+                <span className="block truncate text-[11px] font-semibold text-slate-900">
+                  Bohemka.App
                 </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen((prev) => !prev)}
-                className="ui-btn-primary ui-focus flex items-center gap-2 rounded-xl px-3 py-2 text-xs"
-              >
-                <span className="text-base leading-none">☰</span>
-                <span>Menu</span>
-              </button>
+                {user && (
+                  <span className="block max-w-[46vw] truncate text-[10px] text-slate-500 min-[390px]:max-w-[52vw]">
+                    {user.email}
+                  </span>
+                )}
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="ui-btn-primary ui-focus inline-flex shrink-0 items-center gap-2 rounded-[18px] px-3 py-2 text-xs"
+            >
+              <span className="text-base leading-none">☰</span>
+              <span className="hidden min-[390px]:inline">Menu</span>
+            </button>
           </header>
 
           {/* MOBILE NAV OVERLAY */}
@@ -726,18 +728,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 </div>
               </div>
             </div>
-          )}
-
-          {/* MOBILE QUICK MENU BUTTON */}
-          {!mobileMenuOpen && (
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="ui-btn-primary ui-focus fixed bottom-4 right-4 z-20 flex items-center gap-2 rounded-full px-4 py-2 font-mono text-white shadow-lg shadow-black/35 lg:hidden"
-            >
-              <span className="text-lg leading-none">☰</span>
-              <span className="text-sm font-semibold">Menu</span>
-            </button>
           )}
 
           {/* CONTENT / PAYWALL */}
