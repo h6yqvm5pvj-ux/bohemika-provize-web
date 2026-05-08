@@ -36,6 +36,7 @@ const DOCUMENT_SECTIONS: readonly DocumentSection[] = [
     title: "Majetek",
     description: "Podklady pro pojištění nemovitostí a domácností.",
     icon: Home,
+    href: "/pomucky/dokumenty/majetek",
     items: [
       "Kontrolní seznam majetkového pojištění",
       "Postup revize limitů a rizik",
