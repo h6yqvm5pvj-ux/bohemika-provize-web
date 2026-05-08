@@ -174,27 +174,23 @@ export default function DokumentyMajetekPage() {
           activeModal ? "pointer-events-none select-none blur-[2.2px] opacity-90" : ""
         }`}
       >
-        <header className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(145deg,#ffffff_0%,#f8fafc_54%,#ecfeff_100%)] px-5 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)] sm:px-6 sm:py-6">
-          <div className="pointer-events-none absolute -right-10 -top-12 h-44 w-44 rounded-full bg-sky-300/20 blur-3xl" />
-          <div className="pointer-events-none absolute -left-16 -bottom-16 h-44 w-44 rounded-full bg-emerald-300/20 blur-3xl" />
-          <div className="relative space-y-2">
+        <header className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3 text-xs">
             <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
               <Sparkles className="h-3.5 w-3.5" />
               Dokumentová zóna
             </span>
-            <SplitTitle text="Majetek" className="!text-slate-900" />
-            <p className="max-w-3xl text-sm text-slate-600">
-              Dokumenty podle pojišťovny pro pojištění majetku.
-            </p>
-            <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
-              <Link
-                href="/pomucky/dokumenty"
-                className="inline-flex items-center text-slate-600 transition hover:text-slate-900"
-              >
-                ← Zpět na dokumenty
-              </Link>
-            </div>
+            <Link
+              href="/pomucky/dokumenty"
+              className="inline-flex items-center text-slate-600 transition hover:text-slate-900"
+            >
+              ← Zpět na dokumenty
+            </Link>
           </div>
+          <SplitTitle text="Majetek" className="!text-slate-900" />
+          <p className="max-w-3xl text-sm text-slate-600">
+            Dokumenty podle pojišťovny pro pojištění majetku.
+          </p>
         </header>
 
         <section className="rounded-3xl border border-slate-200 bg-white px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">

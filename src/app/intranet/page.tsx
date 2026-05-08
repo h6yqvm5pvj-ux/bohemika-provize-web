@@ -626,7 +626,7 @@ export default function IntranetPage() {
               </div>
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="mt-5 flex flex-wrap gap-2 px-1 pb-2 pt-1">
               {INTRANET_SECTIONS.map((section) => {
                 const visual = SECTION_VISUALS[section.key];
                 const SectionIcon = visual.icon;

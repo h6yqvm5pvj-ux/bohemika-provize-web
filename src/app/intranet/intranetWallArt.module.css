@@ -61,7 +61,7 @@
 
 .heroPanel {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .heroPanel::after {
