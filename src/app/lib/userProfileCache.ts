@@ -34,6 +34,21 @@ export const invalidateUserProfileCache = (email?: string | null) => {
   delete profileInFlight[normalized];
 };
 
+export function peekUserProfileCached(
+  user: FirebaseUser,
+  options?: { maxAgeMs?: number }
+): UserProfileResponse | null {
+  const key = cacheKeyForUser(user);
+  const maxAgeMs =
+    typeof options?.maxAgeMs === "number" && Number.isFinite(options.maxAgeMs)
+      ? Math.max(0, options.maxAgeMs)
+      : PROFILE_CACHE_TTL_MS;
+  const cached = profileCache[key];
+  if (!cached) return null;
+  if (Date.now() - cached.ts >= maxAgeMs) return null;
+  return cached.payload;
+}
+
 export async function getUserProfileCached(
   user: FirebaseUser,
   options?: { maxAgeMs?: number; force?: boolean }

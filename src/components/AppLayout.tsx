@@ -31,7 +31,11 @@ import {
   applyBoxThemeToRoot,
 } from "@/lib/boxTheme";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
-import { getUserProfileCached } from "@/app/lib/userProfileCache";
+import {
+  getUserProfileCached,
+  peekUserProfileCached,
+  type UserProfileResponse,
+} from "@/app/lib/userProfileCache";
 
 type ActivePage =
   | "home"
@@ -66,6 +70,7 @@ const normalizeEmail = (value: string | null | undefined): string =>
   (value ?? "").trim().toLowerCase();
 
 const ADMIN_REQUESTS_EMAIL = "jakub.rauscher@bohemika.eu";
+const PROFILE_CACHE_MAX_AGE_MS = 60 * 1000;
 
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -263,6 +268,32 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   };
 
   // Načtení subscription profilu přes API
+  const applySubscriptionPayload = (
+    payload: UserProfileResponse,
+    currentUser: FirebaseUser
+  ) => {
+    const data = payload?.profile ?? {};
+    const statusRaw = (data.subscriptionStatus as string | undefined)?.trim().toLowerCase();
+    let status: SubscriptionStatusWeb = "none";
+
+    if (statusRaw === "active") {
+      status = "active";
+    } else if (statusRaw === "expired") {
+      status = "expired";
+    } else {
+      status = "none";
+    }
+
+    setSubscriptionStatus(status);
+    setNeedsCareerTimelineSetup(!hasCareerTimelineConfigured(data));
+    const has = payload?.hasTeam === true;
+    setHasTeam(has);
+    if (typeof window !== "undefined" && currentUser.email) {
+      const cacheKey = `app.hasTeam:${currentUser.email.toLowerCase()}`;
+      window.sessionStorage.setItem(cacheKey, has ? "1" : "0");
+    }
+  };
+
   const loadSubscriptionProfileForUser = async (
     currentUser: FirebaseUser | null,
     options?: { force?: boolean }
@@ -276,32 +307,23 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       return;
     }
 
-    setLoadingProfile(true);
+    const force = options?.force === true;
+    const warmPayload = !force
+      ? peekUserProfileCached(currentUser, { maxAgeMs: PROFILE_CACHE_MAX_AGE_MS })
+      : null;
+    if (warmPayload) {
+      applySubscriptionPayload(warmPayload, currentUser);
+      setLoadingProfile(false);
+    } else {
+      setLoadingProfile(true);
+    }
+
     try {
       const payload = await getUserProfileCached(currentUser, {
-        maxAgeMs: 60 * 1000,
-        force: options?.force === true,
+        maxAgeMs: PROFILE_CACHE_MAX_AGE_MS,
+        force,
       });
-      const data = payload?.profile ?? {};
-      const statusRaw = (data.subscriptionStatus as string | undefined)?.trim().toLowerCase();
-      let status: SubscriptionStatusWeb = "none";
-
-      if (statusRaw === "active") {
-        status = "active";
-      } else if (statusRaw === "expired") {
-        status = "expired";
-      } else {
-        status = "none";
-      }
-
-      setSubscriptionStatus(status);
-      setNeedsCareerTimelineSetup(!hasCareerTimelineConfigured(data));
-      const has = payload?.hasTeam === true;
-      setHasTeam(has);
-      if (typeof window !== "undefined" && currentUser.email) {
-        const cacheKey = `app.hasTeam:${currentUser.email.toLowerCase()}`;
-        window.sessionStorage.setItem(cacheKey, has ? "1" : "0");
-      }
+      applySubscriptionPayload(payload, currentUser);
     } catch (e) {
       console.error("Chyba při načítání subscription profilu:", e);
       setSubscriptionStatus("none");

@@ -19,6 +19,9 @@ const SAME_ORIGIN_CACHE_ALLOWLIST = [
   /^\/pwa\/.*/,
   /^\/favicon\.ico$/,
 ];
+const IS_LOCAL_DEV =
+  self.location.hostname === "localhost" ||
+  self.location.hostname === "127.0.0.1";
 
 function isSameOriginCacheCandidate(url, request) {
   if (request.method !== "GET") return false;
@@ -49,6 +52,8 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  if (IS_LOCAL_DEV) return;
+
   const { request } = event;
   const url = new URL(request.url);
 
