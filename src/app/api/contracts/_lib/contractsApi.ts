@@ -781,6 +781,7 @@ const CONTRACT_NUMBER_CLAIMS_COLLECTION = "contractNumberClaims";
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
 const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
+const ENABLE_CONTRACT_CREATE_PUSH = false;
 const NEW_CONTRACT_PUSH_MAX_RECIPIENTS = 40;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_USER = 30;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_MULTICAST = 500;
@@ -5460,7 +5461,7 @@ export async function handleContractsCreate(req: NextRequest) {
     };
 
     const newContractPushRecipients =
-      trustedPayload.entryType === "contract"
+      ENABLE_CONTRACT_CREATE_PUSH && trustedPayload.entryType === "contract"
         ? collectManagerNotificationEmailsForNewContract({
             ownerEmail: targetOwnerEmail,
             managerEmailSnapshot: trustedManagerEmail,
