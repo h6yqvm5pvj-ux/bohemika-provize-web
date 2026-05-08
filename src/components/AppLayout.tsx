@@ -31,11 +31,8 @@ import {
   applyBoxThemeToRoot,
 } from "@/lib/boxTheme";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
-import {
-  getUserProfileCached,
-  peekUserProfileCached,
-  type UserProfileResponse,
-} from "@/app/lib/userProfileCache";
+import * as userProfileCache from "@/app/lib/userProfileCache";
+import type { UserProfileResponse } from "@/app/lib/userProfileCache";
 
 type ActivePage =
   | "home"
@@ -308,9 +305,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     }
 
     const force = options?.force === true;
-    const warmPayload = !force
-      ? peekUserProfileCached(currentUser, { maxAgeMs: PROFILE_CACHE_MAX_AGE_MS })
-      : null;
+    const warmPayload =
+      !force && typeof userProfileCache.peekUserProfileCached === "function"
+        ? userProfileCache.peekUserProfileCached(currentUser, {
+            maxAgeMs: PROFILE_CACHE_MAX_AGE_MS,
+          })
+        : null;
     if (warmPayload) {
       applySubscriptionPayload(warmPayload, currentUser);
       setLoadingProfile(false);
@@ -319,7 +319,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     }
 
     try {
-      const payload = await getUserProfileCached(currentUser, {
+      const payload = await userProfileCache.getUserProfileCached(currentUser, {
         maxAgeMs: PROFILE_CACHE_MAX_AGE_MS,
         force,
       });
