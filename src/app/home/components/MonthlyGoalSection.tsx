@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Pencil, Target } from "lucide-react";
+import Image from "next/image";
 
 import { formatMoney } from "../homeUtils";
 
@@ -62,6 +63,22 @@ export function MonthlyGoalSection({
 
   return (
     <section className={goalCardClass}>
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 right-0 z-0 w-[52%] overflow-hidden"
+      >
+        <div className="absolute inset-y-0 right-0 w-full bg-gradient-to-l from-white via-white/90 to-transparent" />
+        <Image
+          src="/icons/cilmesice.png"
+          alt=""
+          width={3000}
+          height={3000}
+          quality={100}
+          sizes="(min-width: 640px) 520px, 440px"
+          className="absolute right-[-70px] top-[54%] w-[440px] -translate-y-1/2 select-none opacity-[0.14] saturate-110 sm:right-[-50px] sm:w-[520px]"
+          priority={false}
+        />
+      </div>
       {editOpen && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
@@ -105,7 +122,7 @@ export function MonthlyGoalSection({
           </div>
         </div>
       )}
-      <div className="relative flex flex-col gap-4">
+      <div className="relative z-10 flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 text-2xl font-semibold text-slate-900">
@@ -131,18 +148,15 @@ export function MonthlyGoalSection({
                 `${normalizedProgress}%`
               )}
             </div>
+            <button
+              type="button"
+              onClick={() => setEditOpen(true)}
+              className="mt-2 whitespace-nowrap inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-900 transition hover:bg-slate-50 sm:mt-3"
+            >
+              <Pencil className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+              Upravit cíl
+            </button>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          <button
-            type="button"
-            onClick={() => setEditOpen(true)}
-            className="whitespace-nowrap inline-flex items-center gap-2 rounded-full border border-slate-900 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
-          >
-            <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-            Upravit cíl
-          </button>
         </div>
 
         <div className="flex flex-col gap-2">

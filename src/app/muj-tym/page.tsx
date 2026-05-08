@@ -54,15 +54,6 @@ function nameFromEmail(email: string | null | undefined): string {
   return parts.map(cap).join(" ");
 }
 
-function initialsFromName(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
-}
-
 const POSITION_OPTIONS: { id: Position; label: string }[] = [
   { id: "poradce1", label: "Poradce 1" },
   { id: "poradce2", label: "Poradce 2" },
@@ -1433,7 +1424,6 @@ export default function TeamPage() {
                       {virtualizedMembers.items.map((m) => {
                         const isSelected = m.email === selectedEmail;
                         const last = lastActiveBadge(m.email);
-                        const initials = initialsFromName(m.name);
                         return (
                           <button
                             key={m.email}
@@ -1451,14 +1441,20 @@ export default function TeamPage() {
                             <div className="flex w-full items-start gap-2">
                               <div
                                 className={[
-                                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[9px] font-semibold",
+                                  "relative h-7 w-7 shrink-0 overflow-hidden rounded-full border bg-white",
                                   isSelected
-                                    ? "border-slate-900 bg-slate-900 text-white"
-                                    : "border-slate-300 bg-slate-100 text-slate-700",
+                                    ? "border-slate-900 shadow-[0_0_0_1px_rgba(15,23,42,0.25)]"
+                                    : "border-slate-300",
                                 ].join(" ")}
                                 aria-hidden="true"
                               >
-                                {initials || "?"}
+                                <Image
+                                  src="/icons/klient.png"
+                                  alt=""
+                                  fill
+                                  sizes="28px"
+                                  className="object-cover"
+                                />
                               </div>
 
                               <div className="min-w-0 flex-1">

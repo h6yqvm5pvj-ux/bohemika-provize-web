@@ -3,10 +3,12 @@ import {
   CarFront,
   HeartPulse,
   Home,
+  Landmark,
   Tag,
+  Wrench,
   UserRound,
   UsersRound,
-  WalletCards,
+  Sparkles,
 } from "lucide-react";
 
 import type { ProductFilter, ScopeFilter } from "../types";
@@ -30,11 +32,74 @@ const PRODUCT_FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
 ];
 
 const PRODUCT_FILTER_ICONS: Partial<Record<ProductFilter, LucideIcon>> = {
+  all: Sparkles,
   tip: Tag,
   life: HeartPulse,
   auto: CarFront,
   property: Home,
-  gold: WalletCards,
+  gold: Landmark,
+  other: Wrench,
+};
+
+type ChipVisual = {
+  activeClass: string;
+  activeGlowClass: string;
+};
+
+const SCOPE_FILTER_VISUALS: Record<ScopeFilter, ChipVisual> = {
+  combined: {
+    activeClass:
+      "border-0 bg-[linear-gradient(135deg,#334155_0%,#0f172a_100%)] text-[#f8fafc]",
+    activeGlowClass: "",
+  },
+  own: {
+    activeClass:
+      "border-0 bg-[linear-gradient(135deg,#818cf8_0%,#4338ca_100%)] text-[#f8fafc]",
+    activeGlowClass: "",
+  },
+  team: {
+    activeClass:
+      "border-0 bg-[linear-gradient(135deg,#fb923c_0%,#c2410c_100%)] text-[#f8fafc]",
+    activeGlowClass: "",
+  },
+};
+
+const PRODUCT_FILTER_VISUALS: Record<ProductFilter, ChipVisual> = {
+  all: {
+    activeClass:
+      "border-0 bg-[linear-gradient(135deg,#334155_0%,#0f172a_100%)] text-[#f8fafc]",
+    activeGlowClass: "",
+  },
+  tip: {
+    activeClass:
+      "border-0 bg-[linear-gradient(135deg,#34d399_0%,#047857_100%)] text-[#f8fafc]",
+    activeGlowClass: "",
+  },
+  life: {
+    activeClass:
+      "border-0 bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] text-[#f8fafc]",
+    activeGlowClass: "",
+  },
+  auto: {
+    activeClass:
+      "border-0 bg-[linear-gradient(135deg,#60a5fa_0%,#1d4ed8_100%)] text-[#f8fafc]",
+    activeGlowClass: "",
+  },
+  property: {
+    activeClass:
+      "border-0 bg-[linear-gradient(135deg,#22d3ee_0%,#0e7490_100%)] text-[#f8fafc]",
+    activeGlowClass: "",
+  },
+  gold: {
+    activeClass:
+      "border-0 bg-[linear-gradient(135deg,#facc15_0%,#ca8a04_100%)] text-[#f8fafc]",
+    activeGlowClass: "",
+  },
+  other: {
+    activeClass:
+      "border-0 bg-[linear-gradient(135deg,#64748b_0%,#334155_100%)] text-[#f8fafc]",
+    activeGlowClass: "",
+  },
 };
 
 export function CashflowFilters({
@@ -45,7 +110,11 @@ export function CashflowFilters({
   onProductChange,
 }: CashflowFiltersProps) {
   const baseChip =
-    "rounded-full border px-3 py-1.5 transition text-xs sm:text-sm font-medium";
+    "rounded-2xl border px-3.5 py-2.5 transition text-xs sm:text-sm font-semibold";
+  const inactiveChip =
+    "border-slate-300 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-50";
+  const scopeIconClass = "h-4 w-4";
+  const productIconClass = "h-4 w-4";
 
   return (
     <section
@@ -68,8 +137,8 @@ export function CashflowFilters({
               onClick={() => onScopeChange("combined")}
               className={`${baseChip} ${
                 scopeFilter === "combined"
-                  ? "border-slate-900 bg-slate-950 text-white"
-                  : "border-slate-300 bg-white text-slate-800 hover:border-slate-900"
+                  ? `${SCOPE_FILTER_VISUALS.combined.activeClass} ${SCOPE_FILTER_VISUALS.combined.activeGlowClass}`
+                  : inactiveChip
               }`}
             >
               Kombinovaný
@@ -79,15 +148,16 @@ export function CashflowFilters({
               onClick={() => onScopeChange("own")}
               className={`${baseChip} ${
                 scopeFilter === "own"
-                  ? "border-slate-900 bg-slate-950 text-white"
-                  : "border-slate-300 bg-white text-slate-800 hover:border-slate-900"
+                  ? `${SCOPE_FILTER_VISUALS.own.activeClass} ${SCOPE_FILTER_VISUALS.own.activeGlowClass}`
+                  : inactiveChip
               }`}
             >
               <span className="inline-flex items-center gap-1.5">
                 <UserRound
-                  size={14}
                   strokeWidth={2}
-                  className={scopeFilter === "own" ? "text-white" : "text-slate-500"}
+                  className={`${scopeIconClass} ${
+                    scopeFilter === "own" ? "text-[#f8fafc]" : "text-slate-500"
+                  }`}
                   aria-hidden="true"
                 />
                 <span>Vlastní</span>
@@ -98,15 +168,16 @@ export function CashflowFilters({
               onClick={() => onScopeChange("team")}
               className={`${baseChip} ${
                 scopeFilter === "team"
-                  ? "border-slate-900 bg-slate-950 text-white"
-                  : "border-slate-300 bg-white text-slate-800 hover:border-slate-900"
+                  ? `${SCOPE_FILTER_VISUALS.team.activeClass} ${SCOPE_FILTER_VISUALS.team.activeGlowClass}`
+                  : inactiveChip
               }`}
             >
               <span className="inline-flex items-center gap-1.5">
                 <UsersRound
-                  size={14}
                   strokeWidth={2}
-                  className={scopeFilter === "team" ? "text-white" : "text-slate-500"}
+                  className={`${scopeIconClass} ${
+                    scopeFilter === "team" ? "text-[#f8fafc]" : "text-slate-500"
+                  }`}
                   aria-hidden="true"
                 />
                 <span>Týmové</span>
@@ -134,17 +205,20 @@ export function CashflowFilters({
                 key={option.value}
                 type="button"
                 onClick={() => onProductChange(option.value)}
-                className={`${baseChip} inline-flex items-center gap-1.5 ${
+                className={`${baseChip} inline-flex shrink-0 items-center gap-1.5 ${
                   isActive
-                    ? "border-slate-900 bg-slate-950 text-white"
-                    : "border-slate-300 bg-white text-slate-800 hover:border-slate-900"
+                    ? `${PRODUCT_FILTER_VISUALS[option.value].activeClass} ${PRODUCT_FILTER_VISUALS[option.value].activeGlowClass}`
+                    : inactiveChip
                 }`}
               >
                 {Icon ? (
                   <Icon
-                    size={14}
                     strokeWidth={2}
-                    className={isActive ? "text-white" : "text-slate-500"}
+                    className={`${productIconClass} ${
+                      isActive
+                        ? "text-[#f8fafc]"
+                        : "text-slate-500"
+                    }`}
                     aria-hidden="true"
                   />
                 ) : null}

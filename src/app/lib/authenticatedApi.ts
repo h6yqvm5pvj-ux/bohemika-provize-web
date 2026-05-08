@@ -4,11 +4,13 @@ type JsonRecord = Record<string, unknown> | null;
 
 function mergeHeaders(
   base: HeadersInit | undefined,
-  authToken: string
+  authToken: string,
+  body: BodyInit | null | undefined
 ): HeadersInit {
   const headers = new Headers(base ?? {});
   headers.set("Authorization", `Bearer ${authToken}`);
-  if (!headers.has("Content-Type")) {
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  if (!headers.has("Content-Type") && !isFormData) {
     headers.set("Content-Type", "application/json");
   }
   return headers;
@@ -31,7 +33,7 @@ export async function fetchAuthedJson<T extends JsonRecord = JsonRecord>(
   const requestWithToken = async (idToken: string) =>
     fetch(input, {
       ...(init ?? {}),
-      headers: mergeHeaders(init?.headers, idToken),
+      headers: mergeHeaders(init?.headers, idToken, init?.body),
       cache: init?.cache ?? "no-store",
     });
 

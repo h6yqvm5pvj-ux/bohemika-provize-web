@@ -2989,7 +2989,7 @@ export default function ContractDetailPage() {
     }
   }, [loading, user, contract, canViewContract, unauthorized, router, backToContractsHref]);
 
-  const shellCardClass = "flex-1 space-y-8 px-2 py-2 font-mono";
+  const shellCardClass = "min-w-0 flex-1 space-y-8 px-2 py-2 font-mono";
   const surfaceCardClass =
     "rounded-2xl border border-slate-300 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)]";
   const surfaceSoftClass =
@@ -3021,7 +3021,7 @@ export default function ContractDetailPage() {
   const sectionPanelClass = "space-y-4 px-1 py-1";
   const destructiveButtonClass =
     "inline-flex items-center rounded-xl border border-rose-700 bg-rose-700 px-6 py-3 text-base sm:text-lg font-medium font-mono text-white shadow-[0_8px_20px_rgba(190,24,93,0.28)] transition hover:bg-rose-800 disabled:opacity-60 disabled:cursor-not-allowed";
-  const productPanelClass = "w-[400px] space-y-4 p-2 font-mono";
+  const productPanelClass = "w-full max-w-[400px] space-y-4 p-2 font-mono lg:w-[400px]";
   const adviserBreakdownPosition =
     ((contract?.position as Position | null | undefined) ?? ownerPosition ?? null);
   const adviserBreakdownMode = toCommissionMode(contract?.commissionMode);
@@ -3044,6 +3044,53 @@ export default function ContractDetailPage() {
       setNeonImmediateBreakdown(breakdown);
     },
     [pushToast]
+  );
+
+  const renderProductPanelContent = () => (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className={`text-lg font-semibold ${monoHeadingClass}`}>
+          Detail produktu
+        </h3>
+        <span className="text-base text-slate-600">{productLabel(prod)}</span>
+      </div>
+      {isAutoProduct(prod) && (
+        <AutoDetailPanel
+          prod={prod}
+          editMode={editMode}
+          fields={autoFields}
+          contract={contract}
+          onChange={handleAutoFieldChange}
+        />
+      )}
+      {prod === "neon" && (
+        <NeonDetailPanel
+          prod={prod}
+          editMode={editMode}
+          fields={neonFields}
+          contract={contract?.neonDetail ?? null}
+          onChange={handleNeonFieldChange}
+        />
+      )}
+      {prod === "domex" && (
+        <DomexDetailPanel
+          prod={prod}
+          editMode={editMode}
+          fields={domexFields}
+          domexDetail={contract?.domexDetail ?? null}
+          onChange={handleDomexFieldChange}
+        />
+      )}
+      {prod === "flexi" && (
+        <FlexiDetailPanel
+          prod={prod}
+          editMode={editMode}
+          fields={flexiFields}
+          contract={contract?.flexiDetail ?? null}
+          onChange={handleFlexiFieldChange}
+        />
+      )}
+    </>
   );
 
   const renderLoadingSkeleton = () => (
@@ -3117,9 +3164,9 @@ export default function ContractDetailPage() {
 
       <Toasts items={toasts} onDismiss={dismissToast} />
 
-      <div className="relative flex min-h-screen items-center justify-center px-5 py-12">
+      <div className="relative flex min-h-screen items-start justify-center px-3 py-6 sm:px-5 sm:py-12">
         <div className="w-full max-w-6xl">
-          <div className="flex items-stretch gap-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
             <div className={shellCardClass}>
             {/* HEADER */}
             <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -3344,6 +3391,22 @@ export default function ContractDetailPage() {
                     </div>
                   </div>
                 </section>
+
+                <section className="lg:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowProductPanel((v) => !v)}
+                    className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-semibold tracking-[0.08em] text-white transition hover:bg-black"
+                  >
+                    {showProductPanel ? "Skrýt detail produktu" : "Zobrazit detail produktu"}
+                  </button>
+                </section>
+
+                {showProductPanel && (
+                  <section className="space-y-4 rounded-2xl border border-slate-300 bg-slate-50 p-3 lg:hidden">
+                    {renderProductPanelContent()}
+                  </section>
+                )}
 
                 {/* Info o poradci – zobraz pouze manažerovi na podřízené smlouvě */}
                 {contract && isManagerViewingSubordinate && (
@@ -3921,7 +3984,7 @@ export default function ContractDetailPage() {
             ) : null}
             </div>
 
-            <div className="flex flex-col items-center">
+            <div className="hidden flex-col items-center lg:flex">
               <button
                 type="button"
                 onClick={() => setShowProductPanel((v) => !v)}
@@ -3937,49 +4000,8 @@ export default function ContractDetailPage() {
             </div>
 
             {showProductPanel && (
-              <div className={productPanelClass}>
-                <div className="flex items-center justify-between">
-                  <h3 className={`text-lg font-semibold ${monoHeadingClass}`}>
-                    Detail produktu
-                  </h3>
-                  <span className="text-base text-slate-600">{productLabel(prod)}</span>
-                </div>
-                {isAutoProduct(prod) && (
-                  <AutoDetailPanel
-                    prod={prod}
-                    editMode={editMode}
-                    fields={autoFields}
-                    contract={contract}
-                    onChange={handleAutoFieldChange}
-                  />
-                )}
-                {prod === "neon" && (
-                  <NeonDetailPanel
-                    prod={prod}
-                    editMode={editMode}
-                    fields={neonFields}
-                    contract={contract?.neonDetail ?? null}
-                    onChange={handleNeonFieldChange}
-                  />
-                )}
-                {prod === "domex" && (
-                  <DomexDetailPanel
-                    prod={prod}
-                    editMode={editMode}
-                    fields={domexFields}
-                    domexDetail={contract?.domexDetail ?? null}
-                    onChange={handleDomexFieldChange}
-                  />
-                )}
-                {prod === "flexi" && (
-                  <FlexiDetailPanel
-                    prod={prod}
-                    editMode={editMode}
-                    fields={flexiFields}
-                    contract={contract?.flexiDetail ?? null}
-                    onChange={handleFlexiFieldChange}
-                  />
-                )}
+              <div className={`hidden lg:block ${productPanelClass}`}>
+                {renderProductPanelContent()}
               </div>
             )}
           </div>

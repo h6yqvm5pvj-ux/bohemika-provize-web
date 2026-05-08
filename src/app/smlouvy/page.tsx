@@ -9,7 +9,6 @@ import {
   AlertCircle,
   ArrowDownUp,
   CalendarDays,
-  CheckCircle2,
   Search,
   SlidersHorizontal,
   UserRound,
@@ -2279,36 +2278,84 @@ function ContractsPageContent() {
                             </div>
                           )}
                         </div>
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${
-                            isStorno
-                              ? "border-amber-600 bg-amber-500 text-white"
-                              : isDozita
-                              ? "border-sky-600 bg-sky-600 text-white"
-                              : c.paid
-                              ? "border-emerald-600 bg-emerald-600 text-white"
-                              : "border-rose-600 bg-rose-600 text-white"
-                          }`}
-                        >
-                          {isStorno ? (
-                            <CalendarDays size={14} strokeWidth={2} className="mr-1.5 shrink-0" aria-hidden="true" />
-                          ) : isDozita ? (
-                            <CalendarDays size={14} strokeWidth={2} className="mr-1.5 shrink-0" aria-hidden="true" />
-                          ) : c.paid ? (
-                            <CheckCircle2 size={14} strokeWidth={2} className="mr-1.5 shrink-0" aria-hidden="true" />
-                          ) : (
-                            <AlertCircle size={14} strokeWidth={2} className="mr-1.5 shrink-0" aria-hidden="true" />
-                          )}
-                          <span>
-                            {isStorno
-                              ? "Storno"
-                              : isDozita
-                              ? "Dožitá"
-                              : c.paid
-                              ? "Zaplaceno"
-                              : "Nezaplaceno"}
-                          </span>
-                        </span>
+                        {(() => {
+                          const statusBadge = isStorno
+                            ? {
+                                label: "Storno",
+                                wrapper:
+                                  "border-amber-200/90 bg-[linear-gradient(135deg,#fffbeb_0%,#fef3c7_100%)] text-amber-900 shadow-[0_10px_24px_rgba(217,119,6,0.14)]",
+                                iconWrap:
+                                  "border-amber-700/70 bg-[linear-gradient(135deg,#f59e0b_0%,#d97706_100%)] text-white shadow-[0_8px_16px_rgba(217,119,6,0.28)]",
+                                icon: (
+                                  <CalendarDays
+                                    size={12}
+                                    strokeWidth={2.2}
+                                    className="shrink-0"
+                                    aria-hidden="true"
+                                  />
+                                ),
+                              }
+                            : isDozita
+                            ? {
+                                label: "Dožitá",
+                                wrapper:
+                                  "border-sky-200/90 bg-[linear-gradient(135deg,#f0f9ff_0%,#dbeafe_100%)] text-sky-900 shadow-[0_10px_24px_rgba(14,116,144,0.14)]",
+                                iconWrap:
+                                  "border-sky-700/70 bg-[linear-gradient(135deg,#0ea5e9_0%,#0369a1_100%)] text-white shadow-[0_8px_16px_rgba(3,105,161,0.28)]",
+                                icon: (
+                                  <CalendarDays
+                                    size={12}
+                                    strokeWidth={2.2}
+                                    className="shrink-0"
+                                    aria-hidden="true"
+                                  />
+                                ),
+                              }
+                            : c.paid
+                            ? {
+                                label: "Zaplaceno",
+                                wrapper:
+                                  "border-emerald-200/90 bg-[linear-gradient(135deg,#ecfdf5_0%,#d1fae5_100%)] text-emerald-900 shadow-[0_10px_24px_rgba(5,150,105,0.14)]",
+                                iconWrap:
+                                  "border-emerald-700/70 bg-[linear-gradient(135deg,#22c55e_0%,#059669_100%)] text-white shadow-[0_8px_16px_rgba(5,150,105,0.28)]",
+                                icon: (
+                                  <span
+                                    className="text-[13px] font-black leading-none"
+                                    aria-hidden="true"
+                                  >
+                                    ✓
+                                  </span>
+                                ),
+                              }
+                            : {
+                                label: "Nezaplaceno",
+                                wrapper:
+                                  "border-rose-200/90 bg-[linear-gradient(135deg,#fff1f2_0%,#ffe4e6_100%)] text-rose-900 shadow-[0_10px_24px_rgba(225,29,72,0.14)]",
+                                iconWrap:
+                                  "border-rose-700/70 bg-[linear-gradient(135deg,#f43f5e_0%,#e11d48_100%)] text-white shadow-[0_8px_16px_rgba(225,29,72,0.28)]",
+                                icon: (
+                                  <span
+                                    className="text-[13px] font-black leading-none"
+                                    aria-hidden="true"
+                                  >
+                                    !
+                                  </span>
+                                ),
+                              };
+
+                          return (
+                            <span
+                              className={`inline-flex items-center gap-2 rounded-full border px-1.5 py-1 pr-2.5 text-[12px] font-semibold leading-none tracking-[0.01em] ${statusBadge.wrapper}`}
+                            >
+                              <span
+                                className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ring-1 ring-white/45 ${statusBadge.iconWrap}`}
+                              >
+                                {statusBadge.icon}
+                              </span>
+                              <span className="pr-1">{statusBadge.label}</span>
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>

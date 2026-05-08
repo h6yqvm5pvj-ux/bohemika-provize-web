@@ -54,6 +54,11 @@ import {
 } from "@/lib/boxTheme";
 import type { Position, CommissionMode } from "../types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
+import {
+  INTRANET_SECTIONS,
+  INTRANET_SECTION_KEYS,
+  type IntranetSectionKey,
+} from "../intranet/sections";
 
 const POSITIONS: { id: Position; label: string }[] = [
   { id: "poradce1", label: "Poradce 1" },
@@ -153,22 +158,106 @@ type NotificationSettings = {
     anniversary: boolean;
     unpaid: boolean;
     team: boolean;
+    intranet: boolean;
   };
   channels: {
     email: boolean;
     push: boolean;
   };
+  intranet: {
+    mode: "all" | "selected";
+    sections: IntranetSectionKey[];
+  };
 };
+
+const INTRANET_NOTIFICATION_SECTIONS = INTRANET_SECTIONS.map(
+  (section) => section.key
+);
+
+const normalizeIntranetSectionList = (value: unknown): IntranetSectionKey[] => {
+  if (!Array.isArray(value)) return [];
+  const out = new Set<IntranetSectionKey>();
+  value.forEach((raw) => {
+    if (typeof raw !== "string") return;
+    const key = raw.trim() as IntranetSectionKey;
+    if (!INTRANET_SECTION_KEYS.has(key)) return;
+    out.add(key);
+  });
+  return [...out];
+};
+
+const normalizeNotificationSettings = (
+  value: unknown
+): NotificationSettings => {
+  const raw =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const typesInput =
+    raw.types && typeof raw.types === "object" && !Array.isArray(raw.types)
+      ? (raw.types as Record<string, unknown>)
+      : {};
+  const channelsInput =
+    raw.channels && typeof raw.channels === "object" && !Array.isArray(raw.channels)
+      ? (raw.channels as Record<string, unknown>)
+      : {};
+  const intranetInput =
+    raw.intranet && typeof raw.intranet === "object" && !Array.isArray(raw.intranet)
+      ? (raw.intranet as Record<string, unknown>)
+      : {};
+
+  const mode = intranetInput.mode === "selected" ? "selected" : "all";
+  const selectedSections = normalizeIntranetSectionList(intranetInput.sections);
+
+  return {
+    types: {
+      newContract:
+        typeof typesInput.newContract === "boolean"
+          ? typesInput.newContract
+          : true,
+      anniversary:
+        typeof typesInput.anniversary === "boolean"
+          ? typesInput.anniversary
+          : true,
+      unpaid:
+        typeof typesInput.unpaid === "boolean" ? typesInput.unpaid : true,
+      team: typeof typesInput.team === "boolean" ? typesInput.team : true,
+      intranet:
+        typeof typesInput.intranet === "boolean"
+          ? typesInput.intranet
+          : true,
+    },
+    channels: {
+      email:
+        typeof channelsInput.email === "boolean" ? channelsInput.email : true,
+      push:
+        typeof channelsInput.push === "boolean" ? channelsInput.push : true,
+    },
+    intranet: {
+      mode,
+      sections:
+        mode === "selected"
+          ? selectedSections
+          : [...INTRANET_NOTIFICATION_SECTIONS],
+    },
+  };
+};
+
 const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   types: {
     newContract: true,
     anniversary: true,
     unpaid: true,
     team: true,
+    intranet: true,
   },
   channels: {
     email: true,
     push: true,
+  },
+  intranet: {
+    mode: "all",
+    sections: [...INTRANET_NOTIFICATION_SECTIONS],
   },
 };
 
@@ -773,11 +862,7 @@ export default function SettingsPage() {
           setFcmActive(hasAnyPushToken(data as Record<string, unknown>));
 
           if (data.notificationSettings) {
-            const incoming = data.notificationSettings as NotificationSettings;
-            setNotificationSettings({
-              types: { ...DEFAULT_NOTIFICATION_SETTINGS.types, ...(incoming.types ?? {}) },
-              channels: { ...DEFAULT_NOTIFICATION_SETTINGS.channels, ...(incoming.channels ?? {}) },
-            });
+            setNotificationSettings(normalizeNotificationSettings(data.notificationSettings));
           }
 
           setCanChangePosition(
@@ -1069,6 +1154,41 @@ export default function SettingsPage() {
       channels: {
         ...notificationSettings.channels,
         push: enabled,
+      },
+    };
+    await persistNotificationSettings(next);
+  };
+
+  const setIntranetNotificationMode = async (mode: "all" | "selected") => {
+    if (notificationSettings.intranet.mode === mode) return;
+    const nextSections =
+      mode === "all"
+        ? [...INTRANET_NOTIFICATION_SECTIONS]
+        : notificationSettings.intranet.sections.length > 0
+          ? notificationSettings.intranet.sections
+          : [...INTRANET_NOTIFICATION_SECTIONS];
+    const next = {
+      ...notificationSettings,
+      intranet: {
+        mode,
+        sections: nextSections,
+      },
+    };
+    await persistNotificationSettings(next);
+  };
+
+  const toggleIntranetNotificationSection = async (key: IntranetSectionKey) => {
+    if (notificationSettings.intranet.mode !== "selected") return;
+    const current = notificationSettings.intranet.sections;
+    const exists = current.includes(key);
+    const nextSections = exists
+      ? current.filter((section) => section !== key)
+      : [...current, key];
+    const next = {
+      ...notificationSettings,
+      intranet: {
+        ...notificationSettings.intranet,
+        sections: nextSections,
       },
     };
     await persistNotificationSettings(next);
@@ -2343,6 +2463,7 @@ export default function SettingsPage() {
                         { id: "anniversary", label: "Výročí" },
                         { id: "unpaid", label: "Nezaplaceno" },
                         { id: "team", label: "Týmové akce" },
+                        { id: "intranet", label: "Intranet" },
                       ].map((t) => {
                         const active = notificationSettings.types[t.id as keyof NotificationSettings["types"]];
                         return (
@@ -2361,6 +2482,71 @@ export default function SettingsPage() {
                         );
                       })}
                     </div>
+                  </div>
+
+                  <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                      Intranet příspěvky
+                    </div>
+                    <p className="text-[11px] text-slate-600">
+                      Zvol si, jestli chceš push na všechny sekce nebo jen na vybrané.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void setIntranetNotificationMode("all")}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                          notificationSettings.intranet.mode === "all"
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : toggleOffClass
+                        }`}
+                      >
+                        Všechny sekce
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void setIntranetNotificationMode("selected")}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                          notificationSettings.intranet.mode === "selected"
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : toggleOffClass
+                        }`}
+                      >
+                        Jen vybrané sekce
+                      </button>
+                    </div>
+
+                    {notificationSettings.intranet.mode === "selected" ? (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                          {INTRANET_SECTIONS.map((section) => {
+                            const active =
+                              notificationSettings.intranet.sections.includes(section.key);
+                            return (
+                              <button
+                                key={section.key}
+                                type="button"
+                                onClick={() =>
+                                  void toggleIntranetNotificationSection(section.key)
+                                }
+                                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                                  active
+                                    ? "border-emerald-700 bg-emerald-600 text-white"
+                                    : toggleOffClass
+                                }`}
+                              >
+                                {section.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {notificationSettings.intranet.sections.length === 0 ? (
+                          <p className="text-[11px] text-amber-700">
+                            Není vybraná žádná sekce, intranet push nebude chodit.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-0.5">

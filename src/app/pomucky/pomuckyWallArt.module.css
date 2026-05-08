@@ -1,0 +1,173 @@
+.canvas {
+  position: absolute;
+  inset: -8% -6% -10% -6%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(70px);
+  opacity: 0.42;
+  animation: drift 18s ease-in-out infinite;
+  transform: translate3d(0, 0, 0);
+}
+
+.orbA {
+  width: 34rem;
+  height: 34rem;
+  top: -11rem;
+  right: -9rem;
+  background: radial-gradient(circle at 28% 24%, #22d3ee 0%, #0ea5e9 44%, #38bdf8 100%);
+}
+
+.orbB {
+  width: 30rem;
+  height: 30rem;
+  bottom: -12rem;
+  left: -7rem;
+  background: radial-gradient(circle at 42% 35%, #34d399 0%, #10b981 48%, #f59e0b 100%);
+  animation-delay: -6s;
+}
+
+.orbC {
+  width: 24rem;
+  height: 24rem;
+  top: 32%;
+  right: 28%;
+  background: radial-gradient(circle at 35% 38%, #a5b4fc 0%, #818cf8 52%, #6366f1 100%);
+  animation-delay: -10s;
+}
+
+.mesh {
+  position: absolute;
+  inset: -7%;
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(circle at 50% 30%, rgba(0, 0, 0, 0.92), transparent 78%);
+  opacity: 0.46;
+}
+
+.grain {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(15, 23, 42, 0.11) 0.5px, transparent 0.5px);
+  background-size: 2px 2px;
+  opacity: 0.12;
+}
+
+.heroPanel {
+  position: relative;
+  overflow: hidden;
+}
+
+.heroPanel::after {
+  content: "";
+  position: absolute;
+  inset: -36% -15% auto;
+  height: 60%;
+  background: conic-gradient(
+    from 190deg at 50% 50%,
+    rgba(34, 211, 238, 0.22),
+    rgba(99, 102, 241, 0.1),
+    rgba(16, 185, 129, 0.2),
+    rgba(34, 211, 238, 0.22)
+  );
+  filter: blur(20px);
+  pointer-events: none;
+}
+
+.filterChip {
+  position: relative;
+  overflow: hidden;
+}
+
+.filterChip::after {
+  content: "";
+  position: absolute;
+  inset: auto -24% -48% -24%;
+  height: 55%;
+  background: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.34), transparent 72%);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.filterChip:hover::after {
+  opacity: 1;
+}
+
+.toolCard {
+  opacity: 0;
+  animation: cardIn 420ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.toolCard::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-115%);
+  background: linear-gradient(112deg, transparent 8%, rgba(255, 255, 255, 0.35) 48%, transparent 82%);
+  transition: transform 420ms ease;
+  pointer-events: none;
+}
+
+.toolCard:hover::before {
+  transform: translateX(120%);
+}
+
+@keyframes drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(2.8rem, -2rem, 0) scale(1.06);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes cardIn {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.984);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 768px) {
+  .orb {
+    filter: blur(60px);
+    opacity: 0.34;
+  }
+
+  .orbA,
+  .orbB,
+  .orbC {
+    width: 22rem;
+    height: 22rem;
+  }
+
+  .mesh {
+    background-size: 24px 24px;
+    opacity: 0.36;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb,
+  .toolCard {
+    animation: none;
+  }
+
+  .toolCard::before,
+  .filterChip::after {
+    transition: none;
+  }
+}

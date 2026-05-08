@@ -14,6 +14,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
   ArrowRight,
+  Building2,
   BriefcaseBusiness,
   Calculator,
   CalendarDays,
@@ -36,6 +37,7 @@ import type { UserProfileResponse } from "@/app/lib/userProfileCache";
 
 type ActivePage =
   | "home"
+  | "intranet"
   | "calc"
   | "contracts"
   | "cashflow"
@@ -455,6 +457,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       href: "/muj-tym",
       label: "Můj tým",
       icon: UsersRound,
+    },
+    {
+      key: "intranet",
+      href: "/intranet",
+      label: "Intranet",
+      icon: Building2,
     },
     { key: "calc", href: "/kalkulacka", label: "Kalkulačka", icon: Calculator },
     { key: "contracts", href: "/smlouvy", label: "Smlouvy", icon: FileText },

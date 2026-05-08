@@ -1,0 +1,229 @@
+.canvas {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(68px);
+  opacity: 0.42;
+  animation: drift 16s ease-in-out infinite;
+  transform: translate3d(0, 0, 0);
+}
+
+.orbA {
+  width: 32rem;
+  height: 32rem;
+  top: -10rem;
+  right: -8rem;
+  background: radial-gradient(circle at 28% 24%, #34d399 0%, #0ea5e9 45%, #22c55e 100%);
+}
+
+.orbB {
+  width: 30rem;
+  height: 30rem;
+  bottom: -12rem;
+  left: -6rem;
+  background: radial-gradient(circle at 40% 32%, #f59e0b 0%, #fb7185 48%, #f97316 100%);
+  animation-delay: -5.5s;
+}
+
+.orbC {
+  width: 24rem;
+  height: 24rem;
+  top: 28%;
+  right: 30%;
+  background: radial-gradient(circle at 35% 38%, #a5f3fc 0%, #93c5fd 50%, #60a5fa 100%);
+  animation-delay: -9s;
+}
+
+.mesh {
+  position: absolute;
+  inset: -6%;
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(circle at 50% 35%, rgba(0, 0, 0, 0.9), transparent 78%);
+  opacity: 0.44;
+}
+
+.grain {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(15, 23, 42, 0.11) 0.5px, transparent 0.5px);
+  background-size: 2px 2px;
+  opacity: 0.14;
+}
+
+.heroPanel {
+  position: relative;
+  overflow: hidden;
+}
+
+.heroPanel::after {
+  content: "";
+  position: absolute;
+  inset: -35% -15% auto;
+  height: 58%;
+  background: conic-gradient(from 180deg at 50% 50%, rgba(52, 211, 153, 0.2), rgba(56, 189, 248, 0.06), rgba(245, 158, 11, 0.16), rgba(52, 211, 153, 0.2));
+  filter: blur(20px);
+  pointer-events: none;
+}
+
+.createButton {
+  position: relative;
+  overflow: hidden;
+}
+
+.createButton::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-115%);
+  background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.34) 45%, transparent 78%);
+  transition: transform 420ms ease;
+}
+
+.createButton:hover::before {
+  transform: translateX(120%);
+}
+
+.sectionChip {
+  position: relative;
+  overflow: hidden;
+}
+
+.sectionChip::after {
+  content: "";
+  position: absolute;
+  inset: auto -24% -48% -24%;
+  height: 55%;
+  background: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.32), transparent 72%);
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.sectionChip:hover::after {
+  opacity: 1;
+}
+
+.dropzone {
+  position: relative;
+}
+
+.dropzone::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 1rem;
+  pointer-events: none;
+  border: 1px solid transparent;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.dropzoneActive {
+  border-color: rgba(16, 185, 129, 0.6) !important;
+  background: linear-gradient(140deg, rgba(16, 185, 129, 0.08), rgba(14, 165, 233, 0.08));
+}
+
+.dropzoneActive::after {
+  border-color: rgba(16, 185, 129, 0.56);
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.25), 0 0 0 4px rgba(16, 185, 129, 0.1);
+}
+
+.dropzoneHint {
+  font-size: 0.72rem;
+  color: rgb(71 85 105);
+}
+
+.wallCard {
+  opacity: 0;
+  animation: cardIn 420ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.modalBackdrop {
+  animation: fadeIn 220ms ease forwards;
+}
+
+.modalPanel {
+  animation: modalIn 260ms cubic-bezier(0.18, 0.82, 0.18, 1) forwards;
+}
+
+@keyframes drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(2.6rem, -1.8rem, 0) scale(1.06);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes cardIn {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalIn {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 768px) {
+  .orb {
+    filter: blur(58px);
+    opacity: 0.34;
+  }
+
+  .orbA,
+  .orbB,
+  .orbC {
+    width: 22rem;
+    height: 22rem;
+  }
+
+  .mesh {
+    background-size: 24px 24px;
+    opacity: 0.36;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb,
+  .wallCard,
+  .modalBackdrop,
+  .modalPanel {
+    animation: none;
+  }
+
+  .createButton::before {
+    transition: none;
+  }
+}

@@ -4,6 +4,10 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 import { type CommissionMode, type Position } from "@/app/types/domain";
+import {
+  INTRANET_SECTION_KEYS,
+  type IntranetSectionKey,
+} from "@/app/intranet/sections";
 
 export const runtime = "nodejs";
 
@@ -309,16 +313,49 @@ function sanitizeNotificationSettings(value: unknown): Record<string, unknown> |
   if (!isPlainObject(value)) return null;
   const typesInput = isPlainObject(value.types) ? value.types : {};
   const channelsInput = isPlainObject(value.channels) ? value.channels : {};
+  const intranetInput = isPlainObject(value.intranet) ? value.intranet : {};
+
+  const rawSections = Array.isArray(intranetInput.sections)
+    ? intranetInput.sections
+    : [];
+  const sections = Array.from(
+    new Set(
+      rawSections
+        .map((row) =>
+          typeof row === "string" ? (row.trim() as IntranetSectionKey) : ""
+        )
+        .filter((key) => INTRANET_SECTION_KEYS.has(key as IntranetSectionKey))
+    )
+  );
+  const mode = intranetInput.mode === "selected" ? "selected" : "all";
+
   const next = {
     types: {
-      newContract: typesInput.newContract === true,
-      anniversary: typesInput.anniversary === true,
-      unpaid: typesInput.unpaid === true,
-      team: typesInput.team === true,
+      newContract:
+        typeof typesInput.newContract === "boolean"
+          ? typesInput.newContract
+          : true,
+      anniversary:
+        typeof typesInput.anniversary === "boolean"
+          ? typesInput.anniversary
+          : true,
+      unpaid:
+        typeof typesInput.unpaid === "boolean" ? typesInput.unpaid : true,
+      team: typeof typesInput.team === "boolean" ? typesInput.team : true,
+      intranet:
+        typeof typesInput.intranet === "boolean"
+          ? typesInput.intranet
+          : true,
     },
     channels: {
-      email: channelsInput.email === true,
-      push: channelsInput.push === true,
+      email:
+        typeof channelsInput.email === "boolean" ? channelsInput.email : true,
+      push:
+        typeof channelsInput.push === "boolean" ? channelsInput.push : true,
+    },
+    intranet: {
+      mode,
+      sections,
     },
   };
   return next;

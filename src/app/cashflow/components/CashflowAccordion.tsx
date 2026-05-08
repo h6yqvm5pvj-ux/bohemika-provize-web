@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { formatMoney } from "../helpers";
 import type { MonthGroup, YearGroup } from "../types";
 
@@ -15,7 +17,7 @@ export function CashflowAccordion({
   onSelectMonth,
 }: CashflowAccordionProps) {
   return (
-    <div className="space-y-5">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
       {yearGroups.map((yearGroup) => {
         const yearOpen = expandedYears[yearGroup.year] ?? false;
         const activeMonths = yearGroup.months.length;
@@ -29,7 +31,9 @@ export function CashflowAccordion({
         return (
           <section
             key={yearGroup.year}
-            className="cashflow-card-year relative overflow-hidden rounded-3xl border border-slate-900 bg-slate-900 p-4 sm:p-5 shadow-[0_12px_24px_rgba(15,23,42,0.28)]"
+            className={`cashflow-card-year relative overflow-hidden rounded-3xl border border-slate-900 bg-slate-900 p-4 sm:p-5 shadow-[0_12px_24px_rgba(15,23,42,0.28)] ${
+              yearOpen ? "lg:col-span-2" : ""
+            }`}
           >
 
             <button
@@ -37,13 +41,23 @@ export function CashflowAccordion({
               onClick={() => onToggleYear(yearGroup.year)}
               className="relative z-10 flex w-full items-center justify-between gap-4 text-left"
             >
-              <div className="min-w-0">
-                <p className="text-sm font-semibold uppercase tracking-[0.08em] text-white">
-                  Cashflow rok
-                </p>
-                <h2 className="text-xl sm:text-2xl font-semibold text-white">
-                  {yearGroup.year}
-                </h2>
+              <div className="min-w-0 flex items-center gap-3">
+                <Image
+                  src="/icons/kalendar.png"
+                  alt=""
+                  width={56}
+                  height={56}
+                  sizes="56px"
+                  className="h-11 w-11 shrink-0 object-contain sm:h-12 sm:w-12"
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold uppercase tracking-[0.08em] text-white">
+                    Cashflow rok
+                  </p>
+                  <h2 className="text-xl sm:text-2xl font-semibold text-white">
+                    {yearGroup.year}
+                  </h2>
+                </div>
               </div>
 
               <div className="flex items-center gap-3 sm:gap-4">

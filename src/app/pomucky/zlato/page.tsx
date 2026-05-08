@@ -1326,7 +1326,10 @@ export default function GoldToolPage() {
       <div className="w-full bg-white px-3 py-4 sm:px-4 sm:py-6 lg:px-8">
         <div className="mx-auto w-full max-w-5xl space-y-4 font-mono text-slate-900">
           <header className="flex flex-col gap-1">
-            <SplitTitle text="Zlato" className="!text-slate-900" />
+            <SplitTitle
+              text="Detailní pohyby cen zlata a přehled cen u partnera Comfort Commodity"
+              className="!text-slate-900"
+            />
           </header>
 
           <section className="space-y-4">
