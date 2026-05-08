@@ -173,6 +173,7 @@ export async function POST(req: NextRequest) {
         type: "test_push",
         message,
         createdAt: new Date().toISOString(),
+        deepLink: "/nastaveni",
       },
       webpush: {
         fcmOptions: {

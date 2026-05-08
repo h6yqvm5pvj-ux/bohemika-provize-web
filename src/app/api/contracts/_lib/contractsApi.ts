@@ -2312,6 +2312,7 @@ const sendNewContractPushNotification = async ({
         entryId,
         contractNumber: contractNumber ?? "",
         createdAt: createdAtIso,
+        deepLink: `/smlouvy/${encodeURIComponent(`${ownerEmail}___${entryId}`)}`,
       },
       webpush: {
         fcmOptions: {

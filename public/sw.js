@@ -103,29 +103,37 @@ self.addEventListener("push", (event) => {
     payload = { message: event.data.text() };
   }
 
-  // If FCM already carries a display notification payload, let the browser/SDK handle it
-  // to avoid duplicate notifications.
-  if (payload?.notification) {
-    return;
-  }
+  const notificationPayload =
+    payload?.notification && typeof payload.notification === "object"
+      ? payload.notification
+      : {};
+  const dataPayload =
+    payload?.data && typeof payload.data === "object" ? payload.data : {};
 
-  const title =
-    payload?.notification?.title ||
-    payload?.title ||
-    "Bohemika SmartApp";
+  const title = notificationPayload.title || payload?.title || "Bohemika SmartApp";
   const body =
-    payload?.notification?.body ||
+    notificationPayload.body ||
     payload?.message ||
+    payload?.body ||
     "Máš novou notifikaci.";
-  const url = payload?.data?.deepLink || payload?.deepLink || "/nastaveni";
+  const icon = notificationPayload.icon || "/pwa/icon-192.png";
+  const badge = notificationPayload.badge || "/pwa/icon-192.png";
+  const tag =
+    notificationPayload.tag || payload?.tag || `bohemika-push-${Date.now()}`;
+  const url =
+    dataPayload.deepLink ||
+    dataPayload.link ||
+    payload?.deepLink ||
+    payload?.link ||
+    "/nastaveni";
 
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: "/pwa/icon-192.png",
-      badge: "/pwa/icon-192.png",
+      icon,
+      badge,
       data: { url },
-      tag: payload?.notification?.tag || "bohemika-push",
+      tag,
     })
   );
 });
