@@ -77,6 +77,8 @@ type WallPost = {
   createdAtMs: number | null;
   updatedAtMs: number | null;
   commentCount: number;
+  likeCount: number;
+  likedByMe: boolean;
   author: WallAuthor;
   attachments: WallAttachment[];
   comments: WallComment[];
@@ -196,6 +198,17 @@ const parseAttachments = (value: unknown): WallAttachment[] => {
       } satisfies WallAttachment;
     })
     .filter((item): item is WallAttachment => item !== null);
+};
+
+const parseLikedByEmails = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    const normalized = normalizeEmail(raw);
+    if (!normalized) continue;
+    seen.add(normalized);
+  }
+  return Array.from(seen);
 };
 
 const parseAuthor = (
@@ -336,7 +349,9 @@ const sendIntranetPostPushNotification = async ({
     180
   );
 
-  const deepLink = `/intranet?section=${encodeURIComponent(section)}`;
+  const deepLink = `/intranet?section=${encodeURIComponent(
+    section
+  )}&postId=${encodeURIComponent(postId)}`;
   const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
   const webPushLink = `${baseUrl}${deepLink}`;
   const createdAtIso = new Date().toISOString();
@@ -596,7 +611,8 @@ async function loadCommentsForPost(postId: string): Promise<WallComment[]> {
 function mapPostFromDoc(
   docId: string,
   raw: Record<string, unknown>,
-  comments: WallComment[]
+  comments: WallComment[],
+  viewerEmail: string
 ): WallPost | null {
   const title = normalizeText(raw.title);
   const text = normalizeText(raw.text);
@@ -611,6 +627,12 @@ function mapPostFromDoc(
   const commentCount = Number.isFinite(commentCountRaw)
     ? Math.max(0, Math.floor(commentCountRaw))
     : comments.length;
+  const likedByEmails = parseLikedByEmails(raw.likedByEmails);
+  const likeCountRaw = Number(raw.likeCount);
+  const likeCount = Number.isFinite(likeCountRaw)
+    ? Math.max(0, Math.floor(likeCountRaw))
+    : likedByEmails.length;
+  const likedByMe = viewerEmail ? likedByEmails.includes(viewerEmail) : false;
   const attachments = parseAttachments(raw.attachments);
 
   return {
@@ -622,6 +644,8 @@ function mapPostFromDoc(
     createdAtMs: toMillis(raw.createdAt),
     updatedAtMs: toMillis(raw.updatedAt),
     commentCount,
+    likeCount,
+    likedByMe,
     author,
     attachments,
     comments,
@@ -666,6 +690,7 @@ export async function GET(req: NextRequest) {
       : POSTS_DEFAULT_LIMIT;
 
   try {
+    const viewerEmail = normalizeEmail(ctx.email);
     const queryLimit = section ? Math.max(limit * 4, 80) : limit;
     const query = adminDb
       .collection(POSTS_COLLECTION)
@@ -677,7 +702,7 @@ export async function GET(req: NextRequest) {
       postsSnap.docs.map(async (doc) => {
         const raw = doc.data() as Record<string, unknown>;
         const comments = await loadCommentsForPost(doc.id);
-        return mapPostFromDoc(doc.id, raw, comments);
+        return mapPostFromDoc(doc.id, raw, comments, viewerEmail);
       })
     );
 
@@ -847,6 +872,8 @@ export async function POST(req: NextRequest) {
       createdByName: authorName,
       attachments,
       commentCount: 0,
+      likeCount: 0,
+      likedByEmails: [],
       createdAt: timestamp,
       updatedAt: timestamp,
     });

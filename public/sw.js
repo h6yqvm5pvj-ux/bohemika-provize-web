@@ -149,10 +149,30 @@ self.addEventListener("notificationclick", (event) => {
   const targetUrl = new URL(targetPath, self.location.origin).href;
 
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      const matching = clients.find((client) => client.url === targetUrl);
-      if (matching) return matching.focus();
-      return self.clients.openWindow(targetUrl);
-    })
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then(async (clients) => {
+        const matching = clients.find((client) => client.url === targetUrl);
+        if (matching) return matching.focus();
+
+        const sameOriginClient = clients.find((client) => {
+          try {
+            return new URL(client.url).origin === self.location.origin;
+          } catch {
+            return false;
+          }
+        });
+
+        if (sameOriginClient) {
+          try {
+            await sameOriginClient.navigate(targetUrl);
+          } catch {
+            // ignore navigation errors and just focus existing tab
+          }
+          return sameOriginClient.focus();
+        }
+
+        return self.clients.openWindow(targetUrl);
+      })
   );
 });

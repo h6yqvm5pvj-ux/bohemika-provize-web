@@ -2,12 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import Image from "next/image";
 import { Space_Grotesk } from "next/font/google";
 import type { LucideIcon } from "lucide-react";
 import {
   CarFront,
+  ChevronDown,
+  ChevronUp,
   CircleHelp,
   Clock3,
+  Heart,
   HeartPulse,
   Home,
   Image as ImageIcon,
@@ -44,6 +48,10 @@ const wallFont = Space_Grotesk({
   weight: ["400", "500", "600", "700"],
 });
 
+const INTRANET_SECTION_KEY_SET = new Set<IntranetSectionKey>(
+  INTRANET_SECTIONS.map((section) => section.key)
+);
+
 type WallAuthor = {
   uid: string;
   email: string;
@@ -76,6 +84,8 @@ type WallPost = {
   createdAtMs: number | null;
   updatedAtMs: number | null;
   commentCount: number;
+  likeCount: number;
+  likedByMe: boolean;
   author: WallAuthor;
   attachments: WallAttachment[];
   comments: WallComment[];
@@ -103,6 +113,14 @@ type WallCommentCreateResponse = {
   ok?: boolean;
   error?: string;
   commentId?: string;
+};
+
+type WallLikeResponse = {
+  ok?: boolean;
+  error?: string;
+  postId?: string;
+  likeCount?: number;
+  likedByMe?: boolean;
 };
 
 type SectionVisual = {
@@ -270,16 +288,6 @@ const isPreviewableImage = (file: File): boolean => {
   return name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
 };
 
-const initialsFromName = (name: string): string => {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2);
-  if (!parts.length) return "?";
-  return parts.map((part) => part.charAt(0).toUpperCase()).join("");
-};
-
 export default function IntranetPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [selectedSection, setSelectedSection] = useState<IntranetSectionKey>("obecne");
@@ -301,10 +309,24 @@ export default function IntranetPage() {
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentPostingById, setCommentPostingById] = useState<Record<string, boolean>>({});
   const [commentErrorById, setCommentErrorById] = useState<Record<string, string | null>>({});
+  const [expandedCommentsById, setExpandedCommentsById] = useState<Record<string, boolean>>({});
+  const [commentComposerOpenById, setCommentComposerOpenById] = useState<Record<string, boolean>>(
+    {}
+  );
+  const [likePostingById, setLikePostingById] = useState<Record<string, boolean>>({});
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
+  const [pendingFocusPostId, setPendingFocusPostId] = useState<string | null>(null);
+  const [highlightPostId, setHighlightPostId] = useState<string | null>(null);
+  const [deepLinkSection, setDeepLinkSection] = useState<IntranetSectionKey | null>(
+    null
+  );
+  const [deepLinkPostId, setDeepLinkPostId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const commentInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const postCardRefs = useRef<Record<string, HTMLElement | null>>({});
   const dragDepthRef = useRef(0);
+  const highlightTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
@@ -312,6 +334,34 @@ export default function IntranetPage() {
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const parseDeepLinkFromLocation = () => {
+      const params = new URLSearchParams(window.location.search);
+      const sectionRaw = (params.get("section") ?? "").trim();
+      const section = INTRANET_SECTION_KEY_SET.has(sectionRaw as IntranetSectionKey)
+        ? (sectionRaw as IntranetSectionKey)
+        : null;
+      const postId = (params.get("postId") ?? "").trim() || null;
+      setDeepLinkSection(section);
+      setDeepLinkPostId(postId);
+    };
+    parseDeepLinkFromLocation();
+    window.addEventListener("popstate", parseDeepLinkFromLocation);
+    return () => window.removeEventListener("popstate", parseDeepLinkFromLocation);
+  }, []);
+
+  useEffect(() => {
+    if (deepLinkSection && deepLinkSection !== selectedSection) {
+      setSelectedSection(deepLinkSection);
+    }
+    if (deepLinkPostId) {
+      setPendingFocusPostId(deepLinkPostId);
+    }
+    // URL query params should be applied only when they change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkSection, deepLinkPostId]);
 
   useEffect(() => {
     if (!postModalOpen) return;
@@ -344,7 +394,17 @@ export default function IntranetPage() {
       if (!payload?.ok) {
         throw new Error(payload?.error || "Server nevrátil úspěšnou odpověď.");
       }
-      setPosts(Array.isArray(payload.posts) ? payload.posts : []);
+      const rawPosts = Array.isArray(payload.posts) ? payload.posts : [];
+      setPosts(
+        rawPosts.map((post) => ({
+          ...post,
+          likeCount:
+            Number.isFinite(post.likeCount) && post.likeCount >= 0
+              ? Math.floor(post.likeCount)
+              : 0,
+          likedByMe: post.likedByMe === true,
+        }))
+      );
     } catch (error) {
       setPostsError(
         error instanceof Error ? error.message : "Nepodařilo se načíst příspěvky."
@@ -362,6 +422,43 @@ export default function IntranetPage() {
     }
     void loadPosts(user, selectedSection);
   }, [user, selectedSection]);
+
+  useEffect(() => {
+    if (!pendingFocusPostId || loadingPosts) return;
+    const targetExists = posts.some((post) => post.id === pendingFocusPostId);
+    if (!targetExists) return;
+
+    const node = postCardRefs.current[pendingFocusPostId];
+    if (!(node instanceof HTMLElement)) return;
+
+    node.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    setHighlightPostId(pendingFocusPostId);
+
+    if (highlightTimerRef.current != null) {
+      window.clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = null;
+    }
+    highlightTimerRef.current = window.setTimeout(() => {
+      setHighlightPostId((current) =>
+        current === pendingFocusPostId ? null : current
+      );
+      highlightTimerRef.current = null;
+    }, 2600);
+
+    setPendingFocusPostId(null);
+  }, [pendingFocusPostId, loadingPosts, posts]);
+
+  useEffect(
+    () => () => {
+      if (highlightTimerRef.current != null) {
+        window.clearTimeout(highlightTimerRef.current);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     const created: string[] = [];
@@ -557,6 +654,7 @@ export default function IntranetPage() {
       }
 
       setCommentDrafts((prev) => ({ ...prev, [postId]: "" }));
+      setExpandedCommentsById((prev) => ({ ...prev, [postId]: true }));
       await loadPosts(user, selectedSection);
     } catch (error) {
       setCommentErrorById((prev) => ({
@@ -569,6 +667,60 @@ export default function IntranetPage() {
     }
   };
 
+  const handleToggleComments = (postId: string) => {
+    const nextExpanded = !expandedCommentsById[postId];
+    setExpandedCommentsById((prev) => ({ ...prev, [postId]: nextExpanded }));
+    if (!nextExpanded) {
+      setCommentComposerOpenById((prev) => ({ ...prev, [postId]: false }));
+    }
+  };
+
+  const handleOpenCommentComposer = (postId: string) => {
+    setExpandedCommentsById((prev) => ({ ...prev, [postId]: true }));
+    setCommentComposerOpenById((prev) => ({ ...prev, [postId]: true }));
+    setTimeout(() => {
+      commentInputRefs.current[postId]?.focus();
+    }, 0);
+  };
+
+  const handleToggleLike = async (postId: string) => {
+    if (!user || likePostingById[postId]) return;
+
+    setLikePostingById((prev) => ({ ...prev, [postId]: true }));
+    setPostsError(null);
+    try {
+      const payload = await fetchAuthedJsonOrThrow<WallLikeResponse>(
+        user,
+        `/api/intranet/wall/${encodeURIComponent(postId)}/like`,
+        { method: "POST" }
+      );
+      if (!payload?.ok) {
+        throw new Error(payload?.error || "Server nevrátil úspěšnou odpověď.");
+      }
+
+      setPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId
+            ? {
+                ...post,
+                likeCount:
+                  typeof payload.likeCount === "number" &&
+                  Number.isFinite(payload.likeCount) &&
+                  payload.likeCount >= 0
+                    ? Math.floor(payload.likeCount)
+                    : post.likeCount,
+                likedByMe: payload.likedByMe === true,
+              }
+            : post
+        )
+      );
+    } catch (error) {
+      setPostsError(error instanceof Error ? error.message : "Nepodařilo se uložit lajk.");
+    } finally {
+      setLikePostingById((prev) => ({ ...prev, [postId]: false }));
+    }
+  };
+
   const canDeletePost = (post: WallPost): boolean => {
     const me = normalizeEmail(user?.email);
     const author = normalizeEmail(post.author.email);
@@ -577,7 +729,7 @@ export default function IntranetPage() {
 
   return (
     <AppLayout active="intranet">
-      <div className={`${wallFont.className} relative w-full overflow-hidden px-2 pb-10 pt-2 sm:px-3`}>
+      <div className={`${wallFont.className} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
         <div className={styles.canvas} aria-hidden="true">
           <span className={`${styles.orb} ${styles.orbA}`} />
           <span className={`${styles.orb} ${styles.orbB}`} />
@@ -716,11 +868,22 @@ export default function IntranetPage() {
                   const visual = SECTION_VISUALS[post.section] ?? SECTION_VISUALS.obecne;
                   const SectionIcon = visual.icon;
                   const isDeletingThis = deletingPostId === post.id;
+                  const commentsExpanded = expandedCommentsById[post.id] === true;
+                  const commentComposerOpen = commentComposerOpenById[post.id] === true;
+                  const isLikingThis = likePostingById[post.id] === true;
+                  const isCommentPostingThis = commentPostingById[post.id] === true;
 
                   return (
                     <article
                       key={post.id}
-                      className={`${styles.wallCard} relative overflow-hidden rounded-[30px] border border-white/75 bg-white/88 p-4 shadow-[0_18px_52px_rgba(15,23,42,0.14)] backdrop-blur-xl ring-1 ${visual.postAccent}`}
+                      ref={(node) => {
+                        postCardRefs.current[post.id] = node;
+                      }}
+                      className={`${styles.wallCard} relative overflow-hidden rounded-[30px] border border-white/75 bg-white/88 p-4 shadow-[0_18px_52px_rgba(15,23,42,0.14)] backdrop-blur-xl ring-1 ${visual.postAccent} ${
+                        highlightPostId === post.id
+                          ? "ring-2 ring-emerald-300 shadow-[0_0_0_4px_rgba(16,185,129,0.14),0_24px_54px_rgba(15,23,42,0.16)]"
+                          : ""
+                      }`}
                       style={{ animationDelay: `${Math.min(index * 50, 240)}ms` }}
                     >
                       <div
@@ -730,10 +893,14 @@ export default function IntranetPage() {
 
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 items-start gap-3">
-                          <div
-                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xs font-bold shadow-inner ${visual.avatarBg}`}
-                          >
-                            {initialsFromName(post.author.name)}
+                          <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl shadow-inner ring-1 ring-slate-200">
+                            <Image
+                              src="/icons/klient.png"
+                              alt="Ikona klienta"
+                              fill
+                              sizes="44px"
+                              className="object-cover"
+                            />
                           </div>
 
                           <div className="min-w-0">
@@ -759,9 +926,6 @@ export default function IntranetPage() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                            {post.commentCount} komentářů
-                          </span>
                           {canDeletePost(post) ? (
                             <button
                               type="button"
@@ -832,90 +996,156 @@ export default function IntranetPage() {
                         </div>
                       ) : null}
 
-                      <div className="mt-4 rounded-2xl border border-slate-200/90 bg-[linear-gradient(150deg,rgba(248,250,252,0.95)_0%,rgba(255,255,255,0.95)_100%)] p-3">
-                        <div className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-slate-500">
-                          <MessageSquare className="h-3.5 w-3.5" />
-                          Komentáře
-                        </div>
-
-                        <div className="space-y-2">
-                          {post.comments.length === 0 ? (
-                            <div className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-500">
-                              Zatím bez komentářů.
-                            </div>
+                      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/90 bg-[linear-gradient(150deg,rgba(248,250,252,0.95)_0%,rgba(255,255,255,0.95)_100%)] p-2.5">
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleLike(post.id)}
+                          disabled={isLikingThis || !user}
+                          className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                            post.likedByMe
+                              ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                              : "border-slate-300 bg-white text-slate-700 hover:border-slate-500 hover:bg-slate-100"
+                          }`}
+                        >
+                          {isLikingThis ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           ) : (
-                            post.comments.map((comment) => (
-                              <div
-                                key={comment.id}
-                                className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2"
-                              >
-                                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                                  <span
-                                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${visual.avatarBg}`}
-                                  >
-                                    {initialsFromName(comment.author.name)}
-                                  </span>
-                                  <span className="font-semibold text-slate-700">{comment.author.name}</span>
-                                  <span>{formatDateTime(comment.createdAtMs)}</span>
-                                </div>
-                                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
-                                  {comment.text}
-                                </p>
-                              </div>
-                            ))
+                            <Heart className={`h-3.5 w-3.5 ${post.likedByMe ? "fill-current" : ""}`} />
                           )}
-                        </div>
+                          <span>{post.likedByMe ? "Líbí se mi" : "Like"}</span>
+                          <span className="rounded-full border border-current/25 px-1.5 py-0.5 leading-none">
+                            {post.likeCount}
+                          </span>
+                        </button>
 
-                        <div className="mt-3 space-y-2">
-                          <textarea
-                            value={commentDrafts[post.id] ?? ""}
-                            onChange={(event) =>
-                              setCommentDrafts((prev) => ({
-                                ...prev,
-                                [post.id]: event.target.value,
-                              }))
-                            }
-                            rows={2}
-                            placeholder="Napiš komentář..."
-                            className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
-                          />
+                        <button
+                          type="button"
+                          onClick={() => handleToggleComments(post.id)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          {post.commentCount} komentářů
+                          {commentsExpanded ? (
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          ) : (
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          )}
+                        </button>
 
-                          <div className="flex flex-wrap gap-1.5">
-                            {QUICK_EMOJIS.slice(0, 8).map((emoji) => (
-                              <button
-                                key={`${post.id}-${emoji}`}
-                                type="button"
-                                onClick={() => addEmojiToComment(post.id, emoji)}
-                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm transition hover:border-slate-500 hover:bg-slate-100"
-                              >
-                                {emoji}
-                              </button>
-                            ))}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCommentComposer(post.id)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Přidat komentář
+                        </button>
+                      </div>
+
+                      {commentsExpanded ? (
+                        <div className="mt-3 rounded-2xl border border-slate-200/90 bg-[linear-gradient(150deg,rgba(248,250,252,0.95)_0%,rgba(255,255,255,0.95)_100%)] p-3">
+                          <div className="space-y-2">
+                            {post.comments.length === 0 ? (
+                              <div className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-500">
+                                Zatím bez komentářů.
+                              </div>
+                            ) : (
+                              post.comments.map((comment) => (
+                                <div
+                                  key={comment.id}
+                                  className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2"
+                                >
+                                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                    <span className="relative inline-flex h-6 w-6 overflow-hidden rounded-full ring-1 ring-slate-300">
+                                      <Image
+                                        src="/icons/klient.png"
+                                        alt="Ikona klienta"
+                                        fill
+                                        sizes="24px"
+                                        className="object-cover"
+                                      />
+                                    </span>
+                                    <span className="font-semibold text-slate-700">{comment.author.name}</span>
+                                    <span>{formatDateTime(comment.createdAtMs)}</span>
+                                  </div>
+                                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                                    {comment.text}
+                                  </p>
+                                </div>
+                              ))
+                            )}
                           </div>
 
-                          {commentErrorById[post.id] ? (
-                            <div className="rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700">
-                              {commentErrorById[post.id]}
+                          {commentComposerOpen ? (
+                            <div className="mt-3 space-y-2">
+                              <textarea
+                                ref={(node) => {
+                                  commentInputRefs.current[post.id] = node;
+                                }}
+                                value={commentDrafts[post.id] ?? ""}
+                                onChange={(event) =>
+                                  setCommentDrafts((prev) => ({
+                                    ...prev,
+                                    [post.id]: event.target.value,
+                                  }))
+                                }
+                                rows={2}
+                                placeholder="Napiš komentář..."
+                                className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+                              />
+
+                              <div className="flex flex-wrap gap-1.5">
+                                {QUICK_EMOJIS.slice(0, 8).map((emoji) => (
+                                  <button
+                                    key={`${post.id}-${emoji}`}
+                                    type="button"
+                                    onClick={() => addEmojiToComment(post.id, emoji)}
+                                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm transition hover:border-slate-500 hover:bg-slate-100"
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+
+                              {commentErrorById[post.id] ? (
+                                <div className="rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700">
+                                  {commentErrorById[post.id]}
+                                </div>
+                              ) : null}
+
+                              <div className="flex items-center justify-between gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setCommentComposerOpenById((prev) => ({
+                                      ...prev,
+                                      [post.id]: false,
+                                    }))
+                                  }
+                                  className="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                  Zavřít formulář
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => void handleCreateComment(post.id)}
+                                  disabled={isCommentPostingThis || !user}
+                                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {isCommentPostingThis ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Send className="h-3.5 w-3.5" />
+                                  )}
+                                  Odeslat komentář
+                                </button>
+                              </div>
                             </div>
                           ) : null}
-
-                          <div className="flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() => void handleCreateComment(post.id)}
-                              disabled={commentPostingById[post.id] || !user}
-                              className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {commentPostingById[post.id] ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Send className="h-3.5 w-3.5" />
-                              )}
-                              Odeslat komentář
-                            </button>
-                          </div>
                         </div>
-                      </div>
+                      ) : null}
                     </article>
                   );
                 })}
