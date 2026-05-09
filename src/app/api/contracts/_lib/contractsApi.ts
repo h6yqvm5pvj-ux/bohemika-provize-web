@@ -785,6 +785,7 @@ const ENABLE_CONTRACT_CREATE_PUSH = false;
 const NEW_CONTRACT_PUSH_MAX_RECIPIENTS = 40;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_USER = 30;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_MULTICAST = 500;
+const DEFAULT_PUBLIC_APP_ORIGIN = "https://bohemka.app";
 
 let cachedUserTree: { value: UserTreeResult; expiresAtMs: number } | null = null;
 let cachedUserTreePromise: Promise<UserTreeResult> | null = null;
@@ -2219,6 +2220,41 @@ const isNewContractPushEnabled = (profile: Record<string, unknown>): boolean => 
   return isTypeEnabled && isPushChannelEnabled;
 };
 
+const normalizeOriginUrl = (value: string | null | undefined): string | null => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const parsed = new URL(withProtocol);
+    if (!parsed.hostname) return null;
+    if (parsed.protocol !== "https:" && parsed.hostname !== "localhost") return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+};
+
+const resolvePublicAppOrigin = (req: NextRequest): string => {
+  const fromEnv =
+    normalizeOriginUrl(process.env.NEXT_PUBLIC_APP_URL) ??
+    normalizeOriginUrl(process.env.PUBLIC_APP_URL) ??
+    normalizeOriginUrl(process.env.APP_URL) ??
+    normalizeOriginUrl(process.env.NEXTAUTH_URL);
+  if (fromEnv) return fromEnv;
+
+  const fromVercelProdDomain = normalizeOriginUrl(
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : null
+  );
+  if (fromVercelProdDomain) return fromVercelProdDomain;
+
+  const fromRequest = normalizeOriginUrl(`${req.nextUrl.protocol}//${req.nextUrl.host}`);
+  if (fromRequest) return fromRequest;
+
+  return DEFAULT_PUBLIC_APP_ORIGIN;
+};
+
 const loadNewContractPushRecipients = async (
   emails: string[]
 ): Promise<NewContractPushRecipient[]> => {
@@ -2295,7 +2331,7 @@ const sendNewContractPushNotification = async ({
 
   const contractDetailSlug = encodeURIComponent(`${ownerEmail}___${entryId}`);
   const deepLink = `/smlouvy/${contractDetailSlug}?from=list&source=push`;
-  const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+  const baseUrl = resolvePublicAppOrigin(req);
   const webPushLink = `${baseUrl}${deepLink}`;
   const createdAtIso = new Date().toISOString();
 
