@@ -27,9 +27,30 @@ function normalizePushLinkCandidate(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function parseObjectFromUnknown(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isAppNavigationPath(pathname) {
+  return (
+    pathname === "/" ||
+    /^\/(login|nastaveni|smlouvy|muj-tym|pomucky|kalkulacka|cuzk|cashflow)(\/.*)?$/.test(
+      pathname
+    )
+  );
+}
+
 function pickPushTargetFromPayload(payload) {
-  if (!payload || typeof payload !== "object") return null;
-  const row = payload;
+  const row = parseObjectFromUnknown(payload);
+  if (!row) return null;
   const nestedData =
     row.data && typeof row.data === "object" ? row.data : {};
   const nestedNotification =
@@ -44,13 +65,13 @@ function pickPushTargetFromPayload(payload) {
         : {};
 
   const candidates = [
-    row.url,
     row.deepLink,
-    row.link,
-    row.click_action,
-    nestedData.url,
     nestedData.deepLink,
+    row.url,
+    nestedData.url,
+    row.link,
     nestedData.link,
+    row.click_action,
     nestedData.click_action,
     nestedNotification.click_action,
     nestedNotification.link,
@@ -66,17 +87,11 @@ function pickPushTargetFromPayload(payload) {
 }
 
 function resolveNotificationTargetPath(notification) {
-  const data = notification?.data;
+  const data = parseObjectFromUnknown(notification?.data);
   const direct = pickPushTargetFromPayload(data);
   if (direct) return direct;
 
-  const fcmWrapped =
-    data &&
-    typeof data === "object" &&
-    data.FCM_MSG &&
-    typeof data.FCM_MSG === "object"
-      ? data.FCM_MSG
-      : null;
+  const fcmWrapped = data && typeof data === "object" ? parseObjectFromUnknown(data.FCM_MSG) : null;
   const fromWrapped = pickPushTargetFromPayload(fcmWrapped);
   if (fromWrapped) return fromWrapped;
 
@@ -86,8 +101,12 @@ function resolveNotificationTargetPath(notification) {
 function resolveSameOriginTargetUrl(targetPath) {
   try {
     const parsed = new URL(targetPath, self.location.origin);
-    if (parsed.origin !== self.location.origin) {
+    const normalizedPath = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    if (!isAppNavigationPath(parsed.pathname)) {
       return new URL("/nastaveni", self.location.origin).href;
+    }
+    if (parsed.origin !== self.location.origin) {
+      return new URL(normalizedPath, self.location.origin).href;
     }
     return parsed.href;
   } catch {
