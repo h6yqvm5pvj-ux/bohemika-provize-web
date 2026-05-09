@@ -1418,14 +1418,27 @@ export default function SrovnavacTrvalychNasledkuPage() {
       const generatedAt = new Date().toLocaleString("cs-CZ");
 
       const scenariosHtml = scenarioValues
-        .map((scenario) => {
+        .map((scenario, scenarioIndex) => {
           const scenarioCards = [...applyCardFilters(buildCardsForPercent(scenario.percent))]
             .sort((a, b) => b.payout - a.payout);
+          const scenarioToneClass =
+            scenarioIndex === 0
+              ? "scenario--low"
+              : scenarioIndex === 1
+                ? "scenario--mid"
+                : "scenario--high";
+          const scenarioToneLabel =
+            scenarioIndex === 0
+              ? "Scénář A"
+              : scenarioIndex === 1
+                ? "Scénář B"
+                : "Scénář C";
           const rowsHtml = scenarioCards
             .map(
               (card, idx) => {
                 const logoPath = getInsurerLogoPath(card.insurer);
                 const logoKey = institutionLogoKeyFromInsurerName(card.insurer);
+                const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
                 const logoClass =
                   logoKey === "cpp" || logoKey === "kooperativa"
                     ? " insurer-logo--wide"
@@ -1434,17 +1447,36 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       : logoKey === "slavia"
                         ? " insurer-logo--square"
                         : "";
+                const rankBadgeClass =
+                  idx === 0
+                    ? "rank-badge rank-badge--top"
+                    : idx === 1
+                      ? "rank-badge rank-badge--second"
+                      : idx === 2
+                        ? "rank-badge rank-badge--third"
+                        : "rank-badge";
+                const variantText = card.badges.join(", ");
                 const insurerCell = logoPath
                   ? `<div class="insurer-cell"><span class="insurer-logo-wrap"><img class="insurer-logo${logoClass}" src="${escapeHtml(
                       logoPath
-                    )}" alt="" /></span><span>${escapeHtml(card.insurer)}</span></div>`
-                  : escapeHtml(card.insurer);
+                    )}" alt="" /></span><span class="insurer-copy"><span class="insurer-name">${escapeHtml(
+                      insurerName
+                    )}</span><span class="insurer-product">${escapeHtml(
+                      productName
+                    )}</span></span></div>`
+                  : `<div class="insurer-cell insurer-cell--text"><span class="insurer-copy"><span class="insurer-name">${escapeHtml(
+                      insurerName
+                    )}</span><span class="insurer-product">${escapeHtml(
+                      productName
+                    )}</span></span></div>`;
                 return `
                 <tr>
-                  <td>${idx + 1}.</td>
-                  <td>${insurerCell}</td>
-                  <td>${escapeHtml(card.badges.join(", "))}</td>
-                  <td>${escapeHtml(formatMoney(card.payout))}</td>
+                  <td class="rank-cell"><span class="${rankBadgeClass}">${idx + 1}</span></td>
+                  <td class="insurer-col">${insurerCell}</td>
+                  <td class="variant-col"><span class="variant-chip">${escapeHtml(
+                    variantText
+                  )}</span></td>
+                  <td class="amount-col">${escapeHtml(formatMoney(card.payout))}</td>
                 </tr>
               `;
               }
@@ -1452,14 +1484,33 @@ export default function SrovnavacTrvalychNasledkuPage() {
             .join("");
 
           return `
-            <section class="scenario-block">
-              <div class="scenario-title">${escapeHtml(scenario.label)} · rozsah poškození ${escapeHtml(
-                formatPercent(scenario.percent)
-              )}</div>
-              <div class="meta-row">
-                <div>Pojistná částka: <strong>${escapeHtml(formatMoney(sumInsuredValue))}</strong></div>
+            <section class="scenario-block ${scenarioToneClass}">
+              <div class="scenario-head">
+                <div class="scenario-kicker">${scenarioToneLabel}</div>
+                <div class="scenario-range">Rozsah poškození ${escapeHtml(
+                  formatPercent(scenario.percent)
+                )}</div>
               </div>
-              <table>
+              <div class="scenario-title">${escapeHtml(scenario.label)}</div>
+              <div class="meta-row">
+                <div class="meta-chip">
+                  <span class="meta-label">Pojistná částka</span>
+                  <strong class="meta-value">${escapeHtml(
+                    formatMoney(sumInsuredValue)
+                  )}</strong>
+                </div>
+                <div class="meta-chip">
+                  <span class="meta-label">Rozsah</span>
+                  <strong class="meta-value">${escapeHtml(
+                    formatPercent(scenario.percent)
+                  )}</strong>
+                </div>
+                <div class="meta-chip">
+                  <span class="meta-label">Počet variant</span>
+                  <strong class="meta-value">${scenarioCards.length}</strong>
+                </div>
+              </div>
+              <table class="scenario-table">
                 <thead>
                   <tr>
                     <th>#</th>
@@ -1479,15 +1530,24 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
       const pdfHtml = `
         <div class="pdf-page">
+          <div class="page-topbar">
+            <span class="topbar-pill">Bohemika.App interní report</span>
+            <span class="topbar-meta">Vygenerováno ${escapeHtml(generatedAt)}</span>
+          </div>
           <header class="page-header">
             <div class="brand-head">
               <img class="brand-logo" src="/icons/bohemika_logo.png" alt="Bohemika" />
-              <h1>
-                <span class="title-line">Porovnání plnění</span>
-                <span class="title-line">TRVALÝCH NÁSLEDKŮ ÚRAZU</span>
-              </h1>
+              <div class="title-block">
+                <h1>
+                  <span class="title-line">Porovnání plnění</span>
+                  <span class="title-line">TRVALÝCH NÁSLEDKŮ ÚRAZU</span>
+                </h1>
+                <div class="title-tags">
+                  <span class="title-tag">3 scénáře</span>
+                  <span class="title-tag title-tag-accent">PDF pro klienta</span>
+                </div>
+              </div>
             </div>
-            <div class="meta">Vygenerováno: ${escapeHtml(generatedAt)}</div>
           </header>
           <div class="scenarios-stack">
             ${scenariosHtml}
@@ -1499,167 +1559,363 @@ export default function SrovnavacTrvalychNasledkuPage() {
         <style>
           @page {
             size: A4 portrait;
-            margin: 8mm;
+            margin: 7mm;
           }
           * { box-sizing: border-box; }
           .pdf-root {
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-            background: #ffffff;
-            color: #0f172a;
+            font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(155deg, #edf3fb 0%, #f8fbff 55%, #eef4fc 100%);
+            color: #10213d;
+            padding: 6px;
           }
           .pdf-page {
             width: 100%;
-            padding: 8px;
+            padding: 12px 13px 14px;
+            border-radius: 22px;
+            border: 1px solid #d6e1f1;
+            background: linear-gradient(180deg, #ffffff 0%, #f9fcff 100%);
+            box-shadow:
+              0 18px 42px rgba(16, 33, 61, 0.14),
+              0 1px 0 rgba(255,255,255,0.9) inset;
+            position: relative;
+            overflow: hidden;
+          }
+          .pdf-page::before {
+            content: "";
+            position: absolute;
+            right: -110px;
+            top: -110px;
+            width: 250px;
+            height: 250px;
+            border-radius: 999px;
+            background: radial-gradient(circle at center, rgba(46,110,255,0.20) 0%, rgba(46,110,255,0) 72%);
+            pointer-events: none;
+          }
+          .page-topbar {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+          }
+          .topbar-pill {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            border: 1px solid #ccd9ec;
+            background: #f4f8ff;
+            color: #26406e;
+            padding: 4px 10px;
+            font-size: 9px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 700;
+          }
+          .topbar-meta {
+            font-size: 9px;
+            color: #647896;
+            letter-spacing: 0.03em;
+            font-weight: 600;
           }
           .scenarios-stack {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 9px;
+            position: relative;
+            z-index: 1;
           }
           .page-header {
             display: flex;
-            justify-content: space-between;
             align-items: flex-start;
-            gap: 12px;
-            margin-bottom: 8px;
+            gap: 10px;
+            margin-bottom: 11px;
           }
           .brand-head {
-            display: inline-flex;
+            display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 11px;
           }
           .brand-logo {
             width: auto;
-            height: 56px;
-            max-width: 52px;
+            height: 52px;
+            max-width: 48px;
             display: block;
           }
-          .page-header h1 {
+          .title-block h1 {
             margin: 0;
-            font-size: 26px;
-            line-height: 1.08;
+            font-size: 29px;
+            line-height: 1.02;
+            letter-spacing: 0.01em;
+            font-weight: 700;
+            color: #102344;
           }
           .title-line {
             display: block;
           }
-          .meta {
-            font-size: 13px;
-            color: #475569;
-            white-space: nowrap;
+          .title-tags {
+            margin-top: 7px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+          }
+          .title-tag {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 4px 8px;
+            border: 1px solid #d6e3f5;
+            background: #f5f9ff;
+            color: #274570;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+          }
+          .title-tag-accent {
+            background: linear-gradient(135deg, #264da3 0%, #1d3277 100%);
+            border-color: #1f3e87;
+            color: #ffffff;
           }
           .scenario-block {
-            border: 1px solid #cbd5e1;
-            border-radius: 10px;
-            padding: 8px;
+            --tone: #3b82f6;
+            border: 1px solid #cfdced;
+            border-radius: 15px;
+            padding: 11px;
             display: block;
-            break-inside: auto;
-            page-break-inside: auto;
+            background: linear-gradient(170deg, #ffffff 0%, #f7fbff 100%);
+            box-shadow: 0 10px 24px rgba(15, 30, 58, 0.09);
+            break-inside: avoid;
+            page-break-inside: avoid;
+            position: relative;
+            overflow: hidden;
           }
-          .scenario-title {
-            margin-bottom: 6px;
-            padding: 7px 10px;
-            border: 1px solid #020617;
-            border-radius: 8px;
-            background: #020617;
-            color: #ffffff;
-            font-size: 18px;
-            font-weight: 700;
-            text-align: center;
+          .scenario-block::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 10px;
+            bottom: 10px;
+            width: 4px;
+            border-radius: 0 6px 6px 0;
+            background: var(--tone);
+          }
+          .scenario--low { --tone: #1d72e8; }
+          .scenario--mid { --tone: #6246d1; }
+          .scenario--high { --tone: #0f9f6e; }
+          .scenario-head {
             display: flex;
             align-items: center;
-            justify-content: center;
-            min-height: 42px;
-            line-height: 1.1;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 5px;
+          }
+          .scenario-kicker {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            background: #eef4ff;
+            border: 1px solid #c8d7f0;
+            color: #274773;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 4px 8px;
+          }
+          .scenario-range {
+            font-size: 10px;
+            color: #3f5270;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+          }
+          .scenario-title {
+            margin-bottom: 7px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #10284c;
+            letter-spacing: 0.01em;
           }
           .meta-row {
             display: grid;
-            grid-template-columns: 1fr;
-            gap: 6px;
-            margin-bottom: 12px;
-            font-size: 14px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 7px;
+            margin-bottom: 8px;
           }
-          table {
+          .meta-chip {
+            border-radius: 10px;
+            border: 1px solid #d6e3f4;
+            background: #ffffff;
+            padding: 7px 8px;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 2px;
+          }
+          .meta-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #60758f;
+            font-weight: 700;
+          }
+          .meta-value {
+            font-size: 13px;
+            color: #182e4d;
+            font-weight: 800;
+          }
+          .scenario-table {
             width: 100%;
-            border-collapse: collapse;
-            border: 1px solid #1e293b;
-            border-radius: 8px;
+            border-collapse: separate;
+            border-spacing: 0;
+            border: 1px solid #cad8ec;
+            border-radius: 12px;
             overflow: hidden;
+            box-shadow: 0 8px 20px rgba(18, 34, 64, 0.08);
             break-inside: auto;
             page-break-inside: auto;
           }
-          thead th {
-            background: #0f172a;
-            color: #f8fafc;
+          .scenario-table thead th {
+            background: linear-gradient(135deg, #15315e 0%, #21498a 100%);
+            color: #f1f6ff;
             text-align: left;
-            font-size: 16px;
-            padding: 10px 12px;
+            font-size: 10px;
+            padding: 9px 10px;
             text-transform: uppercase;
             letter-spacing: 0.06em;
+            border-bottom: 1px solid rgba(255,255,255,0.18);
           }
-          tbody td {
-            border-top: 1px solid #cbd5e1;
-            padding: 10px 12px;
-            font-size: 16px;
+          .scenario-table tbody td {
+            border-top: 1px solid #e2eaf5;
+            padding: 9px 10px;
+            font-size: 12px;
             line-height: 1.25;
             page-break-inside: avoid;
           }
-          .insurer-cell {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
+          .scenario-table tbody tr:nth-child(odd) td { background: #ffffff; }
+          .scenario-table tbody tr:nth-child(even) td { background: #f7fbff; }
+          .rank-cell {
+            width: 50px;
+            text-align: center;
           }
-          .insurer-logo-wrap {
-            width: 52px;
-            height: 34px;
+          .rank-badge {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            flex: 0 0 52px;
+            min-width: 24px;
+            height: 24px;
+            border-radius: 999px;
+            border: 1px solid #c7d6eb;
+            background: #eff4fb;
+            color: #1a355d;
+            font-size: 11px;
+            font-weight: 800;
+            font-family: "Avenir Next", "Segoe UI", Arial, sans-serif;
+          }
+          .rank-badge--top {
+            border-color: #f2c777;
+            background: #fff4d9;
+            color: #9a5e00;
+          }
+          .rank-badge--second {
+            border-color: #b8cbef;
+            background: #edf4ff;
+            color: #2555a2;
+          }
+          .rank-badge--third {
+            border-color: #d2ccf5;
+            background: #f2efff;
+            color: #5b45be;
+          }
+          .insurer-col {
+            width: 42%;
+          }
+          .insurer-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .insurer-logo-wrap {
+            width: 46px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 46px;
+            border-radius: 8px;
+            border: 1px solid #cfddf0;
+            background: #ffffff;
+            box-shadow: 0 4px 10px rgba(15,30,56,0.08);
           }
           .insurer-logo {
             width: auto;
             height: auto;
-            max-width: 50px;
-            max-height: 32px;
+            max-width: 43px;
+            max-height: 26px;
             object-fit: contain;
             display: block;
             image-rendering: -webkit-optimize-contrast;
             image-rendering: high-quality;
           }
           .insurer-logo--wide {
-            max-width: 64px;
-            max-height: 40px;
+            max-width: 50px;
+            max-height: 30px;
           }
           .insurer-logo--medium {
-            max-width: 56px;
-            max-height: 36px;
+            max-width: 46px;
+            max-height: 28px;
           }
           .insurer-logo--square {
-            max-width: 46px;
-            max-height: 32px;
+            max-width: 40px;
+            max-height: 26px;
           }
-          thead th:first-child,
-          tbody td:first-child { width: 42px; }
-          thead th:last-child,
-          tbody td:last-child {
+          .insurer-copy {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+          }
+          .insurer-name {
+            color: #102546;
+            line-height: 1.2;
+            font-weight: 800;
+            font-size: 13px;
+          }
+          .insurer-product {
+            margin-top: 1px;
+            font-size: 10px;
+            color: #5b6f8a;
+            letter-spacing: 0.03em;
+          }
+          .variant-col {
+            width: 24%;
+          }
+          .variant-chip {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            border: 1px solid #d4dff1;
+            background: #f5f8ff;
+            color: #2c466f;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 4px 8px;
+            line-height: 1.2;
+          }
+          .amount-col {
+            width: 23%;
             text-align: right;
             white-space: nowrap;
+            color: #0f3c63;
+            font-weight: 800;
+            font-size: 18px;
+            font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI", sans-serif;
           }
-          tbody tr:nth-child(even) td {
-            background: #f8fafc;
-          }
-          tbody td:last-child {
-            font-weight: 700;
-            color: #065f46;
-          }
-          .empty, .empty-cell {
-            padding: 8px;
-            border: 1px dashed #94a3b8;
-            border-radius: 8px;
-            font-size: 10px;
-            color: #475569;
+          .empty-cell {
+            padding: 14px 10px;
+            font-size: 11px;
+            color: #4e637f;
             text-align: center;
-            background: #f8fafc;
+            background: #f5f9ff;
+            border-top: 1px dashed #c7d5ea;
           }
         </style>
       `;

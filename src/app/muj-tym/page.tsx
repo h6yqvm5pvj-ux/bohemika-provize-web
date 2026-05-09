@@ -1373,7 +1373,7 @@ export default function TeamPage() {
                   <div className="grid grid-cols-1 gap-2">
                     <Link
                       href="/pomucky/struktura"
-                      className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+                      className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-sky-300 bg-[linear-gradient(135deg,#f0f8ff_0%,#dceeff_100%)] px-3 py-2 text-sm font-semibold text-sky-900 shadow-[0_10px_22px_rgba(14,116,144,0.16)] transition hover:-translate-y-0.5 hover:border-sky-500 hover:shadow-[0_14px_30px_rgba(14,116,144,0.22)]"
                     >
                       <Network size={14} strokeWidth={2} aria-hidden="true" />
                       Struktura
@@ -1381,7 +1381,7 @@ export default function TeamPage() {
                     {canSendTeamMessage ? (
                       <Link
                         href="/pomucky/zprava-tymu"
-                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-[linear-gradient(135deg,#effcf6_0%,#dff8ec_100%)] px-3 py-2 text-sm font-semibold text-emerald-900 shadow-[0_10px_22px_rgba(5,150,105,0.16)] transition hover:-translate-y-0.5 hover:border-emerald-500 hover:shadow-[0_14px_30px_rgba(5,150,105,0.22)]"
                       >
                         <MessageSquare size={14} strokeWidth={2} aria-hidden="true" />
                         Zpráva týmu
@@ -1390,7 +1390,7 @@ export default function TeamPage() {
                     {showTeamSidebar ? (
                       <Link
                         href="/muj-tym/sin-slavy"
-                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-[linear-gradient(135deg,#fff8e9_0%,#ffefd0_100%)] px-3 py-2 text-sm font-semibold text-amber-900 shadow-[0_10px_22px_rgba(180,83,9,0.16)] transition hover:-translate-y-0.5 hover:border-amber-500 hover:shadow-[0_14px_30px_rgba(180,83,9,0.22)]"
                       >
                         <Trophy size={14} strokeWidth={2} aria-hidden="true" />
                         Síň slávy
@@ -1697,14 +1697,17 @@ export default function TeamPage() {
                                   );
                                   })}
                                   <div
-                                    className={`grid grid-cols-1 gap-1 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-white ${productionGridColsClass} sm:items-center sm:gap-3`}
+                                    className={`relative grid grid-cols-1 gap-1 overflow-hidden rounded-2xl border border-slate-800/90 bg-[linear-gradient(135deg,#0b1328_0%,#0e1a3a_54%,#081124_100%)] px-4 py-3 text-white shadow-[0_20px_48px_rgba(2,6,23,0.45)] ${productionGridColsClass} sm:items-center sm:gap-3`}
                                   >
-                                    <div className="text-base font-bold sm:text-lg">Celkem</div>
-                                    <div className="text-sm font-semibold sm:text-right sm:text-base">{selectedProductionTotals.contracts}x smluv</div>
+                                    <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
+                                    <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
+                                    <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
+                                    <div className="relative z-10 text-base font-bold !text-white drop-shadow-none sm:text-lg">Celkem</div>
+                                    <div className="relative z-10 text-sm font-semibold !text-white drop-shadow-none sm:text-right sm:text-base">{selectedProductionTotals.contracts}x smluv</div>
                                     {showMonthlyPremiumInProduction ? (
-                                      <div className="text-base font-bold text-emerald-300 sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
+                                      <div className="relative z-10 text-base font-bold tracking-tight text-emerald-200 drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)] sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
                                     ) : null}
-                                    <div className="text-base font-bold text-emerald-300 sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.annualPremium)}</div>
+                                    <div className="relative z-10 text-base font-bold tracking-tight text-emerald-200 drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)] sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.annualPremium)}</div>
                                   </div>
                                 </div>
                               )}

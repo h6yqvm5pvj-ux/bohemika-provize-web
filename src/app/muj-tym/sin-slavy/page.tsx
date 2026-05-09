@@ -21,6 +21,7 @@ import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { formatMoney as formatMoneyValue } from "@/app/lib/formatters";
 import { type Position } from "@/app/types/domain";
 import SplitTitle from "@/app/pomucky/plan-produkce/SplitTitle";
+import intranetStyles from "@/app/intranet/intranetWallArt.module.css";
 
 type TeamMember = {
   email: string;
@@ -131,6 +132,32 @@ const ACCENTS = [
     progress: "from-emerald-300 to-teal-200",
   },
 ];
+
+const HALL_TAB_VISUALS: Record<
+  HallCategory,
+  { chipActive: string; chipGlow: string }
+> = {
+  life: {
+    chipActive:
+      "border-rose-500 bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] text-white",
+    chipGlow: "shadow-[0_16px_36px_rgba(225,29,72,0.35)]",
+  },
+  auto: {
+    chipActive:
+      "border-blue-500 bg-[linear-gradient(135deg,#60a5fa_0%,#1d4ed8_100%)] text-white",
+    chipGlow: "shadow-[0_16px_36px_rgba(29,78,216,0.35)]",
+  },
+  property: {
+    chipActive:
+      "border-cyan-500 bg-[linear-gradient(135deg,#22d3ee_0%,#0e7490_100%)] text-white",
+    chipGlow: "shadow-[0_16px_36px_rgba(8,145,178,0.3)]",
+  },
+  gold: {
+    chipActive:
+      "border-yellow-500 bg-[linear-gradient(135deg,#facc15_0%,#ca8a04_100%)] text-slate-900",
+    chipGlow: "shadow-[0_16px_36px_rgba(202,138,4,0.35)]",
+  },
+};
 
 function isManagerPosition(position?: Position | null): boolean {
   return Boolean(position && position.startsWith("manazer"));
@@ -284,11 +311,6 @@ export default function HallOfFamePage() {
     setActiveDeckIndex((prev) => (prev + direction + deckRows.length) % deckRows.length);
   };
 
-  const categoryHint =
-    activeCategory === "property"
-      ? "Majetek zahrnuje vše kromě auta, života a zlata."
-      : "Pořadí je podle ročního pojistného v dané kategorii.";
-
   return (
     <AppLayout active="team">
       <div className="w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
@@ -327,19 +349,17 @@ export default function HallOfFamePage() {
           </div>
         ) : (
           <>
-            <section className="ui-card rounded-3xl p-4 sm:p-5" data-fixed-box-theme="slate">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2 text-slate-700">
-                  <Sparkles className="h-4 w-4 text-amber-500" aria-hidden="true" />
-                  <span className="text-xs font-semibold uppercase tracking-[0.18em]">Kategorie síně slávy</span>
-                </div>
-                <div className="text-xs text-slate-500">{categoryHint}</div>
+            <section className="px-1 pb-1">
+              <div className="flex items-center gap-2 text-slate-700">
+                <Sparkles className="h-4 w-4 text-amber-500" aria-hidden="true" />
+                <span className="text-xs font-semibold uppercase tracking-[0.18em]">Kategorie síně slávy</span>
               </div>
 
-              <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="mt-3 flex flex-wrap gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {HALL_TABS.map((tab) => {
                   const Icon = tab.icon;
                   const active = activeCategory === tab.key;
+                  const visual = HALL_TAB_VISUALS[tab.key];
                   return (
                     <button
                       key={tab.key}
@@ -348,11 +368,15 @@ export default function HallOfFamePage() {
                         setActiveCategory(tab.key);
                         setActiveDeckIndex(0);
                       }}
-                      className={`ui-chip ui-focus inline-flex shrink-0 items-center gap-2 px-3 py-2 text-xs ${
-                        active ? "ui-chip-active" : ""
-                      }`}
+                      className={[
+                        intranetStyles.sectionChip,
+                        "ui-focus inline-flex shrink-0 items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold transition",
+                        active
+                          ? `${visual.chipActive} ${visual.chipGlow}`
+                          : "border-slate-300/90 bg-white/88 text-slate-700 hover:-translate-y-0.5 hover:border-slate-400 hover:bg-white",
+                      ].join(" ")}
                     >
-                      <Icon size={13} strokeWidth={2} aria-hidden="true" />
+                      <Icon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                       {tab.label}
                     </button>
                   );
@@ -500,11 +524,11 @@ export default function HallOfFamePage() {
                         if (offset > total / 2) offset -= total;
                         if (offset < -total / 2) offset += total;
                         const distance = Math.abs(offset);
-                        if (distance > 2) return null;
+                        if (distance > 1) return null;
 
                         const isActive = offset === 0;
                         const accent = accentForRank(row.rank);
-                        const translateX = offset * 188;
+                        const translateX = offset * 224;
                         const scale = isActive ? 1 : 0.92;
                         const opacity = isActive ? 1 : 0.92;
                         const zIndex = 30 - distance;

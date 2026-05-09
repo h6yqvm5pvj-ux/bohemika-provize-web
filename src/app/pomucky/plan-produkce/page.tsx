@@ -262,119 +262,349 @@ export default function PlanProdukcePage() {
           <meta charset="utf-8" />
           <style>
             * { box-sizing: border-box; }
+            :root {
+              --ink: #10213d;
+              --line: #d8e2f0;
+              --navy: #112347;
+              --blue: #2e6eff;
+            }
             body {
               margin: 0;
-              padding: 24px 0;
-              background: #eef2ff;
-              font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-              color: #0f172a;
+              padding: 30px 0;
+              background: linear-gradient(155deg, #edf3fb 0%, #f8fbff 55%, #eef4fc 100%);
+              font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+              color: var(--ink);
+              -webkit-font-smoothing: antialiased;
             }
             .page {
               width: 760px;
               margin: 0 auto;
-              background: #f8fbff;
-              border-radius: 22px;
-              border: 1px solid #d7e1f3;
-              box-shadow: 0 24px 70px rgba(15,23,42,0.18);
-              padding: 24px 26px 28px;
+              background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+              border-radius: 28px;
+              border: 1px solid var(--line);
+              box-shadow:
+                0 26px 76px rgba(16, 33, 61, 0.14),
+                0 1px 0 rgba(255, 255, 255, 0.9) inset;
+              padding: 22px 26px 28px;
+              position: relative;
+              overflow: hidden;
             }
-            .header {
+            .page::before {
+              content: "";
+              position: absolute;
+              right: -120px;
+              top: -120px;
+              width: 280px;
+              height: 280px;
+              border-radius: 999px;
+              background: radial-gradient(circle at center, rgba(46,110,255,0.20) 0%, rgba(46,110,255,0) 72%);
+              pointer-events: none;
+            }
+            .page-topbar {
+              position: relative;
+              z-index: 1;
               display: flex;
               justify-content: space-between;
               align-items: center;
-              margin-bottom: 12px;
+              margin-bottom: 14px;
             }
-            .title h1 { margin: 0; font-size: 22px; letter-spacing: 0.02em; }
-            .title p { margin: 2px 0 0; font-size: 12px; color: #475569; }
+            .topbar-pill {
+              display: inline-flex;
+              align-items: center;
+              border-radius: 999px;
+              border: 1px solid #ccd9ec;
+              background: #f4f8ff;
+              color: #26406e;
+              padding: 5px 12px;
+              font-size: 10px;
+              letter-spacing: 0.08em;
+              text-transform: uppercase;
+              font-weight: 700;
+            }
+            .topbar-meta {
+              font-size: 10px;
+              color: #6a7a96;
+              letter-spacing: 0.03em;
+              font-weight: 600;
+            }
+            .page-header {
+              position: relative;
+              z-index: 1;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              gap: 12px;
+              margin-bottom: 14px;
+            }
+            .brand-head {
+              display: flex;
+              align-items: center;
+              gap: 12px;
+              min-width: 0;
+            }
+            .logo {
+              width: 58px;
+              height: 58px;
+              border-radius: 16px;
+              background: linear-gradient(165deg, #ffffff 0%, #ecf3ff 100%);
+              border: 1px solid #ccd9ec;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              box-shadow:
+                0 10px 26px rgba(16, 33, 61, 0.14),
+                0 1px 0 rgba(255,255,255,0.9) inset;
+              flex-shrink: 0;
+            }
+            .logo img {
+              max-width: 36px;
+              max-height: 36px;
+            }
+            .title h1 {
+              margin: 0;
+              font-size: 42px;
+              line-height: 0.95;
+              font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI", sans-serif;
+              letter-spacing: 0.01em;
+              color: var(--navy);
+              font-weight: 700;
+            }
+            .title-sub {
+              margin: 4px 0 0;
+              font-size: 12px;
+              color: #3f5270;
+              letter-spacing: 0.04em;
+              font-weight: 600;
+            }
+            .title-tags {
+              margin-top: 8px;
+              display: flex;
+              flex-wrap: wrap;
+              gap: 7px;
+            }
+            .title-tag {
+              display: inline-flex;
+              align-items: center;
+              border-radius: 999px;
+              padding: 5px 10px;
+              border: 1px solid #d7e3f4;
+              background: #f5f9ff;
+              color: #294775;
+              font-size: 10px;
+              font-weight: 700;
+              letter-spacing: 0.05em;
+              text-transform: uppercase;
+            }
+            .title-tag-accent {
+              background: linear-gradient(135deg, #264da3 0%, #1d3277 100%);
+              border-color: #213f89;
+              color: #ffffff;
+            }
+            .total-kpi {
+              flex-shrink: 0;
+              min-width: 220px;
+              border-radius: 16px;
+              border: 1px solid #cfdced;
+              background: linear-gradient(155deg, #f6faff 0%, #eef5ff 100%);
+              box-shadow: 0 12px 30px rgba(23, 48, 94, 0.10);
+              padding: 10px 12px;
+              text-align: right;
+            }
+            .kpi-label {
+              font-size: 10px;
+              text-transform: uppercase;
+              letter-spacing: 0.09em;
+              color: #5d7090;
+              font-weight: 700;
+            }
+            .kpi-value {
+              margin-top: 4px;
+              color: #112347;
+              font-size: 34px;
+              letter-spacing: 0.01em;
+              font-weight: 800;
+              font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI", sans-serif;
+            }
             .card {
               margin-top: 12px;
-              padding: 14px 16px;
+              padding: 14px 15px;
               border-radius: 16px;
-              background: linear-gradient(135deg,#ffffff,#f5f7fb);
-              border: 1px solid #d7e1f3;
-              box-shadow: 0 12px 40px rgba(15,23,42,0.12);
+              border: 1px solid #cfdced;
+              background: linear-gradient(170deg, #ffffff 0%, #f8fbff 100%);
+              box-shadow:
+                0 12px 30px rgba(15, 30, 58, 0.09),
+                0 1px 0 rgba(255,255,255,0.9) inset;
             }
-            .rows { display: grid; gap: 8px; }
+            .card-title {
+              margin: 0 0 8px;
+              font-size: 14px;
+              text-transform: uppercase;
+              letter-spacing: 0.1em;
+              color: #13284d;
+              font-weight: 800;
+              display: inline-flex;
+              align-items: center;
+              gap: 7px;
+            }
+            .card-title::before {
+              content: "";
+              width: 8px;
+              height: 8px;
+              border-radius: 999px;
+              background: linear-gradient(135deg, #2e6eff 0%, #8eb0ff 100%);
+              box-shadow: 0 0 0 4px rgba(46,110,255,0.15);
+            }
+            .rows {
+              display: grid;
+              gap: 2px;
+            }
             .row {
               display: grid;
-              grid-template-columns: 1fr 120px 120px 120px;
-              gap: 8px;
-              font-size: 12px;
               align-items: center;
+              gap: 8px;
+              font-size: 13px;
+              padding: 6px 0;
+            }
+            .row-3 {
+              grid-template-columns: minmax(0, 1fr) 120px 178px;
+            }
+            .row-4 {
+              grid-template-columns: minmax(0, 1fr) 110px 140px 150px;
             }
             .row.header {
               text-transform: uppercase;
               letter-spacing: 0.08em;
               font-weight: 700;
               color: #64748b;
-              border-bottom: 1px solid #e2e8f0;
-              padding-bottom: 6px;
-              margin-bottom: 4px;
+              border-bottom: 1px solid #dbe5f2;
+              padding-bottom: 7px;
+              margin-bottom: 2px;
+              font-size: 10px;
             }
-            .row strong { font-weight: 700; }
+            .cell-key {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              color: #1b3154;
+              min-width: 0;
+            }
+            .tone-dot {
+              width: 8px;
+              height: 8px;
+              border-radius: 999px;
+              flex-shrink: 0;
+              box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.06);
+            }
+            .tone-life { background: #0f9f6e; }
+            .tone-auto { background: #2e6eff; }
+            .tone-property { background: #c78b1f; }
+            .align-right { text-align: right; }
+            .strong {
+              font-weight: 800;
+              color: #142949;
+              font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI", sans-serif;
+              font-size: 18px;
+            }
             .total {
               display: flex;
               justify-content: space-between;
               margin-top: 10px;
-              padding-top: 10px;
-              border-top: 1px solid #e2e8f0;
-              font-size: 13px;
-              font-weight: 700;
+              padding-top: 9px;
+              border-top: 1px solid #dbe5f2;
+              font-size: 14px;
+              font-weight: 800;
+              color: #10284b;
             }
-            .hint { font-size: 11px; color: #475569; margin-top: 6px; }
+            .hint {
+              font-size: 10px;
+              color: #60748f;
+              margin-top: 7px;
+              line-height: 1.45;
+              border-top: 1px dashed #cad7ea;
+              padding-top: 7px;
+            }
           </style>
         </head>
         <body>
-            <div class="page">
-              <div class="header">
+          <div class="page">
+            <div class="page-topbar">
+              <span class="topbar-pill">Bohemika.App interní report</span>
+              <span class="topbar-meta">Vygenerováno ${dateLabel}</span>
+            </div>
+
+            <div class="page-header">
+              <div class="brand-head">
+                <div class="logo">
+                  <img src="/icons/bohemika_logo.png" alt="Bohemika logo" />
+                </div>
                 <div class="title">
                   <h1>Plán produkce</h1>
-                  <p>${fullName} • ${posLabel} • ${dateLabel}</p>
-                </div>
-                <div style="text-align:right">
-                  <div style="font-size:11px;color:#475569;">Odhad celkové okamžité provize</div>
-                  <div style="font-size:18px;font-weight:700;">${formatMoney(estimates.total)}</div>
+                  <p class="title-sub">${fullName} • ${posLabel}</p>
+                  <div class="title-tags">
+                    <span class="title-tag">Měsíční plán</span>
+                    <span class="title-tag title-tag-accent">Okamžitá provize</span>
+                  </div>
                 </div>
               </div>
 
-            <div class="card">
-              <div class="row header">
-                <div>Sekce</div>
-                <div style="text-align:right">Počet smluv</div>
-                <div style="text-align:right">Celkové pojistné</div>
+              <div class="total-kpi">
+                <div class="kpi-label">Odhad celkové okamžité provize</div>
+                <div class="kpi-value">${formatMoney(estimates.total)}</div>
               </div>
+            </div>
+
+            <div class="card">
+              <h2 class="card-title">Souhrn vstupních sekcí</h2>
               <div class="rows">
+                <div class="row row-3 header">
+                  <div>Sekce</div>
+                  <div class="align-right">Počet smluv</div>
+                  <div class="align-right">Celkové pojistné</div>
+                </div>
                 ${planRows
-                  .map(
-                    (r) => `
-                    <div class="row">
-                      <div>${r.title}</div>
-                      <div style="text-align:right">${r.contracts}</div>
-                      <div style="text-align:right;font-weight:700">${r.premium && Number(r.premium) > 0 ? formatMoney(parseNumber(r.premium)) : "—"}</div>
+                  .map((r, idx) => {
+                    const premiumValue = parseNumber(r.premium);
+                    const hasPremium = premiumValue > 0;
+                    const toneClass =
+                      idx === 0 ? "tone-life" : idx === 1 ? "tone-auto" : "tone-property";
+                    return `
+                    <div class="row row-3">
+                      <div class="cell-key">
+                        <span class="tone-dot ${toneClass}"></span>
+                        <span>${r.title}</span>
+                      </div>
+                      <div class="align-right">${r.contracts}</div>
+                      <div class="align-right strong">${hasPremium ? formatMoney(premiumValue) : "—"}</div>
                     </div>
-                  `
-                  )
+                  `;
+                  })
                   .join("")}
               </div>
             </div>
 
-            <div class="card" style="margin-top:12px;">
-              <div class="row header">
-                <div>Odpovídající provize</div>
-                <div style="text-align:right">Počet smluv</div>
-                <div style="text-align:right">Provize / smlouva</div>
-                <div style="text-align:right">Celkem</div>
-              </div>
+            <div class="card">
+              <h2 class="card-title">Odpovídající provize</h2>
               <div class="rows">
+                <div class="row row-4 header">
+                  <div>Produkt</div>
+                  <div class="align-right">Počet smluv</div>
+                  <div class="align-right">Provize / smlouva</div>
+                  <div class="align-right">Celkem</div>
+                </div>
                 ${provizeRows
-                  .map((r) => {
+                  .map((r, idx) => {
                     const has = r.contracts > 0 && r.total > 0;
+                    const toneClass =
+                      idx === 0 ? "tone-life" : idx === 1 ? "tone-auto" : "tone-property";
                     return `
-                      <div class="row">
-                        <div>${r.title}</div>
-                        <div style="text-align:right">${r.contracts}</div>
-                        <div style="text-align:right">${has ? formatMoney(r.per) : "—"}</div>
-                        <div style="text-align:right;font-weight:700">${has ? formatMoney(r.total) : "—"}</div>
+                      <div class="row row-4">
+                        <div class="cell-key">
+                          <span class="tone-dot ${toneClass}"></span>
+                          <span>${r.title}</span>
+                        </div>
+                        <div class="align-right">${r.contracts}</div>
+                        <div class="align-right">${has ? formatMoney(r.per) : "—"}</div>
+                        <div class="align-right strong">${has ? formatMoney(r.total) : "—"}</div>
                       </div>
                     `;
                   })
