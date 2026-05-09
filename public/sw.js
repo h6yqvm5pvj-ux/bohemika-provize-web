@@ -23,6 +23,78 @@ const IS_LOCAL_DEV =
   self.location.hostname === "localhost" ||
   self.location.hostname === "127.0.0.1";
 
+function normalizePushLinkCandidate(value) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function pickPushTargetFromPayload(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const row = payload;
+  const nestedData =
+    row.data && typeof row.data === "object" ? row.data : {};
+  const nestedNotification =
+    row.notification && typeof row.notification === "object"
+      ? row.notification
+      : {};
+  const nestedFcmOptions =
+    row.fcmOptions && typeof row.fcmOptions === "object"
+      ? row.fcmOptions
+      : row.fcm_options && typeof row.fcm_options === "object"
+        ? row.fcm_options
+        : {};
+
+  const candidates = [
+    row.url,
+    row.deepLink,
+    row.link,
+    row.click_action,
+    nestedData.url,
+    nestedData.deepLink,
+    nestedData.link,
+    nestedData.click_action,
+    nestedNotification.click_action,
+    nestedNotification.link,
+    nestedFcmOptions.link,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizePushLinkCandidate(candidate);
+    if (normalized) return normalized;
+  }
+
+  return null;
+}
+
+function resolveNotificationTargetPath(notification) {
+  const data = notification?.data;
+  const direct = pickPushTargetFromPayload(data);
+  if (direct) return direct;
+
+  const fcmWrapped =
+    data &&
+    typeof data === "object" &&
+    data.FCM_MSG &&
+    typeof data.FCM_MSG === "object"
+      ? data.FCM_MSG
+      : null;
+  const fromWrapped = pickPushTargetFromPayload(fcmWrapped);
+  if (fromWrapped) return fromWrapped;
+
+  return "/nastaveni";
+}
+
+function resolveSameOriginTargetUrl(targetPath) {
+  try {
+    const parsed = new URL(targetPath, self.location.origin);
+    if (parsed.origin !== self.location.origin) {
+      return new URL("/nastaveni", self.location.origin).href;
+    }
+    return parsed.href;
+  } catch {
+    return new URL("/nastaveni", self.location.origin).href;
+  }
+}
+
 function isSameOriginCacheCandidate(url, request) {
   if (request.method !== "GET") return false;
   if (url.origin !== self.location.origin) return false;
@@ -125,12 +197,7 @@ self.addEventListener("push", (event) => {
   const badge = notificationPayload.badge || "/pwa/icon-192.png";
   const tag =
     notificationPayload.tag || payload?.tag || `bohemika-push-${Date.now()}`;
-  const url =
-    dataPayload.deepLink ||
-    dataPayload.link ||
-    payload?.deepLink ||
-    payload?.link ||
-    "/nastaveni";
+  const url = pickPushTargetFromPayload(payload) || pickPushTargetFromPayload(dataPayload) || "/nastaveni";
 
   event.waitUntil(
     self.registration.showNotification(title, {
@@ -145,8 +212,8 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetPath = event.notification?.data?.url || "/nastaveni";
-  const targetUrl = new URL(targetPath, self.location.origin).href;
+  const targetPath = resolveNotificationTargetPath(event.notification);
+  const targetUrl = resolveSameOriginTargetUrl(targetPath);
 
   event.waitUntil(
     self.clients
