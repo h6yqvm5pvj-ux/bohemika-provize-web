@@ -31,22 +31,55 @@ import {
 
 import { type Position, type Product } from "../../types/domain";
 import SplitTitle from "../plan-produkce/SplitTitle";
-import { CalendarDays, Search, Tags, UsersRound } from "lucide-react";
+import {
+  CalendarDays,
+  Download,
+  Eye,
+  ExternalLink,
+  Maximize2,
+  Minimize2,
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+  Tags,
+  UsersRound,
+  SendHorizontal,
+} from "lucide-react";
 
-/* -------------------- lazy import html2pdf.js (kvůli Next/SSR) -------------------- */
+/* -------------------- lazy import PDF deps (kvůli Next/SSR) -------------------- */
 
-let html2pdfPromise: Promise<any> | null = null;
+let html2canvasProPromise: Promise<any> | null = null;
+let jsPdfCtorPromise: Promise<any> | null = null;
 
-async function getHtml2Pdf() {
-  if (!html2pdfPromise) {
-    html2pdfPromise = import("html2pdf.js").then(
-      // knihovna nemá oficiální typy
+async function getHtml2CanvasPro() {
+  if (!html2canvasProPromise) {
+    html2canvasProPromise = import("html2canvas-pro").then(
       (mod: unknown) =>
         (mod as { default?: unknown }).default ??
         (mod as Record<string, unknown>)
     );
   }
-  return html2pdfPromise;
+  return html2canvasProPromise;
+}
+
+async function getJsPdfCtor() {
+  if (!jsPdfCtorPromise) {
+    jsPdfCtorPromise = import("jspdf").then((mod: unknown) => {
+      const typed = mod as {
+        jsPDF?: unknown;
+        default?: { jsPDF?: unknown } | unknown;
+      };
+      return (
+        typed.jsPDF ??
+        (typed.default &&
+        typeof typed.default === "object" &&
+        "jsPDF" in typed.default
+          ? (typed.default as { jsPDF?: unknown }).jsPDF
+          : typed.default)
+      );
+    });
+  }
+  return jsPdfCtorPromise;
 }
 
 /* --------------------------------- typy --------------------------------- */
@@ -317,6 +350,289 @@ function stripUnsupportedColors(html: string): string {
   return html.replace(/(?:oklch|lab)\([^)]*\)/gi, "#0f172a");
 }
 
+type ParsedJsonSafe<T> = {
+  payload: T | null;
+  raw: string;
+};
+
+async function parseJsonSafe<T>(res: Response): Promise<ParsedJsonSafe<T>> {
+  const raw = await res.text();
+  if (!raw) return { payload: null, raw };
+  try {
+    return { payload: JSON.parse(raw) as T, raw };
+  } catch {
+    return { payload: null, raw };
+  }
+}
+
+function extractApiErrorText(raw: string, fallback: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return fallback;
+  if (trimmed.startsWith("<")) return fallback;
+  return trimmed.slice(0, 180);
+}
+
+async function withIsolatedPdfSource<T>(
+  html: string,
+  work: (element: HTMLElement) => Promise<T>
+): Promise<T> {
+  if (typeof document === "undefined") {
+    throw new Error("PDF export je dostupný jen v prohlížeči.");
+  }
+
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.style.cssText =
+    "position:fixed;left:-10000px;top:0;width:0;height:0;opacity:0;pointer-events:none;border:0;";
+  document.body.appendChild(iframe);
+
+  try {
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+      iframe.addEventListener("load", finish, { once: true });
+      iframe.srcdoc = html;
+      window.setTimeout(finish, 900);
+    });
+
+    const doc = iframe.contentDocument;
+    if (!doc) {
+      throw new Error("Nepodařilo se připravit izolovaný dokument pro export.");
+    }
+
+    const pickPageCandidate = () =>
+      doc.querySelector(".page") ??
+      doc.querySelector(".report-page") ??
+      doc.body?.querySelector(".page") ??
+      doc.body?.querySelector(".report-page") ??
+      doc.body?.firstElementChild ??
+      doc.body;
+
+    const isElementNode = (value: unknown): value is HTMLElement =>
+      !!value &&
+      typeof value === "object" &&
+      "nodeType" in value &&
+      (value as { nodeType?: unknown }).nodeType === 1 &&
+      "querySelectorAll" in value &&
+      typeof (value as { querySelectorAll?: unknown }).querySelectorAll ===
+        "function";
+
+    let pageCandidate: unknown = pickPageCandidate();
+    if (!isElementNode(pageCandidate)) {
+      const waitStart = Date.now();
+      while (Date.now() - waitStart < 1500) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 40));
+        pageCandidate = pickPageCandidate();
+        if (isElementNode(pageCandidate)) break;
+      }
+    }
+
+    if (!isElementNode(pageCandidate)) {
+      throw new Error("Nepodařilo se připravit obsah PDF pro export.");
+    }
+    const page = pageCandidate;
+
+    const images = Array.from(
+      page.querySelectorAll("img")
+    ) as HTMLImageElement[];
+    await Promise.all(
+      images.map((img) => {
+        if (img.complete) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          const done = () => resolve();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+          window.setTimeout(done, 1200);
+        });
+      })
+    );
+
+    return await work(page);
+  } finally {
+    iframe.remove();
+  }
+}
+
+async function withInlinePdfSource<T>(
+  html: string,
+  work: (element: HTMLElement) => Promise<T>
+): Promise<T> {
+  if (typeof document === "undefined") {
+    throw new Error("PDF export je dostupný jen v prohlížeči.");
+  }
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const sandbox = document.createElement("div");
+  sandbox.setAttribute("aria-hidden", "true");
+  sandbox.style.cssText =
+    "position:fixed;left:-10000px;top:0;width:820px;opacity:0;pointer-events:none;z-index:-1;";
+  const styles = Array.from(parsed.head.querySelectorAll("style"))
+    .map((node) => node.outerHTML)
+    .join("");
+  sandbox.innerHTML = `${styles}<div data-pdf-inline-root>${parsed.body.innerHTML}</div>`;
+  document.body.appendChild(sandbox);
+
+  try {
+    const pageCandidate =
+      sandbox.querySelector(".page") ??
+      sandbox.querySelector(".report-page") ??
+      sandbox.firstElementChild ??
+      sandbox;
+    if (!(pageCandidate instanceof HTMLElement)) {
+      throw new Error("Nepodařilo se připravit obsah PDF pro export.");
+    }
+
+    const page = pageCandidate;
+    const images = Array.from(
+      page.querySelectorAll("img")
+    ) as HTMLImageElement[];
+    await Promise.all(
+      images.map((img) => {
+        if (img.complete) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          const done = () => resolve();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+          window.setTimeout(done, 1200);
+        });
+      })
+    );
+
+    return await work(page);
+  } finally {
+    sandbox.remove();
+  }
+}
+
+async function withBestPdfSource<T>(
+  html: string,
+  work: (element: HTMLElement) => Promise<T>
+): Promise<T> {
+  try {
+    return await withIsolatedPdfSource(html, work);
+  } catch (isolatedErr) {
+    console.warn(
+      "PDF export: izolovaný iframe selhal, přepínám na inline fallback.",
+      isolatedErr
+    );
+    return await withInlinePdfSource(html, work);
+  }
+}
+
+async function renderPdfBlobFromElement(
+  sourceEl: HTMLElement,
+  options?: { marginPt?: number; scale?: number; imageQuality?: number }
+): Promise<Blob> {
+  const html2canvas = await getHtml2CanvasPro();
+  const JsPdfCtor = await getJsPdfCtor();
+
+  if (typeof html2canvas !== "function") {
+    throw new Error("Nepodařilo se načíst renderer PDF (html2canvas-pro).");
+  }
+  if (typeof JsPdfCtor !== "function") {
+    throw new Error("Nepodařilo se načíst PDF engine (jsPDF).");
+  }
+
+  const marginPt =
+    typeof options?.marginPt === "number" && Number.isFinite(options.marginPt)
+      ? Math.max(0, options.marginPt)
+      : 10;
+  const scale =
+    typeof options?.scale === "number" && Number.isFinite(options.scale)
+      ? Math.max(1, options.scale)
+      : 2;
+  const imageQuality =
+    typeof options?.imageQuality === "number" &&
+    Number.isFinite(options.imageQuality)
+      ? Math.min(1, Math.max(0.4, options.imageQuality))
+      : 0.96;
+
+  const canvas = (await html2canvas(sourceEl, {
+    scale,
+    backgroundColor: "#ffffff",
+    useCORS: true,
+    imageTimeout: 20000,
+    logging: false,
+  })) as HTMLCanvasElement;
+
+  const pdf = new JsPdfCtor({
+    unit: "pt",
+    format: "a4",
+    orientation: "portrait",
+  }) as {
+    internal: { pageSize: { getWidth: () => number; getHeight: () => number } };
+    addImage: (
+      imageData: string,
+      format: string,
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      alias?: string,
+      compression?: string
+    ) => unknown;
+    addPage: () => unknown;
+    output: (type: "blob") => Blob;
+  };
+
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const contentWidth = Math.max(1, pageWidth - marginPt * 2);
+  const contentHeight = Math.max(1, pageHeight - marginPt * 2);
+
+  const imageData = canvas.toDataURL("image/jpeg", imageQuality);
+  const imageHeightInPdf = (canvas.height * contentWidth) / Math.max(1, canvas.width);
+
+  let remaining = imageHeightInPdf;
+  let offsetY = marginPt;
+  pdf.addImage(
+    imageData,
+    "JPEG",
+    marginPt,
+    offsetY,
+    contentWidth,
+    imageHeightInPdf,
+    undefined,
+    "FAST"
+  );
+  remaining -= contentHeight;
+
+  while (remaining > 0) {
+    pdf.addPage();
+    offsetY = marginPt - (imageHeightInPdf - remaining);
+    pdf.addImage(
+      imageData,
+      "JPEG",
+      marginPt,
+      offsetY,
+      contentWidth,
+      imageHeightInPdf,
+      undefined,
+      "FAST"
+    );
+    remaining -= contentHeight;
+  }
+
+  return pdf.output("blob");
+}
+
+function downloadBlobFile(blob: Blob, filename: string) {
+  if (typeof window === "undefined") return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function contractDate(entry: EntryDoc): Date | null {
   return (
     toDate((entry as any).contractSignedDate) ??
@@ -394,6 +710,8 @@ export default function ExportProductionPage() {
   >({});
 
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewGeneratedAt, setPreviewGeneratedAt] = useState<Date | null>(null);
+  const [previewExpanded, setPreviewExpanded] = useState(false);
   const [recipient, setRecipient] = useState("");
   const subordinatesPickerRef = useRef<HTMLDivElement | null>(null);
 
@@ -414,18 +732,21 @@ export default function ExportProductionPage() {
   const allCategoriesSelected = ALL_CATEGORY_KEYS.every((key) =>
     categories.has(key)
   );
-  const activeFiltersSummary = [
-    `Rozsah: ${labelForScope(scopeOption)}`,
-    `Období: ${labelForDateRange(dateRangeOption)}`,
+  const scopeLabel = labelForScope(scopeOption);
+  const dateRangeLabel = labelForDateRange(dateRangeOption);
+  const selectedCategoryCount = categories.size;
+  const selectedCategoryLabel =
     allCategoriesSelected
-      ? "Kategorie: Všechny"
-      : `Kategorie: ${categories.size}/${ALL_CATEGORY_KEYS.length}`,
+      ? "Všechny kategorie"
+      : `${selectedCategoryCount}/${ALL_CATEGORY_KEYS.length} kategorií`;
+  const selectedAdvisersLabel =
     scopeOption === "selected" && hasTeam
-      ? `Poradci: ${selectedSubs.size}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" • ");
+      ? selectedSubs.size === 0
+        ? "Nikdo nevybraný"
+        : `${selectedSubs.size} vybraných`
+      : hasTeam
+        ? `${subordinates.length + 1} lidí v týmu`
+        : "Bez týmu";
   const filteredSubordinates = useMemo(() => {
     const q = normalizeForSearch(subordinateSearch);
     if (!q) return subordinates;
@@ -461,7 +782,7 @@ export default function ExportProductionPage() {
       try {
         let bearerToken = await user.getIdToken();
         const requestWithToken = async (token: string) =>
-          fetch("/api/team-overview", {
+          fetch("/api/team-overview?action=members", {
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -474,9 +795,15 @@ export default function ExportProductionPage() {
           res = await requestWithToken(bearerToken);
         }
 
-        const payload = (await res.json()) as TeamOverviewApiResponse;
+        const { payload, raw } = await parseJsonSafe<TeamOverviewApiResponse>(res);
         if (!res.ok || payload?.ok === false) {
-          throw new Error(payload?.error || "Nepodařilo se načíst tým.");
+          throw new Error(
+            payload?.error ||
+              extractApiErrorText(raw, "Nepodařilo se načíst tým.")
+          );
+        }
+        if (!payload) {
+          throw new Error("API týmu vrátilo neplatnou nebo prázdnou odpověď.");
         }
 
         const membersRaw = Array.isArray(payload.members) ? payload.members : [];
@@ -654,6 +981,7 @@ export default function ExportProductionPage() {
     const generatedAt = new Date();
 
     const { from, to } = getDateRange(dateRangeOption);
+    const fromMs = from.getTime();
 
     // e-maily zahrnuté do exportu
     let emailsToLoad: string[] = [];
@@ -683,7 +1011,17 @@ export default function ExportProductionPage() {
       const params = new URLSearchParams({
         scope,
         limit: "50",
+        shape: "home",
       });
+      if (Number.isFinite(fromMs)) {
+        params.set("signedFrom", String(fromMs));
+      }
+      if (scope === "team" && scopeOption === "selected") {
+        const selectedTeamEmails = emailsToLoad.filter((item) => item !== email);
+        if (selectedTeamEmails.length > 0) {
+          params.set("subordinates", selectedTeamEmails.join(","));
+        }
+      }
       if (cursor) params.set("cursor", cursor);
 
       const requestWithToken = async (token: string) =>
@@ -699,7 +1037,7 @@ export default function ExportProductionPage() {
         bearerToken = await currentUser.getIdToken(true);
         res = await requestWithToken(bearerToken);
       }
-      const payload = (await res.json()) as ContractsApiResponse;
+      const { payload, raw } = await parseJsonSafe<ContractsApiResponse>(res);
       if (res.status === 403 && scope === "team") {
         return {
           ok: true,
@@ -710,7 +1048,21 @@ export default function ExportProductionPage() {
         };
       }
       if (!res.ok || payload?.ok === false) {
-        throw new Error(payload?.error || "Nepodařilo se načíst smlouvy.");
+        const fallback =
+          res.status >= 500
+            ? `API smluv je dočasně nedostupné (HTTP ${res.status}).`
+            : "Nepodařilo se načíst smlouvy.";
+        throw new Error(
+          payload?.error || extractApiErrorText(raw, fallback)
+        );
+      }
+      if (!payload) {
+        throw new Error(
+          extractApiErrorText(
+            raw,
+            "API smluv vrátilo neplatnou nebo prázdnou odpověď."
+          )
+        );
       }
       return payload;
     };
@@ -728,6 +1080,9 @@ export default function ExportProductionPage() {
         const contracts = (payload.contracts ?? []) as (EntryDoc & {
           adviserEmail?: string | null;
         })[];
+        if (contracts.length === 0) break;
+        let addedThisPage = 0;
+        let oldestTsOnPage: number | null = null;
         contracts.forEach((item) => {
           const owner = (
             item.adviserEmail ??
@@ -742,14 +1097,27 @@ export default function ExportProductionPage() {
           const key = `${owner}___${id}`;
           if (seen.has(key)) return;
           seen.add(key);
-          collected.push({
+          const mapped: EntryDoc = {
             ...(item as EntryDoc),
             id,
             userEmail: owner,
-          });
+          };
+          collected.push(mapped);
+          addedThisPage += 1;
+
+          const signed = contractDate(mapped);
+          if (!signed) return;
+          const ts = signed.getTime();
+          if (!Number.isFinite(ts)) return;
+          if (oldestTsOnPage == null || ts < oldestTsOnPage) {
+            oldestTsOnPage = ts;
+          }
         });
+        if (addedThisPage === 0) break;
         cursor = normalizeCursorToken(payload.nextCursorToken, payload.nextCursor);
         hasMore = Boolean(payload.hasMore) && Boolean(cursor);
+        if (!hasMore) break;
+        if (oldestTsOnPage != null && oldestTsOnPage < fromMs) break;
       }
       return collected;
     };
@@ -953,7 +1321,7 @@ export default function ExportProductionPage() {
       kind: ThemeIconKind,
       className = "card-title"
     ) => `
-      <div class="${className}">
+      <div class="${className} theme-${kind}">
         <span class="theme-icon" aria-hidden="true">${themeIconSvg(kind)}</span>
         <span>${escapeHtml(label)}</span>
       </div>
@@ -961,7 +1329,7 @@ export default function ExportProductionPage() {
 
     if (includeLife && (summary.lifeContracts > 0 || summary.lifeMonthly > 0)) {
       summarySections.push(`
-        <div class="card">
+        <div class="card card--life">
           ${themedHeading("Životní pojištění", "life")}
           <div class="card-row">
             <span>Měsíční pojistné celkem</span>
@@ -984,7 +1352,7 @@ export default function ExportProductionPage() {
       (summary.nonLifeContracts > 0 || summary.nonLifeAnnual > 0)
     ) {
       summarySections.push(`
-        <div class="card">
+        <div class="card card--nonlife">
           ${themedHeading("Neživotní pojištění", "nonlife")}
           <div class="card-row">
             <span>Roční pojistné celkem</span>
@@ -1003,7 +1371,7 @@ export default function ExportProductionPage() {
       (summary.autoContracts > 0 || summary.autoAnnual > 0)
     ) {
       summarySections.push(`
-        <div class="card">
+        <div class="card card--auto">
           ${themedHeading("Pojištění vozidel", "auto")}
           <div class="card-row">
             <span>Roční pojistné celkem</span>
@@ -1022,7 +1390,7 @@ export default function ExportProductionPage() {
       (summary.propertyContracts > 0 || summary.propertyAnnual > 0)
     ) {
       summarySections.push(`
-        <div class="card">
+        <div class="card card--property">
           ${themedHeading("Majetek & ostatní neživot", "property")}
           <div class="card-row">
             <span>Roční pojistné celkem</span>
@@ -1038,7 +1406,7 @@ export default function ExportProductionPage() {
 
     if (includeGold && (summary.goldContracts > 0 || summary.goldTotal > 0)) {
       summarySections.push(`
-        <div class="card">
+        <div class="card card--gold">
           ${themedHeading("Zlato (Comfort Commodity)", "gold")}
           <div class="card-row">
             <span>Objem (poplatek)</span>
@@ -1060,7 +1428,7 @@ export default function ExportProductionPage() {
 
         if (includeLife && (stats.lifeContracts > 0 || stats.lifeMonthly > 0)) {
           userSections.push(`
-            <div class="card-inner">
+            <div class="card-inner card-inner--life">
               ${themedHeading("Životní pojištění", "life", "card-subtitle")}
               <div class="card-row">
                 <span>Měsíční pojistné</span>
@@ -1083,7 +1451,7 @@ export default function ExportProductionPage() {
           (stats.nonLifeContracts > 0 || stats.nonLifeAnnual > 0)
         ) {
           userSections.push(`
-            <div class="card-inner">
+            <div class="card-inner card-inner--nonlife">
               ${themedHeading("Neživotní pojištění", "nonlife", "card-subtitle")}
               <div class="card-row">
                 <span>Roční pojistné</span>
@@ -1102,7 +1470,7 @@ export default function ExportProductionPage() {
           (stats.autoContracts > 0 || stats.autoAnnual > 0)
         ) {
           userSections.push(`
-            <div class="card-inner">
+            <div class="card-inner card-inner--auto">
               ${themedHeading("Pojištění vozidel", "auto", "card-subtitle")}
               <div class="card-row">
                 <span>Roční pojistné</span>
@@ -1121,7 +1489,7 @@ export default function ExportProductionPage() {
           (stats.propertyContracts > 0 || stats.propertyAnnual > 0)
         ) {
           userSections.push(`
-            <div class="card-inner">
+            <div class="card-inner card-inner--property">
               ${themedHeading("Majetek & ostatní neživot", "property", "card-subtitle")}
               <div class="card-row">
                 <span>Roční pojistné</span>
@@ -1137,7 +1505,7 @@ export default function ExportProductionPage() {
 
         if (includeGold && (stats.goldContracts > 0 || stats.goldTotal > 0)) {
           userSections.push(`
-            <div class="card-inner">
+            <div class="card-inner card-inner--gold">
               ${themedHeading("Zlato (Comfort Commodity)", "gold", "card-subtitle")}
               <div class="card-row">
                 <span>Objem (poplatek)</span>
@@ -1228,86 +1596,209 @@ export default function ExportProductionPage() {
           <meta charset="utf-8" />
           <style>
             * { box-sizing: border-box; }
+            :root {
+              --ink: #10213d;
+              --ink-soft: #52627f;
+              --line: #d8e2f0;
+              --paper: #ffffff;
+              --paper-soft: #f5f8fc;
+              --navy: #112347;
+              --blue: #2e6eff;
+              --emerald: #0f9f6e;
+              --amber: #c78b1f;
+              --violet: #7248db;
+            }
             body {
               margin: 0;
-              padding: 32px 0;
-              background: #f1f5f9;
-              font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
-                system-ui, -system-ui, sans-serif;
-              color: #0f172a;
+              padding: 34px 0;
+              background: linear-gradient(155deg, #edf3fb 0%, #f8fbff 55%, #eef4fc 100%);
+              font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+              color: var(--ink);
               -webkit-font-smoothing: antialiased;
             }
             .page {
               width: 760px;
               margin: 0 auto;
-              background: #ffffff;
-              border-radius: 22px;
-              border: 1.5px solid #0f172a;
+              background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+              border-radius: 30px;
+              border: 1px solid var(--line);
               box-shadow:
-                0 20px 60px rgba(15, 23, 42, 0.16),
-                0 0 0 1px rgba(15, 23, 42, 0.04) inset;
-              padding: 32px 34px 36px;
+                0 28px 80px rgba(16, 33, 61, 0.14),
+                0 1px 0 rgba(255, 255, 255, 0.9) inset;
+              padding: 24px 30px 34px;
+              position: relative;
+              overflow: hidden;
+            }
+            .page::before {
+              content: "";
+              position: absolute;
+              right: -120px;
+              top: -120px;
+              width: 290px;
+              height: 290px;
+              border-radius: 999px;
+              background: radial-gradient(circle at center, rgba(46,110,255,0.20) 0%, rgba(46,110,255,0) 72%);
+              pointer-events: none;
+            }
+            .page-topbar {
+              position: relative;
+              z-index: 1;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 16px;
+            }
+            .topbar-pill {
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              border-radius: 999px;
+              border: 1px solid #ccd9ec;
+              background: #f4f8ff;
+              color: #26406e;
+              padding: 5px 12px;
+              font-size: 10px;
+              letter-spacing: 0.08em;
+              text-transform: uppercase;
+              font-weight: 700;
+            }
+            .topbar-meta {
+              font-size: 10px;
+              color: #6a7a96;
+              letter-spacing: 0.03em;
+              font-weight: 600;
             }
             .page-header {
+              position: relative;
+              z-index: 1;
               display: flex;
               align-items: center;
               gap: 16px;
-              margin-bottom: 20px;
+              margin-bottom: 18px;
             }
             .logo {
-              width: 52px;
-              height: 52px;
-              border-radius: 16px;
-              background: #ffffff;
-              border: 1px solid #cbd5e1;
+              width: 62px;
+              height: 62px;
+              border-radius: 18px;
+              background: linear-gradient(165deg, #ffffff 0%, #ecf3ff 100%);
+              border: 1px solid #ccd9ec;
               display: flex;
               align-items: center;
               justify-content: center;
-              box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+              box-shadow:
+                0 12px 30px rgba(16, 33, 61, 0.14),
+                0 1px 0 rgba(255,255,255,0.9) inset;
+              flex-shrink: 0;
             }
             .logo-img {
-              max-width: 36px;
-              max-height: 36px;
+              max-width: 39px;
+              max-height: 39px;
             }
             .logo-placeholder {
               font-weight: 700;
-              font-size: 26px;
-              color: #1d4ed8;
+              font-size: 27px;
+              color: var(--blue);
             }
             .title-block h1 {
               margin: 0;
-              font-size: 26px;
+              font-size: 48px;
+              line-height: 1.02;
+              font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI", sans-serif;
               font-weight: 700;
-              letter-spacing: 0.02em;
+              letter-spacing: 0.01em;
+              color: var(--navy);
             }
             .title-block p {
-              margin: 2px 0 0;
+              margin: 3px 0 0;
               font-size: 12px;
-              letter-spacing: 0.1em;
+              letter-spacing: 0.14em;
               text-transform: uppercase;
-              color: #334155;
+              color: #3f5270;
+              font-weight: 700;
+            }
+            .title-tags {
+              margin-top: 9px;
+              display: flex;
+              flex-wrap: wrap;
+              gap: 7px;
+            }
+            .title-tag {
+              display: inline-flex;
+              align-items: center;
+              border-radius: 999px;
+              padding: 5px 10px;
+              border: 1px solid #d7e3f4;
+              background: #f5f9ff;
+              color: #294775;
+              font-size: 10px;
+              font-weight: 700;
+              letter-spacing: 0.05em;
+              text-transform: uppercase;
+            }
+            .title-tag-accent {
+              background: linear-gradient(135deg, #264da3 0%, #1d3277 100%);
+              border-color: #213f89;
+              color: #ffffff;
             }
             .info-card {
-              margin-top: 8px;
-              padding: 14px 16px;
-              border-radius: 14px;
-              background: #f8fafc;
-              border: 1px solid #cbd5e1;
-              font-size: 12px;
-              line-height: 1.6;
+              margin-top: 4px;
+              border-radius: 18px;
+              padding: 14px;
+              border: 1px solid #cfdbed;
+              background: linear-gradient(160deg, #f7fbff 0%, #eef5ff 100%);
+              box-shadow: 0 14px 34px rgba(23, 48, 94, 0.09);
             }
-            .info-card strong { font-weight: 600; }
+            .info-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 9px;
+            }
+            .info-item {
+              border-radius: 11px;
+              border: 1px solid #d8e3f3;
+              background: rgba(255, 255, 255, 0.9);
+              padding: 9px 10px;
+            }
+            .info-label {
+              display: block;
+              font-size: 10px;
+              text-transform: uppercase;
+              letter-spacing: 0.08em;
+              color: #62748f;
+              font-weight: 700;
+              margin-bottom: 3px;
+            }
+            .info-value {
+              display: block;
+              color: #172a49;
+              font-size: 14px;
+              font-weight: 700;
+            }
             .divider {
-              margin: 20px 0;
-              border-bottom: 1px solid #cbd5e1;
+              margin: 20px 0 16px;
+              height: 2px;
+              border: 0;
+              background: linear-gradient(90deg, #98b5e6 0%, #dce7f7 55%, rgba(220,231,247,0) 100%);
             }
             .section-title {
-              font-size: 13px;
-              font-weight: 600;
-              letter-spacing: 0.08em;
+              position: relative;
+              display: inline-flex;
+              align-items: center;
+              gap: 8px;
+              font-size: 15px;
+              font-weight: 800;
+              letter-spacing: 0.11em;
               text-transform: uppercase;
-              color: #0f172a;
-              margin-bottom: 10px;
+              color: #13284d;
+              margin-bottom: 12px;
+            }
+            .section-title::before {
+              content: "";
+              width: 9px;
+              height: 9px;
+              border-radius: 999px;
+              background: linear-gradient(135deg, #2e6eff 0%, #8eb0ff 100%);
+              box-shadow: 0 0 0 4px rgba(46,110,255,0.15);
             }
             .card-grid {
               display: flex;
@@ -1321,34 +1812,62 @@ export default function ExportProductionPage() {
               page-break-inside: avoid;
             }
             .card {
-              border-radius: 14px;
-              background: #ffffff;
-              border: 1px solid #cbd5e1;
-              box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-              padding: 14px 16px 14px;
+              border-radius: 17px;
+              background: linear-gradient(170deg, #ffffff 0%, #f8fbff 100%);
+              border: 1px solid #cfdced;
+              box-shadow:
+                0 12px 30px rgba(15, 30, 58, 0.09),
+                0 1px 0 rgba(255,255,255,0.9) inset;
+              padding: 14px 15px 14px;
               font-size: 12px;
+              position: relative;
             }
+            .card::after {
+              content: "";
+              position: absolute;
+              left: 0;
+              top: 11px;
+              bottom: 11px;
+              width: 4px;
+              border-radius: 0 8px 8px 0;
+              background: #abc4ea;
+            }
+            .card-empty {
+              text-align: center;
+              color: #51637f;
+              font-weight: 600;
+            }
+            .card--life::after,
+            .card-inner--life::after { background: #1d72e8; }
+            .card--nonlife::after,
+            .card-inner--nonlife::after { background: #6c52d9; }
+            .card--auto::after,
+            .card-inner--auto::after { background: #128169; }
+            .card--property::after,
+            .card-inner--property::after { background: #d17a17; }
+            .card--gold::after,
+            .card-inner--gold::after { background: #b07b00; }
             .card-title {
               display: flex;
               align-items: center;
               gap: 8px;
-              font-size: 14px;
-              font-weight: 600;
-              margin-bottom: 6px;
-              letter-spacing: 0.06em;
+              font-size: 17px;
+              font-weight: 800;
+              margin-bottom: 7px;
+              letter-spacing: 0.07em;
               text-transform: uppercase;
-              color: #111827;
+              color: #13284b;
             }
             .theme-icon {
-              width: 18px;
-              height: 18px;
-              border-radius: 6px;
+              width: 20px;
+              height: 20px;
+              border-radius: 7px;
               display: inline-flex;
               align-items: center;
               justify-content: center;
-              background: #f1f5f9;
-              border: 1px solid #cbd5e1;
-              color: #0f172a;
+              background: #f2f6fd;
+              border: 1px solid #d3e0f2;
+              color: #203a67;
               flex-shrink: 0;
               overflow: hidden;
               line-height: 0;
@@ -1358,32 +1877,46 @@ export default function ExportProductionPage() {
               height: 12px;
               fill: none;
               stroke: currentColor;
-              stroke-width: 1.8;
+              stroke-width: 1.9;
               stroke-linecap: round;
               stroke-linejoin: round;
             }
+            .theme-life .theme-icon { background: #e9f3ff; border-color: #b5d4ff; color: #1d72e8; }
+            .theme-nonlife .theme-icon { background: #efe9ff; border-color: #cdc0fb; color: #6549d6; }
+            .theme-auto .theme-icon { background: #e4f9f3; border-color: #a6e2d2; color: #128169; }
+            .theme-property .theme-icon { background: #fff2df; border-color: #f5cc97; color: #bb6f0e; }
+            .theme-gold .theme-icon { background: #fff8d8; border-color: #efd78e; color: #a66d00; }
             .card-row {
               display: flex;
               justify-content: space-between;
-              gap: 12px;
-              margin-top: 3px;
-              align-items: center;
+              gap: 14px;
+              margin-top: 5px;
+              align-items: baseline;
             }
-            .card-row span:first-child { color: #475569; }
+            .card-row span:first-child {
+              color: #50627e;
+              font-size: 14px;
+            }
             .card-row span:last-child {
-              font-weight: 600;
-              color: #0f172a;
+              font-weight: 800;
+              color: #142949;
+              font-size: 40px;
+              letter-spacing: 0.02em;
+              font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI", sans-serif;
             }
             .card-row.subtle span:last-child {
-              font-weight: 500;
-              color: #1e293b;
+              font-size: 29px;
+              color: #1a3359;
             }
-            .card-user { margin-top: 10px; }
+            .card-user {
+              margin-top: 12px;
+              padding-top: 16px;
+            }
             .card-user-header {
               display: flex;
               align-items: center;
-              gap: 10px;
-              margin-bottom: 6px;
+              gap: 11px;
+              margin-bottom: 7px;
             }
             .card-user,
             .card {
@@ -1396,64 +1929,122 @@ export default function ExportProductionPage() {
               page-break-inside: avoid;
             }
             .avatar {
-              width: 26px;
-              height: 26px;
+              width: 30px;
+              height: 30px;
               border-radius: 999px;
-              background: #0f172a;
+              background: linear-gradient(150deg, #20386a 0%, #2f60c6 100%);
               color: #ffffff;
               display: flex;
               align-items: center;
               justify-content: center;
               font-size: 13px;
-              font-weight: 600;
+              font-weight: 700;
+              box-shadow: 0 6px 16px rgba(33,62,124,0.35);
             }
             .card-user-name {
-              font-size: 13px;
-              font-weight: 600;
+              font-size: 14px;
+              font-weight: 700;
+              color: #172d52;
             }
             .card-user-email {
               font-size: 11px;
-              color: #64748b;
+              color: #5a6c86;
             }
             .card-user-position {
               font-size: 11px;
-              color: #475569;
-              font-weight: 600;
+              color: #415673;
+              font-weight: 700;
+            }
+            .card-user-body {
+              border-top: 1px solid rgba(157, 177, 207, 0.45);
+              margin-top: 7px;
+              padding-top: 8px;
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 7px 16px;
+            }
+            .card-inner {
+              border-radius: 12px;
+              background: #ffffff;
+              padding: 8px 9px;
+              border: 1px solid #d4e0f1;
+              position: relative;
+            }
+            .card-inner::after {
+              content: "";
+              position: absolute;
+              left: 0;
+              top: 8px;
+              bottom: 8px;
+              width: 3px;
+              border-radius: 0 6px 6px 0;
+              background: #abc4ea;
+            }
+            .card-subtitle {
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              font-size: 11px;
+              font-weight: 700;
+              color: #143056;
+              margin-bottom: 4px;
+              letter-spacing: 0.04em;
+            }
+            .card-subtitle .theme-icon {
+              width: 16px;
+              height: 16px;
+              border-radius: 6px;
+            }
+            .card-subtitle .theme-icon svg {
+              width: 10px;
+              height: 10px;
             }
             .product-table {
               width: 100%;
               border-spacing: 0;
               margin-top: 10px;
               font-size: 12px;
-              border-radius: 12px;
+              border-radius: 14px;
               overflow: hidden;
-              border: 1px solid #cbd5e1;
-              box-shadow: 0 8px 20px rgba(15,23,42,0.08);
+              border: 1px solid #cad8ec;
+              box-shadow: 0 10px 24px rgba(18,34,64,0.09);
             }
             .product-table thead {
-              background: #e2e8f0;
-              color: #0f172a;
+              background: linear-gradient(135deg, #15315e 0%, #21498a 100%);
+              color: #f1f6ff;
             }
             .product-table th {
-              padding: 10px 12px;
+              padding: 11px 12px;
               text-align: left;
               font-weight: 700;
-              letter-spacing: 0.04em;
+              letter-spacing: 0.06em;
               text-transform: uppercase;
-              font-size: 11px;
-              border-bottom: 1px solid #cbd5e1;
+              font-size: 10px;
+              border-bottom: 1px solid rgba(255,255,255,0.16);
             }
             .product-table tbody tr:nth-child(odd) { background: #ffffff; }
-            .product-table tbody tr:nth-child(even) { background: #f8fafc; }
+            .product-table tbody tr:nth-child(even) { background: #f7faff; }
             .product-table td {
               padding: 10px 12px;
-              border-bottom: 1px solid #e2e8f0;
-              color: #334155;
+              border-bottom: 1px solid #e4ebf6;
+              color: #364a67;
               vertical-align: top;
             }
             .product-table td.product { width: 62%; text-align: left; }
-            .product-table td.count { width: 12%; text-align: center; font-weight: 700; color: #0f172a; }
-            .product-table td.amount { width: 26%; text-align: right; font-weight: 700; color: #0f172a; }
+            .product-table td.count {
+              width: 12%;
+              text-align: center;
+              font-weight: 700;
+              color: #173053;
+            }
+            .product-table td.amount {
+              width: 26%;
+              text-align: right;
+              font-weight: 800;
+              color: #142949;
+              font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI", sans-serif;
+              font-size: 18px;
+            }
             .product-cell {
               display: flex;
               align-items: center;
@@ -1461,16 +2052,17 @@ export default function ExportProductionPage() {
               min-height: 34px;
             }
             .product-logo {
-              width: 30px;
-              height: 30px;
-              border-radius: 8px;
-              border: 1px solid #cbd5e1;
+              width: 31px;
+              height: 31px;
+              border-radius: 9px;
+              border: 1px solid #cfddf0;
               background: #ffffff;
               display: flex;
               align-items: center;
               justify-content: center;
               overflow: hidden;
               flex-shrink: 0;
+              box-shadow: 0 4px 10px rgba(15,30,56,0.08);
             }
             .product-logo img {
               width: 100%;
@@ -1481,21 +2073,21 @@ export default function ExportProductionPage() {
             .product-logo-fallback {
               font-size: 11px;
               font-weight: 700;
-              color: #334155;
-              background: #f1f5f9;
+              color: #36527f;
+              background: #eaf1fc;
             }
             .product-meta {
               min-width: 0;
             }
             .product-name {
-              color: #0f172a;
-              line-height: 1.3;
-              font-weight: 600;
+              color: #102546;
+              line-height: 1.25;
+              font-weight: 700;
             }
             .product-provider {
               margin-top: 2px;
               font-size: 10px;
-              color: #64748b;
+              color: #5b6f8a;
               text-transform: uppercase;
               letter-spacing: 0.05em;
             }
@@ -1503,12 +2095,12 @@ export default function ExportProductionPage() {
               display: flex;
               align-items: flex-end;
               gap: 10px;
-              padding: 12px 10px 4px;
-              border-radius: 14px;
-              background: linear-gradient(180deg,#f7f9ff 0%,#eef3ff 100%);
-              border: 1px solid #d6e0f2;
-              box-shadow: 0 10px 28px rgba(15,23,42,0.08);
-              min-height: 140px;
+              padding: 14px 12px 8px;
+              border-radius: 16px;
+              background: linear-gradient(180deg, #f5f9ff 0%, #ecf3ff 100%);
+              border: 1px solid #cfddf2;
+              box-shadow: 0 12px 28px rgba(16, 33, 62, 0.09);
+              min-height: 154px;
             }
             .monthly-bar {
               flex: 1;
@@ -1520,78 +2112,74 @@ export default function ExportProductionPage() {
             .monthly-bar .bar {
               width: 100%;
               max-width: 44px;
-              border-radius: 12px 12px 6px 6px;
-              background: linear-gradient(135deg,#60a5fa,#2563eb);
-              box-shadow: 0 8px 16px rgba(37,99,235,0.25);
-              transition: transform 0.2s ease;
+              border-radius: 12px 12px 7px 7px;
+              background: linear-gradient(180deg, #4f8bff 0%, #2b60d0 100%);
+              box-shadow: 0 8px 16px rgba(43, 96, 208, 0.26);
             }
             .monthly-bar .value {
               font-size: 10px;
-              color: #0f172a;
+              color: #16335b;
               font-weight: 700;
             }
             .monthly-bar .label {
               font-size: 10px;
-              color: #475569;
+              color: #536882;
               text-align: center;
             }
-            .card-user-body {
-              border-top: 1px solid rgba(148,163,184,0.45);
-              margin-top: 6px;
-              padding-top: 6px;
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 6px 16px;
-            }
-            .card-inner {
-              border-radius: 12px;
-              background: #ffffff;
-              padding: 6px 8px;
-              border: 1px solid #cbd5e1;
-            }
-            .card-subtitle {
-              display: flex;
-              align-items: center;
-              gap: 6px;
-              font-size: 11px;
-              font-weight: 600;
-              color: #0f172a;
-              margin-bottom: 3px;
-            }
-            .card-subtitle .theme-icon {
-              width: 16px;
-              height: 16px;
-            }
-            .card-subtitle .theme-icon svg {
-              width: 10px;
-              height: 10px;
-            }
             .footer-note {
-              margin-top: 14px;
+              margin-top: 15px;
+              border-top: 1px dashed #c6d4ea;
+              padding-top: 10px;
               font-size: 10px;
-              color: #94a3b8;
+              color: #6d7f9a;
+              line-height: 1.5;
             }
             @media print {
-              body { background: #f1f5f9; }
+              body { background: #eef3fa; }
             }
           </style>
         </head>
         <body>
           <div class="page">
+            <div class="page-topbar">
+              <span class="topbar-pill">Bohemika.App interní report</span>
+              <span class="topbar-meta">Vygenerováno ${generatedLabel}</span>
+            </div>
             <div class="page-header">
               ${logoHtml}
               <div class="title-block">
                 <h1>Bohemika.App - Produkce</h1>
                 <p>${dateLabel} - ${scopeLabel}</p>
+                <div class="title-tags">
+                  <span class="title-tag">${dateLabel}</span>
+                  <span class="title-tag title-tag-accent">${scopeLabel}</span>
+                </div>
               </div>
             </div>
 
             <div class="info-card">
-              <div><strong>Poradce:</strong> ${adviserName}</div>
-              <div><strong>E-mail:</strong> ${adviserEmail}</div>
-              <div><strong>Rozsah:</strong> ${scopeLabel}</div>
-              <div><strong>Období:</strong> ${periodFrom} – ${periodTo}</div>
-              <div><strong>Vygenerováno:</strong> ${generatedLabel}</div>
+              <div class="info-grid">
+                <div class="info-item">
+                  <span class="info-label">Poradce</span>
+                  <span class="info-value">${adviserName}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">E-mail</span>
+                  <span class="info-value">${adviserEmail}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Rozsah</span>
+                  <span class="info-value">${scopeLabel}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Období</span>
+                  <span class="info-value">${periodFrom} – ${periodTo}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Vygenerováno</span>
+                  <span class="info-value">${generatedLabel}</span>
+                </div>
+              </div>
             </div>
 
             <div class="divider"></div>
@@ -1602,7 +2190,7 @@ export default function ExportProductionPage() {
                 ${
                   summarySections.length > 0
                     ? summarySections.join("")
-                    : `<div class="card"><div class="card-row"><span>V zadaném období nebyly nalezeny žádné smlouvy.</span></div></div>`
+                    : `<div class="card card-empty"><div class="card-row"><span>V zadaném období nebyly nalezeny žádné smlouvy.</span></div></div>`
                 }
               </div>
             </div>
@@ -1704,33 +2292,20 @@ export default function ExportProductionPage() {
     try {
       const { html, filenameBase } = await buildReportHtml();
       const safeHtml = stripUnsupportedColors(html);
-      const html2pdf = await getHtml2Pdf();
-
-      const opt: any = {
-        margin: [10, 10, 10, 10],
-        filename: `${filenameBase}_${dateRangeOption}.pdf`,
-        image: { type: "jpeg", quality: 0.96 },
-        html2canvas: {
+      const blob = await withBestPdfSource(safeHtml, async (sourceEl) => {
+        return await renderPdfBlobFromElement(sourceEl, {
+          marginPt: 10,
           scale: 2,
-          backgroundColor: "#ffffff",
-          useCORS: true,
-          onclone: (doc: Document) => {
-            // Odstraníme všechny externí styly/linky kromě těch vygenerovaných v HTML
-            doc.querySelectorAll("link[rel='stylesheet']").forEach((n) => n.remove());
-            doc.querySelectorAll("style").forEach((n) => {
-              const text = n.textContent ?? "";
-              if (/(oklch|lab)\(/i.test(text)) n.remove();
-            });
-          },
-        },
-        jsPDF: { unit: "pt", format: "a4", orientation: "portrait" },
-      };
-
-      await (html2pdf() as any).set(opt).from(safeHtml).save();
+          imageQuality: 0.96,
+        });
+      });
+      downloadBlobFile(blob, `${filenameBase}_${dateRangeOption}.pdf`);
     } catch (e) {
       console.error("Chyba při generování PDF", e);
       setErrorText(
-        "Nepodařilo se vygenerovat PDF. Zkus to prosím znovu nebo později."
+        e instanceof Error && e.message
+          ? `Nepodařilo se vygenerovat PDF: ${e.message}`
+          : "Nepodařilo se vygenerovat PDF. Zkus to prosím znovu nebo později."
       );
     } finally {
       setGenerating(false);
@@ -1747,6 +2322,7 @@ export default function ExportProductionPage() {
     try {
       const { html } = await buildReportHtml();
       setPreviewHtml(html);
+      setPreviewGeneratedAt(new Date());
     } catch (e) {
       console.error("Chyba při generování náhledu", e);
       setErrorText(
@@ -1755,6 +2331,15 @@ export default function ExportProductionPage() {
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handleOpenPreviewInNewTab = () => {
+    if (!previewHtml || typeof window === "undefined") return;
+    const popup = window.open("", "_blank", "noopener,noreferrer");
+    if (!popup) return;
+    popup.document.open();
+    popup.document.write(previewHtml);
+    popup.document.close();
   };
 
   const handleSendEmail = async () => {
@@ -1772,29 +2357,13 @@ export default function ExportProductionPage() {
     try {
       const { html, filenameBase } = await buildReportHtml();
       const safeHtml = stripUnsupportedColors(html);
-      const html2pdf = await getHtml2Pdf();
-
-      const opt: any = {
-        margin: [10, 10, 10, 10],
-        filename: `${filenameBase}_${dateRangeOption}.pdf`,
-        image: { type: "jpeg", quality: 0.96 },
-        html2canvas: {
+      const blob = await withBestPdfSource(safeHtml, async (sourceEl) => {
+        return await renderPdfBlobFromElement(sourceEl, {
+          marginPt: 10,
           scale: 2,
-          backgroundColor: "#ffffff",
-          useCORS: true,
-          onclone: (doc: Document) => {
-            doc.querySelectorAll("link[rel='stylesheet']").forEach((n) => n.remove());
-            doc.querySelectorAll("style").forEach((n) => {
-              const text = n.textContent ?? "";
-              if (/(oklch|lab)\(/i.test(text)) n.remove();
-            });
-          },
-        },
-        jsPDF: { unit: "pt", format: "a4", orientation: "portrait" },
-      };
-
-      const worker = (html2pdf() as any).from(safeHtml).set(opt).toPdf();
-      const blob = await worker.output("blob");
+          imageQuality: 0.96,
+        });
+      });
       const base64 = await blobToBase64(blob);
 
       const rangeLabelMap: Record<DateRangeOption, string> = {
@@ -1845,10 +2414,10 @@ export default function ExportProductionPage() {
   if (!user) {
     return (
       <AppLayout active="tools">
-        <div className="w-full max-w-3xl mx-auto">
-          <p className="text-sm text-slate-800">
+        <div className="mx-auto w-full max-w-3xl px-2 py-6">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 text-sm text-slate-800 shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
             Pro použití exportu produkce se nejprve přihlas.
-          </p>
+          </div>
         </div>
       </AppLayout>
     );
@@ -1856,362 +2425,487 @@ export default function ExportProductionPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-[1500px] space-y-4">
-        <header className="relative">
-          <div className="flex items-end justify-between gap-4">
-            <SplitTitle
-              text="Statistika"
-              className="text-5xl sm:text-6xl lg:text-7xl"
-            />
-          </div>
+      <div className="relative w-full overflow-hidden pb-8">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10">
+          <div className="absolute left-[-120px] top-[-90px] h-[360px] w-[360px] rounded-full bg-sky-200/45 blur-3xl" />
+          <div className="absolute right-[-120px] top-8 h-[280px] w-[280px] rounded-full bg-emerald-200/40 blur-3xl" />
+          <div className="absolute bottom-[-160px] left-1/3 h-[340px] w-[340px] rounded-full bg-indigo-200/35 blur-3xl" />
+        </div>
 
-          <div className="hidden sm:block">
-            <Image
-              src="/icons/export-produkce.png"
-              alt="Export produkce"
-              width={320}
-              height={320}
-              className="h-52 w-auto object-contain absolute right-0 -top-4 opacity-90 pointer-events-none"
-              priority
+        <div className="mx-auto w-full max-w-[1500px] space-y-4">
+          <header className="relative overflow-hidden rounded-[34px] border border-white/70 bg-white/78 p-5 shadow-[0_24px_72px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:p-6">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(14,165,233,0.15)_0%,transparent_42%),radial-gradient(circle_at_90%_18%,rgba(16,185,129,0.18)_0%,transparent_38%)]"
             />
-          </div>
-        </header>
-
-        <div className="grid gap-4 lg:grid-cols-[264px_minmax(0,1fr)] lg:items-start xl:grid-cols-[284px_minmax(0,1fr)]">
-          <aside className="space-y-3 lg:sticky lg:top-2">
-            {/* Nastavení exportu */}
-            <section className="space-y-2.5 rounded-2xl border border-slate-200/80 bg-slate-50/95 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.06)] backdrop-blur supports-[backdrop-filter]:bg-slate-50/85">
-              <div className="space-y-1.5">
-                <div className="ui-kicker inline-flex items-center gap-1.5">
-                  <UsersRound
-                    size={12}
-                    strokeWidth={2.2}
-                    className="shrink-0"
-                    aria-hidden="true"
+            <div className="relative z-10 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+              <div className="space-y-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/95 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-800">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Export produkce
+                </div>
+                <div className="space-y-1">
+                  <SplitTitle
+                    text="Statistika"
+                    className="text-5xl sm:text-6xl lg:text-7xl"
                   />
-                  <span>Rozsah exportu</span>
-                </div>
-                <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-white p-1.5 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setScopeOption("own")}
-                    className={`ui-focus w-full rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
-                      scopeOption === "own"
-                        ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.16)]"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                    }`}
-                  >
-                    Vlastní produkce
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!hasTeam}
-                    onClick={() => setScopeOption("team")}
-                    className={`ui-focus w-full rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
-                      scopeOption === "team"
-                        ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.16)]"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                    } ${!hasTeam ? "cursor-not-allowed opacity-45" : ""}`}
-                  >
-                    Týmová produkce
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!hasTeam}
-                    onClick={() => setScopeOption("selected")}
-                    className={`ui-focus w-full rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
-                      scopeOption === "selected"
-                        ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.16)]"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                    } ${!hasTeam ? "cursor-not-allowed opacity-45" : ""}`}
-                  >
-                    Vybraní podřízení
-                  </button>
-                </div>
-
-                {loadingSubs && (
-                  <p className="text-xs text-slate-600">Načítám podřízené…</p>
-                )}
-                {!loadingSubs && !hasTeam && (
-                  <p className="text-xs text-slate-600">
-                    Nemáš nastavené podřízené, proto je dostupná jen vlastní
-                    produkce.
+                  <p className="max-w-3xl text-sm text-slate-700 sm:text-base">
+                    Připrav přehled produkce během pár kliknutí, včetně týmového rozkladu, produktových kategorií a PDF exportu pro klienta nebo vedení.
                   </p>
-                )}
-
-                {scopeOption === "selected" && hasTeam && (
-                  <div ref={subordinatesPickerRef} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setSubordinatesPickerOpen((v) => !v)}
-                      className={`ui-focus inline-flex w-full items-center justify-between rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                        subordinatesPickerOpen
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
-                      }`}
-                    >
-                      <span>Vybraní podřízení ({selectedSubs.size})</span>
-                      <span>{subordinatesPickerOpen ? "▴" : "▾"}</span>
-                    </button>
-
-                    {subordinatesPickerOpen && (
-                      <div className="absolute left-0 top-full z-40 mt-2 w-full rounded-2xl border border-slate-300 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.16)]">
-                        <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-                          <div className="text-xs font-semibold text-slate-700">
-                            Vyber poradce
-                          </div>
-                          <div className="inline-flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setSelectedSubs(
-                                  new Set(subordinates.map((s) => s.email))
-                                )
-                              }
-                              className="ui-focus rounded-xl border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                              Vše
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedSubs(new Set())}
-                              className="ui-focus rounded-xl border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                              Nic
-                            </button>
-                          </div>
-                        </div>
-                        <div className="border-b border-slate-200 px-2.5 py-2">
-                          <label className="relative block">
-                            <Search
-                              size={14}
-                              strokeWidth={2}
-                              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-                              aria-hidden="true"
-                            />
-                            <input
-                              type="text"
-                              value={subordinateSearch}
-                              onChange={(e) => setSubordinateSearch(e.target.value)}
-                              placeholder="Hledat poradce nebo e-mail"
-                              className="ui-focus w-full rounded-xl border border-slate-300 bg-white py-1.5 pl-8 pr-2.5 text-xs text-slate-800 outline-none placeholder:text-slate-400"
-                            />
-                          </label>
-                        </div>
-                        <div className="max-h-56 overflow-y-auto p-2 space-y-1">
-                          {filteredSubordinates.length === 0 ? (
-                            <p className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px] text-slate-500">
-                              Nenašel se žádný podřízený pro zadaný filtr.
-                            </p>
-                          ) : (
-                            filteredSubordinates.map((sub) => {
-                              const active = selectedSubs.has(sub.email);
-                              return (
-                                <button
-                                  key={sub.email}
-                                  type="button"
-                                  onClick={() => handleToggleSubordinate(sub.email)}
-                                  className={`ui-focus w-full rounded-xl border px-2.5 py-1.5 text-left transition ${
-                                    active
-                                      ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]"
-                                      : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50"
-                                  }`}
-                                >
-                                  <span className="block text-[12px] font-semibold">
-                                    {sub.name}
-                                  </span>
-                                  <span
-                                    className={`block text-[10px] ${
-                                      active ? "text-slate-300" : "text-slate-500"
-                                    }`}
-                                  >
-                                    {sub.email}
-                                  </span>
-                                </button>
-                              );
-                            })
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
+                  <span className="rounded-full border border-slate-300/80 bg-white/90 px-3 py-1">
+                    Rozsah: <strong className="text-slate-900">{scopeLabel}</strong>
+                  </span>
+                  <span className="rounded-full border border-slate-300/80 bg-white/90 px-3 py-1">
+                    Období: <strong className="text-slate-900">{dateRangeLabel}</strong>
+                  </span>
+                  <span className="rounded-full border border-slate-300/80 bg-white/90 px-3 py-1">
+                    Kategorie: <strong className="text-slate-900">{selectedCategoryLabel}</strong>
+                  </span>
+                  <span className="rounded-full border border-slate-300/80 bg-white/90 px-3 py-1">
+                    Tým: <strong className="text-slate-900">{selectedAdvisersLabel}</strong>
+                  </span>
+                </div>
               </div>
 
-              <div className="space-y-1.5">
-                <div className="ui-kicker inline-flex items-center gap-1.5">
-                  <CalendarDays
-                    size={12}
-                    strokeWidth={2.2}
-                    className="shrink-0"
-                    aria-hidden="true"
-                  />
-                  <span>Období</span>
+              <div className="relative hidden min-[920px]:block">
+                <div className="absolute -left-8 top-6 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-[11px] font-semibold text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                  Filtry připravené k exportu
                 </div>
-                <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-slate-200 bg-white p-1.5 text-xs">
-                  {DATE_RANGE_OPTIONS.map(([value, label]) => (
+                <Image
+                  src="/icons/export-produkce.png"
+                  alt="Export produkce"
+                  width={320}
+                  height={320}
+                  className="h-52 w-auto object-contain opacity-95"
+                  priority
+                />
+              </div>
+            </div>
+          </header>
+
+          <div className="grid gap-4 lg:grid-cols-[290px_minmax(0,1fr)] lg:items-start xl:grid-cols-[320px_minmax(0,1fr)]">
+            <aside className="space-y-3 lg:sticky lg:top-4">
+              <section className="space-y-4 rounded-[30px] border border-slate-200 bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.08)]">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-700 ring-1 ring-slate-200">
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    Nastavení exportu
+                  </div>
+                </div>
+
+                <div className="space-y-2.5 rounded-2xl bg-slate-50 p-3.5 ring-1 ring-slate-200/80">
+                  <div className="ui-kicker inline-flex items-center gap-1.5">
+                    <UsersRound
+                      size={12}
+                      strokeWidth={2.2}
+                      className="shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span>Rozsah exportu</span>
+                  </div>
+                  <div className="grid gap-2 text-xs">
                     <button
-                      key={value}
                       type="button"
-                      onClick={() => setDateRangeOption(value)}
-                      className={`ui-focus rounded-xl border px-2.5 py-2 text-center text-xs font-semibold transition ${
-                        dateRangeOption === value
-                          ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.16)]"
+                      onClick={() => setScopeOption("own")}
+                      className={`ui-focus w-full rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
+                        scopeOption === "own"
+                          ? "border-sky-600 bg-sky-600 text-[#f8fafc] shadow-[0_8px_20px_rgba(14,116,144,0.3)]"
                           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
                       }`}
                     >
-                      {label}
+                      Vlastní produkce
                     </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="ui-kicker inline-flex items-center gap-1.5">
-                  <Tags
-                    size={12}
-                    strokeWidth={2.2}
-                    className="shrink-0"
-                    aria-hidden="true"
-                  />
-                  <span>Kategorie produktu</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5 rounded-xl border border-slate-200 bg-white p-1.5 text-xs">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCategories(new Set<ProductCategory>(ALL_CATEGORY_KEYS))
-                    }
-                    className={`ui-focus inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition ${
-                      allCategoriesSelected
-                        ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.16)]"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                    }`}
-                  >
-                    Všechny
-                  </button>
-                  {CATEGORY_FILTERS.map((category) => (
-                    <CheckboxChip
-                      key={category.key}
-                      label={category.label}
-                      active={categories.has(category.key)}
-                      onClick={() => handleToggleCategory(category.key)}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
-                {activeFiltersSummary}
-              </div>
-            </section>
-          </aside>
-
-          <div className="space-y-4">
-            {errorText && (
-              <p className="rounded-2xl border border-rose-300 bg-rose-100 px-4 py-2 text-xs text-rose-800">
-                {errorText}
-              </p>
-            )}
-
-            {/* Tlačítka */}
-            <section className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_6px_18px_rgba(15,23,42,0.05)]">
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handlePreview}
-                  disabled={generating}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-white px-6 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {generating ? "Připravuji náhled…" : "Náhled PDF"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleGeneratePdf}
-                  disabled={generating}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-7 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {generating ? "Generuji PDF…" : "Vygenerovat PDF"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEmailForm((v) => !v);
-                    setSendStatus(null);
-                  }}
-                  disabled={generating || sending}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-white px-6 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {sending
-                    ? "Odesílám…"
-                    : showEmailForm
-                    ? "Skrýt odeslání"
-                    : "Odeslat e‑mailem"}
-                </button>
-              </div>
-
-              {showEmailForm && (
-                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                  <div className="grid items-end gap-3 sm:grid-cols-1">
-                    <label className="space-y-1 text-sm text-slate-800">
-                      <span className="block text-[11px] uppercase tracking-wide text-slate-500">
-                        E-mail příjemce
-                      </span>
-                      <input
-                        type="email"
-                        value={recipient}
-                        onChange={(e) => setRecipient(e.target.value)}
-                        className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500"
-                        placeholder="klient@example.com"
-                      />
-                    </label>
-                  </div>
-                  {sendStatus && (
-                    <p
-                      className={`mt-2 text-xs ${
-                        sendStatus.type === "ok"
-                          ? "text-emerald-800"
-                          : "text-rose-700"
-                      }`}
-                    >
-                      {sendStatus.msg}
-                    </p>
-                  )}
-                  <div className="mt-3 text-right">
                     <button
                       type="button"
-                      onClick={handleSendEmail}
-                      disabled={generating || sending}
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={!hasTeam}
+                      onClick={() => setScopeOption("team")}
+                      className={`ui-focus w-full rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
+                        scopeOption === "team"
+                          ? "border-sky-600 bg-sky-600 text-[#f8fafc] shadow-[0_8px_20px_rgba(14,116,144,0.3)]"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                      } ${!hasTeam ? "cursor-not-allowed opacity-45" : ""}`}
                     >
-                      {sending ? "Odesílám…" : "Odeslat e‑mailem"}
+                      Týmová produkce
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!hasTeam}
+                      onClick={() => setScopeOption("selected")}
+                      className={`ui-focus w-full rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
+                        scopeOption === "selected"
+                          ? "border-sky-600 bg-sky-600 text-[#f8fafc] shadow-[0_8px_20px_rgba(14,116,144,0.3)]"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                      } ${!hasTeam ? "cursor-not-allowed opacity-45" : ""}`}
+                    >
+                      Vybraní podřízení
                     </button>
                   </div>
-                </div>
-              )}
-            </section>
 
-            {/* Náhled PDF na stránce */}
-            {previewHtml && (
-              <section className="space-y-3">
-                <h2 className="text-sm font-semibold text-slate-900">
-                  Náhled PDF
-                </h2>
-                <p className="text-xs text-slate-600">
-                  Náhled odpovídá tomu, co se stáhne jako PDF. V prohlížeči se
-                  může lehce lišit od výsledného PDF (kvůli renderingu fontů).
-                </p>
-                <div className="h-[640px] overflow-hidden rounded-2xl border border-slate-300/80 bg-white shadow-[0_14px_30px_rgba(15,23,42,0.12)]">
-                  <iframe
-                    srcDoc={previewHtml}
-                    title="Náhled PDF produkce"
-                    className="h-full w-full bg-white"
-                  />
+                  {loadingSubs && (
+                    <p className="text-xs text-slate-600">Načítám podřízené…</p>
+                  )}
+                  {!loadingSubs && !hasTeam && (
+                    <p className="text-xs text-slate-600">
+                      Nemáš nastavené podřízené, proto je dostupná jen vlastní produkce.
+                    </p>
+                  )}
+
+                  {scopeOption === "selected" && hasTeam && (
+                    <div ref={subordinatesPickerRef} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setSubordinatesPickerOpen((v) => !v)}
+                        className={`ui-focus inline-flex w-full items-center justify-between rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                          subordinatesPickerOpen
+                            ? "border-sky-600 bg-sky-600 text-[#f8fafc]"
+                            : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                        }`}
+                      >
+                        <span>Vybraní podřízení ({selectedSubs.size})</span>
+                        <span>{subordinatesPickerOpen ? "▴" : "▾"}</span>
+                      </button>
+
+                      {subordinatesPickerOpen && (
+                        <div className="absolute left-0 top-full z-40 mt-2 w-full rounded-2xl border border-slate-300 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.16)]">
+                          <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+                            <div className="text-xs font-semibold text-slate-700">
+                              Vyber poradce
+                            </div>
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSelectedSubs(new Set(subordinates.map((s) => s.email)))
+                                }
+                                className="ui-focus rounded-xl border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                              >
+                                Vše
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSubs(new Set())}
+                                className="ui-focus rounded-xl border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                              >
+                                Nic
+                              </button>
+                            </div>
+                          </div>
+                          <div className="border-b border-slate-200 px-2.5 py-2">
+                            <label className="relative block">
+                              <Search
+                                size={14}
+                                strokeWidth={2}
+                                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                aria-hidden="true"
+                              />
+                              <input
+                                type="text"
+                                value={subordinateSearch}
+                                onChange={(e) => setSubordinateSearch(e.target.value)}
+                                placeholder="Hledat poradce nebo e-mail"
+                                className="ui-focus w-full rounded-xl border border-slate-300 bg-white py-1.5 pl-8 pr-2.5 text-xs text-slate-800 outline-none placeholder:text-slate-400"
+                              />
+                            </label>
+                          </div>
+                          <div className="max-h-56 space-y-1 overflow-y-auto p-2">
+                            {filteredSubordinates.length === 0 ? (
+                              <p className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px] text-slate-500">
+                                Nenašel se žádný podřízený pro zadaný filtr.
+                              </p>
+                            ) : (
+                              filteredSubordinates.map((sub) => {
+                                const active = selectedSubs.has(sub.email);
+                                return (
+                                  <button
+                                    key={sub.email}
+                                    type="button"
+                                    onClick={() => handleToggleSubordinate(sub.email)}
+                                    className={`ui-focus w-full rounded-xl border px-2.5 py-1.5 text-left transition ${
+                                      active
+                                        ? "border-sky-600 bg-sky-600 text-[#f8fafc] shadow-[0_6px_14px_rgba(14,116,144,0.24)]"
+                                        : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    <span className="block text-[12px] font-semibold">
+                                      {sub.name}
+                                    </span>
+                                    <span
+                                      className={`block text-[10px] ${
+                                        active ? "text-[rgba(248,250,252,0.85)]" : "text-slate-500"
+                                      }`}
+                                    >
+                                      {sub.email}
+                                    </span>
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2.5 rounded-2xl bg-slate-50 p-3.5 ring-1 ring-slate-200/80">
+                  <div className="ui-kicker inline-flex items-center gap-1.5">
+                    <CalendarDays
+                      size={12}
+                      strokeWidth={2.2}
+                      className="shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span>Období</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {DATE_RANGE_OPTIONS.map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setDateRangeOption(value)}
+                        className={`ui-focus rounded-xl border px-2.5 py-2 text-center text-xs font-semibold transition ${
+                          dateRangeOption === value
+                            ? "border-sky-600 bg-sky-600 text-[#f8fafc] shadow-[0_8px_20px_rgba(14,116,144,0.3)]"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2.5 rounded-2xl bg-slate-50 p-3.5 ring-1 ring-slate-200/80">
+                  <div className="ui-kicker inline-flex items-center gap-1.5">
+                    <Tags
+                      size={12}
+                      strokeWidth={2.2}
+                      className="shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span>Kategorie produktu</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCategories(new Set<ProductCategory>(ALL_CATEGORY_KEYS))
+                      }
+                      className={`ui-focus inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition ${
+                        allCategoriesSelected
+                          ? "border-sky-600 bg-sky-600 text-[#f8fafc] shadow-[0_8px_20px_rgba(14,116,144,0.3)]"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      Všechny
+                    </button>
+                    {CATEGORY_FILTERS.map((category) => (
+                      <CheckboxChip
+                        key={category.key}
+                        label={category.label}
+                        active={categories.has(category.key)}
+                        onClick={() => handleToggleCategory(category.key)}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs text-sky-900">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-700">
+                    Aktivní výběr
+                  </div>
+                  <div className="mt-1.5 space-y-1 leading-relaxed">
+                    <div>
+                      <span className="text-sky-700/80">Rozsah:</span>{" "}
+                      <span className="font-semibold">{scopeLabel}</span>
+                    </div>
+                    <div>
+                      <span className="text-sky-700/80">Období:</span>{" "}
+                      <span className="font-semibold">{dateRangeLabel}</span>
+                    </div>
+                    <div>
+                      <span className="text-sky-700/80">Kategorie:</span>{" "}
+                      <span className="font-semibold">{selectedCategoryLabel}</span>
+                    </div>
+                  </div>
                 </div>
               </section>
-            )}
+            </aside>
+
+            <div className="space-y-4">
+              {errorText && (
+                <p className="rounded-2xl border border-rose-300 bg-rose-100 px-4 py-2 text-xs text-rose-800 shadow-[0_12px_30px_rgba(244,63,94,0.16)]">
+                  {errorText}
+                </p>
+              )}
+
+              <section className="space-y-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handlePreview}
+                    disabled={generating}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-900 bg-[linear-gradient(135deg,#1e293b_0%,#0f172a_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_34px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(15,23,42,0.34)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Eye className="h-4 w-4" />
+                    {generating ? "Připravuji náhled…" : "Náhled PDF"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleGeneratePdf}
+                    disabled={generating}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-blue-700/70 bg-[linear-gradient(135deg,#1d4ed8_0%,#1e293b_100%)] px-6 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_16px_38px_rgba(30,64,175,0.32)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_45px_rgba(30,64,175,0.38)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Download className="h-4 w-4" />
+                    {generating ? "Připravuji PDF…" : "Stáhnout PDF"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEmailForm((v) => !v);
+                      setSendStatus(null);
+                    }}
+                    disabled={generating || sending}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-emerald-700/70 bg-[linear-gradient(135deg,#16a34a_0%,#047857_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_16px_38px_rgba(5,150,105,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_45px_rgba(5,150,105,0.36)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <SendHorizontal className="h-4 w-4" />
+                    {sending
+                      ? "Odesílám…"
+                      : showEmailForm
+                        ? "Skrýt odeslání"
+                        : "Odeslat e‑mailem"}
+                  </button>
+                </div>
+
+                {showEmailForm && (
+                  <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(160deg,#f8fafc_0%,#ffffff_100%)] px-3 py-3">
+                    <div className="grid items-end gap-3 sm:grid-cols-1">
+                      <label className="space-y-1 text-sm text-slate-800">
+                        <span className="block text-[11px] uppercase tracking-wide text-slate-500">
+                          E-mail příjemce
+                        </span>
+                        <input
+                          type="email"
+                          value={recipient}
+                          onChange={(e) => setRecipient(e.target.value)}
+                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+                          placeholder="klient@example.com"
+                        />
+                      </label>
+                    </div>
+                    {sendStatus && (
+                      <p
+                        className={`mt-2 text-xs ${
+                          sendStatus.type === "ok" ? "text-emerald-800" : "text-rose-700"
+                        }`}
+                      >
+                        {sendStatus.msg}
+                      </p>
+                    )}
+                    <div className="mt-3 text-right">
+                      <button
+                        type="button"
+                        onClick={handleSendEmail}
+                        disabled={generating || sending}
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-5 py-2 text-sm font-semibold text-[#f8fafc] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {sending ? "Odesílám…" : "Odeslat e‑mailem"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_14px_38px_rgba(15,23,42,0.1)]">
+                <div className="border-b border-slate-200 bg-[linear-gradient(155deg,#f8fafc_0%,#eef5ff_100%)] px-4 py-3.5 sm:px-5">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <h2 className="text-2xl font-semibold tracking-[-0.015em] text-slate-900">
+                        Náhled PDF
+                      </h2>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Náhled odpovídá výslednému exportu. Menší odchylky fontů mezi prohlížečem a PDF jsou normální.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                        A4 • na výšku
+                      </span>
+                      {previewGeneratedAt && (
+                        <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-800">
+                          Aktualizováno {previewGeneratedAt.toLocaleTimeString("cs-CZ")}
+                        </span>
+                      )}
+                      {previewHtml && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleOpenPreviewInNewTab}
+                            className="ui-focus inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-50"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Otevřít v kartě
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPreviewExpanded((prev) => !prev)}
+                            className="ui-focus inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-50"
+                          >
+                            {previewExpanded ? (
+                              <Minimize2 className="h-3.5 w-3.5" />
+                            ) : (
+                              <Maximize2 className="h-3.5 w-3.5" />
+                            )}
+                            {previewExpanded ? "Zmenšit" : "Rozšířit"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {previewHtml ? (
+                  <div
+                    className={`overflow-hidden bg-[radial-gradient(circle_at_14%_8%,rgba(37,99,235,0.1)_0%,transparent_44%),radial-gradient(circle_at_84%_14%,rgba(14,165,233,0.08)_0%,transparent_40%),#f8fafc] p-3 transition-[height] duration-300 sm:p-4 ${
+                      previewExpanded ? "h-[78vh] min-h-[760px]" : "h-[640px]"
+                    }`}
+                  >
+                    <div className="h-full overflow-hidden rounded-[24px] border border-slate-300/90 bg-white shadow-[0_20px_48px_rgba(15,23,42,0.2)]">
+                      <div className="flex items-center gap-2 border-b border-[#1e293b] bg-[#0b1220] px-4 py-2">
+                        <span className="h-2.5 w-2.5 rounded-full bg-[#fb7185]" />
+                        <span className="h-2.5 w-2.5 rounded-full bg-[#f59e0b]" />
+                        <span className="h-2.5 w-2.5 rounded-full bg-[#22c55e]" />
+                        <span className="ml-2 truncate rounded bg-[#1f2937] px-2 py-0.5 text-[10px] font-medium text-[#cbd5e1]">
+                          Bohemika.App export preview
+                        </span>
+                      </div>
+                      <iframe
+                        srcDoc={previewHtml}
+                        title="Náhled PDF produkce"
+                        className="h-[calc(100%-38px)] w-full bg-white"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid min-h-[320px] place-items-center bg-[linear-gradient(160deg,#f8fafc_0%,#ffffff_100%)] px-5 py-12 text-center">
+                    <div className="max-w-md space-y-2">
+                      <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700">
+                        <Eye className="h-5 w-5" />
+                      </div>
+                      <p className="text-base font-semibold text-slate-900">Náhled zatím není připravený</p>
+                      <p className="text-sm text-slate-600">
+                        Klikni na „Náhled PDF“ a otevře se vizuální kontrola exportu podle aktuálních filtrů.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
           </div>
         </div>
       </div>
@@ -2236,7 +2930,7 @@ function CheckboxChip({
       onClick={onClick}
       className={`ui-focus inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition ${
         active
-          ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.16)]"
+          ? "border-sky-600 bg-sky-600 text-[#f8fafc] shadow-[0_8px_20px_rgba(14,116,144,0.3)]"
           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
       }`}
     >
