@@ -5,8 +5,10 @@ import {
   Check,
   Clock3,
   Copy,
+  Inbox,
   RefreshCcw,
   RefreshCw,
+  Search,
   ShieldAlert,
   Snail,
   UserCheck2,
@@ -454,6 +456,20 @@ export default function AdminRequestsPage() {
     [filteredUnifiedRequests]
   );
 
+  const totalRequestsCount = requests.length + userRequests.length;
+
+  const pendingEndCollaborationCount = useMemo(
+    () => requests.filter((request) => request.status === "pending" || request.status === "processing").length,
+    [requests]
+  );
+
+  const overdueUrgentCount = useMemo(
+    () =>
+      userRequests.filter((request) => buildAdminUserRequestSlaInfo(request, requestsNowMs).isOverdueUrgent)
+        .length,
+    [requestsNowMs, userRequests]
+  );
+
   const handleDecision = useCallback(
     async (requestId: string, action: "approve" | "reject") => {
       const user = auth.currentUser;
@@ -694,15 +710,20 @@ export default function AdminRequestsPage() {
     newUserPosition,
   ]);
   const fieldClass =
-    "w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.04)] outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
+    "w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.04)] outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10";
 
   return (
     <AppLayout active="admin">
-      <div className="w-full max-w-[1200px] space-y-5 px-2 pb-8 sm:px-4">
-        <section className="rounded-3xl border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_60%,#eef2f7_100%)] px-5 py-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:px-6">
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="w-full max-w-[1200px] space-y-6 px-2 pb-8 sm:px-4">
+        <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(170deg,#ffffff_0%,#f8fbff_55%,#eff5fb_100%)] px-5 py-5 shadow-[0_22px_46px_rgba(15,23,42,0.1)] sm:px-6">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-300 via-sky-400 to-indigo-500" />
+
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">
+              <span className="mb-2 inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold tracking-wide text-sky-800">
+                Řídicí panel
+              </span>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
                 Admin
               </h1>
               <p className="mt-1 text-sm text-slate-600">
@@ -714,7 +735,7 @@ export default function AdminRequestsPage() {
                 type="button"
                 onClick={() => void refreshAllRequests()}
                 disabled={loading || userRequestsLoading}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <RefreshCcw size={15} strokeWidth={2.2} aria-hidden="true" />
                 Obnovit
@@ -728,14 +749,14 @@ export default function AdminRequestsPage() {
             </div>
           ) : (
             <>
-              <div className="mb-4 flex w-fit max-w-full flex-wrap gap-1 overflow-x-auto rounded-full border border-slate-900 bg-slate-950 p-1 shadow-[0_16px_34px_rgba(15,23,42,0.16)]">
+              <div className="mb-4 flex w-fit max-w-full flex-wrap gap-1 overflow-x-auto rounded-full border border-slate-300 bg-white p-1 shadow-[0_10px_24px_rgba(15,23,42,0.1)]">
                 <button
                   type="button"
                   onClick={() => setActiveAdminSection("requests")}
                   className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
                     activeAdminSection === "requests"
-                      ? "bg-white text-slate-950"
-                      : "text-white hover:bg-white/10"
+                      ? "bg-slate-900 text-white shadow-[0_8px_18px_rgba(15,23,42,0.2)]"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                   }`}
                 >
                   Žádosti
@@ -745,30 +766,75 @@ export default function AdminRequestsPage() {
                   onClick={() => setActiveAdminSection("createUser")}
                   className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
                     activeAdminSection === "createUser"
-                      ? "bg-white text-slate-950"
-                      : "text-white hover:bg-white/10"
+                      ? "bg-slate-900 text-white shadow-[0_8px_18px_rgba(15,23,42,0.2)]"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                   }`}
                 >
                   Přidat uživatele
                 </button>
               </div>
 
+              <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Celkem žádostí
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-slate-900">{totalRequestsCount}</div>
+                </div>
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 shadow-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                    Čeká vyřízení
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-amber-900">{pendingUnifiedCount}</div>
+                </div>
+                <div className="rounded-2xl border border-sky-200 bg-sky-50/70 px-4 py-3 shadow-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                    Ukončení spolupráce
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-sky-900">
+                    {pendingEndCollaborationCount}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-3 shadow-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-rose-700">
+                    Urgent po SLA
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-rose-900">{overdueUrgentCount}</div>
+                </div>
+              </div>
+
               {activeAdminSection === "requests" ? (
                 <>
-                  <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
+                  <h2 className="mb-2 inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
                     Žádosti
                   </h2>
-                  <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
-                    <input
-                      type="search"
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      placeholder="Hledat podle jména, e-mailu nebo textu"
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-[0_6px_16px_rgba(15,23,42,0.06)] outline-none transition focus:border-slate-500"
-                    />
-                    <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700">
-                      <Clock3 size={15} strokeWidth={2.2} aria-hidden="true" />
-                      Čeká: <span className="font-semibold text-slate-900">{pendingUnifiedCount}</span>
+                  <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
+                    <label className="relative block">
+                      <Search
+                        size={16}
+                        strokeWidth={2.1}
+                        aria-hidden="true"
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                      />
+                      <input
+                        type="search"
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        placeholder="Hledat podle jména, e-mailu nebo textu"
+                        className="w-full rounded-2xl border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 shadow-[0_6px_16px_rgba(15,23,42,0.06)] outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10"
+                      />
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+                        <Clock3 size={15} strokeWidth={2.2} aria-hidden="true" />
+                        Čeká: <span className="font-semibold text-slate-900">{pendingUnifiedCount}</span>
+                      </div>
+                      <div className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700">
+                        Vidíš:{" "}
+                        <span className="font-semibold text-slate-900">
+                          {filteredUnifiedRequests.length}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -790,11 +856,21 @@ export default function AdminRequestsPage() {
 
                   {loading || userRequestsLoading ? (
                     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-600">
-                      Načítám žádosti...
+                      <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1">
+                        <RefreshCcw size={14} strokeWidth={2.2} className="animate-spin" />
+                        Načítám žádosti...
+                      </div>
                     </div>
                   ) : filteredUnifiedRequests.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">
-                      V této chvíli tu nejsou žádné žádosti.
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-9 text-center text-sm text-slate-600">
+                      <div className="mx-auto mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                        <Inbox size={18} strokeWidth={2.1} aria-hidden="true" />
+                      </div>
+                      <p className="font-medium text-slate-700">
+                        {search.trim()
+                          ? "Pro zadaný filtr nebyla nalezena žádná žádost."
+                          : "V této chvíli tu nejsou žádné žádosti."}
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -807,11 +883,22 @@ export default function AdminRequestsPage() {
                             request,
                             requestsNowMs
                           );
+                          const toneBarClass =
+                            request.status === "approved"
+                              ? "bg-emerald-400"
+                              : request.status === "rejected"
+                                ? "bg-slate-300"
+                                : request.status === "failed"
+                                  ? "bg-rose-400"
+                                  : request.status === "processing"
+                                    ? "bg-sky-400"
+                                    : "bg-amber-400";
                           return (
                             <article
                               key={item.id}
-                              className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                              className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-[1px] hover:shadow-[0_14px_28px_rgba(15,23,42,0.1)]"
                             >
+                              <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${toneBarClass}`} />
                               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                                 <div className="space-y-1">
                                   <div className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
@@ -922,16 +1009,28 @@ export default function AdminRequestsPage() {
                           request,
                           requestsNowMs
                         );
+                        const userToneBarClass = slaInfo.isOverdueUrgent
+                          ? "bg-rose-400"
+                          : request.status === "accepted"
+                            ? "bg-emerald-400"
+                            : request.status === "rejected"
+                              ? "bg-slate-300"
+                              : request.status === "needsInfo"
+                                ? "bg-sky-400"
+                                : "bg-amber-400";
 
                         return (
                           <article
                             key={item.id}
-                            className={`rounded-2xl border bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] ${
+                            className={`relative overflow-hidden rounded-2xl border bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-[1px] hover:shadow-[0_14px_28px_rgba(15,23,42,0.1)] ${
                               slaInfo.isOverdueUrgent
                                 ? "border-rose-300"
                                 : "border-slate-200"
                             }`}
                           >
+                            <div
+                              className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${userToneBarClass}`}
+                            />
                             <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                               <div className="space-y-1">
                                 <div className="text-base font-semibold text-slate-900">
@@ -1143,8 +1242,9 @@ export default function AdminRequestsPage() {
                   )}
                 </>
               ) : (
-                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600">
-                  Pro práci s uživateli přepni na sekci <span className="font-semibold text-slate-900">Přidat uživatele</span>.
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm">
+                  Pro práci s uživateli přepni na sekci{" "}
+                  <span className="font-semibold text-slate-900">Přidat uživatele</span>.
                 </div>
               )}
             </>
@@ -1152,21 +1252,25 @@ export default function AdminRequestsPage() {
         </section>
 
         {isAllowedAdmin && activeAdminSection === "createUser" ? (
-          <section className="rounded-3xl border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_60%,#eef2f7_100%)] px-5 py-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:px-6">
+          <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(170deg,#ffffff_0%,#f8fbff_55%,#eff5fb_100%)] px-5 py-5 shadow-[0_22px_46px_rgba(15,23,42,0.1)] sm:px-6">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-300 via-cyan-400 to-emerald-400" />
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
+                <span className="mb-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold tracking-wide text-emerald-800">
+                  Správa účtů
+                </span>
+                <h2 className="inline-flex items-center gap-1.5 text-base font-semibold text-slate-900 sm:text-lg">
                   <UserPlus size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                   <span>Přidat uživatele</span>
                 </h2>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-sm text-slate-600">
                   Vytvoří Firebase Auth účet, veřejný profil a aktivní interní profil.
                 </p>
               </div>
             </div>
 
             <form
-              className="grid gap-3 lg:grid-cols-2"
+              className="grid gap-3 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm lg:grid-cols-2"
               onSubmit={(event) => {
                 event.preventDefault();
                 void handleCreateUser();

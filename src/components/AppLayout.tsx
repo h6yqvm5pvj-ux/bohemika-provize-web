@@ -25,7 +25,7 @@ import {
   UsersRound,
   Wrench,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   BOX_THEME_EVENT,
   BOX_THEME_LOCAL_STORAGE_KEY,
@@ -267,7 +267,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   };
 
   // Načtení subscription profilu přes API
-  const applySubscriptionPayload = (
+  const applySubscriptionPayload = useCallback((
     payload: UserProfileResponse,
     currentUser: FirebaseUser
   ) => {
@@ -291,9 +291,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       const cacheKey = `app.hasTeam:${currentUser.email.toLowerCase()}`;
       window.sessionStorage.setItem(cacheKey, has ? "1" : "0");
     }
-  };
+  }, []);
 
-  const loadSubscriptionProfileForUser = async (
+  const loadSubscriptionProfileForUser = useCallback(async (
     currentUser: FirebaseUser | null,
     options?: { force?: boolean }
   ) => {
@@ -327,20 +327,20 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       });
       applySubscriptionPayload(payload, currentUser);
     } catch (e) {
-      console.error("Chyba při načítání subscription profilu:", e);
+      console.warn("Chyba při načítání subscription profilu:", e);
       setSubscriptionStatus("none");
       setNeedsCareerTimelineSetup(false);
       setHasTeam(false);
     } finally {
       setLoadingProfile(false);
     }
-  };
+  }, [applySubscriptionPayload]);
 
   // Načtení subscription, když se změní user
   useEffect(() => {
     if (!user) return;
     void loadSubscriptionProfileForUser(user);
-  }, [user]);
+  }, [user, loadSubscriptionProfileForUser]);
 
   useEffect(() => {
     if (!user?.email) return;

@@ -1,11 +1,12 @@
 "use client";
 
-import { RefreshCcw, Repeat2 } from "lucide-react";
+import { FileText, RefreshCcw, Repeat2 } from "lucide-react";
 
 import { type PaymentFrequency, type Product } from "../types/domain";
 import { placeholderForAmount } from "./calculatorHelpers";
 
 type CalculatorAmountAndActionsSectionProps = {
+  embedded?: boolean;
   product: Product;
   frequency: PaymentFrequency;
   isLifeProduct: boolean;
@@ -28,6 +29,7 @@ type CalculatorAmountAndActionsSectionProps = {
 };
 
 export function CalculatorAmountAndActionsSection({
+  embedded = false,
   product,
   frequency,
   isLifeProduct,
@@ -48,8 +50,8 @@ export function CalculatorAmountAndActionsSection({
   onToggleRefreshOriginal,
   onPrepareEndorsement,
 }: CalculatorAmountAndActionsSectionProps) {
-  return (
-    <section className="rounded-[1.35rem] border border-slate-300 bg-white/90 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+  const content = (
+    <>
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-bold text-slate-900">Výpočet provize</h2>
         <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />
@@ -146,6 +148,7 @@ export function CalculatorAmountAndActionsSection({
                   : ""
               }`}
             >
+              <FileText size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
               {hasTipContractConfig ? "Smlouva z TIPU ✓" : "Smlouva z TIPU"}
             </button>
             {isLifeProduct && product === "neon" && (
@@ -181,6 +184,16 @@ export function CalculatorAmountAndActionsSection({
         </div>
       )}
       </div>
+    </>
+  );
+
+  if (embedded) {
+    return <section>{content}</section>;
+  }
+
+  return (
+    <section className="rounded-[1.35rem] border border-slate-300 bg-white/90 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+      {content}
     </section>
   );
 }

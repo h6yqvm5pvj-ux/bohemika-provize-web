@@ -4174,50 +4174,54 @@ export default function CalculatorPage() {
               onDrop={handlePdfDrop}
             />
 
-            {/* Doba trvání + frekvence */}
-            <CalculatorDurationAndFrequencySection
-              product={product}
-              durationHelp={durationHelp}
-              durationHelpOpen={durationHelpOpen}
-              durationYears={durationYears}
-              durationMonths={durationMonths}
-              missingFields={missingFields}
-              maxCizinKomplexVariant={maxCizinKomplexVariant}
-              maxCizinOptions={MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS}
-              hasFrequencyPicker={hasFrequencyPicker}
-              isLifeProduct={isLifeProduct}
-              frequency={frequency}
-              allowedFrequencies={allowed}
-              onToggleDurationHelp={() => setDurationHelpOpen((prev) => !prev)}
-              onDurationYearsChange={setDurationYears}
-              onDurationMonthsChange={setDurationMonths}
-              onMaxCizinVariantChange={setMaxCizinKomplexVariant}
-              onFrequencyChange={setFrequency}
-            />
+            <section className="rounded-[1.35rem] border border-slate-300 bg-white/90 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)] space-y-4">
+              {/* Doba trvání + frekvence */}
+              <CalculatorDurationAndFrequencySection
+                embedded
+                product={product}
+                durationHelp={durationHelp}
+                durationHelpOpen={durationHelpOpen}
+                durationYears={durationYears}
+                durationMonths={durationMonths}
+                missingFields={missingFields}
+                maxCizinKomplexVariant={maxCizinKomplexVariant}
+                maxCizinOptions={MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS}
+                hasFrequencyPicker={hasFrequencyPicker}
+                isLifeProduct={isLifeProduct}
+                frequency={frequency}
+                allowedFrequencies={allowed}
+                onToggleDurationHelp={() => setDurationHelpOpen((prev) => !prev)}
+                onDurationYearsChange={setDurationYears}
+                onDurationMonthsChange={setDurationMonths}
+                onMaxCizinVariantChange={setMaxCizinKomplexVariant}
+                onFrequencyChange={setFrequency}
+              />
 
-            <CalculatorAmountAndActionsSection
-              product={product}
-              frequency={frequency}
-              isLifeProduct={isLifeProduct}
-              tipsterModeEnabled={tipsterModeEnabled}
-              comfortGradual={comfortGradual}
-              amountText={amountText}
-              comfortPaymentText={comfortPaymentText}
-              comfortTargetAmountText={comfortTargetAmountText}
-              comfortPayoutCount={comfortPayoutCount}
-              missingFields={missingFields}
-              hasTipContractConfig={Boolean(tipContractConfig)}
-              refreshOriginalOpen={refreshOriginalOpen}
-              onComfortGradualChange={setComfortGradual}
-              onAmountTextChange={setAmountText}
-              onComfortPaymentTextChange={setComfortPaymentText}
-              onComfortTargetAmountTextChange={setComfortTargetAmountText}
-              onOpenTipContractModal={openTipContractModal}
-              onToggleRefreshOriginal={() => setRefreshOriginalOpen((prev) => !prev)}
-              onPrepareEndorsement={() => {
-                void handlePrepareEndorsement();
-              }}
-            />
+              <CalculatorAmountAndActionsSection
+                embedded
+                product={product}
+                frequency={frequency}
+                isLifeProduct={isLifeProduct}
+                tipsterModeEnabled={tipsterModeEnabled}
+                comfortGradual={comfortGradual}
+                amountText={amountText}
+                comfortPaymentText={comfortPaymentText}
+                comfortTargetAmountText={comfortTargetAmountText}
+                comfortPayoutCount={comfortPayoutCount}
+                missingFields={missingFields}
+                hasTipContractConfig={Boolean(tipContractConfig)}
+                refreshOriginalOpen={refreshOriginalOpen}
+                onComfortGradualChange={setComfortGradual}
+                onAmountTextChange={setAmountText}
+                onComfortPaymentTextChange={setComfortPaymentText}
+                onComfortTargetAmountTextChange={setComfortTargetAmountText}
+                onOpenTipContractModal={openTipContractModal}
+                onToggleRefreshOriginal={() => setRefreshOriginalOpen((prev) => !prev)}
+                onPrepareEndorsement={() => {
+                  void handlePrepareEndorsement();
+                }}
+              />
+            </section>
 
             <CalculatorContractDetailsSection
               isVisible={!tipsterModeEnabled}
@@ -4544,20 +4548,23 @@ export default function CalculatorPage() {
                     <p className="mb-2 text-xs font-semibold text-rose-700">{neonPreviewError}</p>
                   )}
 
-                  <div className="h-[70vh] min-h-[540px] overflow-hidden rounded-lg border border-slate-300 bg-white">
+                  <div className="relative h-[70vh] min-h-[540px] overflow-hidden rounded-lg border border-slate-300 bg-white">
                     {neonPreviewLoading ? (
                       <div className="flex h-full items-center justify-center px-4 text-sm text-slate-600">
                         Načítám náhled provizních podmínek...
                       </div>
                     ) : neonPreviewBlobUrl ? (
-                      <img
+                      <Image
                         src={neonPreviewBlobUrl}
                         alt={
                           neonCoefficientView === "historical"
                             ? "Náhled provizních podmínek NEON 2019"
                             : "Náhled provizních podmínek NEON 2024"
                         }
-                        className="h-full w-full object-contain"
+                        fill
+                        sizes="100vw"
+                        unoptimized
+                        className="object-contain"
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-600">

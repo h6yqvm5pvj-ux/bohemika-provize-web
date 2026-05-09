@@ -174,7 +174,7 @@ export function ProductionSummarySection({
             <h2 className="flex min-h-[40px] items-center text-2xl font-semibold text-white sm:min-h-[48px] sm:text-3xl">
               <span className="inline-flex items-center gap-2.5">
                 <UserRound
-                  className="h-7 w-7 text-sky-300"
+                  className="h-7 w-7 text-white"
                   strokeWidth={1.8}
                   aria-hidden="true"
                 />
@@ -189,7 +189,7 @@ export function ProductionSummarySection({
                   <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Počet smluv
                   </dt>
-                  <dd className="text-3xl font-semibold text-sky-300 sm:text-4xl">
+                  <dd className="text-3xl font-semibold text-white sm:text-4xl">
                     <AnimatedNumber value={myContractsCount} />
                   </dd>
                 </dl>
@@ -197,7 +197,7 @@ export function ProductionSummarySection({
                   <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Provize
                   </dt>
-                  <dd className="whitespace-nowrap text-4xl font-semibold text-sky-200 sm:text-5xl">
+                  <dd className="whitespace-nowrap text-4xl font-semibold text-white sm:text-5xl">
                     <AnimatedMoney value={myImmediateSum} />
                   </dd>
                 </dl>
@@ -286,7 +286,7 @@ export function ProductionSummarySection({
         <div className="flex min-h-[118px] h-full flex-col justify-center space-y-1 text-center md:min-h-[134px] md:space-y-1.5 md:px-5">
           <div className="space-y-1">
               <div className="mx-auto flex h-5 w-5 items-center justify-center md:h-6 md:w-6">
-                <UserRound className="h-5 w-5 text-sky-300 md:h-6 md:w-6" strokeWidth={1.9} aria-hidden="true" />
+                <UserRound className="h-5 w-5 text-white md:h-6 md:w-6" strokeWidth={1.9} aria-hidden="true" />
               </div>
               <h2 className={managerTitleClass}>
                 <span className="block">Vlastní</span>
@@ -301,7 +301,7 @@ export function ProductionSummarySection({
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Počet smluv
                 </dt>
-                <dd className={`${managerCountClass} text-sky-200`}>
+                <dd className={`${managerCountClass} text-white`}>
                   <AnimatedNumber value={myContractsCount} />
                 </dd>
               </div>
@@ -309,7 +309,7 @@ export function ProductionSummarySection({
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Provize
                 </dt>
-                <dd className={`${managerAmountClass} text-sky-200`}>
+                <dd className={`${managerAmountClass} text-white`}>
                   <AnimatedMoney value={myImmediateSum} />
                 </dd>
                 <TrendInline

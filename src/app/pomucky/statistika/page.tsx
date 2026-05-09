@@ -270,12 +270,6 @@ function monthMeta() {
   return { year, month, daysInMonth, label };
 }
 
-function dayKey(year: number, month: number, dayIndex: number): string {
-  const m = String(month + 1).padStart(2, "0");
-  const d = String(dayIndex + 1).padStart(2, "0");
-  return `${year}-${m}-${d}`;
-}
-
 function makeId() {
   return `c-${Math.random().toString(36).slice(2, 8)}-${Date.now()}`;
 }

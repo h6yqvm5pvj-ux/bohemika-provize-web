@@ -31,10 +31,13 @@ export function CashflowAccordion({
         return (
           <section
             key={yearGroup.year}
-            className={`cashflow-card-year relative overflow-hidden rounded-3xl border border-slate-900 bg-slate-900 p-4 sm:p-5 shadow-[0_12px_24px_rgba(15,23,42,0.28)] ${
+            className={`cashflow-card-year relative overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 p-4 sm:p-5 shadow-[0_18px_34px_rgba(2,6,23,0.34)] ${
               yearOpen ? "lg:col-span-2" : ""
             }`}
+            data-fixed-box-theme="slate"
           >
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_12%,rgba(16,185,129,0.12),transparent_46%)]" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_100%,rgba(34,211,238,0.12),transparent_40%)]" />
 
             <button
               type="button"

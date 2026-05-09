@@ -119,6 +119,27 @@ function isIsoDay(value: string): boolean {
   return date.toISOString().slice(0, 10) === value;
 }
 
+const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+const MIN_SAFE_INTEGER_BIGINT = BigInt(Number.MIN_SAFE_INTEGER);
+
+function serializeProfilePayload(
+  profile: Record<string, unknown>
+): Record<string, unknown> {
+  try {
+    const json = JSON.stringify(profile, (_key, value) => {
+      if (typeof value !== "bigint") return value;
+      if (value <= MAX_SAFE_INTEGER_BIGINT && value >= MIN_SAFE_INTEGER_BIGINT) {
+        return Number(value);
+      }
+      return value.toString();
+    });
+    return (JSON.parse(json) as Record<string, unknown>) ?? {};
+  } catch (err) {
+    console.warn("GET /api/user/profile: serializace profilu selhala, vracím prázdný profil.", err);
+    return {};
+  }
+}
+
 async function getAuthContext(req: NextRequest) {
   if (!adminAuth || !adminDb) {
     return { error: "Server není správně nakonfigurován (Firebase Admin).", status: 500 } as const;
@@ -677,119 +698,136 @@ function buildPatchFromBody(
 }
 
 export async function GET(req: NextRequest) {
-  const ctx = await getAuthContext(req);
-  if ("error" in ctx && typeof ctx.error === "string") {
-    return NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
-      status: ctx.status,
-    });
-  }
+  try {
+    const ctx = await getAuthContext(req);
+    if ("error" in ctx && typeof ctx.error === "string") {
+      return NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
+        status: ctx.status,
+      });
+    }
 
-  const { email, uid, rawTokenEmail } = ctx;
-  const rateLimit = consumeRateLimit({
-    namespace: "api:user-profile:get",
-    key: email,
-    limit: PROFILE_GET_RATE_LIMIT,
-    windowMs: PROFILE_GET_WINDOW_MS,
-  });
-  if (!rateLimit.allowed) {
-    const res = NextResponse.json(
-      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." } satisfies ApiError,
-      { status: 429 }
-    );
+    const { email, uid, rawTokenEmail } = ctx;
+    const rateLimit = consumeRateLimit({
+      namespace: "api:user-profile:get",
+      key: email,
+      limit: PROFILE_GET_RATE_LIMIT,
+      windowMs: PROFILE_GET_WINDOW_MS,
+    });
+    if (!rateLimit.allowed) {
+      const res = NextResponse.json(
+        { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." } satisfies ApiError,
+        { status: 429 }
+      );
+      applyRateLimitHeaders(res.headers, rateLimit);
+      return res;
+    }
+
+    const [publicData, privateData, hasTeam] = await Promise.all([
+      loadBestPublicProfile({ email, rawTokenEmail, uid }),
+      loadPrivateProfile({ email, rawTokenEmail }),
+      getHasTeam(email),
+    ]);
+    const profileRaw = {
+      ...(publicData ?? {}),
+      ...(privateData ?? {}),
+    };
+    const profile = serializeProfilePayload(profileRaw);
+    const hasProfile = Boolean(publicData || privateData);
+
+    const res = NextResponse.json({
+      ok: true,
+      email,
+      hasTeam,
+      hasProfile,
+      profile,
+    } satisfies ApiSuccess);
     applyRateLimitHeaders(res.headers, rateLimit);
     return res;
-  }
-
-  const [publicData, privateData, hasTeam] = await Promise.all([
-    loadBestPublicProfile({ email, rawTokenEmail, uid }),
-    loadPrivateProfile({ email, rawTokenEmail }),
-    getHasTeam(email),
-  ]);
-  const profile = {
-    ...(publicData ?? {}),
-    ...(privateData ?? {}),
-  };
-  const hasProfile = Boolean(publicData || privateData);
-
-  const res = NextResponse.json({
-    ok: true,
-    email,
-    hasTeam,
-    hasProfile,
-    profile,
-  } satisfies ApiSuccess);
-  applyRateLimitHeaders(res.headers, rateLimit);
-  return res;
-}
-
-export async function PATCH(req: NextRequest) {
-  const ctx = await getAuthContext(req);
-  if ("error" in ctx && typeof ctx.error === "string") {
-    return NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
-      status: ctx.status,
-    });
-  }
-  if (!adminDb) {
+  } catch (err) {
+    console.error("GET /api/user/profile selhalo:", err);
     return NextResponse.json(
-      { ok: false, error: "Server není správně nakonfigurován (Firebase Admin)." } satisfies ApiError,
+      { ok: false, error: "Nepodařilo se načíst profil uživatele." } satisfies ApiError,
       { status: 500 }
     );
   }
+}
 
-  const { email, uid, rawTokenEmail } = ctx;
-  const rateLimit = consumeRateLimit({
-    namespace: "api:user-profile:patch",
-    key: email,
-    limit: PROFILE_PATCH_RATE_LIMIT,
-    windowMs: PROFILE_PATCH_WINDOW_MS,
-  });
-  if (!rateLimit.allowed) {
-    const res = NextResponse.json(
-      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." } satisfies ApiError,
-      { status: 429 }
-    );
-    applyRateLimitHeaders(res.headers, rateLimit);
-    return res;
-  }
-
-  const body = await req.json().catch(() => null);
-  const parsed = buildPatchFromBody(body);
-  if ("error" in parsed) {
-    return NextResponse.json(
-      { ok: false, error: parsed.error } satisfies ApiError,
-      { status: 400 }
-    );
-  }
-
-  const { patch, wantsPositionEdit } = parsed;
-  if (Object.keys(patch).length === 0) {
-    return NextResponse.json(
-      { ok: false, error: "Není co uložit." } satisfies ApiError,
-      { status: 400 }
-    );
-  }
-
-  if (wantsPositionEdit) {
-    const hasAdminFunction = await loadHasAdminFunction({
-      email,
-      rawTokenEmail,
-      uid,
-    });
-    if (!hasAdminFunction) {
+export async function PATCH(req: NextRequest) {
+  try {
+    const ctx = await getAuthContext(req);
+    if ("error" in ctx && typeof ctx.error === "string") {
+      return NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
+        status: ctx.status,
+      });
+    }
+    if (!adminDb) {
       return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Nemáš oprávnění měnit position/commissionMode/positionTimeline přes vlastní profil.",
-        } satisfies ApiError,
-        { status: 403 }
+        { ok: false, error: "Server není správně nakonfigurován (Firebase Admin)." } satisfies ApiError,
+        { status: 500 }
       );
     }
+
+    const { email, uid, rawTokenEmail } = ctx;
+    const rateLimit = consumeRateLimit({
+      namespace: "api:user-profile:patch",
+      key: email,
+      limit: PROFILE_PATCH_RATE_LIMIT,
+      windowMs: PROFILE_PATCH_WINDOW_MS,
+    });
+    if (!rateLimit.allowed) {
+      const res = NextResponse.json(
+        { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." } satisfies ApiError,
+        { status: 429 }
+      );
+      applyRateLimitHeaders(res.headers, rateLimit);
+      return res;
+    }
+
+    const body = await req.json().catch(() => null);
+    const parsed = buildPatchFromBody(body);
+    if ("error" in parsed) {
+      return NextResponse.json(
+        { ok: false, error: parsed.error } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+
+    const { patch, wantsPositionEdit } = parsed;
+    if (Object.keys(patch).length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Není co uložit." } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+
+    if (wantsPositionEdit) {
+      const hasAdminFunction = await loadHasAdminFunction({
+        email,
+        rawTokenEmail,
+        uid,
+      });
+      if (!hasAdminFunction) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Nemáš oprávnění měnit position/commissionMode/positionTimeline přes vlastní profil.",
+          } satisfies ApiError,
+          { status: 403 }
+        );
+      }
+    }
+
+    await adminDb.collection("users").doc(email).set(patch, { merge: true });
+
+    const res = NextResponse.json({ ok: true });
+    applyRateLimitHeaders(res.headers, rateLimit);
+    return res;
+  } catch (err) {
+    console.error("PATCH /api/user/profile selhalo:", err);
+    return NextResponse.json(
+      { ok: false, error: "Nepodařilo se uložit profil uživatele." } satisfies ApiError,
+      { status: 500 }
+    );
   }
-
-  await adminDb.collection("users").doc(email).set(patch, { merge: true });
-
-  const res = NextResponse.json({ ok: true });
-  applyRateLimitHeaders(res.headers, rateLimit);
-  return res;
 }

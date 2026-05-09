@@ -319,9 +319,12 @@ export function CalculatorResultsSection({
                   </span>
                 </div>
 
-                <div className="rounded-2xl border border-emerald-400/60 bg-slate-950 px-4 py-4 shadow-[0_16px_32px_rgba(2,6,23,0.28)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-semibold text-emerald-300">Celkem</span>
+                <div className="relative overflow-hidden rounded-2xl border border-slate-800/90 bg-[linear-gradient(135deg,#0b1328_0%,#0e1a3a_54%,#081124_100%)] px-4 py-4 shadow-[0_20px_48px_rgba(2,6,23,0.45)]">
+                  <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
+                  <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
+                  <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
+                  <div className="relative z-10 flex items-center justify-between gap-3">
+                    <span className="font-semibold !text-white">Celkem</span>
                     <AnimatedMoneyValue
                       value={tipsterImmediateCommission}
                       className="whitespace-nowrap text-2xl font-bold text-emerald-300 sm:text-3xl"
@@ -393,9 +396,12 @@ export function CalculatorResultsSection({
                   product === "koopmajetekobcan" ||
                   product === "maxdomov") &&
                 paymentBasedTotalsMemo ? (
-                  <div className="w-full space-y-2 rounded-[1.25rem] border border-emerald-400/60 bg-slate-950 px-4 py-4 shadow-[0_16px_32px_rgba(2,6,23,0.28)]">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-emerald-300">
+                  <div className="relative w-full space-y-2 overflow-hidden rounded-[1.25rem] border border-slate-800/90 bg-[linear-gradient(135deg,#0b1328_0%,#0e1a3a_54%,#081124_100%)] px-4 py-4 shadow-[0_20px_48px_rgba(2,6,23,0.45)]">
+                    <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
+                    <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
+                    <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
+                    <div className="relative z-10 flex items-center justify-between gap-3">
+                      <span className="font-semibold !text-white">
                         Celkem v 1. roce{tipContractConfig ? " po TIPU" : ""}
                       </span>
                       <AnimatedMoneyValue
@@ -403,8 +409,8 @@ export function CalculatorResultsSection({
                         className="whitespace-nowrap text-2xl font-bold text-emerald-300 sm:text-3xl"
                       />
                     </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-emerald-300">Celkem ročně následně</span>
+                    <div className="relative z-10 flex items-center justify-between gap-3">
+                      <span className="font-semibold !text-white">Celkem ročně následně</span>
                       <AnimatedMoneyValue
                         value={paymentBasedTotalsMemo.subsequent}
                         className="whitespace-nowrap text-2xl font-bold text-emerald-300 sm:text-3xl"
@@ -412,9 +418,12 @@ export function CalculatorResultsSection({
                     </div>
                   </div>
                 ) : (
-                  <div className="w-full rounded-[1.25rem] border border-emerald-400/60 bg-slate-950 px-4 py-4 shadow-[0_16px_32px_rgba(2,6,23,0.28)]">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-emerald-300">
+                  <div className="relative w-full overflow-hidden rounded-[1.25rem] border border-slate-800/90 bg-[linear-gradient(135deg,#0b1328_0%,#0e1a3a_54%,#081124_100%)] px-4 py-4 shadow-[0_20px_48px_rgba(2,6,23,0.45)]">
+                    <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
+                    <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
+                    <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
+                    <div className="relative z-10 flex items-center justify-between gap-3">
+                      <span className="font-semibold !text-white">
                         Celkem{tipContractConfig ? " po TIPU" : ""}
                       </span>
                       <AnimatedMoneyValue

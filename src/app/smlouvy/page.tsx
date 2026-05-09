@@ -430,6 +430,16 @@ type ContractsApiResponse = {
   teamNextCursor?: number | null;
 };
 
+async function readContractsApiResponseSafe(
+  response: Response
+): Promise<ContractsApiResponse | null> {
+  try {
+    return (await response.json()) as ContractsApiResponse;
+  } catch {
+    return null;
+  }
+}
+
 type ContractsListFilters = {
   query: string;
   filterMode: FilterMode;
@@ -758,16 +768,20 @@ function ContractsPageContent() {
         );
       }
 
-      let data = (await res.json()) as ContractsApiResponse;
+      let data = await readContractsApiResponseSafe(res);
       if (res.status === 401) {
         const refreshed = await user.getIdToken(true);
         res = await requestWithToken(refreshed);
-        data = (await res.json()) as ContractsApiResponse;
+        data = await readContractsApiResponseSafe(res);
       }
 
-      if (!res.ok || data.ok === false) {
-        throw new Error(data.error || "Nepodařilo se načíst smlouvy.");
+      if (!res.ok || data?.ok === false) {
+        throw new Error(
+          data?.error ||
+            (res.status ? `Nepodařilo se načíst smlouvy (HTTP ${res.status}).` : "Nepodařilo se načíst smlouvy.")
+        );
       }
+      if (!data) throw new Error("Nepodařilo se načíst smlouvy.");
       return data;
     },
     [user]
@@ -1711,7 +1725,7 @@ function ContractsPageContent() {
       });
 
       if (!res.ok) {
-        const data = (await res.json()) as any;
+        const data = (await res.json().catch(() => null)) as any;
         throw new Error(data?.error || "Chyba při mazání.");
       }
 
@@ -1766,7 +1780,7 @@ function ContractsPageContent() {
       });
 
       if (!res.ok) {
-        const data = (await res.json()) as any;
+        const data = (await res.json().catch(() => null)) as any;
         throw new Error(data?.error || "Chyba při ukládání.");
       }
 

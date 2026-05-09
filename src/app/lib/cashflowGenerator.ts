@@ -119,7 +119,6 @@ export const CashflowGenerator = {
 
     for (const entry of entries) {
       const parsedStart = parseCzDate(entry.policyStartDate);
-      const parsedAgreement = parseCzDate(entry.createdAt);
       const parsedSigned = parseCzDate(entry.contractSignedDate);
 
       const start =

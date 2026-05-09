@@ -52,13 +52,23 @@ type ContractCommissionSectionProps = {
 };
 
 const commissionPanelClass =
-  "rounded-[22px] border border-slate-300 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_100%)] px-5 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]";
+  "rounded-[24px] border border-slate-300/90 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_58%,#eef4ff_100%)] px-5 py-4 shadow-[0_16px_38px_rgba(15,23,42,0.1)]";
 const commissionRowClass =
-  "flex items-baseline justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3";
+  "flex flex-nowrap items-center justify-between gap-4 rounded-2xl border border-slate-200/90 bg-white/88 px-4 py-3 shadow-[0_6px_18px_rgba(15,23,42,0.04)] backdrop-blur-sm";
 const commissionTotalClass =
-  "mt-4 rounded-xl border border-slate-300 bg-slate-100 px-4 py-3";
+  "relative mt-4 overflow-hidden rounded-2xl border border-slate-300/90 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_52%,#eaf2ff_100%)] px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.1)]";
 const commissionTotalHighlightClass =
-  "mt-4 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-white shadow-[0_10px_20px_rgba(15,23,42,0.28)]";
+  "relative mt-4 overflow-hidden rounded-2xl border border-slate-800/90 bg-[linear-gradient(135deg,#0b1328_0%,#0e1a3a_54%,#081124_100%)] px-4 py-3 text-white shadow-[0_20px_48px_rgba(2,6,23,0.45)]";
+const commissionTotalLineClass =
+  "flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white/75 px-3 py-2.5";
+const commissionTotalLineDarkClass =
+  "flex items-center justify-between gap-3";
+const commissionTotalLabelClass = "text-sm font-semibold uppercase tracking-[0.1em] text-slate-700";
+const commissionTotalLabelDarkClass =
+  "text-sm font-semibold uppercase tracking-[0.1em] text-slate-200/90";
+const commissionTotalValueClass = "text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl";
+const commissionTotalValueDarkClass =
+  "text-2xl font-bold tracking-tight text-emerald-300 sm:text-3xl";
 const monoHeadingClass = "font-mono tracking-tight text-slate-900";
 const monoChipClass =
   "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-4 py-2 text-base font-mono tracking-tight text-slate-900";
@@ -102,15 +112,17 @@ export function ContractCommissionSection({
 
     const content = (
       <>
-        <span className="flex items-center gap-3 text-lg font-medium text-slate-900">
+        <span className="flex min-w-0 items-center gap-3 text-base font-medium text-slate-900 sm:text-lg">
           {icon && (
-            <span className="relative h-5 w-5 flex-shrink-0">
+            <span className="relative h-[22px] w-[22px] flex-shrink-0">
               <Image src={icon} alt="" fill className="object-contain" />
             </span>
           )}
-          <span>{cleanResultTitle(item.title)}</span>
+          <span className="whitespace-nowrap">{cleanResultTitle(item.title)}</span>
         </span>
-        <span className="text-lg font-semibold text-slate-900">{formatMoney(item.amount)}</span>
+        <span className="whitespace-nowrap text-lg font-semibold text-slate-900">
+          {formatMoney(item.amount)}
+        </span>
       </>
     );
 
@@ -187,25 +199,27 @@ export function ContractCommissionSection({
                       </div>
 
                       <div className={commissionTotalClass}>
+                        <span className="pointer-events-none absolute -right-14 -top-16 h-36 w-36 rounded-full bg-sky-300/20 blur-3xl" />
+                        <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/85" />
                         {isPaymentBasedProduct && card.totals ? (
-                          <div className="w-full space-y-2 text-lg">
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold">Celkem v 1. roce</span>
-                              <span className="text-2xl font-bold text-slate-900">
+                          <div className="relative z-10 w-full space-y-2.5">
+                            <div className={commissionTotalLineClass}>
+                              <span className={commissionTotalLabelClass}>Celkem v 1. roce</span>
+                              <span className={commissionTotalValueClass}>
                                 {formatMoney(card.totals.immediate)}
                               </span>
                             </div>
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold">Celkem ročně následně</span>
-                              <span className="text-2xl font-bold text-slate-900">
+                            <div className={commissionTotalLineClass}>
+                              <span className={commissionTotalLabelClass}>Celkem ročně následně</span>
+                              <span className={commissionTotalValueClass}>
                                 {formatMoney(card.totals.subsequent)}
                               </span>
                             </div>
                           </div>
                         ) : (
-                          <div className="flex w-full items-center justify-between gap-4">
-                            <span className="text-lg font-semibold">Celkem meziprovize</span>
-                            <span className="text-2xl font-bold text-slate-900">
+                          <div className={`${commissionTotalLineClass} relative z-10 w-full`}>
+                            <span className={commissionTotalLabelClass}>Celkem meziprovize</span>
+                            <span className={commissionTotalValueClass}>
                               {formatMoney(card.totalDisplay)}
                             </span>
                           </div>
@@ -239,25 +253,28 @@ export function ContractCommissionSection({
             </div>
 
             <div className={commissionTotalHighlightClass}>
+              <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
+              <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
+              <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
               {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
-                <div className="w-full space-y-2 text-lg">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">Celkem v 1. roce</span>
-                    <span className="text-2xl font-bold text-emerald-300">
+                <div className="relative z-10 w-full space-y-2.5">
+                  <div className={commissionTotalLineDarkClass}>
+                    <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
+                    <span className={commissionTotalValueDarkClass}>
                       {formatMoney(paymentBasedAdviserTotals.immediate)}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">Celkem ročně následně</span>
-                    <span className="text-2xl font-bold text-emerald-300">
+                  <div className={commissionTotalLineDarkClass}>
+                    <span className={commissionTotalLabelDarkClass}>Celkem ročně následně</span>
+                    <span className={commissionTotalValueDarkClass}>
                       {formatMoney(paymentBasedAdviserTotals.subsequent)}
                     </span>
                   </div>
                 </div>
               ) : (
-                <div className="flex w-full items-center justify-between gap-4">
-                  <span className="text-lg font-semibold">Celkem</span>
-                  <span className="text-2xl font-bold text-emerald-300">
+                <div className={`${commissionTotalLineDarkClass} relative z-10 w-full`}>
+                  <span className={commissionTotalLabelDarkClass}>Celkem</span>
+                  <span className={commissionTotalValueDarkClass}>
                     {formatMoney(adviserTotalDisplay)}
                   </span>
                 </div>
@@ -299,25 +316,28 @@ export function ContractCommissionSection({
               </div>
 
               <div className={commissionTotalHighlightClass}>
+                <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
+                <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
                 {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
-                  <div className="w-full space-y-2 text-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">Celkem v 1. roce</span>
-                      <span className="text-2xl font-bold text-emerald-300">
+                  <div className="relative z-10 w-full space-y-2.5">
+                    <div className={commissionTotalLineDarkClass}>
+                      <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
+                      <span className={commissionTotalValueDarkClass}>
                         {formatMoney(paymentBasedAdviserTotals.immediate)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">Celkem ročně následně</span>
-                      <span className="text-2xl font-bold text-emerald-300">
+                    <div className={commissionTotalLineDarkClass}>
+                      <span className={commissionTotalLabelDarkClass}>Celkem ročně následně</span>
+                      <span className={commissionTotalValueDarkClass}>
                         {formatMoney(paymentBasedAdviserTotals.subsequent)}
                       </span>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex w-full items-center justify-between gap-4">
-                    <span className="text-lg font-semibold">Celkem</span>
-                    <span className="text-2xl font-bold text-emerald-300">
+                  <div className={`${commissionTotalLineDarkClass} relative z-10 w-full`}>
+                    <span className={commissionTotalLabelDarkClass}>Celkem</span>
+                    <span className={commissionTotalValueDarkClass}>
                       {formatMoney(adviserTotalDisplay)}
                     </span>
                   </div>

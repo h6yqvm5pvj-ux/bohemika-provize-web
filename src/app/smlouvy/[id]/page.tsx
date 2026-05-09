@@ -399,6 +399,56 @@ export default function ContractDetailPage() {
     : "—";
   const maturityDate = contractMaturityDate(lifecycleInput);
   const maturityDateLabel = maturityDate ? formatDate(maturityDate) : "—";
+  const contractLifecycleBadgeText = isStornoContract
+    ? stornoDateLabel !== "—"
+      ? `Storno od ${stornoDateLabel}`
+      : "Storno"
+    : isDozitaContract
+    ? maturityDateLabel !== "—"
+      ? `Dožitá od ${maturityDateLabel}`
+      : "Dožitá"
+    : "Aktivní";
+  const contractLifecycleBadgeStyle = isStornoContract
+    ? {
+        wrapper:
+          "border-amber-200/90 bg-[linear-gradient(135deg,#fffbeb_0%,#fef3c7_100%)] text-amber-900 shadow-[0_10px_24px_rgba(217,119,6,0.14)]",
+        iconWrap:
+          "border-amber-700/70 bg-[linear-gradient(135deg,#f59e0b_0%,#d97706_100%)] text-white shadow-[0_8px_16px_rgba(217,119,6,0.28)]",
+        icon: (
+          <CalendarDays
+            size={14}
+            strokeWidth={2.2}
+            className="shrink-0"
+            aria-hidden="true"
+          />
+        ),
+      }
+    : isDozitaContract
+    ? {
+        wrapper:
+          "border-sky-200/90 bg-[linear-gradient(135deg,#f0f9ff_0%,#dbeafe_100%)] text-sky-900 shadow-[0_10px_24px_rgba(14,116,144,0.14)]",
+        iconWrap:
+          "border-sky-700/70 bg-[linear-gradient(135deg,#0ea5e9_0%,#0369a1_100%)] text-white shadow-[0_8px_16px_rgba(3,105,161,0.28)]",
+        icon: (
+          <CalendarDays
+            size={14}
+            strokeWidth={2.2}
+            className="shrink-0"
+            aria-hidden="true"
+          />
+        ),
+      }
+    : {
+        wrapper:
+          "border-emerald-200/90 bg-[linear-gradient(135deg,#ecfdf5_0%,#d1fae5_100%)] text-emerald-900 shadow-[0_10px_24px_rgba(5,150,105,0.14)]",
+        iconWrap:
+          "border-emerald-700/70 bg-[linear-gradient(135deg,#22c55e_0%,#059669_100%)] text-white shadow-[0_8px_16px_rgba(5,150,105,0.28)]",
+        icon: (
+          <span className="text-[14px] font-black leading-none" aria-hidden="true">
+            ✓
+          </span>
+        ),
+      };
   const refreshOriginalContractNumber =
     typeof contract?.refreshOriginalContractNumber === "string"
       ? contract.refreshOriginalContractNumber.trim()
@@ -3192,19 +3242,16 @@ export default function ContractDetailPage() {
                       Dodatek
                     </span>
                   )}
-                  {isStornoContract ? (
-                    <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-100 px-5 py-2.5 text-base font-semibold uppercase tracking-tight text-amber-800 sm:text-lg">
-                      STORNO
+                  <span
+                    className={`inline-flex items-center gap-2 rounded-full border px-1.5 py-1 pr-2.5 text-sm font-semibold leading-none tracking-[0.01em] sm:text-base ${contractLifecycleBadgeStyle.wrapper}`}
+                  >
+                    <span
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border ring-1 ring-white/45 ${contractLifecycleBadgeStyle.iconWrap}`}
+                    >
+                      {contractLifecycleBadgeStyle.icon}
                     </span>
-                  ) : isDozitaContract ? (
-                    <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-800">
-                      {maturityDateLabel !== "—" ? `Dožitá od ${maturityDateLabel}` : "Dožitá"}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                      Aktivní
-                    </span>
-                  )}
+                    <span className="pr-1">{contractLifecycleBadgeText}</span>
+                  </span>
                 </h1>
               </div>
 
@@ -3843,7 +3890,7 @@ export default function ContractDetailPage() {
               </section>
             )}
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(360px,1fr)] lg:items-start">
               <ContractCommissionSection
                 product={prod}
                 isOwnContract={isOwnContract}
@@ -3864,7 +3911,7 @@ export default function ContractDetailPage() {
               />
 
                 {/* POZNÁMKA */}
-                <section className={`${noteCardClass} space-y-4 lg:h-fit lg:mt-10`}>
+                <section className={`${noteCardClass} space-y-4 lg:h-fit lg:mt-10 lg:w-full lg:max-w-[500px] lg:justify-self-end`}>
                   <div className="flex items-center justify-between gap-3">
                     <h3 className={`text-xl font-semibold ${monoHeadingClass} flex items-center gap-2`}>
                       <span className={monoChipDarkClass}>

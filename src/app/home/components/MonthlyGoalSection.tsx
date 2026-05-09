@@ -27,7 +27,11 @@ export function MonthlyGoalSection({
   const [error, setError] = useState<string | null>(null);
 
   const normalizedProgress = Math.max(0, Math.min(100, Number(progress) || 0));
-  const progressFillClass = normalizedProgress >= 51 ? "bg-emerald-600" : "bg-rose-600";
+  const progressFillClass = progressTone?.trim()
+    ? `bg-gradient-to-r ${progressTone}`
+    : normalizedProgress >= 51
+      ? "bg-emerald-600"
+      : "bg-rose-600";
   const goalDisplayValue = monthlyGoal ? formatMoney(monthlyGoal) : "Není nastaven";
 
   useEffect(() => {

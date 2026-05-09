@@ -658,7 +658,7 @@ export function LifeRecordForm() {
   ) => (
     <input
       {...moneyInputProps}
-      className="w-full rounded-xl border border-slate-900 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/80 focus:border-sky-500/80"
+      className="w-full rounded-xl border border-slate-300 bg-white/95 px-3 py-2 text-sm text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] placeholder:text-slate-400 focus:border-sky-500/80 focus:outline-none focus:ring-2 focus:ring-sky-500/35"
       value={value}
       onChange={(e) => onChange(normalizeAmountInput(e.target.value, opts))}
       placeholder={placeholder}
@@ -706,7 +706,7 @@ export function LifeRecordForm() {
             <p className="text-[11px] sm:text-xs text-slate-900">
               Rozsah stupňů invalidity:
             </p>
-            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+            <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
               <ChipButton
                 active={degrees === "all"}
                 onClick={() => setDegrees("all")}
@@ -733,7 +733,7 @@ export function LifeRecordForm() {
             <p className="text-[11px] sm:text-xs text-slate-900">
               Typ plnění:
             </p>
-            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+            <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
               <ChipButton
                 active={type === "constant"}
                 onClick={() => setType("constant")}
@@ -836,7 +836,7 @@ export function LifeRecordForm() {
             <p className="text-[11px] sm:text-xs text-slate-900">
               Typ plnění:
             </p>
-            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+            <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
               <ChipButton
                 active={type === "constant"}
                 onClick={() => setType("constant")}
@@ -892,7 +892,7 @@ export function LifeRecordForm() {
             <p className="text-[11px] sm:text-xs text-slate-900">
               Progrese:
             </p>
-            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+            <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
               <ChipButton
                 active={progress === "none"}
                 onClick={() => setProgress("none")}
@@ -924,7 +924,7 @@ export function LifeRecordForm() {
             <p className="text-[11px] sm:text-xs text-slate-900">
               Plnění od:
             </p>
-            <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+            <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
               <ChipButton
                 active={from === "from0"}
                 onClick={() => setFrom("from0")}
@@ -993,7 +993,7 @@ export function LifeRecordForm() {
                   className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
                     isOverLimit
                       ? "border-amber-500 bg-amber-50 pr-10 focus:border-amber-500 focus:ring-amber-300/80"
-                      : "border-slate-900 bg-white focus:border-sky-500/80 focus:ring-sky-500/80"
+                      : "border-slate-300 bg-white focus:border-sky-500/80 focus:ring-sky-500/35"
                   }`}
                   value={amount}
                   onChange={(e) => setAmount(normalizeAmountInput(e.target.value))}
@@ -1028,7 +1028,7 @@ export function LifeRecordForm() {
               <p className="text-[11px] sm:text-xs text-slate-900">
                 Plnění od:
               </p>
-              <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+              <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
                 <ChipButton
                   active={from === "day15"}
                   onClick={() => setFrom("day15")}
@@ -1054,7 +1054,7 @@ export function LifeRecordForm() {
               <p className="text-[11px] sm:text-xs text-slate-900">
                 Varianta plnění:
               </p>
-              <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+              <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
                 <ChipButton
                   active={variant === "retroFrom1"}
                   onClick={() => setVariant("retroFrom1")}
@@ -1540,22 +1540,72 @@ export function LifeRecordForm() {
   // RENDER
   // --------------------------------------------------
 
+  const selectedBenefitsCount = [
+    deathOn,
+    terminalOn,
+    extraDeathOn,
+    survivorPensionOn,
+    waiverOn,
+    invalid1On,
+    invalid2On,
+    ci1On,
+    ci2On,
+    seriousHimOn,
+    seriousHerOn,
+    diabetesOn,
+    vaccinationOn,
+    deathAccOn,
+    perm1On,
+    perm2On,
+    dailyOn,
+    bodilyOn,
+    sick1On,
+    sick2On,
+    hospitalOn,
+    childOperationOn,
+    childrenAccidentOn,
+    assistedOn,
+    careDependenceOn,
+    fullCareOn,
+    specialAidOn,
+    healthSocialOn,
+  ].filter(Boolean).length;
+  const totalBenefitsCount = 28;
+  const selectedBenefitsProgress = Math.round(
+    (selectedBenefitsCount / totalBenefitsCount) * 100
+  );
+
   return (
     <>
-    <div className="space-y-4">
-      {/* Header sekce */}
-      <div className="mb-1">
-        <h2 className="text-base sm:text-lg font-semibold text-slate-900">
-          Životní pojištění – přehled sjednávaných krytí
-        </h2>
-        <p className="text-xs sm:text-sm text-slate-600 mt-1">
-          Zaklikni rizika, která s klientem řešíš, a doplň jejich částky.
-          Slouží jako tahák k vyplnění Záznamu z jednání.
-        </p>
-      </div>
+      <div className="space-y-5">
+        <div>
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900">
+            Životní pojištění – přehled sjednávaných krytí
+          </h2>
+          <p className="mt-1 text-xs sm:text-sm text-slate-600">
+            Zaklikni rizika, která s klientem řešíš, a doplň jejich částky. Slouží jako tahák k
+            vyplnění Záznamu z jednání.
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Aktivní krytí</div>
+              <div className="mt-0.5 text-sm font-semibold text-slate-900">{selectedBenefitsCount}</div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Celkem možností</div>
+              <div className="mt-0.5 text-sm font-semibold text-slate-900">{totalBenefitsCount}</div>
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-emerald-700">Rozpracováno</div>
+              <div className="mt-0.5 text-sm font-semibold text-emerald-900">
+                {selectedBenefitsProgress} %
+              </div>
+            </div>
+          </div>
+        </div>
 
-      {/* Všechny glassy boxy ve 2 sloupcích */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Všechny glassy boxy ve 2 sloupcích */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* 1) Smrt / dožití */}
         <BenefitCard
           title="Smrt nebo dožití"
@@ -1668,7 +1718,7 @@ export function LifeRecordForm() {
                   <p className="text-[11px] text-slate-900">
                     Rozsah invalidity:
                   </p>
-                  <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+                  <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
                     <ChipButton
                       active={waiverInvalidityScope === "twoAndThree"}
                       onClick={() =>
@@ -1877,7 +1927,7 @@ export function LifeRecordForm() {
                     className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
                       parseAmount(dailyAmount) > 600
                         ? "border-amber-500 bg-amber-50 pr-10 focus:border-amber-500 focus:ring-amber-300/80"
-                        : "border-slate-900 bg-white focus:border-sky-500/80 focus:ring-sky-500/80"
+                        : "border-slate-300 bg-white focus:border-sky-500/80 focus:ring-sky-500/35"
                     }`}
                     value={dailyAmount}
                     onChange={(e) => setDailyAmount(normalizeAmountInput(e.target.value))}
@@ -1912,7 +1962,7 @@ export function LifeRecordForm() {
                 <p className="text-[11px] sm:text-xs text-slate-900">
                   Plnění od:
                 </p>
-                <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+                <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
                   <ChipButton
                     active={dailyFrom === "from1"}
                     onClick={() => setDailyFrom("from1")}
@@ -1932,7 +1982,7 @@ export function LifeRecordForm() {
                 <p className="text-[11px] sm:text-xs text-slate-900">
                   Progrese:
                 </p>
-                <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+                <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
                   <ChipButton
                     active={dailyProgress === "none"}
                     onClick={() => setDailyProgress("none")}
@@ -1969,7 +2019,7 @@ export function LifeRecordForm() {
                 <p className="text-[11px] sm:text-xs text-slate-900">
                   Plnění od:
                 </p>
-                <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+                <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
                   <ChipButton
                     active={bodilyFrom === "from0"}
                     onClick={() => setBodilyFrom("from0")}
@@ -2097,7 +2147,7 @@ export function LifeRecordForm() {
                 <p className="text-[11px] sm:text-xs text-slate-900">
                   Typ plnění:
                 </p>
-                <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+                <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
                   <ChipButton
                     active={childrenAccidentType === "same"}
                     onClick={() => setChildrenAccidentType("same")}
@@ -2183,12 +2233,12 @@ export function LifeRecordForm() {
           onToggle={() => setHealthSocialOn((v) => !v)}
         />
 
-        <section className="rounded-3xl border border-slate-900 bg-white  px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
+        <section className="rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_26px_rgba(15,23,42,0.08)] space-y-3">
           <div className="text-sm sm:text-base font-semibold text-slate-900 leading-tight">
             Zákazník má již uzavřenou pojistnou smlouvu týkající se stejného
             pojistného zájmu
           </div>
-          <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+          <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
             <ChipButton
               active={hasExistingContract === "yes"}
               onClick={() => setHasExistingContract("yes")}
@@ -2206,7 +2256,7 @@ export function LifeRecordForm() {
           <div className="text-sm sm:text-base font-semibold text-slate-900 leading-tight">
             Změna na stávající smlouvě
           </div>
-          <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+          <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
             <ChipButton
               active={isChangeOnExistingContract === "yes"}
               onClick={() => setIsChangeOnExistingContract("yes")}
@@ -2224,7 +2274,7 @@ export function LifeRecordForm() {
           <div className="text-sm sm:text-base font-semibold text-slate-900 leading-tight">
             Refresh nebo Renovace stávající smlouvy
           </div>
-          <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+          <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
             <ChipButton
               active={isRefreshOrRenovation === "yes"}
               onClick={() => setIsRefreshOrRenovation("yes")}
@@ -2242,7 +2292,7 @@ export function LifeRecordForm() {
           <div className="text-sm sm:text-base font-semibold text-slate-900 leading-tight">
             Výpověď smlouvy z důvodu sjednání nové
           </div>
-          <div className="inline-flex rounded-full bg-white border border-slate-900 p-0.5 text-[11px] sm:text-xs">
+          <div className="inline-flex flex-wrap gap-1 rounded-full border border-slate-300/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-1 text-[11px] sm:text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(15,23,42,0.08)]">
             <ChipButton
               active={isContractTerminationDueToNewOne === "yes"}
               onClick={() => setIsContractTerminationDueToNewOne("yes")}
@@ -2367,40 +2417,64 @@ function BenefitCard({
   const icon = getBenefitCardIcon(title);
 
   return (
-    <section className="rounded-3xl border border-slate-300 bg-white px-4 py-4 sm:px-5 sm:py-5 shadow-[0_8px_22px_rgba(15,23,42,0.08)] transition hover:-translate-y-[1px] hover:shadow-[0_12px_26px_rgba(15,23,42,0.12)]">
+    <section
+      className={`relative overflow-hidden rounded-[30px] border px-4 py-4 sm:px-5 sm:py-5 transition-all duration-200 ${
+        enabled
+          ? "border-emerald-300 bg-[linear-gradient(160deg,#ffffff_0%,#f2fcf7_58%,#e9fbf2_100%)] shadow-[0_14px_28px_rgba(15,23,42,0.1)]"
+          : "border-slate-200 bg-[linear-gradient(160deg,#ffffff_0%,#f8fbff_100%)] shadow-[0_10px_24px_rgba(15,23,42,0.08)] hover:-translate-y-[1px] hover:border-slate-300 hover:shadow-[0_14px_28px_rgba(15,23,42,0.12)]"
+      }`}
+    >
+      <div
+        className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${
+          enabled
+            ? "bg-gradient-to-r from-emerald-400 via-teal-400 to-sky-400"
+            : "bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200"
+        }`}
+      />
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center gap-3 text-left"
+        className="group relative flex w-full items-start gap-3 text-left"
       >
         <div
-          className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs transition ${
+          className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border text-sm font-bold ring-1 transition ${
             enabled
-              ? "border-slate-900 bg-slate-900 text-white"
-              : "border-slate-300 bg-white text-transparent"
+              ? "border-emerald-600 bg-emerald-500 text-white ring-emerald-200"
+              : "border-slate-300 bg-white text-transparent ring-slate-200"
           }`}
         >
           {enabled ? "✓" : ""}
         </div>
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
+        <div
+          className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border transition ${
+            enabled
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-slate-200 bg-white text-slate-600 group-hover:border-slate-300 group-hover:text-slate-800"
+          }`}
+        >
           {icon}
         </div>
-        <div className="flex-1">
-          <h3 className="text-sm sm:text-base font-semibold text-slate-900">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold leading-tight text-slate-900 sm:text-base group-hover:text-slate-950">
             {title}
           </h3>
           {subtitle ? (
-            <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">{subtitle}</p>
           ) : null}
         </div>
+        <span
+          className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.13em] ${
+            enabled
+              ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+              : "border-slate-300 bg-white text-slate-500"
+          }`}
+        >
+          {enabled ? "Aktivní" : "Vypnuto"}
+        </span>
       </button>
 
       {enabled && children && (
-        <div className="mt-3 border-t border-slate-200 pt-3">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-            {children}
-          </div>
-        </div>
+        <div className="mt-4 border-t border-emerald-200/70 pt-4">{children}</div>
       )}
     </section>
   );
@@ -2415,19 +2489,19 @@ type ToggleRowProps = {
 function ToggleRow({ label, checked, onChange }: ToggleRowProps) {
   return (
     <label className="flex items-center justify-between gap-3">
-      <span className="text-xs sm:text-sm text-slate-800">{label}</span>
+      <span className="text-xs sm:text-sm font-medium text-slate-700">{label}</span>
       <button
         type="button"
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-5 w-9 items-center rounded-full border transition ${
+        className={`relative inline-flex h-6 w-10 items-center rounded-full border p-0.5 transition ${
           checked
-            ? "bg-emerald-500 border-emerald-600"
-            : "bg-white border-slate-400"
+            ? "border-emerald-500 bg-emerald-500/90"
+            : "border-slate-300 bg-slate-100"
         }`}
       >
         <span
-          className={`inline-block h-4 w-4 rounded-full bg-slate-900 transition-transform ${
-            checked ? "translate-x-4" : "translate-x-1"
+          className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+            checked ? "translate-x-4" : "translate-x-0"
           }`}
         />
       </button>
@@ -2446,8 +2520,10 @@ function ChipButton({ active, children, onClick }: ChipButtonProps) {
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 py-1 rounded-full whitespace-nowrap ${
-        active ? "bg-slate-900 text-white" : "text-slate-800 hover:bg-slate-100"
+      className={`whitespace-nowrap rounded-full px-3.5 py-1.5 font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${
+        active
+          ? "bg-[linear-gradient(135deg,#10b981_0%,#047857_100%)] text-white"
+          : "text-slate-700 hover:bg-white hover:text-slate-900 hover:shadow-[0_5px_12px_rgba(15,23,42,0.12)]"
       }`}
     >
       {children}

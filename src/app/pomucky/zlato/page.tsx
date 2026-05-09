@@ -1,7 +1,7 @@
 // src/app/pomucky/zlato/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw } from "lucide-react";
 
@@ -1161,7 +1161,7 @@ export default function GoldToolPage() {
     return downsamplePoints(scaled, 1400);
   }, [history, series, selected.grams]);
 
-  const loadComfortTick = async (isCancelled?: () => boolean) => {
+  const loadComfortTick = useCallback(async (isCancelled?: () => boolean) => {
     try {
       const snap = await fetchComfortPrices();
       if (isCancelled?.()) return;
@@ -1175,9 +1175,9 @@ export default function GoldToolPage() {
         String(e?.message || "Nepodařilo se načíst ceník Comfort Commodity.")
       );
     }
-  };
+  }, []);
 
-  const loadTick = async () => {
+  const loadTick = useCallback(async () => {
     const snap = await fetchGold({ days: 0 });
 
     setCzkPerOz(snap.czkPerOz);
@@ -1192,7 +1192,7 @@ export default function GoldToolPage() {
     });
 
     await loadComfortTick();
-  };
+  }, [loadComfortTick]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1246,7 +1246,7 @@ export default function GoldToolPage() {
       cancelled = true;
       if (timerRef.current) window.clearInterval(timerRef.current);
     };
-  }, [range]);
+  }, [range, loadComfortTick, loadTick]);
 
   useEffect(() => {
     if (secondRef.current) window.clearInterval(secondRef.current);

@@ -2304,6 +2304,30 @@ export async function GET(req: NextRequest) {
       return response;
     }
 
+    if (action === "members") {
+      const responseBody: TeamOverviewSuccess = {
+        ok: true,
+        position: context.ownPosition,
+        canManagePositions: context.canManagePositions,
+        members: context.members.map((member) => ({
+          email: member.email,
+          name: member.name,
+          position: member.position,
+          commissionMode: member.commissionMode,
+          managerEmail: member.managerEmail,
+          docId: member.docId,
+        })),
+        lastActive: Object.fromEntries(
+          context.members.map((member) => [member.email, member.lastActiveTs ?? null])
+        ),
+        contractCounts: {},
+      };
+
+      const response = NextResponse.json(responseBody);
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
+    }
+
     const owners = Array.from(
       new Set(context.members.map((member) => member.email).filter(Boolean))
     );

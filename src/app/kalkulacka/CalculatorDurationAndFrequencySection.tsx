@@ -23,6 +23,7 @@ type MaxCizinOption = {
 };
 
 type CalculatorDurationAndFrequencySectionProps = {
+  embedded?: boolean;
   product: Product;
   durationHelp: string | null;
   durationHelpOpen: boolean;
@@ -43,6 +44,7 @@ type CalculatorDurationAndFrequencySectionProps = {
 };
 
 export function CalculatorDurationAndFrequencySection({
+  embedded = false,
   product,
   durationHelp,
   durationHelpOpen,
@@ -61,8 +63,8 @@ export function CalculatorDurationAndFrequencySection({
   onMaxCizinVariantChange,
   onFrequencyChange,
 }: CalculatorDurationAndFrequencySectionProps) {
-  return (
-    <section className="rounded-[1.35rem] border border-slate-300 bg-white/85 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+  const content = (
+    <>
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-bold text-slate-900">Parametry smlouvy</h2>
         <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />
@@ -185,6 +187,16 @@ export function CalculatorDurationAndFrequencySection({
         ) : null}
       </div>
       </div>
+    </>
+  );
+
+  if (embedded) {
+    return <section>{content}</section>;
+  }
+
+  return (
+    <section className="rounded-[1.35rem] border border-slate-300 bg-white/85 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+      {content}
     </section>
   );
 }
