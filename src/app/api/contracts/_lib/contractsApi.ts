@@ -2293,10 +2293,10 @@ const sendNewContractPushNotification = async ({
       : "";
   const message = `${ownerDisplayName} přidal(a) novou smlouvu${contractSuffix}.`;
 
+  const contractDetailSlug = encodeURIComponent(`${ownerEmail}___${entryId}`);
+  const deepLink = `/smlouvy/${contractDetailSlug}?from=list&source=push`;
   const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
-  const webPushLink = `${baseUrl}/smlouvy/${encodeURIComponent(
-    `${ownerEmail}___${entryId}`
-  )}`;
+  const webPushLink = `${baseUrl}${deepLink}`;
   const createdAtIso = new Date().toISOString();
 
   for (let i = 0; i < tokens.length; i += NEW_CONTRACT_PUSH_MAX_TOKENS_PER_MULTICAST) {
@@ -2313,7 +2313,7 @@ const sendNewContractPushNotification = async ({
         entryId,
         contractNumber: contractNumber ?? "",
         createdAt: createdAtIso,
-        deepLink: `/smlouvy/${encodeURIComponent(`${ownerEmail}___${entryId}`)}`,
+        deepLink,
       },
       webpush: {
         fcmOptions: {

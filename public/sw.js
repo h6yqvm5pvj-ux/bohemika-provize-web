@@ -165,11 +165,13 @@ self.addEventListener("notificationclick", (event) => {
 
         if (sameOriginClient) {
           try {
-            await sameOriginClient.navigate(targetUrl);
+            const navigatedClient = await sameOriginClient.navigate(targetUrl);
+            return (navigatedClient || sameOriginClient).focus();
           } catch {
-            // ignore navigation errors and just focus existing tab
+            const openedClient = await self.clients.openWindow(targetUrl);
+            if (openedClient) return openedClient.focus();
+            return sameOriginClient.focus();
           }
-          return sameOriginClient.focus();
         }
 
         return self.clients.openWindow(targetUrl);
