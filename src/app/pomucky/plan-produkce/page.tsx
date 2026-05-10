@@ -1,8 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { Download, Eye } from "lucide-react";
+import {
+  Download,
+  Eye,
+  ExternalLink,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Search,
+  Send,
+  UserCheck,
+  X,
+} from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
@@ -40,6 +51,11 @@ function parseNumber(text: string): number {
   const v = parseFloat(text.replace(",", "."));
   return Number.isNaN(v) ? 0 : v;
 }
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const normalizeEmail = (value: unknown): string =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
 
 function findImmediate(items: CommissionResultItemDTO[]): number {
   const hit = items.find((it) =>
@@ -103,12 +119,44 @@ type UserProfileApiResponse = {
   ok?: boolean;
   profile?: {
     position?: Position | null;
+    managerEmail?: string | null;
   };
+};
+
+type UserLookupResponse = {
+  ok?: boolean;
+  exists?: boolean;
+  email?: string | null;
+  name?: string | null;
+};
+
+type UserSearchResponse = {
+  ok?: boolean;
+  users?: Array<{
+    email?: string;
+    name?: string;
+    managerEmail?: string | null;
+  }>;
+  error?: string;
+};
+
+type PlanShareResponse = {
+  ok?: boolean;
+  recipientEmail?: string;
+  recipientName?: string;
+  written?: number;
+  error?: string;
+};
+
+type RecipientOption = {
+  email: string;
+  name: string;
 };
 
 export default function PlanProdukcePage() {
   const [user, setUser] = useState<User | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
+  const [directManager, setDirectManager] = useState<RecipientOption | null>(null);
 
   const [lifeContracts, setLifeContracts] = useState("0");
   const [lifePremium, setLifePremium] = useState("0");
@@ -120,14 +168,29 @@ export default function PlanProdukcePage() {
   const [propertyPremium, setPropertyPremium] = useState("0");
 
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewGeneratedAt, setPreviewGeneratedAt] = useState<Date | null>(null);
+  const [previewExpanded, setPreviewExpanded] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareRecipientQuery, setShareRecipientQuery] = useState("");
+  const [shareSuggestions, setShareSuggestions] = useState<RecipientOption[]>([]);
+  const [shareSuggestionsLoading, setShareSuggestionsLoading] = useState(false);
+  const [shareSelectedRecipient, setShareSelectedRecipient] = useState<RecipientOption | null>(null);
+  const [shareUseDirectManager, setShareUseDirectManager] = useState(false);
+  const [shareSubmitting, setShareSubmitting] = useState(false);
+  const [shareErrorText, setShareErrorText] = useState<string | null>(null);
+  const [shareSuccessText, setShareSuccessText] = useState<string | null>(null);
+  const shareLookupSeq = useRef(0);
 
   useEffect(() => {
+    let alive = true;
     const unsub = onAuthStateChanged(auth, async (current) => {
+      if (!alive) return;
       setUser(current);
       if (!current?.email) {
         setPosition(null);
+        setDirectManager(null);
         return;
       }
       try {
@@ -136,18 +199,51 @@ export default function PlanProdukcePage() {
           "/api/user/profile",
           { method: "GET" }
         );
+        if (!alive) return;
+
         const profilePosition = payload?.profile?.position;
         if (typeof profilePosition === "string") {
           setPosition(profilePosition as Position);
         } else {
           setPosition(null);
         }
+
+        const managerEmail = normalizeEmail(payload?.profile?.managerEmail);
+        if (!managerEmail) {
+          setDirectManager(null);
+          return;
+        }
+
+        let managerName = nameFromEmail(managerEmail);
+        try {
+          const lookup = await fetchAuthedJsonOrThrow<UserLookupResponse>(
+            current,
+            `/api/user/lookup?email=${encodeURIComponent(managerEmail)}`,
+            { method: "GET" }
+          );
+          if (lookup?.exists && typeof lookup.name === "string" && lookup.name.trim().length > 0) {
+            managerName = lookup.name.trim();
+          }
+        } catch (lookupErr) {
+          console.warn("Načtení jména přímého nadřízeného selhalo:", lookupErr);
+        }
+
+        if (!alive) return;
+        setDirectManager({
+          email: managerEmail,
+          name: managerName,
+        });
       } catch (err) {
         console.error("Načtení profilu pro plán produkce selhalo:", err);
+        if (!alive) return;
         setPosition(null);
+        setDirectManager(null);
       }
     });
-    return () => unsub();
+    return () => {
+      alive = false;
+      unsub();
+    };
   }, []);
 
   const estimates = useMemo(() => {
@@ -701,6 +797,194 @@ export default function PlanProdukcePage() {
   const handlePreview = () => {
     const { html } = buildPdfHtml();
     setPreviewHtml(stripUnsupportedColors(html));
+    setPreviewGeneratedAt(new Date());
+  };
+
+  const handleOpenPreviewInNewTab = () => {
+    if (!previewHtml || typeof window === "undefined") return;
+    const blob = new Blob([previewHtml], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    if (!opened) {
+      setErrorText("Prohlížeč zablokoval otevření nového panelu s náhledem.");
+    }
+  };
+
+  useEffect(() => {
+    if (!shareModalOpen) {
+      setShareSuggestions([]);
+      setShareSuggestionsLoading(false);
+      return;
+    }
+    if (shareUseDirectManager) {
+      setShareSuggestions([]);
+      setShareSuggestionsLoading(false);
+      return;
+    }
+    if (!user) {
+      setShareSuggestions([]);
+      setShareSuggestionsLoading(false);
+      return;
+    }
+
+    const query = shareRecipientQuery.trim();
+    if (query.length < 2) {
+      setShareSuggestions([]);
+      setShareSuggestionsLoading(false);
+      return;
+    }
+
+    const seq = ++shareLookupSeq.current;
+    const timeoutId = window.setTimeout(async () => {
+      setShareSuggestionsLoading(true);
+      try {
+        const payload = await fetchAuthedJsonOrThrow<UserSearchResponse>(
+          user,
+          `/api/user/search?q=${encodeURIComponent(query)}`,
+          { method: "GET" }
+        );
+        if (seq !== shareLookupSeq.current) return;
+
+        const rows = Array.isArray(payload?.users) ? payload.users : [];
+        const nextSuggestions = rows
+          .map((row) => {
+            const email = normalizeEmail(row.email);
+            if (!email) return null;
+            const name =
+              typeof row.name === "string" && row.name.trim().length > 0
+                ? row.name.trim()
+                : nameFromEmail(email);
+            return { email, name } satisfies RecipientOption;
+          })
+          .filter((row): row is RecipientOption => row !== null);
+        setShareSuggestions(nextSuggestions);
+      } catch (err) {
+        console.error("Načtení našeptávání příjemců selhalo:", err);
+        if (seq !== shareLookupSeq.current) return;
+        setShareSuggestions([]);
+      } finally {
+        if (seq === shareLookupSeq.current) {
+          setShareSuggestionsLoading(false);
+        }
+      }
+    }, 180);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [shareModalOpen, shareUseDirectManager, shareRecipientQuery, user]);
+
+  const openShareModal = () => {
+    shareLookupSeq.current += 1;
+    setShareModalOpen(true);
+    setShareErrorText(null);
+    setShareRecipientQuery("");
+    setShareSelectedRecipient(null);
+    setShareSuggestions([]);
+    setShareSuggestionsLoading(false);
+    setShareUseDirectManager(false);
+  };
+
+  const closeShareModal = () => {
+    if (shareSubmitting) return;
+    shareLookupSeq.current += 1;
+    setShareModalOpen(false);
+    setShareSuggestions([]);
+    setShareSuggestionsLoading(false);
+    setShareUseDirectManager(false);
+    setShareSelectedRecipient(null);
+    setShareRecipientQuery("");
+    setShareErrorText(null);
+  };
+
+  const handleSelectSuggestion = (recipient: RecipientOption) => {
+    setShareUseDirectManager(false);
+    setShareSelectedRecipient(recipient);
+    setShareRecipientQuery(`${recipient.name} <${recipient.email}>`);
+    setShareSuggestions([]);
+    setShareErrorText(null);
+  };
+
+  const handleToggleDirectManager = (nextChecked: boolean) => {
+    shareLookupSeq.current += 1;
+    setShareUseDirectManager(nextChecked);
+    setShareErrorText(null);
+    if (nextChecked) {
+      setShareSuggestions([]);
+      if (directManager) {
+        setShareSelectedRecipient(directManager);
+        setShareRecipientQuery(`${directManager.name} <${directManager.email}>`);
+      } else {
+        setShareSelectedRecipient(null);
+      }
+      return;
+    }
+
+    setShareSelectedRecipient(null);
+    setShareRecipientQuery("");
+  };
+
+  const handleSharePlan = async () => {
+    if (!user) return;
+
+    let recipient: RecipientOption | null = shareUseDirectManager
+      ? directManager
+      : shareSelectedRecipient;
+    if (!recipient && !shareUseDirectManager) {
+      const exactEmail = normalizeEmail(shareRecipientQuery);
+      if (exactEmail && EMAIL_RE.test(exactEmail)) {
+        const exactMatch = shareSuggestions.find((row) => row.email === exactEmail);
+        if (exactMatch) {
+          recipient = exactMatch;
+        }
+      }
+    }
+
+    if (!recipient?.email) {
+      setShareErrorText("Vyber prosím příjemce ze seznamu návrhů nebo zvol přímého nadřízeného.");
+      return;
+    }
+
+    setShareSubmitting(true);
+    setShareErrorText(null);
+    setShareSuccessText(null);
+
+    try {
+      const payload = await fetchAuthedJsonOrThrow<PlanShareResponse>(
+        user,
+        "/api/plan-produkce/share",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            recipientEmail: recipient.email,
+            plan: {
+              lifeContracts: estimates.lifeCount,
+              lifePremium: parseNumber(lifePremium),
+              autoContracts: estimates.autoCount,
+              autoPremium: parseNumber(autoPremium),
+              propertyContracts: estimates.propCount,
+              propertyPremium: parseNumber(propertyPremium),
+              totalImmediate: estimates.total,
+            },
+          }),
+        }
+      );
+
+      const sentName =
+        typeof payload?.recipientName === "string" && payload.recipientName.trim().length > 0
+          ? payload.recipientName.trim()
+          : recipient.name;
+      setShareSuccessText(`Plán byl odeslán uživateli ${sentName}.`);
+      setShareModalOpen(false);
+      setShareUseDirectManager(false);
+      setShareSelectedRecipient(null);
+      setShareRecipientQuery("");
+      setShareSuggestions([]);
+      setShareSuggestionsLoading(false);
+    } catch (err: any) {
+      setShareErrorText(err?.message || "Plán se nepodařilo odeslat.");
+    } finally {
+      setShareSubmitting(false);
+    }
   };
 
   if (!user) {
@@ -789,30 +1073,49 @@ export default function PlanProdukcePage() {
           </div>
         </section>
 
-        <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
-          <button
-            type="button"
-            onClick={handlePreview}
-            disabled={generating}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-7 py-2.5 text-sm sm:text-base font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.06)] transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <Eye className="h-4 w-4" />
-            {generating ? "Připravuji PDF…" : "Náhled PDF"}
-          </button>
-          <button
-            type="button"
-            onClick={handleGeneratePdf}
-            disabled={generating}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-8 py-2.5 text-sm sm:text-base font-semibold text-white shadow-[0_10px_20px_rgba(15,23,42,0.18)] transition hover:bg-slate-950 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <Download className="h-4 w-4" />
-            {generating ? "Generuji PDF…" : "Vygenerovat PDF"}
-          </button>
-        </div>
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handlePreview}
+              disabled={generating}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-900 bg-[linear-gradient(135deg,#1e293b_0%,#0f172a_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_34px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(15,23,42,0.34)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Eye className="h-4 w-4" />
+              {generating ? "Připravuji náhled…" : "Náhled PDF"}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleGeneratePdf}
+              disabled={generating}
+              className="inline-flex items-center gap-2 rounded-2xl border border-blue-700/70 bg-[linear-gradient(135deg,#1d4ed8_0%,#1e293b_100%)] px-6 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_16px_38px_rgba(30,64,175,0.32)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_45px_rgba(30,64,175,0.38)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Download className="h-4 w-4" />
+              {generating ? "Připravuji PDF…" : "Stáhnout PDF"}
+            </button>
+
+            <button
+              type="button"
+              onClick={openShareModal}
+              disabled={generating || shareSubmitting}
+              className="inline-flex items-center gap-2 rounded-2xl border border-emerald-700/75 bg-[linear-gradient(135deg,#059669_0%,#1d4ed8_100%)] px-6 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_16px_38px_rgba(5,150,105,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_45px_rgba(5,150,105,0.38)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Send className="h-4 w-4" />
+              Odeslat
+            </button>
+          </div>
+        </section>
 
         {errorText && (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl px-3 py-2">
             {errorText}
+          </p>
+        )}
+
+        {shareSuccessText && (
+          <p className="text-xs text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-2xl px-3 py-2">
+            {shareSuccessText}
           </p>
         )}
 
@@ -822,23 +1125,256 @@ export default function PlanProdukcePage() {
           </p>
         )}
 
-        {previewHtml && (
-          <section className="mt-2 relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] space-y-3">
-            <span className="absolute inset-x-0 top-0 h-1 bg-slate-900" />
-            <h2 className="text-sm font-semibold text-slate-900">
-              Náhled PDF
-            </h2>
-            <p className="text-xs text-slate-600">
-              Náhled odpovídá tomu, co stáhneš jako PDF.
-            </p>
-            <div className="mt-2 h-[640px] rounded-2xl border border-slate-200 overflow-hidden bg-white">
-              <iframe
-                srcDoc={previewHtml}
-                title="Náhled PDF Plán produkce"
-                className="w-full h-full bg-white"
-              />
+        <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_14px_38px_rgba(15,23,42,0.1)]">
+          <div className="border-b border-slate-200 bg-[linear-gradient(155deg,#f8fafc_0%,#eef5ff_100%)] px-4 py-3.5 sm:px-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold tracking-[-0.015em] text-slate-900">
+                  Náhled PDF
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Náhled odpovídá tomu, co stáhneš jako PDF.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                  A4 • na výšku
+                </span>
+                {previewGeneratedAt && (
+                  <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-800">
+                    Aktualizováno {previewGeneratedAt.toLocaleTimeString("cs-CZ")}
+                  </span>
+                )}
+                {previewHtml && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleOpenPreviewInNewTab}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-50"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Otevřít v kartě
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewExpanded((prev) => !prev)}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-50"
+                    >
+                      {previewExpanded ? (
+                        <Minimize2 className="h-3.5 w-3.5" />
+                      ) : (
+                        <Maximize2 className="h-3.5 w-3.5" />
+                      )}
+                      {previewExpanded ? "Zmenšit" : "Rozšířit"}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
-          </section>
+          </div>
+
+          {previewHtml ? (
+            <div
+              className={`overflow-hidden bg-[radial-gradient(circle_at_14%_8%,rgba(37,99,235,0.1)_0%,transparent_44%),radial-gradient(circle_at_84%_14%,rgba(14,165,233,0.08)_0%,transparent_40%),#f8fafc] p-3 transition-[height] duration-300 sm:p-4 ${
+                previewExpanded ? "h-[78vh] min-h-[760px]" : "h-[640px]"
+              }`}
+            >
+              <div className="h-full overflow-hidden rounded-[24px] border border-slate-300/90 bg-white shadow-[0_20px_48px_rgba(15,23,42,0.2)]">
+                <div className="flex items-center gap-2 border-b border-[#1e293b] bg-[#0b1220] px-4 py-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#fb7185]" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#f59e0b]" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#22c55e]" />
+                  <span className="ml-2 truncate rounded bg-[#1f2937] px-2 py-0.5 text-[10px] font-medium text-[#cbd5e1]">
+                    Bohemika.App export preview
+                  </span>
+                </div>
+                <iframe
+                  srcDoc={previewHtml}
+                  title="Náhled PDF Plán produkce"
+                  className="h-[calc(100%-38px)] w-full bg-white"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="grid min-h-[320px] place-items-center bg-[linear-gradient(160deg,#f8fafc_0%,#ffffff_100%)] px-5 py-12 text-center">
+              <div className="max-w-md space-y-2">
+                <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700">
+                  <Eye className="h-5 w-5" />
+                </div>
+                <p className="text-base font-semibold text-slate-900">Náhled zatím není připravený</p>
+                <p className="text-sm text-slate-600">
+                  Klikni na „Náhled PDF“ a otevře se vizuální kontrola exportu podle aktuálních hodnot.
+                </p>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {shareModalOpen && (
+          <div className="fixed inset-0 z-[90]">
+            <button
+              type="button"
+              aria-label="Zavřít okno odeslání"
+              onClick={closeShareModal}
+              className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px]"
+            />
+
+            <div className="relative z-[91] flex min-h-full items-center justify-center p-4">
+              <section className="w-full max-w-lg rounded-[30px] border border-white/70 bg-white/95 p-5 shadow-[0_28px_78px_rgba(15,23,42,0.28)] backdrop-blur-xl sm:p-6">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-800">
+                      <Send className="h-3.5 w-3.5" />
+                      Odeslat plán
+                    </div>
+                    <h3 className="mt-3 text-2xl font-semibold tracking-[-0.015em] text-slate-900">
+                      Vyber příjemce
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Vyhledej uživatele podle jména nebo e-mailu a odešli mu plán do pošty.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={closeShareModal}
+                    disabled={shareSubmitting}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="mt-5 space-y-4">
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="plan-share-recipient"
+                      className="block text-xs font-semibold uppercase tracking-[0.14em] text-slate-600"
+                    >
+                      Příjemce
+                    </label>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        id="plan-share-recipient"
+                        type="text"
+                        value={shareRecipientQuery}
+                        onChange={(e) => {
+                          const nextValue = e.target.value;
+                          setShareRecipientQuery(nextValue);
+                          setShareUseDirectManager(false);
+                          setShareSelectedRecipient(null);
+                          setShareErrorText(null);
+                        }}
+                        placeholder="Jméno nebo e-mail"
+                        autoComplete="off"
+                        className="w-full rounded-2xl border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                      />
+                      {shareSuggestionsLoading ? (
+                        <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-500" />
+                      ) : null}
+                    </div>
+
+                    {!shareUseDirectManager && shareSuggestions.length > 0 && (
+                      <div className="max-h-52 overflow-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-[0_14px_30px_rgba(15,23,42,0.1)]">
+                        {shareSuggestions.map((option) => (
+                          <button
+                            key={option.email}
+                            type="button"
+                            onClick={() => handleSelectSuggestion(option)}
+                            className="flex w-full items-start justify-between rounded-xl px-3 py-2 text-left transition hover:bg-slate-50"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold text-slate-900">
+                                {option.name}
+                              </span>
+                              <span className="block truncate text-xs text-slate-500">
+                                {option.email}
+                              </span>
+                            </span>
+                            <span className="ml-2 shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                              Vybrat
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+                    {directManager ? (
+                      <label className="flex cursor-pointer items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={shareUseDirectManager}
+                          onChange={(e) => handleToggleDirectManager(e.target.checked)}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-sm text-slate-700">
+                          <span className="inline-flex items-center gap-1.5 font-semibold text-slate-900">
+                            <UserCheck className="h-4 w-4 text-emerald-700" />
+                            Přímý nadřízený
+                          </span>
+                          <span className="ml-1">{directManager.name}</span>
+                          <span className="ml-1 text-xs text-slate-500">
+                            ({directManager.email})
+                          </span>
+                        </span>
+                      </label>
+                    ) : (
+                      <p className="text-xs text-slate-600">
+                        Přímý nadřízený není v profilu nastaven.
+                      </p>
+                    )}
+                  </div>
+
+                  {(shareUseDirectManager ? directManager : shareSelectedRecipient) && (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-sm">
+                      <span className="font-semibold text-emerald-900">Vybraný příjemce:</span>{" "}
+                      <span className="text-emerald-900">
+                        {(shareUseDirectManager ? directManager : shareSelectedRecipient)?.name}
+                      </span>
+                      <span className="text-emerald-700">
+                        {" "}
+                        ({(shareUseDirectManager ? directManager : shareSelectedRecipient)?.email})
+                      </span>
+                    </div>
+                  )}
+
+                  {shareErrorText && (
+                    <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+                      {shareErrorText}
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={closeShareModal}
+                      disabled={shareSubmitting}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Zrušit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleSharePlan()}
+                      disabled={shareSubmitting}
+                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-700/70 bg-[linear-gradient(135deg,#16a34a_0%,#1d4ed8_100%)] px-4 py-2 text-sm font-semibold text-zinc-50 shadow-[0_12px_30px_rgba(5,150,105,0.28)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {shareSubmitting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                      {shareSubmitting ? "Odesílám…" : "Odeslat"}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
         )}
       </div>
     </AppLayout>

@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 
 import { collectPushTokens } from "@/lib/server/pushTokens";
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
+import { writeMailboxEntries } from "@/lib/server/mailbox";
 import {
   requireAuthedRateLimited,
   withRateLimitHeaders,
@@ -66,6 +67,20 @@ type WallComment = {
   text: string;
   createdAtMs: number | null;
   author: WallAuthor;
+  likeCount: number;
+  likedByMe: boolean;
+  parentCommentId: string | null;
+  replies: WallCommentReply[];
+};
+
+type WallCommentReply = {
+  id: string;
+  text: string;
+  createdAtMs: number | null;
+  author: WallAuthor;
+  likeCount: number;
+  likedByMe: boolean;
+  parentCommentId: string;
 };
 
 type WallPost = {
@@ -298,7 +313,6 @@ const loadIntranetPushRecipients = async ({
         0,
         INTRANET_PUSH_MAX_TOKENS_PER_USER
       );
-      if (tokens.length === 0) return null;
       return { email, tokens } satisfies IntranetPushRecipient;
     })
   );
@@ -327,17 +341,10 @@ const sendIntranetPostPushNotification = async ({
   text: string;
   postId: string;
 }): Promise<void> => {
-  if (!adminMessaging || !adminDb) return;
+  if (!adminDb) return;
 
   const recipients = await loadIntranetPushRecipients({ authorEmail, section });
   if (recipients.length === 0) return;
-
-  const tokenSet = new Set<string>();
-  recipients.forEach((recipient) => {
-    recipient.tokens.forEach((token) => tokenSet.add(token));
-  });
-  const tokens = [...tokenSet];
-  if (tokens.length === 0) return;
 
   const authorDisplay = normalizeText(authorName) || authorEmail;
   const cleanTitle = normalizeText(title);
@@ -355,6 +362,33 @@ const sendIntranetPostPushNotification = async ({
   const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
   const webPushLink = `${baseUrl}${deepLink}`;
   const createdAtIso = new Date().toISOString();
+
+  try {
+    await writeMailboxEntries({
+      recipientEmails: recipients.map((row) => row.email),
+      type: "intranet_post",
+      title: `Intranet • ${sectionLabel}`,
+      body,
+      deepLink,
+      metadata: {
+        postId,
+        section,
+        sectionLabel,
+        authorEmail,
+      },
+    });
+  } catch (error) {
+    console.error("Writing mailbox notification for intranet post failed:", error);
+  }
+
+  if (!adminMessaging) return;
+
+  const tokenSet = new Set<string>();
+  recipients.forEach((recipient) => {
+    recipient.tokens.forEach((token) => tokenSet.add(token));
+  });
+  const tokens = [...tokenSet];
+  if (tokens.length === 0) return;
 
   for (let i = 0; i < tokens.length; i += INTRANET_PUSH_MAX_TOKENS_PER_MULTICAST) {
     const chunk = tokens.slice(i, i + INTRANET_PUSH_MAX_TOKENS_PER_MULTICAST);
@@ -586,8 +620,12 @@ async function uploadAttachmentsToStorage({
     : new Error("Nepodařilo se nahrát přílohy do Storage.");
 }
 
-async function loadCommentsForPost(postId: string): Promise<WallComment[]> {
+async function loadCommentsForPost(
+  postId: string,
+  viewerEmail: string
+): Promise<WallComment[]> {
   if (!adminDb) return [];
+  const viewerEmailNormalized = normalizeEmail(viewerEmail);
   const snap = await adminDb
     .collection(POSTS_COLLECTION)
     .doc(postId)
@@ -596,16 +634,99 @@ async function loadCommentsForPost(postId: string): Promise<WallComment[]> {
     .limit(COMMENTS_PER_POST_LIMIT)
     .get();
 
-  return snap.docs.map((doc) => {
+  type ParsedCommentNode = {
+    id: string;
+    text: string;
+    createdAtMs: number | null;
+    author: WallAuthor;
+    likeCount: number;
+    likedByMe: boolean;
+    parentCommentId: string | null;
+  };
+
+  const parsedNodes: ParsedCommentNode[] = snap.docs.map((doc) => {
     const data = doc.data() as Record<string, unknown>;
     const author = parseAuthor(data);
+    const parentRaw = normalizeText(data.parentCommentId);
+    const parentCommentId = parentRaw ? parentRaw.replace(/[^\w-]/g, "") : "";
+    const likedByEmails = parseLikedByEmails(data.likedByEmails);
+    const likeCountRaw = Number(data.likeCount);
+    const likeCount = Number.isFinite(likeCountRaw)
+      ? Math.max(0, Math.floor(likeCountRaw))
+      : likedByEmails.length;
+
     return {
       id: doc.id,
       text: normalizeText(data.text),
       createdAtMs: toMillis(data.createdAt),
       author,
+      likeCount,
+      likedByMe: viewerEmailNormalized
+        ? likedByEmails.includes(viewerEmailNormalized)
+        : false,
+      parentCommentId: parentCommentId || null,
     };
   });
+
+  const topLevelMap = new Map<string, WallComment>();
+  const repliesByParent = new Map<string, WallCommentReply[]>();
+
+  parsedNodes.forEach((node) => {
+    if (!node.parentCommentId) {
+      topLevelMap.set(node.id, {
+        id: node.id,
+        text: node.text,
+        createdAtMs: node.createdAtMs,
+        author: node.author,
+        likeCount: node.likeCount,
+        likedByMe: node.likedByMe,
+        parentCommentId: null,
+        replies: [],
+      });
+      return;
+    }
+
+    const reply: WallCommentReply = {
+      id: node.id,
+      text: node.text,
+      createdAtMs: node.createdAtMs,
+      author: node.author,
+      likeCount: node.likeCount,
+      likedByMe: node.likedByMe,
+      parentCommentId: node.parentCommentId,
+    };
+    const bucket = repliesByParent.get(node.parentCommentId) ?? [];
+    bucket.push(reply);
+    repliesByParent.set(node.parentCommentId, bucket);
+  });
+
+  const orderedTopLevel: WallComment[] = [];
+  parsedNodes.forEach((node) => {
+    if (node.parentCommentId) return;
+    const topLevel = topLevelMap.get(node.id);
+    if (!topLevel) return;
+    const replies = repliesByParent.get(node.id) ?? [];
+    topLevel.replies = replies;
+    orderedTopLevel.push(topLevel);
+  });
+
+  repliesByParent.forEach((orphanReplies, parentId) => {
+    if (topLevelMap.has(parentId)) return;
+    orphanReplies.forEach((reply) => {
+      orderedTopLevel.push({
+        id: reply.id,
+        text: reply.text,
+        createdAtMs: reply.createdAtMs,
+        author: reply.author,
+        likeCount: reply.likeCount,
+        likedByMe: reply.likedByMe,
+        parentCommentId: null,
+        replies: [],
+      });
+    });
+  });
+
+  return orderedTopLevel;
 }
 
 function mapPostFromDoc(
@@ -624,9 +745,13 @@ function mapPostFromDoc(
 
   const author = parseAuthor(raw);
   const commentCountRaw = Number(raw.commentCount);
+  const derivedCommentCount = comments.reduce(
+    (total, comment) => total + 1 + comment.replies.length,
+    0
+  );
   const commentCount = Number.isFinite(commentCountRaw)
     ? Math.max(0, Math.floor(commentCountRaw))
-    : comments.length;
+    : derivedCommentCount;
   const likedByEmails = parseLikedByEmails(raw.likedByEmails);
   const likeCountRaw = Number(raw.likeCount);
   const likeCount = Number.isFinite(likeCountRaw)
@@ -701,7 +826,7 @@ export async function GET(req: NextRequest) {
     const posts = await Promise.all(
       postsSnap.docs.map(async (doc) => {
         const raw = doc.data() as Record<string, unknown>;
-        const comments = await loadCommentsForPost(doc.id);
+        const comments = await loadCommentsForPost(doc.id, viewerEmail);
         return mapPostFromDoc(doc.id, raw, comments, viewerEmail);
       })
     );

@@ -73,6 +73,20 @@ type WallComment = {
   text: string;
   createdAtMs: number | null;
   author: WallAuthor;
+  likeCount: number;
+  likedByMe: boolean;
+  parentCommentId: string | null;
+  replies: WallCommentReply[];
+};
+
+type WallCommentReply = {
+  id: string;
+  text: string;
+  createdAtMs: number | null;
+  author: WallAuthor;
+  likeCount: number;
+  likedByMe: boolean;
+  parentCommentId: string;
 };
 
 type WallPost = {
@@ -119,6 +133,15 @@ type WallLikeResponse = {
   ok?: boolean;
   error?: string;
   postId?: string;
+  likeCount?: number;
+  likedByMe?: boolean;
+};
+
+type WallCommentLikeResponse = {
+  ok?: boolean;
+  error?: string;
+  postId?: string;
+  commentId?: string;
   likeCount?: number;
   likedByMe?: boolean;
 };
@@ -288,6 +311,9 @@ const isPreviewableImage = (file: File): boolean => {
   return name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
 };
 
+const replyComposerKey = (postId: string, commentId: string): string =>
+  `${postId}::${commentId}`;
+
 export default function IntranetPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [selectedSection, setSelectedSection] = useState<IntranetSectionKey>("obecne");
@@ -309,6 +335,11 @@ export default function IntranetPage() {
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentPostingById, setCommentPostingById] = useState<Record<string, boolean>>({});
   const [commentErrorById, setCommentErrorById] = useState<Record<string, string | null>>({});
+  const [replyDraftsById, setReplyDraftsById] = useState<Record<string, string>>({});
+  const [replyPostingById, setReplyPostingById] = useState<Record<string, boolean>>({});
+  const [replyErrorById, setReplyErrorById] = useState<Record<string, string | null>>({});
+  const [replyComposerOpenById, setReplyComposerOpenById] = useState<Record<string, boolean>>({});
+  const [commentLikePostingById, setCommentLikePostingById] = useState<Record<string, boolean>>({});
   const [expandedCommentsById, setExpandedCommentsById] = useState<Record<string, boolean>>({});
   const [commentComposerOpenById, setCommentComposerOpenById] = useState<Record<string, boolean>>(
     {}
@@ -324,6 +355,7 @@ export default function IntranetPage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const commentInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const replyInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const postCardRefs = useRef<Record<string, HTMLElement | null>>({});
   const dragDepthRef = useRef(0);
   const highlightTimerRef = useRef<number | null>(null);
@@ -502,6 +534,15 @@ export default function IntranetPage() {
     setCommentErrorById((prev) => ({ ...prev, [postId]: null }));
   };
 
+  const addEmojiToReply = (postId: string, commentId: string, emoji: string) => {
+    const key = replyComposerKey(postId, commentId);
+    setReplyDraftsById((prev) => ({
+      ...prev,
+      [key]: `${prev[key] ?? ""}${emoji}`,
+    }));
+    setReplyErrorById((prev) => ({ ...prev, [key]: null }));
+  };
+
   const addFiles = (incoming: File[]) => {
     if (!incoming.length) return;
     setFiles((prev) => {
@@ -631,14 +672,23 @@ export default function IntranetPage() {
     }
   };
 
-  const handleCreateComment = async (postId: string) => {
+  const handleCreateComment = async (postId: string, parentCommentId?: string) => {
     if (!user) return;
-    const draft = (commentDrafts[postId] ?? "").trim();
+    const isReply = !!parentCommentId;
+    const composerKey = parentCommentId ? replyComposerKey(postId, parentCommentId) : postId;
+    const draft = isReply
+      ? (replyDraftsById[composerKey] ?? "").trim()
+      : (commentDrafts[postId] ?? "").trim();
     if (!draft) return;
-    if (commentPostingById[postId]) return;
+    if (isReply ? replyPostingById[composerKey] : commentPostingById[postId]) return;
 
-    setCommentPostingById((prev) => ({ ...prev, [postId]: true }));
-    setCommentErrorById((prev) => ({ ...prev, [postId]: null }));
+    if (isReply) {
+      setReplyPostingById((prev) => ({ ...prev, [composerKey]: true }));
+      setReplyErrorById((prev) => ({ ...prev, [composerKey]: null }));
+    } else {
+      setCommentPostingById((prev) => ({ ...prev, [postId]: true }));
+      setCommentErrorById((prev) => ({ ...prev, [postId]: null }));
+    }
 
     try {
       const payload = await fetchAuthedJsonOrThrow<WallCommentCreateResponse>(
@@ -646,24 +696,44 @@ export default function IntranetPage() {
         `/api/intranet/wall/${encodeURIComponent(postId)}/comments`,
         {
           method: "POST",
-          body: JSON.stringify({ text: draft }),
+          body: JSON.stringify({
+            text: draft,
+            parentCommentId: parentCommentId ?? null,
+          }),
         }
       );
       if (!payload?.ok) {
         throw new Error(payload?.error || "Server nevrátil úspěšnou odpověď.");
       }
 
-      setCommentDrafts((prev) => ({ ...prev, [postId]: "" }));
+      if (isReply) {
+        setReplyDraftsById((prev) => ({ ...prev, [composerKey]: "" }));
+        setReplyComposerOpenById((prev) => ({ ...prev, [composerKey]: false }));
+      } else {
+        setCommentDrafts((prev) => ({ ...prev, [postId]: "" }));
+      }
       setExpandedCommentsById((prev) => ({ ...prev, [postId]: true }));
       await loadPosts(user, selectedSection);
     } catch (error) {
-      setCommentErrorById((prev) => ({
-        ...prev,
-        [postId]:
-          error instanceof Error ? error.message : "Nepodařilo se uložit komentář.",
-      }));
+      if (isReply) {
+        setReplyErrorById((prev) => ({
+          ...prev,
+          [composerKey]:
+            error instanceof Error ? error.message : "Nepodařilo se uložit reakci.",
+        }));
+      } else {
+        setCommentErrorById((prev) => ({
+          ...prev,
+          [postId]:
+            error instanceof Error ? error.message : "Nepodařilo se uložit komentář.",
+        }));
+      }
     } finally {
-      setCommentPostingById((prev) => ({ ...prev, [postId]: false }));
+      if (isReply) {
+        setReplyPostingById((prev) => ({ ...prev, [composerKey]: false }));
+      } else {
+        setCommentPostingById((prev) => ({ ...prev, [postId]: false }));
+      }
     }
   };
 
@@ -672,6 +742,11 @@ export default function IntranetPage() {
     setExpandedCommentsById((prev) => ({ ...prev, [postId]: nextExpanded }));
     if (!nextExpanded) {
       setCommentComposerOpenById((prev) => ({ ...prev, [postId]: false }));
+      setReplyComposerOpenById((prev) =>
+        Object.fromEntries(
+          Object.entries(prev).filter(([key, value]) => !(value && key.startsWith(`${postId}::`)))
+        )
+      );
     }
   };
 
@@ -681,6 +756,76 @@ export default function IntranetPage() {
     setTimeout(() => {
       commentInputRefs.current[postId]?.focus();
     }, 0);
+  };
+
+  const handleOpenReplyComposer = (postId: string, commentId: string) => {
+    const key = replyComposerKey(postId, commentId);
+    setExpandedCommentsById((prev) => ({ ...prev, [postId]: true }));
+    setReplyComposerOpenById((prev) => ({ ...prev, [key]: true }));
+    setTimeout(() => {
+      replyInputRefs.current[key]?.focus();
+    }, 0);
+  };
+
+  const handleToggleCommentLike = async (postId: string, commentId: string) => {
+    if (!user) return;
+    const key = replyComposerKey(postId, commentId);
+    if (commentLikePostingById[key]) return;
+
+    setCommentLikePostingById((prev) => ({ ...prev, [key]: true }));
+    setPostsError(null);
+    try {
+      const payload = await fetchAuthedJsonOrThrow<WallCommentLikeResponse>(
+        user,
+        `/api/intranet/wall/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}/like`,
+        { method: "POST" }
+      );
+      if (!payload?.ok) {
+        throw new Error(payload?.error || "Server nevrátil úspěšnou odpověď.");
+      }
+
+      setPosts((prev) =>
+        prev.map((post) => {
+          if (post.id !== postId) return post;
+
+          const nextComments = post.comments.map((comment) => {
+            if (comment.id === commentId) {
+              return {
+                ...comment,
+                likeCount:
+                  typeof payload.likeCount === "number" &&
+                  Number.isFinite(payload.likeCount) &&
+                  payload.likeCount >= 0
+                    ? Math.floor(payload.likeCount)
+                    : comment.likeCount,
+                likedByMe: payload.likedByMe === true,
+              };
+            }
+
+            const nextReplies = comment.replies.map((reply) =>
+              reply.id === commentId
+                ? {
+                    ...reply,
+                    likeCount:
+                      typeof payload.likeCount === "number" &&
+                      Number.isFinite(payload.likeCount) &&
+                      payload.likeCount >= 0
+                        ? Math.floor(payload.likeCount)
+                        : reply.likeCount,
+                    likedByMe: payload.likedByMe === true,
+                  }
+                : reply
+            );
+            return { ...comment, replies: nextReplies };
+          });
+          return { ...post, comments: nextComments };
+        })
+      );
+    } catch (error) {
+      setPostsError(error instanceof Error ? error.message : "Nepodařilo se uložit lajk komentáře.");
+    } finally {
+      setCommentLikePostingById((prev) => ({ ...prev, [key]: false }));
+    }
   };
 
   const handleToggleLike = async (postId: string) => {
@@ -1050,29 +1195,212 @@ export default function IntranetPage() {
                                 Zatím bez komentářů.
                               </div>
                             ) : (
-                              post.comments.map((comment) => (
-                                <div
-                                  key={comment.id}
-                                  className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2"
-                                >
-                                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                                    <span className="relative inline-flex h-6 w-6 overflow-hidden rounded-full ring-1 ring-slate-300">
-                                      <Image
-                                        src="/icons/klient.png"
-                                        alt="Ikona klienta"
-                                        fill
-                                        sizes="24px"
-                                        className="object-cover"
-                                      />
-                                    </span>
-                                    <span className="font-semibold text-slate-700">{comment.author.name}</span>
-                                    <span>{formatDateTime(comment.createdAtMs)}</span>
+                              post.comments.map((comment) => {
+                                const commentActionKey = replyComposerKey(post.id, comment.id);
+                                const isCommentLikePosting =
+                                  commentLikePostingById[commentActionKey] === true;
+                                const isReplyComposerOpen =
+                                  replyComposerOpenById[commentActionKey] === true;
+                                const isReplyPosting = replyPostingById[commentActionKey] === true;
+
+                                return (
+                                  <div
+                                    key={comment.id}
+                                    className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2"
+                                  >
+                                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                      <span className="relative inline-flex h-6 w-6 overflow-hidden rounded-full ring-1 ring-slate-300">
+                                        <Image
+                                          src="/icons/klient.png"
+                                          alt="Ikona klienta"
+                                          fill
+                                          sizes="24px"
+                                          className="object-cover"
+                                        />
+                                      </span>
+                                      <span className="font-semibold text-slate-700">{comment.author.name}</span>
+                                      <span>{formatDateTime(comment.createdAtMs)}</span>
+                                    </div>
+                                    <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                                      {comment.text}
+                                    </p>
+
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleToggleCommentLike(post.id, comment.id)}
+                                        disabled={isCommentLikePosting || !user}
+                                        className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                                          comment.likedByMe
+                                            ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                                            : "border-slate-300 bg-white text-slate-700 hover:border-slate-500 hover:bg-slate-100"
+                                        }`}
+                                      >
+                                        {isCommentLikePosting ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <Heart
+                                            className={`h-3 w-3 ${comment.likedByMe ? "fill-current" : ""}`}
+                                          />
+                                        )}
+                                        Like
+                                        <span className="rounded-full border border-current/25 px-1 leading-none">
+                                          {comment.likeCount}
+                                        </span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenReplyComposer(post.id, comment.id)}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
+                                      >
+                                        <MessageSquare className="h-3 w-3" />
+                                        Reagovat
+                                      </button>
+
+                                      {comment.replies.length > 0 ? (
+                                        <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600">
+                                          Reakce: {comment.replies.length}
+                                        </span>
+                                      ) : null}
+                                    </div>
+
+                                    {comment.replies.length > 0 ? (
+                                      <div className="mt-2 space-y-2 border-l border-slate-200 pl-3">
+                                        {comment.replies.map((reply) => {
+                                          const replyLikeKey = replyComposerKey(post.id, reply.id);
+                                          const isReplyLikePosting =
+                                            commentLikePostingById[replyLikeKey] === true;
+                                          return (
+                                            <div
+                                              key={reply.id}
+                                              className="rounded-lg border border-slate-200/90 bg-slate-50/80 px-2.5 py-2"
+                                            >
+                                              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                                <span className="relative inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-slate-300">
+                                                  <Image
+                                                    src="/icons/klient.png"
+                                                    alt="Ikona klienta"
+                                                    fill
+                                                    sizes="20px"
+                                                    className="object-cover"
+                                                  />
+                                                </span>
+                                                <span className="font-semibold text-slate-700">
+                                                  {reply.author.name}
+                                                </span>
+                                                <span>{formatDateTime(reply.createdAtMs)}</span>
+                                              </div>
+                                              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                                                {reply.text}
+                                              </p>
+                                              <div className="mt-1.5">
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    void handleToggleCommentLike(post.id, reply.id)
+                                                  }
+                                                  disabled={isReplyLikePosting || !user}
+                                                  className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                                                    reply.likedByMe
+                                                      ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                                                      : "border-slate-300 bg-white text-slate-700 hover:border-slate-500 hover:bg-slate-100"
+                                                  }`}
+                                                >
+                                                  {isReplyLikePosting ? (
+                                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                                  ) : (
+                                                    <Heart
+                                                      className={`h-3 w-3 ${reply.likedByMe ? "fill-current" : ""}`}
+                                                    />
+                                                  )}
+                                                  Like
+                                                  <span className="rounded-full border border-current/25 px-1 leading-none">
+                                                    {reply.likeCount}
+                                                  </span>
+                                                </button>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : null}
+
+                                    {isReplyComposerOpen ? (
+                                      <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-2">
+                                        <textarea
+                                          ref={(node) => {
+                                            replyInputRefs.current[commentActionKey] = node;
+                                          }}
+                                          value={replyDraftsById[commentActionKey] ?? ""}
+                                          onChange={(event) =>
+                                            setReplyDraftsById((prev) => ({
+                                              ...prev,
+                                              [commentActionKey]: event.target.value,
+                                            }))
+                                          }
+                                          rows={2}
+                                          placeholder={`Reakce na komentář od ${comment.author.name}...`}
+                                          className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+                                        />
+
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {QUICK_EMOJIS.slice(0, 8).map((emoji) => (
+                                            <button
+                                              key={`${commentActionKey}-${emoji}`}
+                                              type="button"
+                                              onClick={() =>
+                                                addEmojiToReply(post.id, comment.id, emoji)
+                                              }
+                                              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm transition hover:border-slate-500 hover:bg-slate-100"
+                                            >
+                                              {emoji}
+                                            </button>
+                                          ))}
+                                        </div>
+
+                                        {replyErrorById[commentActionKey] ? (
+                                          <div className="rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700">
+                                            {replyErrorById[commentActionKey]}
+                                          </div>
+                                        ) : null}
+
+                                        <div className="flex items-center justify-between gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setReplyComposerOpenById((prev) => ({
+                                                ...prev,
+                                                [commentActionKey]: false,
+                                              }))
+                                            }
+                                            className="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
+                                          >
+                                            <X className="h-3.5 w-3.5" />
+                                            Zavřít
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              void handleCreateComment(post.id, comment.id)
+                                            }
+                                            disabled={isReplyPosting || !user}
+                                            className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                          >
+                                            {isReplyPosting ? (
+                                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : (
+                                              <Send className="h-3.5 w-3.5" />
+                                            )}
+                                            Odeslat reakci
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : null}
                                   </div>
-                                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
-                                    {comment.text}
-                                  </p>
-                                </div>
-                              ))
+                                );
+                              })
                             )}
                           </div>
 

@@ -367,6 +367,10 @@ function sanitizeNotificationSettings(value: unknown): Record<string, unknown> |
         typeof typesInput.intranet === "boolean"
           ? typesInput.intranet
           : true,
+      weeklyTeamReport:
+        typeof typesInput.weeklyTeamReport === "boolean"
+          ? typesInput.weeklyTeamReport
+          : true,
     },
     channels: {
       email:

@@ -159,6 +159,7 @@ type NotificationSettings = {
     unpaid: boolean;
     team: boolean;
     intranet: boolean;
+    weeklyTeamReport: boolean;
   };
   channels: {
     email: boolean;
@@ -226,6 +227,10 @@ const normalizeNotificationSettings = (
         typeof typesInput.intranet === "boolean"
           ? typesInput.intranet
           : true,
+      weeklyTeamReport:
+        typeof typesInput.weeklyTeamReport === "boolean"
+          ? typesInput.weeklyTeamReport
+          : true,
     },
     channels: {
       email:
@@ -250,6 +255,7 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     unpaid: true,
     team: true,
     intranet: true,
+    weeklyTeamReport: true,
   },
   channels: {
     email: true,
@@ -2464,6 +2470,7 @@ export default function SettingsPage() {
                         { id: "unpaid", label: "Nezaplaceno" },
                         { id: "team", label: "Týmové akce" },
                         { id: "intranet", label: "Intranet" },
+                        { id: "weeklyTeamReport", label: "Týdenní report týmu" },
                       ].map((t) => {
                         const active = notificationSettings.types[t.id as keyof NotificationSettings["types"]];
                         return (

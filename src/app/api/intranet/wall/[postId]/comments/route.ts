@@ -1,7 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
-import { adminDb } from "@/lib/server/firebaseAdmin";
+import { INTRANET_SECTION_KEYS, type IntranetSectionKey } from "@/app/intranet/sections";
+import { writeMailboxEntries } from "@/lib/server/mailbox";
+import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
+import { collectPushTokens } from "@/lib/server/pushTokens";
 import {
   requireAuthedRateLimited,
   withRateLimitHeaders,
@@ -16,6 +19,7 @@ const COMMENTS_SUBCOLLECTION = "comments";
 const COMMENT_RATE_LIMIT = 60;
 const COMMENT_RATE_LIMIT_WINDOW_MS = 60_000;
 const COMMENT_MAX_LEN = 2000;
+const INTRANET_PUSH_MAX_TOKENS_PER_USER = 8;
 
 type RouteParams = {
   postId: string;
@@ -23,6 +27,12 @@ type RouteParams = {
 
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
+
+const normalizeEmail = (value: unknown): string =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
 
 const nameFromEmail = (email: string): string => {
   const local = email.split("@")[0] ?? "";
@@ -80,6 +90,146 @@ function resolvePostId(params: RouteParams): string {
   return raw.replace(/[^\w-]/g, "");
 }
 
+function resolveCommentId(value: unknown): string {
+  const raw = normalizeText(value);
+  if (!raw) return "";
+  return raw.replace(/[^\w-]/g, "");
+}
+
+const isIntranetPushEnabledForSection = (
+  profile: Record<string, unknown>,
+  section: IntranetSectionKey
+): boolean => {
+  const settingsRaw = isPlainObject(profile.notificationSettings)
+    ? profile.notificationSettings
+    : null;
+  if (!settingsRaw) return true;
+
+  const typesRaw = isPlainObject(settingsRaw.types) ? settingsRaw.types : null;
+  const channelsRaw = isPlainObject(settingsRaw.channels) ? settingsRaw.channels : null;
+  const intranetRaw = isPlainObject(settingsRaw.intranet) ? settingsRaw.intranet : null;
+
+  const intranetTypeRaw = typesRaw?.intranet;
+  const pushChannelRaw = channelsRaw?.push;
+  const intranetTypeEnabled =
+    typeof intranetTypeRaw === "boolean" ? intranetTypeRaw : true;
+  const pushChannelEnabled =
+    typeof pushChannelRaw === "boolean" ? pushChannelRaw : true;
+  if (!intranetTypeEnabled || !pushChannelEnabled) return false;
+
+  const mode = intranetRaw?.mode === "selected" ? "selected" : "all";
+  if (mode === "all") return true;
+
+  const sections = Array.isArray(intranetRaw?.sections)
+    ? intranetRaw.sections
+        .map((raw) =>
+          typeof raw === "string" ? (raw.trim() as IntranetSectionKey) : ""
+        )
+        .filter((key) => INTRANET_SECTION_KEYS.has(key as IntranetSectionKey))
+    : [];
+  return sections.includes(section);
+};
+
+async function sendPostCommentNotification({
+  req,
+  postId,
+  section,
+  sectionLabel,
+  postAuthorEmail,
+  commenterEmail,
+  commenterName,
+}: {
+  req: NextRequest;
+  postId: string;
+  section: IntranetSectionKey;
+  sectionLabel: string;
+  postAuthorEmail: string;
+  commenterEmail: string;
+  commenterName: string;
+}): Promise<void> {
+  if (!adminDb) return;
+
+  const recipientEmail = normalizeEmail(postAuthorEmail);
+  if (!recipientEmail || recipientEmail === normalizeEmail(commenterEmail)) return;
+
+  const [publicSnap, privateSnap] = await Promise.all([
+    adminDb.collection("users").doc(recipientEmail).get(),
+    adminDb.collection("usersPrivate").doc(recipientEmail).get(),
+  ]);
+
+  const mergedProfile = {
+    ...((publicSnap.data() as Record<string, unknown> | undefined) ?? {}),
+    ...((privateSnap.data() as Record<string, unknown> | undefined) ?? {}),
+  };
+
+  if (!isIntranetPushEnabledForSection(mergedProfile, section)) return;
+
+  const actorName = normalizeText(commenterName) || nameFromEmail(commenterEmail);
+  const body = `${actorName} právě okomentoval tvůj příspěvek! 👀`;
+  const deepLink = `/intranet?section=${encodeURIComponent(
+    section
+  )}&postId=${encodeURIComponent(postId)}`;
+  const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+  const webPushLink = `${baseUrl}${deepLink}`;
+  const createdAtIso = new Date().toISOString();
+
+  try {
+    await writeMailboxEntries({
+      recipientEmails: [recipientEmail],
+      type: "intranet_comment",
+      title: `Intranet • ${sectionLabel}`,
+      body,
+      deepLink,
+      metadata: {
+        postId,
+        section,
+        sectionLabel,
+        commenterEmail: normalizeEmail(commenterEmail),
+      },
+    });
+  } catch (error) {
+    console.error("Writing mailbox notification for intranet comment failed:", error);
+  }
+
+  if (!adminMessaging) return;
+
+  const tokens = collectPushTokens(mergedProfile).slice(0, INTRANET_PUSH_MAX_TOKENS_PER_USER);
+  if (tokens.length === 0) return;
+
+  try {
+    await adminMessaging.sendEachForMulticast({
+      tokens,
+      notification: {
+        title: `Intranet • ${sectionLabel}`,
+        body,
+      },
+      data: {
+        type: "intranet_comment",
+        postId,
+        section,
+        sectionLabel,
+        commenterEmail: normalizeEmail(commenterEmail),
+        commenterName: actorName,
+        createdAt: createdAtIso,
+        deepLink,
+      },
+      webpush: {
+        fcmOptions: {
+          link: webPushLink,
+        },
+        notification: {
+          icon: "/pwa/icon-192.png",
+          badge: "/pwa/icon-192.png",
+          tag: `bohemika-intranet-comment-${postId}`,
+          requireInteraction: false,
+        },
+      },
+    });
+  } catch (error) {
+    console.warn("Intranet comment push notification failed:", error);
+  }
+}
+
 export async function POST(
   req: NextRequest,
   context: { params: Promise<RouteParams> }
@@ -115,10 +265,12 @@ export async function POST(
   }
 
   const body = await req.json().catch(() => null);
-  const textRaw =
-    body && typeof body === "object"
-      ? normalizeText((body as Record<string, unknown>).text)
-      : "";
+  const payload =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : null;
+  const textRaw = payload ? normalizeText(payload.text) : "";
+  const parentCommentIdInput = payload ? resolveCommentId(payload.parentCommentId) : "";
   const text = textRaw.slice(0, COMMENT_MAX_LEN);
   if (!text) {
     return withRateLimitHeaders(
@@ -147,6 +299,32 @@ export async function POST(
       email: ctx.email,
       uid: ctx.uid,
     });
+    const postData = (postSnap.data() as Record<string, unknown> | undefined) ?? {};
+    const postAuthorEmail = normalizeEmail(postData.createdByEmail);
+    const sectionRaw = normalizeText(postData.section);
+    const section = INTRANET_SECTION_KEYS.has(sectionRaw as IntranetSectionKey)
+      ? (sectionRaw as IntranetSectionKey)
+      : "obecne";
+    const sectionLabel = normalizeText(postData.sectionLabel) || "Obecné";
+
+    let parentCommentId: string | null = null;
+    if (parentCommentIdInput) {
+      const parentRef = postRef.collection(COMMENTS_SUBCOLLECTION).doc(parentCommentIdInput);
+      const parentSnap = await parentRef.get();
+      if (!parentSnap.exists) {
+        return withRateLimitHeaders(
+          NextResponse.json(
+            { ok: false, error: "Komentář, na který reaguješ, už neexistuje." },
+            { status: 404 }
+          ),
+          ctx
+        );
+      }
+
+      const parentData = (parentSnap.data() as Record<string, unknown> | undefined) ?? {};
+      const parentOfParent = resolveCommentId(parentData.parentCommentId);
+      parentCommentId = parentOfParent || parentCommentIdInput;
+    }
 
     const commentRef = postRef.collection(COMMENTS_SUBCOLLECTION).doc();
     const now = FieldValue.serverTimestamp();
@@ -156,6 +334,9 @@ export async function POST(
       createdByUid: ctx.uid,
       createdByEmail: ctx.email,
       createdByName: authorName,
+      parentCommentId,
+      likedByEmails: [],
+      likeCount: 0,
       createdAt: now,
       updatedAt: now,
     });
@@ -165,6 +346,20 @@ export async function POST(
       lastCommentAt: now,
     });
     await batch.commit();
+
+    try {
+      await sendPostCommentNotification({
+        req,
+        postId,
+        section,
+        sectionLabel,
+        postAuthorEmail,
+        commenterEmail: ctx.email,
+        commenterName: authorName,
+      });
+    } catch (pushError) {
+      console.warn("Intranet comment notification failed:", pushError);
+    }
 
     return withRateLimitHeaders(
       NextResponse.json({

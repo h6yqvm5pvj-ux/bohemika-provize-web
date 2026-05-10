@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
 import Link from "next/link";
+import { Mail } from "lucide-react";
 
 import { auth } from "./firebase";
 import {
@@ -262,6 +263,7 @@ export default function HomePage() {
   const [subPickerOpen, setSubPickerOpen] = useState(false);
   const [subSearch, setSubSearch] = useState("");
   const [authReady, setAuthReady] = useState(false);
+  const [mailUnreadCount, setMailUnreadCount] = useState(0);
   const normalizedEmail = useMemo(
     () => user?.email?.toLowerCase() ?? null,
     [user?.email]
@@ -331,6 +333,50 @@ export default function HomePage() {
       unsub();
     };
   }, []);
+
+  useEffect(() => {
+    if (!authReady || !user) {
+      setMailUnreadCount(0);
+      return;
+    }
+
+    let cancelled = false;
+    const loadUnreadCount = async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+      try {
+        const payload = await fetchAuthedJsonOrThrow<{ unreadCount?: number }>(
+          currentUser,
+          "/api/mailbox?countOnly=1",
+          { method: "GET" }
+        );
+        if (cancelled) return;
+        const count = Number(payload?.unreadCount ?? 0);
+        setMailUnreadCount(
+          Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Načtení počtu nepřečtených zpráv selhalo:", error);
+        }
+      }
+    };
+
+    void loadUnreadCount();
+    const intervalId = window.setInterval(() => {
+      void loadUnreadCount();
+    }, 45_000);
+    const onFocus = () => {
+      void loadUnreadCount();
+    };
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [authReady, user]);
 
   const persistHomeWidgets = (updater: (prev: HomeWidgets) => HomeWidgets) => {
     setHomeWidgets((prev) => {
@@ -1170,54 +1216,68 @@ export default function HomePage() {
         <div className="mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
         <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SplitTextHeading text={`Produkce ${monthLabelCapitalized} ${year}`} />
-          <div className="relative self-start">
-            <button
-              type="button"
-              onClick={() => setWidgetPanelOpen((prev) => !prev)}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+          <div className="self-start flex items-center gap-2">
+            <Link
+              href="/posta"
+              className="relative inline-flex items-center gap-2 rounded-full border border-blue-700 bg-gradient-to-r from-blue-600 to-indigo-700 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_10px_22px_rgba(37,99,235,0.35)] transition hover:brightness-110"
             >
-              <svg
-                aria-hidden="true"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="opacity-80"
+              <Mail size={15} aria-hidden="true" />
+              <span>Pošta</span>
+              {mailUnreadCount > 0 ? (
+                <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-[20px] items-center justify-center rounded-full border border-white bg-rose-600 px-1 text-[10px] font-bold leading-5 text-white shadow-[0_4px_12px_rgba(190,18,60,0.4)]">
+                  {mailUnreadCount > 99 ? "99+" : mailUnreadCount}
+                </span>
+              ) : null}
+            </Link>
+
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setWidgetPanelOpen((prev) => !prev)}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
               >
-                <path
-                  d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                />
-                <path
-                  d="M12 3.5c.9 0 1.64.62 1.85 1.5l.1.45c.05.23.21.42.44.52l.06.02.43.18c.2.09.43.07.61-.06l.36-.26A2 2 0 0 1 17.87 6l.08.44c.05.27.22.5.46.62l.41.22c.2.1.34.29.37.52l.09.65c.12.85-.39 1.66-1.23 1.93l-.37.12c-.23.07-.39.26-.42.5l-.07.56c-.03.23.05.46.22.62l.21.21c.63.63.63 1.64 0 2.27l-.21.21c-.17.16-.25.39-.22.62l.07.56c.03.24.19.43.42.5l.37.12c.84.27 1.35 1.08 1.23 1.93l-.09.65c-.03.23-.17.42-.37.52l-.41.22a.75.75 0 0 0-.46.62l-.08.44a2 2 0 0 1-1.07 1.45l-.36.26a.73.73 0 0 1-.61.06l-.43-.18c-.22-.09-.48-.03-.62.16l-.13.17c-.12.16-.27.3-.44.41-.17.11-.36.18-.56.21l-.46.07A1.9 1.9 0 0 1 12 20.5c-.9 0-1.64-.62-1.85-1.5l-.1-.45a.75.75 0 0 0-.44-.52l-.06-.02-.43-.18a.73.73 0 0 0-.61.06l-.36.26A2 2 0 0 1 6.13 18l-.08-.44a.75.75 0 0 0-.46-.62l-.41-.22a.75.75 0 0 1-.37-.52l-.09-.65a1.9 1.9 0 0 1 1.23-1.93l.37-.12c.23-.07.39-.26.42-.5l.07-.56c.03-.23-.05-.46-.22-.62l-.21-.21a1.6 1.6 0 0 1 0-2.27l.21-.21c.17-.16.25-.39.22-.62l-.07-.56a.75.75 0 0 0-.42-.5l-.37-.12A1.9 1.9 0 0 1 4.72 8l.09-.65c.03-.23.17-.42.37-.52l.41-.22c.24-.12.41-.35.46-.62l.08-.44A2 2 0 0 1 7.5 4.03l.36-.26c.18-.13.41-.15.61-.06l.43.18c.23.09.48.03.62-.16l.13-.17c.12-.16.27-.3.44-.41.17-.11.36-.18.56-.21l.46-.07c.21-.04.41 0 .6.07.19.07.36.19.51.35.14.15.24.34.29.54l.1.45c.2.88.95 1.5 1.85 1.5Z"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <span>Přizpůsobit</span>
-            </button>
+                <svg
+                  aria-hidden="true"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="opacity-80"
+                >
+                  <path
+                    d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                  />
+                  <path
+                    d="M12 3.5c.9 0 1.64.62 1.85 1.5l.1.45c.05.23.21.42.44.52l.06.02.43.18c.2.09.43.07.61-.06l.36-.26A2 2 0 0 1 17.87 6l.08.44c.05.27.22.5.46.62l.41.22c.2.1.34.29.37.52l.09.65c.12.85-.39 1.66-1.23 1.93l-.37.12c-.23.07-.39.26-.42.5l-.07.56c-.03.23.05.46.22.62l.21.21c.63.63.63 1.64 0 2.27l-.21.21c-.17.16-.25.39-.22.62l.07.56c.03.24.19.43.42.5l.37.12c.84.27 1.35 1.08 1.23 1.93l-.09.65c-.03.23-.17.42-.37.52l-.41.22a.75.75 0 0 0-.46.62l-.08.44a2 2 0 0 1-1.07 1.45l-.36.26a.73.73 0 0 1-.61.06l-.43-.18c-.22-.09-.48-.03-.62.16l-.13.17c-.12.16-.27.3-.44.41-.17.11-.36.18-.56.21l-.46.07A1.9 1.9 0 0 1 12 20.5c-.9 0-1.64-.62-1.85-1.5l-.1-.45a.75.75 0 0 0-.44-.52l-.06-.02-.43-.18a.73.73 0 0 0-.61.06l-.36.26A2 2 0 0 1 6.13 18l-.08-.44a.75.75 0 0 0-.46-.62l-.41-.22a.75.75 0 0 1-.37-.52l-.09-.65a1.9 1.9 0 0 1 1.23-1.93l.37-.12c.23-.07.39-.26.42-.5l.07-.56c.03-.23-.05-.46-.22-.62l-.21-.21a1.6 1.6 0 0 1 0-2.27l.21-.21c.17-.16.25-.39.22-.62l-.07-.56a.75.75 0 0 0-.42-.5l-.37-.12A1.9 1.9 0 0 1 4.72 8l.09-.65c.03-.23.17-.42.37-.52l.41-.22c.24-.12.41-.35.46-.62l.08-.44A2 2 0 0 1 7.5 4.03l.36-.26c.18-.13.41-.15.61-.06l.43.18c.23.09.48.03.62-.16l.13-.17c.12-.16.27-.3.44-.41.17-.11.36-.18.56-.21l.46-.07c.21-.04.41 0 .6.07.19.07.36.19.51.35.14.15.24.34.29.54l.1.45c.2.88.95 1.5 1.85 1.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Přizpůsobit</span>
+              </button>
 
-            {widgetPanelOpen && (
-              <div className="absolute right-0 z-20 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
-                <div className="flex items-center justify-between gap-2 pb-2">
-                  <div className="text-sm font-semibold text-slate-900">
-                    Přizpůsobení domova
+              {widgetPanelOpen && (
+                <div className="absolute right-0 z-20 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                  <div className="flex items-center justify-between gap-2 pb-2">
+                    <div className="text-sm font-semibold text-slate-900">
+                      Přizpůsobení domova
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setWidgetPanelOpen(false)}
+                      className="rounded-full border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 transition hover:bg-slate-50"
+                      aria-label="Zavřít"
+                    >
+                      ×
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setWidgetPanelOpen(false)}
-                    className="rounded-full border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 transition hover:bg-slate-50"
-                    aria-label="Zavřít"
-                  >
-                    ×
-                  </button>
-                </div>
 
-                <div className="space-y-2 text-sm text-slate-700">
+                  <div className="space-y-2 text-sm text-slate-700">
                     {[
                       { key: "productionSummary", label: "Přehled produkce", disabled: false },
                       { key: "expectedPayout", label: "Očekávaná výplata", disabled: false },
@@ -1314,6 +1374,7 @@ export default function HomePage() {
               </div>
             )}
           </div>
+        </div>
         </div>
 
         <div

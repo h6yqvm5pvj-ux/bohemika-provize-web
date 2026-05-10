@@ -5,6 +5,7 @@ import {
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
+import { writeMailboxEntries } from "@/lib/server/mailbox";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 
 export const runtime = "nodejs";
@@ -281,19 +282,46 @@ async function sendTeamMessageViaPush({
   message: string;
   recipients: string[];
 }): Promise<LocalTeamMessageResult> {
-  if (!adminDb || !adminMessaging) {
+  if (!adminDb) {
     return {
       ok: false,
-      error: "Server není správně nakonfigurován (Firebase Messaging).",
+      error: "Server není správně nakonfigurován (Firebase Admin).",
+    };
+  }
+
+  const deepLink = "/pomucky/zprava-tymu";
+  const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+  const webPushLink = `${baseUrl}${deepLink}`;
+  const createdAtIso = new Date().toISOString();
+  const cleanMessage = message.slice(0, TEAM_MESSAGE_MAX_LEN);
+
+  try {
+    await writeMailboxEntries({
+      recipientEmails: recipients,
+      type: "team_message",
+      title: "Zpráva od nadřízeného",
+      body: cleanMessage,
+      deepLink,
+      metadata: { managerEmail },
+    });
+  } catch (error) {
+    console.error("Writing mailbox notification for team message failed:", error);
+  }
+
+  if (!adminMessaging) {
+    return {
+      ok: true,
+      recipients: recipients.length,
+      sent: recipients.length,
     };
   }
 
   const pushRecipients = await loadTeamPushRecipients(recipients);
   if (pushRecipients.length === 0) {
     return {
-      ok: false,
-      error:
-        "U vybraných podřízených nejsou aktivní push notifikace (nebo je mají vypnuté).",
+      ok: true,
+      recipients: recipients.length,
+      sent: recipients.length,
     };
   }
 
@@ -304,17 +332,11 @@ async function sendTeamMessageViaPush({
   const tokens = [...tokenSet];
   if (tokens.length === 0) {
     return {
-      ok: false,
-      error:
-        "U vybraných podřízených nejsou aktivní push notifikace (nebo je mají vypnuté).",
+      ok: true,
+      recipients: recipients.length,
+      sent: recipients.length,
     };
   }
-
-  const deepLink = "/pomucky/zprava-tymu";
-  const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
-  const webPushLink = `${baseUrl}${deepLink}`;
-  const createdAtIso = new Date().toISOString();
-  const cleanMessage = message.slice(0, TEAM_MESSAGE_MAX_LEN);
 
   let successCount = 0;
   let firstErrorMessage: string | null = null;

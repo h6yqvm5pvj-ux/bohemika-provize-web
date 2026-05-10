@@ -13,7 +13,7 @@ const PRECACHE_URLS = [
 
 const SAME_ORIGIN_CACHE_ALLOWLIST = [
   /^\/$/,
-  /^\/(login|nastaveni|smlouvy|muj-tym|pomucky|kalkulacka|cuzk|cashflow)(\/.*)?$/,
+  /^\/(login|nastaveni|smlouvy|muj-tym|pomucky|kalkulacka|cuzk|cashflow|intranet|posta)(\/.*)?$/,
   /^\/_next\/static\/.*/,
   /^\/icons\/.*/,
   /^\/pwa\/.*/,
@@ -52,7 +52,7 @@ function parseObjectFromUnknown(value) {
 function isAppNavigationPath(pathname) {
   return (
     pathname === "/" ||
-    /^\/(login|nastaveni|smlouvy|muj-tym|pomucky|kalkulacka|cuzk|cashflow)(\/.*)?$/.test(
+    /^\/(login|nastaveni|smlouvy|muj-tym|pomucky|kalkulacka|cuzk|cashflow|intranet|posta)(\/.*)?$/.test(
       pathname
     )
   );

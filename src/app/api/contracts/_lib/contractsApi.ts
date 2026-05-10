@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createHash } from "node:crypto";
 
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
+import { writeMailboxEntries } from "@/lib/server/mailbox";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 import {
   requireAuthedRateLimited,
@@ -2305,8 +2306,6 @@ const loadNewContractPushRecipients = async (
         0,
         NEW_CONTRACT_PUSH_MAX_TOKENS_PER_USER
       );
-      if (tokens.length === 0) return null;
-
       return { email, tokens };
     })
   );
@@ -2335,18 +2334,6 @@ const sendNewContractPushNotification = async ({
   inputAmount: number;
   frequencyRaw: PaymentFrequency | null | undefined;
 }) => {
-  if (!adminMessaging) return;
-
-  const recipients = await loadNewContractPushRecipients(recipientEmails);
-  if (recipients.length === 0) return;
-
-  const tokenSet = new Set<string>();
-  recipients.forEach((recipient) => {
-    recipient.tokens.forEach((token) => tokenSet.add(token));
-  });
-  const tokens = [...tokenSet];
-  if (tokens.length === 0) return;
-
   const ownerNameFromProfile = normalizeOptionalDisplayName(ownerName);
   const ownerDisplayName =
     ownerNameFromProfile && !ownerNameFromProfile.includes("@")
@@ -2389,6 +2376,35 @@ const sendNewContractPushNotification = async ({
   const baseUrl = resolvePublicAppOrigin(req);
   const webPushLink = `${baseUrl}${deepLink}`;
   const createdAtIso = new Date().toISOString();
+  const recipients = await loadNewContractPushRecipients(recipientEmails);
+  if (recipients.length === 0) return;
+
+  try {
+    await writeMailboxEntries({
+      recipientEmails: recipients.map((row) => row.email),
+      type: "new_contract",
+      title: "Nová smlouva v týmu",
+      body: message,
+      deepLink,
+      metadata: {
+        ownerEmail,
+        entryId,
+        contractNumber: contractNumber ?? "",
+        productKey: productKey ?? "",
+      },
+    });
+  } catch (error) {
+    console.error("Writing mailbox notification for new contract failed:", error);
+  }
+
+  if (!adminMessaging) return;
+
+  const tokenSet = new Set<string>();
+  recipients.forEach((recipient) => {
+    recipient.tokens.forEach((token) => tokenSet.add(token));
+  });
+  const tokens = [...tokenSet];
+  if (tokens.length === 0) return;
 
   for (let i = 0; i < tokens.length; i += NEW_CONTRACT_PUSH_MAX_TOKENS_PER_MULTICAST) {
     const chunk = tokens.slice(i, i + NEW_CONTRACT_PUSH_MAX_TOKENS_PER_MULTICAST);
