@@ -31,6 +31,7 @@ import {
   LIABILITY_PRODUCTS,
   PROPERTY_PRODUCTS,
   TRAVEL_PRODUCTS,
+  productLabel,
   productInstitutionId,
   type ProductInstitutionId,
 } from "@/app/lib/productCatalog";
@@ -2299,6 +2300,9 @@ const sendNewContractPushNotification = async ({
   ownerName,
   entryId,
   contractNumber,
+  productKey,
+  inputAmount,
+  frequencyRaw,
 }: {
   req: NextRequest;
   recipientEmails: string[];
@@ -2306,6 +2310,9 @@ const sendNewContractPushNotification = async ({
   ownerName: string | null;
   entryId: string;
   contractNumber: string | null;
+  productKey: Product | null | undefined;
+  inputAmount: number;
+  frequencyRaw: PaymentFrequency | null | undefined;
 }) => {
   if (!adminMessaging) return;
 
@@ -2323,11 +2330,37 @@ const sendNewContractPushNotification = async ({
     typeof ownerName === "string" && ownerName.trim().length > 0
       ? ownerName.trim()
       : ownerEmail;
-  const contractSuffix =
-    typeof contractNumber === "string" && contractNumber.trim().length > 0
-      ? ` #${contractNumber.trim()}`
-      : "";
-  const message = `${ownerDisplayName} přidal(a) novou smlouvu${contractSuffix}.`;
+  const normalizedFrequency: PaymentFrequency =
+    frequencyRaw === "monthly" ||
+    frequencyRaw === "quarterly" ||
+    frequencyRaw === "semiannual" ||
+    frequencyRaw === "annual"
+      ? frequencyRaw
+      : "annual";
+  const safeInputAmount = Number.isFinite(inputAmount) ? Math.max(0, inputAmount) : 0;
+  const annualPremium = safeInputAmount * paymentsPerYear(normalizedFrequency);
+  const isLifeProduct = Boolean(productKey && CATALOG_LIFE_PRODUCTS.includes(productKey));
+  const premiumForMessage = isLifeProduct ? annualPremium / 12 : annualPremium;
+  const premiumFormatted = `${new Intl.NumberFormat("cs-CZ", {
+    maximumFractionDigits: 0,
+  }).format(Math.round(premiumForMessage))} Kč`;
+  const productName = productLabel(productKey, "Neznámý produkt").toLocaleUpperCase("cs-CZ");
+  const thematicEmoji = productKey
+    ? AUTO_PRODUCTS.includes(productKey)
+      ? "🚗"
+      : TRAVEL_PRODUCTS.includes(productKey)
+      ? "✈️"
+      : COMFORT_PRODUCTS.includes(productKey)
+      ? "⚡"
+      : LIABILITY_PRODUCTS.includes(productKey)
+      ? "🛡️"
+      : PROPERTY_PRODUCTS.includes(productKey)
+      ? "🏠"
+      : CATALOG_LIFE_PRODUCTS.includes(productKey)
+      ? "❤️"
+      : "📄"
+    : "📄";
+  const message = `🎉 ${ownerDisplayName} sepsal právě ${productName} za ${premiumFormatted} ${thematicEmoji}`;
 
   const contractDetailSlug = encodeURIComponent(`${ownerEmail}___${entryId}`);
   const deepLink = `/smlouvy/${contractDetailSlug}?from=list&source=push`;
@@ -2340,7 +2373,7 @@ const sendNewContractPushNotification = async ({
     await adminMessaging.sendEachForMulticast({
       tokens: chunk,
       notification: {
-        title: "Bohemika SmartApp",
+        title: "Bohemka.App",
         body: message,
       },
       data: {
@@ -5650,6 +5683,9 @@ export async function handleContractsCreate(req: NextRequest) {
             ownerName: trustedProfile.name,
             entryId: createdRef.id,
             contractNumber: trustedPayload.contractNumber,
+            productKey: trustedPayload.productKey,
+            inputAmount: trustedPayload.inputAmount,
+            frequencyRaw: trustedPayload.frequencyRaw,
           });
         } catch (pushErr) {
           console.warn(
