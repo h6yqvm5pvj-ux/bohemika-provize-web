@@ -27,6 +27,16 @@ function normalizePushLinkCandidate(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizePushEmail(value) {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw) ? raw : null;
+}
+
+function normalizePushEntryId(value) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  return /^[A-Za-z0-9._:-]{6,200}$/.test(raw) ? raw : null;
+}
+
 function parseObjectFromUnknown(value) {
   if (!value) return null;
   if (typeof value === "object") return value;
@@ -46,6 +56,44 @@ function isAppNavigationPath(pathname) {
       pathname
     )
   );
+}
+
+function buildContractDetailPathFromParts(ownerEmail, entryId) {
+  const email = normalizePushEmail(ownerEmail);
+  const normalizedEntryId = normalizePushEntryId(entryId);
+  if (!email || !normalizedEntryId) return null;
+  return `/smlouvy/${encodeURIComponent(`${email}___${normalizedEntryId}`)}?from=list&source=push`;
+}
+
+function buildContractDeepLinkFromPayload(payload) {
+  const row = parseObjectFromUnknown(payload);
+  if (!row) return null;
+
+  const nestedData = parseObjectFromUnknown(row.data) || {};
+  const fcmWrapped = parseObjectFromUnknown(row.FCM_MSG) || {};
+  const fcmWrappedData = parseObjectFromUnknown(fcmWrapped.data) || {};
+
+  const sources = [row, nestedData, fcmWrapped, fcmWrappedData];
+  for (const source of sources) {
+    const slugCandidate = normalizePushLinkCandidate(source.contractSlug || source.slug);
+    if (slugCandidate && slugCandidate.includes("___")) {
+      return `/smlouvy/${encodeURIComponent(slugCandidate)}?from=list&source=push`;
+    }
+  }
+
+  for (const source of sources) {
+    const direct = buildContractDetailPathFromParts(
+      source.ownerEmail ||
+        source.userEmail ||
+        source.adviserEmail ||
+        source.authorEmail ||
+        source.email,
+      source.entryId || source.contractEntryId || source.contractId || source.id
+    );
+    if (direct) return direct;
+  }
+
+  return null;
 }
 
 function pickPushTargetFromPayload(payload) {
@@ -88,11 +136,13 @@ function pickPushTargetFromPayload(payload) {
 
 function resolveNotificationTargetPath(notification) {
   const data = parseObjectFromUnknown(notification?.data);
-  const direct = pickPushTargetFromPayload(data);
+  const direct =
+    pickPushTargetFromPayload(data) || buildContractDeepLinkFromPayload(data);
   if (direct) return direct;
 
   const fcmWrapped = data && typeof data === "object" ? parseObjectFromUnknown(data.FCM_MSG) : null;
-  const fromWrapped = pickPushTargetFromPayload(fcmWrapped);
+  const fromWrapped =
+    pickPushTargetFromPayload(fcmWrapped) || buildContractDeepLinkFromPayload(fcmWrapped);
   if (fromWrapped) return fromWrapped;
 
   return "/nastaveni";
@@ -216,7 +266,21 @@ self.addEventListener("push", (event) => {
   const badge = notificationPayload.badge || "/pwa/icon-192.png";
   const tag =
     notificationPayload.tag || payload?.tag || `bohemika-push-${Date.now()}`;
-  const url = pickPushTargetFromPayload(payload) || pickPushTargetFromPayload(dataPayload) || "/nastaveni";
+  const url =
+    pickPushTargetFromPayload(payload) ||
+    pickPushTargetFromPayload(dataPayload) ||
+    buildContractDeepLinkFromPayload(payload) ||
+    buildContractDeepLinkFromPayload(dataPayload) ||
+    "/nastaveni";
+
+  const looksLikeLegacyTeamContractPush =
+    !pickPushTargetFromPayload(payload) &&
+    !buildContractDeepLinkFromPayload(payload) &&
+    /nov[áa]\s+smlouva\s+v\s+t[ýy]mu/i.test(String(title)) &&
+    /sepsal?\(?.*smlouvu/i.test(String(body));
+  if (looksLikeLegacyTeamContractPush) {
+    return;
+  }
 
   event.waitUntil(
     self.registration.showNotification(title, {
