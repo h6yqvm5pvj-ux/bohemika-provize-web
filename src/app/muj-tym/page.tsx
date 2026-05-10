@@ -1347,7 +1347,7 @@ export default function TeamPage() {
               <aside className="ui-card relative h-full overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
                 <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-slate-900" />
                 <div className="flex h-full flex-col gap-3">
-                  <div className="flex min-w-[220px] items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-[0_6px_14px_rgba(15,23,42,0.05)]">
+                  <div className="flex min-w-0 sm:min-w-[220px] items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-[0_6px_14px_rgba(15,23,42,0.05)]">
                     <Search className="h-4 w-4 text-slate-500" aria-hidden="true" />
                     <input
                       type="text"

@@ -54,7 +54,7 @@ type ContractCommissionSectionProps = {
 const commissionPanelClass =
   "rounded-[24px] border border-slate-300/90 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_58%,#eef4ff_100%)] px-5 py-4 shadow-[0_16px_38px_rgba(15,23,42,0.1)]";
 const commissionRowClass =
-  "flex flex-nowrap items-center justify-between gap-4 rounded-2xl border border-slate-200/90 bg-white/88 px-4 py-3 shadow-[0_6px_18px_rgba(15,23,42,0.04)] backdrop-blur-sm";
+  "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 rounded-2xl border border-slate-200/90 bg-white/88 px-4 py-3 shadow-[0_6px_18px_rgba(15,23,42,0.04)] backdrop-blur-sm sm:items-center";
 const commissionTotalClass =
   "relative mt-4 overflow-hidden rounded-2xl border border-slate-300/90 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_52%,#eaf2ff_100%)] px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.1)]";
 const commissionTotalHighlightClass =
@@ -112,15 +112,17 @@ export function ContractCommissionSection({
 
     const content = (
       <>
-        <span className="flex min-w-0 items-center gap-3 text-base font-medium text-slate-900 sm:text-lg">
+        <span className="flex min-w-0 items-start gap-3 text-base font-medium text-slate-900 sm:items-center sm:text-lg">
           {icon && (
             <span className="relative h-[22px] w-[22px] flex-shrink-0">
               <Image src={icon} alt="" fill className="object-contain" />
             </span>
           )}
-          <span className="whitespace-nowrap">{cleanResultTitle(item.title)}</span>
+          <span className="min-w-0 leading-tight [overflow-wrap:anywhere]">
+            {cleanResultTitle(item.title)}
+          </span>
         </span>
-        <span className="whitespace-nowrap text-lg font-semibold text-slate-900">
+        <span className="whitespace-nowrap text-right text-lg font-semibold text-slate-900">
           {formatMoney(item.amount)}
         </span>
       </>

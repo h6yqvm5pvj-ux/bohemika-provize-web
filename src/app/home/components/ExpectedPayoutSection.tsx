@@ -81,7 +81,7 @@ export function ExpectedPayoutSection({
                   {formatMoney(netAmount)}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <div className="inline-flex min-w-[170px] items-center justify-between gap-3 rounded-xl border border-white/22 bg-white/8 px-3 py-2">
+                  <div className="inline-flex min-w-0 sm:min-w-[170px] items-center justify-between gap-3 rounded-xl border border-white/22 bg-white/8 px-3 py-2">
                     <div className="text-[10px] uppercase tracking-[0.14em] text-white/70">
                       Hrubá
                     </div>
@@ -89,7 +89,7 @@ export function ExpectedPayoutSection({
                       {formatMoney(safeGross)}
                     </div>
                   </div>
-                  <div className="inline-flex min-w-[170px] items-center justify-between gap-3 rounded-xl border border-rose-300/40 bg-rose-300/12 px-3 py-2">
+                  <div className="inline-flex min-w-0 sm:min-w-[170px] items-center justify-between gap-3 rounded-xl border border-rose-300/40 bg-rose-300/12 px-3 py-2">
                     <div className="text-[10px] uppercase tracking-[0.14em] text-rose-200">
                       StornoFond
                     </div>

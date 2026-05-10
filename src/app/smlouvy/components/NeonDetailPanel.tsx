@@ -233,9 +233,9 @@ const renderAmountRow = ({
   hideEmptyType?: boolean;
 }) => (
   <div className="space-y-1">
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-slate-600 whitespace-nowrap">{label}</span>
-      <div className="flex items-center gap-3 flex-1 justify-end min-w-[140px]">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+      <span className="text-slate-600 leading-tight">{label}</span>
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-2 sm:justify-end sm:gap-3">
         {editMode ? (
           <select
             value={typeValue}
@@ -250,7 +250,7 @@ const renderAmountRow = ({
             ))}
           </select>
           ) : (
-          <span className="text-sm font-semibold text-right min-w-[88px] whitespace-nowrap">
+          <span className="min-w-0 text-sm font-semibold text-right sm:min-w-[88px]">
             {(() => {
               const rawType = contractType ?? typeValue;
               if (!rawType && hideEmptyType) return "";
@@ -258,7 +258,7 @@ const renderAmountRow = ({
             })()}
           </span>
         )}
-        <div className="min-w-[120px] text-right whitespace-nowrap">
+        <div className="min-w-0 text-right whitespace-nowrap sm:min-w-[120px]">
           {editMode ? (
             <input
               type="number"

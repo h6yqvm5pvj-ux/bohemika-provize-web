@@ -481,7 +481,7 @@ export default function TeamMessagePage() {
               Napiš krátkou zprávu a odešli ji všem nebo jen vybraným větvím svého týmu.
             </p>
           </div>
-          <div className="min-w-[170px] rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="min-w-0 sm:min-w-[170px] rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               Pod tebou celkem
             </div>

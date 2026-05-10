@@ -984,6 +984,27 @@ const normalizeOptionalDisplayName = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed.slice(0, 200) : null;
 };
 
+const formatNameFromEmailAddress = (emailRaw: string | null | undefined): string | null => {
+  const normalized = normalizeEmail(emailRaw);
+  if (!normalized) return null;
+
+  const localPartRaw = normalized.split("@")[0] ?? "";
+  const localPart = localPartRaw.split("+")[0] ?? localPartRaw;
+  const parts = localPart.split(/[.\-_]+/).filter(Boolean);
+  if (parts.length === 0) return null;
+
+  const cap = (value: string) => {
+    const chars = Array.from(value);
+    const first = chars[0];
+    if (!first) return value;
+    return (
+      first.toLocaleUpperCase("cs-CZ") + chars.slice(1).join("").toLocaleLowerCase("cs-CZ")
+    );
+  };
+
+  return parts.map(cap).join(" ");
+};
+
 const currentYearMonth = (now: Date): string =>
   `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
@@ -2326,10 +2347,11 @@ const sendNewContractPushNotification = async ({
   const tokens = [...tokenSet];
   if (tokens.length === 0) return;
 
+  const ownerNameFromProfile = normalizeOptionalDisplayName(ownerName);
   const ownerDisplayName =
-    typeof ownerName === "string" && ownerName.trim().length > 0
-      ? ownerName.trim()
-      : ownerEmail;
+    ownerNameFromProfile && !ownerNameFromProfile.includes("@")
+      ? ownerNameFromProfile
+      : formatNameFromEmailAddress(ownerNameFromProfile ?? ownerEmail) ?? ownerEmail;
   const normalizedFrequency: PaymentFrequency =
     frequencyRaw === "monthly" ||
     frequencyRaw === "quarterly" ||

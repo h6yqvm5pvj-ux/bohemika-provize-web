@@ -624,7 +624,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           </div>
         </aside>
 
-        <div className="flex-1 flex flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           {/* MOBILE TOP BAR */}
           <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-900 bg-white px-3 py-2.5 font-mono lg:hidden">
             <div className="flex min-w-0 items-center gap-2">
@@ -741,7 +741,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           {/* CONTENT / PAYWALL */}
           <div
             className={[
-              "app-content relative flex-1 flex items-start font-mono",
+              "app-content relative flex min-w-0 w-full flex-1 items-start overflow-x-clip font-mono",
               isFullBleedPage
                 ? "justify-start px-0 py-6 sm:py-8 lg:px-0"
                 : "justify-center px-3 py-6 sm:px-4 sm:py-8 lg:px-8",
