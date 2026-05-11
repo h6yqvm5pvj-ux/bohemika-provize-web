@@ -1314,8 +1314,10 @@ export default function TeamPage() {
         3000
       );
     } catch (e: any) {
-      if (e?.code === "permission-denied") {
+      if (Number(e?.status) === 403) {
         setCareerTimelineError("Nemáš oprávnění měnit kariéru tohoto uživatele.");
+      } else if (typeof e?.message === "string" && e.message.trim()) {
+        setCareerTimelineError(e.message.trim());
       } else {
         console.error("Chyba při ukládání kariéry člena týmu:", e);
         setCareerTimelineError("Uložení kariéry se nepovedlo. Zkus to prosím znovu.");

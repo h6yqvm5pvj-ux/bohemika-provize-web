@@ -977,18 +977,26 @@ export default function SettingsPage() {
     return () => window.clearTimeout(timeoutId);
   }, [timelineSaveFlashVisible]);
 
-  async function saveUserFields(partial: Record<string, any>): Promise<boolean> {
-    if (!user) return false;
+  async function saveUserFields(
+    partial: Record<string, any>
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (!user) {
+      return { ok: false, error: "Nejsi přihlášený." };
+    }
 
     try {
       await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
         method: "PATCH",
         body: JSON.stringify(partial),
       });
-      return true;
+      return { ok: true };
     } catch (e) {
       console.error("Chyba při ukládání nastavení:", e);
-      return false;
+      const message =
+        e instanceof Error && e.message.trim().length > 0
+          ? e.message.trim()
+          : "Uložení nastavení selhalo.";
+      return { ok: false, error: message };
     }
   }
 
@@ -1136,8 +1144,8 @@ export default function SettingsPage() {
       }));
 
       const saved = await saveUserFields({ positionTimeline: payload });
-      if (!saved) {
-        setPositionTimelineError("Historii kariéry se nepodařilo uložit.");
+      if (!saved.ok) {
+        setPositionTimelineError(saved.error);
         return;
       }
       setPositionTimelineDraft(

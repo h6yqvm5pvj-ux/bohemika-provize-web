@@ -1529,11 +1529,15 @@ async function loadPositionTimelineForMember(
 > {
   if (!adminDb) return [];
   const usersCol = adminDb.collection("users");
+  const rawDocId =
+    typeof member.docId === "string" ? member.docId.trim() : "";
+  const normalizedDocId = normalizeEmail(member.docId);
+  const normalizedEmail = normalizeEmail(member.email);
   const candidateDocIds = Array.from(
     new Set(
-      [member.docId, member.email]
-        .map((value) => normalizeEmail(value))
-        .filter(Boolean)
+      [rawDocId, normalizedDocId, normalizedEmail].filter(
+        (value): value is string => Boolean(value)
+      )
     )
   );
 
@@ -1546,12 +1550,22 @@ async function loadPositionTimelineForMember(
   }
 
   try {
-    const byEmailSnap = await usersCol.where("email", "==", member.email).limit(1).get();
-    const first = byEmailSnap.docs[0];
-    if (!first) return [];
-    const data = first.data() as Record<string, unknown>;
-    const timeline = sanitizePositionTimeline(data.positionTimeline);
-    return timeline ?? [];
+    const emailCandidates = Array.from(
+      new Set(
+        [member.email, rawDocId, normalizedEmail]
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter(Boolean)
+      )
+    );
+    for (const candidateEmail of emailCandidates) {
+      const byEmailSnap = await usersCol.where("email", "==", candidateEmail).limit(1).get();
+      const first = byEmailSnap.docs[0];
+      if (!first) continue;
+      const data = first.data() as Record<string, unknown>;
+      const timeline = sanitizePositionTimeline(data.positionTimeline);
+      return timeline ?? [];
+    }
+    return [];
   } catch {
     return [];
   }
