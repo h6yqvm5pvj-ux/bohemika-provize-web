@@ -1,20 +1,16 @@
 import SplitTitle from "../../pomucky/plan-produkce/SplitTitle";
 import { formatMoney } from "../helpers";
-import { CalendarRange, Layers3, Sparkles } from "lucide-react";
+import { CalendarRange, Sparkles } from "lucide-react";
 
 type CashflowHeaderProps = {
   totalCashflow: number;
   showPastYears: boolean;
-  yearCount: number;
-  monthCount: number;
   onTogglePastYears: () => void;
 };
 
 export function CashflowHeader({
   totalCashflow,
   showPastYears,
-  yearCount,
-  monthCount,
   onTogglePastYears,
 }: CashflowHeaderProps) {
   return (
@@ -51,33 +47,13 @@ export function CashflowHeader({
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-1 gap-2.5 sm:grid-cols-3 xl:max-w-[620px]">
+          <div className="grid w-full grid-cols-1 gap-2.5 sm:max-w-[280px]">
             <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
               <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                 Celkem cashflow
               </div>
               <div className="mt-1 whitespace-nowrap text-[1.8rem] font-semibold leading-none text-emerald-600 sm:text-[2rem] font-mono">
                 {formatMoney(totalCashflow)}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
-              <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                <Layers3 className="h-3.5 w-3.5 text-indigo-500" />
-                Aktivní roky
-              </div>
-              <div className="mt-1 text-[1.8rem] font-semibold leading-none text-slate-900 sm:text-[2rem] font-mono">
-                {yearCount}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
-              <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                <CalendarRange className="h-3.5 w-3.5 text-cyan-600" />
-                Aktivní měsíce
-              </div>
-              <div className="mt-1 text-[1.8rem] font-semibold leading-none text-slate-900 sm:text-[2rem] font-mono">
-                {monthCount}
               </div>
             </div>
           </div>

@@ -17,128 +17,18 @@ import {
   applyRateLimitHeaders,
   consumeRateLimit,
 } from "@/lib/server/rateLimit";
-
-type TeamMember = {
-  email: string;
-  name: string;
-  position: Position | null;
-  commissionMode: CommissionMode | null;
-  managerEmail: string | null;
-  docId: string;
-  lastActiveTs: number | null;
-  adminFunction: boolean;
-};
-
-type Category =
-  | "life"
-  | "auto"
-  | "property"
-  | "travel"
-  | "foreigners"
-  | "comfort"
-  | "other";
-type AggregateMetrics = {
-  contracts: number;
-  annualPremium: number;
-  monthlyPremium: number;
-};
-type ContractStats = {
-  total: number;
-  month: number;
-  categories: Record<Category, number>;
-  categoryMetrics: Record<Category, AggregateMetrics>;
-  institutionMetrics: Record<string, AggregateMetrics>;
-  institutionByCategory: Record<Category, Record<string, AggregateMetrics>>;
-};
-
-type TeamOverviewSuccess = {
-  ok: true;
-  position: Position | null;
-  canManagePositions: boolean;
-  members: Array<{
-    email: string;
-    name: string;
-    position: Position | null;
-    commissionMode: CommissionMode | null;
-    managerEmail: string | null;
-    docId: string;
-  }>;
-  lastActive: Record<string, number | null>;
-  contractCounts: Record<string, ContractStats>;
-};
-
-type TeamOverviewError = {
-  ok: false;
-  error: string;
-};
-
-type EndCollaborationRequestStatus =
-  | "pending"
-  | "processing"
-  | "approved"
-  | "rejected"
-  | "failed";
-
-type EndCollaborationRequestPayload = {
-  id: string;
-  status: EndCollaborationRequestStatus;
-  requestedByEmail: string;
-  targetEmail: string;
-  targetName: string;
-  expectedManagerEmail: string | null;
-  successorEmail: string;
-  transferableContracts: number;
-  directSubordinates: number;
-  createdAtMs: number;
-  updatedAtMs: number;
-  decidedAtMs: number | null;
-  decidedByEmail: string | null;
-  decisionReason: string | null;
-  summary: {
-    successorEmail: string;
-    transferredContracts: number;
-    reassignedSubordinates: number;
-  } | null;
-  failureReason: string | null;
-};
-
-type TeamOverviewPatchSuccess = {
-  ok: true;
-  targetEmail: string;
-  updated: Array<
-    | "position"
-    | "positionTimeline"
-    | "collaborationEnded"
-    | "collaborationPreview"
-    | "positionTimelineRead"
-    | "collaborationRequestQueued"
-    | "collaborationRequestApproved"
-    | "collaborationRequestRejected"
-  >;
-  summary?: {
-    successorEmail: string;
-    transferredContracts: number;
-    reassignedSubordinates: number;
-  };
-  preview?: {
-    successorEmail: string;
-    transferableContracts: number;
-    directSubordinates: number;
-    generatedAtMs: number;
-  };
-  positionTimeline?: Array<{
-    id: string;
-    position: Position;
-    validFrom: string;
-    validTo: string | null;
-  }>;
-  request?: EndCollaborationRequestPayload;
-};
-
-type TeamOverviewEndCollaborationRequestsSuccess = {
-  ok: true;
-  requests: EndCollaborationRequestPayload[];
-};
+import type {
+  AggregateMetrics,
+  Category,
+  ContractStats,
+  EndCollaborationRequestPayload,
+  EndCollaborationRequestStatus,
+  TeamMember,
+  TeamOverviewEndCollaborationRequestsSuccess,
+  TeamOverviewError,
+  TeamOverviewPatchSuccess,
+  TeamOverviewSuccess,
+} from "./teamOverview.types";
 
 const TEAM_OVERVIEW_RATE_LIMIT = 120;
 const TEAM_OVERVIEW_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -691,18 +581,25 @@ function pickBestMember(current: TeamMember, next: TeamMember, emailKey: string)
 
 async function loadMemberByEmail(
   usersCol: FirebaseFirestore.CollectionReference<FirebaseFirestore.DocumentData>,
-  email: string
+  email: string,
+  options?: { cache?: Map<string, TeamMember | null> }
 ): Promise<TeamMember | null> {
   const emailKey = normalizeEmail(email);
   if (!emailKey) return null;
 
-  let best: TeamMember | null = null;
+  const cache = options?.cache;
+  if (cache?.has(emailKey)) {
+    return cache.get(emailKey) ?? null;
+  }
 
   const directSnap = await usersCol.doc(emailKey).get();
   const directCandidate = candidateFromDoc(directSnap);
   if (directCandidate) {
-    best = directCandidate;
+    cache?.set(emailKey, directCandidate);
+    return directCandidate;
   }
+
+  let best: TeamMember | null = null;
 
   try {
     const byEmailSnap = await usersCol.where("email", "==", emailKey).limit(6).get();
@@ -715,6 +612,7 @@ async function loadMemberByEmail(
     // best effort
   }
 
+  cache?.set(emailKey, best);
   return best;
 }
 
@@ -731,8 +629,11 @@ async function loadTeamContext(
   }
   const db = adminDb;
   const usersCol = db.collection("users");
+  const memberLookupCache = new Map<string, TeamMember | null>();
 
-  let ownCandidate: TeamMember | null = await loadMemberByEmail(usersCol, ownEmail);
+  let ownCandidate: TeamMember | null = await loadMemberByEmail(usersCol, ownEmail, {
+    cache: memberLookupCache,
+  });
 
   if (!ownCandidate) {
     ownCandidate = {
@@ -814,7 +715,15 @@ async function loadTeamContext(
       seenAncestors.add(cursor);
       guard += 1;
 
-      const ancestor = await loadMemberByEmail(usersCol, cursor);
+      const existingAncestor = membersByEmail.get(cursor);
+      if (existingAncestor) {
+        cursor = normalizeEmail(existingAncestor.managerEmail);
+        continue;
+      }
+
+      const ancestor = await loadMemberByEmail(usersCol, cursor, {
+        cache: memberLookupCache,
+      });
       if (!ancestor) {
         membersByEmail.set(cursor, {
           email: cursor,
@@ -1824,13 +1733,7 @@ async function createEndCollaborationRequest(params: {
 async function loadTeamMemberByEmail(email: string): Promise<TeamMember | null> {
   if (!adminDb) return null;
   const usersCol = adminDb.collection("users");
-  const direct = candidateFromDoc(await usersCol.doc(email).get());
-  if (direct) return direct;
-
-  const byEmailSnap = await usersCol.where("email", "==", email).limit(1).get();
-  const first = byEmailSnap.docs[0];
-  if (!first) return null;
-  return candidateFromDoc(first);
+  return loadMemberByEmail(usersCol, email);
 }
 
 async function approveEndCollaborationRequest(params: {

@@ -36,6 +36,26 @@ import {
   productInstitutionId,
   type ProductInstitutionId,
 } from "@/app/lib/productCatalog";
+import type {
+  AuthContextOptions,
+  ContractDetailResponse,
+  ContractDoc,
+  ContractListFilters,
+  ContractListProductCategory,
+  ContractListResponseShape,
+  ContractResponseItem,
+  ContractsFindResponse,
+  ContractsPrecheckEntry,
+  ContractsPrecheckResponse,
+  ContractsResponse,
+  ErrorResponse,
+  PositionTimelineEntry,
+  SubscriptionStatus,
+  TipPayoutDoc,
+  UserNode,
+  UserProfileSnapshot,
+  UserTreeResult,
+} from "./contractsApi.types";
 import {
   calculateNeon,
   calculateFlexi,
@@ -65,254 +85,6 @@ import { normalizeNeonDurationYears } from "@/app/lib/productFormulas/neon";
 import { calculateMaxCizinKomplex } from "@/app/lib/productFormulas/maxcizinkomplex";
 import { calculateCppHafan } from "@/app/lib/productFormulas/cpphafan";
 import { calculateAllianzMujDomov } from "@/app/lib/productFormulas/allianzMujDomov";
-
-type FirestoreTimestamp = {
-  seconds: number;
-  nanoseconds: number;
-  toDate?: () => Date;
-};
-
-type ContractDoc = {
-  id?: string;
-  paid?: boolean | null;
-  status?: "active" | "storno" | string | null;
-  stornoDate?: FirestoreTimestamp | Date | string | number | null;
-  isRefresh?: boolean | null;
-  refreshOriginalContractNumber?: string | null;
-  note?: string | null;
-  managerEmailSnapshot?: string | null;
-  managerPositionSnapshot?: Position | null;
-  managerModeSnapshot?: string | null;
-  managerChain?: { email?: string | null; position?: Position | null; commissionMode?: string | null }[];
-  managerOverrides?: { email?: string | null; position?: Position | null; commissionMode?: string | null; items?: any[]; total?: number | null }[];
-  entryType?: "contract" | "endorsement" | string | null;
-  rootContractEntryId?: string | null;
-  parentContractEntryId?: string | null;
-  parentContractEntryPath?: string | null;
-
-  productKey?: Product;
-  position?: Position | null;
-  inputAmount?: number;
-  comfortPayment?: number | null;
-  frequencyRaw?: PaymentFrequency | null;
-  durationMonths?: number | null;
-  maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
-  items?: CommissionResultItemDTO[];
-  total?: number;
-
-  userEmail?: string | null;
-  clientName?: string | null;
-  clientEmail?: string | null;
-  clientPhone?: string | null;
-  clientAddress?: string | null;
-  contractNumber?: string | null;
-  duplicateLookupKey?: string | null;
-  cppExtranetEntityTypeId?: string | number | null;
-  cppExtranetEntityId?: string | number | null;
-  tipContractTipsterEmail?: string | null;
-  tipContractTipsterName?: string | null;
-  tipContractTipsterPercent?: number | null;
-  tipContractImmediateFirstYearGross?: number | null;
-  tipContractImmediateFirstYearNet?: number | null;
-  tipContractTipsterAmountFirstYear?: number | null;
-  carMake?: string | null;
-  carPlate?: string | null;
-  carVin?: string | null;
-  carTp?: string | null;
-  carOrv?: string | null;
-  carAnnualMileage?: string | null;
-  carAllianzScope?: string | null;
-  carLiabilityLimit?: number | null;
-  carAssistancePlan?: string | null;
-  carHullSumInsured?: number | null;
-  carHullSumInsuredText?: string | null;
-  carHullDeductible?: number | null;
-  carHullDeductibleText?: string | null;
-  carHullRiskAccident?: boolean | null;
-  carHullRiskTheft?: boolean | null;
-  carHullRiskNatural?: boolean | null;
-  carHullRiskVandalism?: boolean | null;
-  carHullRiskAnimalCollision?: boolean | null;
-  carAddonEso?: boolean | null;
-  carAddonNaturalRisks?: boolean | null;
-  carAddonKlika?: boolean | null;
-  carAddonGlass?: boolean | null;
-  carAddonAnimalCollision?: boolean | null;
-  carAddonAnimalDamage?: boolean | null;
-  carAddonVandalism?: boolean | null;
-  carAddonTheft?: boolean | null;
-  carAddonNatural?: boolean | null;
-  carAddonOwnDamage?: boolean | null;
-  carAddonGap?: boolean | null;
-  carAddonSmartGap?: boolean | null;
-  carAddonServisPro?: boolean | null;
-  carAddonReplacementCar?: boolean | null;
-  carAddonLuggage?: boolean | null;
-  carAddonTransportedGoods?: boolean | null;
-  carAddonFireExplosion?: boolean | null;
-  carAddonLegalAdvice?: boolean | null;
-  carAddonPothole?: boolean | null;
-  carAddonNonFaultAccident?: boolean | null;
-  carAddonPassengerInjury?: boolean | null;
-  carAddonKeyLossTheft?: boolean | null;
-  domexDetail?: {
-    address?: string | null;
-    propertyType?: string | null;
-    propertyCoverage?: string | null;
-    sumInsured?: number | null;
-    deductible?: number | null;
-    householdType?: string | null;
-    householdCoverage?: string | null;
-    householdSumInsured?: number | null;
-    householdDeductible?: number | null;
-    outbuildingSumInsured?: number | null;
-    liabilitySumInsured?: number | null;
-    liabilityDeductible?: number | null;
-    liabilityMobile?: boolean | null;
-    liabilityTenant?: boolean | null;
-    liabilityLandlord?: boolean | null;
-    assistancePlus?: boolean | null;
-    note?: string | null;
-  } | null;
-
-  createdAt?: FirestoreTimestamp | Date | string | number | null;
-  contractSignedDate?: FirestoreTimestamp | Date | string | number | null;
-  policyStartDate?: FirestoreTimestamp | Date | string | number | null;
-  policyEndDate?: FirestoreTimestamp | Date | string | number | null;
-};
-
-type TipPayoutDoc = {
-  sourceKey: string;
-  sourceOwnerEmail: string;
-  sourceEntryId: string;
-  sourceEntryType: "contract" | "endorsement";
-  adviserEmail: string;
-  tipsterEmail: string;
-  tipsterUserDocId: string;
-  tipsterName?: string | null;
-  tipsterPercent: number;
-  productKey: Product | null;
-  frequencyRaw: PaymentFrequency | null;
-  payoutDate: Date;
-  amount: number;
-  note: string;
-  sourceStatus: "active" | "storno";
-  sourceStornoDate?: Date | null;
-  sourcePaid: boolean;
-  sourceContractSignedDate?: Date | null;
-  sourcePolicyStartDate?: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-type ContractResponseItem = ContractDoc & {
-  id: string;
-  adviserEmail: string | null;
-};
-
-type ContractOwnerMeta = {
-  position: Position | null;
-  managerEmail: string | null;
-  managerPosition: Position | null;
-  currentChainEmails: string[];
-};
-
-type ContractDetailResponse = {
-  ok: true;
-  mode: "detail";
-  position: Position | null;
-  hasTeam: boolean;
-  teamEmails: string[];
-  contract: ContractResponseItem;
-  timeline: ContractResponseItem[];
-  ownerMeta: ContractOwnerMeta;
-};
-
-type ContractsResponse = {
-  ok: true;
-  scope: "my" | "team";
-  position: Position | null;
-  hasTeam: boolean;
-  teamEmails: string[];
-  contracts: ContractResponseItem[];
-  hasMore: boolean;
-  nextCursor: number | null;
-  nextCursorToken: string | null;
-  teamContracts?: ContractResponseItem[];
-  teamHasMore?: boolean;
-  teamNextCursor?: number | null;
-  teamNextCursorToken?: string | null;
-};
-
-type ContractsFindResponse = {
-  ok: true;
-  scope: "my" | "team";
-  query: string;
-  contracts: ContractResponseItem[];
-};
-
-type ContractsPrecheckEntry = {
-  id: string;
-  contractNumber: string | null;
-  ownerEmail: string;
-};
-
-type ContractsPrecheckResponse = {
-  ok: true;
-  productKey: Product | null;
-  clientName: string | null;
-  signedDate: string | null;
-  similarContracts: ContractsPrecheckEntry[];
-};
-
-type ErrorResponse = { ok: false; error: string };
-type ContractListFilterMode = "latest" | "anniversary";
-type ContractListResponseShape = "full" | "home";
-type ContractListProductCategory =
-  | "life"
-  | "auto"
-  | "property"
-  | "travel"
-  | "comfort"
-  | "liability";
-type ContractListFilters = {
-  query: string;
-  mode: ContractListFilterMode;
-  unpaidOnly: boolean;
-  categories: Set<ContractListProductCategory>;
-  institutions: Set<ProductInstitutionId>;
-  signedFrom: Date | null;
-};
-type UserNode = {
-  email: string;
-  managerEmail: string | null;
-  position: Position | null;
-};
-type UserTreeResult = {
-  users: UserNode[];
-  childrenByManager: Map<string, UserNode[]>;
-};
-type PositionTimelineEntry = {
-  id: string;
-  position: Position;
-  validFrom: string;
-  validTo: string | null;
-};
-type UserProfileSnapshot = {
-  docId: string;
-  email: string;
-  name: string | null;
-  userId: string | null;
-  managerEmail: string | null;
-  position: Position | null;
-  commissionMode: CommissionMode | null;
-  positionTimeline: unknown;
-};
-type SubscriptionStatus = "active" | "expired" | "none";
-type AuthContextOptions = {
-  requireKnownUser?: boolean;
-  requireActiveSubscription?: boolean;
-};
 
 export type ContractsGetMode = "auto" | "detail" | "list";
 export type ContractsPatchAction =

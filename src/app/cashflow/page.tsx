@@ -98,8 +98,6 @@ export default function CashflowPage() {
           <CashflowHeader
             totalCashflow={totalCashflow}
             showPastYears={showPastYears}
-            yearCount={yearGroups.length}
-            monthCount={monthGroups.length}
             onTogglePastYears={() => setShowPastYears((value) => !value)}
           />
 

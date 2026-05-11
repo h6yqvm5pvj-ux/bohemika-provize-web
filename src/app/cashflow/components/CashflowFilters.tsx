@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { REVENUE_SCOPE_THEME } from "@/app/lib/revenueScopeTheme";
 import type { ProductFilter, ScopeFilter } from "../types";
 
 type CashflowFiltersProps = {
@@ -51,12 +52,10 @@ const SCOPE_FILTER_VISUALS: Record<ScopeFilter, ChipVisual> = {
       "z-10 border-slate-900 bg-[linear-gradient(135deg,#0f172a_0%,#020617_100%)] text-[#f8fafc] shadow-[0_12px_24px_rgba(2,6,23,0.32)]",
   },
   own: {
-    activeClass:
-      "z-10 border-indigo-500/50 bg-[linear-gradient(135deg,#6366f1_0%,#4338ca_100%)] text-[#f8fafc] shadow-[0_12px_24px_rgba(67,56,202,0.35)]",
+    activeClass: REVENUE_SCOPE_THEME.own.activeChipClass,
   },
   team: {
-    activeClass:
-      "z-10 border-amber-500/55 bg-[linear-gradient(135deg,#f59e0b_0%,#c2410c_100%)] text-[#f8fafc] shadow-[0_12px_24px_rgba(194,65,12,0.34)]",
+    activeClass: REVENUE_SCOPE_THEME.team.activeChipClass,
   },
 };
 
@@ -66,8 +65,7 @@ const PRODUCT_FILTER_VISUALS: Record<ProductFilter, ChipVisual> = {
       "z-10 border-slate-900 bg-[linear-gradient(135deg,#0f172a_0%,#020617_100%)] text-[#f8fafc] shadow-[0_12px_24px_rgba(2,6,23,0.32)]",
   },
   tip: {
-    activeClass:
-      "z-10 border-emerald-500/55 bg-[linear-gradient(135deg,#34d399_0%,#047857_100%)] text-[#f8fafc] shadow-[0_12px_24px_rgba(4,120,87,0.35)]",
+    activeClass: REVENUE_SCOPE_THEME.tip.activeChipClass,
   },
   life: {
     activeClass:
@@ -105,16 +103,10 @@ export function CashflowFilters({
   const iconClass = "h-4 w-4";
 
   return (
-    <section className="relative overflow-visible rounded-[28px] border border-white/80 bg-white/86 px-4 py-4 shadow-[0_20px_54px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:px-5 sm:py-5">
-      <span
-        className="pointer-events-none absolute inset-x-0 top-0 h-1.5 rounded-t-[28px] bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500"
-        aria-hidden="true"
-      />
-      <div className="pointer-events-none absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_92%_15%,rgba(56,189,248,0.09),transparent_38%)]" />
-
-      <div className={`relative z-10 grid grid-cols-1 gap-4 ${hasTeam ? "xl:grid-cols-[0.95fr_1.2fr]" : ""}`}>
+    <section className="relative overflow-visible px-1 py-1">
+      <div className={`grid grid-cols-1 gap-4 ${hasTeam ? "xl:grid-cols-[0.95fr_1.2fr]" : ""}`}>
         {hasTeam ? (
-          <div className="overflow-visible rounded-2xl border border-slate-200/80 bg-white/90 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] sm:p-4">
+          <div className="overflow-visible">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
               Filtrování smluv
             </p>
@@ -168,7 +160,7 @@ export function CashflowFilters({
           </div>
         ) : null}
 
-        <div className="overflow-visible rounded-2xl border border-slate-200/80 bg-white/90 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] sm:p-4">
+        <div className="overflow-visible">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
             Filtrování produktů
           </p>

@@ -10,6 +10,7 @@ import {
   formatMoney,
   toDate,
 } from "@/app/lib/formatters";
+import { REVENUE_SCOPE_THEME } from "@/app/lib/revenueScopeTheme";
 import {
   PRODUCT_ORDER,
   hasProductGroup,
@@ -2777,7 +2778,7 @@ export default function ExportProductionPage() {
                       onClick={() => setScopeOption("own")}
                       className={`ui-focus w-full rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
                         scopeOption === "own"
-                          ? "border-sky-600 bg-sky-600 text-[#f8fafc] shadow-[0_8px_20px_rgba(14,116,144,0.3)]"
+                          ? REVENUE_SCOPE_THEME.own.activeChipClass
                           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
                       }`}
                     >
@@ -2789,7 +2790,7 @@ export default function ExportProductionPage() {
                       onClick={() => setScopeOption("team")}
                       className={`ui-focus w-full rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
                         scopeOption === "team"
-                          ? "border-sky-600 bg-sky-600 text-[#f8fafc] shadow-[0_8px_20px_rgba(14,116,144,0.3)]"
+                          ? REVENUE_SCOPE_THEME.team.activeChipClass
                           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
                       } ${!hasTeam ? "cursor-not-allowed opacity-45" : ""}`}
                     >

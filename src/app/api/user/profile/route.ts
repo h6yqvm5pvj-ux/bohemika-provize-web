@@ -593,7 +593,6 @@ function buildPatchFromBody(
       return { error: "Pole commissionMode má neplatnou hodnotu." };
     }
     patch.commissionMode = value;
-    wantsPositionEdit = true;
   }
 
   if (body.monthlyGoal != null) {
@@ -660,7 +659,6 @@ function buildPatchFromBody(
     const value = sanitizePositionTimeline(body.positionTimeline);
     if (!value) return { error: "Pole positionTimeline má neplatný formát." };
     patch.positionTimeline = value;
-    wantsPositionEdit = true;
   }
 
   if (body.homeLayout != null) {
@@ -814,8 +812,7 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json(
           {
             ok: false,
-            error:
-              "Nemáš oprávnění měnit position/commissionMode/positionTimeline přes vlastní profil.",
+            error: "Nemáš oprávnění měnit pozici přes vlastní profil.",
           } satisfies ApiError,
           { status: 403 }
         );

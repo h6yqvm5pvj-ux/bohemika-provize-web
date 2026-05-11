@@ -21,13 +21,13 @@ type YearVisual = {
 };
 
 const YEAR_VISUAL: YearVisual = {
-  line: "from-cyan-400 via-blue-500 to-indigo-500",
-  iconWrap: "border-cyan-200 bg-cyan-50",
-  iconText: "text-cyan-700",
-  amount: "text-cyan-800",
-  progress: "from-cyan-400 via-blue-500 to-indigo-500",
-  glow: "bg-cyan-300/35",
-  arrow: "group-hover:border-cyan-300 group-hover:bg-cyan-700 group-hover:text-white",
+  line: "from-blue-500 to-blue-500",
+  iconWrap: "border-blue-200 bg-blue-50",
+  iconText: "text-blue-700",
+  amount: "text-blue-800",
+  progress: "from-blue-500 to-blue-500",
+  glow: "bg-blue-300/35",
+  arrow: "group-hover:border-blue-300 group-hover:bg-blue-700 group-hover:text-white",
 };
 
 function monthLabelShort(label: string): string {

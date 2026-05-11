@@ -8,6 +8,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { AnimatedMoney, AnimatedNumber } from "./AnimatedNumbers";
+import { REVENUE_SCOPE_THEME } from "@/app/lib/revenueScopeTheme";
 
 type Props = {
   loading: boolean;
@@ -187,10 +188,12 @@ export function ProductionSummarySection({
             <ShortDividerLines columns={2} visibilityClass="md:block" />
           ) : null}
           <div className="grid min-h-[128px] content-center justify-items-center gap-y-1.5 px-3 text-center sm:min-h-[140px] md:px-6">
-            <h2 className="flex min-h-[40px] items-center text-2xl font-semibold text-white sm:min-h-[48px] sm:text-3xl">
+            <h2
+              className={`flex min-h-[40px] items-center text-2xl font-semibold sm:min-h-[48px] sm:text-3xl ${REVENUE_SCOPE_THEME.own.headingClass}`}
+            >
               <span className="inline-flex items-center gap-2.5">
                 <UserRound
-                  className="h-7 w-7 text-white"
+                  className={`h-7 w-7 ${REVENUE_SCOPE_THEME.own.iconClass}`}
                   strokeWidth={1.8}
                   aria-hidden="true"
                 />
@@ -205,7 +208,7 @@ export function ProductionSummarySection({
                   <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Počet smluv
                   </dt>
-                  <dd className="text-3xl font-semibold text-white sm:text-4xl">
+                  <dd className={`text-3xl font-semibold sm:text-4xl ${REVENUE_SCOPE_THEME.own.valueClass}`}>
                     <AnimatedNumber value={myContractsCount} />
                   </dd>
                 </dl>
@@ -213,7 +216,7 @@ export function ProductionSummarySection({
                   <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Provize
                   </dt>
-                  <dd className="whitespace-nowrap text-4xl font-semibold text-white sm:text-5xl">
+                  <dd className={`whitespace-nowrap text-4xl font-semibold sm:text-5xl ${REVENUE_SCOPE_THEME.own.valueClass}`}>
                     <AnimatedMoney value={myImmediateSum} />
                   </dd>
                 </dl>
@@ -227,10 +230,12 @@ export function ProductionSummarySection({
 
           {hasTipIncome && (
             <div className="grid min-h-[128px] content-center justify-items-center gap-y-1.5 px-3 text-center sm:min-h-[140px] md:px-6">
-              <h2 className="flex min-h-[40px] items-center text-2xl font-semibold text-white sm:min-h-[48px] sm:text-3xl">
+              <h2
+                className={`flex min-h-[40px] items-center text-2xl font-semibold sm:min-h-[48px] sm:text-3xl ${REVENUE_SCOPE_THEME.tip.headingClass}`}
+              >
                 <span className="inline-flex items-center gap-2.5">
                   <Tag
-                    className="h-7 w-7 text-fuchsia-300"
+                    className={`h-7 w-7 ${REVENUE_SCOPE_THEME.tip.iconClass}`}
                     strokeWidth={1.8}
                     aria-hidden="true"
                   />
@@ -245,7 +250,7 @@ export function ProductionSummarySection({
                   <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Počet tipů
                   </dt>
-                  <dd className="text-3xl font-semibold text-fuchsia-300 sm:text-4xl">
+                  <dd className={`text-3xl font-semibold sm:text-4xl ${REVENUE_SCOPE_THEME.tip.valueClass}`}>
                     <AnimatedNumber value={myTipContractsCount} />
                   </dd>
                 </dl>
@@ -253,7 +258,7 @@ export function ProductionSummarySection({
                   <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Provize
                   </dt>
-                  <dd className="whitespace-nowrap text-4xl font-semibold text-fuchsia-200 sm:text-5xl">
+                  <dd className={`whitespace-nowrap text-4xl font-semibold sm:text-5xl ${REVENUE_SCOPE_THEME.tip.valueClass}`}>
                     <AnimatedMoney value={myTipImmediateSum} />
                   </dd>
                 </dl>
@@ -303,11 +308,15 @@ export function ProductionSummarySection({
         <div className="flex min-h-[118px] h-full flex-col justify-center space-y-1 text-center md:min-h-[134px] md:space-y-1.5 md:px-5">
           <div className="space-y-1">
               <div className="mx-auto flex h-5 w-5 items-center justify-center md:h-6 md:w-6">
-                <UserRound className="h-5 w-5 text-white md:h-6 md:w-6" strokeWidth={1.9} aria-hidden="true" />
+                <UserRound
+                  className={`h-5 w-5 md:h-6 md:w-6 ${REVENUE_SCOPE_THEME.own.iconClass}`}
+                  strokeWidth={1.9}
+                  aria-hidden="true"
+                />
               </div>
               <h2 className={managerTitleClass}>
-                <span className="block">Vlastní</span>
-                <span className="block">produkce</span>
+                <span className={`block ${REVENUE_SCOPE_THEME.own.headingClass}`}>Vlastní</span>
+                <span className={`block ${REVENUE_SCOPE_THEME.own.headingClass}`}>produkce</span>
               </h2>
             </div>
           {loading ? (
@@ -318,7 +327,7 @@ export function ProductionSummarySection({
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Počet smluv
                 </dt>
-                <dd className={`${managerCountClass} text-white`}>
+                <dd className={`${managerCountClass} ${REVENUE_SCOPE_THEME.own.valueClass}`}>
                   <AnimatedNumber value={myContractsCount} />
                 </dd>
               </div>
@@ -326,7 +335,7 @@ export function ProductionSummarySection({
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Provize
                 </dt>
-                <dd className={`${managerAmountClass} text-white`}>
+                <dd className={`${managerAmountClass} ${REVENUE_SCOPE_THEME.own.valueClass}`}>
                   <AnimatedMoney value={myImmediateSum} />
                 </dd>
                 <TrendInline
@@ -341,11 +350,15 @@ export function ProductionSummarySection({
         <div className="flex min-h-[118px] h-full flex-col justify-center space-y-1 text-center md:min-h-[134px] md:space-y-1.5 md:px-5">
           <div className="space-y-1">
               <div className="mx-auto flex h-5 w-5 items-center justify-center md:h-6 md:w-6">
-                <UsersRound className="h-5 w-5 text-amber-300 md:h-6 md:w-6" strokeWidth={1.9} aria-hidden="true" />
+                <UsersRound
+                  className={`h-5 w-5 md:h-6 md:w-6 ${REVENUE_SCOPE_THEME.team.iconClass}`}
+                  strokeWidth={1.9}
+                  aria-hidden="true"
+                />
               </div>
               <h2 className={managerTitleClass}>
-                <span className="block">Týmová</span>
-                <span className="block">produkce</span>
+                <span className={`block ${REVENUE_SCOPE_THEME.team.headingClass}`}>Týmová</span>
+                <span className={`block ${REVENUE_SCOPE_THEME.team.headingClass}`}>produkce</span>
               </h2>
             </div>
           {loading ? (
@@ -356,7 +369,7 @@ export function ProductionSummarySection({
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Počet smluv
                 </dt>
-                <dd className={`${managerCountClass} text-amber-200`}>
+                <dd className={`${managerCountClass} ${REVENUE_SCOPE_THEME.team.valueClass}`}>
                   <AnimatedNumber value={teamContractsCount} />
                 </dd>
               </div>
@@ -364,7 +377,7 @@ export function ProductionSummarySection({
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Provize
                 </dt>
-                <dd className={`${managerAmountClass} text-amber-200`}>
+                <dd className={`${managerAmountClass} ${REVENUE_SCOPE_THEME.team.valueClass}`}>
                   <AnimatedMoney value={teamImmediateSum} />
                 </dd>
                 <TrendInline
@@ -380,11 +393,15 @@ export function ProductionSummarySection({
           <div className="flex min-h-[118px] h-full flex-col justify-center space-y-1 text-center md:min-h-[134px] md:space-y-1.5 md:px-5">
             <div className="space-y-1">
               <div className="mx-auto flex h-5 w-5 items-center justify-center md:h-6 md:w-6">
-                <Tag className="h-5 w-5 text-fuchsia-300 md:h-6 md:w-6" strokeWidth={1.9} aria-hidden="true" />
+                <Tag
+                  className={`h-5 w-5 md:h-6 md:w-6 ${REVENUE_SCOPE_THEME.tip.iconClass}`}
+                  strokeWidth={1.9}
+                  aria-hidden="true"
+                />
               </div>
               <h2 className={managerTitleClass}>
-                <span className="block">Tipařská</span>
-                <span className="block">produkce</span>
+                <span className={`block ${REVENUE_SCOPE_THEME.tip.headingClass}`}>Tipařská</span>
+                <span className={`block ${REVENUE_SCOPE_THEME.tip.headingClass}`}>produkce</span>
               </h2>
             </div>
             {loading ? (
@@ -395,7 +412,7 @@ export function ProductionSummarySection({
                   <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Počet tipů
                   </dt>
-                  <dd className={`${managerCountClass} text-fuchsia-200`}>
+                  <dd className={`${managerCountClass} ${REVENUE_SCOPE_THEME.tip.valueClass}`}>
                     <AnimatedNumber value={myTipContractsCount} />
                   </dd>
                 </div>
@@ -403,7 +420,7 @@ export function ProductionSummarySection({
                   <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Provize
                   </dt>
-                  <dd className={`${managerAmountClass} text-fuchsia-200`}>
+                  <dd className={`${managerAmountClass} ${REVENUE_SCOPE_THEME.tip.valueClass}`}>
                     <AnimatedMoney value={myTipImmediateSum} />
                   </dd>
                   <TrendInline

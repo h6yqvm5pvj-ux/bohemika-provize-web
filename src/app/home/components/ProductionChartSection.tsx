@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { REVENUE_SCOPE_THEME } from "@/app/lib/revenueScopeTheme";
 import { formatMoney } from "../homeUtils";
 import { type ChartMode } from "../types";
 
@@ -321,7 +322,7 @@ export function ProductionChartSection({
               onClick={() => setChartMode("personal")}
               className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
                 chartMode === "personal"
-                  ? "bg-slate-900 text-white"
+                  ? REVENUE_SCOPE_THEME.own.activeChipClass
                   : "text-slate-700 hover:bg-slate-100"
               }`}
             >
@@ -334,7 +335,7 @@ export function ProductionChartSection({
                   onClick={() => setChartMode("team")}
                   className={`px-3 py-1.5 text-xs sm:text-[13px] rounded-full transition ${
                     chartMode === "team"
-                      ? "bg-slate-900 text-white"
+                      ? REVENUE_SCOPE_THEME.team.activeChipClass
                       : "text-slate-700 hover:bg-slate-100"
                   }`}
                 >
