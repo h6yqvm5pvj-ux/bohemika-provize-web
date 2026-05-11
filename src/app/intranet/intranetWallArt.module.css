@@ -1,7 +1,7 @@
 .canvas {
   position: absolute;
-  inset: 0;
-  overflow: hidden;
+  inset: -10rem -8rem -14rem -8rem;
+  overflow: visible;
   pointer-events: none;
 }
 
@@ -197,6 +197,10 @@
 }
 
 @media (max-width: 768px) {
+  .canvas {
+    inset: -7rem -3rem -10rem -3rem;
+  }
+
   .orb {
     filter: blur(58px);
     opacity: 0.34;

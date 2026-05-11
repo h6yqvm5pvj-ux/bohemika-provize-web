@@ -804,6 +804,12 @@ const sentRecipientText = (item: MailboxItem): string => {
   return "";
 };
 
+const toReplySubject = (value: string): string => {
+  const subject = value.trim();
+  if (!subject) return "Re: zpráva";
+  return /^re\s*:/i.test(subject) ? subject : `Re: ${subject}`;
+};
+
 export default function PostaPage() {
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -829,8 +835,14 @@ export default function PostaPage() {
   const [composeSubject, setComposeSubject] = useState("");
   const [composeMessageText, setComposeMessageText] = useState("");
   const [composeFiles, setComposeFiles] = useState<File[]>([]);
+  const [quickReplyText, setQuickReplyText] = useState("");
+  const [quickReplySubmitting, setQuickReplySubmitting] = useState(false);
+  const [quickReplyErrorText, setQuickReplyErrorText] = useState<string | null>(null);
+  const [quickReplySuccessText, setQuickReplySuccessText] = useState<string | null>(null);
   const composeLookupSeq = useRef(0);
   const composeFileInputRef = useRef<HTMLInputElement | null>(null);
+  const openedDeepLinkMessageIdRef = useRef<string>("");
+  const pendingDeepLinkMessageIdRef = useRef<string>("");
 
   useEffect(() => {
     let resolved = false;
@@ -977,10 +989,33 @@ export default function PostaPage() {
     return buildMailboxPreviewHtml(previewItem);
   }, [previewItem, sharedExportPreviewHtml]);
 
+  const quickReplyRecipient = useMemo<RecipientOption | null>(() => {
+    if (!previewItem || previewItem.type !== "direct_message" || isSentMailboxItem(previewItem)) return null;
+    const metadata = previewItem.metadata ?? {};
+    const senderEmail = normalizeEmail(metadata.senderEmail);
+    if (!senderEmail || !EMAIL_RE.test(senderEmail)) return null;
+    const senderName =
+      typeof metadata.senderName === "string" && metadata.senderName.trim().length > 0
+        ? metadata.senderName.trim()
+        : nameFromEmail(senderEmail);
+    return {
+      email: senderEmail,
+      name: senderName,
+    };
+  }, [previewItem]);
+
+  const quickReplyEnabled = Boolean(
+    previewItem && previewItem.type === "direct_message" && quickReplyRecipient
+  );
+
   const closePreviewModal = () => {
     setPreviewItem(null);
     setSharedExportPreviewHtml(null);
     setSharedExportPreviewLoading(false);
+    setQuickReplyText("");
+    setQuickReplyErrorText(null);
+    setQuickReplySuccessText(null);
+    setQuickReplySubmitting(false);
   };
 
   const markItemsRead = async (ids: string[]) => {
@@ -1150,6 +1185,48 @@ export default function PostaPage() {
     setComposeFiles((prev) => prev.filter((file) => `${file.name}-${file.size}` !== targetKey));
   };
 
+  const appendQuickReplyEmoji = (emoji: string) => {
+    setQuickReplyText((prev) => `${prev}${emoji}`);
+    setQuickReplyErrorText(null);
+    setQuickReplySuccessText(null);
+  };
+
+  const handleQuickReplySend = async () => {
+    if (!user || !previewItem || previewItem.type !== "direct_message") return;
+    if (!quickReplyRecipient) {
+      setQuickReplyErrorText("U této zprávy nejde určit odesílatele.");
+      return;
+    }
+
+    const messageText = quickReplyText.trim();
+    if (!messageText) {
+      setQuickReplyErrorText("Napiš text odpovědi.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("recipientEmail", quickReplyRecipient.email);
+    formData.set("subject", toReplySubject(previewItem.title).slice(0, COMPOSE_SUBJECT_MAX_LEN));
+    formData.set("text", messageText.slice(0, COMPOSE_MESSAGE_MAX_LEN));
+
+    setQuickReplySubmitting(true);
+    setQuickReplyErrorText(null);
+    setQuickReplySuccessText(null);
+    try {
+      await fetchAuthedJsonOrThrow<MailboxComposeResponse>(user, "/api/mailbox/compose", {
+        method: "POST",
+        body: formData,
+      });
+      setQuickReplyText("");
+      setQuickReplySuccessText(`Odpověď byla odeslána uživateli ${quickReplyRecipient.name}.`);
+      await loadMailbox();
+    } catch (err: any) {
+      setQuickReplyErrorText(err?.message || "Rychlou odpověď se nepodařilo odeslat.");
+    } finally {
+      setQuickReplySubmitting(false);
+    }
+  };
+
   const handleComposeSend = async () => {
     if (!user) return;
 
@@ -1255,6 +1332,39 @@ export default function PostaPage() {
     }
     window.location.href = item.deepLink || "/nastaveni";
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const messageId = (params.get("messageId") || "").trim();
+    pendingDeepLinkMessageIdRef.current = messageId;
+  }, []);
+
+  useEffect(() => {
+    const messageId = pendingDeepLinkMessageIdRef.current;
+    if (!messageId) return;
+    if (openedDeepLinkMessageIdRef.current === messageId) return;
+    const targetItem = items.find((item) => item.id === messageId);
+    if (!targetItem) return;
+
+    openedDeepLinkMessageIdRef.current = messageId;
+    void openItem(targetItem);
+
+    if (typeof window !== "undefined") {
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete("messageId");
+      const nextHref = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+      window.history.replaceState({}, "", nextHref);
+    }
+  }, [items]);
+
+  useEffect(() => {
+    if (!previewItem) return;
+    setQuickReplyText("");
+    setQuickReplyErrorText(null);
+    setQuickReplySuccessText(null);
+    setQuickReplySubmitting(false);
+  }, [previewItem]);
 
   useEffect(() => {
     if (!previewItem) return;
@@ -1885,24 +1995,103 @@ export default function PostaPage() {
                   </button>
                 </div>
 
-                <div className="h-[78vh] min-h-[560px] bg-[#d3dae5] p-0">
+                <div
+                  className={`bg-[#d3dae5] p-0 ${
+                    quickReplyEnabled ? "flex h-[84vh] min-h-[640px] flex-col" : "h-[78vh] min-h-[560px]"
+                  }`}
+                >
                   {previewItem.type === "production_export_share" && sharedExportPreviewLoading ? (
                     <div className="grid h-full place-items-center text-sm font-medium text-slate-700">
                       Načítám přesný náhled exportu…
                     </div>
                   ) : (
-                    <iframe
-                      srcDoc={mailboxPreviewHtml}
-                      title={
-                        previewItem.type === "production_export_share"
-                          ? "Náhled sdíleného exportu produkce"
-                          : previewItem.type === "production_plan_share"
-                          ? "Náhled sdíleného plánu produkce"
-                          : "Náhled zprávy"
-                      }
-                      className="h-full w-full bg-white"
-                    />
+                    <div className={quickReplyEnabled ? "min-h-0 flex-1" : "h-full"}>
+                      <iframe
+                        srcDoc={mailboxPreviewHtml}
+                        title={
+                          previewItem.type === "production_export_share"
+                            ? "Náhled sdíleného exportu produkce"
+                            : previewItem.type === "production_plan_share"
+                            ? "Náhled sdíleného plánu produkce"
+                            : "Náhled zprávy"
+                        }
+                        className="h-full w-full bg-white"
+                      />
+                    </div>
                   )}
+
+                  {quickReplyEnabled && quickReplyRecipient ? (
+                    <div className="border-t border-[#bcc9dc] bg-white/85 px-4 py-3 sm:px-5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-700">
+                          Rychlá odpověď
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          {quickReplyText.length}/{COMPOSE_MESSAGE_MAX_LEN}
+                        </p>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Odpověď odejde uživateli{" "}
+                        <span className="font-semibold text-slate-800">{quickReplyRecipient.name}</span>
+                        <span className="text-slate-500"> ({quickReplyRecipient.email})</span>.
+                      </p>
+
+                      <textarea
+                        value={quickReplyText}
+                        onChange={(event) => {
+                          setQuickReplyText(event.target.value);
+                          if (quickReplyErrorText) setQuickReplyErrorText(null);
+                          if (quickReplySuccessText) setQuickReplySuccessText(null);
+                        }}
+                        placeholder="Napiš rychlou odpověď…"
+                        maxLength={COMPOSE_MESSAGE_MAX_LEN}
+                        rows={3}
+                        className="mt-2 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200"
+                      />
+
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {QUICK_EMOJIS.map((emoji) => (
+                          <button
+                            key={`quick-reply-emoji-${emoji}`}
+                            type="button"
+                            onClick={() => appendQuickReplyEmoji(emoji)}
+                            disabled={quickReplySubmitting}
+                            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-55"
+                            aria-label={`Vložit emoji ${emoji}`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+
+                      {quickReplyErrorText ? (
+                        <p className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                          {quickReplyErrorText}
+                        </p>
+                      ) : null}
+                      {quickReplySuccessText ? (
+                        <p className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                          {quickReplySuccessText}
+                        </p>
+                      ) : null}
+
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => void handleQuickReplySend()}
+                          disabled={quickReplySubmitting || quickReplyText.trim().length === 0}
+                          className="inline-flex items-center gap-2 rounded-xl border border-emerald-700/70 bg-[linear-gradient(135deg,#16a34a_0%,#1d4ed8_100%)] px-4 py-2 text-sm font-semibold text-zinc-50 shadow-[0_12px_30px_rgba(5,150,105,0.28)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {quickReplySubmitting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                          {quickReplySubmitting ? "Odesílám…" : "Odeslat odpověď"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </section>
             </div>

@@ -129,6 +129,21 @@ function ShortDividerLines({
   );
 }
 
+function ProductionTopPanel() {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-[22px] rounded-t-[26px] border-b border-slate-700/65 bg-[linear-gradient(180deg,#07122a_0%,#08142b_62%,#09162b_100%)]">
+      <div className="flex h-full items-center gap-1.5 px-3 sm:px-4">
+        <span className="inline-flex h-2.5 w-2.5 rounded-full bg-rose-400/95 shadow-[0_0_0_1px_rgba(248,113,113,0.18)]" />
+        <span className="inline-flex h-2.5 w-2.5 rounded-full bg-amber-400/95 shadow-[0_0_0_1px_rgba(251,191,36,0.2)]" />
+        <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400/95 shadow-[0_0_0_1px_rgba(74,222,128,0.2)]" />
+        <span className="ml-1.5 inline-flex items-center rounded-md border border-slate-600/60 bg-slate-700/30 px-2 py-[1px] text-[9px] font-medium tracking-[0.08em] text-slate-300 sm:text-[10px]">
+          Bohemka.App export preview
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function ProductionSummarySection({
   loading,
   showTeamBox,
@@ -147,16 +162,17 @@ export function ProductionSummarySection({
   isLiteUI,
 }: Props) {
   const summaryCardClass = isLiteUI
-    ? "relative h-full overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 px-5 py-3 text-white transition-[border-color,box-shadow] duration-200 hover:border-slate-600 focus-within:border-slate-600 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.22)] sm:px-7 sm:py-4"
-    : "relative h-full overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 px-5 py-3 text-white shadow-[0_18px_34px_rgba(2,6,23,0.34)] transition-[border-color,box-shadow] duration-200 hover:border-slate-600 hover:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.18)] focus-within:border-slate-600 focus-within:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.2)] sm:px-7 sm:py-4";
+    ? "relative h-full overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 px-5 pb-3 pt-8 text-white transition-[border-color,box-shadow] duration-200 hover:border-slate-600 focus-within:border-slate-600 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.22)] sm:px-7 sm:pb-4 sm:pt-9"
+    : "relative h-full overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 px-5 pb-3 pt-8 text-white shadow-[0_18px_34px_rgba(2,6,23,0.34)] transition-[border-color,box-shadow] duration-200 hover:border-slate-600 hover:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.18)] focus-within:border-slate-600 focus-within:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.2)] sm:px-7 sm:pb-4 sm:pt-9";
   const compactSummaryCardClass = isLiteUI
-    ? "relative h-full overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950 px-4 py-1.5 text-white transition-[border-color,box-shadow] duration-200 hover:border-slate-600 focus-within:border-slate-600 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.22)] sm:px-6 sm:py-2"
-    : "relative h-full overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950 px-4 py-1.5 text-white shadow-[0_18px_34px_rgba(2,6,23,0.34)] transition-[border-color,box-shadow] duration-200 hover:border-slate-600 hover:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.18)] focus-within:border-slate-600 focus-within:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.2)] sm:px-6 sm:py-2";
+    ? "relative h-full overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950 px-4 pb-1.5 pt-8 text-white transition-[border-color,box-shadow] duration-200 hover:border-slate-600 focus-within:border-slate-600 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.22)] sm:px-6 sm:pb-2 sm:pt-8"
+    : "relative h-full overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950 px-4 pb-1.5 pt-8 text-white shadow-[0_18px_34px_rgba(2,6,23,0.34)] transition-[border-color,box-shadow] duration-200 hover:border-slate-600 hover:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.18)] focus-within:border-slate-600 focus-within:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.2)] sm:px-6 sm:pb-2 sm:pt-8";
 
   if (!showTeamBox) {
     const hasTipIncome = myTipImmediateSum > 0;
     return (
       <section className={compactSummaryCardClass} data-fixed-box-theme="slate">
+        <ProductionTopPanel />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_12%,rgba(16,185,129,0.12),transparent_46%)]" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_100%,rgba(34,211,238,0.12),transparent_40%)]" />
 
@@ -271,6 +287,7 @@ export function ProductionSummarySection({
 
   return (
     <section className={summaryCardClass} data-fixed-box-theme="slate">
+      <ProductionTopPanel />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_12%,rgba(16,185,129,0.12),transparent_46%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_100%,rgba(34,211,238,0.12),transparent_40%)]" />
 

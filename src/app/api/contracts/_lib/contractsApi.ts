@@ -40,10 +40,8 @@ import {
   calculateNeon,
   calculateFlexi,
   calculateMaxEfekt,
-  calculateMaxCizinKomplex,
   calculatePillowInjury,
   calculateDomex,
-  calculateCppHafan,
   calculatePillowMajetek,
   calculateKoopMajetekObcan,
   calculateMaxdomov,
@@ -53,7 +51,6 @@ import {
   calculateCppPPRbez,
   calculateCppPPRs,
   calculateAllianzAuto,
-  calculateAllianzMujDomov,
   calculateCsobAuto,
   calculateUniqaAuto,
   calculatePillowAuto,
@@ -63,8 +60,11 @@ import {
   calculateAxaCestovko,
   calculateKoopCestovko,
   calculateComfortCC,
-  normalizeNeonDurationYears,
 } from "@/app/lib/productFormulas";
+import { normalizeNeonDurationYears } from "@/app/lib/productFormulas/neon";
+import { calculateMaxCizinKomplex } from "@/app/lib/productFormulas/maxcizinkomplex";
+import { calculateCppHafan } from "@/app/lib/productFormulas/cpphafan";
+import { calculateAllianzMujDomov } from "@/app/lib/productFormulas/allianzMujDomov";
 
 type FirestoreTimestamp = {
   seconds: number;
@@ -3050,7 +3050,7 @@ const computeItemsForProductPositionAndMode = ({
           : productKey === "cpphafan"
           ? calculateCppHafan(safeAmount, usedFrequency, position)
           : calculateKoopMajetekObcan(safeAmount, usedFrequency, position);
-      const filtered = dto.items.filter((item) =>
+      const filtered = dto.items.filter((item: CommissionResultItemDTO) =>
         (item.title ?? "").toLowerCase().includes("(z platby)")
       );
       const totals = paymentBasedTotals(filtered, paymentsPerYear(usedFrequency));
@@ -3060,7 +3060,7 @@ const computeItemsForProductPositionAndMode = ({
       return calculatePillowMajetek(safeAmount, usedFrequency, position);
     case "maxdomov": {
       const dto = calculateMaxdomov(safeAmount, usedFrequency, position);
-      const filtered = dto.items.filter((item) =>
+      const filtered = dto.items.filter((item: CommissionResultItemDTO) =>
         (item.title ?? "").toLowerCase().includes("(z platby)")
       );
       const totals = paymentBasedTotals(filtered, paymentsPerYear(usedFrequency));
@@ -3076,7 +3076,7 @@ const computeItemsForProductPositionAndMode = ({
       return calculateSlaviaAuto(safeAmount, usedFrequency, position);
     case "cppPPRbez": {
       const dto = calculateCppPPRbez(safeAmount, usedFrequency, position);
-      const filtered = dto.items.filter((item) =>
+      const filtered = dto.items.filter((item: CommissionResultItemDTO) =>
         (item.title ?? "").toLowerCase().includes("(z platby)")
       );
       const total = filtered.reduce((sum, item) => sum + (item.amount ?? 0), 0);

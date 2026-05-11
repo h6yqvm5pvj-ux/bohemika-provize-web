@@ -278,12 +278,14 @@ const loadMailboxPushTokens = async (recipientEmail: string): Promise<string[]> 
 const sendDirectMessagePushNotification = async ({
   req,
   recipientEmail,
+  recipientMessageId,
   senderEmail,
   senderName,
   subject,
 }: {
   req: NextRequest;
   recipientEmail: string;
+  recipientMessageId: string;
   senderEmail: string;
   senderName: string;
   subject: string;
@@ -295,7 +297,7 @@ const sendDirectMessagePushNotification = async ({
 
   const actorName = normalizeText(senderName) || nameFromEmail(senderEmail);
   const body = `${actorName} ti posílá zprávu! 📩`;
-  const deepLink = "/posta";
+  const deepLink = `/posta?messageId=${encodeURIComponent(recipientMessageId)}`;
   const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
   const webPushLink = `${baseUrl}${deepLink}`;
   const createdAtIso = new Date().toISOString();
@@ -312,6 +314,7 @@ const sendDirectMessagePushNotification = async ({
       },
       data: {
         type: "direct_message",
+        messageId: recipientMessageId,
         senderEmail: normalizeEmail(senderEmail),
         senderName: actorName,
         subject: subject.slice(0, 120),
@@ -325,7 +328,7 @@ const sendDirectMessagePushNotification = async ({
         notification: {
           icon: "/pwa/icon-192.png",
           badge: "/pwa/icon-192.png",
-          tag: `bohemika-mailbox-direct-message-${normalizeEmail(senderEmail)}`,
+          tag: `bohemika-mailbox-direct-message-${recipientMessageId}`,
           requireInteraction: false,
         },
       },
@@ -537,6 +540,7 @@ export async function POST(req: NextRequest) {
       .doc();
 
     const commonMetadata = {
+      messageId,
       senderEmail: ctx.email,
       senderName,
       recipientEmail: recipient.email,
@@ -585,6 +589,7 @@ export async function POST(req: NextRequest) {
       await sendDirectMessagePushNotification({
         req,
         recipientEmail: recipient.email,
+        recipientMessageId: recipientRef.id,
         senderEmail: ctx.email,
         senderName,
         subject,

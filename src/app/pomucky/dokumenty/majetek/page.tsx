@@ -4,6 +4,7 @@
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { Space_Grotesk } from "next/font/google";
 import { ArrowUpRight, FileText, Search, Send, ShieldCheck, Sparkles, X } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -35,6 +36,11 @@ type AssignmentRule = {
   text: string;
   warning?: string;
 };
+
+const documentsFont = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
 
 const PROPERTY_INSURERS: readonly PropertyInsurerContent[] = [
   {
@@ -98,6 +104,40 @@ const PROPERTY_INSURERS: readonly PropertyInsurerContent[] = [
   },
 ];
 
+const INSURER_ACCENT: Record<
+  PropertyInsurerKey,
+  { line: string; cardLine: string; cardBorder: string; cardLabel: string; hoverBorder: string }
+> = {
+  cpp: {
+    line: "from-cyan-400 via-blue-500 to-indigo-500",
+    cardLine: "from-cyan-400 via-blue-500 to-indigo-500",
+    cardBorder: "border-cyan-200/85",
+    cardLabel: "text-cyan-700",
+    hoverBorder: "hover:border-cyan-300",
+  },
+  kooperativa: {
+    line: "from-emerald-400 via-emerald-500 to-teal-500",
+    cardLine: "from-emerald-400 via-emerald-500 to-teal-500",
+    cardBorder: "border-emerald-200/85",
+    cardLabel: "text-emerald-700",
+    hoverBorder: "hover:border-emerald-300",
+  },
+  maxima: {
+    line: "from-amber-400 via-orange-500 to-amber-600",
+    cardLine: "from-amber-400 via-orange-500 to-amber-600",
+    cardBorder: "border-amber-200/85",
+    cardLabel: "text-amber-700",
+    hoverBorder: "hover:border-amber-300",
+  },
+  allianz: {
+    line: "from-sky-400 via-blue-500 to-blue-700",
+    cardLine: "from-sky-400 via-blue-500 to-blue-700",
+    cardBorder: "border-sky-200/85",
+    cardLabel: "text-sky-700",
+    hoverBorder: "hover:border-sky-300",
+  },
+};
+
 const GENERAL_PROPERTY_RESOURCES = [] as const;
 
 const DOMEX_ASSIGNMENT_RULES: readonly AssignmentRule[] = [
@@ -160,6 +200,7 @@ export default function DokumentyMajetekPage() {
       [card.title, card.description].join(" ").toLowerCase().includes(term)
     );
   }, [insurer.cards, search]);
+
   const modalTitle =
     activeModal === "cpp-bytex-prima-sleva" ? "Přímá sleva BYTEX" : "Přímá sleva DOMEX";
   const modalAssignmentRules =
@@ -167,156 +208,163 @@ export default function DokumentyMajetekPage() {
   const modalMinPremiumRules =
     activeModal === "cpp-bytex-prima-sleva" ? BYTEX_MIN_PREMIUM_RULES : DOMEX_MIN_PREMIUM_RULES;
 
+  const accent = INSURER_ACCENT[activeInsurer];
+
   return (
     <AppLayout active="tools">
-      <div
-        className={`w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 transition-[filter,opacity] duration-200 sm:px-2 sm:py-2 ${
-          activeModal ? "pointer-events-none select-none blur-[2.2px] opacity-90" : ""
-        }`}
-      >
-        <header className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3 text-xs">
-            <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
-              <Sparkles className="h-3.5 w-3.5" />
-              Dokumentová zóna
-            </span>
-            <Link
-              href="/pomucky/dokumenty"
-              className="inline-flex items-center text-slate-600 transition hover:text-slate-900"
-            >
-              ← Zpět na dokumenty
-            </Link>
-          </div>
-          <SplitTitle text="Majetek" className="!text-slate-900" />
-          <p className="max-w-3xl text-sm text-slate-600">
-            Dokumenty podle pojišťovny pro pojištění majetku.
-          </p>
-        </header>
+      <div className={`${documentsFont.className} w-full px-4 pb-10 pt-2 sm:px-5`}>
+        <div
+          className={`mx-auto max-w-[1040px] space-y-5 transition-[filter,opacity] duration-200 ${
+            activeModal ? "pointer-events-none select-none blur-[2px] opacity-90" : ""
+          }`}
+        >
+          <header className="relative overflow-hidden rounded-[30px] border border-slate-200 bg-[linear-gradient(145deg,#ffffff_0%,#f7fbff_55%,#eef6ff_100%)] px-6 py-6 shadow-[0_20px_50px_rgba(15,23,42,0.1)] sm:px-8 sm:py-8">
+            <span className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500" aria-hidden="true" />
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Majetek • Dokumenty
+                </span>
+                <Link
+                  href="/pomucky/dokumenty"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                >
+                  ← Zpět na dokumenty
+                </Link>
+              </div>
 
-        <section className="rounded-3xl border border-slate-200 bg-white px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-            <label className="flex w-full items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 lg:w-[360px] lg:shrink-0">
-              <Search className="h-4 w-4 text-slate-500" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Hledat..."
-                className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500"
-              />
-            </label>
+              <SplitTitle text="Majetek" className="!text-4xl !text-slate-900 sm:!text-5xl" />
+              <p className="max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
+                Dokumenty podle pojišťovny pro pojištění majetku, včetně interních postupů a podkladů.
+              </p>
+            </div>
+          </header>
 
-            <div className="min-w-0 flex-1 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <div className="inline-flex min-w-max items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-1">
-                {PROPERTY_INSURERS.map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => setActiveInsurer(item.key)}
-                    className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                      activeInsurer === item.key
-                        ? "border border-slate-900 bg-slate-900 text-white shadow-[0_8px_18px_rgba(15,23,42,0.2)]"
-                        : "border border-transparent bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-100"
-                    }`}
-                  >
-                    {item.title}
-                  </button>
-                ))}
+          <section className="rounded-[24px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)] sm:px-5">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,340px)_1fr]">
+              <label className="flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5">
+                <Search className="h-4 w-4 text-slate-500" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Hledat dokument..."
+                  className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500"
+                />
+              </label>
+
+              <div className="min-w-0 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="inline-flex min-w-max items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1">
+                  {PROPERTY_INSURERS.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setActiveInsurer(item.key)}
+                      className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                        activeInsurer === item.key
+                          ? "border border-slate-900 bg-slate-900 text-white shadow-[0_8px_18px_rgba(15,23,42,0.2)]"
+                          : "border border-transparent bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-100"
+                      }`}
+                    >
+                      {item.title}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
-          <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-500 via-indigo-500 to-emerald-500" />
-          <div className="mt-1 flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-            <span
-              className={`relative inline-flex items-center justify-center overflow-hidden rounded-2xl border border-slate-300 bg-white ${institutionLogoFrameClass(
-                logoKey,
-                "compact"
-              )}`}
-            >
-              <Image
-                src={insurer.logo}
-                alt={`${insurer.title} logo`}
-                fill
-                sizes="64px"
-                className={institutionLogoImageClass(logoKey)}
-              />
-            </span>
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">{insurer.title}</h2>
-              <p className="text-xs text-slate-500">{insurer.description}</p>
+          <section className="relative rounded-[24px] border border-slate-200 bg-white px-5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+            <span className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accent.line}`} aria-hidden="true" />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span
+                  className={`relative inline-flex items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white ${institutionLogoFrameClass(
+                    logoKey,
+                    "compact"
+                  )}`}
+                >
+                  <Image
+                    src={insurer.logo}
+                    alt={`${insurer.title} logo`}
+                    fill
+                    sizes="64px"
+                    className={institutionLogoImageClass(logoKey)}
+                  />
+                </span>
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">{insurer.title}</h2>
+                  <p className="text-sm text-slate-600">{insurer.description}</p>
+                </div>
+              </div>
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+                <FileText className="h-3.5 w-3.5" />
+                {filteredCards.length} dokument
+                {filteredCards.length === 1 ? "" : filteredCards.length > 1 && filteredCards.length < 5 ? "y" : "ů"}
+              </span>
             </div>
-            </div>
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
-              <FileText className="h-3.5 w-3.5" />
-              {filteredCards.length} dokument
-              {filteredCards.length === 1 ? "" : filteredCards.length > 1 && filteredCards.length < 5 ? "y" : "ů"}
-            </span>
-          </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {filteredCards.map((card) => {
-              const isModalCard =
-                card.key === "cpp-domex-prima-sleva" || card.key === "cpp-bytex-prima-sleva";
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {filteredCards.map((card) => {
+                const isModalCard =
+                  card.key === "cpp-domex-prima-sleva" || card.key === "cpp-bytex-prima-sleva";
 
-              if (isModalCard) {
+                if (isModalCard) {
+                  return (
+                    <button
+                      key={`${insurer.key}-${card.key}`}
+                      type="button"
+                      onClick={() => setActiveModal(card.key as PropertyModalKey)}
+                      className={`group relative overflow-hidden rounded-2xl border ${accent.cardBorder} bg-[linear-gradient(135deg,#f8fafc_0%,#eff6ff_56%,#ffffff_100%)] px-4 py-4 text-left shadow-[0_12px_24px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 ${accent.hoverBorder}`}
+                    >
+                      <span className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accent.cardLine}`} aria-hidden="true" />
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="text-lg font-semibold leading-tight text-slate-900">{card.title}</h3>
+                        <ArrowUpRight className={`h-4 w-4 shrink-0 ${accent.cardLabel} transition`} />
+                      </div>
+                      <p className="mt-2 text-sm leading-relaxed text-slate-600">{card.description}</p>
+                    </button>
+                  );
+                }
+
                 return (
-                  <button
+                  <article
                     key={`${insurer.key}-${card.key}`}
-                    type="button"
-                    onClick={() => setActiveModal(card.key as PropertyModalKey)}
-                    className="group rounded-2xl border border-slate-200 bg-[linear-gradient(145deg,#f8fafc_0%,#ffffff_100%)] px-3 py-3 text-left transition hover:-translate-y-0.5 hover:border-sky-600 hover:bg-white hover:shadow-[0_10px_24px_rgba(14,116,144,0.12)]"
+                    className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm font-semibold text-slate-900">{card.title}</h3>
-                      <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-sky-700" />
-                    </div>
-                    <p className="mt-2 text-xs leading-relaxed text-slate-600">{card.description}</p>
-                  </button>
+                    <h3 className="text-lg font-semibold leading-tight text-slate-900">{card.title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-600">{card.description}</p>
+                  </article>
                 );
-              }
+              })}
 
-              return (
-                <article
-                  key={`${insurer.key}-${card.key}`}
-                  className="rounded-2xl border border-slate-200 bg-[linear-gradient(145deg,#f8fafc_0%,#ffffff_100%)] px-3 py-3"
-                >
-                  <h3 className="text-sm font-semibold text-slate-900">{card.title}</h3>
-                  <p className="mt-2 text-xs leading-relaxed text-slate-600">{card.description}</p>
-                </article>
-              );
-            })}
-            {filteredCards.length === 0 ? (
-              <div className="md:col-span-2 rounded-2xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-600">
-                Pro vyhledávání nic neodpovídá.
-              </div>
-            ) : null}
-          </div>
-        </section>
+              {filteredCards.length === 0 ? (
+                <div className="md:col-span-2 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-600">
+                  Pro vyhledávání nic neodpovídá.
+                </div>
+              ) : null}
+            </div>
+          </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-[linear-gradient(145deg,#f8fafc_0%,#f0f9ff_52%,#ffffff_100%)] px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-          <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <Sparkles className="h-4 w-4 text-sky-700" />
-            Obecné podklady (nezávislé na pojišťovně)
-          </h3>
-          {GENERAL_PROPERTY_RESOURCES.length > 0 ? (
-            <ul className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
-              {GENERAL_PROPERTY_RESOURCES.map((item) => (
-                <li
-                  key={item}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_4px_12px_rgba(15,23,42,0.04)]"
-                >
-                  {item}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-xs text-slate-500">Zatím bez obecných podkladů.</p>
-          )}
-        </section>
+          <section className="rounded-[24px] border border-slate-200 bg-white px-5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+            <h3 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
+              <Sparkles className="h-4 w-4 text-cyan-700" />
+              Obecné podklady (nezávislé na pojišťovně)
+            </h3>
+            {GENERAL_PROPERTY_RESOURCES.length > 0 ? (
+              <ul className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+                {GENERAL_PROPERTY_RESOURCES.map((item) => (
+                  <li key={item} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">Zatím bez obecných podkladů.</p>
+            )}
+          </section>
+        </div>
       </div>
 
       {activeModal ? (

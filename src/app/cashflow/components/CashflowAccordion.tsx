@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { CalendarRange, ChevronRight } from "lucide-react";
 
 import { formatMoney } from "../helpers";
 import type { MonthGroup, YearGroup } from "../types";
@@ -10,6 +10,30 @@ type CashflowAccordionProps = {
   onSelectMonth: (month: MonthGroup) => void;
 };
 
+type YearVisual = {
+  line: string;
+  iconWrap: string;
+  iconText: string;
+  amount: string;
+  progress: string;
+  glow: string;
+  arrow: string;
+};
+
+const YEAR_VISUAL: YearVisual = {
+  line: "from-cyan-400 via-blue-500 to-indigo-500",
+  iconWrap: "border-cyan-200 bg-cyan-50",
+  iconText: "text-cyan-700",
+  amount: "text-cyan-800",
+  progress: "from-cyan-400 via-blue-500 to-indigo-500",
+  glow: "bg-cyan-300/35",
+  arrow: "group-hover:border-cyan-300 group-hover:bg-cyan-700 group-hover:text-white",
+};
+
+function monthLabelShort(label: string): string {
+  return label.replace(/\s+\d{4}$/, "");
+}
+
 export function CashflowAccordion({
   yearGroups,
   expandedYears,
@@ -20,129 +44,140 @@ export function CashflowAccordion({
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
       {yearGroups.map((yearGroup) => {
         const yearOpen = expandedYears[yearGroup.year] ?? false;
-        const activeMonths = yearGroup.months.length;
         const averagePerActiveMonth =
-          yearGroup.total / Math.max(activeMonths, 1);
+          yearGroup.total / Math.max(yearGroup.months.length, 1);
         const maxMonthTotal = Math.max(
           ...yearGroup.months.map((month) => month.total),
           1
         );
+        const visual = YEAR_VISUAL;
 
         return (
           <section
             key={yearGroup.year}
-            className={`cashflow-card-year relative overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 p-4 sm:p-5 shadow-[0_18px_34px_rgba(2,6,23,0.34)] ${
+            className={`cashflow-card-year group relative overflow-hidden rounded-[30px] border border-white/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.96)_0%,rgba(248,250,252,0.95)_56%,rgba(241,245,249,0.93)_100%)] px-4 pb-4 pt-4 shadow-[0_22px_58px_rgba(15,23,42,0.14)] backdrop-blur-[1px] transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-slate-200 hover:shadow-[0_30px_80px_rgba(15,23,42,0.17)] sm:px-5 sm:pb-5 sm:pt-5 ${
               yearOpen ? "lg:col-span-2" : ""
             }`}
-            data-fixed-box-theme="slate"
           >
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_12%,rgba(16,185,129,0.12),transparent_46%)]" />
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_100%,rgba(34,211,238,0.12),transparent_40%)]" />
+            <span
+              className={`pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${visual.line}`}
+              aria-hidden="true"
+            />
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(255,255,255,0.34)_0%,rgba(255,255,255,0)_45%)]" />
+            <div
+              className={`pointer-events-none absolute -right-16 top-8 h-36 w-36 rounded-full blur-3xl ${visual.glow}`}
+              aria-hidden="true"
+            />
 
             <button
               type="button"
               onClick={() => onToggleYear(yearGroup.year)}
-              className="relative z-10 flex w-full items-center justify-between gap-4 text-left"
+              className="relative z-10 flex w-full flex-col gap-4 text-left md:flex-row md:items-center md:justify-between"
             >
-              <div className="min-w-0 flex items-center gap-3">
-                <Image
-                  src="/icons/kalendar.png"
-                  alt=""
-                  width={56}
-                  height={56}
-                  sizes="56px"
-                  className="h-11 w-11 shrink-0 object-contain sm:h-12 sm:w-12"
-                />
+              <div className="min-w-0 flex items-center gap-3 sm:gap-4">
+                <span
+                  className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-[0_10px_24px_rgba(15,23,42,0.08)] sm:h-14 sm:w-14 ${visual.iconWrap}`}
+                >
+                  <CalendarRange className={`h-6 w-6 ${visual.iconText}`} strokeWidth={1.9} />
+                </span>
+
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold uppercase tracking-[0.08em] text-white">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Cashflow rok
                   </p>
-                  <h2 className="text-xl sm:text-2xl font-semibold text-white">
+                  <h2 className="mt-0.5 font-mono text-[2rem] font-bold leading-none tracking-tight text-slate-900 sm:text-[2.2rem]">
                     {yearGroup.year}
                   </h2>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div className="text-right">
-                  <p className="text-sm font-semibold uppercase tracking-[0.08em] text-white">
-                    Celkem
-                  </p>
-                  <p className="text-2xl sm:text-3xl font-semibold leading-none text-emerald-400">
-                    {formatMoney(yearGroup.total)}
-                  </p>
-                </div>
-                <div className="ml-3 text-right sm:ml-6">
-                  <p className="text-sm font-semibold uppercase tracking-[0.08em] text-white">
-                    Průměr / měsíc
-                  </p>
-                  <p className="text-2xl sm:text-3xl font-semibold leading-none text-emerald-400">
-                    {formatMoney(averagePerActiveMonth)}
-                  </p>
+              <div className="flex w-full items-end justify-between gap-3 md:w-auto">
+                <div className="grid w-full max-w-[240px] grid-cols-1 gap-2 sm:max-w-[260px]">
+                  <dl className="px-1 text-right">
+                    <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Celkem
+                    </dt>
+                    <dd className={`mt-1 whitespace-nowrap font-mono text-[1.55rem] font-semibold leading-none ${visual.amount}`}>
+                      {formatMoney(yearGroup.total)}
+                    </dd>
+                  </dl>
+
+                  <dl className="px-1 text-right">
+                    <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Průměr / měsíc
+                    </dt>
+                    <dd className={`mt-1 whitespace-nowrap font-mono text-[1.55rem] font-semibold leading-none ${visual.amount}`}>
+                      {formatMoney(averagePerActiveMonth)}
+                    </dd>
+                  </dl>
                 </div>
 
                 <span
-                  className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/30 bg-black text-xs text-white transition-transform ${
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-all duration-200 ${visual.arrow} ${
                     yearOpen ? "rotate-90" : ""
                   }`}
                 >
-                  ▶
+                  <ChevronRight className="h-5 w-5" strokeWidth={2.1} />
                 </span>
               </div>
             </button>
 
-            {yearOpen && (
-              <div className="relative z-10 mt-4 border-t border-slate-700 pt-4">
+            {yearOpen ? (
+              <div className="relative z-10 mt-4 border-t border-slate-200/80 pt-4 sm:mt-5 sm:pt-5">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {yearGroup.months.map((month) => {
                     const monthRatio = Math.min(
                       100,
                       Math.round((month.total / maxMonthTotal) * 100)
                     );
-                    const monthLabelOnly = month.label.replace(/\s+\d{4}$/, "");
+                    const monthLabelOnly = monthLabelShort(month.label);
 
                     return (
                       <button
                         key={month.key}
                         type="button"
                         onClick={() => onSelectMonth(month)}
-                        className="group cashflow-card-month relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-left shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:border-slate-300 hover:bg-slate-50"
+                        className="group cashflow-card-month relative overflow-hidden rounded-2xl border border-slate-200/90 bg-[linear-gradient(145deg,rgba(248,250,252,0.99)_0%,rgba(241,245,249,0.96)_62%,rgba(255,255,255,0.98)_100%)] px-4 py-3 text-left shadow-[0_12px_24px_rgba(15,23,42,0.08)] transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_32px_rgba(15,23,42,0.12)]"
                       >
-                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_158px] sm:gap-3">
+                        <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                               Měsíc
                             </div>
-                            <h3 className="text-[1.7rem] leading-none font-semibold tracking-tight text-slate-900 sm:text-[2rem]">
+                            <h3 className="mt-1 text-[1.6rem] font-bold leading-none tracking-tight text-slate-900 sm:text-[1.75rem]">
                               {monthLabelOnly}
                             </h3>
-                            <p className="mt-1.5 text-[15px] text-slate-600">
+                            <p className="mt-1.5 text-sm text-slate-600">
                               {month.items.length} smluv
                             </p>
                           </div>
 
-                          <div className="border-t border-slate-200 pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
-                            <div className="flex items-end justify-between gap-3 sm:h-full sm:flex-col sm:items-end sm:justify-between">
-                              <div className="text-right">
-                                <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                                  Součet
-                                </div>
-                                <div className="mt-1 whitespace-nowrap text-[1.8rem] leading-none font-semibold tracking-tight text-slate-900">
-                                  {formatMoney(month.total)}
-                                </div>
-                              </div>
-
-                              <span className="inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-white transition group-hover:bg-black">
-                                Otevřít
-                              </span>
-                            </div>
-                          </div>
+                          <span
+                            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 transition ${visual.arrow}`}
+                          >
+                            <ChevronRight className="h-4 w-4" strokeWidth={2.1} />
+                          </span>
                         </div>
 
-                        <div className="mt-2.5 h-1.5 rounded-full bg-slate-200">
+                        <div className="mt-3 flex items-end justify-between gap-3">
+                          <div>
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              Součet
+                            </div>
+                            <div className="mt-1 whitespace-nowrap font-mono text-[1.55rem] font-semibold leading-none text-slate-900">
+                              {formatMoney(month.total)}
+                            </div>
+                          </div>
+
+                          <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-600 transition group-hover:border-slate-900 group-hover:bg-slate-900 group-hover:text-white">
+                            Otevřít
+                          </span>
+                        </div>
+
+                        <div className="mt-3 h-1.5 rounded-full bg-slate-200/90">
                           <div
-                            className="h-full rounded-full bg-slate-900"
-                            style={{ width: `${Math.max(monthRatio, 6)}%` }}
+                            className={`h-full rounded-full bg-gradient-to-r ${visual.progress}`}
+                            style={{ width: `${Math.max(monthRatio, 7)}%` }}
                           />
                         </div>
                       </button>
@@ -150,7 +185,7 @@ export function CashflowAccordion({
                   })}
                 </div>
               </div>
-            )}
+            ) : null}
           </section>
         );
       })}

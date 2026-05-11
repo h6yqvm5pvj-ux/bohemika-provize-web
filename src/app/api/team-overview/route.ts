@@ -689,7 +689,39 @@ function pickBestMember(current: TeamMember, next: TeamMember, emailKey: string)
   return currentDoc.localeCompare(nextDoc, "cs") <= 0 ? current : next;
 }
 
-async function loadTeamContext(ownEmail: string): Promise<{
+async function loadMemberByEmail(
+  usersCol: FirebaseFirestore.CollectionReference<FirebaseFirestore.DocumentData>,
+  email: string
+): Promise<TeamMember | null> {
+  const emailKey = normalizeEmail(email);
+  if (!emailKey) return null;
+
+  let best: TeamMember | null = null;
+
+  const directSnap = await usersCol.doc(emailKey).get();
+  const directCandidate = candidateFromDoc(directSnap);
+  if (directCandidate) {
+    best = directCandidate;
+  }
+
+  try {
+    const byEmailSnap = await usersCol.where("email", "==", emailKey).limit(6).get();
+    byEmailSnap.docs.forEach((docSnap) => {
+      const candidate = candidateFromDoc(docSnap);
+      if (!candidate) return;
+      best = best ? pickBestMember(best, candidate, emailKey) : candidate;
+    });
+  } catch {
+    // best effort
+  }
+
+  return best;
+}
+
+async function loadTeamContext(
+  ownEmail: string,
+  options?: { includeAncestors?: boolean }
+): Promise<{
   ownPosition: Position | null;
   canManagePositions: boolean;
   members: TeamMember[];
@@ -700,21 +732,7 @@ async function loadTeamContext(ownEmail: string): Promise<{
   const db = adminDb;
   const usersCol = db.collection("users");
 
-  let ownCandidate: TeamMember | null = null;
-  const ownDocSnap = await usersCol.doc(ownEmail).get();
-  ownCandidate = candidateFromDoc(ownDocSnap);
-
-  if (!ownCandidate) {
-    try {
-      const ownByEmailSnap = await usersCol.where("email", "==", ownEmail).limit(1).get();
-      if (!ownByEmailSnap.empty) {
-        const first = ownByEmailSnap.docs[0];
-        if (first) ownCandidate = candidateFromDoc(first);
-      }
-    } catch {
-      ownCandidate = null;
-    }
-  }
+  let ownCandidate: TeamMember | null = await loadMemberByEmail(usersCol, ownEmail);
 
   if (!ownCandidate) {
     ownCandidate = {
@@ -786,6 +804,40 @@ async function loadTeamContext(ownEmail: string): Promise<{
   }
 
   const canManagePositions = Boolean(privateAdminFunction || ownNode.adminFunction);
+
+  if (options?.includeAncestors) {
+    const seenAncestors = new Set<string>();
+    let cursor = normalizeEmail(ownNode.managerEmail);
+    let guard = 0;
+
+    while (cursor && !seenAncestors.has(cursor) && guard < 12) {
+      seenAncestors.add(cursor);
+      guard += 1;
+
+      const ancestor = await loadMemberByEmail(usersCol, cursor);
+      if (!ancestor) {
+        membersByEmail.set(cursor, {
+          email: cursor,
+          name: nameFromEmail(cursor),
+          position: null,
+          commissionMode: null,
+          managerEmail: null,
+          docId: cursor,
+          lastActiveTs: null,
+          adminFunction: false,
+        });
+        break;
+      }
+
+      const existing = membersByEmail.get(ancestor.email);
+      membersByEmail.set(
+        ancestor.email,
+        existing ? pickBestMember(existing, ancestor, ancestor.email) : ancestor
+      );
+
+      cursor = normalizeEmail(ancestor.managerEmail);
+    }
+  }
 
   const members = [...membersByEmail.values()].sort((a, b) => {
     if (a.email === ownEmail) return -1;
@@ -2262,7 +2314,17 @@ export async function GET(req: NextRequest) {
       return response;
     }
 
-    const context = await loadTeamContext(email);
+    const includeAncestorsParam = (req.nextUrl.searchParams.get("includeAncestors") ?? "")
+      .trim()
+      .toLowerCase();
+    const includeAncestors =
+      includeAncestorsParam === "1" ||
+      includeAncestorsParam === "true" ||
+      includeAncestorsParam === "yes";
+
+    const context = await loadTeamContext(email, {
+      includeAncestors: action === "members" && includeAncestors,
+    });
     if (action === "positionTimelineRead") {
       const targetEmail = normalizeEmail(req.nextUrl.searchParams.get("targetEmail"));
       if (!targetEmail) {

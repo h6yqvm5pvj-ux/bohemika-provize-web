@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Space_Grotesk } from "next/font/google";
 import {
   onAuthStateChanged,
   type User as FirebaseUser,
@@ -8,6 +9,7 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "../firebase";
+import styles from "../pomucky/pomuckyWallArt.module.css";
 import {
   filterPastItems,
   groupItemsByMonth,
@@ -20,6 +22,11 @@ import { CashflowFilters } from "./components/CashflowFilters";
 import { CashflowHeader } from "./components/CashflowHeader";
 import { CashflowItemModal } from "./components/CashflowItemModal";
 import { CashflowMonthModal } from "./components/CashflowMonthModal";
+
+const cashflowFont = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
 
 export default function CashflowPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -76,60 +83,68 @@ export default function CashflowPage() {
 
   return (
     <AppLayout active="cashflow">
-      <div className="-mx-3 -my-6 bg-white px-3 py-6 sm:-mx-4 sm:-my-8 sm:px-4 sm:py-8 lg:-mx-8 lg:px-8">
-        <div className="mx-auto w-full max-w-6xl px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
-          <div className="relative w-full">
-            <div className="relative space-y-6">
-              <CashflowHeader
-                totalCashflow={totalCashflow}
-                showPastYears={showPastYears}
-                onTogglePastYears={() => setShowPastYears((value) => !value)}
-              />
-
-              <CashflowFilters
-                hasTeam={hasTeam}
-                scopeFilter={scopeFilter}
-                productFilter={productFilter}
-                onScopeChange={setScopeFilter}
-                onProductChange={setProductFilter}
-              />
-
-              {loading ? (
-                <div className="rounded-2xl border border-slate-900 bg-slate-100 px-4 py-10 shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
-                  <div className="flex flex-col items-center justify-center gap-3 text-slate-900">
-                    <span className="h-12 w-12 animate-spin rounded-full border-[3px] border-slate-300 border-t-slate-900" />
-                    <p className="text-lg font-semibold">Načítám...</p>
-                  </div>
-                </div>
-              ) : yearGroups.length === 0 ? (
-                <p className="rounded-2xl border border-slate-900 bg-slate-100 px-4 py-3 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
-                  Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat.
-                </p>
-              ) : (
-                <CashflowAccordion
-                  yearGroups={yearGroups}
-                  expandedYears={expandedYears}
-                  onToggleYear={toggleYear}
-                  onSelectMonth={setSelectedMonth}
-                />
-              )}
-            </div>
+      <div className={`${cashflowFont.className} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
+        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+          <div className={styles.canvas}>
+            <span className={`${styles.orb} ${styles.orbA}`} />
+            <span className={`${styles.orb} ${styles.orbB}`} />
+            <span className={`${styles.orb} ${styles.orbC}`} />
+            <span className={styles.mesh} />
           </div>
-
-          <CashflowMonthModal
-            month={selectedMonth}
-            onClose={() => setSelectedMonth(null)}
-            onSelectItem={(item) => {
-              setSelectedMonth(null);
-              setSelectedItem(item);
-            }}
-          />
-
-          <CashflowItemModal
-            item={selectedItem}
-            onClose={() => setSelectedItem(null)}
-          />
+          <div className={styles.grain} />
         </div>
+
+        <div className="relative z-10 mx-auto w-full max-w-7xl space-y-5 px-3 sm:px-4 lg:px-6">
+          <CashflowHeader
+            totalCashflow={totalCashflow}
+            showPastYears={showPastYears}
+            yearCount={yearGroups.length}
+            monthCount={monthGroups.length}
+            onTogglePastYears={() => setShowPastYears((value) => !value)}
+          />
+
+          <CashflowFilters
+            hasTeam={hasTeam}
+            scopeFilter={scopeFilter}
+            productFilter={productFilter}
+            onScopeChange={setScopeFilter}
+            onProductChange={setProductFilter}
+          />
+
+          {loading ? (
+            <div className="rounded-[26px] border border-white/75 bg-white/88 px-4 py-12 shadow-[0_18px_44px_rgba(15,23,42,0.13)] backdrop-blur-xl">
+              <div className="flex flex-col items-center justify-center gap-3 text-slate-900">
+                <span className="h-12 w-12 animate-spin rounded-full border-[3px] border-slate-300 border-t-slate-900" />
+                <p className="text-lg font-semibold">Načítám cashflow…</p>
+              </div>
+            </div>
+          ) : yearGroups.length === 0 ? (
+            <p className="rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
+              Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat.
+            </p>
+          ) : (
+            <CashflowAccordion
+              yearGroups={yearGroups}
+              expandedYears={expandedYears}
+              onToggleYear={toggleYear}
+              onSelectMonth={setSelectedMonth}
+            />
+          )}
+        </div>
+
+        <CashflowMonthModal
+          month={selectedMonth}
+          onClose={() => setSelectedMonth(null)}
+          onSelectItem={(item) => {
+            setSelectedMonth(null);
+            setSelectedItem(item);
+          }}
+        />
+
+        <CashflowItemModal
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+        />
       </div>
     </AppLayout>
   );
