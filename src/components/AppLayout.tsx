@@ -31,6 +31,11 @@ import {
   BOX_THEME_LOCAL_STORAGE_KEY,
   applyBoxThemeToRoot,
 } from "@/lib/boxTheme";
+import {
+  FONT_THEME_EVENT,
+  FONT_THEME_LOCAL_STORAGE_KEY,
+  applyFontThemeToRoot,
+} from "@/lib/fontTheme";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import type { UserProfileResponse } from "@/app/lib/userProfileCache";
@@ -198,6 +203,37 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener(BOX_THEME_EVENT, onCustom as EventListener);
+    };
+  }, []);
+
+  // Načíst a aplikovat font napříč aplikací z localStorage
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const applyFromValue = (value?: unknown) => {
+      const theme = applyFontThemeToRoot(
+        value ?? window.localStorage.getItem(FONT_THEME_LOCAL_STORAGE_KEY)
+      );
+      window.localStorage.setItem(FONT_THEME_LOCAL_STORAGE_KEY, theme);
+    };
+
+    applyFromValue();
+
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key && ev.key !== FONT_THEME_LOCAL_STORAGE_KEY) return;
+      applyFromValue(ev.newValue);
+    };
+
+    const onCustom = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ fontTheme?: string }>).detail;
+      applyFromValue(detail?.fontTheme);
+    };
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(FONT_THEME_EVENT, onCustom as EventListener);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(FONT_THEME_EVENT, onCustom as EventListener);
     };
   }, []);
 

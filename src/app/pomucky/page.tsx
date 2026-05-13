@@ -326,6 +326,14 @@ export default function ToolsPage() {
         external: true,
       },
       {
+        key: "proklepka-vozidla",
+        category: "Pojištění vozidel",
+        title: "Proklepka vozidla",
+        description: "VIN audit: historie signálů (STK, vlastníci, nájezd) + orientační nacenění na jednom místě.",
+        icon: ShieldCheck,
+        href: "/pomucky/proklepka-vozidla",
+      },
+      {
         key: "data-o-vozidle",
         category: "Pojištění vozidel",
         title: "Data o vozidle",

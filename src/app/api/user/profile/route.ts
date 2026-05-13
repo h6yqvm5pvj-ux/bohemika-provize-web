@@ -8,6 +8,7 @@ import {
   INTRANET_SECTION_KEYS,
   type IntranetSectionKey,
 } from "@/app/intranet/sections";
+import { isFontTheme } from "@/lib/fontTheme";
 
 export const runtime = "nodejs";
 
@@ -67,6 +68,7 @@ const QUICK_ACTION_SET = new Set([
   "plan-produkce",
   "zlato",
   "katastr",
+  "proklepka-vozidla",
   "data-o-vozidle",
   "naceneni-vozidla",
   "naceneni-celniho-skla",
@@ -83,6 +85,7 @@ const ALLOWED_PATCH_KEYS = new Set([
   "notifyMinutes",
   "backgroundColor",
   "boxTheme",
+  "fontTheme",
   "reduceMotion",
   "tipsterCollaborationMode",
   "tipsterCommissionPercent",
@@ -625,6 +628,14 @@ function buildPatchFromBody(
       return { error: "Pole boxTheme má neplatnou hodnotu." };
     }
     patch.boxTheme = value;
+  }
+
+  if (body.fontTheme != null) {
+    const value = normalizeOptionalText(body.fontTheme, 64);
+    if (value == null || !isFontTheme(value)) {
+      return { error: "Pole fontTheme má neplatnou hodnotu." };
+    }
+    patch.fontTheme = value;
   }
 
   if (body.reduceMotion != null) {

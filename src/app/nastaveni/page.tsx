@@ -62,6 +62,15 @@ import {
   resolveBoxTheme,
   type BoxTheme,
 } from "@/lib/boxTheme";
+import {
+  DEFAULT_FONT_THEME,
+  FONT_THEME_EVENT,
+  FONT_THEME_LOCAL_STORAGE_KEY,
+  FONT_THEME_OPTIONS,
+  applyFontThemeToRoot,
+  resolveFontTheme,
+  type FontTheme,
+} from "@/lib/fontTheme";
 import type { Position, CommissionMode } from "../types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import {
@@ -312,6 +321,7 @@ const SETTINGS_KEYS = {
   mode: "settings.mode",
   monthlyGoal: "settings.monthlyGoal",
   boxTheme: BOX_THEME_LOCAL_STORAGE_KEY,
+  fontTheme: FONT_THEME_LOCAL_STORAGE_KEY,
   reduceMotion: "settings.reduceMotion",
   tipsterMode: "settings.tipsterMode",
 };
@@ -611,6 +621,7 @@ export default function SettingsPage() {
     useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
   const [boxTheme, setBoxTheme] = useState<BoxTheme>(DEFAULT_BOX_THEME);
+  const [fontTheme, setFontTheme] = useState<FontTheme>(DEFAULT_FONT_THEME);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [tipsterMode, setTipsterMode] = useState(false);
   const [positionTimelineDraft, setPositionTimelineDraft] = useState<PositionTimelineItem[]>([]);
@@ -656,6 +667,16 @@ export default function SettingsPage() {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(SETTINGS_KEYS.boxTheme, next);
       applyBoxThemeToRoot(next);
+    }
+    return next;
+  };
+
+  const applyFontThemePreference = (value: unknown) => {
+    const next = resolveFontTheme(value);
+    setFontTheme(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SETTINGS_KEYS.fontTheme, next);
+      applyFontThemeToRoot(next);
     }
     return next;
   };
@@ -869,6 +890,16 @@ export default function SettingsPage() {
             setBoxTheme(DEFAULT_BOX_THEME);
           }
 
+          if (typeof data.fontTheme === "string") {
+            applyFontThemePreference(data.fontTheme);
+          } else if (typeof window !== "undefined") {
+            applyFontThemePreference(
+              window.localStorage.getItem(SETTINGS_KEYS.fontTheme)
+            );
+          } else {
+            setFontTheme(DEFAULT_FONT_THEME);
+          }
+
           if (typeof data.reduceMotion === "boolean") {
             setReduceMotion(data.reduceMotion);
             applyMotionPreference(data.reduceMotion);
@@ -934,12 +965,16 @@ export default function SettingsPage() {
             const storedBoxTheme = window.localStorage.getItem(
               SETTINGS_KEYS.boxTheme
             );
+            const storedFontTheme = window.localStorage.getItem(
+              SETTINGS_KEYS.fontTheme
+            );
 
             if (storedPos) setPosition(storedPos);
             if (storedMode) setMode(storedMode);
             const n = storedGoal ? Number(storedGoal) : 0;
             if (Number.isFinite(n)) setMonthlyGoal(n);
             applyBoxThemePreference(storedBoxTheme);
+            applyFontThemePreference(storedFontTheme);
             const storedMotion = window.localStorage.getItem(
               SETTINGS_KEYS.reduceMotion
             );
@@ -1655,6 +1690,18 @@ export default function SettingsPage() {
       );
     }
     await saveUserFields({ boxTheme: resolved });
+  };
+
+  const handleFontThemeChange = async (nextTheme: FontTheme) => {
+    const resolved = applyFontThemePreference(nextTheme);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(FONT_THEME_EVENT, {
+          detail: { fontTheme: resolved },
+        })
+      );
+    }
+    await saveUserFields({ fontTheme: resolved });
   };
 
   const handleReduceMotionChange = async (value: boolean) => {
@@ -3184,6 +3231,60 @@ export default function SettingsPage() {
                             </span>
                             <span className="text-[10px] uppercase tracking-[0.14em] text-slate-500">
                               {isActive ? "Aktivní" : "Vybrat"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
+                        Písmo napříč webem
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Přepne hlavní font pro celý web včetně panelů a detailů.
+                      </p>
+                    </div>
+
+                    <div className="grid max-w-4xl grid-cols-1 gap-2 sm:grid-cols-2">
+                      {FONT_THEME_OPTIONS.map((opt) => {
+                        const isActive = fontTheme === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => void handleFontThemeChange(opt.id)}
+                            aria-pressed={isActive}
+                            className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                              isActive
+                                ? "border-slate-900 bg-white shadow-[0_6px_16px_rgba(15,23,42,0.1)]"
+                                : "border-slate-300 bg-white hover:border-slate-500"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm font-semibold text-slate-900">
+                                {opt.label}
+                              </span>
+                              <span
+                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                                  isActive
+                                    ? "border-slate-900 bg-slate-900 text-white"
+                                    : "border-slate-300 bg-slate-100 text-slate-600"
+                                }`}
+                              >
+                                {isActive ? "Aktivní" : "Vybrat"}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 text-[11px] text-slate-500">
+                              {opt.description}
+                            </p>
+                            <span
+                              className="mt-2 block rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-base text-slate-900"
+                              style={{ fontFamily: opt.previewFamily }}
+                            >
+                              {opt.previewText}
                             </span>
                           </button>
                         );
