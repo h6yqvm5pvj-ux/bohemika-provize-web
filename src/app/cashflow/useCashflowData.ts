@@ -9,6 +9,7 @@ import {
   type Product,
 } from "../types/domain";
 import { totalWithMultipliers } from "../lib/commissionTotals";
+import { computeLegacyFrequencyOverrideTotal } from "../lib/managerOverrideTotals";
 import { generateCashflow } from "./generator";
 import {
   stripTotalRows,
@@ -511,7 +512,12 @@ export function useCashflowData({
         if (!storedOverride) continue;
 
         const storedOverrideItems = stripTotalRows(storedOverride.items ?? []);
-        const storedOverrideTotal = totalWithMultipliers(storedOverrideItems);
+        const storedOverrideTotal = computeLegacyFrequencyOverrideTotal({
+          productKey: (entry.productKey as Product | null | undefined) ?? null,
+          frequencyRaw: (entry.frequencyRaw as PaymentFrequency | null | undefined) ?? null,
+          items: storedOverrideItems,
+          fallbackTotal: totalWithMultipliers(storedOverrideItems),
+        });
         if (storedOverrideItems.length === 0 || storedOverrideTotal <= 0) continue;
 
         const storedOverridePosition =

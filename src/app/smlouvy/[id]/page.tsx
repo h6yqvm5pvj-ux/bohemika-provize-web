@@ -70,6 +70,9 @@ import {
   contractMaturityDate,
 } from "@/app/lib/contractLifecycle";
 import {
+  computeLegacyFrequencyOverrideTotal,
+} from "@/app/lib/managerOverrideTotals";
+import {
   ALLIANZ_PAYMENT_CHECK_URL,
   SLAVIA_PAYMENT_CHECK_URL,
   CPP_PAYMENT_CHECK_URL,
@@ -626,6 +629,18 @@ export default function ContractDetailPage() {
     prod === "koopmajetekobcan" ||
     prod === "maxdomov";
   const paymentMultiplier = isPaymentBasedProduct ? paymentsPerYear(freq) : 1;
+  const adjustLegacyPerPaymentTotal = useCallback(
+    (items: CommissionResultItemDTO[], total: number): number => {
+      if (!prod) return total;
+      return computeLegacyFrequencyOverrideTotal({
+        productKey: prod,
+        frequencyRaw: freq,
+        items,
+        fallbackTotal: total,
+      });
+    },
+    [freq, prod]
+  );
   const durationYears =
     typeof contract?.durationYears === "number" && !Number.isNaN(contract.durationYears)
       ? contract.durationYears
@@ -2643,11 +2658,15 @@ export default function ContractDetailPage() {
       managerOverrides.find((o) => (o.email ?? "").toLowerCase() === normalizedUserEmail) ?? null;
     const storedOverrideItems = stripTotalRows(storedOverride?.items);
     const storedOverrideTotal = computeTotalWithMultipliers(storedOverrideItems);
+    const storedOverrideDisplayTotal = adjustLegacyPerPaymentTotal(
+      storedOverrideItems,
+      storedOverrideTotal
+    );
     const hasStoredOverride =
-      !!storedOverride && storedOverrideItems.length > 0 && storedOverrideTotal > 0;
+      !!storedOverride && storedOverrideItems.length > 0 && storedOverrideDisplayTotal > 0;
 
     setOverrideItems(hasStoredOverride ? storedOverrideItems : null);
-    setOverrideTotal(hasStoredOverride ? storedOverrideTotal : null);
+    setOverrideTotal(hasStoredOverride ? storedOverrideDisplayTotal : null);
     setOverrideMode(
       hasStoredOverride
         ? toCommissionMode(storedOverride?.commissionMode) ??
@@ -2691,12 +2710,16 @@ export default function ContractDetailPage() {
       null;
     const storedChildItems = stripTotalRows(storedChildOverride?.items);
     const storedChildTotal = computeTotalWithMultipliers(storedChildItems);
+    const storedChildDisplayTotal = adjustLegacyPerPaymentTotal(
+      storedChildItems,
+      storedChildTotal
+    );
     const hasStoredChildOverride =
-      !!storedChildOverride && storedChildItems.length > 0 && storedChildTotal > 0;
+      !!storedChildOverride && storedChildItems.length > 0 && storedChildDisplayTotal > 0;
 
     if (childSnap && childEmail && hasStoredChildOverride) {
       setChildOverrideItems(storedChildItems);
-      setChildOverrideTotal(storedChildTotal);
+      setChildOverrideTotal(storedChildDisplayTotal);
       setChildOverrideMode(
         toCommissionMode(storedChildOverride?.commissionMode) ??
           toCommissionMode(childSnap.commissionMode) ??
@@ -2726,6 +2749,7 @@ export default function ContractDetailPage() {
     ownerManagerPosition,
     ownerManagerEmail,
     user?.email,
+    adjustLegacyPerPaymentTotal,
   ]);
 
   // mazání smlouvy
@@ -2907,7 +2931,8 @@ export default function ContractDetailPage() {
 
         const rawItems = stripTotalRows(override.items);
         const rawTotal = computeTotalWithMultipliers(rawItems);
-        if (rawItems.length === 0 || rawTotal <= 0) return null;
+        const adjustedRawTotal = adjustLegacyPerPaymentTotal(rawItems, rawTotal);
+        if (rawItems.length === 0 || adjustedRawTotal <= 0) return null;
 
         const items = filterAnnualYearlyDupes(filterPaymentBasedItems(rawItems));
         const sum = items.reduce((acc, item) => acc + (item.amount ?? 0), 0);
@@ -2935,7 +2960,7 @@ export default function ContractDetailPage() {
           mode,
           items,
           totals,
-          totalDisplay: isPaymentBasedProduct ? sum * paymentMultiplier : rawTotal,
+          totalDisplay: isPaymentBasedProduct ? sum * paymentMultiplier : adjustedRawTotal,
           chainIndex: overrideChainIndex,
         };
       })

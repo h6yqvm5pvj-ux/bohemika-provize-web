@@ -46,6 +46,7 @@ type ContractsApiResponse = {
 
 const CONTRACTS_PAGE_LIMIT = 50;
 const CONTRACTS_MAX_PAGES = 80;
+const ANNIVERSARY_MODAL_SHOWN_KEY_PREFIX = "home.auto-anniversary.shown";
 
 function nextAnniversary(start: Date, now: Date): Date {
   const ann = new Date(start);
@@ -57,6 +58,14 @@ function nextAnniversary(start: Date, now: Date): Date {
 }
 
 const normalizeEmail = (email?: string | null) => (email ?? "").trim().toLowerCase();
+const localDayStamp = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+const modalShownStorageKey = (email: string) =>
+  `${ANNIVERSARY_MODAL_SHOWN_KEY_PREFIX}:${email}`;
 const normalizeCursorToken = (
   token: string | null | undefined,
   legacyCursor: number | null | undefined
@@ -78,6 +87,28 @@ export function AutoAnniversaryModal({
   const [rows, setRows] = useState<AnniversaryRow[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const markModalShownToday = (email: string) => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        modalShownStorageKey(email),
+        localDayStamp(new Date())
+      );
+    } catch {
+      // ignore storage access errors (private mode, quota, etc.)
+    }
+  };
+
+  const wasModalShownToday = (email: string) => {
+    if (typeof window === "undefined") return false;
+    try {
+      const value = window.localStorage.getItem(modalShownStorageKey(email));
+      return value === localDayStamp(new Date());
+    } catch {
+      return false;
+    }
+  };
 
   useEffect(() => {
     const normalizedEmail = normalizeEmail(userEmail);
@@ -185,7 +216,17 @@ export function AutoAnniversaryModal({
 
         results.sort((a, b) => a.daysToAnniversary - b.daysToAnniversary);
         setRows(results);
-        setOpen(results.length > 0);
+        const hasRows = results.length > 0;
+        if (!hasRows) {
+          setOpen(false);
+          return;
+        }
+        if (wasModalShownToday(normalizedEmail)) {
+          setOpen(false);
+          return;
+        }
+        setOpen(true);
+        markModalShownToday(normalizedEmail);
       } catch (e) {
         console.error("Chyba při načítání výročí", e);
       } finally {
@@ -220,7 +261,10 @@ export function AutoAnniversaryModal({
           </div>
           <button
             className="text-xs text-slate-500 hover:text-slate-800"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              markModalShownToday(normalizeEmail(userEmail));
+              setOpen(false);
+            }}
           >
             Zavřít
           </button>

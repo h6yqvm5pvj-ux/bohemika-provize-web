@@ -24,6 +24,7 @@ import {
 import { toDate } from "@/app/lib/formatters";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import { totalWithMultipliers } from "@/app/lib/commissionTotals";
+import { computeLegacyFrequencyOverrideTotal } from "@/app/lib/managerOverrideTotals";
 import {
   AUTO_PRODUCTS,
   COMFORT_PRODUCTS,
@@ -3014,7 +3015,12 @@ const computeManagerOverridesForChain = ({
       }
     });
 
-    const diffTotal = totalWithMultipliers(diffItems);
+    const diffTotal = computeLegacyFrequencyOverrideTotal({
+      productKey,
+      frequencyRaw,
+      items: diffItems,
+      fallbackTotal: totalWithMultipliers(diffItems),
+    });
     if (diffItems.length > 0 && diffTotal > 0) {
       overrides.push({
         email: manager.email ?? null,

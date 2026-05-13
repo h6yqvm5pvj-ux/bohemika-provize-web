@@ -2,6 +2,7 @@
 "use client";
 
 import { useMemo, useState, type ReactElement } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Space_Grotesk } from "next/font/google";
 import type { LucideIcon } from "lucide-react";
@@ -29,6 +30,7 @@ import {
   Trophy,
   WalletCards,
   Wind,
+  X,
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -203,6 +205,25 @@ const CATEGORY_VISUALS: Record<
   },
 };
 
+const TACHOMETER_UPLOAD_TARGETS = [
+  {
+    key: "allianz",
+    label: "Allianz",
+    href: "https://www.allianz.cz/cs_CZ/apps/kilometry-nahrani.html",
+    logoPath: "/icons/allianz.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(59,130,246,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(67,56,202,0.2)_0%,transparent_66%)]",
+  },
+  {
+    key: "pillow",
+    label: "Pillow",
+    href: "https://portal.pillow.cz/nahrat_kilometry/step1",
+    logoPath: "/icons/pillow.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_22%_20%,rgba(34,197,94,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(20,184,166,0.18)_0%,transparent_66%)]",
+  },
+] as const;
+
 function normalizeSearchValue(value: string): string {
   return value
     .normalize("NFD")
@@ -214,6 +235,7 @@ function normalizeSearchValue(value: string): string {
 export default function ToolsPage() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("Všechny");
   const [searchQuery, setSearchQuery] = useState("");
+  const [tachometerModalOpen, setTachometerModalOpen] = useState(false);
 
   type Tool = {
     key: string;
@@ -224,6 +246,7 @@ export default function ToolsPage() {
     href?: string;
     external?: boolean;
     render?: () => ReactElement;
+    onClick?: () => void;
   };
 
   const tools: Tool[] = useMemo(
@@ -342,22 +365,12 @@ export default function ToolsPage() {
         href: "/pomucky/naceneni-celniho-skla",
       },
       {
-        key: "pillow-nahrat-tachometr",
+        key: "nahrat-tachometr",
         category: "Pojištění vozidel",
-        title: "Pillow Nahrát tachometr",
-        description: "Nahraj stav tachometru do portálu Pillow.",
+        title: "Nahrát tachometr",
+        description: "Odkaz pro nahrání stavu tachometru pro pojišťovny Allianz a Pillow.",
         icon: Gauge,
-        href: "https://portal.pillow.cz/nahrat_kilometry/step1",
-        external: true,
-      },
-      {
-        key: "allianz-nahrat-tachometr",
-        category: "Pojištění vozidel",
-        title: "Allianz Nahrát tachometr",
-        description: "Nahraj stav tachometru do portálu Allianz.",
-        icon: Gauge,
-        href: "https://www.allianz.cz/cs_CZ/apps/kilometry-nahrani.html",
-        external: true,
+        onClick: () => setTachometerModalOpen(true),
       },
       {
         key: "projekce-vykonu",
@@ -400,7 +413,7 @@ export default function ToolsPage() {
         href: "/pomucky/srovnavac-zivotniho-pojisteni",
       },
     ],
-    []
+    [setTachometerModalOpen]
   );
 
   const filteredTools = useMemo(
@@ -519,6 +532,48 @@ export default function ToolsPage() {
                   return <div key={tool.key}>{tool.render()}</div>;
                 }
 
+                if (tool.onClick) {
+                  const ToolIcon = tool.icon;
+                  const style = CATEGORY_VISUALS[tool.category];
+                  return (
+                    <button
+                      key={tool.key}
+                      type="button"
+                      onClick={tool.onClick}
+                      className={`${styles.toolCard} group relative flex min-h-[184px] w-full overflow-hidden rounded-[30px] border border-white/70 ${style.wash} p-4 text-left shadow-[0_20px_54px_rgba(15,23,42,0.12)] ring-1 ${style.ring} transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-1 ${style.cardHover} hover:shadow-[0_26px_66px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80`}
+                      style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
+                    >
+                      <span className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${style.accent}`} aria-hidden="true" />
+
+                      <div className="flex w-full flex-col justify-between gap-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <span
+                            className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition ${style.icon}`}
+                          >
+                            <ToolIcon className="h-5 w-5" />
+                          </span>
+
+                          <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200/80 bg-white/88 text-slate-500 transition ${style.arrow}`}>
+                            <ArrowUpRight className="h-4.5 w-4.5" />
+                          </span>
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${style.badge}`}>
+                            {tool.category}
+                          </p>
+                          <h2 className="mt-2 text-[1.45rem] font-bold leading-[1.12] tracking-[-0.015em] text-slate-950">
+                            {tool.title}
+                          </h2>
+                          <p className="mt-2 text-[0.95rem] leading-relaxed text-slate-600">
+                            {tool.description}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                }
+
                 const CardWrapper = tool.external ? "a" : Link;
                 const ToolIcon = tool.icon;
                 const style = CATEGORY_VISUALS[tool.category];
@@ -567,6 +622,71 @@ export default function ToolsPage() {
           )}
         </div>
       </div>
+
+      {tachometerModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="Výběr pojišťovny pro nahrání tachometru">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/58 backdrop-blur-sm"
+            onClick={() => setTachometerModalOpen(false)}
+            aria-label="Zavřít dialog"
+          />
+
+          <div className="relative z-10 w-full max-w-3xl overflow-hidden rounded-[30px] border border-white/75 bg-[linear-gradient(160deg,rgba(255,255,255,0.97)_0%,rgba(248,250,252,0.97)_100%)] p-5 shadow-[0_32px_90px_rgba(2,6,23,0.38)] sm:p-7">
+            <button
+              type="button"
+              onClick={() => setTachometerModalOpen(false)}
+              className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
+              aria-label="Zavřít"
+            >
+              <X className="h-4.5 w-4.5" />
+            </button>
+
+            <div className="pr-12">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-700">Pojištění vozidel</p>
+              <h2 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-slate-950 sm:text-3xl">Nahrát tachometr</h2>
+              <p className="mt-2 text-sm text-slate-600 sm:text-base">
+                Vyber pojišťovnu a otevři odkaz pro nahrání aktuálního stavu tachometru.
+              </p>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {TACHOMETER_UPLOAD_TARGETS.map((target) => (
+                <a
+                  key={target.key}
+                  href={target.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group relative isolate min-h-[154px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_12px_26px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_34px_rgba(15,23,42,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300/80"
+                  onClick={() => setTachometerModalOpen(false)}
+                >
+                  <Image
+                    src={target.logoPath}
+                    alt={`Logo ${target.label}`}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    className="pointer-events-none object-contain p-4 opacity-[0.18] saturate-0 contrast-125"
+                  />
+                  <div className={`pointer-events-none absolute inset-0 ${target.tintClass}`} />
+
+                  <div className="relative flex h-full flex-col justify-between">
+                    <div className="inline-flex w-fit items-center rounded-full border border-slate-200/90 bg-white/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                      Otevřít
+                    </div>
+
+                    <div className="flex items-end justify-between gap-3">
+                      <h3 className="text-2xl font-bold tracking-[-0.015em] text-slate-900">{target.label}</h3>
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/90 bg-white/90 text-slate-700 transition group-hover:border-blue-300 group-hover:bg-blue-700 group-hover:text-white">
+                        <ArrowUpRight className="h-4.5 w-4.5" />
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

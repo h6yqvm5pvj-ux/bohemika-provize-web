@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
 import Link from "next/link";
-import { Mail } from "lucide-react";
+import { Mail, SlidersHorizontal } from "lucide-react";
 
 import { auth } from "./firebase";
 import {
@@ -1261,28 +1261,7 @@ export default function HomePage() {
                 aria-label="Přizpůsobit domovskou stránku"
                 title="Přizpůsobit"
               >
-                <svg
-                  aria-hidden="true"
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="opacity-80"
-                >
-                  <path
-                    d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                  />
-                  <path
-                    d="M12 3.5c.9 0 1.64.62 1.85 1.5l.1.45c.05.23.21.42.44.52l.06.02.43.18c.2.09.43.07.61-.06l.36-.26A2 2 0 0 1 17.87 6l.08.44c.05.27.22.5.46.62l.41.22c.2.1.34.29.37.52l.09.65c.12.85-.39 1.66-1.23 1.93l-.37.12c-.23.07-.39.26-.42.5l-.07.56c-.03.23.05.46.22.62l.21.21c.63.63.63 1.64 0 2.27l-.21.21c-.17.16-.25.39-.22.62l.07.56c.03.24.19.43.42.5l.37.12c.84.27 1.35 1.08 1.23 1.93l-.09.65c-.03.23-.17.42-.37.52l-.41.22a.75.75 0 0 0-.46.62l-.08.44a2 2 0 0 1-1.07 1.45l-.36.26a.73.73 0 0 1-.61.06l-.43-.18c-.22-.09-.48-.03-.62.16l-.13.17c-.12.16-.27.3-.44.41-.17.11-.36.18-.56.21l-.46.07A1.9 1.9 0 0 1 12 20.5c-.9 0-1.64-.62-1.85-1.5l-.1-.45a.75.75 0 0 0-.44-.52l-.06-.02-.43-.18a.73.73 0 0 0-.61.06l-.36.26A2 2 0 0 1 6.13 18l-.08-.44a.75.75 0 0 0-.46-.62l-.41-.22a.75.75 0 0 1-.37-.52l-.09-.65a1.9 1.9 0 0 1 1.23-1.93l.37-.12c.23-.07.39-.26.42-.5l.07-.56c.03-.23-.05-.46-.22-.62l-.21-.21a1.6 1.6 0 0 1 0-2.27l.21-.21c.17-.16.25-.39.22-.62l-.07-.56a.75.75 0 0 0-.42-.5l-.37-.12A1.9 1.9 0 0 1 4.72 8l.09-.65c.03-.23.17-.42.37-.52l.41-.22c.24-.12.41-.35.46-.62l.08-.44A2 2 0 0 1 7.5 4.03l.36-.26c.18-.13.41-.15.61-.06l.43.18c.23.09.48.03.62-.16l.13-.17c.12-.16.27-.3.44-.41.17-.11.36-.18.56-.21l.46-.07c.21-.04.41 0 .6.07.19.07.36.19.51.35.14.15.24.34.29.54l.1.45c.2.88.95 1.5 1.85 1.5Z"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <SlidersHorizontal size={21} aria-hidden="true" className="opacity-90" />
               </button>
 
               {widgetPanelOpen && (
