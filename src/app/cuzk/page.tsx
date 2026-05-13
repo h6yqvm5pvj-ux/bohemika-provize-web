@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Home,
   Landmark,
+  Loader2,
   Map,
   MapPin,
   Ruler,
@@ -99,13 +100,6 @@ function safeNum(v: any): number | undefined {
   if (v === null || v === undefined || v === "") return undefined;
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
-}
-
-function formatDateTimeCs(v: any): string {
-  if (!v) return "—";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return safeStr(v);
-  return d.toLocaleString("cs-CZ");
 }
 
 function formatEpochMsCs(v: any): string {
@@ -359,11 +353,89 @@ function SummaryPill({
   value: React.ReactNode;
 }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-700 shadow-[0_6px_14px_rgba(15,23,42,0.05)]">
-      <Icon className="h-3.5 w-3.5 opacity-90" />
-      <span className="font-semibold text-slate-500">{label}:</span>
-      <span className="font-semibold text-slate-900">{value}</span>
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_6px_14px_rgba(15,23,42,0.04)]">
+      <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+        <Icon className="h-3.5 w-3.5 opacity-80" />
+        <span>{label}</span>
+      </div>
+      <div className="mt-1 text-sm font-semibold text-slate-900 break-words">{value}</div>
     </div>
+  );
+}
+
+const CUZK_LOADING_PHASES = [
+  "Připojuji se na služby ČÚZK a RÚIAN",
+  "Ověřuji adresu a páruji stavební objekt",
+  "Stahuji detail stavby, parcel a jednotek",
+] as const;
+
+function CuzkLookupLoadingState({
+  phaseIndex,
+  query,
+}: {
+  phaseIndex: number;
+  query: string;
+}) {
+  const safePhaseIndex = Math.max(0, Math.min(phaseIndex, CUZK_LOADING_PHASES.length - 1));
+  const progressPct = ((safePhaseIndex + 1) / CUZK_LOADING_PHASES.length) * 100;
+  const queryLabel = query.trim() ? query.trim() : "vybranou adresu";
+
+  return (
+    <section className="relative overflow-hidden rounded-3xl border border-sky-200/80 bg-gradient-to-br from-sky-50/70 via-white to-emerald-50/60 p-5 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+      <div className="pointer-events-none absolute -left-20 top-8 h-36 w-36 rounded-full bg-sky-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute -right-20 bottom-0 h-36 w-36 rounded-full bg-emerald-200/40 blur-3xl" />
+
+      <div className="relative">
+        <div className="flex items-start gap-4">
+          <div className="relative mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sky-200 bg-white shadow-sm">
+            <span className="absolute inset-0 rounded-2xl border border-sky-300/70 motion-safe:animate-ping" />
+            <Building2 className="h-5 w-5 text-sky-700 motion-safe:animate-pulse" />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+              <Loader2 className="h-4 w-4 text-sky-700 motion-safe:animate-spin" />
+              Načítám data z katastru
+            </div>
+            <p className="mt-1 text-sm text-slate-600">{CUZK_LOADING_PHASES[safePhaseIndex]}</p>
+            <p className="mt-1 text-[12px] text-slate-500">
+              Dotaz: <span className="font-medium text-slate-700">{queryLabel}</span>
+            </p>
+
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-sky-100/90">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-sky-600 via-sky-500 to-emerald-500 transition-[width] duration-500 ease-out"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          {CUZK_LOADING_PHASES.map((phase, idx) => {
+            const isActive = idx === safePhaseIndex;
+            const isDone = idx < safePhaseIndex;
+            return (
+              <div
+                key={phase}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
+                  isActive
+                    ? "border-sky-300 bg-white text-sky-900 shadow-sm"
+                    : isDone
+                      ? "border-emerald-200 bg-emerald-50/80 text-emerald-800"
+                      : "border-slate-200 bg-white/80 text-slate-500"
+                }`}
+              >
+                <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${isActive || isDone ? "bg-sky-500" : "bg-slate-300"}`}>
+                  {isActive ? <span className="absolute inset-0 rounded-full bg-sky-400 motion-safe:animate-ping" /> : null}
+                </span>
+                <span className="truncate font-medium">{phase}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -378,6 +450,8 @@ export default function CuzkPage() {
   const [matches, setMatches] = useState<RuianMatch[]>([]);
   const [selectedKod, setSelectedKod] = useState<number | null>(null);
   const [result, setResult] = useState<unknown>(null);
+  const [searchActivated, setSearchActivated] = useState(false);
+  const [loadingPhaseIndex, setLoadingPhaseIndex] = useState(0);
 
   // našeptávač
   const [suggestions, setSuggestions] = useState<RuianMatch[]>([]);
@@ -388,6 +462,7 @@ export default function CuzkPage() {
   const suggestReqSeq = useRef(0);
   const suppressSuggestRef = useRef(false);
   const autoLookupAddressRef = useRef<string | null>(null);
+  const resultScrollTargetRef = useRef<HTMLDivElement | null>(null);
 
   const [showJson, setShowJson] = useState(false);
   const [gmapsEmbedError, setGmapsEmbedError] = useState<string | null>(null);
@@ -410,6 +485,26 @@ export default function CuzkPage() {
     setAddressQuery((prev) => (prev === addressFromQuery ? prev : addressFromQuery));
   }, [addressFromQuery]);
 
+  useEffect(() => {
+    if (!loading) return;
+    setLoadingPhaseIndex(0);
+    const interval = window.setInterval(() => {
+      setLoadingPhaseIndex((current) => (current + 1) % CUZK_LOADING_PHASES.length);
+    }, 900);
+    return () => window.clearInterval(interval);
+  }, [loading]);
+
+  useEffect(() => {
+    if (!searchActivated || loading || typeof window === "undefined") return;
+    const frame = window.requestAnimationFrame(() => {
+      resultScrollTargetRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading, searchActivated]);
+
   const canSearch = useMemo(() => !!user && addressQuery.trim().length >= 2, [user, addressQuery]);
 
   const clearAll = () => {
@@ -417,6 +512,7 @@ export default function CuzkPage() {
     setResult(null);
     setMatches([]);
     setSelectedKod(null);
+    setSearchActivated(false);
 
     setSuggestions([]);
     setSuggestOpen(false);
@@ -520,6 +616,7 @@ export default function CuzkPage() {
       return;
     }
 
+    setSearchActivated(true);
     setLoading(true);
     setError(null);
     setResult(null);
@@ -562,6 +659,7 @@ export default function CuzkPage() {
     const marker = query.toLowerCase();
     if (autoLookupAddressRef.current === marker) return;
     autoLookupAddressRef.current = marker;
+    setSearchActivated(true);
     setSelectedKod(null);
     setMatches([]);
     setLoading(true);
@@ -602,6 +700,7 @@ export default function CuzkPage() {
       return;
     }
 
+    setSearchActivated(true);
     setLoading(true);
     setError(null);
     setResult(null);
@@ -740,62 +839,33 @@ export default function CuzkPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="mx-auto w-full max-w-6xl space-y-6 pb-8">
-        <header className="pt-1 pb-2 sm:pb-4">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-2">
-              <h1 className="flex items-center gap-3 text-5xl sm:text-6xl font-semibold leading-[0.95] tracking-tight text-slate-900">
-                <Building2 className="h-9 w-9 text-slate-700 sm:h-11 sm:w-11" />
-                <span>Katastr nemovitostí</span>
-              </h1>
+      <div className="cuzk-shell mx-auto w-full max-w-6xl space-y-6 pb-10">
+        <header className="cuzk-reveal px-1 pt-5 sm:pt-8">
+          <div className="mx-auto max-w-4xl text-center">
+            <div className="cuzk-float inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-5 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-sky-700">
+              <Sparkles className="h-4 w-4" />
+              Oficiální data z registru ČÚZK
             </div>
-            <Image
-              src="/icons/icon_domex.png"
-              alt="Domex"
-              width={800}
-              height={520}
-              className="h-44 w-auto self-start lg:h-56 lg:self-end"
-              priority
-            />
+            <h1 className="mt-5 text-5xl font-bold leading-[0.98] tracking-tight text-slate-900 sm:text-6xl md:text-7xl">
+              Katastr nemovitostí
+              <span className="block text-sky-600">během vteřiny</span>
+            </h1>
+            <p className="mx-auto mt-4 max-w-2xl text-sm text-slate-500 sm:text-base">
+              Vyhledej adresu, načti detail stavby, parcel a jednotek a pokračuj rovnou s klientem.
+            </p>
           </div>
         </header>
 
         {/* ✅ vždy NAD výsledkem (kvůli dropdownu) */}
-        <div className="grid gap-5 lg:grid-cols-[1.35fr_0.85fr] items-start">
-          {/* Levý box: dotaz */}
-          <section className="relative z-30 isolate overflow-visible rounded-3xl border border-slate-200 bg-white px-6 py-6 space-y-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
-              <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-sky-400 to-emerald-400" />
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div>
-                  <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-                    <Search className="h-4 w-4 text-slate-600" />
-                    <span>Vyhledávání v katastru ČÚZK</span>
-                  </h2>
-                  <div className="mt-1 text-xs text-slate-500">
-                    Našeptávání adres z RÚIAN, detail se načte včetně jednotek.
-                  </div>
-                </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">
-                  Jednotky: automaticky
-                </span>
-                {!user && (
-                  <span className="text-[11px] text-amber-800 bg-amber-50 border border-amber-500/50 rounded-full px-3 py-1">
-                    Přihlaš se, aby šlo volat ČÚZK.
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {/* Adresa + našeptávač (full width) */}
-              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/40 p-3 text-sm text-slate-800" ref={suggestWrapRef}>
-                <span className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-600">
-                  <MapPin className="h-3.5 w-3.5" />
-                  <span>Adresa</span>
-                </span>
-
-                <div className="relative">
+        {!searchActivated ? (
+          <div className="cuzk-reveal mx-auto w-full max-w-3xl px-2 sm:px-4" style={{ animationDelay: "90ms" }}>
+            <section
+              ref={suggestWrapRef}
+              className="cuzk-glow relative isolate overflow-visible rounded-[30px] border border-slate-200 bg-white p-2 shadow-[0_14px_34px_rgba(15,23,42,0.08)]"
+            >
+              <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                <div className="relative flex min-w-0 flex-1 items-center gap-3 px-4 py-2">
+                  <Search className="h-8 w-8 text-slate-400" />
                   <input
                     type="text"
                     value={addressQuery}
@@ -808,8 +878,12 @@ export default function CuzkPage() {
                       if (suggestions.length) setSuggestOpen(true);
                     }}
                     onKeyDown={(e) => {
+                      if (e.key === "Enter" && canSearch && !loading) {
+                        e.preventDefault();
+                        void handleSearchAddress();
+                        return;
+                      }
                       if (!suggestOpen || !suggestions.length) return;
-
                       if (e.key === "ArrowDown") {
                         e.preventDefault();
                         setActiveIdx((i) => Math.min(i + 1, suggestions.length - 1));
@@ -826,12 +900,12 @@ export default function CuzkPage() {
                         setActiveIdx(-1);
                       }
                     }}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
+                    className="w-full border-none bg-transparent text-xl font-medium text-slate-900 placeholder:text-slate-400 outline-none"
                     placeholder='např. "Tyršova 133, Kadaň"'
                   />
 
                   {user && suggestOpen && (suggestLoading || suggestions.length > 0) && (
-                    <div className="absolute z-[999] mt-2 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.12)]">
+                    <div className="absolute left-0 right-0 top-full z-[999] mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.12)]">
                       {suggestLoading && <div className="px-3 py-2 text-xs text-slate-600">Našeptávám…</div>}
                       {!suggestLoading && suggestions.length > 0 && (
                         <div className="max-h-72 overflow-auto">
@@ -868,188 +942,230 @@ export default function CuzkPage() {
                   )}
                 </div>
 
+                <button
+                  type="button"
+                  onClick={() => void handleSearchAddress()}
+                  disabled={loading || !canSearch}
+                  className="group inline-flex h-16 items-center justify-center gap-3 rounded-[22px] border border-sky-900/30 bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_52%,#22c55e_100%)] px-8 text-lg font-semibold tracking-tight text-white shadow-[0_16px_36px_rgba(30,64,175,0.34),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-sky-200 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                >
+                  {loading ? "Načítám..." : "Vyhledat"}
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
+                    {loading ? <Loader2 className="h-5 w-5 motion-safe:animate-spin" /> : <Search className="h-5 w-5" />}
+                  </span>
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : (
+          <div className="cuzk-reveal mx-auto w-full max-w-3xl" style={{ animationDelay: "90ms" }}>
+            {/* Levý box: dotaz */}
+            <section className="cuzk-glow relative z-30 isolate overflow-visible rounded-[30px] border border-slate-200 bg-white px-5 py-5 space-y-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
+              <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-sky-400 to-emerald-400" />
+              <div className="relative" ref={suggestWrapRef}>
+                <input
+                  type="text"
+                  value={addressQuery}
+                  onChange={(e) => {
+                    suppressSuggestRef.current = false;
+                    setAddressQuery(e.target.value);
+                    setSelectedKod(null);
+                  }}
+                  onFocus={() => {
+                    if (suggestions.length) setSuggestOpen(true);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && canSearch && !loading) {
+                      e.preventDefault();
+                      void handleSearchAddress();
+                      return;
+                    }
+                    if (!suggestOpen || !suggestions.length) return;
+
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      setActiveIdx((i) => Math.min(i + 1, suggestions.length - 1));
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      setActiveIdx((i) => Math.max(i - 1, 0));
+                    } else if (e.key === "Enter") {
+                      if (activeIdx >= 0 && activeIdx < suggestions.length) {
+                        e.preventDefault();
+                        pickSuggestion(suggestions[activeIdx]);
+                      }
+                    } else if (e.key === "Escape") {
+                      setSuggestOpen(false);
+                      setActiveIdx(-1);
+                    }
+                  }}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-lg font-medium text-slate-900 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20"
+                  placeholder='např. "Tyršova 133, Kadaň"'
+                />
+
+                {user && suggestOpen && (suggestLoading || suggestions.length > 0) && (
+                  <div className="absolute z-[999] mt-2 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.12)]">
+                    {suggestLoading && <div className="px-3 py-2 text-xs text-slate-600">Našeptávám…</div>}
+                    {!suggestLoading && suggestions.length > 0 && (
+                      <div className="max-h-72 overflow-auto">
+                        {suggestions.map((m, idx) => {
+                          const active = idx === activeIdx;
+                          return (
+                            <button
+                              key={`${m.kod}-${m.adresa}-${idx}`}
+                              type="button"
+                              onClick={() => pickSuggestion(m)}
+                              onMouseEnter={() => setActiveIdx(idx)}
+                              className={[
+                                "w-full text-left px-3 py-2 transition",
+                                "border-b border-slate-200 last:border-b-0",
+                                active ? "bg-slate-100" : "bg-transparent hover:bg-slate-100",
+                              ].join(" ")}
+                            >
+                              <div className="text-sm text-slate-900">{m.adresa}</div>
+                              <div className="text-[11px] text-slate-500">
+                                RÚIAN: <span className="text-slate-800">{m.kod ? m.kod : "—"}</span>
+                                {m.psc ? (
+                                  <>
+                                    {" "}
+                                    • PSČ: <span className="text-slate-800">{m.psc}</span>
+                                  </>
+                                ) : null}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Akce */}
               <div className="grid gap-2 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={handleSearchAddress}
                   disabled={loading || !canSearch}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="group w-full inline-flex h-14 items-center justify-center gap-3 rounded-[18px] border border-sky-900/30 bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_52%,#22c55e_100%)] px-5 text-lg font-semibold text-white shadow-[0_14px_30px_rgba(30,64,175,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                 >
-                  <Search className="h-4 w-4" />
-                  {loading ? "Hledám…" : "Vyhledat"}
+                  {loading ? "Načítám..." : "Vyhledat"}
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
+                    {loading ? <Loader2 className="h-5 w-5 motion-safe:animate-spin" /> : <Search className="h-5 w-5" />}
+                  </span>
                 </button>
 
                 <button
                   type="button"
                   onClick={clearAll}
                   disabled={loading || (result === null && matches.length === 0 && !error)}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full inline-flex h-14 items-center justify-center gap-2 rounded-[18px] border border-slate-300 bg-white px-4 py-2 text-base font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <X className="h-4 w-4" />
                   Vyčistit
                 </button>
               </div>
 
-              <div className="min-h-[18px]">
-                {error ? (
-                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-500/60 rounded-xl px-3 py-2">
-                    {error}
-                  </p>
-                ) : result !== null ? (
-                  <span className="text-[11px] text-emerald-700">Výsledek načten {new Date().toLocaleTimeString("cs-CZ")}.</span>
-                ) : null}
-              </div>
-            </div>
+              {error ? (
+                <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-500/60 rounded-xl px-3 py-2">
+                  {error}
+                </p>
+              ) : null}
 
-            {matches.length > 0 && (
-              <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm text-slate-900 font-semibold">Nalezeno více adres — vyber správnou:</p>
-                  <span className="text-[11px] text-slate-500">{matches.length} možností</span>
-                </div>
+              {matches.length > 0 && (
+                <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-slate-900 font-semibold">Nalezeno více adres — vyber správnou:</p>
+                    <span className="text-[11px] text-slate-500">{matches.length} možností</span>
+                  </div>
 
-                <div className="space-y-2">
-                  {matches.map((m) => (
-                    <label
-                      key={m.kod}
-                      className="flex items-start gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-100 transition cursor-pointer"
-                    >
-                      <input
-                        type="radio"
-                        name="ruian_match"
-                        checked={selectedKod === m.kod}
-                        onChange={() => setSelectedKod(m.kod)}
-                        className="mt-1 h-4 w-4"
-                      />
-                      <div className="space-y-0.5">
-                        <div className="text-sm text-slate-900">{m.adresa}</div>
-                        <div className="text-[11px] text-slate-500">
-                          RÚIAN kód: <span className="text-slate-800">{m.kod}</span>
-                          {m.psc ? (
-                            <>
-                              {" "}
-                              • PSČ: <span className="text-slate-800">{m.psc}</span>
-                            </>
-                          ) : null}
+                  <div className="space-y-2">
+                    {matches.map((m) => (
+                      <label
+                        key={m.kod}
+                        className="flex items-start gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-100 transition cursor-pointer"
+                      >
+                        <input
+                          type="radio"
+                          name="ruian_match"
+                          checked={selectedKod === m.kod}
+                          onChange={() => setSelectedKod(m.kod)}
+                          className="mt-1 h-4 w-4"
+                        />
+                        <div className="space-y-0.5">
+                          <div className="text-sm text-slate-900">{m.adresa}</div>
+                          <div className="text-[11px] text-slate-500">
+                            RÚIAN kód: <span className="text-slate-800">{m.kod}</span>
+                            {m.psc ? (
+                              <>
+                                {" "}
+                                • PSČ: <span className="text-slate-800">{m.psc}</span>
+                              </>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
+                      </label>
+                    ))}
+                  </div>
 
-                <div className="flex gap-2 justify-end">
-                  <button
-                    type="button"
-                    onClick={handleLoadSelected}
-                    disabled={loading || !user}
-                    className="inline-flex items-center gap-2 rounded-full border border-emerald-600 bg-emerald-100 px-6 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-100 hover:border-emerald-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {loading ? "Načítám…" : "Načíst vybranou adresu"}
-                  </button>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={handleLoadSelected}
+                      disabled={loading || !user}
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-600 bg-emerald-100 px-6 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-100 hover:border-emerald-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {loading ? "Načítám…" : "Načíst vybranou adresu"}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-
-          </section>
-
-          {/* Pravý panel: rychlé odkazy */}
-          <aside className="rounded-3xl border border-slate-200 bg-white px-5 py-5 space-y-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-slate-600">
-                  <Map className="h-3.5 w-3.5" />
-                  <span>Rychlé odkazy</span>
-                </div>
-              </div>
-              {vdpUrl && (
-                <span className="text-[11px] rounded-full border border-emerald-600 bg-emerald-100 px-2.5 py-0.5 text-emerald-900">
-                  Aktivní
-                </span>
               )}
-            </div>
+            </section>
 
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!gmapsUrl) return;
-                  window.open(gmapsUrl, "_blank", "noopener,noreferrer");
-                }}
-                disabled={!gmapsUrl}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-900 disabled:bg-slate-900 disabled:text-white disabled:opacity-100"
-              >
-                <MapPin className="h-4 w-4" />
-                Google Mapy
-                <ExternalLink className="h-3.5 w-3.5 opacity-90" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (!marushkaUrl) return;
-                  window.open(marushkaUrl, "_blank", "noopener,noreferrer");
-                }}
-                disabled={!marushkaUrl}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-900 disabled:bg-slate-900 disabled:text-white disabled:opacity-100"
-              >
-                <Map className="h-4 w-4" />
-                Katastrální Mapy
-                <ExternalLink className="h-3.5 w-3.5 opacity-90" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (!vdpUrl) return;
-                  window.open(vdpUrl, "_blank", "noopener,noreferrer");
-                }}
-                disabled={!vdpUrl}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-900 disabled:bg-slate-900 disabled:text-white disabled:opacity-100"
-              >
-                <Building2 className="h-4 w-4" />
-                Katastr
-                <ExternalLink className="h-3.5 w-3.5 opacity-90" />
-              </button>
-            </div>
-
-          </aside>
-        </div>
-
-        {/* Výsledek */}
-        <section className="relative z-0 overflow-hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] space-y-6">
-          <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-sky-400 to-emerald-400" />
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50">
-                <Building2 className="h-4 w-4 text-slate-700" />
-              </span>
-              <span>Výsledek</span>
-            </h2>
-            <div className="flex items-center gap-2">
-              {result !== null && (
-                <button
-                  type="button"
-                  onClick={() => setShowJson((s) => !s)}
-                  className="text-[11px] rounded-full border border-slate-300 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
-                >
-                  {showJson ? "Skrýt JSON" : "Zobrazit JSON"}
-                </button>
-              )}
-            </div>
           </div>
+        )}
 
-          {loading ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">Načítám data…</div>
-          ) : !hasAnyResult ? (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Zatím nic nezobrazuji. Zadej adresu a klikni na „Vyhledat adresu“.
-            </div>
-          ) : (
-            <>
-              <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-4 sm:px-5">
+        <div ref={resultScrollTargetRef} className="scroll-mt-28" />
+
+        {searchActivated && loading && (
+          <div className="cuzk-reveal" style={{ animationDelay: "120ms" }}>
+            <CuzkLookupLoadingState phaseIndex={loadingPhaseIndex} query={addressQuery} />
+          </div>
+        )}
+
+        {searchActivated && (
+          <>
+            {/* Výsledek */}
+            <section className="cuzk-reveal relative z-0 overflow-visible rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] space-y-6" style={{ animationDelay: "180ms" }}>
+              <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-sky-400 to-emerald-400" />
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50">
+                    <Building2 className="h-4 w-4 text-slate-700" />
+                  </span>
+                  <span>Výsledek</span>
+                </h2>
+                <div className="flex items-center gap-2">
+                  {result !== null && (
+                    <button
+                      type="button"
+                      onClick={() => setShowJson((s) => !s)}
+                      className="text-[11px] rounded-full border border-slate-300 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+                    >
+                      {showJson ? "Skrýt JSON" : "Zobrazit JSON"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {searchActivated && loading ? (
+                <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                  Výsledky se právě připravují…
+                </div>
+              ) : !hasAnyResult ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  Zatím nic nezobrazuji. Zadej adresu a klikni na „Vyhledat“.
+                </div>
+              ) : (
+                <>
+              <div className="relative overflow-visible rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-4 sm:px-5">
                 <span className="absolute inset-x-0 top-0 h-1 bg-slate-900" />
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="space-y-2">
@@ -1074,12 +1190,56 @@ export default function CuzkPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   <SummaryPill icon={MapPin} label="RÚIAN adresa" value={summaryRuianCode} />
                   <SummaryPill icon={Building2} label="Stavba" value={summaryBuildingCode} />
                   <SummaryPill icon={Ruler} label="Parcely" value={`${parcels.length}`} />
                   <SummaryPill icon={UserRound} label="Uživatel" value={summaryOwner} />
                 </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!gmapsUrl) return;
+                    window.open(gmapsUrl, "_blank", "noopener,noreferrer");
+                  }}
+                  disabled={!gmapsUrl}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#0ea5e9_0%,#10b981_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(14,165,233,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                >
+                  <MapPin className="h-4 w-4" />
+                  Google Mapy
+                  <ExternalLink className="h-3.5 w-3.5 opacity-90" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!marushkaUrl) return;
+                    window.open(marushkaUrl, "_blank", "noopener,noreferrer");
+                  }}
+                  disabled={!marushkaUrl}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2563eb_0%,#06b6d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(37,99,235,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                >
+                  <Map className="h-4 w-4" />
+                  Katastrální Mapy
+                  <ExternalLink className="h-3.5 w-3.5 opacity-90" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!vdpUrl) return;
+                    window.open(vdpUrl, "_blank", "noopener,noreferrer");
+                  }}
+                  disabled={!vdpUrl}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#f59e0b_0%,#f97316_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(249,115,22,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                >
+                  <Building2 className="h-4 w-4" />
+                  Katastr
+                  <ExternalLink className="h-3.5 w-3.5 opacity-90" />
+                </button>
               </div>
 
               {dateInsights.length > 0 ? (
@@ -1108,37 +1268,8 @@ export default function CuzkPage() {
                     ))}
                   </div>
 
-                  {dateInsights.length > 1 ? (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                        {dateInsights.map((item, idx) => (
-                          <span key={`line-${item.key}`} className="inline-flex items-center gap-2">
-                            <span className="inline-flex h-2 w-2 rounded-full bg-slate-400" />
-                            <span className="font-medium text-slate-700">{item.label}:</span>
-                            <span>{formatDateCs(item.date)}</span>
-                            {idx < dateInsights.length - 1 ? (
-                              <span className="text-slate-400">→</span>
-                            ) : null}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
               ) : null}
-
-              <div className="space-y-3 border-t border-slate-200 pt-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <Sparkles className="h-4 w-4 text-slate-700" />
-                    Metadata odpovědi
-                  </div>
-                </div>
-                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/40 p-3 sm:grid-cols-2">
-                  <Field label="Aktuálnost dat k" value={formatDateTimeCs(obj?.aktualnostDatK)} />
-                  <Field label="Pro uživatele" value={summaryOwner} />
-                </div>
-              </div>
 
               {showJson ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-800 space-y-1">
@@ -1191,7 +1322,7 @@ export default function CuzkPage() {
                   ) : null}
 
                   <div className="text-[11px] text-slate-500">
-                    Tip: Klikni na tlačítko <span className="text-slate-800">Google Mapy</span> vpravo pro otevření v novém okně.
+                    Tip: Klikni na tlačítko <span className="text-slate-800">Google Mapy</span> v odkazech výše pro otevření v novém okně.
                   </div>
                 </div>
               ) : null}
@@ -1455,9 +1586,109 @@ export default function CuzkPage() {
                   </pre>
                 </div>
               )}
-            </>
-          )}
-        </section>
+                </>
+              )}
+            </section>
+          </>
+        )}
+
+        <style jsx>{`
+          @keyframes cuzk-reveal-up {
+            from {
+              opacity: 0;
+              transform: translate3d(0, 16px, 0);
+            }
+            to {
+              opacity: 1;
+              transform: translate3d(0, 0, 0);
+            }
+          }
+
+          @keyframes cuzk-glow-pulse {
+            0%,
+            100% {
+              box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+            }
+            50% {
+              box-shadow:
+                0 18px 42px rgba(30, 64, 175, 0.2),
+                0 0 0 1px rgba(56, 189, 248, 0.15);
+            }
+          }
+
+          @keyframes cuzk-float {
+            0%,
+            100% {
+              transform: translateY(0px);
+            }
+            50% {
+              transform: translateY(-4px);
+            }
+          }
+
+          .cuzk-shell {
+            position: relative;
+            isolation: isolate;
+            overflow: visible;
+          }
+
+          .cuzk-shell::before {
+            content: "";
+            position: absolute;
+            inset: 60px -72px auto 0;
+            height: 240px;
+            background:
+              radial-gradient(48% 70% at 18% 40%, rgba(56, 189, 248, 0.12) 0%, rgba(56, 189, 248, 0) 100%),
+              radial-gradient(42% 64% at 78% 36%, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0) 100%);
+            z-index: -1;
+            pointer-events: none;
+          }
+
+          .cuzk-shell::after {
+            content: "";
+            position: absolute;
+            inset: 86px -72px 0 0;
+            background-image:
+              linear-gradient(to right, rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+              linear-gradient(to bottom, rgba(15, 23, 42, 0.045) 1px, transparent 1px);
+            background-size: 34px 34px;
+            mask-image: radial-gradient(circle at 50% 12%, rgba(0, 0, 0, 0.9), transparent 78%);
+            opacity: 0.36;
+            z-index: -1;
+            pointer-events: none;
+          }
+
+          .cuzk-reveal {
+            opacity: 0;
+            animation: cuzk-reveal-up 720ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+          }
+
+          .cuzk-glow {
+            animation: cuzk-glow-pulse 4.4s ease-in-out infinite;
+          }
+
+          .cuzk-float {
+            animation: cuzk-float 5s ease-in-out infinite;
+          }
+
+          :global(:root[data-motion="off"]) .cuzk-shell::before,
+          :global(:root[data-motion="off"]) .cuzk-shell::after,
+          :global(:root[data-motion="off"]) .cuzk-reveal,
+          :global(:root[data-motion="off"]) .cuzk-glow,
+          :global(:root[data-motion="off"]) .cuzk-float {
+            animation: none !important;
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .cuzk-shell::before,
+            .cuzk-shell::after,
+            .cuzk-reveal,
+            .cuzk-glow,
+            .cuzk-float {
+              animation: none !important;
+            }
+          }
+        `}</style>
       </div>
     </AppLayout>
   );

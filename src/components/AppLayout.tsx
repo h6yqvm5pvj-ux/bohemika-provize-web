@@ -83,6 +83,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const showToolsBackToIndex = active === "tools" && pathname !== "/pomucky";
+  const contentOverflowClass =
+    active === "tools" || active === "cashflow" ? "overflow-visible" : "overflow-x-clip";
   const lastActiveUpdateRef = useRef(0);
   const isFullBleedPage =
     pathname?.startsWith("/pomucky/zlato") ||
@@ -777,7 +779,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           {/* CONTENT / PAYWALL */}
           <div
             className={[
-              "app-content relative flex min-w-0 w-full flex-1 items-start overflow-x-clip font-mono",
+              `app-content relative flex min-w-0 w-full flex-1 items-start ${contentOverflowClass} font-mono`,
               isFullBleedPage
                 ? "justify-start px-0 py-6 sm:py-8 lg:px-0"
                 : "justify-center px-3 py-6 sm:px-4 sm:py-8 lg:px-8",

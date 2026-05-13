@@ -84,7 +84,10 @@ export default function CashflowPage() {
   return (
     <AppLayout active="cashflow">
       <div className={`${cashflowFont.className} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
-        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div
+          className="pointer-events-none absolute -inset-y-14 left-0 -right-20 overflow-hidden sm:-right-24 lg:-right-28"
+          aria-hidden="true"
+        >
           <div className={styles.canvas}>
             <span className={`${styles.orb} ${styles.orbA}`} />
             <span className={`${styles.orb} ${styles.orbB}`} />
