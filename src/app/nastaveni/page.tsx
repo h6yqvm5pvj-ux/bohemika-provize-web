@@ -317,7 +317,6 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
 };
 
 const SETTINGS_KEYS = {
-  position: "settings.position",
   mode: "settings.mode",
   monthlyGoal: "settings.monthlyGoal",
   boxTheme: BOX_THEME_LOCAL_STORAGE_KEY,
@@ -589,7 +588,6 @@ export default function SettingsPage() {
   const [mode, setMode] = useState<CommissionMode>("accelerated");
   const [, setMonthlyGoal] = useState<number>(0);
 
-  const [canChangePosition, setCanChangePosition] = useState(true);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -832,17 +830,6 @@ export default function SettingsPage() {
 
           if (data.position) {
             setPosition(data.position as Position);
-            if (typeof window !== "undefined") {
-              window.localStorage.setItem(
-                SETTINGS_KEYS.position,
-                data.position as string
-              );
-            }
-          } else if (typeof window !== "undefined") {
-            const stored = window.localStorage.getItem(
-              SETTINGS_KEYS.position
-            ) as Position | null;
-            if (stored) setPosition(stored);
           }
 
           if (data.commissionMode) {
@@ -942,9 +929,6 @@ export default function SettingsPage() {
             setNotificationSettings(normalizeNotificationSettings(data.notificationSettings));
           }
 
-          setCanChangePosition(
-            data.canChangePosition === false ? false : true
-          );
           const parsedTimeline = parsePositionTimeline(data.positionTimeline);
           setPositionTimelineDraft(parsedTimeline);
           setPositionTimelineLocked(parsedTimeline.length > 0);
@@ -953,9 +937,6 @@ export default function SettingsPage() {
           setPositionTimelineDraft([]);
           setPositionTimelineLocked(false);
           if (typeof window !== "undefined") {
-            const storedPos = window.localStorage.getItem(
-              SETTINGS_KEYS.position
-            ) as Position | null;
             const storedMode = window.localStorage.getItem(
               SETTINGS_KEYS.mode
             ) as CommissionMode | null;
@@ -969,7 +950,6 @@ export default function SettingsPage() {
               SETTINGS_KEYS.fontTheme
             );
 
-            if (storedPos) setPosition(storedPos);
             if (storedMode) setMode(storedMode);
             const n = storedGoal ? Number(storedGoal) : 0;
             if (Number.isFinite(n)) setMonthlyGoal(n);
@@ -1034,14 +1014,6 @@ export default function SettingsPage() {
       return { ok: false, error: message };
     }
   }
-
-  const handlePositionChange = async (value: Position) => {
-    setPosition(value);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(SETTINGS_KEYS.position, value);
-    }
-    await saveUserFields({ position: value });
-  };
 
   const addPositionTimelineRow = () => {
     setPositionTimelineSaved(false);
@@ -2128,91 +2100,60 @@ export default function SettingsPage() {
                   <span>Výchozí kalkulačka</span>
                 </h2>
 
-                {canChangePosition ? (
-                  <>
-                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                          Výchozí pozice
-                        </label>
-                        <select
-                          className={fieldClass}
-                          value={position}
-                          onChange={(e) =>
-                            handlePositionChange(e.target.value as Position)
-                          }
-                        >
-                          {POSITIONS.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.label}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="text-xs text-slate-500">
-                          Tahle pozice se použije jako výchozí v kalkulačce.
-                        </p>
-                      </div>
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      Výchozí režim provizí
+                    </label>
+                    <div
+                      className="inline-flex w-full max-w-md rounded-2xl border border-slate-300 bg-slate-100 p-1"
+                      role="radiogroup"
+                      aria-label="Výchozí režim provizí"
+                    >
+                      {COMMISSION_MODES.map((m) => {
+                        const active = mode === m.id;
+                        const isAccelerated = m.id === "accelerated";
+                        const isStandard = m.id === "standard";
 
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                          Výchozí režim provizí
-                        </label>
-                        <div
-                          className="inline-flex w-full max-w-md rounded-2xl border border-slate-300 bg-slate-100 p-1"
-                          role="radiogroup"
-                          aria-label="Výchozí režim provizí"
-                        >
-                          {COMMISSION_MODES.map((m) => {
-                            const active = mode === m.id;
-                            const isAccelerated = m.id === "accelerated";
-                            const isStandard = m.id === "standard";
-
-                            return (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => void handleModeChange(m.id)}
-                                className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                                  active
-                                    ? "border border-slate-900 bg-white text-slate-900 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
-                                    : "border border-transparent text-slate-600 hover:text-slate-900"
-                                }`}
-                                role="radio"
-                                aria-checked={active}
-                              >
-                                {isAccelerated && (
-                                  <Zap
-                                    size={14}
-                                    strokeWidth={2.2}
-                                    className={active ? "text-amber-500" : "text-amber-600"}
-                                    aria-hidden="true"
-                                  />
-                                )}
-                                {isStandard && (
-                                  <Snail
-                                    size={14}
-                                    strokeWidth={2.2}
-                                    className={active ? "text-slate-600" : "text-slate-500"}
-                                    aria-hidden="true"
-                                  />
-                                )}
-                                {m.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <p className="text-xs text-slate-500">
-                          Zrychlený / běžný režim se používá u životního pojištění.
-                        </p>
-                      </div>
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => void handleModeChange(m.id)}
+                            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                              active
+                                ? "border border-slate-900 bg-white text-slate-900 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
+                                : "border border-transparent text-slate-600 hover:text-slate-900"
+                            }`}
+                            role="radio"
+                            aria-checked={active}
+                          >
+                            {isAccelerated && (
+                              <Zap
+                                size={14}
+                                strokeWidth={2.2}
+                                className={active ? "text-amber-500" : "text-amber-600"}
+                                aria-hidden="true"
+                              />
+                            )}
+                            {isStandard && (
+                              <Snail
+                                size={14}
+                                strokeWidth={2.2}
+                                className={active ? "text-slate-600" : "text-slate-500"}
+                                aria-hidden="true"
+                              />
+                            )}
+                            {m.label}
+                          </button>
+                        );
+                      })}
                     </div>
-
-                  </>
-                ) : (
-                  <p className="text-xs text-slate-500">
-                    Pozice je nastavena administrátorem.
-                  </p>
-                )}
+                    <p className="text-xs text-slate-500">
+                      Zrychlený / běžný režim se používá u životního pojištění.
+                    </p>
+                  </div>
+                </div>
 
                 <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                   <div className="flex items-center justify-between gap-3">

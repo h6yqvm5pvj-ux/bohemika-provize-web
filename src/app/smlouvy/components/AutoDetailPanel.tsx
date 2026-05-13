@@ -205,8 +205,8 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
     .toUpperCase()
     .replace(/\s+/g, "");
   const vehicleDataHref = resolvedVin
-    ? `/pomucky/data-o-vozidle?vin=${encodeURIComponent(resolvedVin)}`
-    : "/pomucky/data-o-vozidle";
+    ? `/pomucky/proklepka-vozidla?vin=${encodeURIComponent(resolvedVin)}`
+    : "/pomucky/proklepka-vozidla";
   const windshieldValuationHref = resolvedVin
     ? `/pomucky/naceneni-celniho-skla?vin=${encodeURIComponent(resolvedVin)}`
     : "/pomucky/naceneni-celniho-skla";
@@ -239,7 +239,7 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
           className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
         >
           <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
-          Data o vozidle
+          Proklepka vozidla
         </Link>
         <Link
           href={windshieldValuationHref}

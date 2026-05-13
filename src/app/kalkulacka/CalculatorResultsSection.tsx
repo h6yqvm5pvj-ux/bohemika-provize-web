@@ -18,6 +18,7 @@ type TipContractConfigSummary = {
 type CalculatorResultsSectionProps = {
   topTools?: ReactNode;
   tipsterModeEnabled: boolean;
+  showSaveActions?: boolean;
   tipsterPercentPanelOpen: boolean;
   tipsterPercent: number;
   tipsterPercentPresets: number[];
@@ -134,6 +135,7 @@ function AnimatedMoneyValue({
 export function CalculatorResultsSection({
   topTools,
   tipsterModeEnabled,
+  showSaveActions = true,
   tipsterPercentPanelOpen,
   tipsterPercent,
   tipsterPercentPresets,
@@ -438,7 +440,7 @@ export function CalculatorResultsSection({
           );
         })()}
       </section>
-      {!tipsterModeEnabled && (
+      {showSaveActions && !tipsterModeEnabled && (
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"

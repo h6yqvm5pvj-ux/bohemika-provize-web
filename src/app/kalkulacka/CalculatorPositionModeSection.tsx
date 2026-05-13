@@ -8,6 +8,8 @@ type CalculatorPositionModeSectionProps = {
   product: Product;
   position: Position;
   allowedPositions: Position[];
+  positionDisabled?: boolean;
+  positionDisabledHint?: string | null;
   timelineHintText: string | null;
   timelineHintWarning: boolean;
   canChooseMode: boolean;
@@ -22,6 +24,8 @@ export function CalculatorPositionModeSection({
   product,
   position,
   allowedPositions,
+  positionDisabled = false,
+  positionDisabledHint = null,
   timelineHintText,
   timelineHintWarning,
   canChooseMode,
@@ -38,9 +42,12 @@ export function CalculatorPositionModeSection({
       <div className="space-y-1">
         <label className="block text-sm font-semibold text-slate-800">Sjednána jako (pozice)</label>
         <select
-          className="w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+          className={`w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+            positionDisabled ? "cursor-not-allowed bg-slate-100 text-slate-500" : ""
+          }`}
           value={position}
           onChange={(event) => onPositionChange(event.target.value as Position)}
+          disabled={positionDisabled}
         >
           {allowedPositions.map((item) => (
             <option key={item} value={item}>
@@ -48,6 +55,7 @@ export function CalculatorPositionModeSection({
             </option>
           ))}
         </select>
+        {positionDisabledHint && <p className="text-[11px] text-slate-500">{positionDisabledHint}</p>}
         {timelineHintText && (
           <p className={`text-[11px] ${timelineHintWarning ? "text-amber-700" : "text-slate-500"}`}>
             {timelineHintText}

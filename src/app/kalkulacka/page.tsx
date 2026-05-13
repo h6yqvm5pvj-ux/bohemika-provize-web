@@ -90,7 +90,6 @@ import {
   ensureManagerChainWithDirectManager,
   hasResolvedTopManagerPosition,
   formatIsoDay,
-  allowedPositionsForUser,
   productInstitutionLogo,
   isAutoProduct,
   shouldShowDuration,
@@ -135,7 +134,6 @@ import { CalculatorResultsSection } from "./CalculatorResultsSection";
 
 const LIFE_PRODUCTS = LIFE_PRODUCTS_LIST;
 const SETTINGS_KEYS = {
-  position: "settings.position",
   mode: "settings.mode",
   tipsterMode: "settings.tipsterMode",
   tipsterPercent: "settings.tipsterPercent",
@@ -164,6 +162,7 @@ const CONTRACTS_CREATE_IDEMPOTENCY_HEADER = "x-idempotency-key";
 const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
 
 type NeonCoefficientView = "current" | "historical";
+type CalculatorViewMode = "addContract" | "commissionOnly";
 
 function formatCoefficientNumber(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
@@ -561,6 +560,8 @@ export default function CalculatorPage() {
     useState<MaxCizinKomplexVariant>("exclusiveStandard");
   const [amountText, setAmountText] = useState<string>("");
   const [tipsterModeEnabled, setTipsterModeEnabled] = useState(false);
+  const [calculatorViewMode, setCalculatorViewMode] =
+    useState<CalculatorViewMode>("addContract");
   const [tipsterPercent, setTipsterPercent] = useState(100);
   const [tipsterPercentPanelOpen, setTipsterPercentPanelOpen] = useState(false);
   const [tipContractModalOpen, setTipContractModalOpen] = useState(false);
@@ -844,13 +845,11 @@ export default function CalculatorPage() {
     ManagerChainSnapshotEntry[]
   >([]);
   const [userCommissionMode, setUserCommissionMode] = useState<CommissionMode | null>(null);
-  const [baseUserPosition, setBaseUserPosition] = useState<Position | null>(null);
   const [positionTimeline, setPositionTimeline] = useState<PositionTimelineEntry[]>([]);
   const [timelineMatchedPosition, setTimelineMatchedPosition] = useState<{
     position: Position;
     validFrom: string;
     validTo: string | null;
-    unavailable: boolean;
   } | null>(null);
   const [showCoefModal, setShowCoefModal] = useState(false);
   const [neonCoefficientView, setNeonCoefficientView] =
@@ -979,9 +978,9 @@ export default function CalculatorPage() {
   }, [product]);
   const showAutoTermsPreview = Boolean(autoTermsPreviewUrl);
   const neonPeriod = neonCoefficientView === "historical" ? "2019" : "2024";
-  const neonPreviewRole: "poradce" | "manazer" = (baseUserPosition ?? position).startsWith(
-    "poradce"
-  )
+  const neonPreviewRole: "poradce" | "manazer" = (
+    timelineMatchedPosition?.position ?? position
+  ).startsWith("poradce")
     ? "poradce"
     : "manazer";
   const neonTermsPreviewUrl =
@@ -1197,9 +1196,6 @@ export default function CalculatorPage() {
     if (!canOverrideOwnerOnSave) return;
 
     if (!selectedSubordinateEmail) {
-      if (baseUserPosition) {
-        setPosition(baseUserPosition);
-      }
       if (userCommissionMode) {
         setMode(userCommissionMode);
       }
@@ -1217,7 +1213,6 @@ export default function CalculatorPage() {
     canOverrideOwnerOnSave,
     selectedSubordinateEmail,
     subordinateOptionsByEmail,
-    baseUserPosition,
     userCommissionMode,
   ]);
 
@@ -1241,14 +1236,6 @@ export default function CalculatorPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    const storedPosition = window.localStorage.getItem(
-      SETTINGS_KEYS.position
-    ) as Position | null;
-    if (storedPosition) {
-      setPosition(storedPosition);
-      setBaseUserPosition(storedPosition);
-    }
 
     const storedMode = window.localStorage.getItem(
       SETTINGS_KEYS.mode
@@ -1283,12 +1270,19 @@ export default function CalculatorPage() {
 
         const parsedPositionTimeline = parsePositionTimeline(data?.positionTimeline);
         setPositionTimeline(parsedPositionTimeline);
-        const pos = (data?.position as Position | undefined) ?? null;
-        if (pos) {
-          setPosition(pos);
-          setBaseUserPosition(pos);
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem(SETTINGS_KEYS.position, pos);
+        if (parsedPositionTimeline.length > 0) {
+          const now = new Date();
+          const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+            2,
+            "0"
+          )}-${String(now.getDate()).padStart(2, "0")}`;
+          const currentTimelineRow =
+            resolvePositionTimelineMatch(todayIso, parsedPositionTimeline) ??
+            parsedPositionTimeline.find((row) => !row.validTo) ??
+            parsedPositionTimeline[parsedPositionTimeline.length - 1] ??
+            null;
+          if (currentTimelineRow) {
+            setPosition(currentTimelineRow.position);
           }
         }
 
@@ -1381,22 +1375,38 @@ export default function CalculatorPage() {
       return;
     }
 
-    const allowed = baseUserPosition
-      ? allowedPositionsForUser(baseUserPosition)
-      : POSITION_ORDER;
-    const unavailable = !allowed.includes(match.position);
-
     setTimelineMatchedPosition({
       position: match.position,
       validFrom: match.validFrom,
       validTo: match.validTo,
-      unavailable,
     });
+    setPosition((prev) => (prev === match.position ? prev : match.position));
+  }, [contractSignedDate, positionTimeline, isSavingForSubordinate]);
 
-    if (!unavailable) {
-      setPosition((prev) => (prev === match.position ? prev : match.position));
+  const validateTimelineBeforeSave = (): boolean => {
+    if (isSavingForSubordinate) return true;
+
+    if (positionTimeline.length === 0) {
+      const msg =
+        "Bez nastavené timeline kariéry nejde smlouvu uložit. Doplň ji prosím v Nastavení.";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return false;
     }
-  }, [contractSignedDate, positionTimeline, baseUserPosition, isSavingForSubordinate]);
+
+    const signedDateIso = contractSignedDate.trim();
+    if (!signedDateIso || !isIsoDay(signedDateIso)) return true;
+
+    const match = resolvePositionTimelineMatch(signedDateIso, positionTimeline);
+    if (match) return true;
+
+    const msg = `Pro datum sjednání ${formatIsoDay(
+      signedDateIso
+    )} nemáš v timeline nastavenou pozici.`;
+    setSaveMessage(msg);
+    setValidationError(msg);
+    return false;
+  };
 
   useEffect(() => {
     const allowed = allowedFrequencies(product);
@@ -2326,8 +2336,20 @@ export default function CalculatorPage() {
     const val = parseNumber(amountText);
     const comfortPayment = parseNumber(comfortPaymentText);
     const comfortTargetAmount = parseNumber(comfortTargetAmountText);
+    const positionForCalc = calculatorViewMode === "commissionOnly"
+      ? position
+      : isSavingForSubordinate
+      ? position
+      : timelineMatchedPosition?.position ??
+        (positionTimeline.length > 0 ? position : null);
 
     if (val <= 0) {
+      setItems([]);
+      setTotal(0);
+      setUnsupported(false);
+      return;
+    }
+    if (!positionForCalc) {
       setItems([]);
       setTotal(0);
       setUnsupported(false);
@@ -2337,7 +2359,7 @@ export default function CalculatorPage() {
     if (product === "neon") {
       const dto = calculateNeon(
         val,
-        position,
+        positionForCalc,
         durationYears,
         mode,
         contractSignedDateForNeon
@@ -2350,7 +2372,7 @@ export default function CalculatorPage() {
 
     if (product === "flexi") {
       const y = normalizedDurationYears("flexi", durationYears);
-      const dto = calculateFlexi(val, position, mode, y);
+      const dto = calculateFlexi(val, positionForCalc, mode, y);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2359,7 +2381,7 @@ export default function CalculatorPage() {
 
     if (product === "maximaMaxEfekt") {
       const y = normalizedDurationYears("maximaMaxEfekt", durationYears);
-      const dto = calculateMaxEfekt(val, y, position, mode);
+      const dto = calculateMaxEfekt(val, y, positionForCalc, mode);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2367,7 +2389,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "maxcizinkomplex") {
-      const dto = calculateMaxCizinKomplex(val, position, maxCizinKomplexVariant);
+      const dto = calculateMaxCizinKomplex(val, positionForCalc, maxCizinKomplexVariant);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2375,7 +2397,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "pillowInjury") {
-      const dto = calculatePillowInjury(val, position, mode);
+      const dto = calculatePillowInjury(val, positionForCalc, mode);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2389,10 +2411,10 @@ export default function CalculatorPage() {
     ) {
       const dto =
         product === "domex"
-          ? calculateDomex(val, frequency, position)
+          ? calculateDomex(val, frequency, positionForCalc)
           : product === "cpphafan"
-          ? calculateCppHafan(val, frequency, position)
-          : calculateKoopMajetekObcan(val, frequency, position);
+          ? calculateCppHafan(val, frequency, positionForCalc)
+          : calculateKoopMajetekObcan(val, frequency, positionForCalc);
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
       );
@@ -2404,7 +2426,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "pillowmajetek") {
-      const dto = calculatePillowMajetek(val, frequency, position);
+      const dto = calculatePillowMajetek(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2412,7 +2434,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "maxdomov") {
-      const dto = calculateMaxdomov(val, frequency, position);
+      const dto = calculateMaxdomov(val, frequency, positionForCalc);
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
       );
@@ -2424,7 +2446,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "allianzmujdomov") {
-      const dto = calculateAllianzMujDomov(val, frequency, position);
+      const dto = calculateAllianzMujDomov(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2432,7 +2454,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "cppAuto") {
-      const dto = calculateCppAuto(val, frequency, position);
+      const dto = calculateCppAuto(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2440,7 +2462,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "slaviaauto") {
-      const dto = calculateSlaviaAuto(val, frequency, position);
+      const dto = calculateSlaviaAuto(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2448,7 +2470,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "cppsimplex") {
-      const dto = calculateCppSimplex(val, frequency, position);
+      const dto = calculateCppSimplex(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2456,7 +2478,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "cppPPRbez") {
-      const dto = calculateCppPPRbez(val, frequency, position);
+      const dto = calculateCppPPRbez(val, frequency, positionForCalc);
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
       );
@@ -2468,7 +2490,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "cppPPRs") {
-      const dto = calculateCppPPRs(val, frequency, position);
+      const dto = calculateCppPPRs(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2476,7 +2498,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "allianzAuto") {
-      const dto = calculateAllianzAuto(val, frequency, position);
+      const dto = calculateAllianzAuto(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2484,7 +2506,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "csobAuto") {
-      const dto = calculateCsobAuto(val, frequency, position);
+      const dto = calculateCsobAuto(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2492,7 +2514,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "uniqaAuto" || product === "uniqaflotila") {
-      const dto = calculateUniqaAuto(val, frequency, position);
+      const dto = calculateUniqaAuto(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2500,7 +2522,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "pillowAuto") {
-      const dto = calculatePillowAuto(val, frequency, position);
+      const dto = calculatePillowAuto(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2508,7 +2530,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "kooperativaAuto") {
-      const dto = calculateKooperativaAuto(val, frequency, position);
+      const dto = calculateKooperativaAuto(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2516,7 +2538,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "zamex") {
-      const dto = calculateZamex(val, frequency, position);
+      const dto = calculateZamex(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2524,7 +2546,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "cppcestovko") {
-      const dto = calculateCppCestovko(val, position);
+      const dto = calculateCppCestovko(val, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2532,7 +2554,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "axacestovko") {
-      const dto = calculateAxaCestovko(val, position);
+      const dto = calculateAxaCestovko(val, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2540,7 +2562,7 @@ export default function CalculatorPage() {
     }
 
     if (product === "koopcestovko") {
-      const dto = calculateKoopCestovko(val, position);
+      const dto = calculateKoopCestovko(val, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -2554,7 +2576,7 @@ export default function CalculatorPage() {
         targetAmount: comfortGradual ? comfortTargetAmount : 0,
         isSavings: comfortGradual,
         isGradualFee: comfortGradual,
-        position,
+        position: positionForCalc,
       });
       setItems(dto.items);
       setTotal(dto.total);
@@ -2573,10 +2595,13 @@ export default function CalculatorPage() {
   }, [
     product,
     position,
+    timelineMatchedPosition,
+    isSavingForSubordinate,
     mode,
     frequency,
     durationYears,
     amountText,
+    contractSignedDateForNeon,
     comfortGradual,
     comfortPaymentText,
     comfortTargetAmountText,
@@ -2626,6 +2651,7 @@ export default function CalculatorPage() {
 
     const missing: string[] = [];
     if (!trimmedContractNumber) missing.push("číslo smlouvy");
+    if (!contractSignedDate.trim()) missing.push("datum sjednání");
     if (newPremiumAmount <= 0) missing.push("částku");
 
     if (missing.length > 0) {
@@ -2635,6 +2661,7 @@ export default function CalculatorPage() {
       setMissingFields((prev) => Array.from(new Set([...prev, ...missing])));
       return;
     }
+    if (!validateTimelineBeforeSave()) return;
 
     try {
       const params = new URLSearchParams({
@@ -2760,6 +2787,7 @@ export default function CalculatorPage() {
       return;
     }
     if (!validateContractDatesBeforeSave()) return;
+    if (!validateTimelineBeforeSave()) return;
 
     const trimmedContractNumber = contractNumber.trim();
     if (endorsementDraft.productKey !== product) {
@@ -2971,6 +2999,7 @@ export default function CalculatorPage() {
       return;
     }
     if (!validateContractDatesBeforeSave()) return;
+    if (!validateTimelineBeforeSave()) return;
 
     // kontrola duplicitního čísla smlouvy
     const trimmedContractNumber = contractNumber.trim();
@@ -3546,6 +3575,14 @@ export default function CalculatorPage() {
   }
 
   const allowed = allowedFrequencies(product);
+  const isAddContractMode = calculatorViewMode === "addContract";
+  const isCommissionOnlyMode = calculatorViewMode === "commissionOnly";
+  const canChoosePositionManually = isSavingForSubordinate || isCommissionOnlyMode;
+  const headerTitle = tipsterModeEnabled
+    ? "Kalkulačka - TIPAŘ"
+    : isAddContractMode
+      ? "Přidat smlouvu"
+      : "Kalkulačka provizí";
   const hasFrequencyPicker = allowed.length > 1;
   const showPolicyEndDateField = product === "cppcestovko";
   const lastSavedContractHref = lastSavedContractRef
@@ -3560,24 +3597,36 @@ export default function CalculatorPage() {
     isLifeProduct &&
     userCommissionMode === "accelerated" &&
     !(product === "neon" && isNeonHistoricalBySignedDate);
-  const allowedPositionOptions = allowedPositionsForUser(baseUserPosition ?? position);
-  const showPositionTimelineHint =
+  const positionLockedToTimeline = !canChoosePositionManually;
+  const allowedPositionOptions = canChoosePositionManually
+    ? POSITION_ORDER
+    : timelineMatchedPosition
+      ? [timelineMatchedPosition.position]
+      : [position];
+  const showPositionTimelineHint = !isSavingForSubordinate;
+  const positionTimelineHintWarning =
     !isSavingForSubordinate &&
-    contractSignedDate.trim().length > 0 &&
-    positionTimeline.length > 0;
-  const positionTimelineHintWarning = Boolean(timelineMatchedPosition?.unavailable);
+    isAddContractMode &&
+    (positionTimeline.length === 0 ||
+      (!isCommissionOnlyMode &&
+        contractSignedDate.trim().length > 0 &&
+        !timelineMatchedPosition));
   const positionTimelineHintText = showPositionTimelineHint
-    ? timelineMatchedPosition
-      ? timelineMatchedPosition.unavailable
-        ? `Timeline pro ${formatIsoDay(contractSignedDate.trim())} ukazuje pozici ${positionLabel(
-            timelineMatchedPosition.position
-          )}, ale není v povoleném rozsahu tvé aktuální role.`
-        : `Pozice byla předvyplněná z timeline: ${positionLabel(
-            timelineMatchedPosition.position
-          )} (${formatIsoDay(timelineMatchedPosition.validFrom)} - ${
-            timelineMatchedPosition.validTo ? formatIsoDay(timelineMatchedPosition.validTo) : "otevřeno"
-          }).`
-      : "Pro zadané datum sjednání nemáš v timeline nastavenou pozici."
+    ? isCommissionOnlyMode
+      ? "V režimu kalkulačky provizí si můžeš pozici zvolit ručně."
+      : positionTimeline.length === 0
+      ? "Nejdřív nastav timeline kariéry v Nastavení. Bez ní nepůjde smlouvu uložit."
+      : !contractSignedDate.trim()
+        ? "Doplň datum sjednání. Pozice se načte automaticky z timeline."
+        : timelineMatchedPosition
+          ? `Pozice byla načtena z timeline: ${positionLabel(
+              timelineMatchedPosition.position
+            )} (${formatIsoDay(timelineMatchedPosition.validFrom)} - ${
+              timelineMatchedPosition.validTo
+                ? formatIsoDay(timelineMatchedPosition.validTo)
+                : "otevřeno"
+            }).`
+          : "Pro zadané datum sjednání nemáš v timeline nastavenou pozici."
     : null;
 
   const computeItemsForPositionAndMode = (
@@ -4141,17 +4190,40 @@ export default function CalculatorPage() {
       <div className="w-full max-w-6xl space-y-6">
         {/* Header */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <SplitTitle
-            text={tipsterModeEnabled ? "Kalkulačka - TIPAŘ" : "Kalkulačka provizí"}
-            className="!text-slate-900"
-          />
+          <SplitTitle text={headerTitle} className="!text-slate-900" />
+          {!tipsterModeEnabled && (
+            <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setCalculatorViewMode("addContract")}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition sm:px-4 sm:text-sm ${
+                  isAddContractMode
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                Přidat smlouvu
+              </button>
+              <button
+                type="button"
+                onClick={() => setCalculatorViewMode("commissionOnly")}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition sm:px-4 sm:text-sm ${
+                  isCommissionOnlyMode
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                Kalkulačka provizí
+              </button>
+            </div>
+          )}
         </header>
 
         <div className="grid gap-6 items-start lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-5 w-full lg:max-w-3xl">
             {/* Produkt + PDF import */}
             <CalculatorProductAndPdfSection
-              canImportFromPdf={canImportFromPdf}
+              canImportFromPdf={canImportFromPdf && isAddContractMode}
               productOpen={productOpen}
               currentProductLabel={currentProduct.label}
               productLogoSrc={productInstitutionLogo(product)}
@@ -4203,6 +4275,8 @@ export default function CalculatorPage() {
                 frequency={frequency}
                 isLifeProduct={isLifeProduct}
                 tipsterModeEnabled={tipsterModeEnabled}
+                showContractActions={isAddContractMode}
+                showManualEntryOption={isCommissionOnlyMode}
                 comfortGradual={comfortGradual}
                 amountText={amountText}
                 comfortPaymentText={comfortPaymentText}
@@ -4220,11 +4294,12 @@ export default function CalculatorPage() {
                 onPrepareEndorsement={() => {
                   void handlePrepareEndorsement();
                 }}
+                onSwitchToManualEntry={() => setCalculatorViewMode("addContract")}
               />
             </section>
 
             <CalculatorContractDetailsSection
-              isVisible={!tipsterModeEnabled}
+              isVisible={!tipsterModeEnabled && isAddContractMode}
               missingFields={missingFields}
               clientName={clientName}
               pdfClientNameLoaded={pdfClientNameLoaded}
@@ -4270,19 +4345,27 @@ export default function CalculatorPage() {
               product={product}
               position={position}
               allowedPositions={allowedPositionOptions}
+              positionDisabled={positionLockedToTimeline}
+              positionDisabledHint={
+                positionLockedToTimeline
+                  ? isCommissionOnlyMode
+                    ? "Pozice se řídí pouze timeline kariéry."
+                    : "Pozice se řídí pouze timeline kariéry podle data sjednání."
+                  : null
+              }
               timelineHintText={positionTimelineHintText}
               timelineHintWarning={positionTimelineHintWarning}
               canChooseMode={canChooseMode}
               mode={mode}
               isNeonHistoricalBySignedDate={isNeonHistoricalBySignedDate}
-              onPositionChange={setPosition}
+              onPositionChange={canChoosePositionManually ? setPosition : () => {}}
               onModeChange={setMode}
             />
           </div>
 
           <CalculatorResultsSection
             topTools={
-              canOverrideOwnerOnSave ? (
+              canOverrideOwnerOnSave && isAddContractMode ? (
                 <div className="rounded-2xl border border-slate-300 bg-white px-3 py-3 shadow-[0_14px_35px_rgba(15,23,42,0.08)]">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -4306,6 +4389,7 @@ export default function CalculatorPage() {
               ) : null
             }
             tipsterModeEnabled={tipsterModeEnabled}
+            showSaveActions={isAddContractMode}
             tipsterPercentPanelOpen={tipsterPercentPanelOpen}
             tipsterPercent={tipsterPercent}
             tipsterPercentPresets={TIPSTER_PERCENT_PRESETS}
@@ -4331,7 +4415,13 @@ export default function CalculatorPage() {
             tipContractTotalNet={tipContractTotalNet}
             total={total}
             saving={saving}
-            canSaveContract={!saving && items.length > 0 && parseNumber(amountText) > 0}
+            canSaveContract={
+              isAddContractMode &&
+              !saving &&
+              items.length > 0 &&
+              parseNumber(amountText) > 0 &&
+              (isSavingForSubordinate || positionTimeline.length > 0)
+            }
             lastSavedContractHref={lastSavedContractHref}
             onOpenCoefModal={() => setShowCoefModal(true)}
             onToggleTipsterPercentPanel={() => setTipsterPercentPanelOpen((prev) => !prev)}

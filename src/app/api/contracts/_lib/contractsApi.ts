@@ -1769,6 +1769,16 @@ const resolvePositionForSignedDate = (
   return timelineMatch?.position ?? profile.position ?? null;
 };
 
+const resolveTimelinePositionForSignedDate = (
+  profile: UserProfileSnapshot,
+  signedDateIso: string | null
+): Position | null => {
+  if (!signedDateIso || !isIsoDay(signedDateIso)) return null;
+  const timeline = parsePositionTimeline(profile.positionTimeline);
+  const timelineMatch = resolvePositionTimelineMatch(signedDateIso, timeline);
+  return timelineMatch?.position ?? null;
+};
+
 const profileFromRaw = (
   docId: string,
   raw: Record<string, unknown> | null
@@ -5187,10 +5197,14 @@ export async function handleContractsCreate(req: NextRequest) {
       : null;
 
     const signedDateIso = toIsoDay(normalizedEntry.payload.contractSignedDate);
-    const trustedPosition = resolvePositionForSignedDate(trustedProfile, signedDateIso);
+    const trustedPosition = resolveTimelinePositionForSignedDate(trustedProfile, signedDateIso);
     if (!trustedPosition) {
       return NextResponse.json(
-        { ok: false, error: "Nelze určit důvěryhodnou pozici uživatele pro výpočet." },
+        {
+          ok: false,
+          error:
+            "Pro datum sjednání není v timeline vlastníka nastavená pozice. Bez timeline není možné smlouvu uložit.",
+        },
         { status: 400 }
       );
     }

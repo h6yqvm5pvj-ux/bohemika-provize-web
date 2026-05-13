@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { Space_Grotesk } from "next/font/google";
 import {
@@ -16,6 +16,7 @@ import {
   Gauge,
   History,
   LineChart,
+  Loader2,
   MapPin,
   Search,
   ShieldCheck,
@@ -37,6 +38,12 @@ const headingFont = Space_Grotesk({
   weight: ["700"],
   display: "swap",
 });
+
+const VEHICLE_LOADING_PHASES = [
+  "Napojení na registry vozidel a kontrola VIN",
+  "Prověřuji historii STK, nájezdu a vlastníků",
+  "Sestavuji finální přehled a odhad ceny",
+] as const;
 
 type VehicleData = Record<string, unknown>;
 
@@ -283,7 +290,6 @@ const OWNER_PATTERNS = [
   "subjekt",
 ];
 const MILEAGE_PATTERNS = ["najet", "najezd", "tachometr", "kilometr", "km"];
-const DEFECT_PATTERNS = ["zavad", "vada", "porucha", "nezpusobil"];
 const DATE_PATTERNS = ["datum", "date", "cas", "time", "od", "do", "rok"];
 
 function hasValue(value: unknown): boolean {
@@ -910,24 +916,12 @@ function confidenceLabel(score: number): string {
   return "Nižší";
 }
 
-function healthLabel(score: number): string {
-  if (score >= 88) return "Skvělý";
-  if (score >= 72) return "Přijatelný";
-  if (score >= 58) return "Průměrný";
-  return "Rizikový";
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function inferDefectCount(defectSignals: PatternRow[]): number {
-  if (!defectSignals.length) return 0;
-  const negatives = defectSignals.filter((row) => {
-    const text = normalizeText(row.valueLabel);
-    return !text.includes("bez") && !text.includes("zpusobile");
-  });
-  return negatives.length;
+function revealStyle(delayMs: number): CSSProperties {
+  return { animationDelay: `${delayMs}ms` };
 }
 
 function findRowString(row: Record<string, unknown>, keyPatterns: string[]): string | null {
@@ -1162,36 +1156,6 @@ function confidenceToneClass(value: string): string {
   return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
-function ScoreRing({ score }: { score: number }) {
-  const radius = 64;
-  const circ = 2 * Math.PI * radius;
-  const pct = clamp(score, 0, 100);
-  const offset = circ - (pct / 100) * circ;
-
-  return (
-    <div className="relative h-40 w-40">
-      <svg viewBox="0 0 160 160" className="h-40 w-40 -rotate-90">
-        <circle cx="80" cy="80" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="12" />
-        <circle
-          cx="80"
-          cy="80"
-          r={radius}
-          fill="none"
-          stroke="#d0822b"
-          strokeWidth="12"
-          strokeLinecap="round"
-          strokeDasharray={circ}
-          strokeDashoffset={offset}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <div className="text-6xl font-semibold leading-none text-amber-700">{Math.round(score)}</div>
-        <div className="mt-1 text-sm font-semibold text-slate-500">/ 100</div>
-      </div>
-    </div>
-  );
-}
-
 function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "green" | "amber" | "rose" }) {
   const styles: Record<typeof tone, string> = {
     neutral: "border-slate-200 bg-slate-100 text-slate-700",
@@ -1258,30 +1222,80 @@ function PriceBand({
       : clamp(((estimate - marketMin) / spread) * 100, 0, 100);
   const lowPos = clamp(((rangeLow - marketMin) / spread) * 100, 0, 100);
   const highPos = clamp(((rangeHigh - marketMin) / spread) * 100, 0, 100);
+  const fairRangeStart = Math.min(lowPos, highPos);
+  const fairRangeEnd = Math.max(lowPos, highPos);
   const underPct = clamp(segmentUnderPct ?? 42, 0, 100);
   const fairPct = clamp(segmentFairPct ?? 16, 0, Math.max(0, 100 - underPct));
   const overPct = clamp(segmentOverPct ?? 42, 0, Math.max(0, 100 - underPct - fairPct));
+  const fairEnd = clamp(underPct + fairPct, 0, 100);
   const overLeft = clamp(underPct + fairPct, 0, 100);
+  const estimateLabelPos = clamp(estimatePos, 10, 90);
+  const fairRangeWidth = Math.max(2, fairRangeEnd - fairRangeStart);
+  const segmentTotal = Math.max(1, underPct + fairPct + overPct);
+  const underShare = Math.round((underPct / segmentTotal) * 100);
+  const fairShare = Math.round((fairPct / segmentTotal) * 100);
+  const overShare = Math.max(0, 100 - underShare - fairShare);
+  const zone = estimatePos < underPct ? "PODHODNOCENÉ PÁSMO" : estimatePos <= fairEnd ? "FÉROVÉ PÁSMO" : "PŘEDRAŽENÉ PÁSMO";
+  const zoneClass =
+    estimatePos < underPct
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : estimatePos <= fairEnd
+        ? "border-blue-200 bg-blue-50 text-blue-700"
+        : "border-rose-200 bg-rose-50 text-rose-700";
 
   return (
-    <div className="space-y-3">
-      <div className="text-sm font-semibold text-slate-700">Rozpětí srovnatelných inzerátů</div>
-      <div className="relative h-2.5 overflow-hidden rounded-full bg-slate-100">
-        <div className="absolute inset-y-0 left-0 bg-emerald-400" style={{ width: `${underPct}%` }} />
-        <div className="absolute inset-y-0 bg-blue-500" style={{ left: `${underPct}%`, width: `${fairPct}%` }} />
-        <div className="absolute inset-y-0 bg-rose-500" style={{ left: `${overLeft}%`, width: `${overPct}%` }} />
-        <div className="absolute inset-y-0 border-l-2 border-slate-900" style={{ left: `${estimatePos}%` }} />
-        <div className="absolute inset-y-0 bg-blue-600/20" style={{ left: `${lowPos}%`, width: `${Math.max(2, highPos - lowPos)}%` }} />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm font-semibold text-slate-700">Rozpětí srovnatelných inzerátů</div>
+        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${zoneClass}`}>
+          {zone}
+        </span>
       </div>
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>{formatCurrency(marketMin)}</span>
-        <span className="font-semibold text-slate-700">Náš odhad {formatCurrency(estimate)}</span>
-        <span>{formatCurrency(marketMax)}</span>
+
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-4 sm:px-4">
+        <div className="relative pb-8 pt-2">
+          <div className="relative h-4 overflow-hidden rounded-full bg-slate-200">
+            <div className="absolute inset-y-0 left-0 bg-emerald-500" style={{ width: `${underPct}%` }} />
+            <div className="absolute inset-y-0 bg-blue-500" style={{ left: `${underPct}%`, width: `${fairPct}%` }} />
+            <div className="absolute inset-y-0 bg-rose-500" style={{ left: `${overLeft}%`, width: `${overPct}%` }} />
+            <div
+              className="absolute inset-y-0 rounded-full border border-blue-600/45 bg-blue-700/15"
+              style={{ left: `${fairRangeStart}%`, width: `${fairRangeWidth}%` }}
+            />
+          </div>
+
+          <div className="pointer-events-none absolute -top-1 bottom-0 border-l-2 border-slate-900/90" style={{ left: `${estimatePos}%` }} />
+          <div className="pointer-events-none absolute top-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-white bg-slate-900 shadow-[0_0_0_1px_rgba(15,23,42,0.7)]" style={{ left: `${estimatePos}%` }} />
+
+          <div className="absolute -top-8 -translate-x-1/2" style={{ left: `${estimateLabelPos}%` }}>
+            <span className="inline-flex whitespace-nowrap rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm">
+              Náš odhad {formatCurrency(estimate)}
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-1 grid grid-cols-[auto_1fr_auto] items-center gap-2 text-xs text-slate-500 sm:text-sm">
+          <span className="font-medium">{formatCurrency(marketMin)}</span>
+          <span className="text-center font-semibold text-slate-700">
+            Férové rozpětí {formatCurrency(rangeLow)} - {formatCurrency(rangeHigh)}
+          </span>
+          <span className="font-medium">{formatCurrency(marketMax)}</span>
+        </div>
       </div>
-      <div className="flex flex-wrap gap-4 text-xs font-semibold">
-        <span className="inline-flex items-center gap-1 text-emerald-700"><Dot className="h-5 w-5" />PODHODNOCENÉ</span>
-        <span className="inline-flex items-center gap-1 text-blue-700"><Dot className="h-5 w-5" />FÉROVÉ</span>
-        <span className="inline-flex items-center gap-1 text-rose-700"><Dot className="h-5 w-5" />PŘEDRAŽENÉ</span>
+
+      <div className="flex flex-wrap gap-3 text-xs font-semibold">
+        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">
+          <Dot className="h-4 w-4" />
+          PODHODNOCENÉ {underShare} %
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-blue-700">
+          <Dot className="h-4 w-4" />
+          FÉROVÉ {fairShare} %
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-rose-700">
+          <Dot className="h-4 w-4" />
+          PŘEDRAŽENÉ {overShare} %
+        </span>
       </div>
     </div>
   );
@@ -1643,6 +1657,80 @@ function TechnicalSection({ section }: { section: SpecSection }) {
   );
 }
 
+function VehicleAuditLoadingState({ phaseIndex }: { phaseIndex: number }) {
+  const safePhaseIndex = clamp(phaseIndex, 0, VEHICLE_LOADING_PHASES.length - 1);
+  const progressPct = ((safePhaseIndex + 1) / VEHICLE_LOADING_PHASES.length) * 100;
+
+  return (
+    <section className="relative overflow-hidden rounded-3xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/70 via-white to-sky-50/60 p-5 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+      <div className="pointer-events-none absolute -left-20 top-8 h-36 w-36 rounded-full bg-emerald-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute -right-20 bottom-0 h-36 w-36 rounded-full bg-sky-200/40 blur-3xl" />
+
+      <div className="relative">
+        <div className="flex items-start gap-4">
+          <div className="relative mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-200 bg-white shadow-sm">
+            <span className="absolute inset-0 rounded-2xl border border-emerald-300/70 motion-safe:animate-ping" />
+            <CarFront className="h-5 w-5 text-emerald-700 motion-safe:animate-bounce" />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+              <Loader2 className="h-4 w-4 text-emerald-700 motion-safe:animate-spin" />
+              Načítám data o vozidle
+            </div>
+            <p className="mt-1 text-sm text-slate-600">{VEHICLE_LOADING_PHASES[safePhaseIndex]}</p>
+
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-emerald-100/90">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-sky-500 transition-[width] duration-500 ease-out"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          {VEHICLE_LOADING_PHASES.map((phase, idx) => {
+            const isActive = idx === safePhaseIndex;
+            const isDone = idx < safePhaseIndex;
+            return (
+              <div
+                key={phase}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
+                  isActive
+                    ? "border-emerald-300 bg-white text-emerald-900 shadow-sm"
+                    : isDone
+                      ? "border-emerald-200 bg-emerald-50/80 text-emerald-800"
+                      : "border-slate-200 bg-white/80 text-slate-500"
+                }`}
+              >
+                <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${isActive || isDone ? "bg-emerald-500" : "bg-slate-300"}`}>
+                  {isActive && <span className="absolute inset-0 rounded-full bg-emerald-400 motion-safe:animate-ping" />}
+                </span>
+                <span className="truncate font-medium">{phase}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-5 space-y-3">
+          <div className="h-7 w-2/5 rounded-xl bg-slate-200/90 motion-safe:animate-pulse" />
+          <div className="h-5 w-3/5 rounded-xl bg-slate-200/90 motion-safe:animate-pulse" />
+          <div className="grid gap-3 md:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, idx) => (
+              <div
+                key={`vehicle-loading-tile-${idx}`}
+                className="h-24 rounded-2xl border border-white/80 bg-white/70 shadow-sm motion-safe:animate-pulse"
+                style={{ animationDelay: `${idx * 120}ms` }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function VehicleAuditPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [vin, setVin] = useState("");
@@ -1655,12 +1743,15 @@ export default function VehicleAuditPage() {
   const [proklepniReport, setProklepniReport] = useState<ProklepniReportPayload | null>(null);
   const [ownerFallbackRecords, setOwnerFallbackRecords] = useState<OwnerRecord[] | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedId, setCopiedId] = useState<"vin" | "orv" | null>(null);
   const [searchActivated, setSearchActivated] = useState(false);
   const [stkExpanded, setStkExpanded] = useState(false);
   const [ownersExpanded, setOwnersExpanded] = useState(false);
+  const [loadingPhaseIndex, setLoadingPhaseIndex] = useState(0);
 
   const autoLookupVinRef = useRef<string | null>(null);
   const compactVinInputRef = useRef<HTMLInputElement | null>(null);
+  const resultScrollTargetRef = useRef<HTMLDivElement | null>(null);
 
   const [sautoLoading, setSautoLoading] = useState(false);
   const [sautoError, setSautoError] = useState<string | null>(null);
@@ -1682,6 +1773,15 @@ export default function VehicleAuditPage() {
     if (!vinFromQuery) return;
     setVin(vinFromQuery);
   }, [vinFromQuery]);
+
+  useEffect(() => {
+    if (!loading) return;
+    setLoadingPhaseIndex(0);
+    const interval = window.setInterval(() => {
+      setLoadingPhaseIndex((current) => (current + 1) % VEHICLE_LOADING_PHASES.length);
+    }, 900);
+    return () => window.clearInterval(interval);
+  }, [loading]);
 
   const data = (result?.payload?.Data ?? null) as VehicleData | null;
   const displayedVin = safeStr(result?.vin ?? vin);
@@ -1780,7 +1880,6 @@ export default function VehicleAuditPage() {
 
   const stkSignals = useMemo(() => collectPatternRows(data, STK_PATTERNS), [data]);
   const mileageSignals = useMemo(() => collectPatternRows(data, MILEAGE_PATTERNS), [data]);
-  const defectSignals = useMemo(() => collectPatternRows(data, DEFECT_PATTERNS), [data]);
 
   const stkObjects = useMemo(() => collectObjectRows(data, STK_PATTERNS), [data]);
   const ownerObjects = useMemo(() => {
@@ -1845,29 +1944,6 @@ export default function VehicleAuditPage() {
       }),
     [mileageKm, summary]
   );
-
-  const healthScore = useMemo(() => {
-    const scoreFromProklepni = toNumber(proklepniHero?.score);
-    if (scoreFromProklepni != null) return Math.round(clamp(scoreFromProklepni, 0, 100));
-
-    let score = 78;
-    if (summary?.ownerCount != null) score -= Math.max(0, (summary.ownerCount - 2) * 2.5);
-    if (stkState === "green") score += 9;
-    if (stkState === "amber") score += 2;
-    if (stkState === "rose") score -= 10;
-    if (mileageKm != null && estimate.expectedMileage > 0) {
-      const ratio = mileageKm / estimate.expectedMileage;
-      if (ratio < 0.8) score += 7;
-      else if (ratio < 1.05) score += 3;
-      else if (ratio > 1.35) score -= 8;
-      else if (ratio > 1.15) score -= 4;
-    }
-    score -= inferDefectCount(defectSignals) * 6;
-    if (summary?.fuel.toLowerCase().includes("elekt")) score += 2;
-    return Math.round(clamp(score, 40, 96));
-  }, [defectSignals, estimate.expectedMileage, mileageKm, proklepniHero?.score, stkState, summary?.fuel, summary?.ownerCount]);
-
-  const healthLabelValue = safeStr(proklepniHero?.label) !== "—" ? safeStr(proklepniHero?.label) : healthLabel(healthScore);
 
   const ownersCountNum = toNumber(proklepniSummary?.ownerCount) ?? toNumber(summary?.ownerCountLabel);
   const ownerCountLabel = ownersCountNum != null ? formatNumber(ownersCountNum) : safeStr(summary?.ownerCountLabel);
@@ -2488,6 +2564,17 @@ export default function VehicleAuditPage() {
     return () => window.cancelAnimationFrame(frame);
   }, [searchActivated]);
 
+  useEffect(() => {
+    if (!searchActivated || loading || typeof window === "undefined") return;
+    const frame = window.requestAnimationFrame(() => {
+      resultScrollTargetRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading, searchActivated]);
+
   const handleSautoSearch = useCallback(async () => {
     setSautoPanelActivated(true);
 
@@ -2547,7 +2634,6 @@ export default function VehicleAuditPage() {
       `STK do: ${summary?.stkDoLabel ?? "—"}`,
       `Počet vlastníků: ${ownerCountLabel}`,
       `Nájezd: ${formatKm(mileageKm)}`,
-      `Skóre: ${healthScore}/100 (${healthLabelValue})`,
       `Doporučená cena: ${formatCurrency(valuationRecommended)}`,
       `Rozpětí: ${formatCurrency(valuationRangeLow)} - ${formatCurrency(valuationRangeHigh)}`,
       ...(marketRecommendation
@@ -2568,23 +2654,39 @@ export default function VehicleAuditPage() {
     }
   };
 
+  const handleCopyIdentifier = async (
+    id: "vin" | "orv",
+    value: string
+  ) => {
+    if (!value || value === "—") return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedId(id);
+      window.setTimeout(() => {
+        setCopiedId((current) => (current === id ? null : current));
+      }, 1200);
+    } catch {
+      setCopiedId(null);
+    }
+  };
+
   return (
     <AppLayout active="tools">
-      <div className="mx-auto w-full max-w-6xl space-y-5 pb-10 md:[zoom:0.92] xl:[zoom:0.86]">
-        <section className="px-2 py-10 sm:px-4 sm:py-14">
+      <div className="vehicle-audit-shell mx-auto w-full max-w-6xl space-y-5 pb-10 md:[zoom:0.92] xl:[zoom:0.86]">
+        <section className="vehicle-reveal px-2 py-10 sm:px-4 sm:py-14" style={revealStyle(20)}>
           <div className="mx-auto max-w-4xl">
             <div className="text-center">
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-emerald-700">
+              <div className="vehicle-float inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-emerald-700">
                 <ShieldCheck className="h-4 w-4" />
                 Oficiální data z registru ČR
               </div>
-              <h1 className={`${headingFont.className} mx-auto mt-5 max-w-4xl text-5xl font-bold leading-[1.02] tracking-tight text-slate-900 sm:text-6xl md:text-7xl`}>
+              <h1 className={`${headingFont.className} vehicle-hero-title mx-auto mt-5 max-w-4xl text-5xl font-bold leading-[1.02] tracking-tight text-slate-900 sm:text-6xl md:text-7xl`}>
                 Prověř historii vozu
                 <span className="block text-sky-600">během vteřiny</span>
               </h1>
             </div>
 
-            <div className="mx-auto mt-8 w-full max-w-3xl rounded-[30px] border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/60">
+            <div className="vehicle-glow mx-auto mt-8 w-full max-w-3xl rounded-[30px] border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/60">
               <div className="flex flex-col gap-2 md:flex-row md:items-center">
                 <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2">
                   <Search className="h-8 w-8 text-slate-400" />
@@ -2604,11 +2706,11 @@ export default function VehicleAuditPage() {
                   type="button"
                   onClick={() => void handleSearch()}
                   disabled={loading || !canSearch}
-                  className="group inline-flex h-16 items-center justify-center gap-3 rounded-[22px] border border-emerald-900/30 bg-[linear-gradient(135deg,#0f766e_0%,#059669_48%,#22c55e_100%)] px-8 text-lg font-semibold tracking-tight text-white shadow-[0_16px_36px_rgba(5,150,105,0.34),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-200 sm:text-2xl disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                  className="vehicle-cta group inline-flex h-16 items-center justify-center gap-3 rounded-[22px] border border-emerald-900/30 bg-[linear-gradient(135deg,#0f766e_0%,#059669_48%,#22c55e_100%)] px-8 text-lg font-semibold tracking-tight text-white shadow-[0_16px_36px_rgba(5,150,105,0.34),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-200 sm:text-2xl disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                 >
                   {loading ? "Načítám..." : "Proklepnout"}
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
-                    <ChevronRight className="h-5 w-5" />
+                    {loading ? <Loader2 className="h-5 w-5 motion-safe:animate-spin" /> : <ChevronRight className="h-5 w-5" />}
                   </span>
                 </button>
               </div>
@@ -2650,23 +2752,17 @@ export default function VehicleAuditPage() {
           </div>
         </section>
 
+        <div ref={resultScrollTargetRef} className="scroll-mt-28" />
+
         {searchActivated && loading && (
-          <section className="space-y-3 rounded-3xl border border-slate-200 bg-white p-5 animate-pulse">
-            <div className="h-8 w-2/5 rounded-lg bg-slate-100" />
-            <div className="h-5 w-3/5 rounded-lg bg-slate-100" />
-            <div className="grid gap-3 md:grid-cols-5">
-              <div className="h-24 rounded-2xl bg-slate-100" />
-              <div className="h-24 rounded-2xl bg-slate-100" />
-              <div className="h-24 rounded-2xl bg-slate-100" />
-              <div className="h-24 rounded-2xl bg-slate-100" />
-              <div className="h-24 rounded-2xl bg-slate-100" />
-            </div>
-          </section>
+          <div className="vehicle-reveal" style={revealStyle(60)}>
+            <VehicleAuditLoadingState phaseIndex={loadingPhaseIndex} />
+          </div>
         )}
 
         {searchActivated && !loading && summary && (
           <>
-            <section className="rounded-3xl border border-slate-200 bg-white p-5">
+            <section className="vehicle-reveal rounded-3xl border border-slate-200 bg-white p-5" style={revealStyle(40)}>
               <div className="flex flex-wrap items-center gap-2">
                 <Pill tone={statusTone(summary.status)}>{summary.status}</Pill>
                 <Pill>{safeStr(firstOf(data, ["Kategorie", "KategorieVozidla"]))}</Pill>
@@ -2685,37 +2781,53 @@ export default function VehicleAuditPage() {
               </div>
 
               <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <div className="grid gap-4 lg:grid-cols-[190px_1fr]">
-                  <ScoreRing score={healthScore} />
-
-                  <div className="space-y-3">
-                    <div className="grid gap-2 text-sm sm:grid-cols-4">
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rok</div>
-                        <div className="text-xl font-semibold text-slate-900">{formatNumber(summary.year)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Palivo</div>
-                        <div className="text-xl font-semibold text-slate-900">{summary.fuel}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Výkon</div>
-                        <div className="text-xl font-semibold text-slate-900">{formatNumber(summary.powerKw)} kW</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Barva</div>
-                        <div className="text-xl font-semibold text-slate-900">{summary.color}</div>
-                      </div>
+                <div className="space-y-3">
+                  <div className="grid gap-2 text-sm sm:grid-cols-4">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rok</div>
+                      <div className="text-xl font-semibold text-slate-900">{formatNumber(summary.year)}</div>
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-base font-semibold text-slate-500">
-                      <span>
-                        VIN <span className="text-slate-700">{displayedVin}</span>
-                      </span>
-                      <span>
-                        ORV: <span className="text-slate-700">{orvLabel}</span>
-                      </span>
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Palivo</div>
+                      <div className="text-xl font-semibold text-slate-900">{summary.fuel}</div>
                     </div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Výkon</div>
+                      <div className="text-xl font-semibold text-slate-900">{formatNumber(summary.powerKw)} kW</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Barva</div>
+                      <div className="text-xl font-semibold text-slate-900">{summary.color}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyIdentifier("vin", displayedVin)}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+                    >
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">VIN</span>
+                      <span className="font-semibold text-slate-900">{displayedVin}</span>
+                      <ClipboardCopy className="h-3.5 w-3.5 text-slate-500" />
+                      <span className="text-[11px] text-slate-500">
+                        {copiedId === "vin" ? "Zkopírováno" : "Kopírovat"}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyIdentifier("orv", orvLabel)}
+                      disabled={orvLabel === "—"}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">ORV</span>
+                      <span className="font-semibold text-slate-900">{orvLabel}</span>
+                      <ClipboardCopy className="h-3.5 w-3.5 text-slate-500" />
+                      <span className="text-[11px] text-slate-500">
+                        {copiedId === "orv" ? "Zkopírováno" : "Kopírovat"}
+                      </span>
+                    </button>
                   </div>
                 </div>
 
@@ -2773,7 +2885,7 @@ export default function VehicleAuditPage() {
               {sautoError && <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">{sautoError}</p>}
             </section>
 
-            <section className="rounded-3xl border border-slate-200 bg-white p-5">
+            <section className="vehicle-reveal rounded-3xl border border-slate-200 bg-white p-5" style={revealStyle(120)}>
               <h3 className="flex items-center gap-2 text-xl font-semibold text-slate-900 sm:text-2xl">
                 <LineChart className="h-5 w-5 text-slate-500" />
                 Odhadovaná tržní cena
@@ -2844,14 +2956,18 @@ export default function VehicleAuditPage() {
               )}
             </section>
 
-            <MileagePriceBars
-              rows={mileagePriceRows}
-              highlightedMileageKm={valuationHighlightedMileageKm ?? valuationReferenceMileage}
-            />
+            <div className="vehicle-reveal" style={revealStyle(200)}>
+              <MileagePriceBars
+                rows={mileagePriceRows}
+                highlightedMileageKm={valuationHighlightedMileageKm ?? valuationReferenceMileage}
+              />
+            </div>
 
-            <MileageChart points={mileageHistory} />
+            <div className="vehicle-reveal" style={revealStyle(260)}>
+              <MileageChart points={mileageHistory} />
+            </div>
 
-            <section className="space-y-3">
+            <section className="vehicle-reveal space-y-3" style={revealStyle(320)}>
               <CollapsibleSectionHeader
                 icon={<CalendarClock className="h-5 w-5 text-slate-500" />}
                 title="STK kontroly"
@@ -2870,7 +2986,7 @@ export default function VehicleAuditPage() {
               )}
             </section>
 
-            <section className="space-y-3">
+            <section className="vehicle-reveal space-y-3" style={revealStyle(380)}>
               <CollapsibleSectionHeader
                 icon={<Users className="h-5 w-5 text-slate-500" />}
                 title="Vlastníci"
@@ -2898,7 +3014,7 @@ export default function VehicleAuditPage() {
               )}
             </section>
 
-            <section className="space-y-3">
+            <section className="vehicle-reveal space-y-3" style={revealStyle(440)}>
               <h3 className="flex items-center gap-2 text-xl font-semibold text-slate-900 sm:text-2xl">
                 <CarFront className="h-5 w-5 text-slate-500" />
                 Technické parametry
@@ -2910,7 +3026,7 @@ export default function VehicleAuditPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+            <section className="vehicle-reveal rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3" style={revealStyle(500)}>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-emerald-600" />
@@ -2924,11 +3040,148 @@ export default function VehicleAuditPage() {
         )}
 
         {searchActivated && !loading && !summary && (
-          <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600">
+          <section className="vehicle-reveal rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600" style={revealStyle(60)}>
             Zatím nejsou načtená validní data z registru.
           </section>
         )}
       </div>
+      <style jsx global>{`
+        @keyframes vehicle-bg-pan {
+          0% {
+            transform: translate3d(-10%, -12%, 0) scale(1);
+            opacity: 0.52;
+          }
+          50% {
+            transform: translate3d(8%, 4%, 0) scale(1.06);
+            opacity: 0.7;
+          }
+          100% {
+            transform: translate3d(16%, -10%, 0) scale(1.03);
+            opacity: 0.5;
+          }
+        }
+
+        @keyframes vehicle-reveal-up {
+          0% {
+            opacity: 0;
+            transform: translateY(26px) scale(0.985);
+            filter: blur(6px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: blur(0);
+          }
+        }
+
+        @keyframes vehicle-float-y {
+          0%,
+          100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-5px);
+          }
+        }
+
+        @keyframes vehicle-glow-pulse {
+          0%,
+          100% {
+            box-shadow: 0 12px 28px rgba(2, 132, 199, 0.08), 0 0 0 1px rgba(16, 185, 129, 0.08);
+          }
+          50% {
+            box-shadow: 0 16px 34px rgba(2, 132, 199, 0.16), 0 0 0 1px rgba(16, 185, 129, 0.18);
+          }
+        }
+
+        @keyframes vehicle-cta-shimmer {
+          0% {
+            transform: translateX(-130%);
+          }
+          50%,
+          100% {
+            transform: translateX(130%);
+          }
+        }
+
+        .vehicle-audit-shell {
+          position: relative;
+          isolation: isolate;
+        }
+
+        .vehicle-audit-shell::before {
+          content: "";
+          position: absolute;
+          inset: 32px 16px auto 16px;
+          height: 300px;
+          z-index: -1;
+          border-radius: 44px;
+          background: radial-gradient(50% 60% at 18% 44%, rgba(16, 185, 129, 0.16), transparent 74%),
+            radial-gradient(58% 62% at 82% 36%, rgba(14, 165, 233, 0.18), transparent 78%);
+          filter: blur(18px);
+          animation: vehicle-bg-pan 14s ease-in-out infinite alternate;
+        }
+
+        .vehicle-reveal {
+          opacity: 0;
+          animation: vehicle-reveal-up 760ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .vehicle-float {
+          animation: vehicle-float-y 4.6s ease-in-out infinite;
+        }
+
+        .vehicle-glow {
+          animation: vehicle-glow-pulse 4.2s ease-in-out infinite;
+        }
+
+        .vehicle-hero-title {
+          text-wrap: balance;
+        }
+
+        .vehicle-cta {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .vehicle-cta::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(110deg, transparent 34%, rgba(255, 255, 255, 0.35) 50%, transparent 66%);
+          transform: translateX(-130%);
+          animation: vehicle-cta-shimmer 3.3s ease-in-out infinite;
+          pointer-events: none;
+        }
+
+        .vehicle-cta:disabled::after {
+          animation: none;
+        }
+
+        :root[data-motion="off"] .vehicle-audit-shell::before,
+        :root[data-motion="off"] .vehicle-reveal,
+        :root[data-motion="off"] .vehicle-float,
+        :root[data-motion="off"] .vehicle-glow,
+        :root[data-motion="off"] .vehicle-cta::after {
+          animation: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+          filter: none !important;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .vehicle-audit-shell::before,
+          .vehicle-reveal,
+          .vehicle-float,
+          .vehicle-glow,
+          .vehicle-cta::after {
+            animation: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+            filter: none !important;
+          }
+        }
+      `}</style>
     </AppLayout>
   );
 }

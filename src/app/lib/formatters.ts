@@ -94,15 +94,20 @@ export function formatMoney(
 ): string {
   const currencyLabel = options?.currencyLabel ?? "Kč";
   const emptyValueLabel = options?.emptyValueLabel ?? `0 ${currencyLabel}`;
+  const locale = options?.locale ?? "cs-CZ";
   if (value == null || !Number.isFinite(value)) return emptyValueLabel;
   if (options?.nonPositiveAsEmpty && value <= 0) return emptyValueLabel;
 
-  return (
-    value.toLocaleString(options?.locale ?? "cs-CZ", {
-      minimumFractionDigits: options?.minFractionDigits,
-      maximumFractionDigits: options?.maxFractionDigits ?? 0,
-    }) + ` ${currencyLabel}`
-  );
+  const formatted = value.toLocaleString(locale, {
+    minimumFractionDigits: options?.minFractionDigits,
+    maximumFractionDigits: options?.maxFractionDigits ?? 0,
+  });
+
+  const withDotThousands = locale.toLowerCase().startsWith("cs")
+    ? formatted.replace(/[\u00a0\u202f\s]+/g, ".")
+    : formatted;
+
+  return `${withDotThousands} ${currencyLabel}`;
 }
 
 export function positionLabel(

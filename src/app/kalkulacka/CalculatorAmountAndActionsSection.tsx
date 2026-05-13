@@ -11,6 +11,8 @@ type CalculatorAmountAndActionsSectionProps = {
   frequency: PaymentFrequency;
   isLifeProduct: boolean;
   tipsterModeEnabled: boolean;
+  showContractActions?: boolean;
+  showManualEntryOption?: boolean;
   comfortGradual: boolean;
   amountText: string;
   comfortPaymentText: string;
@@ -26,6 +28,7 @@ type CalculatorAmountAndActionsSectionProps = {
   onOpenTipContractModal: () => void;
   onToggleRefreshOriginal: () => void;
   onPrepareEndorsement: () => void;
+  onSwitchToManualEntry?: () => void;
 };
 
 export function CalculatorAmountAndActionsSection({
@@ -34,6 +37,8 @@ export function CalculatorAmountAndActionsSection({
   frequency,
   isLifeProduct,
   tipsterModeEnabled,
+  showContractActions = true,
+  showManualEntryOption = false,
   comfortGradual,
   amountText,
   comfortPaymentText,
@@ -49,6 +54,7 @@ export function CalculatorAmountAndActionsSection({
   onOpenTipContractModal,
   onToggleRefreshOriginal,
   onPrepareEndorsement,
+  onSwitchToManualEntry,
 }: CalculatorAmountAndActionsSectionProps) {
   const content = (
     <>
@@ -136,7 +142,7 @@ export function CalculatorAmountAndActionsSection({
         </div>
       )}
 
-      {!tipsterModeEnabled && (
+      {!tipsterModeEnabled && showContractActions && (
         <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -181,6 +187,23 @@ export function CalculatorAmountAndActionsSection({
               Při uložení se nová smlouva označí jako Refresh.
             </p>
           )}
+        </div>
+      )}
+
+      {!tipsterModeEnabled && showManualEntryOption && (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-slate-600">
+              Pro uložení smlouvy přepni na režim Přidat smlouvu.
+            </p>
+            <button
+              type="button"
+              onClick={onSwitchToManualEntry}
+              className="ui-btn-secondary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm"
+            >
+              Manuálně zadat smlouvu
+            </button>
+          </div>
         </div>
       )}
       </div>

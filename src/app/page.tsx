@@ -149,14 +149,34 @@ const QUICK_ACTION_OPTIONS: QuickAction[] = [
   { key: "zlato", title: "Zlato", href: "/pomucky/zlato", category: "Investice" },
   { key: "katastr", title: "Katastr nemovitostí", href: "/cuzk", category: "Pojištění majetku" },
   { key: "proklepka-vozidla", title: "Proklepka vozidla", href: "/pomucky/proklepka-vozidla", category: "Pojištění vozidel" },
-  { key: "data-o-vozidle", title: "Data o vozidle", href: "/pomucky/data-o-vozidle", category: "Pojištění vozidel" },
-  { key: "naceneni-vozidla", title: "Nacenění vozidla", href: "/pomucky/naceneni-vozidla", category: "Pojištění vozidel" },
   { key: "naceneni-celniho-skla", title: "Nacenění čelního skla", href: "/pomucky/naceneni-celniho-skla", category: "Pojištění vozidel" },
   { key: "projekce-vykonu", title: "Projekce výkonu", href: "/pomucky/projekce-vykonu", category: "Finance" },
   { key: "pracovni-neschopenka", title: "Pracovní neschopnost", href: "/pomucky/pracovni-neschopenka", category: "Životní pojištění" },
   { key: "invalidita", title: "Invalidita", href: "/pomucky/invalidita", category: "Životní pojištění" },
   { key: "srovnavac-zivotniho-pojisteni", title: "Srovnavač životního pojištění", href: "/pomucky/srovnavac-zivotniho-pojisteni", category: "Životní pojištění" },
 ];
+const QUICK_ACTION_OPTIONS_BY_KEY = new Map<string, QuickAction>(
+  QUICK_ACTION_OPTIONS.map((option) => [option.key, option])
+);
+
+const normalizeQuickActions = (
+  actions: QuickAction[] | null | undefined
+): QuickAction[] => {
+  if (!Array.isArray(actions)) return QUICK_ACTIONS_DEFAULT;
+  const seen = new Set<string>();
+  const normalized: QuickAction[] = [];
+
+  for (const action of actions) {
+    const key = typeof action?.key === "string" ? action.key : "";
+    if (!key || seen.has(key)) continue;
+    const canonical = QUICK_ACTION_OPTIONS_BY_KEY.get(key);
+    if (!canonical) continue;
+    normalized.push(canonical);
+    seen.add(key);
+  }
+
+  return normalized;
+};
 
 const readLocalHomeWidgets = (email?: string | null): HomeWidgets | null => {
   if (typeof window === "undefined") return null;
@@ -203,9 +223,9 @@ const readLocalQuickActions = (email?: string | null): QuickAction[] | null => {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as QuickAction[];
-    return Array.isArray(parsed) ? parsed : null;
+    return normalizeQuickActions(parsed);
   } catch {
-    return null;
+    return QUICK_ACTIONS_DEFAULT;
   }
 };
 
@@ -395,7 +415,7 @@ export default function HomePage() {
 
   const persistQuickActions = (updater: (prev: QuickAction[]) => QuickAction[]) => {
     setQuickActions((prev) => {
-      const next = updater(prev);
+      const next = normalizeQuickActions(updater(prev));
       const key = quickActionsKey(normalizedEmail);
       if (typeof window !== "undefined" && key) {
         window.localStorage.setItem(key, JSON.stringify(next));
@@ -477,7 +497,7 @@ export default function HomePage() {
     if (!normalizedEmail) return;
     const email = normalizedEmail;
 
-  const loadFromDevice = () => {
+    const loadFromDevice = () => {
       const localLayout = readLocalHomeLayout(email);
       const localWidgets = readLocalHomeWidgets(email);
       const localPerf = readLocalPerformanceMode(email);
@@ -485,7 +505,7 @@ export default function HomePage() {
       setHomeLayout(normalizeHomeLayout(localLayout));
       setHomeWidgets(localWidgets ?? HOME_WIDGETS_DEFAULT);
       setPerformanceMode(localPerf ?? PERFORMANCE_DEFAULT);
-      setQuickActions(localQA ?? QUICK_ACTIONS_DEFAULT);
+      setQuickActions(normalizeQuickActions(localQA ?? QUICK_ACTIONS_DEFAULT));
     };
 
     const load = async () => {
@@ -538,14 +558,15 @@ export default function HomePage() {
         }
 
         if (cloudQA && Array.isArray(cloudQA)) {
-          setQuickActions(cloudQA);
+          const normalizedQuickActions = normalizeQuickActions(cloudQA);
+          setQuickActions(normalizedQuickActions);
           const key = quickActionsKey(email);
           if (typeof window !== "undefined" && key) {
-            window.localStorage.setItem(key, JSON.stringify(cloudQA));
+            window.localStorage.setItem(key, JSON.stringify(normalizedQuickActions));
           }
         } else {
           const localQA = readLocalQuickActions(email);
-          setQuickActions(localQA ?? QUICK_ACTIONS_DEFAULT);
+          setQuickActions(normalizeQuickActions(localQA ?? QUICK_ACTIONS_DEFAULT));
         }
 
         if (cloudPerf) {
@@ -1217,15 +1238,16 @@ export default function HomePage() {
         <div className="mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
         <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SplitTextHeading text={`Produkce ${monthLabelCapitalized} ${year}`} />
-          <div className="self-start flex items-center gap-2">
+          <div className="self-start flex items-center gap-3">
             <Link
               href="/posta"
-              className="relative inline-flex items-center gap-2 rounded-full border border-blue-700 bg-gradient-to-r from-blue-600 to-indigo-700 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_10px_22px_rgba(37,99,235,0.35)] transition hover:brightness-110"
+              className="relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-blue-700 bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-[0_12px_24px_rgba(37,99,235,0.35)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2"
+              aria-label="Pošta"
+              title="Pošta"
             >
-              <Mail size={15} aria-hidden="true" />
-              <span>Pošta</span>
+              <Mail size={21} aria-hidden="true" />
               {mailUnreadCount > 0 ? (
-                <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-[20px] items-center justify-center rounded-full border border-white bg-rose-600 px-1 text-[10px] font-bold leading-5 text-white shadow-[0_4px_12px_rgba(190,18,60,0.4)]">
+                <span className="absolute -right-1 -top-1 inline-flex min-w-[22px] items-center justify-center rounded-full border border-white bg-rose-600 px-1.5 text-[10px] font-bold leading-5 text-white shadow-[0_5px_12px_rgba(190,18,60,0.4)]">
                   {mailUnreadCount > 99 ? "99+" : mailUnreadCount}
                 </span>
               ) : null}
@@ -1235,12 +1257,14 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => setWidgetPanelOpen((prev) => !prev)}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-white shadow-[0_12px_24px_rgba(15,23,42,0.28)] transition hover:scale-[1.03] hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2"
+                aria-label="Přizpůsobit domovskou stránku"
+                title="Přizpůsobit"
               >
                 <svg
                   aria-hidden="true"
-                  width="18"
-                  height="18"
+                  width="22"
+                  height="22"
                   viewBox="0 0 24 24"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
@@ -1259,7 +1283,6 @@ export default function HomePage() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>Přizpůsobit</span>
               </button>
 
               {widgetPanelOpen && (
