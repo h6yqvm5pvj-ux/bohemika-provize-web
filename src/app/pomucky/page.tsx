@@ -224,6 +224,73 @@ const TACHOMETER_UPLOAD_TARGETS = [
   },
 ] as const;
 
+const INSTITUTION_PORTAL_TARGETS = [
+  {
+    key: "maxx",
+    label: "Maxx",
+    href: "https://sjednatel.bohemiaservis.cz/login",
+    logoPath: "/icons/bohemikalogo.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(37,99,235,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(6,182,212,0.16)_0%,transparent_66%)]",
+  },
+  {
+    key: "bsf-aplikace",
+    label: "BSF Aplikace",
+    href: "https://bsfaplikace.cz/sign/",
+    logoPath: "/icons/bohemikalogo.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(79,70,229,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(34,197,94,0.16)_0%,transparent_66%)]",
+  },
+  {
+    key: "cpp-sus",
+    label: "ČPP SUS",
+    href: "https://susp-landing-page.cpp.cz/",
+    logoPath: "/icons/cpp.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(16,185,129,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(37,99,235,0.16)_0%,transparent_66%)]",
+  },
+  {
+    key: "allianz-alfa",
+    label: "Allianz Alfa",
+    href: "https://allfa.allianz.cz/login/?ref=/homepage",
+    logoPath: "/icons/allianz.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(37,99,235,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(99,102,241,0.16)_0%,transparent_66%)]",
+  },
+  {
+    key: "kooperativa-knz",
+    label: "Kooperativa KNZ",
+    href: "https://knz-landing-page.koop.cz/",
+    logoPath: "/icons/koop.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(14,165,233,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(59,130,246,0.16)_0%,transparent_66%)]",
+  },
+  {
+    key: "csob-zeus",
+    label: "ČSOB Zeus",
+    href: "https://cassell.csobpoj.cz/cas/login?service=https%3A%2F%2Fzeus.csobpoj.cz%2Fzeus%2Flogin%2Fcas",
+    logoPath: "/icons/csob.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(245,158,11,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(234,179,8,0.16)_0%,transparent_66%)]",
+  },
+  {
+    key: "pillow-portal",
+    label: "Pillow",
+    href: "https://portal.pillow.cz/login",
+    logoPath: "/icons/pillow.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(34,197,94,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(20,184,166,0.16)_0%,transparent_66%)]",
+  },
+  {
+    key: "investika",
+    label: "iNVESTiKA",
+    href: "https://portal.investika.cz/login",
+    logoPath: "/icons/invstk.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(168,85,247,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(236,72,153,0.16)_0%,transparent_66%)]",
+  },
+] as const;
+
 function normalizeSearchValue(value: string): string {
   return value
     .normalize("NFD")
@@ -236,6 +303,7 @@ export default function ToolsPage() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("Všechny");
   const [searchQuery, setSearchQuery] = useState("");
   const [tachometerModalOpen, setTachometerModalOpen] = useState(false);
+  const [linksModalOpen, setLinksModalOpen] = useState(false);
 
   type Tool = {
     key: string;
@@ -373,6 +441,14 @@ export default function ToolsPage() {
         onClick: () => setTachometerModalOpen(true),
       },
       {
+        key: "odkazy-instituce",
+        category: "Obecné",
+        title: "Odkazy",
+        description: "Odkazy na portály institucí.",
+        icon: Landmark,
+        onClick: () => setLinksModalOpen(true),
+      },
+      {
         key: "projekce-vykonu",
         category: "Finance",
         title: "Projekce výkonu",
@@ -413,7 +489,7 @@ export default function ToolsPage() {
         href: "/pomucky/srovnavac-zivotniho-pojisteni",
       },
     ],
-    [setTachometerModalOpen]
+    [setLinksModalOpen, setTachometerModalOpen]
   );
 
   const filteredTools = useMemo(
@@ -677,6 +753,71 @@ export default function ToolsPage() {
                     <div className="flex items-end justify-between gap-3">
                       <h3 className="text-2xl font-bold tracking-[-0.015em] text-slate-900">{target.label}</h3>
                       <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/90 bg-white/90 text-slate-700 transition group-hover:border-blue-300 group-hover:bg-blue-700 group-hover:text-white">
+                        <ArrowUpRight className="h-4.5 w-4.5" />
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {linksModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="Odkazy na portály institucí">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/58 backdrop-blur-sm"
+            onClick={() => setLinksModalOpen(false)}
+            aria-label="Zavřít dialog"
+          />
+
+          <div className="relative z-10 w-full max-w-3xl overflow-hidden rounded-[30px] border border-white/75 bg-[linear-gradient(160deg,rgba(255,255,255,0.97)_0%,rgba(248,250,252,0.97)_100%)] p-5 shadow-[0_32px_90px_rgba(2,6,23,0.38)] sm:p-7">
+            <button
+              type="button"
+              onClick={() => setLinksModalOpen(false)}
+              className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
+              aria-label="Zavřít"
+            >
+              <X className="h-4.5 w-4.5" />
+            </button>
+
+            <div className="pr-12">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-700">Obecné</p>
+              <h2 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-slate-950 sm:text-3xl">Odkazy</h2>
+              <p className="mt-2 text-sm text-slate-600 sm:text-base">
+                Odkazy na portály institucí.
+              </p>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {INSTITUTION_PORTAL_TARGETS.map((target) => (
+                <a
+                  key={target.key}
+                  href={target.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group relative isolate min-h-[154px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_12px_26px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_34px_rgba(15,23,42,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/80"
+                  onClick={() => setLinksModalOpen(false)}
+                >
+                  <Image
+                    src={target.logoPath}
+                    alt={`Logo ${target.label}`}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    className="pointer-events-none object-contain p-4 opacity-[0.18] saturate-0 contrast-125"
+                  />
+                  <div className={`pointer-events-none absolute inset-0 ${target.tintClass}`} />
+
+                  <div className="relative flex h-full flex-col justify-between">
+                    <div className="inline-flex w-fit items-center rounded-full border border-slate-200/90 bg-white/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                      Otevřít
+                    </div>
+
+                    <div className="flex items-end justify-between gap-3">
+                      <h3 className="text-2xl font-bold tracking-[-0.015em] text-slate-900">{target.label}</h3>
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/90 bg-white/90 text-slate-700 transition group-hover:border-indigo-300 group-hover:bg-indigo-700 group-hover:text-white">
                         <ArrowUpRight className="h-4.5 w-4.5" />
                       </span>
                     </div>
