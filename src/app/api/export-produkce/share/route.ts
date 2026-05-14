@@ -11,7 +11,11 @@ export const dynamic = "force-dynamic";
 const EXPORT_SHARE_RATE_LIMIT = 60;
 const EXPORT_SHARE_RATE_LIMIT_WINDOW_MS = 60_000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_PREVIEW_HTML_LEN = 900_000;
+const MAX_PREVIEW_HTML_BYTES = 2_400_000;
+const MAX_PREVIEW_INLINE_HTML_BYTES = 700_000;
+const MAX_PREVIEW_CHUNK_BYTES = 280_000;
+const MAX_PREVIEW_CHUNK_COUNT = 30;
+const PREVIEW_CHUNK_BATCH_SIZE = 400;
 
 type ExportShareSuccess = {
   ok: true;
@@ -221,14 +225,61 @@ const parseSnapshot = (raw: unknown): ExportSnapshot => {
   };
 };
 
-const parsePreviewHtml = (raw: unknown): string => {
-  if (typeof raw !== "string") return "";
+const parsePreviewHtml = (raw: unknown): { html: string; htmlBytes: number } => {
+  if (typeof raw !== "string") return { html: "", htmlBytes: 0 };
   const html = raw.trim();
-  if (!html) return "";
-  if (html.length > MAX_PREVIEW_HTML_LEN) {
-    throw new Error("Náhled exportu je příliš velký pro sdílení.");
+  if (!html) return { html: "", htmlBytes: 0 };
+  const htmlBytes = Buffer.byteLength(html, "utf8");
+  if (htmlBytes > MAX_PREVIEW_HTML_BYTES) {
+    return { html: "", htmlBytes };
   }
-  return html;
+  return { html, htmlBytes };
+};
+
+const utf8BytesForCodePoint = (codePoint: number): number => {
+  if (codePoint <= 0x7f) return 1;
+  if (codePoint <= 0x7ff) return 2;
+  if (codePoint <= 0xffff) return 3;
+  return 4;
+};
+
+const splitStringByUtf8Bytes = (value: string, maxBytesPerChunk: number): string[] => {
+  if (!value) return [];
+  if (!Number.isFinite(maxBytesPerChunk) || maxBytesPerChunk < 8) return [value];
+
+  const chunks: string[] = [];
+  let chunkStart = 0;
+  let chunkBytes = 0;
+
+  for (let i = 0; i < value.length; i += 1) {
+    const codeUnit = value.charCodeAt(i);
+    let codePoint = codeUnit;
+    let charWidth = 1;
+
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff && i + 1 < value.length) {
+      const next = value.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        codePoint = (codeUnit - 0xd800) * 0x400 + (next - 0xdc00) + 0x10000;
+        charWidth = 2;
+      }
+    }
+
+    const charBytes = utf8BytesForCodePoint(codePoint);
+    if (chunkBytes + charBytes > maxBytesPerChunk && i > chunkStart) {
+      chunks.push(value.slice(chunkStart, i));
+      chunkStart = i;
+      chunkBytes = 0;
+    }
+
+    chunkBytes += charBytes;
+    if (charWidth === 2) i += 1;
+  }
+
+  if (chunkStart < value.length) {
+    chunks.push(value.slice(chunkStart));
+  }
+
+  return chunks.filter((chunk) => chunk.length > 0);
 };
 
 export async function POST(req: NextRequest) {
@@ -283,12 +334,18 @@ export async function POST(req: NextRequest) {
     }
 
     const snapshot = parseSnapshot(body?.snapshot);
-    const previewHtml = parsePreviewHtml(body?.previewHtml);
-    if (!previewHtml) {
+    const parsedPreview = parsePreviewHtml(body?.previewHtml);
+    if (!parsedPreview.html) {
+      const isOversized = parsedPreview.htmlBytes > MAX_PREVIEW_HTML_BYTES;
       return withRateLimitHeaders(
         NextResponse.json(
-          { ok: false, error: "Náhled exportu chybí. Nejprve vygeneruj náhled a zkus to znovu." } satisfies ExportShareError,
-          { status: 400 }
+          {
+            ok: false,
+            error: isOversized
+              ? "Náhled exportu je příliš rozsáhlý pro odeslání. Zkrať období nebo filtr a zkus to znovu."
+              : "Náhled exportu chybí. Nejprve vygeneruj náhled a zkus to znovu.",
+          } satisfies ExportShareError,
+          { status: isOversized ? 413 : 400 }
         ),
         ctx
       );
@@ -297,14 +354,71 @@ export async function POST(req: NextRequest) {
     const senderName = await resolveSenderName(ctx.email, ctx.uid);
 
     const sharedPreviewRef = adminDb.collection("mailboxSharedPayloads").doc();
+    const createdAtMs = Date.now();
+    const previewChunks =
+      parsedPreview.htmlBytes > MAX_PREVIEW_INLINE_HTML_BYTES
+        ? splitStringByUtf8Bytes(parsedPreview.html, MAX_PREVIEW_CHUNK_BYTES)
+        : [];
+    const useChunkedPreview = previewChunks.length > 0;
+
+    if (useChunkedPreview && previewChunks.length > MAX_PREVIEW_CHUNK_COUNT) {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Náhled exportu je příliš rozsáhlý pro odeslání. Zkrať období nebo filtr a zkus to znovu.",
+          } satisfies ExportShareError,
+          { status: 413 }
+        ),
+        ctx
+      );
+    }
+
     await sharedPreviewRef.set({
       type: "production_export_share",
       senderEmail: ctx.email,
       recipientEmail: recipient.email,
-      html: previewHtml,
-      createdAtMs: Date.now(),
+      htmlStorage: useChunkedPreview ? "chunked" : "inline",
+      ...(useChunkedPreview
+        ? {
+            htmlChunkCount: previewChunks.length,
+            htmlBytes: parsedPreview.htmlBytes,
+          }
+        : {
+            html: parsedPreview.html,
+            htmlBytes: parsedPreview.htmlBytes,
+          }),
+      createdAtMs,
       createdAt: FieldValue.serverTimestamp(),
     });
+
+    if (useChunkedPreview) {
+      const chunksCol = sharedPreviewRef.collection("chunks");
+      let batch = adminDb.batch();
+      let writesInBatch = 0;
+
+      for (let i = 0; i < previewChunks.length; i += 1) {
+        const chunkId = String(i).padStart(4, "0");
+        batch.set(chunksCol.doc(chunkId), {
+          index: i,
+          htmlChunk: previewChunks[i],
+          createdAtMs,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        writesInBatch += 1;
+
+        if (writesInBatch >= PREVIEW_CHUNK_BATCH_SIZE) {
+          await batch.commit();
+          batch = adminDb.batch();
+          writesInBatch = 0;
+        }
+      }
+
+      if (writesInBatch > 0) {
+        await batch.commit();
+      }
+    }
 
     const withNote = noteText ? ` Zpráva: ${noteText}` : "";
     const bodyText =

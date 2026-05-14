@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { BarChart3, CheckCircle2, FileText, Sigma } from "lucide-react";
+import { BarChart3, CheckCircle2, FileText, Loader2, Sigma } from "lucide-react";
 
 import { type CommissionResultItemDTO, type Product } from "../types/domain";
 import { formatMoney } from "@/app/lib/formatters";
@@ -445,10 +445,18 @@ export function CalculatorResultsSection({
           <button
             type="button"
             onClick={onSaveContract}
-            disabled={!canSaveContract}
-            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(16,185,129,0.22)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={!canSaveContract || saving}
+            aria-busy={saving}
+            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-2xl border border-emerald-700/70 bg-[linear-gradient(135deg,#16a34a_0%,#047857_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(16,185,129,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(5,150,105,0.36)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0"
           >
-            <CheckCircle2 size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+            <span className="pointer-events-none absolute inset-0 -translate-x-[115%] bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.34)_45%,transparent_78%)] transition-transform duration-500 ease-out group-hover:translate-x-[120%]" aria-hidden="true" />
+            <span className="relative z-10 inline-flex h-5 w-5 items-center justify-center" aria-hidden="true">
+              {saving ? (
+                <Loader2 size={14} strokeWidth={2.2} className="shrink-0 animate-spin" />
+              ) : (
+                <CheckCircle2 size={14} strokeWidth={2.2} className="shrink-0" />
+              )}
+            </span>
             {saving ? "Ukládám…" : "Sepsáno"}
           </button>
           {lastSavedContractHref && (

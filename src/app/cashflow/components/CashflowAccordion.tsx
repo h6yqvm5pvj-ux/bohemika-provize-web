@@ -1,6 +1,8 @@
+import type { CSSProperties } from "react";
 import { CalendarRange, ChevronRight } from "lucide-react";
 
 import { formatMoney } from "../helpers";
+import introStyles from "../cashflowIntro.module.css";
 import type { MonthGroup, YearGroup } from "../types";
 
 type CashflowAccordionProps = {
@@ -30,6 +32,12 @@ const YEAR_VISUAL: YearVisual = {
   arrow: "group-hover:border-blue-300 group-hover:bg-blue-700 group-hover:text-white",
 };
 
+function staggerDelay(variable: "--cf-card-delay" | "--cf-month-delay", delayMs: number): CSSProperties {
+  return {
+    [variable]: `${delayMs}ms`,
+  } as CSSProperties;
+}
+
 function monthLabelShort(label: string): string {
   return label.replace(/\s+\d{4}$/, "");
 }
@@ -42,7 +50,7 @@ export function CashflowAccordion({
 }: CashflowAccordionProps) {
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-      {yearGroups.map((yearGroup) => {
+      {yearGroups.map((yearGroup, yearIndex) => {
         const yearOpen = expandedYears[yearGroup.year] ?? false;
         const averagePerActiveMonth =
           yearGroup.total / Math.max(yearGroup.months.length, 1);
@@ -55,7 +63,8 @@ export function CashflowAccordion({
         return (
           <section
             key={yearGroup.year}
-            className={`cashflow-card-year group relative overflow-hidden rounded-[30px] border border-white/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.96)_0%,rgba(248,250,252,0.95)_56%,rgba(241,245,249,0.93)_100%)] px-4 pb-4 pt-4 shadow-[0_22px_58px_rgba(15,23,42,0.14)] backdrop-blur-[1px] transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-slate-200 hover:shadow-[0_30px_80px_rgba(15,23,42,0.17)] sm:px-5 sm:pb-5 sm:pt-5 ${
+            style={staggerDelay("--cf-card-delay", Math.min(yearIndex * 90, 540))}
+            className={`cashflow-card-year ${introStyles.yearCard} group relative overflow-hidden rounded-[30px] border border-white/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.96)_0%,rgba(248,250,252,0.95)_56%,rgba(241,245,249,0.93)_100%)] px-4 pb-4 pt-4 shadow-[0_22px_58px_rgba(15,23,42,0.14)] backdrop-blur-[1px] transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-slate-200 hover:shadow-[0_30px_80px_rgba(15,23,42,0.17)] sm:px-5 sm:pb-5 sm:pt-5 ${
               yearOpen ? "lg:col-span-2" : ""
             }`}
           >
@@ -125,7 +134,7 @@ export function CashflowAccordion({
             {yearOpen ? (
               <div className="relative z-10 mt-4 border-t border-slate-200/80 pt-4 sm:mt-5 sm:pt-5">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {yearGroup.months.map((month) => {
+                  {yearGroup.months.map((month, monthIndex) => {
                     const monthRatio = Math.min(
                       100,
                       Math.round((month.total / maxMonthTotal) * 100)
@@ -137,7 +146,8 @@ export function CashflowAccordion({
                         key={month.key}
                         type="button"
                         onClick={() => onSelectMonth(month)}
-                        className="group cashflow-card-month relative overflow-hidden rounded-2xl border border-slate-200/90 bg-[linear-gradient(145deg,rgba(248,250,252,0.99)_0%,rgba(241,245,249,0.96)_62%,rgba(255,255,255,0.98)_100%)] px-4 py-3 text-left shadow-[0_12px_24px_rgba(15,23,42,0.08)] transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_32px_rgba(15,23,42,0.12)]"
+                        style={staggerDelay("--cf-month-delay", Math.min(monthIndex * 65, 455))}
+                        className={`group cashflow-card-month ${introStyles.monthCard} relative overflow-hidden rounded-2xl border border-slate-200/90 bg-[linear-gradient(145deg,rgba(248,250,252,0.99)_0%,rgba(241,245,249,0.96)_62%,rgba(255,255,255,0.98)_100%)] px-4 py-3 text-left shadow-[0_12px_24px_rgba(15,23,42,0.08)] transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_32px_rgba(15,23,42,0.12)]`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">

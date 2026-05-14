@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -29,6 +29,7 @@ import {
 } from "@/app/lib/institutionLogoDisplay";
 import { type Position } from "@/app/types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
+import introStyles from "../cashflow/cashflowIntro.module.css";
 
 type Member = {
   email: string;
@@ -280,6 +281,7 @@ type TeamOverviewPositionTimelineReadSuccess = {
 };
 
 const TEAM_CACHE_TTL_MS = 60 * 1000;
+const TEAM_MIN_LOADING_MS = 1800;
 const teamDataCache: Record<string, { ts: number; payload: TeamCachePayload }> = {};
 
 type SortKey = "activity" | "month" | "total" | "name";
@@ -294,11 +296,18 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 const MEMBER_LIST_ESTIMATED_ROW_HEIGHT = 76;
 const MEMBER_LIST_OVERSCAN = 6;
 
+function teamRevealStyle(delayMs: number): CSSProperties {
+  return {
+    ["--cf-delay" as string]: `${delayMs}ms`,
+  };
+}
+
 export default function TeamPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [lastActive, setLastActive] = useState<Record<string, number | null>>({});
   const [contractCounts, setContractCounts] = useState<Record<string, ContractStats>>({});
@@ -367,16 +376,22 @@ export default function TeamPage() {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (!u?.email) {
         setUserEmail(null);
+        setAuthReady(true);
         return;
       }
       const em = u.email.toLowerCase();
       setUserEmail(em);
+      setAuthReady(true);
     });
     return () => unsub();
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    let finishLoadingTimer: number | null = null;
+
     const loadTeam = async () => {
+      if (!authReady) return;
       if (!userEmail) {
         setMembers([]);
         setLastActive({});
@@ -408,6 +423,7 @@ export default function TeamPage() {
       }
 
       setLoading(true);
+      const loadingStartedAt = Date.now();
       setContractsLoaded(false);
       setContractsError(false);
       try {
@@ -528,8 +544,6 @@ export default function TeamPage() {
           nextContractsError = true;
         }
       } finally {
-        setLoading(false);
-
         if (cacheKey) {
           teamDataCache[cacheKey] = {
             ts: Date.now(),
@@ -544,12 +558,30 @@ export default function TeamPage() {
             },
           };
         }
+        const elapsed = Date.now() - loadingStartedAt;
+        const remaining = Math.max(0, TEAM_MIN_LOADING_MS - elapsed);
+        if (remaining > 0) {
+          finishLoadingTimer = window.setTimeout(() => {
+            if (cancelled) return;
+            setLoading(false);
+          }, remaining);
+          return;
+        }
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     void loadTeam();
+    return () => {
+      cancelled = true;
+      if (finishLoadingTimer != null) {
+        window.clearTimeout(finishLoadingTimer);
+      }
+    };
     // only depends on signed-in user; selection should not retrigger fetch
-  }, [userEmail, cacheKey, refreshNonce]);
+  }, [authReady, userEmail, cacheKey, refreshNonce]);
 
   const filteredMembers = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -1329,17 +1361,77 @@ export default function TeamPage() {
 
   return (
     <AppLayout active="team">
-      <div className="w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
+      <div className={`${introStyles.pageEnter} w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2`}>
         <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <SplitTitle text="Můj tým" className="!text-slate-900" />
         </header>
 
-        {loading ? (
-          <p className="text-sm text-slate-600">Načítám tým…</p>
+        {!authReady ? (
+          <p className="text-sm text-slate-600">Načítám přihlášení…</p>
+        ) : loading ? (
+          <div className={`${introStyles.loadingShell} rounded-[28px] border border-white/80 px-4 py-5 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:px-6 sm:py-6`}>
+            <span className={introStyles.loadingAuraA} aria-hidden="true" />
+            <span className={introStyles.loadingAuraB} aria-hidden="true" />
+            <span className={introStyles.loadingSweep} aria-hidden="true" />
+
+            <div className="relative z-10 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-center">
+              <div className="space-y-4">
+                <span className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-800">
+                  Team engine
+                </span>
+
+                <div className="space-y-1.5">
+                  <h3 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-[2rem]">
+                    Načítám týmovou strukturu…
+                  </h3>
+                  <p className="text-sm text-slate-600 sm:text-base">
+                    Stahuju členy týmu, aktivitu a produkční statistiky.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    <span>Synchronizace</span>
+                    <span>probíhá</span>
+                  </div>
+                  <div className={introStyles.loadingProgress} />
+                </div>
+              </div>
+
+              <div className="flex justify-center xl:justify-end">
+                <div className={introStyles.loadingEngine} aria-hidden="true">
+                  <span className={introStyles.loadingRing} />
+                  <span className={`${introStyles.loadingRing} ${introStyles.loadingRingSecondary}`} />
+                  <span className={introStyles.loadingCore} />
+                </div>
+              </div>
+            </div>
+
+            <div className="relative z-10 mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+              {[0, 1, 2].map((index) => (
+                <div
+                  key={index}
+                  className={`${introStyles.loadingSkeletonCard} rounded-2xl border border-slate-200/90 bg-white/85 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.07)]`}
+                >
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
+                    Člen týmu
+                  </div>
+                  <div className="mt-2 h-7 w-24 rounded-lg bg-slate-200/90" />
+                  <div className="mt-3 space-y-2">
+                    <div className="h-3 w-5/6 rounded-full bg-slate-200/85" />
+                    <div className="h-3 w-2/3 rounded-full bg-slate-200/85" />
+                    <div className="h-3 w-3/4 rounded-full bg-slate-200/85" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         ) : members.length === 0 ? (
-          <p className="text-sm text-slate-600">Nemáš nastavené žádné podřízené.</p>
+          <div className={introStyles.bodyReveal} style={teamRevealStyle(70)}>
+            <p className="text-sm text-slate-600">Nemáš nastavené žádné podřízené.</p>
+          </div>
         ) : (
-          <>
+          <div className={introStyles.bodyReveal} style={teamRevealStyle(70)}>
             <div
               className={`grid grid-cols-1 gap-4 ${
                 showTeamSidebar ? "lg:grid-cols-[340px_minmax(0,1fr)] lg:items-stretch" : ""
@@ -1941,7 +2033,7 @@ export default function TeamPage() {
                   )}
                 </div>
             </div>
-          </>
+          </div>
         )}
       </div>
       {positionModalOpen && selected ? (

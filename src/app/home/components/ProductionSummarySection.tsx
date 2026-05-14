@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -28,14 +29,107 @@ type Props = {
   isLiteUI: boolean;
 };
 
-function LoadingIndicator() {
+function ProductionLoadingPanel({
+  progress,
+  stage,
+  metricLabels,
+}: {
+  progress: number;
+  stage: string;
+  metricLabels: string[];
+}) {
+  const safeProgress = Math.max(8, Math.min(97, progress));
+  const metricGridClass =
+    metricLabels.length <= 2
+      ? "grid-cols-1 sm:grid-cols-2"
+      : metricLabels.length === 3
+        ? "grid-cols-1 sm:grid-cols-3"
+        : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4";
+
   return (
-    <div className="inline-flex items-center gap-2 text-sm text-slate-300">
-      <span
-        className="h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-sky-200"
-        aria-hidden="true"
-      />
-      <span>Načítám…</span>
+    <div className="relative w-full overflow-hidden rounded-3xl border border-slate-800/95 bg-[linear-gradient(122deg,#000b26_0%,#000722_46%,#062232_100%)] px-4 py-4 shadow-[0_18px_34px_rgba(2,6,23,0.34)] sm:px-6 sm:py-5">
+      <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-emerald-300/20 blur-2xl" />
+      <div className="pointer-events-none absolute -left-10 -bottom-10 h-32 w-32 rounded-full bg-cyan-300/16 blur-2xl" />
+
+      <div className="relative">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-100">
+              <span
+                className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-emerald-300"
+                aria-hidden="true"
+              />
+              Načítám data produkce
+            </div>
+            <div className="mt-2 text-sm text-slate-300">{stage}</div>
+            <div className="mt-1 text-xs uppercase tracking-[0.12em] text-emerald-200">
+              {safeProgress}% připraveno
+            </div>
+          </div>
+
+          <div className="relative h-16 w-16 shrink-0">
+            <div
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: `conic-gradient(from -90deg, rgba(16,185,129,1) 0deg ${safeProgress * 3.6}deg, rgba(148,163,184,0.25) ${safeProgress * 3.6}deg 360deg)`,
+              }}
+            />
+            <div className="absolute inset-[5px] rounded-full bg-slate-950" />
+            <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-emerald-200">
+              {safeProgress}%
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-sky-300 to-cyan-200 transition-[width] duration-300 ease-out"
+            style={{ width: `${safeProgress}%` }}
+          />
+        </div>
+
+        <div className={`mt-4 grid gap-2 ${metricGridClass}`}>
+          {metricLabels.map((label, index) => {
+            const isLast = index === metricLabels.length - 1;
+            const isTeam = label === "Týmová produkce";
+            const isTip = label === "Tipařská produkce";
+            const cardClass = isLast
+              ? "border-emerald-300/40 bg-emerald-300/12"
+              : isTeam
+                ? "border-indigo-300/40 bg-indigo-300/12"
+                : isTip
+                  ? "border-fuchsia-300/40 bg-fuchsia-300/12"
+                  : "border-white/20 bg-white/8";
+            const labelClass = isLast
+              ? "text-emerald-200"
+              : isTeam
+                ? "text-indigo-200"
+                : isTip
+                  ? "text-fuchsia-200"
+                  : "text-white/65";
+            const pulseClass = isLast
+              ? "bg-emerald-200/35"
+              : isTeam
+                ? "bg-indigo-200/35"
+                : isTip
+                  ? "bg-fuchsia-200/35"
+                  : "bg-white/20";
+
+            return (
+              <div key={label} className={`rounded-xl border px-3 py-2 ${cardClass}`}>
+                <div className={`text-[10px] uppercase tracking-[0.14em] ${labelClass}`}>{label}</div>
+                <div className={`mt-2 h-4 w-24 animate-pulse rounded ${pulseClass}`} style={{ animationDelay: `${index * 110}ms` }} />
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 space-y-2">
+          <div className="h-2 w-[78%] animate-pulse rounded-full bg-white/20" />
+          <div className="h-2 w-[62%] animate-pulse rounded-full bg-white/15" style={{ animationDelay: "110ms" }} />
+          <div className="h-2 w-[70%] animate-pulse rounded-full bg-white/15" style={{ animationDelay: "220ms" }} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -162,15 +256,74 @@ export function ProductionSummarySection({
   totalPrevWithTeam,
   isLiteUI,
 }: Props) {
+  const [loadingProgress, setLoadingProgress] = useState(14);
+  const clampedLoadingProgress = Math.max(8, Math.min(97, loadingProgress));
+
+  useEffect(() => {
+    if (!loading) {
+      const resetFrame = window.requestAnimationFrame(() => setLoadingProgress(14));
+      return () => window.cancelAnimationFrame(resetFrame);
+    }
+
+    const startedAt = performance.now();
+    let frame = 0;
+
+    const animate = () => {
+      const elapsed = performance.now() - startedAt;
+      const phase = Math.min(1, elapsed / 3200);
+      const eased = 1 - Math.pow(1 - phase, 2.2);
+      const target = Math.round(14 + eased * 81); // držíme max ~95 %, finále až po datech
+      setLoadingProgress((prev) => (target > prev ? target : prev));
+      frame = window.requestAnimationFrame(animate);
+    };
+
+    frame = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading]);
+
+  const loadingStage =
+    clampedLoadingProgress < 35
+      ? "Sbírám smlouvy a výkon…"
+      : clampedLoadingProgress < 72
+        ? "Počítám vlastní, týmovou a tipařskou produkci…"
+        : "Finalizuji součty a trendy…";
+
   const summaryCardClass = isLiteUI
     ? "relative h-full overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 px-5 pb-3 pt-8 text-white transition-[border-color,box-shadow] duration-200 hover:border-slate-600 focus-within:border-slate-600 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.22)] sm:px-7 sm:pb-4 sm:pt-9"
     : "relative h-full overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 px-5 pb-3 pt-8 text-white shadow-[0_18px_34px_rgba(2,6,23,0.34)] transition-[border-color,box-shadow] duration-200 hover:border-slate-600 hover:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.18)] focus-within:border-slate-600 focus-within:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.2)] sm:px-7 sm:pb-4 sm:pt-9";
   const compactSummaryCardClass = isLiteUI
     ? "relative h-full overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950 px-4 pb-1.5 pt-8 text-white transition-[border-color,box-shadow] duration-200 hover:border-slate-600 focus-within:border-slate-600 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.22)] sm:px-6 sm:pb-2 sm:pt-8"
     : "relative h-full overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950 px-4 pb-1.5 pt-8 text-white shadow-[0_18px_34px_rgba(2,6,23,0.34)] transition-[border-color,box-shadow] duration-200 hover:border-slate-600 hover:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.18)] focus-within:border-slate-600 focus-within:shadow-[0_22px_42px_rgba(2,6,23,0.44),0_0_0_1px_rgba(148,163,184,0.2)] sm:px-6 sm:pb-2 sm:pt-8";
+  const hasTipIncome = myTipImmediateSum > 0;
+  const hasManagerTipIncome = myTipImmediateSum > 0;
+
+  if (loading) {
+    const loadingLabels = showTeamBox
+      ? hasManagerTipIncome
+        ? ["Vlastní produkce", "Týmová produkce", "Tipařská produkce", "Celková produkce"]
+        : ["Vlastní produkce", "Týmová produkce", "Celková produkce"]
+      : hasTipIncome
+        ? ["Vlastní produkce", "Tipařská produkce"]
+        : ["Vlastní produkce"];
+
+    return (
+      <section className={showTeamBox ? summaryCardClass : compactSummaryCardClass} data-fixed-box-theme="slate">
+        <ProductionTopPanel />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_12%,rgba(16,185,129,0.12),transparent_46%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_100%,rgba(34,211,238,0.12),transparent_40%)]" />
+
+        <div className="relative z-10 flex h-full items-center py-1 sm:py-2">
+          <ProductionLoadingPanel
+            progress={clampedLoadingProgress}
+            stage={loadingStage}
+            metricLabels={loadingLabels}
+          />
+        </div>
+      </section>
+    );
+  }
 
   if (!showTeamBox) {
-    const hasTipIncome = myTipImmediateSum > 0;
     return (
       <section className={compactSummaryCardClass} data-fixed-box-theme="slate">
         <ProductionTopPanel />
@@ -200,32 +353,28 @@ export function ProductionSummarySection({
                 <span className="md:whitespace-nowrap">Vlastní produkce</span>
               </span>
             </h2>
-            {loading ? (
-              <LoadingIndicator />
-            ) : (
-              <>
-                <dl className="space-y-1">
-                  <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    Počet smluv
-                  </dt>
-                  <dd className={`text-3xl font-semibold sm:text-4xl ${REVENUE_SCOPE_THEME.own.valueClass}`}>
-                    <AnimatedNumber value={myContractsCount} />
-                  </dd>
-                </dl>
-                <dl className="space-y-1">
-                  <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    Provize
-                  </dt>
-                  <dd className={`whitespace-nowrap text-4xl font-semibold sm:text-5xl ${REVENUE_SCOPE_THEME.own.valueClass}`}>
-                    <AnimatedMoney value={myImmediateSum} />
-                  </dd>
-                </dl>
-                <TrendInline
-                  currentValue={myImmediateSum}
-                  previousValue={myImmediatePrevSum}
-                />
-              </>
-            )}
+            <>
+              <dl className="space-y-1">
+                <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Počet smluv
+                </dt>
+                <dd className={`text-3xl font-semibold sm:text-4xl ${REVENUE_SCOPE_THEME.own.valueClass}`}>
+                  <AnimatedNumber value={myContractsCount} />
+                </dd>
+              </dl>
+              <dl className="space-y-1">
+                <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Provize
+                </dt>
+                <dd className={`whitespace-nowrap text-4xl font-semibold sm:text-5xl ${REVENUE_SCOPE_THEME.own.valueClass}`}>
+                  <AnimatedMoney value={myImmediateSum} />
+                </dd>
+              </dl>
+              <TrendInline
+                currentValue={myImmediateSum}
+                previousValue={myImmediatePrevSum}
+              />
+            </>
           </div>
 
           {hasTipIncome && (
@@ -242,10 +391,7 @@ export function ProductionSummarySection({
                   <span className="md:whitespace-nowrap">Tipař</span>
                 </span>
               </h2>
-              {loading ? (
-                <LoadingIndicator />
-              ) : (
-                <>
+              <>
                 <dl className="space-y-1">
                   <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Počet tipů
@@ -267,7 +413,6 @@ export function ProductionSummarySection({
                   previousValue={myTipImmediatePrevSum}
                 />
               </>
-            )}
             </div>
           )}
         </div>
@@ -275,7 +420,6 @@ export function ProductionSummarySection({
     );
   }
 
-  const hasManagerTipIncome = myTipImmediateSum > 0;
   const managerTitleClass = hasManagerTipIncome
     ? "text-base font-semibold text-white sm:text-xl"
     : "text-[1.05rem] font-semibold text-white sm:text-[1.35rem]";
@@ -319,32 +463,28 @@ export function ProductionSummarySection({
                 <span className={`block ${REVENUE_SCOPE_THEME.own.headingClass}`}>produkce</span>
               </h2>
             </div>
-          {loading ? (
-            <LoadingIndicator />
-          ) : (
-            <dl className="space-y-1">
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Počet smluv
-                </dt>
-                <dd className={`${managerCountClass} ${REVENUE_SCOPE_THEME.own.valueClass}`}>
-                  <AnimatedNumber value={myContractsCount} />
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Provize
-                </dt>
-                <dd className={`${managerAmountClass} ${REVENUE_SCOPE_THEME.own.valueClass}`}>
-                  <AnimatedMoney value={myImmediateSum} />
-                </dd>
-                <TrendInline
-                  currentValue={myImmediateSum}
-                  previousValue={myImmediatePrevSum}
-                />
-              </div>
-            </dl>
-          )}
+          <dl className="space-y-1">
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Počet smluv
+              </dt>
+              <dd className={`${managerCountClass} ${REVENUE_SCOPE_THEME.own.valueClass}`}>
+                <AnimatedNumber value={myContractsCount} />
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Provize
+              </dt>
+              <dd className={`${managerAmountClass} ${REVENUE_SCOPE_THEME.own.valueClass}`}>
+                <AnimatedMoney value={myImmediateSum} />
+              </dd>
+              <TrendInline
+                currentValue={myImmediateSum}
+                previousValue={myImmediatePrevSum}
+              />
+            </div>
+          </dl>
         </div>
 
         <div className="flex min-h-[118px] h-full flex-col justify-center space-y-1 text-center md:min-h-[134px] md:space-y-1.5 md:px-5">
@@ -361,32 +501,28 @@ export function ProductionSummarySection({
                 <span className={`block ${REVENUE_SCOPE_THEME.team.headingClass}`}>produkce</span>
               </h2>
             </div>
-          {loading ? (
-            <LoadingIndicator />
-          ) : (
-            <dl className="space-y-1">
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Počet smluv
-                </dt>
-                <dd className={`${managerCountClass} ${REVENUE_SCOPE_THEME.team.valueClass}`}>
-                  <AnimatedNumber value={teamContractsCount} />
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Provize
-                </dt>
-                <dd className={`${managerAmountClass} ${REVENUE_SCOPE_THEME.team.valueClass}`}>
-                  <AnimatedMoney value={teamImmediateSum} />
-                </dd>
-                <TrendInline
-                  currentValue={teamImmediateSum}
-                  previousValue={teamImmediatePrevSum}
-                />
-              </div>
-            </dl>
-          )}
+          <dl className="space-y-1">
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Počet smluv
+              </dt>
+              <dd className={`${managerCountClass} ${REVENUE_SCOPE_THEME.team.valueClass}`}>
+                <AnimatedNumber value={teamContractsCount} />
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Provize
+              </dt>
+              <dd className={`${managerAmountClass} ${REVENUE_SCOPE_THEME.team.valueClass}`}>
+                <AnimatedMoney value={teamImmediateSum} />
+              </dd>
+              <TrendInline
+                currentValue={teamImmediateSum}
+                previousValue={teamImmediatePrevSum}
+              />
+            </div>
+          </dl>
         </div>
 
         {hasManagerTipIncome && (
@@ -404,32 +540,28 @@ export function ProductionSummarySection({
                 <span className={`block ${REVENUE_SCOPE_THEME.tip.headingClass}`}>produkce</span>
               </h2>
             </div>
-            {loading ? (
-              <LoadingIndicator />
-            ) : (
-              <dl className="space-y-1">
-                <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Počet tipů
-                  </dt>
-                  <dd className={`${managerCountClass} ${REVENUE_SCOPE_THEME.tip.valueClass}`}>
-                    <AnimatedNumber value={myTipContractsCount} />
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Provize
-                  </dt>
-                  <dd className={`${managerAmountClass} ${REVENUE_SCOPE_THEME.tip.valueClass}`}>
-                    <AnimatedMoney value={myTipImmediateSum} />
-                  </dd>
-                  <TrendInline
-                    currentValue={myTipImmediateSum}
-                    previousValue={myTipImmediatePrevSum}
-                  />
-                </div>
-              </dl>
-            )}
+            <dl className="space-y-1">
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Počet tipů
+                </dt>
+                <dd className={`${managerCountClass} ${REVENUE_SCOPE_THEME.tip.valueClass}`}>
+                  <AnimatedNumber value={myTipContractsCount} />
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Provize
+                </dt>
+                <dd className={`${managerAmountClass} ${REVENUE_SCOPE_THEME.tip.valueClass}`}>
+                  <AnimatedMoney value={myTipImmediateSum} />
+                </dd>
+                <TrendInline
+                  currentValue={myTipImmediateSum}
+                  previousValue={myTipImmediatePrevSum}
+                />
+              </div>
+            </dl>
           </div>
         )}
 
@@ -443,32 +575,28 @@ export function ProductionSummarySection({
                 <span className="block">produkce</span>
               </h2>
             </div>
-          {loading ? (
-            <LoadingIndicator />
-          ) : (
-            <dl className="space-y-1">
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Počet smluv
-                </dt>
-                <dd className={`${managerCountClass} text-emerald-400`}>
-                  <AnimatedNumber value={totalContractsCount} />
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Provize
-                </dt>
-                <dd className={`${managerAmountClass} text-emerald-400`}>
-                  <AnimatedMoney value={totalWithTeam} />
-                </dd>
-                <TrendInline
-                  currentValue={totalWithTeam}
-                  previousValue={totalPrevWithTeam}
-                />
-              </div>
-            </dl>
-          )}
+          <dl className="space-y-1">
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Počet smluv
+              </dt>
+              <dd className={`${managerCountClass} text-emerald-400`}>
+                <AnimatedNumber value={totalContractsCount} />
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Provize
+              </dt>
+              <dd className={`${managerAmountClass} text-emerald-400`}>
+                <AnimatedMoney value={totalWithTeam} />
+              </dd>
+              <TrendInline
+                currentValue={totalWithTeam}
+                previousValue={totalPrevWithTeam}
+              />
+            </div>
+          </dl>
         </div>
       </div>
     </section>

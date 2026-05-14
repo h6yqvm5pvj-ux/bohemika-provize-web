@@ -81,6 +81,7 @@ const CONTRACTS_MAX_PAGES = 400;
 const TIP_PAYOUTS_PAGE_LIMIT = 100;
 const TIP_PAYOUTS_MAX_PAGES = 200;
 const CONTRACTS_CACHE_TTL_MS = 2 * 60 * 1000;
+const CASHFLOW_MIN_LOADING_MS = 1800;
 const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 const contractsSnapshotCache: Record<
   string,
@@ -416,11 +417,18 @@ export function useCashflowData({
   productFilter,
   enabled = true,
 }: UseCashflowDataParams): UseCashflowDataResult {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    if (!enabled || !userEmail) return false;
+    const normalized = normalizeEmail(userEmail);
+    const cachedRaw = contractsSnapshotCache[normalized];
+    if (!cachedRaw) return true;
+    return !isSnapshotFresh(cachedRaw.ts, getContractsUpdatedAtMs());
+  });
   const [snapshot, setSnapshot] = useState<RawContractsSnapshot | null>(null);
   const [hasTeam, setHasTeam] = useState(false);
 
   useEffect(() => {
+    let finishLoadingTimer: number | null = null;
     if (!enabled || !userEmail) {
       setSnapshot(null);
       setHasTeam(false);
@@ -442,6 +450,7 @@ export function useCashflowData({
         delete contractsSnapshotCache[normalized];
       }
       const hasCachedPayload = Boolean(cached?.payload);
+      const loadingStartedAt = hasCachedPayload ? 0 : Date.now();
       if (cached?.payload) {
         setSnapshot(cached.payload);
         setHasTeam(cached.payload.hasAnyTeam);
@@ -464,6 +473,19 @@ export function useCashflowData({
         }
       } finally {
         if (cancelled) return;
+        if (hasCachedPayload) {
+          setLoading(false);
+          return;
+        }
+        const elapsed = Date.now() - loadingStartedAt;
+        const remaining = Math.max(0, CASHFLOW_MIN_LOADING_MS - elapsed);
+        if (remaining > 0) {
+          finishLoadingTimer = window.setTimeout(() => {
+            if (cancelled) return;
+            setLoading(false);
+          }, remaining);
+          return;
+        }
         setLoading(false);
       }
     };
@@ -471,6 +493,9 @@ export function useCashflowData({
     void load();
     return () => {
       cancelled = true;
+      if (finishLoadingTimer != null) {
+        window.clearTimeout(finishLoadingTimer);
+      }
     };
   }, [userEmail, enabled]);
 

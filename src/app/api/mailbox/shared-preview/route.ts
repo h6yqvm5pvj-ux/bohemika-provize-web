@@ -22,6 +22,17 @@ type SharedPreviewError = {
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
+const parseNonNegativeInt = (value: unknown): number => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) return Math.max(0, Math.floor(parsed));
+  }
+  return 0;
+};
+
 const isValidPayloadId = (value: string): boolean =>
   value.length >= 8 && value.length <= 200 && /^[A-Za-z0-9_-]+$/.test(value);
 
@@ -71,17 +82,6 @@ export async function GET(req: NextRequest) {
     const type = normalizeText(data.type);
     const recipientEmail = normalizeText(data.recipientEmail).toLowerCase();
     const senderEmail = normalizeText(data.senderEmail).toLowerCase();
-    const html = normalizeText(data.html);
-
-    if (type !== "production_export_share" || !html) {
-      return withRateLimitHeaders(
-        NextResponse.json(
-          { ok: false, error: "Sdílený náhled není dostupný." } satisfies SharedPreviewError,
-          { status: 404 }
-        ),
-        ctx
-      );
-    }
 
     if (
       !recipientEmail ||
@@ -91,6 +91,53 @@ export async function GET(req: NextRequest) {
         NextResponse.json(
           { ok: false, error: "Na tento náhled nemáš oprávnění." } satisfies SharedPreviewError,
           { status: 403 }
+        ),
+        ctx
+      );
+    }
+
+    if (type !== "production_export_share") {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: "Sdílený náhled není dostupný." } satisfies SharedPreviewError,
+          { status: 404 }
+        ),
+        ctx
+      );
+    }
+
+    const inlineHtml = typeof data.html === "string" ? data.html : "";
+    let html = inlineHtml;
+
+    if (!html.trim()) {
+      const storageType = normalizeText(data.htmlStorage).toLowerCase();
+      if (storageType === "chunked") {
+        const expectedChunkCount = parseNonNegativeInt(data.htmlChunkCount);
+        const chunkSnap = await docSnap.ref.collection("chunks").get();
+        if (expectedChunkCount > 0 && chunkSnap.docs.length < expectedChunkCount) {
+          return withRateLimitHeaders(
+            NextResponse.json(
+              { ok: false, error: "Sdílený náhled zatím není kompletní." } satisfies SharedPreviewError,
+              { status: 503 }
+            ),
+            ctx
+          );
+        }
+        html = chunkSnap.docs
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .map((chunkDoc) => {
+            const chunkData = chunkDoc.data() as Record<string, unknown>;
+            return typeof chunkData.htmlChunk === "string" ? chunkData.htmlChunk : "";
+          })
+          .join("");
+      }
+    }
+
+    if (!html.trim()) {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: "Sdílený náhled není dostupný." } satisfies SharedPreviewError,
+          { status: 404 }
         ),
         ctx
       );
