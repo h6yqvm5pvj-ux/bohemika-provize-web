@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveLifeComparisonSourcePayload } from "@/lib/server/lifeComparisonSource";
 
 type ComparisonProduct = {
   id: string;
@@ -223,26 +224,30 @@ export async function GET(request: Request) {
   const configuredUpstreamUrl =
     process.env.LIFE_COMPARISON_API_URL?.trim() ||
     process.env.NEXT_PUBLIC_LIFE_COMPARISON_API_URL?.trim();
-  const upstreamUrl =
-    configuredUpstreamUrl || new URL("/api/life-comparison-source", request.url).toString();
   const requestUrl = new URL(request.url);
   const options = parseQueryOptions(requestUrl.searchParams);
 
   try {
-    const upstreamResponse = await fetch(upstreamUrl, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
+    let payload: unknown;
+    if (configuredUpstreamUrl) {
+      const upstreamResponse = await fetch(configuredUpstreamUrl, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
 
-    if (!upstreamResponse.ok) {
-      return NextResponse.json(
-        { error: `Upstream returned HTTP ${upstreamResponse.status}.` },
-        { status: 502 }
-      );
+      if (!upstreamResponse.ok) {
+        return NextResponse.json(
+          { error: `Upstream returned HTTP ${upstreamResponse.status}.` },
+          { status: 502 }
+        );
+      }
+
+      payload = (await upstreamResponse.json()) as unknown;
+    } else {
+      payload = resolveLifeComparisonSourcePayload();
     }
 
-    const payload = (await upstreamResponse.json()) as unknown;
     if (!isComparisonPayload(payload)) {
       return NextResponse.json(
         { error: "Invalid online life comparison payload." },

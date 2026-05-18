@@ -142,6 +142,7 @@ const QUICK_ACTION_OPTIONS: QuickAction[] = [
   { key: "dokumenty", title: "Dokumenty", href: "/pomucky/dokumenty", category: "Obecné" },
   { key: "zaznam", title: "Záznam z jednání", href: "/pomucky/zaznam", category: "Obecné" },
   { key: "tvorba", title: "Tvorba", href: "/pomucky/tvorba", category: "Obecné" },
+  { key: "ai-asistent", title: "AI Asistent", href: "/pomucky/ai-asistent", category: "Obecné" },
   { key: "investicni-kalkulacka", title: "Investiční kalkulačka", href: "/pomucky/investicni-kalkulacka", category: "Investice" },
   { key: "statistika", title: "Statistika", href: "/pomucky/statistika", category: "Finance" },
   { key: "export-produkce", title: "Export produkce", href: "/pomucky/export-produkce", category: "Finance" },

@@ -169,6 +169,62 @@ const INSTITUTION_LOGO_BY_ID: Partial<Record<Institution, string>> = Object.from
 const LIFE_PRODUCTS = new Set<Product>(LIFE_PRODUCTS_LIST);
 const GOLD_PRODUCT: Product = "comfortcc";
 const ANNIVERSARY_EXCLUDED_PRODUCTS = new Set<Product>(TRAVEL_PRODUCTS);
+const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
+  neon: "Životní pojištění NEON",
+  flexi: "Životní pojištění FLEXI",
+  maximaMaxEfekt: "Životní pojištění MaxEfekt",
+  pillowInjury: "Úraz / Nemoc",
+  zamex: "ZAMEX",
+  domex: "DOMEX",
+  cpphafan: "HAFAN",
+  pillowmajetek: "Majetek",
+  koopmajetekobcan: "Majetek a odpovědnost občanů",
+  maxdomov: "MAXDOMOV",
+  allianzmujdomov: "MůjDomov",
+  cppsimplex: "Simplex",
+  cppAuto: "Auto",
+  slaviaauto: "Auto",
+  allianzAuto: "Auto",
+  csobAuto: "Auto",
+  uniqaAuto: "Auto",
+  uniqaflotila: "Auto Flotila",
+  pillowAuto: "Auto",
+  kooperativaAuto: "Auto",
+  koopcestovko: "Cestovní pojištění",
+  cppcestovko: "Cestovní pojištění",
+  axacestovko: "Cestovní pojištění",
+  maxcizinkomplex: "Komplexní zdravotní pojištění cizinců",
+  comfortcc: "Comfort Commodity",
+  cppPPRs: "Majetek a odpovědnost podnikatelů – ÚPIS",
+  cppPPRbez: "Majetek a odpovědnost podnikatelů",
+};
+
+function institutionGhostTintClass(institution?: Institution | null): string {
+  switch (institution) {
+    case "cpp":
+      return "bg-[radial-gradient(circle_at_12%_22%,rgba(59,130,246,0.16)_0%,transparent_52%),radial-gradient(circle_at_42%_76%,rgba(239,68,68,0.12)_0%,transparent_54%)]";
+    case "csob":
+      return "bg-[radial-gradient(circle_at_16%_20%,rgba(14,165,233,0.17)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(59,130,246,0.11)_0%,transparent_54%)]";
+    case "kooperativa":
+      return "bg-[radial-gradient(circle_at_16%_20%,rgba(239,68,68,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(220,38,38,0.11)_0%,transparent_54%)]";
+    case "allianz":
+      return "bg-[radial-gradient(circle_at_16%_20%,rgba(37,99,235,0.17)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(59,130,246,0.11)_0%,transparent_54%)]";
+    case "slavia":
+      return "bg-[radial-gradient(circle_at_16%_20%,rgba(249,115,22,0.17)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(245,158,11,0.11)_0%,transparent_54%)]";
+    case "uniqa":
+      return "bg-[radial-gradient(circle_at_16%_20%,rgba(67,56,202,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(99,102,241,0.11)_0%,transparent_54%)]";
+    case "pillow":
+      return "bg-[radial-gradient(circle_at_16%_20%,rgba(2,132,199,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(6,182,212,0.11)_0%,transparent_54%)]";
+    case "maxima":
+      return "bg-[radial-gradient(circle_at_16%_20%,rgba(190,24,93,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(236,72,153,0.11)_0%,transparent_54%)]";
+    case "axa":
+      return "bg-[radial-gradient(circle_at_16%_20%,rgba(22,163,74,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(34,197,94,0.11)_0%,transparent_54%)]";
+    case "comfort":
+      return "bg-[radial-gradient(circle_at_16%_20%,rgba(245,158,11,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(234,179,8,0.11)_0%,transparent_54%)]";
+    default:
+      return "bg-[radial-gradient(circle_at_16%_20%,rgba(148,163,184,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(100,116,139,0.11)_0%,transparent_54%)]";
+  }
+}
 
 function paymentsPerYear(freq?: PaymentFrequency | null): number {
   switch (freq) {
@@ -250,6 +306,28 @@ function isManagerPosition(pos: Position | null): boolean {
 
 function productLabel(p?: Product): string {
   return productLabelFromCatalog(p, "Neznámý produkt");
+}
+
+function productCardLabel(product?: Product): string {
+  if (!product) return "Neznámý produkt";
+
+  const mapped = PRODUCT_CARD_LABELS[product];
+  if (mapped) return mapped;
+
+  const fallback = productLabel(product);
+  const meta = PRODUCT_CATALOG[product];
+  if (!meta) return fallback;
+
+  const label = meta.label.trim();
+  const institution = meta.institutionLabel.trim();
+  const labelLower = label.toLocaleLowerCase("cs-CZ");
+  const institutionLower = institution.toLocaleLowerCase("cs-CZ");
+
+  if (institution && labelLower.startsWith(`${institutionLower} `)) {
+    return label.slice(institution.length).trim();
+  }
+
+  return fallback;
 }
 
 // jmeno.prijmeni@bohemika.eu → "Jmeno Prijmeni"
@@ -2122,6 +2200,13 @@ function ContractsPageContent() {
                 const lifecycleStatus = contractLifecycleStatus(c as ContractDoc);
                 const isStorno = lifecycleStatus === "storno";
                 const isDozita = lifecycleStatus === "dozita";
+                const statusStripeClass = isStorno
+                  ? "bg-gradient-to-b from-amber-400 to-amber-600"
+                  : isDozita
+                    ? "bg-gradient-to-b from-sky-400 to-sky-600"
+                    : c.paid
+                      ? "bg-gradient-to-b from-emerald-400 to-emerald-600"
+                      : "bg-gradient-to-b from-rose-400 to-rose-600";
                 const groupedEntryCount = Number((c as ContractDoc).groupedEntryCount ?? 1);
                 const groupedEndorsementCount = Number(
                   (c as ContractDoc).groupedEndorsementCount ?? 0
@@ -2129,10 +2214,11 @@ function ContractsPageContent() {
                 const institutionLabel = institutionLabelForProduct(c.productKey as Product | undefined);
                 const institutionId = institutionForProduct(c.productKey as Product | undefined);
                 const institutionLogo = institutionId ? INSTITUTION_LOGO_BY_ID[institutionId] : null;
+                const displayProductName = productCardLabel(c.productKey as Product | undefined);
 
                 const CardContent = (
                   <article
-                    className={`relative rounded-2xl border border-slate-200 bg-white px-4 py-3 font-mono shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:border-slate-300 hover:bg-slate-50 ${
+                    className={`relative isolate overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 font-mono shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:border-slate-300 hover:bg-slate-50 ${
                       isSelected ? "border-emerald-600 ring-2 ring-emerald-500/40" : ""
                     }`}
                     style={{
@@ -2140,6 +2226,10 @@ function ContractsPageContent() {
                       containIntrinsicSize: "340px",
                     }}
                   >
+                  <div
+                    className={`pointer-events-none absolute inset-y-2 left-1 w-1 rounded-full opacity-85 ${statusStripeClass}`}
+                    aria-hidden="true"
+                  />
                   {selectMode && (
                     <div className="absolute right-3 top-3 z-10">
                       <span
@@ -2153,34 +2243,43 @@ function ContractsPageContent() {
                       </span>
                     </div>
                   )}
+                  {!selectMode && (
+                    <div
+                      className="pointer-events-none absolute right-3 top-3 z-[2] inline-flex items-center gap-1 rounded-full border border-slate-300/90 bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-600 opacity-0 shadow-sm transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                      aria-hidden="true"
+                    >
+                      <span>Detail</span>
+                      <span className="text-[11px]">↗</span>
+                    </div>
+                  )}
+
+                  {institutionLogo ? (
+                    <div className="pointer-events-none absolute inset-y-0 left-0 w-[62%] overflow-hidden">
+                      <div className={`absolute inset-0 ${institutionGhostTintClass(institutionId)}`} />
+                      <div className="absolute inset-y-0 left-[-12%] w-[118%]">
+                        <Image
+                          src={institutionLogo}
+                          alt=""
+                          fill
+                          aria-hidden="true"
+                          sizes="(min-width: 768px) 360px, 260px"
+                          className={`${institutionLogoImageClass(institutionId)} object-contain opacity-[0.24] [filter:grayscale(0.72)_contrast(1.03)]`}
+                        />
+                      </div>
+                      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.33)_42%,rgba(255,255,255,0.82)_72%,rgba(255,255,255,1)_100%)]" />
+                    </div>
+                  ) : null}
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_190px] sm:gap-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-3">
+                    <div className="relative z-[1] min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
                         {institutionLabel ? (
-                          <span
-                            className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white ${institutionLogoFrameClass(
-                              institutionId,
-                              "compact"
-                            )}`}
-                          >
-                            {institutionLogo ? (
-                              <Image
-                                src={institutionLogo}
-                                alt={`${institutionLabel} logo`}
-                                width={72}
-                                height={40}
-                                className={`${institutionLogoImageClass(institutionId)} h-full w-full`}
-                              />
-                            ) : (
-                              <span className="text-[10px] font-semibold tracking-wide text-slate-600">
-                                {institutionMonogram(institutionLabel)}
-                              </span>
-                            )}
+                          <span className="inline-flex items-center rounded-full border border-slate-300/85 bg-white/85 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-600 backdrop-blur-[1px]">
+                            {institutionLabel}
                           </span>
                         ) : null}
-                        <div className="min-w-0 text-xl leading-tight font-semibold text-slate-900 sm:text-[1.95rem]">
-                          {productLabel(c.productKey)}
+                        <div className="min-w-0 text-[1.65rem] leading-tight font-semibold text-slate-900 sm:text-[1.95rem]">
+                          {displayProductName}
                         </div>
                         {isEndorsement && (
                           <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
@@ -2224,36 +2323,48 @@ function ContractsPageContent() {
                         </div>
                       )}
 
-                      <div className="mt-3 grid grid-cols-1 gap-1 text-sm text-slate-700">
-                        <p>
-                          <span className="text-slate-500">Číslo smlouvy:</span>{" "}
-                          <span className="text-slate-900">{c.contractNumber ?? "—"}</span>
+                      <div className="mt-3 grid grid-cols-1 gap-1.5 text-[15px] leading-tight text-slate-700">
+                        <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500">
+                            Číslo smlouvy
+                          </span>
+                          <span className="font-medium text-slate-900">{c.contractNumber ?? "—"}</span>
                         </p>
                         {c.clientName && (
-                          <p>
-                            <span className="text-slate-500">Klient:</span>{" "}
-                            <span className="text-slate-900">{c.clientName}</span>
+                          <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500">
+                              Klient
+                            </span>
+                            <span className="text-base font-semibold text-slate-900">{c.clientName}</span>
                           </p>
                         )}
-                        <p>
-                          <span className="text-slate-500">Datum sjednání:</span>{" "}
+                        <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500">
+                            Datum sjednání
+                          </span>
                           <span className="text-slate-900">{signedStr}</span>
                         </p>
                         {adviserName && (
-                          <p>
-                            <span className="text-slate-500">Sjednal:</span>{" "}
+                          <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500">
+                              Sjednal
+                            </span>
                             <span className="text-slate-900">{adviserName}</span>
                           </p>
                         )}
                         {groupedEntryCount > 1 && (
-                          <p>
-                            <span className="text-slate-500">Verzí v kartě:</span>{" "}
+                          <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500">
+                              Verzí v kartě
+                            </span>
                             <span className="text-slate-900">{groupedEntryCount}</span>
                           </p>
                         )}
                         {isEndorsement && premiumDelta != null && (
-                          <p>
-                            <span className="text-slate-500">Změna pojistného:</span>{" "}
+                          <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500">
+                              Změna pojistného
+                            </span>
                             <span
                               className={
                                 premiumDelta >= 0 ? "text-emerald-700" : "text-rose-700"

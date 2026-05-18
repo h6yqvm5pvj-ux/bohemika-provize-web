@@ -36,6 +36,7 @@ import {
   FONT_THEME_LOCAL_STORAGE_KEY,
   applyFontThemeToRoot,
 } from "@/lib/fontTheme";
+import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import type { UserProfileResponse } from "@/app/lib/userProfileCache";
@@ -70,10 +71,6 @@ const hasCareerTimelineConfigured = (data: Record<string, unknown>): boolean => 
   });
 };
 
-const normalizeEmail = (value: string | null | undefined): string =>
-  (value ?? "").trim().toLowerCase();
-
-const ADMIN_REQUESTS_EMAIL = "jakub.rauscher@bohemika.eu";
 const PROFILE_CACHE_MAX_AGE_MS = 60 * 1000;
 
 export function AppLayout({ children, active }: AppLayoutProps) {
@@ -381,7 +378,20 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   }, [user, loadSubscriptionProfileForUser]);
 
   useEffect(() => {
-    if (!user?.email) return;
+    if (!user || typeof window === "undefined") return;
+
+    const onRefreshProfile = () => {
+      void loadSubscriptionProfileForUser(user, { force: true });
+    };
+
+    window.addEventListener("app:refresh-user-profile", onRefreshProfile);
+    return () => {
+      window.removeEventListener("app:refresh-user-profile", onRefreshProfile);
+    };
+  }, [user, loadSubscriptionProfileForUser]);
+
+  useEffect(() => {
+    if (!user) return;
     if (loadingProfile || subscriptionStatus === "expired") return;
     if (!needsCareerTimelineSetup) {
       setShowCareerTimelinePrompt(false);
@@ -391,23 +401,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setShowCareerTimelinePrompt(false);
       return;
     }
-    if (typeof window === "undefined") return;
-
-    const key = `app.careerTimelinePromptDismissed:${user.email.toLowerCase()}`;
-    const dismissed = window.sessionStorage.getItem(key) === "1";
-    if (!dismissed) {
-      setShowCareerTimelinePrompt(true);
-    }
-  }, [user?.email, loadingProfile, subscriptionStatus, needsCareerTimelineSetup, pathname]);
-
-  const markCareerTimelinePromptDismissed = () => {
-    if (!user?.email || typeof window === "undefined") return;
-    const key = `app.careerTimelinePromptDismissed:${user.email.toLowerCase()}`;
-    window.sessionStorage.setItem(key, "1");
-  };
+    setShowCareerTimelinePrompt(true);
+  }, [user, loadingProfile, subscriptionStatus, needsCareerTimelineSetup, pathname]);
 
   const handleCareerTimelineSetup = () => {
-    markCareerTimelinePromptDismissed();
     setShowCareerTimelinePrompt(false);
     router.push("/nastaveni#timeline-kariery");
   };
@@ -541,7 +538,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     !!user &&
     subscriptionStatus === "expired" &&
     !loadingProfile;
-  const isAdminRequestsUser = normalizeEmail(user?.email) === ADMIN_REQUESTS_EMAIL;
+  const timelineSetupGateActive =
+    !!user &&
+    !loadingProfile &&
+    subscriptionStatus !== "expired" &&
+    needsCareerTimelineSetup;
+  const isAdminRequestsUser = isAdminPanelEmail(user?.email);
 
   // Pokud auth není připravené, nerenderuj obsah (zamezení blikání nechráněného UI)
   if (!authReady) {
@@ -615,28 +617,48 @@ export function AppLayout({ children, active }: AppLayoutProps) {
               if (item.requiresTeam && !hasTeam) return null;
               if (item.requiresAdmin && !isAdminRequestsUser) return null;
               const isActive = active === item.key;
+              const navDisabled = timelineSetupGateActive && item.key !== "settings";
               return (
-                <Link
-                  key={item.key}
-                  href={item.href}
-                  prefetch={item.key === "team" ? false : true}
-                  className={`${navItemBase} ${
-                    isActive
-                      ? navItemActiveClass
-                      : navItemInactiveClass
-                  }`}
-                >
-                  {isActive ? (
-                    <span
-                      className="absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-emerald-400"
-                      aria-hidden="true"
-                    />
-                  ) : null}
+                navDisabled ? (
+                  <div
+                    key={item.key}
+                    aria-disabled="true"
+                    className={`${navItemBase} cursor-not-allowed opacity-50 ${
+                      isActive ? navItemActiveClass : navItemInactiveClass
+                    }`}
+                  >
+                    {isActive ? (
+                      <span
+                        className="absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-emerald-400"
+                        aria-hidden="true"
+                      />
+                    ) : null}
                     <span className={navLabelBase}>
-                    {renderNavIcon(item.icon, isActive)}
-                    <span className="truncate">{item.label}</span>
-                  </span>
-                </Link>
+                      {renderNavIcon(item.icon, isActive)}
+                      <span className="truncate">{item.label}</span>
+                    </span>
+                  </div>
+                ) : (
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    prefetch={item.key === "team" ? false : true}
+                    className={`${navItemBase} ${
+                      isActive ? navItemActiveClass : navItemInactiveClass
+                    }`}
+                  >
+                    {isActive ? (
+                      <span
+                        className="absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-emerald-400"
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    <span className={navLabelBase}>
+                      {renderNavIcon(item.icon, isActive)}
+                      <span className="truncate">{item.label}</span>
+                    </span>
+                  </Link>
+                )
               );
             })}
           </nav>
@@ -728,29 +750,49 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                     if (item.requiresTeam && !hasTeam) return null;
                     if (item.requiresAdmin && !isAdminRequestsUser) return null;
                     const isActive = active === item.key;
+                    const navDisabled = timelineSetupGateActive && item.key !== "settings";
                     return (
-                      <Link
-                        key={item.key}
-                        href={item.href}
-                        prefetch={item.key === "team" ? false : true}
-                        onClick={() => setMobileMenuOpen(false)}
-                        className={`${navItemBase} ${
-                          isActive
-                            ? navItemActiveClass
-                            : navItemInactiveClass
-                        }`}
-                      >
-                        {isActive ? (
-                          <span
-                            className="absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-emerald-400"
-                            aria-hidden="true"
-                          />
-                        ) : null}
-                        <span className={navLabelBase}>
-                          {renderNavIcon(item.icon, isActive)}
-                          <span className="truncate">{item.label}</span>
-                        </span>
-                      </Link>
+                      navDisabled ? (
+                        <div
+                          key={item.key}
+                          aria-disabled="true"
+                          className={`${navItemBase} cursor-not-allowed opacity-50 ${
+                            isActive ? navItemActiveClass : navItemInactiveClass
+                          }`}
+                        >
+                          {isActive ? (
+                            <span
+                              className="absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-emerald-400"
+                              aria-hidden="true"
+                            />
+                          ) : null}
+                          <span className={navLabelBase}>
+                            {renderNavIcon(item.icon, isActive)}
+                            <span className="truncate">{item.label}</span>
+                          </span>
+                        </div>
+                      ) : (
+                        <Link
+                          key={item.key}
+                          href={item.href}
+                          prefetch={item.key === "team" ? false : true}
+                          onClick={() => setMobileMenuOpen(false)}
+                          className={`${navItemBase} ${
+                            isActive ? navItemActiveClass : navItemInactiveClass
+                          }`}
+                        >
+                          {isActive ? (
+                            <span
+                              className="absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-emerald-400"
+                              aria-hidden="true"
+                            />
+                          ) : null}
+                          <span className={navLabelBase}>
+                            {renderNavIcon(item.icon, isActive)}
+                            <span className="truncate">{item.label}</span>
+                          </span>
+                        </Link>
+                      )
                     );
                   })}
                 </nav>

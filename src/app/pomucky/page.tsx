@@ -12,6 +12,7 @@ import {
   BanknoteArrowDown,
   BarChart3,
   Bike,
+  Bot,
   Calculator,
   CarFront,
   Files,
@@ -358,6 +359,15 @@ export default function ToolsPage() {
         description: "Interaktivní A4 editor dokumentu s pevnou hlavičkou, patičkou a stažením do PDF.",
         icon: PenTool,
         href: "/pomucky/tvorba",
+      },
+      {
+        key: "ai-asistent",
+        category: "Obecné",
+        title: "AI Asistent",
+        description:
+          "Top Premium Chat jako interní pomocník pro pojištění, investice a investiční zlato (bez přístupu ke smlouvám).",
+        icon: Bot,
+        href: "/pomucky/ai-asistent",
       },
       {
         key: "investicni-kalkulacka",

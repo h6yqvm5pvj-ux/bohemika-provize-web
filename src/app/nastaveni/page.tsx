@@ -628,6 +628,7 @@ export default function SettingsPage() {
   const [positionTimelineError, setPositionTimelineError] = useState<string | null>(null);
   const [timelineSaveFlashVisible, setTimelineSaveFlashVisible] = useState(false);
   const [positionTimelineLocked, setPositionTimelineLocked] = useState(false);
+  const [timelineSetupRequired, setTimelineSetupRequired] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>("career");
   const [showCareerTimelineHelp, setShowCareerTimelineHelp] = useState(false);
   const [userRequests, setUserRequests] = useState<UserRequestPayload[]>([]);
@@ -932,10 +933,12 @@ export default function SettingsPage() {
           const parsedTimeline = parsePositionTimeline(data.positionTimeline);
           setPositionTimelineDraft(parsedTimeline);
           setPositionTimelineLocked(parsedTimeline.length > 0);
+          setTimelineSetupRequired(parsedTimeline.length === 0);
         } else {
           // user dokument neexistuje → zkusíme aspoň natáhnout z localStorage
           setPositionTimelineDraft([]);
           setPositionTimelineLocked(false);
+          setTimelineSetupRequired(true);
           if (typeof window !== "undefined") {
             const storedMode = window.localStorage.getItem(
               SETTINGS_KEYS.mode
@@ -991,6 +994,37 @@ export default function SettingsPage() {
     }, 2600);
     return () => window.clearTimeout(timeoutId);
   }, [timelineSaveFlashVisible]);
+
+  useEffect(() => {
+    if (!timelineSetupRequired) return;
+    if (activeTab !== "career") {
+      setActiveTab("career");
+    }
+  }, [timelineSetupRequired, activeTab]);
+
+  useEffect(() => {
+    if (loadingMeta || typeof window === "undefined") return;
+
+    const scrollToTimeline = () => {
+      if (window.location.hash !== "#timeline-kariery") return;
+      const timelineSection = document.getElementById("timeline-kariery");
+      if (!timelineSection) return;
+      timelineSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+
+    const startupTimer = window.setTimeout(() => {
+      scrollToTimeline();
+    }, 80);
+    const onHashChange = () => {
+      window.setTimeout(scrollToTimeline, 0);
+    };
+
+    window.addEventListener("hashchange", onHashChange);
+    return () => {
+      window.clearTimeout(startupTimer);
+      window.removeEventListener("hashchange", onHashChange);
+    };
+  }, [loadingMeta]);
 
   async function saveUserFields(
     partial: Record<string, any>
@@ -1075,6 +1109,11 @@ export default function SettingsPage() {
             row.validFrom.length > 0 ||
             row.validTo.length > 0
         );
+
+      if (normalized.length === 0) {
+        setPositionTimelineError("Přidej aspoň jednu pozici do timeline.");
+        return;
+      }
 
       for (let i = 0; i < normalized.length; i += 1) {
         const row = normalized[i];
@@ -1166,6 +1205,10 @@ export default function SettingsPage() {
       setPositionTimelineLocked(true);
       setPositionTimelineSaved(true);
       setTimelineSaveFlashVisible(true);
+      setTimelineSetupRequired(false);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("app:refresh-user-profile"));
+      }
     } catch (e) {
       console.error("Chyba při ukládání timeline pozic:", e);
       setPositionTimelineError("Historii kariéry se nepodařilo uložit.");
@@ -2071,18 +2114,32 @@ export default function SettingsPage() {
               </span>
             </div>
 
+            {timelineSetupRequired ? (
+              <div className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                Před prvním použitím aplikace nejdřív nastav a ulož Historii kariéry. Ostatní
+                části Nastavení se zpřístupní po uložení timeline.
+              </div>
+            ) : null}
+
             <div className="flex w-fit max-w-full flex-wrap gap-1 overflow-x-auto rounded-full border border-slate-900 bg-slate-950 p-1 shadow-[0_16px_34px_rgba(15,23,42,0.16)]">
               {SETTINGS_TABS.map((tab) => {
                 const active = activeTab === tab.id;
+                const tabDisabled = timelineSetupRequired && tab.id !== "career";
                 return (
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => {
+                      if (tabDisabled) return;
+                      setActiveTab(tab.id);
+                    }}
+                    disabled={tabDisabled}
                     className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
                       active
                         ? "bg-white text-slate-950"
-                        : "text-white hover:bg-white/10"
+                        : tabDisabled
+                          ? "cursor-not-allowed text-white/45"
+                          : "text-white hover:bg-white/10"
                     }`}
                   >
                     {tab.label}
@@ -2092,7 +2149,7 @@ export default function SettingsPage() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-              {activeTab === "career" && (
+              {activeTab === "career" && !timelineSetupRequired && (
               <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
                 <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
                 <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
@@ -2428,7 +2485,7 @@ export default function SettingsPage() {
               </section>
               )}
 
-              {activeTab === "notifications" && (
+              {activeTab === "notifications" && !timelineSetupRequired && (
               <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
                 <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#06b6d4_0%,#3b82f6_45%,#6366f1_100%)]" />
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_9%,rgba(56,189,248,0.13),transparent_32%)]" />
@@ -2671,7 +2728,7 @@ export default function SettingsPage() {
               </section>
               )}
 
-              {activeTab === "requests" && (
+              {activeTab === "requests" && !timelineSetupRequired && (
               <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
                 <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
                 <div className="grid gap-4 lg:grid-cols-2">
@@ -3098,7 +3155,7 @@ export default function SettingsPage() {
               )}
             </div>
 
-            {activeTab === "design" && (
+            {activeTab === "design" && !timelineSetupRequired && (
             <section className={`space-y-3 ${compactPanelClass}`}>
                 <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
                 <div className="space-y-2.5">
@@ -3237,7 +3294,7 @@ export default function SettingsPage() {
             )}
 
             {/* Účet */}
-            {activeTab === "account" && (
+            {activeTab === "account" && !timelineSetupRequired && (
             <section className={`space-y-4 ${panelClass}`}>
               <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
               <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">

@@ -17,6 +17,7 @@ import {
   applyRateLimitHeaders,
   consumeRateLimit,
 } from "@/lib/server/rateLimit";
+import { isAdminPanelEmail } from "@/lib/adminAccess";
 import type {
   AggregateMetrics,
   Category,
@@ -43,7 +44,6 @@ const FIRESTORE_IN_LIMIT = 10;
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_TIMELINE_ROWS = 150;
 const TRANSFER_BATCH_LIMIT = 360;
-const END_COLLAB_APPROVER_EMAIL = "jakub.rauscher@bohemika.eu";
 const END_COLLAB_REQUESTS_COLLECTION = "endCollaborationRequests";
 const END_COLLAB_DECISION_REASON_MAX_LEN = 400;
 const POSITION_VALUES: Position[] = [
@@ -80,7 +80,7 @@ const normalizeOptionalText = (value: unknown, maxLen: number): string | null =>
 };
 
 const isEndCollaborationApprover = (email: string): boolean =>
-  normalizeEmail(email) === END_COLLAB_APPROVER_EMAIL;
+  isAdminPanelEmail(email);
 
 const endCollaborationRequestDocId = (targetEmail: string): string =>
   `end-collaboration:${encodeURIComponent(targetEmail)}`;
@@ -158,6 +158,62 @@ function sanitizePositionTimeline(value: unknown): Array<{
   }
 
   return rows;
+}
+
+function currentIsoDay(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate()
+  ).padStart(2, "0")}`;
+}
+
+function resolvePositionTimelineMatch(
+  signedDateIso: string,
+  timeline: Array<{
+    id: string;
+    position: Position;
+    validFrom: string;
+    validTo: string | null;
+  }>
+): { id: string; position: Position; validFrom: string; validTo: string | null } | null {
+  if (!isIsoDay(signedDateIso) || timeline.length === 0) return null;
+
+  const candidates = timeline.filter((row) => {
+    if (row.validFrom > signedDateIso) return false;
+    if (row.validTo && row.validTo < signedDateIso) return false;
+    return true;
+  });
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => {
+    if (a.validFrom !== b.validFrom) return b.validFrom.localeCompare(a.validFrom);
+    const aTo = a.validTo ?? "9999-12-31";
+    const bTo = b.validTo ?? "9999-12-31";
+    return bTo.localeCompare(aTo);
+  });
+
+  return candidates[0] ?? null;
+}
+
+function resolveCurrentPositionFromTimeline(
+  timeline: Array<{
+    id: string;
+    position: Position;
+    validFrom: string;
+    validTo: string | null;
+  }>
+): Position | null {
+  if (timeline.length === 0) return null;
+
+  const match = resolvePositionTimelineMatch(currentIsoDay(), timeline);
+  if (match) return match.position;
+
+  for (let i = timeline.length - 1; i >= 0; i -= 1) {
+    const row = timeline[i];
+    if (!row.validTo) return row.position;
+  }
+
+  return timeline[timeline.length - 1]?.position ?? null;
 }
 
 function nameFromEmail(email: string | null | undefined): string {
@@ -532,6 +588,15 @@ function candidateFromDoc(
 ): TeamMember | null {
   if (!docSnap.exists) return null;
   const data = docSnap.data() as Record<string, unknown>;
+  const timeline = sanitizePositionTimeline(data.positionTimeline);
+  const hasValidTimeline = timeline !== null;
+  const timelinePosition = hasValidTimeline
+    ? resolveCurrentPositionFromTimeline(timeline)
+    : null;
+  const fallbackPosition =
+    typeof data.position === "string" && POSITION_SET.has(data.position as Position)
+      ? (data.position as Position)
+      : null;
   // Document id is canonical identity. Do not trust mutable data.email here.
   const email = normalizeEmail(docSnap.id);
   if (!email) return null;
@@ -539,7 +604,7 @@ function candidateFromDoc(
   return {
     email,
     name: nameFromEmail(email),
-    position: (data.position as Position | undefined) ?? null,
+    position: hasValidTimeline ? timelinePosition : fallbackPosition,
     commissionMode:
       data.commissionMode === "standard" || data.commissionMode === "accelerated"
         ? (data.commissionMode as CommissionMode)
@@ -1392,7 +1457,6 @@ async function endCollaborationAndTransfer({
 type ParsedUpdatePatchPayload = {
   action: "update";
   targetEmail: string;
-  position?: Position;
   positionTimeline?: Array<{
     id: string;
     position: Position;
@@ -1495,11 +1559,10 @@ function parsePatchPayload(
   };
 
   if (body.position != null) {
-    const positionRaw = typeof body.position === "string" ? body.position.trim() : "";
-    if (!POSITION_SET.has(positionRaw as Position)) {
-      return { error: "Pole position má neplatnou hodnotu." };
-    }
-    output.position = positionRaw as Position;
+    return {
+      error:
+        "Ruční změna pozice už není povolená. Uprav prosím historii kariéry (timeline).",
+    };
   }
 
   if (body.positionTimeline != null) {
@@ -1510,7 +1573,7 @@ function parsePatchPayload(
     output.positionTimeline = timeline;
   }
 
-  if (output.position == null && output.positionTimeline == null) {
+  if (output.positionTimeline == null) {
     return { error: "Není co uložit." };
   }
 
@@ -2151,13 +2214,12 @@ export async function PATCH(req: NextRequest) {
 
     const patch: Record<string, unknown> = {};
     const updated: Array<"position" | "positionTimeline"> = [];
-    if (parsed.position != null) {
-      patch.position = parsed.position;
-      updated.push("position");
-    }
     if (parsed.positionTimeline != null) {
       patch.positionTimeline = parsed.positionTimeline;
+      patch.position =
+        resolveCurrentPositionFromTimeline(parsed.positionTimeline) ?? null;
       updated.push("positionTimeline");
+      updated.push("position");
     }
 
     await adminDb.collection("users").doc(target.docId || target.email).set(patch, {

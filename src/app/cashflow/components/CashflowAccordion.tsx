@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { CalendarRange, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import { formatMoney } from "../helpers";
 import introStyles from "../cashflowIntro.module.css";
@@ -14,8 +14,6 @@ type CashflowAccordionProps = {
 
 type YearVisual = {
   line: string;
-  iconWrap: string;
-  iconText: string;
   amount: string;
   progress: string;
   glow: string;
@@ -24,8 +22,6 @@ type YearVisual = {
 
 const YEAR_VISUAL: YearVisual = {
   line: "from-blue-500 to-blue-500",
-  iconWrap: "border-blue-200 bg-blue-50",
-  iconText: "text-blue-700",
   amount: "text-blue-800",
   progress: "from-blue-500 to-blue-500",
   glow: "bg-blue-300/35",
@@ -63,8 +59,9 @@ export function CashflowAccordion({
         return (
           <section
             key={yearGroup.year}
+            data-year={yearGroup.year}
             style={staggerDelay("--cf-card-delay", Math.min(yearIndex * 90, 540))}
-            className={`cashflow-card-year ${introStyles.yearCard} group relative overflow-hidden rounded-[30px] border border-white/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.96)_0%,rgba(248,250,252,0.95)_56%,rgba(241,245,249,0.93)_100%)] px-4 pb-4 pt-4 shadow-[0_22px_58px_rgba(15,23,42,0.14)] backdrop-blur-[1px] transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-slate-200 hover:shadow-[0_30px_80px_rgba(15,23,42,0.17)] sm:px-5 sm:pb-5 sm:pt-5 ${
+            className={`cashflow-card-year ${introStyles.yearCard} ${introStyles.yearGhostCard} group relative isolate overflow-hidden rounded-[30px] border border-white/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.96)_0%,rgba(248,250,252,0.95)_56%,rgba(241,245,249,0.93)_100%)] px-4 pb-4 pt-4 shadow-[0_22px_58px_rgba(15,23,42,0.14)] backdrop-blur-[1px] transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-slate-200 hover:shadow-[0_30px_80px_rgba(15,23,42,0.17)] sm:px-5 sm:pb-5 sm:pt-5 ${
               yearOpen ? "lg:col-span-2" : ""
             }`}
           >
@@ -81,25 +78,9 @@ export function CashflowAccordion({
             <button
               type="button"
               onClick={() => onToggleYear(yearGroup.year)}
-              className="relative z-10 flex w-full flex-col gap-4 text-left md:flex-row md:items-center md:justify-between"
+              aria-label={`Otevřít cashflow pro rok ${yearGroup.year}`}
+              className="relative z-10 flex w-full items-end justify-end text-left"
             >
-              <div className="min-w-0 flex items-center gap-3 sm:gap-4">
-                <span
-                  className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-[0_10px_24px_rgba(15,23,42,0.08)] sm:h-14 sm:w-14 ${visual.iconWrap}`}
-                >
-                  <CalendarRange className={`h-6 w-6 ${visual.iconText}`} strokeWidth={1.9} />
-                </span>
-
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Cashflow rok
-                  </p>
-                  <h2 className="mt-0.5 font-mono text-[2rem] font-bold leading-none tracking-tight text-slate-900 sm:text-[2.2rem]">
-                    {yearGroup.year}
-                  </h2>
-                </div>
-              </div>
-
               <div className="flex w-full items-end justify-between gap-3 md:w-auto">
                 <div className="grid w-full max-w-[240px] grid-cols-1 gap-2 sm:max-w-[260px]">
                   <dl className="px-1 text-right">

@@ -22,6 +22,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import type { CommissionMode, Position } from "@/app/types/domain";
+import { ADMIN_PANEL_EMAILS_LABEL, isAdminPanelEmail } from "@/lib/adminAccess";
 
 type EndCollaborationRequestStatus =
   | "pending"
@@ -117,8 +118,6 @@ type UnifiedRequestItem =
       pending: boolean;
       request: UserRequestPayload;
     };
-
-const ADMIN_REQUESTS_EMAIL = "jakub.rauscher@bohemika.eu";
 
 const normalizeEmail = (value: string | null | undefined): string =>
   (value ?? "").trim().toLowerCase();
@@ -305,7 +304,7 @@ export default function AdminRequestsPage() {
   const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>("requests");
   const [requestsNowMs, setRequestsNowMs] = useState(() => Date.now());
 
-  const isAllowedAdmin = normalizeEmail(currentUser?.email) === ADMIN_REQUESTS_EMAIL;
+  const isAllowedAdmin = isAdminPanelEmail(currentUser?.email);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -745,7 +744,7 @@ export default function AdminRequestsPage() {
 
           {!isAllowedAdmin ? (
             <div className="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-              Tato sekce je dostupná pouze pro {ADMIN_REQUESTS_EMAIL}.
+              Tato sekce je dostupná pouze pro {ADMIN_PANEL_EMAILS_LABEL}.
             </div>
           ) : (
             <>

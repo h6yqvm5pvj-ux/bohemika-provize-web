@@ -79,7 +79,6 @@ const QUICK_ACTION_SET = new Set([
 
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ALLOWED_PATCH_KEYS = new Set([
-  "position",
   "commissionMode",
   "monthlyGoal",
   "notifyMinutes",
@@ -268,59 +267,6 @@ async function loadPrivateProfile({
     merged = { ...(merged ?? {}), ...data };
   }
   return merged;
-}
-
-function hasAdminFunctionFlag(data: Record<string, unknown> | null | undefined): boolean {
-  if (!data) return false;
-  return data.adminFunction === true || data.adminfunction === true;
-}
-
-async function loadHasAdminFunction({
-  email,
-  rawTokenEmail,
-  uid,
-}: {
-  email: string;
-  rawTokenEmail: string;
-  uid: string;
-}): Promise<boolean> {
-  if (!adminDb) return false;
-  const candidateEmails = Array.from(
-    new Set([email, rawTokenEmail, rawTokenEmail.toLowerCase()].map((it) => it.trim()).filter(Boolean))
-  );
-
-  const privateCol = adminDb.collection("usersPrivate");
-  for (const docId of candidateEmails) {
-    const privateSnap = await privateCol.doc(docId).get();
-    if (!privateSnap.exists) continue;
-    const data = (privateSnap.data() as Record<string, unknown> | undefined) ?? {};
-    if (hasAdminFunctionFlag(data)) return true;
-  }
-
-  const usersCol = adminDb.collection("users");
-  for (const docId of candidateEmails) {
-    const directSnap = await usersCol.doc(docId).get();
-    if (directSnap.exists) {
-      const data = (directSnap.data() as Record<string, unknown> | undefined) ?? {};
-      if (hasAdminFunctionFlag(data)) return true;
-    }
-
-    const byEmailSnap = await usersCol.where("email", "==", docId).limit(6).get();
-    for (const row of byEmailSnap.docs) {
-      const data = (row.data() as Record<string, unknown> | undefined) ?? {};
-      if (hasAdminFunctionFlag(data)) return true;
-    }
-  }
-
-  if (uid) {
-    const byUidSnap = await usersCol.where("userId", "==", uid).limit(6).get();
-    for (const row of byUidSnap.docs) {
-      const data = (row.data() as Record<string, unknown> | undefined) ?? {};
-      if (hasAdminFunctionFlag(data)) return true;
-    }
-  }
-
-  return false;
 }
 
 async function getHasTeam(email: string): Promise<boolean> {
@@ -559,15 +505,70 @@ function sanitizePositionTimeline(value: unknown): Array<{
   return rows;
 }
 
+function currentIsoDay(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate()
+  ).padStart(2, "0")}`;
+}
+
+function resolvePositionTimelineMatch(
+  signedDateIso: string,
+  timeline: Array<{
+    id: string;
+    position: Position;
+    validFrom: string;
+    validTo: string | null;
+  }>
+): { id: string; position: Position; validFrom: string; validTo: string | null } | null {
+  if (!isIsoDay(signedDateIso) || timeline.length === 0) return null;
+
+  const candidates = timeline.filter((row) => {
+    if (row.validFrom > signedDateIso) return false;
+    if (row.validTo && row.validTo < signedDateIso) return false;
+    return true;
+  });
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => {
+    if (a.validFrom !== b.validFrom) return b.validFrom.localeCompare(a.validFrom);
+    const aTo = a.validTo ?? "9999-12-31";
+    const bTo = b.validTo ?? "9999-12-31";
+    return bTo.localeCompare(aTo);
+  });
+
+  return candidates[0] ?? null;
+}
+
+function resolveCurrentPositionFromTimeline(
+  timeline: Array<{
+    id: string;
+    position: Position;
+    validFrom: string;
+    validTo: string | null;
+  }>
+): Position | null {
+  if (timeline.length === 0) return null;
+
+  const match = resolvePositionTimelineMatch(currentIsoDay(), timeline);
+  if (match) return match.position;
+
+  for (let i = timeline.length - 1; i >= 0; i -= 1) {
+    const row = timeline[i];
+    if (!row.validTo) return row.position;
+  }
+
+  return timeline[timeline.length - 1]?.position ?? null;
+}
+
 function buildPatchFromBody(
   body: unknown
-): { patch: Record<string, unknown>; wantsPositionEdit: boolean } | { error: string } {
+): { patch: Record<string, unknown> } | { error: string } {
   if (!isPlainObject(body)) {
     return { error: "Neplatný payload." };
   }
 
   const patch: Record<string, unknown> = {};
-  let wantsPositionEdit = false;
   for (const key of Object.keys(body)) {
     if (!ALLOWED_PATCH_KEYS.has(key)) {
       return { error: `Pole ${key} není povolené.` };
@@ -579,15 +580,6 @@ function buildPatchFromBody(
       return { error: "lastActivePing musí být true." };
     }
     patch.lastActive = FieldValue.serverTimestamp();
-  }
-
-  if (body.position != null) {
-    const value = typeof body.position === "string" ? body.position.trim() : "";
-    if (!POSITION_SET.has(value as Position)) {
-      return { error: "Pole position má neplatnou hodnotu." };
-    }
-    patch.position = value;
-    wantsPositionEdit = true;
   }
 
   if (body.commissionMode != null) {
@@ -670,6 +662,7 @@ function buildPatchFromBody(
     const value = sanitizePositionTimeline(body.positionTimeline);
     if (!value) return { error: "Pole positionTimeline má neplatný formát." };
     patch.positionTimeline = value;
+    patch.position = resolveCurrentPositionFromTimeline(value) ?? FieldValue.delete();
   }
 
   if (body.homeLayout != null) {
@@ -707,7 +700,7 @@ function buildPatchFromBody(
     patch.tvorbaFooterProfile = value;
   }
 
-  return { patch, wantsPositionEdit };
+  return { patch };
 }
 
 export async function GET(req: NextRequest) {
@@ -745,6 +738,11 @@ export async function GET(req: NextRequest) {
       ...(privateData ?? {}),
     };
     const profile = serializeProfilePayload(profileRaw);
+    const sanitizedTimeline = sanitizePositionTimeline(profile.positionTimeline);
+    if (sanitizedTimeline) {
+      profile.positionTimeline = sanitizedTimeline;
+      profile.position = resolveCurrentPositionFromTimeline(sanitizedTimeline);
+    }
     const hasProfile = Boolean(publicData || privateData);
 
     const res = NextResponse.json({
@@ -780,7 +778,7 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const { email, uid, rawTokenEmail } = ctx;
+    const { email } = ctx;
     const rateLimit = consumeRateLimit({
       namespace: "api:user-profile:patch",
       key: email,
@@ -805,29 +803,12 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const { patch, wantsPositionEdit } = parsed;
+    const { patch } = parsed;
     if (Object.keys(patch).length === 0) {
       return NextResponse.json(
         { ok: false, error: "Není co uložit." } satisfies ApiError,
         { status: 400 }
       );
-    }
-
-    if (wantsPositionEdit) {
-      const hasAdminFunction = await loadHasAdminFunction({
-        email,
-        rawTokenEmail,
-        uid,
-      });
-      if (!hasAdminFunction) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Nemáš oprávnění měnit pozici přes vlastní profil.",
-          } satisfies ApiError,
-          { status: 403 }
-        );
-      }
     }
 
     await adminDb.collection("users").doc(email).set(patch, { merge: true });

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { type CommissionMode, type Position } from "@/app/types/domain";
+import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
@@ -17,7 +18,6 @@ type ApiSuccess = {
 
 const CREATE_USER_RATE_LIMIT = 20;
 const CREATE_USER_WINDOW_MS = 10 * 60_000;
-const CREATE_USER_ALLOWED_EMAIL = "jakub.rauscher@bohemika.eu";
 const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
 
 const POSITION_VALUES: Position[] = [
@@ -108,8 +108,7 @@ async function getAuthContext(req: NextRequest) {
 }
 
 const canCreateUsers = (ctx: AuthContext): boolean =>
-  ctx.email === CREATE_USER_ALLOWED_EMAIL ||
-  normalizeEmail(ctx.rawTokenEmail) === CREATE_USER_ALLOWED_EMAIL;
+  isAdminPanelEmail(ctx.email) || isAdminPanelEmail(ctx.rawTokenEmail);
 
 async function publicProfileExists(email: string): Promise<boolean> {
   if (!adminDb) return false;

@@ -11,7 +11,6 @@ import {
   Network,
   Search,
   Trophy,
-  UserCog,
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -133,6 +132,58 @@ const parsePositionTimeline = (value: unknown): PositionTimelineItem[] => {
   });
 
   return rows;
+};
+
+type PositionTimelineResolvedRow = {
+  id: string;
+  position: Position;
+  validFrom: string;
+  validTo: string | null;
+};
+
+const currentIsoDay = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate()
+  ).padStart(2, "0")}`;
+};
+
+const resolvePositionTimelineMatch = (
+  signedDateIso: string,
+  timeline: PositionTimelineResolvedRow[]
+): PositionTimelineResolvedRow | null => {
+  if (!isIsoDay(signedDateIso) || timeline.length === 0) return null;
+
+  const candidates = timeline.filter((row) => {
+    if (row.validFrom > signedDateIso) return false;
+    if (row.validTo && row.validTo < signedDateIso) return false;
+    return true;
+  });
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => {
+    if (a.validFrom !== b.validFrom) return b.validFrom.localeCompare(a.validFrom);
+    const aTo = a.validTo ?? "9999-12-31";
+    const bTo = b.validTo ?? "9999-12-31";
+    return bTo.localeCompare(aTo);
+  });
+  return candidates[0] ?? null;
+};
+
+const resolveCurrentPositionFromTimeline = (
+  timeline: PositionTimelineResolvedRow[]
+): Position | null => {
+  if (timeline.length === 0) return null;
+
+  const match = resolvePositionTimelineMatch(currentIsoDay(), timeline);
+  if (match) return match.position;
+
+  for (let i = timeline.length - 1; i >= 0; i -= 1) {
+    const row = timeline[i];
+    if (!row.validTo) return row.position;
+  }
+
+  return timeline[timeline.length - 1]?.position ?? null;
 };
 
 function isManagerPosition(pos?: Position | null): boolean {
@@ -319,11 +370,6 @@ export default function TeamPage() {
   const [productionCategory, setProductionCategory] = useState<ProductionCategory>("life");
   const [detailTab, setDetailTab] = useState<"overview" | "subordinates" | "career">("overview");
   const [copiedEmail, setCopiedEmail] = useState(false);
-  const [positionModalOpen, setPositionModalOpen] = useState(false);
-  const [positionDraft, setPositionDraft] = useState<Position>("poradce1");
-  const [savingPosition, setSavingPosition] = useState(false);
-  const [positionSaveError, setPositionSaveError] = useState<string | null>(null);
-  const [positionSaveSuccess, setPositionSaveSuccess] = useState(false);
   const [careerTimelineDraft, setCareerTimelineDraft] = useState<PositionTimelineItem[]>([]);
   const [careerTimelineLoading, setCareerTimelineLoading] = useState(false);
   const [careerTimelineSaving, setCareerTimelineSaving] = useState(false);
@@ -353,7 +399,6 @@ export default function TeamPage() {
     null
   );
   const copyEmailTimerRef = useRef<number | null>(null);
-  const positionSaveTimerRef = useRef<number | null>(null);
   const careerSaveTimerRef = useRef<number | null>(null);
   const endCollaborationTimerRef = useRef<number | null>(null);
   const membersListRef = useRef<HTMLDivElement | null>(null);
@@ -712,9 +757,6 @@ export default function TeamPage() {
 
   useEffect(() => {
     setDetailTab("overview");
-    setPositionModalOpen(false);
-    setPositionSaveError(null);
-    setPositionSaveSuccess(false);
     setCareerTimelineDraft([]);
     setCareerTimelineError(null);
     setCareerTimelineSaved(false);
@@ -738,7 +780,6 @@ export default function TeamPage() {
   useEffect(() => {
     return () => {
       if (copyEmailTimerRef.current) window.clearTimeout(copyEmailTimerRef.current);
-      if (positionSaveTimerRef.current) window.clearTimeout(positionSaveTimerRef.current);
       if (careerSaveTimerRef.current) window.clearTimeout(careerSaveTimerRef.current);
       if (endCollaborationTimerRef.current) {
         window.clearTimeout(endCollaborationTimerRef.current);
@@ -844,7 +885,6 @@ export default function TeamPage() {
     () => !!selected?.email && !!userEmail && selected.email.toLowerCase() !== userEmail.toLowerCase(),
     [selected, userEmail]
   );
-  const canEditSelectedPosition = canManagePositions && isSelectedSubordinate;
   const canEditSelectedCareer = canManagePositions && isSelectedSubordinate;
   const canEndSelectedCollaboration =
     canManagePositions &&
@@ -956,77 +996,6 @@ export default function TeamPage() {
 
   const canSendTeamMessage = isManagerPosition(userPosition) && members.length > 0;
   const showTeamSidebar = isManagerPosition(userPosition);
-
-  const openPositionModal = () => {
-    if (!selected || !canEditSelectedPosition) return;
-    setPositionDraft(selected.position ?? "poradce1");
-    setPositionSaveError(null);
-    setPositionModalOpen(true);
-  };
-
-  const saveSelectedPosition = async () => {
-    if (!selected || !canEditSelectedPosition) return;
-    if (selected.position === positionDraft) {
-      setPositionModalOpen(false);
-      return;
-    }
-    setSavingPosition(true);
-    setPositionSaveError(null);
-    try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error("Nejsi přihlášený.");
-      await fetchAuthedJsonOrThrow(currentUser, "/api/team-overview", {
-        method: "PATCH",
-        body: JSON.stringify({
-          targetEmail: selected.email,
-          position: positionDraft,
-        }),
-      });
-
-      setMembers((prev) =>
-        prev.map((member) =>
-          member.email === selected.email
-            ? {
-                ...member,
-                position: positionDraft,
-              }
-            : member
-        )
-      );
-
-      if (cacheKey && teamDataCache[cacheKey]) {
-        teamDataCache[cacheKey] = {
-          ...teamDataCache[cacheKey],
-          payload: {
-            ...teamDataCache[cacheKey].payload,
-            members: teamDataCache[cacheKey].payload.members.map((member) =>
-              member.email === selected.email
-                ? {
-                    ...member,
-                    position: positionDraft,
-                  }
-                : member
-            ),
-          },
-        };
-      }
-
-      setPositionModalOpen(false);
-      setPositionSaveSuccess(true);
-      if (positionSaveTimerRef.current) window.clearTimeout(positionSaveTimerRef.current);
-      positionSaveTimerRef.current = window.setTimeout(() => {
-        setPositionSaveSuccess(false);
-      }, 3000);
-    } catch (e: any) {
-      if (e?.code === "permission-denied") {
-        setPositionSaveError("Nemáš oprávnění měnit pozici tohoto uživatele.");
-      } else {
-        setPositionSaveError("Uložení se nepovedlo. Zkus to prosím znovu.");
-      }
-    } finally {
-      setSavingPosition(false);
-    }
-  };
 
   const loadEndCollaborationPreview = async (member: Member) => {
     setEndCollaborationPreviewLoading(true);
@@ -1319,6 +1288,7 @@ export default function TeamPage() {
         validFrom: row.validFrom,
         validTo: row.validTo || null,
       }));
+      const nextResolvedPosition = resolveCurrentPositionFromTimeline(payload);
 
       const currentUser = auth.currentUser;
       if (!currentUser) throw new Error("Nejsi přihlášený.");
@@ -1338,6 +1308,32 @@ export default function TeamPage() {
           validTo: row.validTo ?? "",
         }))
       );
+      setMembers((prev) =>
+        prev.map((member) =>
+          member.email === selected.email
+            ? {
+                ...member,
+                position: nextResolvedPosition,
+              }
+            : member
+        )
+      );
+      if (cacheKey && teamDataCache[cacheKey]) {
+        teamDataCache[cacheKey] = {
+          ...teamDataCache[cacheKey],
+          payload: {
+            ...teamDataCache[cacheKey].payload,
+            members: teamDataCache[cacheKey].payload.members.map((member) =>
+              member.email === selected.email
+                ? {
+                    ...member,
+                    position: nextResolvedPosition,
+                  }
+                : member
+            ),
+          },
+        };
+      }
       setCareerTimelineSaved(true);
       setCareerTimelineEditing(false);
       if (careerSaveTimerRef.current) window.clearTimeout(careerSaveTimerRef.current);
@@ -1623,16 +1619,6 @@ export default function TeamPage() {
                                 <BarChart3 size={12} strokeWidth={2} aria-hidden="true" />
                                 Statistiky
                               </Link>
-                              {canEditSelectedPosition ? (
-                                <button
-                                  type="button"
-                                  onClick={openPositionModal}
-                                  className="ui-focus inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-slate-900 hover:text-slate-900"
-                                >
-                                  <UserCog size={12} strokeWidth={2} aria-hidden="true" />
-                                  Změnit pozici
-                                </button>
-                              ) : null}
                             </div>
                             {canEndSelectedCollaboration ? (
                               <button
@@ -1644,9 +1630,6 @@ export default function TeamPage() {
                               </button>
                             ) : null}
                           </div>
-                          {positionSaveSuccess ? (
-                            <div className="mt-2 text-sm font-semibold text-emerald-700">Pozice změněna.</div>
-                          ) : null}
                           {endCollaborationSuccess ? (
                             <div className="mt-2 text-sm font-semibold text-emerald-700">
                               {endCollaborationSuccess}
@@ -2036,56 +2019,6 @@ export default function TeamPage() {
           </div>
         )}
       </div>
-      {positionModalOpen && selected ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-300 bg-white p-4 shadow-2xl">
-            <div className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Změna pozice</div>
-            <div className="mt-2 text-lg font-bold text-slate-900">{selected.name}</div>
-            <div className="text-sm text-slate-500">{selected.email}</div>
-
-            <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-              Nová pozice
-            </label>
-            <select
-              value={positionDraft}
-              onChange={(e) => setPositionDraft(e.target.value as Position)}
-              disabled={savingPosition}
-              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
-            >
-              {POSITION_OPTIONS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-
-            {positionSaveError ? <div className="mt-3 text-sm text-rose-700">{positionSaveError}</div> : null}
-
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (savingPosition) return;
-                  setPositionModalOpen(false);
-                  setPositionSaveError(null);
-                }}
-                className="ui-btn-secondary ui-focus rounded-xl px-3 py-2 text-sm"
-                disabled={savingPosition}
-              >
-                Zrušit
-              </button>
-              <button
-                type="button"
-                onClick={saveSelectedPosition}
-                className="ui-btn-primary ui-focus rounded-xl px-3 py-2 text-sm"
-                disabled={savingPosition}
-              >
-                {savingPosition ? "Ukládám..." : "Uložit změny"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
       {endCollaborationModalOpen && selected ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
           <div className="w-full max-w-lg rounded-2xl border border-rose-300 bg-white p-4 shadow-2xl">

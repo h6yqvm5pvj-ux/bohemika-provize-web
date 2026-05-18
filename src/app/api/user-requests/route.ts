@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { toDate } from "@/app/lib/formatters";
 import type { CommissionMode, Position } from "@/app/types/domain";
+import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import {
   requireAuthedRateLimited,
@@ -13,7 +14,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const USER_REQUESTS_COLLECTION = "userRequests";
-const USER_REQUESTS_ADMIN_EMAIL = "jakub.rauscher@bohemika.eu";
 
 const USER_REQUESTS_GET_LIMIT = 60;
 const USER_REQUESTS_GET_WINDOW_MS = 60_000;
@@ -97,7 +97,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const isValidEmail = (value: string): boolean => EMAIL_RE.test(value);
 
 const isAdmin = (email: string): boolean =>
-  normalizeEmail(email) === USER_REQUESTS_ADMIN_EMAIL;
+  isAdminPanelEmail(email);
 
 const parseSubject = (value: unknown): UserRequestSubject | null => {
   if (value === "userCreation" || value === "other") return value;

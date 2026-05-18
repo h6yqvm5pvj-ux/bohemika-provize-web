@@ -1,28 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import {
+  ArrowUpRight,
   ArrowRight,
+  Bot,
   ChevronDown,
-  ChevronRight,
   ChevronUp,
   Check,
   CheckCheck,
-  CircleCheck,
   Filter,
   Info,
   Layers3,
-  ListFilter,
+  MessageSquareText,
   Printer,
   RotateCcw,
   Search,
-  Shield,
-  SlidersHorizontal,
+  SendHorizontal,
   X,
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
+import { auth } from "@/app/firebase";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 
 type ComparisonProduct = {
   id: string;
@@ -59,6 +60,52 @@ type SetupInsurerGroup = {
   insurer: string;
   logo: string;
   products: ProductView[];
+};
+
+type ChatCitation = {
+  section: string;
+  page: number;
+  id: string;
+  question: string;
+};
+
+type ChatBullet = {
+  title: string;
+  detail: string;
+  citations: ChatCitation[];
+};
+
+type ChatStructuredAnswer = {
+  summary: string;
+  bullets: ChatBullet[];
+  citations: ChatCitation[];
+  followups: string[];
+  sources?: Array<{
+    title: string;
+    url: string;
+  }>;
+  intent: string;
+};
+
+type LifeComparisonChatApiResponse = {
+  ok?: boolean;
+  reply?: string;
+  answer?: ChatStructuredAnswer;
+  warning?: string;
+  error?: string;
+  meta?: {
+    usedItemsCount?: number;
+    totalItems?: number;
+    intent?: string;
+  };
+};
+
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  answer?: ChatStructuredAnswer;
+  warning?: string;
 };
 
 type ManualInvaliditaItem = {
@@ -208,12 +255,42 @@ const INSURER_LOGOS: Record<string, string> = {
   Slavia: "/icons/slavialogo.png",
   UNIQA: "/icons/uniqa.png",
 };
+const INSURER_CARD_TINT_DEFAULT =
+  "bg-[radial-gradient(circle_at_20%_20%,rgba(148,163,184,0.2)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(14,165,233,0.16)_0%,transparent_66%)]";
+const INSURER_CARD_TINTS: Record<string, string> = {
+  Allianz:
+    "bg-[radial-gradient(circle_at_20%_18%,rgba(37,99,235,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(99,102,241,0.16)_0%,transparent_66%)]",
+  "ČPP":
+    "bg-[radial-gradient(circle_at_20%_18%,rgba(16,185,129,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(37,99,235,0.16)_0%,transparent_66%)]",
+  "ČSOB":
+    "bg-[radial-gradient(circle_at_20%_18%,rgba(245,158,11,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(234,179,8,0.16)_0%,transparent_66%)]",
+  "Generali Česká":
+    "bg-[radial-gradient(circle_at_20%_18%,rgba(244,63,94,0.2)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(239,68,68,0.16)_0%,transparent_66%)]",
+  "Komerční pojišťovna":
+    "bg-[radial-gradient(circle_at_20%_18%,rgba(37,99,235,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(6,182,212,0.16)_0%,transparent_66%)]",
+  Kooperativa:
+    "bg-[radial-gradient(circle_at_20%_18%,rgba(14,165,233,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(59,130,246,0.16)_0%,transparent_66%)]",
+  Maxima:
+    "bg-[radial-gradient(circle_at_20%_18%,rgba(244,63,94,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(217,119,6,0.16)_0%,transparent_66%)]",
+  MetLife:
+    "bg-[radial-gradient(circle_at_20%_18%,rgba(56,189,248,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(148,163,184,0.16)_0%,transparent_66%)]",
+  NN: "bg-[radial-gradient(circle_at_20%_18%,rgba(249,115,22,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(245,158,11,0.16)_0%,transparent_66%)]",
+  Pillow:
+    "bg-[radial-gradient(circle_at_20%_18%,rgba(34,197,94,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(20,184,166,0.16)_0%,transparent_66%)]",
+  Simplea:
+    "bg-[radial-gradient(circle_at_20%_18%,rgba(99,102,241,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(168,85,247,0.16)_0%,transparent_66%)]",
+  Slavia:
+    "bg-[radial-gradient(circle_at_20%_18%,rgba(217,119,6,0.2)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(225,29,72,0.16)_0%,transparent_66%)]",
+  UNIQA:
+    "bg-[radial-gradient(circle_at_20%_18%,rgba(100,116,139,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(37,99,235,0.16)_0%,transparent_66%)]",
+};
 const EMPTY_COMPARISON_DATA: ComparisonDataset = {
   source: "",
   generatedAt: "",
   products: [],
   sections: [],
 };
+const LIFE_COMPARISON_CHAT_ENDPOINT = "/api/life-comparison-chat";
 
 function normalizeSearchValue(value: string | undefined): string {
   return (value ?? "")
@@ -324,7 +401,7 @@ export default function LifeInsuranceComparisonPage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [setupProductIds, setSetupProductIds] = useState<string[]>([]);
   const [openSetupInsurerKeys, setOpenSetupInsurerKeys] = useState<string[]>([]);
-  const [setupScope, setSetupScope] = useState<"all" | "custom" | "differences">("all");
+  const [setupStep, setSetupStep] = useState<"insurers" | "categories">("insurers");
   const [setupCategoryTitles, setSetupCategoryTitles] = useState<string[]>([]);
   const [setupInsurerSearch, setSetupInsurerSearch] = useState("");
   const [setupCategorySearch, setSetupCategorySearch] = useState("");
@@ -341,6 +418,14 @@ export default function LifeInsuranceComparisonPage() {
   const [expandedInvaliditaAnswerKeys, setExpandedInvaliditaAnswerKeys] = useState<
     string[]
   >([]);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<"table" | "assistant">(
+    "table"
+  );
+  const [chatQuestion, setChatQuestion] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
   const productViews = useMemo(
     () => buildProductViews(comparisonData.products ?? []),
@@ -423,14 +508,12 @@ export default function LifeInsuranceComparisonPage() {
 
     setSelectedProductIds((current) => {
       const next = current.filter((id) => availableProductSet.has(id));
-      const resolved = next.length > 0 ? next : availableProductIds;
-      return sameArray(current, resolved) ? current : resolved;
+      return sameArray(current, next) ? current : next;
     });
 
     setSetupProductIds((current) => {
       const next = current.filter((id) => availableProductSet.has(id));
-      const resolved = next.length > 0 ? next : availableProductIds;
-      return sameArray(current, resolved) ? current : resolved;
+      return sameArray(current, next) ? current : next;
     });
   }, [productViews]);
 
@@ -441,6 +524,14 @@ export default function LifeInsuranceComparisonPage() {
       return sameArray(current, next) ? current : next;
     });
   }, [setupInsurerGroups]);
+
+  useEffect(() => {
+    if (!chatScrollRef.current) return;
+    chatScrollRef.current.scrollTo({
+      top: chatScrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [chatMessages, chatLoading]);
 
   const groupedSections = useMemo(
     () => uniqueSections(comparisonData.sections ?? []),
@@ -478,13 +569,20 @@ export default function LifeInsuranceComparisonPage() {
       ),
     [categoryOptions, setupCategorySearch]
   );
+  const sortedFilteredSetupCategoryOptions = useMemo(
+    () =>
+      [...filteredSetupCategoryOptions].sort((a, b) =>
+        a.title.localeCompare(b.title, "cs", { sensitivity: "base" })
+      ),
+    [filteredSetupCategoryOptions]
+  );
+  const allSetupCategoriesSelected =
+    categoryOptions.length > 0 && setupCategoryTitles.length === categoryOptions.length;
 
   const selectedProducts = productViews.filter((product) =>
     selectedProductIds.includes(product.id)
   );
-  const canConfirmSetup =
-    setupProductIds.length > 0 &&
-    (setupScope !== "custom" || setupCategoryTitles.length > 0);
+  const canContinueSetupInsurers = setupProductIds.length > 0;
 
   const visibleManualInvaliditaItems = useMemo(() => {
     const query = normalizeSearchValue(searchQuery);
@@ -605,47 +703,124 @@ export default function LifeInsuranceComparisonPage() {
   };
 
   const openSetupMenu = () => {
-    setSetupProductIds(
-      selectedProductIds.length > 0
-        ? selectedProductIds
-        : productViews.map((product) => product.id)
-    );
-    setSetupScope(
-      onlyDifferences ? "differences" : selectedCategories.length > 0 ? "custom" : "all"
-    );
+    setSetupProductIds(selectedProductIds);
+    setSetupStep("insurers");
     setSetupCategoryTitles(selectedCategories);
     setOpenSetupInsurerKeys([]);
     setFiltersOpen(false);
     setSetupInsurerSearch("");
     setSetupCategorySearch("");
     setHasConfiguredView(false);
+    setActiveWorkspaceTab("table");
     setActiveInvaliditaInfoId(null);
     setExpandedInvaliditaAnswerKeys([]);
   };
 
+  const continueSetupToCategories = () => {
+    if (!canContinueSetupInsurers) return;
+    setSetupStep("categories");
+    setOpenSetupInsurerKeys([]);
+  };
+
   const confirmSetup = () => {
-    if (!canConfirmSetup) return;
+    if (!canContinueSetupInsurers) return;
     setSelectedProductIds(setupProductIds);
-    setOnlyDifferences(setupScope === "differences");
-    setSelectedCategories(setupScope === "custom" ? setupCategoryTitles : []);
+    setSelectedCategories(setupCategoryTitles);
     setSearchQuery("");
     setCategorySearch("");
     setSetupInsurerSearch("");
     setSetupCategorySearch("");
     setFiltersOpen(false);
     setHasConfiguredView(true);
+    setActiveWorkspaceTab("table");
     setActiveInvaliditaInfoId(null);
     setExpandedInvaliditaAnswerKeys([]);
   };
 
   const resetFilters = () => {
-    setSelectedProductIds(productViews.map((product) => product.id));
+    setSelectedProductIds([]);
     setSelectedCategories([]);
     setSearchQuery("");
     setCategorySearch("");
     setOnlyDifferences(false);
     setActiveInvaliditaInfoId(null);
     setExpandedInvaliditaAnswerKeys([]);
+  };
+
+  const handleAskChat = async (quickPrompt?: string) => {
+    if (chatLoading) return;
+
+    const prompt = (quickPrompt ?? chatQuestion).trim();
+    if (!prompt) {
+      setChatError("Napiš dotaz pro AI asistenta.");
+      return;
+    }
+
+    const user = auth.currentUser;
+    if (!user) {
+      setChatError("Pro AI asistenta je potřeba přihlášení.");
+      return;
+    }
+
+    const userMessage: ChatMessage = {
+      id: `u-${Date.now()}`,
+      role: "user",
+      text: prompt,
+    };
+    const requestHistory = chatMessages
+      .slice(-6)
+      .map((message) => ({
+        role: message.role,
+        text: message.text,
+      }));
+    setChatMessages((current) => [...current, userMessage]);
+    setChatQuestion("");
+    setChatLoading(true);
+    setChatError(null);
+
+    try {
+      const payload = await fetchAuthedJsonOrThrow<LifeComparisonChatApiResponse>(
+        user,
+        LIFE_COMPARISON_CHAT_ENDPOINT,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            prompt,
+            selectedProductIds,
+            selectedCategoryTitles: selectedCategories,
+            onlyDifferences,
+            history: requestHistory,
+          }),
+        }
+      );
+
+      const reply = String(payload.reply ?? "").trim();
+      if (payload.ok === false || !reply) {
+        throw new Error(payload.error || "AI asistent nevrátil odpověď.");
+      }
+
+      const assistantMessage: ChatMessage = {
+        id: `a-${Date.now()}`,
+        role: "assistant",
+        text: reply,
+        answer: payload.answer,
+        warning: payload.warning,
+      };
+      setChatMessages((current) => [...current, assistantMessage]);
+    } catch (error) {
+      console.error("Life comparison AI chat failed:", error);
+      setChatError(
+        error instanceof Error ? error.message : "AI asistent není teď dostupný."
+      );
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const clearChat = () => {
+    setChatMessages([]);
+    setChatQuestion("");
+    setChatError(null);
   };
 
   const tableGridColumns =
@@ -669,21 +844,62 @@ export default function LifeInsuranceComparisonPage() {
       <div className="w-full space-y-4 overflow-x-hidden px-1 py-1 text-slate-900 sm:px-2 sm:py-2">
         <div className="relative z-20 border-b border-slate-200 bg-white/90 pb-3 backdrop-blur">
           <header className="space-y-3">
-            <div className="min-w-0 space-y-1">
-              <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
-                Srovnavač životního pojištění
-              </h1>
-              <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-500">
-                <span>{selectedProducts.length} produktů</span>
-                <span className="h-1 w-1 rounded-full bg-slate-300" />
-                <span>{totalItems} kritérií</span>
-                <span className="h-1 w-1 rounded-full bg-slate-300" />
-                <span>{filterSummary}</span>
-              </div>
+            <div
+              className={`min-w-0 space-y-1 ${
+                hasConfiguredView ? "" : "text-center"
+              }`}
+            >
+              {hasConfiguredView ? (
+                <>
+                  <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
+                    Srovnavač životního pojištění
+                  </h1>
+                  <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-500">
+                    <span>{selectedProducts.length} produktů</span>
+                    <span className="h-1 w-1 rounded-full bg-slate-300" />
+                    <span>{totalItems} kritérií</span>
+                    <span className="h-1 w-1 rounded-full bg-slate-300" />
+                    <span>{filterSummary}</span>
+                  </div>
+                </>
+              ) : (
+                <h1 className="text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl lg:text-5xl">
+                  <span className="block text-slate-900">Srovnej životní pojištění</span>
+                  <span className="block text-sky-600">snadno a rychle</span>
+                </h1>
+              )}
             </div>
 
             {hasConfiguredView && (
               <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+                <div className="inline-flex shrink-0 items-center rounded-xl border border-slate-300 bg-white p-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveWorkspaceTab("table")}
+                    aria-pressed={activeWorkspaceTab === "table"}
+                    className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition ${
+                      activeWorkspaceTab === "table"
+                        ? "bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.25)]"
+                        : "text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    <Layers3 className="h-4 w-4" />
+                    Tabulky
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveWorkspaceTab("assistant")}
+                    aria-pressed={activeWorkspaceTab === "assistant"}
+                    className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition ${
+                      activeWorkspaceTab === "assistant"
+                        ? "bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.25)]"
+                        : "text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    <MessageSquareText className="h-4 w-4" />
+                    AI asistent
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={openSetupMenu}
@@ -705,14 +921,25 @@ export default function LifeInsuranceComparisonPage() {
                     </span>
                   )}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-900"
-                >
-                  <Printer className="h-4 w-4" />
-                  Tisk
-                </button>
+                {activeWorkspaceTab === "table" && (
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-900"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Tisk
+                  </button>
+                )}
+                {activeWorkspaceTab === "assistant" && (
+                  <button
+                    type="button"
+                    onClick={clearChat}
+                    className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-900"
+                  >
+                    Nový chat
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={resetFilters}
@@ -891,6 +1118,7 @@ export default function LifeInsuranceComparisonPage() {
                 </div>
               </div>
             )}
+
           </header>
         </div>
 
@@ -927,266 +1155,250 @@ export default function LifeInsuranceComparisonPage() {
             </button>
           </section>
         ) : !hasConfiguredView ? (
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_14px_38px_rgba(15,23,42,0.08)]">
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-5 py-5 sm:px-6">
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
-                  <SlidersHorizontal className="h-5 w-5" />
-                </span>
-                <div>
-                  <h2 className="text-lg font-extrabold text-slate-950">Nastavení srovnání</h2>
-                  <p className="mt-1 text-sm font-medium text-slate-600">
-                    Vyber produkty, nastav rozsah a potvrď přehled.
-                  </p>
+          <section className="mx-auto w-full max-w-6xl space-y-6 pb-2">
+            {setupStep === "insurers" ? (
+              <>
+                <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSetupProductIds(productViews.map((product) => product.id))
+                    }
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
+                  >
+                    <CheckCheck className="h-3.5 w-3.5" />
+                    Vybrat vše
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSetupProductIds([])}
+                    className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
+                  >
+                    Odebrat vše
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenSetupInsurerKeys(setupInsurerGroups.map((group) => group.key))
+                    }
+                    className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
+                  >
+                    Rozbalit vše
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOpenSetupInsurerKeys([])}
+                    className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
+                  >
+                    Sbalit vše
+                  </button>
                 </div>
-              </div>
-              <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-bold text-slate-700">
-                {setupProductIds.length}/{productViews.length} produktů
-              </div>
-            </div>
 
-            <div className="grid gap-6 px-5 py-5 sm:px-6 lg:grid-cols-[minmax(620px,1.5fr)_minmax(340px,0.95fr)]">
-              <section className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
-                    <Shield className="h-3.5 w-3.5" />
-                    Pojišťovny a produkty
-                  </h3>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSetupProductIds(productViews.map((product) => product.id))
-                      }
-                      className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
-                    >
-                      <CheckCheck className="h-3.5 w-3.5" />
-                      Vybrat vše
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSetupProductIds([])}
-                      className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
-                    >
-                      Odebrat vše
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setOpenSetupInsurerKeys(
-                          setupInsurerGroups.map((group) => group.key)
-                        )
-                      }
-                      className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
-                    >
-                      Rozbalit vše
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setOpenSetupInsurerKeys([])}
-                      className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
-                    >
-                      Sbalit vše
-                    </button>
+                <div className="mx-auto w-full max-w-5xl">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="search"
+                      value={setupInsurerSearch}
+                      onChange={(event) => setSetupInsurerSearch(event.target.value)}
+                      placeholder="Hledat pojišťovnu nebo produkt"
+                      className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm font-medium outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                    />
                   </div>
                 </div>
 
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="search"
-                    value={setupInsurerSearch}
-                    onChange={(event) => setSetupInsurerSearch(event.target.value)}
-                    placeholder="Hledat pojišťovnu nebo produkt"
-                    className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm font-medium outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-                  />
-                </div>
+                <div className="mx-auto w-full max-w-5xl">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {filteredSetupInsurerGroups.map((group) => {
+                      const selectedCount = group.products.filter((product) =>
+                        setupProductIds.includes(product.id)
+                      ).length;
+                      const totalCount = group.products.length;
+                      const allSelected =
+                        selectedCount > 0 && selectedCount === totalCount;
+                      const partiallySelected = selectedCount > 0 && selectedCount < totalCount;
+                      const isOpen = openSetupInsurerKeys.includes(group.key);
+                      const hasAnySelected = selectedCount > 0;
+                      const tintClass =
+                        INSURER_CARD_TINTS[group.insurer] ?? INSURER_CARD_TINT_DEFAULT;
+                      const selectionBadgeLabel = allSelected
+                        ? "Vybráno"
+                        : partiallySelected
+                          ? "Částečně"
+                          : "Vybrat";
 
-                <div className="grid gap-3 md:grid-cols-2">
-                  {filteredSetupInsurerGroups.map((group) => {
-                    const selectedCount = group.products.filter((product) =>
-                      setupProductIds.includes(product.id)
-                    ).length;
-                    const allSelected =
-                      selectedCount > 0 && selectedCount === group.products.length;
-                    const partiallySelected =
-                      selectedCount > 0 && selectedCount < group.products.length;
-                    const isOpen = openSetupInsurerKeys.includes(group.key);
-                    const hasAnySelected = selectedCount > 0;
-
-                    return (
-                      <article
-                        key={group.key}
-                        className={`overflow-hidden rounded-xl border transition ${
-                          hasAnySelected
-                            ? "border-sky-200 bg-sky-50/30 shadow-[0_8px_22px_rgba(2,132,199,0.08)]"
-                            : "border-slate-200 bg-white hover:border-slate-300"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 px-3 py-3">
-                          <button
-                            type="button"
-                            onClick={() => toggleSetupInsurer(group)}
-                            aria-pressed={allSelected}
-                            className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${
-                              allSelected || partiallySelected
-                                ? "border-sky-500 bg-sky-500 text-white"
-                                : "border-slate-300 bg-white text-slate-600"
-                            }`}
-                          >
-                            {allSelected ? (
-                              <Check className="h-4 w-4" />
-                            ) : partiallySelected ? (
-                              <span className="h-2 w-2 rounded-sm bg-white" />
-                            ) : null}
-                          </button>
-
-                          <button
-                            type="button"
+                      return (
+                        <article key={group.key} className="group relative">
+                          <div
                             onClick={() => toggleSetupInsurerOpen(group.key)}
-                            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-1 text-left transition hover:bg-white"
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                toggleSetupInsurerOpen(group.key);
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                            aria-expanded={isOpen}
                             aria-label={
                               isOpen
                                 ? `Skrýt produkty ${group.insurer}`
                                 : `Zobrazit produkty ${group.insurer}`
                             }
+                            className={`relative isolate min-h-[154px] cursor-pointer overflow-hidden rounded-2xl border bg-white p-4 shadow-[0_12px_26px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_34px_rgba(15,23,42,0.12)] ${
+                              hasAnySelected
+                                ? "border-sky-300 ring-2 ring-sky-200/70"
+                                : "border-slate-200"
+                            }`}
                           >
-                            <span className="flex h-8 w-12 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white px-1.5">
+                            <span
+                              className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-white/65 via-white/90 to-white/65"
+                              aria-hidden="true"
+                            />
+                            <div
+                              aria-hidden="true"
+                              className="pointer-events-none absolute inset-0 overflow-hidden"
+                            >
                               <Image
                                 src={group.logo}
                                 alt=""
-                                width={40}
-                                height={18}
-                                className="max-h-6 max-w-full object-contain"
+                                fill
+                                sizes="(max-width: 768px) 100vw, 50vw"
+                                className="object-contain p-4 opacity-[0.27] saturate-0 contrast-125"
                               />
-                            </span>
+                              <div className={`absolute inset-0 ${tintClass}`} />
+                            </div>
 
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-[15px] font-bold text-slate-900">
-                                {group.insurer}
-                              </span>
-                              <span className="block text-xs font-semibold text-slate-500">
-                                {selectedCount}/{group.products.length} vybraných
-                              </span>
-                            </span>
+                            <div className="relative flex h-full flex-col justify-between">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleSetupInsurer(group);
+                                }}
+                                aria-pressed={allSelected}
+                                aria-label={
+                                  allSelected
+                                    ? `Odebrat výběr pro ${group.insurer}`
+                                    : `Vybrat vše pro ${group.insurer}`
+                                }
+                                className={`inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
+                                  allSelected
+                                    ? "border-sky-300 bg-sky-700 text-white"
+                                    : partiallySelected
+                                      ? "border-sky-200 bg-sky-100 text-sky-800"
+                                      : "border-slate-200/90 bg-white/80 text-slate-600 hover:border-sky-200 hover:bg-sky-50"
+                                }`}
+                              >
+                                {selectionBadgeLabel}
+                              </button>
 
-                            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500">
-                              {isOpen ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                            </span>
-                          </button>
-                        </div>
-
-                        {isOpen && (
-                          <div className="space-y-1 border-t border-slate-200 bg-white px-2.5 py-2.5">
-                            {group.products.map((product) => {
-                              const active = setupProductIds.includes(product.id);
-
-                              return (
+                              <div className="flex items-end justify-between gap-3">
+                                <h3 className="min-w-0 truncate text-2xl font-bold tracking-[-0.015em] text-slate-900">
+                                  {group.insurer}
+                                </h3>
                                 <button
-                                  key={product.id}
                                   type="button"
-                                  onClick={() => toggleSetupProduct(product.id)}
-                                  aria-pressed={active}
-                                  className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition hover:bg-slate-50"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggleSetupInsurerOpen(group.key);
+                                  }}
+                                  aria-label={
+                                    isOpen
+                                      ? `Skrýt produkty ${group.insurer}`
+                                      : `Zobrazit produkty ${group.insurer}`
+                                  }
+                                  className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-300/90 bg-white/90 text-slate-700 transition ${
+                                    isOpen
+                                      ? "border-sky-300 bg-sky-700 text-white"
+                                      : "group-hover:border-sky-300 group-hover:bg-sky-700 group-hover:text-white"
+                                  }`}
                                 >
-                                  <span
-                                    className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
-                                      active
-                                        ? "border-sky-500 bg-sky-500 text-white"
-                                        : "border-slate-300 bg-white text-slate-600"
-                                    }`}
-                                  >
-                                    {active && <Check className="h-3.5 w-3.5" />}
-                                  </span>
-                                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
-                                    {product.name}
-                                  </span>
-                                  <span className="text-xs font-semibold text-slate-400">
-                                    {product.version}
-                                  </span>
+                                  {isOpen ? (
+                                    <ChevronDown className="h-4.5 w-4.5" />
+                                  ) : (
+                                    <ArrowUpRight className="h-4.5 w-4.5" />
+                                  )}
                                 </button>
-                              );
-                            })}
+                              </div>
+                            </div>
                           </div>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
 
-                {filteredSetupInsurerGroups.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm font-semibold text-slate-600">
-                    Pro tento výraz jsme nic nenašli.
+                          {isOpen && (
+                            <div className="relative z-10 mt-2 space-y-1 rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-[0_10px_20px_rgba(15,23,42,0.08)]">
+                              {group.products.map((product) => {
+                                const active = setupProductIds.includes(product.id);
+
+                                return (
+                                  <button
+                                    key={product.id}
+                                    type="button"
+                                    onClick={() => toggleSetupProduct(product.id)}
+                                    aria-pressed={active}
+                                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition hover:bg-slate-50"
+                                  >
+                                    <span
+                                      className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                                        active
+                                          ? "border-sky-500 bg-sky-500 text-white"
+                                          : "border-slate-300 bg-white text-slate-600"
+                                      }`}
+                                    >
+                                      {active && <Check className="h-3.5 w-3.5" />}
+                                    </span>
+                                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
+                                      {product.name}
+                                    </span>
+                                    <span className="text-xs font-semibold text-slate-400">
+                                      {product.version}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </article>
+                      );
+                    })}
                   </div>
-                )}
-              </section>
 
-              <section className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 lg:sticky lg:top-4 lg:self-start">
-                <h3 className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
-                  <Layers3 className="h-3.5 w-3.5" />
-                  Rozsah zobrazení
-                </h3>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSetupScope("all")}
-                    title="Kompletní rozsah"
-                    className={`inline-flex h-11 items-center justify-center gap-1 rounded-lg border px-2 text-sm font-bold transition ${
-                      setupScope === "all"
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
-                    }`}
-                  >
-                    <Layers3 className="h-4 w-4" />
-                    Vše
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSetupScope("custom")}
-                    title="Vybrané kategorie"
-                    className={`inline-flex h-11 items-center justify-center gap-1 rounded-lg border px-2 text-sm font-bold transition ${
-                      setupScope === "custom"
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
-                    }`}
-                  >
-                    <ListFilter className="h-4 w-4" />
-                    Kategorie
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSetupScope("differences")}
-                    title="Pouze rozdíly"
-                    className={`inline-flex h-11 items-center justify-center gap-1 rounded-lg border px-2 text-sm font-bold transition ${
-                      setupScope === "differences"
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
-                    }`}
-                  >
-                    <Filter className="h-4 w-4" />
-                    Rozdíly
-                  </button>
+                  {filteredSetupInsurerGroups.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm font-semibold text-slate-600">
+                      Pro tento výraz jsme nic nenašli.
+                    </div>
+                  )}
                 </div>
 
-                {setupScope === "custom" && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">
-                        <ListFilter className="h-3.5 w-3.5" />
-                        Kategorie
-                      </div>
-                      <div className="text-xs font-semibold text-slate-500">
-                        {setupCategoryTitles.length === 0
-                          ? "0 vybraných"
-                          : `${setupCategoryTitles.length} vybraných`}
-                      </div>
-                    </div>
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={continueSetupToCategories}
+                    disabled={!canContinueSetupInsurers}
+                    className={`inline-flex h-11 items-center gap-1.5 rounded-lg px-6 text-sm font-bold transition ${
+                      canContinueSetupInsurers
+                        ? "bg-slate-900 text-white hover:bg-slate-800"
+                        : "cursor-not-allowed bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    Pokračovat
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_14px_38px_rgba(15,23,42,0.08)] sm:p-6">
+                  <div className="text-center">
+                    <h2 className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">
+                      Vyber kategorie
+                    </h2>
+                    <p className="mt-2 text-sm font-medium text-slate-600">
+                      Zvol, co chceš porovnat. Když nic nevybereš, zobrazí se všechny
+                      kategorie.
+                    </p>
+                  </div>
 
+                  <div className="mt-5 space-y-4">
                     <div className="relative">
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <input
@@ -1198,18 +1410,97 @@ export default function LifeInsuranceComparisonPage() {
                       />
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSetupCategoryTitles(
-                            filteredSetupCategoryOptions.map((category) => category.title)
-                          )
-                        }
-                        className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
-                      >
-                        Vybrat filtrované
-                      </button>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                        Vybráno {setupCategoryTitles.length} z {categoryOptions.length}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSetupCategoryTitles(
+                              allSetupCategoriesSelected
+                                ? []
+                                : categoryOptions.map((category) => category.title)
+                            )
+                          }
+                          className={`inline-flex h-9 items-center rounded-lg border px-3 text-xs font-semibold transition ${
+                            allSetupCategoriesSelected
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-400 hover:text-slate-950"
+                          }`}
+                        >
+                          {allSetupCategoriesSelected ? "Odebrat vše" : "Vybrat vše"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSetupCategoryTitles(
+                              sortedFilteredSetupCategoryOptions.map(
+                                (category) => category.title
+                              )
+                            )
+                          }
+                          className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
+                        >
+                          Vybrat filtrované
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+                      Když nic nevybereš, pokračuješ se všemi kategoriemi.
+                    </div>
+
+                    <div className="max-h-[44vh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {sortedFilteredSetupCategoryOptions.map((category) => {
+                          const active = setupCategoryTitles.includes(category.title);
+                          return (
+                            <button
+                              key={category.title}
+                              type="button"
+                              onClick={() => toggleSetupCategory(category.title)}
+                              className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-semibold transition ${
+                                active
+                                  ? "border-slate-900 bg-slate-900 text-white"
+                                  : "border-slate-200 bg-white text-slate-800 hover:border-slate-400"
+                              }`}
+                            >
+                              <span className="min-w-0 flex items-center gap-2">
+                                <span
+                                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                                    active
+                                      ? "border-white/80 bg-white/20 text-white"
+                                      : "border-slate-300 bg-white text-slate-400"
+                                  }`}
+                                >
+                                  {active ? <Check className="h-3 w-3" /> : null}
+                                </span>
+                                <span className="truncate">{category.title}</span>
+                              </span>
+                              <span
+                                className={`ml-2 inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                                  active
+                                    ? "bg-white/15 text-white"
+                                    : "bg-slate-100 text-slate-600"
+                                }`}
+                              >
+                                {category.count}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {sortedFilteredSetupCategoryOptions.length === 0 && (
+                        <div className="px-2 py-4 text-center text-sm font-semibold text-slate-500">
+                          Pro tento filtr nejsou dostupné žádné kategorie.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => setSetupCategoryTitles([])}
@@ -1218,55 +1509,248 @@ export default function LifeInsuranceComparisonPage() {
                         Odebrat vše
                       </button>
                     </div>
+                  </div>
+                </div>
 
-                    <div className="max-h-[44vh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
-                      <div className="flex flex-wrap gap-2">
-                        {filteredSetupCategoryOptions.map((category) => {
-                          const active = setupCategoryTitles.includes(category.title);
-                          return (
-                            <button
-                              key={category.title}
-                              type="button"
-                              onClick={() => toggleSetupCategory(category.title)}
-                              className={`inline-flex items-center rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                                active
-                                  ? "border-slate-900 bg-slate-900 text-white"
-                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
-                              }`}
-                            >
-                              {category.title} ({category.count})
-                            </button>
-                          );
-                        })}
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSetupStep("insurers")}
+                    className="inline-flex h-11 items-center rounded-lg border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:border-slate-900"
+                  >
+                    Zpět
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmSetup}
+                    disabled={!canContinueSetupInsurers}
+                    className={`inline-flex h-11 items-center gap-1.5 rounded-lg px-6 text-sm font-bold transition ${
+                      canContinueSetupInsurers
+                        ? "bg-slate-900 text-white hover:bg-slate-800"
+                        : "cursor-not-allowed bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    Pokračovat
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+        ) : activeWorkspaceTab === "assistant" ? (
+          <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 text-slate-900 shadow-[0_24px_70px_rgba(15,23,42,0.15)]">
+            <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-cyan-500/12 blur-3xl" />
+            <div className="pointer-events-none absolute -right-16 bottom-8 h-80 w-80 rounded-full bg-sky-500/10 blur-3xl" />
+
+            <div className="relative flex min-h-[calc(100vh-260px)] flex-col">
+              <header className="border-b border-slate-200 px-5 py-4 sm:px-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="inline-flex items-center gap-2 text-lg font-bold tracking-tight text-slate-950">
+                      <Bot className="h-5 w-5 text-cyan-600" />
+                      AI asistent srovnávače
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Odpovídá obecně k životnímu pojištění i z vybraných dat srovnávače.
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">
+                    <span>{selectedProducts.length} produktů</span>
+                    <span className="h-1 w-1 rounded-full bg-slate-300" />
+                    <span>{onlyDifferences ? "Pouze rozdíly" : "Všechny řádky"}</span>
+                  </div>
+                </div>
+              </header>
+
+              <div ref={chatScrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6">
+                {chatMessages.length === 0 ? (
+                  <div className="mx-auto mt-4 w-full max-w-3xl space-y-5">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                      <p className="text-base font-semibold text-slate-900">
+                        Zeptej se na rozdíly, výluky, invaliditu nebo doporučení podle priorit klienta.
+                      </p>
+                      <p className="mt-2 text-sm text-slate-600">
+                        Příklady dotazů:
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2.5">
+                        {[
+                          "Kde se nejvíc liší invalidita mezi vybranými produkty?",
+                          "Jak vypovědět životní pojištění a co má klient poslat?",
+                          "Shrň mi sekci výluky v 5 bodech.",
+                          "Který produkt je lepší pro klienta, co řeší hlavně alkohol a čekací dobu?",
+                        ].map((promptExample) => (
+                          <button
+                            key={promptExample}
+                            type="button"
+                            onClick={() => void handleAskChat(promptExample)}
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:border-cyan-300/70 hover:bg-cyan-50 hover:text-slate-950"
+                          >
+                            {promptExample}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </div>
-                )}
-              </section>
-            </div>
+                ) : (
+                  <div className="mx-auto w-full max-w-4xl space-y-4">
+                    {chatMessages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                      >
+                        {message.role === "assistant" && message.answer ? (
+                          <article className="max-w-[95%] space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 shadow-[0_6px_18px_rgba(15,23,42,0.06)] sm:max-w-[88%]">
+                            <p className="text-sm font-semibold leading-6 text-slate-900">
+                              {message.answer.summary}
+                            </p>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4 sm:px-6">
-              <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
-                <CircleCheck className="h-4 w-4" />
-                {setupProductIds.length === 0
-                  ? "Vyber alespoň jeden produkt."
-                  : setupScope === "custom" && setupCategoryTitles.length === 0
-                    ? "U režimu Kategorie zvol alespoň jednu kategorii."
-                    : "Nastavení je připravené."}
-              </p>
-              <button
-                type="button"
-                onClick={confirmSetup}
-                disabled={!canConfirmSetup}
-                className={`inline-flex h-11 items-center gap-1.5 rounded-lg px-5 text-sm font-bold transition ${
-                  canConfirmSetup
-                    ? "bg-slate-900 text-white hover:bg-slate-800"
-                    : "cursor-not-allowed bg-slate-100 text-slate-400"
-                }`}
-              >
-                Potvrdit výběr
-                <ArrowRight className="h-4 w-4" />
-              </button>
+                            {message.warning && (
+                              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-900">
+                                {message.warning}
+                              </p>
+                            )}
+
+                            {message.answer.bullets.length > 0 && (
+                              <div className="space-y-2.5">
+                                {message.answer.bullets.map((bullet, index) => (
+                                  <div
+                                    key={`${message.id}-b-${index}-${bullet.title}`}
+                                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5"
+                                  >
+                                    <p className="text-sm font-bold text-slate-900">{bullet.title}</p>
+                                    <p className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-700">
+                                      {bullet.detail}
+                                    </p>
+                                    {bullet.citations.length > 0 && (
+                                      <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {bullet.citations.map((citation) => (
+                                          <span
+                                            key={`${message.id}-c-${citation.section}-${citation.id}-${citation.page}`}
+                                            className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600"
+                                          >
+                                            {citation.section} · str. {citation.page} · {citation.id}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {(message.answer.sources ?? []).length > 0 && (
+                              <div className="space-y-1.5 border-t border-slate-200 pt-2.5">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                  Zdroje
+                                </p>
+                                <div className="space-y-1.5">
+                                  {(message.answer.sources ?? []).map((source) => (
+                                    <a
+                                      key={`${message.id}-s-${source.url}`}
+                                      href={source.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="block rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-cyan-800 transition hover:border-cyan-300 hover:bg-cyan-50"
+                                    >
+                                      {source.title}
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {message.answer.followups.length > 0 && (
+                              <div className="space-y-1.5 border-t border-slate-200 pt-2.5">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                  Co dál?
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  {message.answer.followups.map((followup) => (
+                                    <button
+                                      key={`${message.id}-f-${followup}`}
+                                      type="button"
+                                      onClick={() => void handleAskChat(followup)}
+                                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-cyan-300/80 hover:bg-cyan-50 hover:text-slate-900"
+                                    >
+                                      {followup}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </article>
+                        ) : (
+                          <div
+                            className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-relaxed sm:max-w-[82%] ${
+                              message.role === "user"
+                                ? "bg-slate-900 text-white"
+                                : "border border-slate-200 bg-white text-slate-900 shadow-[0_6px_18px_rgba(15,23,42,0.06)]"
+                            }`}
+                          >
+                            {message.warning && (
+                              <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-900">
+                                {message.warning}
+                              </div>
+                            )}
+                            <div className="whitespace-pre-line">{message.text}</div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {chatLoading && (
+                  <div className="mx-auto flex w-full max-w-4xl justify-start">
+                    <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
+                      <span className="inline-flex gap-1">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300" />
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300 [animation-delay:120ms]" />
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300 [animation-delay:240ms]" />
+                      </span>
+                      Připravuju odpověď…
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-slate-200 bg-slate-50/95 px-4 py-4 backdrop-blur sm:px-6">
+                <div className="mx-auto w-full max-w-4xl space-y-3">
+                  <div className="rounded-2xl border border-slate-300 bg-white p-2">
+                    <textarea
+                      value={chatQuestion}
+                      onChange={(event) => setChatQuestion(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          if (!chatLoading) void handleAskChat();
+                        }
+                      }}
+                      rows={1}
+                      placeholder="Napiš dotaz k životnímu pojištění nebo datům srovnávače…"
+                      className="max-h-36 min-h-[46px] w-full resize-y bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                    />
+                    <div className="flex items-center justify-between gap-3 px-2 pb-1 pt-0.5">
+                      <p className="text-xs text-slate-400">Enter odešle, Shift+Enter nový řádek.</p>
+                      <button
+                        type="button"
+                        onClick={() => void handleAskChat()}
+                        disabled={chatLoading}
+                        className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <SendHorizontal className="h-4 w-4" />
+                        {chatLoading ? "Zpracovávám…" : "Odeslat"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {chatError && (
+                    <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">
+                      {chatError}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </section>
         ) : (
