@@ -59,6 +59,7 @@ export default function AiAsistentPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (!chatScrollRef.current) return;
@@ -67,6 +68,17 @@ export default function AiAsistentPage() {
       behavior: "smooth",
     });
   }, [chatMessages, chatLoading]);
+
+  useEffect(() => {
+    const textarea = composerTextareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "0px";
+    const maxHeight = 220;
+    const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+    textarea.style.height = `${Math.max(nextHeight, 56)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [chatQuestion]);
 
   const handleAskChat = async (quickPrompt?: string) => {
     if (chatLoading) return;
@@ -211,48 +223,49 @@ export default function AiAsistentPage() {
 
               <div ref={chatScrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6">
                 {!hasMessages ? (
-                  <div className="mx-auto mt-4 grid w-full max-w-5xl gap-4 lg:grid-cols-[1.3fr_0.9fr]">
-                    <div className="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-[0_10px_28px_rgba(15,23,42,0.08)] sm:p-6">
-                      <p className="text-base font-semibold text-slate-900">
-                        Začni rychlým dotazem
-                      </p>
-                      <div className="mt-3 grid gap-2.5">
-                        {QUICK_PROMPTS.map((promptExample) => (
-                          <button
-                            key={promptExample}
-                            type="button"
-                            onClick={() => void handleAskChat(promptExample)}
-                            className="group rounded-xl border border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#f8fbff_100%)] px-3 py-2.5 text-left text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-cyan-300/70 hover:bg-cyan-50 hover:text-slate-950"
-                          >
-                            <span className="inline-flex items-center gap-2">
-                              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 transition group-hover:bg-cyan-600" />
-                              {promptExample}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(150deg,#0f172a_0%,#1e293b_100%)] p-5 text-white shadow-[0_16px_38px_rgba(15,23,42,0.24)] sm:p-6">
-                      <p className="text-sm font-bold uppercase tracking-[0.12em] text-cyan-200">
-                        Tipy pro lepší odpověď
-                      </p>
-                      <div className="mt-3 space-y-2.5 text-sm leading-6 text-slate-200">
-                        <p>Napiš, pro jaký typ klienta řešení hledáš.</p>
-                        <p>Uveď, jestli chceš stručnou verzi nebo checklist.</p>
-                        <p>Zeptej se i na „kde to ve webu najdu“ a dostaneš přesnou cestu.</p>
+                  <div className="mx-auto mt-4 w-full max-w-4xl">
+                    <div className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(145deg,#ffffff_0%,#f8fbff_56%,#eef6ff_100%)] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.1)] sm:p-6">
+                      <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-cyan-500/10 blur-3xl" />
+                      <div className="pointer-events-none absolute -left-16 -bottom-16 h-36 w-36 rounded-full bg-indigo-500/10 blur-3xl" />
+                      <div className="relative">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-800">
+                          <Bot className="h-3.5 w-3.5" />
+                          Rychlé starty
+                        </div>
+                        <p className="mt-3 text-xl font-bold tracking-tight text-slate-950">
+                          Vyber dotaz a hned pokračuj
+                        </p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Klikni na jednu z připravených otázek nebo napiš vlastní zadání níže.
+                        </p>
+                        <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+                          {QUICK_PROMPTS.map((promptExample) => (
+                            <button
+                              key={promptExample}
+                              type="button"
+                              onClick={() => void handleAskChat(promptExample)}
+                              className="group rounded-2xl border border-slate-200 bg-white/90 px-3.5 py-3 text-left text-sm font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-cyan-300/80 hover:bg-cyan-50/80 hover:text-slate-950"
+                            >
+                              <span className="inline-flex items-start gap-2">
+                                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 transition group-hover:bg-cyan-600" />
+                                <span>{promptExample}</span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="mx-auto w-full max-w-4xl space-y-4">
+                  <div className="mx-auto w-full max-w-4xl space-y-3">
                     {chatMessages.map((message) => (
                       <div
                         key={message.id}
                         className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                       >
                         {message.role === "assistant" ? (
-                          <article className="max-w-[94%] rounded-2xl border border-slate-200 bg-white/96 px-4 py-3 text-sm text-slate-800 shadow-[0_8px_22px_rgba(15,23,42,0.08)] sm:max-w-[84%]">
+                          <article className="relative max-w-[96%] overflow-hidden rounded-[22px] border border-slate-200 bg-white/95 px-4 py-3.5 text-sm text-slate-800 shadow-[0_10px_24px_rgba(15,23,42,0.08)] sm:max-w-[82%]">
+                            <span className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[linear-gradient(180deg,#22d3ee_0%,#2563eb_100%)]" />
                             <div className="mb-2 flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.09em] text-slate-500">
                               <span className="inline-flex items-center gap-1.5">
                                 <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-cyan-200 bg-cyan-50 text-cyan-700">
@@ -262,15 +275,15 @@ export default function AiAsistentPage() {
                               </span>
                               <span>{formatMessageTime(message.createdAt)}</span>
                             </div>
-                            <div className="whitespace-pre-line leading-relaxed">{message.text}</div>
+                            <div className="whitespace-pre-line leading-6">{message.text}</div>
                           </article>
                         ) : (
-                          <article className="max-w-[94%] rounded-2xl bg-[linear-gradient(135deg,#2563eb_0%,#1e40af_100%)] px-4 py-3 text-sm text-sky-50 shadow-[0_10px_24px_rgba(30,64,175,0.35)] sm:max-w-[84%]">
+                          <article className="max-w-[96%] rounded-[22px] border border-blue-500/40 bg-[linear-gradient(135deg,#1d4ed8_0%,#1e3a8a_100%)] px-4 py-3.5 text-sm text-sky-50 shadow-[0_14px_30px_rgba(30,64,175,0.34)] sm:max-w-[82%]">
                             <div className="mb-2 flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.09em] text-sky-100">
                               <span>Ty</span>
                               <span>{formatMessageTime(message.createdAt)}</span>
                             </div>
-                            <div className="whitespace-pre-line leading-relaxed text-sky-50">
+                            <div className="whitespace-pre-line leading-6 text-sky-50">
                               {message.text}
                             </div>
                           </article>
@@ -282,7 +295,10 @@ export default function AiAsistentPage() {
 
                 {chatLoading && (
                   <div className="mx-auto flex w-full max-w-4xl justify-start">
-                    <div className="inline-flex items-center gap-2 rounded-2xl border border-cyan-200/70 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-[0_6px_18px_rgba(15,23,42,0.08)]">
+                    <div className="inline-flex items-center gap-2 rounded-[20px] border border-cyan-200/70 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.08)]">
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-cyan-200 bg-cyan-50 text-cyan-700">
+                        <Bot className="h-3 w-3" />
+                      </span>
                       <span className="inline-flex gap-1">
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400 [animation-delay:120ms]" />
@@ -296,27 +312,27 @@ export default function AiAsistentPage() {
 
               <div className="border-t border-slate-200/90 bg-white/85 px-4 py-4 backdrop-blur sm:px-6">
                 <div className="mx-auto w-full max-w-4xl space-y-3">
-                  <div className="rounded-3xl border border-slate-300 bg-white p-2 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
-                    <textarea
-                      value={chatQuestion}
-                      onChange={(event) => setChatQuestion(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          if (!chatLoading) void handleAskChat();
-                        }
-                      }}
-                      rows={1}
-                      placeholder="Napiš dotaz k pojištění, investicím nebo investičnímu zlatu…"
-                      className="max-h-36 min-h-[52px] w-full resize-y bg-transparent px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-                    />
-                    <div className="flex items-center justify-between gap-3 px-3 pb-1 pt-0.5">
-                      <p className="text-xs text-slate-500">Enter odešle, Shift+Enter nový řádek.</p>
+                  <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(145deg,#ffffff_0%,#f8fbff_56%,#eef6ff_100%)] p-2.5 shadow-[0_18px_42px_rgba(15,23,42,0.12)]">
+                    <div className="flex items-end gap-2 rounded-[22px] border border-slate-200 bg-white px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                      <textarea
+                        ref={composerTextareaRef}
+                        value={chatQuestion}
+                        onChange={(event) => setChatQuestion(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && !event.shiftKey) {
+                            event.preventDefault();
+                            if (!chatLoading) void handleAskChat();
+                          }
+                        }}
+                        rows={1}
+                        placeholder="Napiš dotaz k pojištění, investicím nebo investičnímu zlatu…"
+                        className="min-h-[56px] w-full resize-none bg-transparent px-1 py-2.5 text-[15px] leading-6 text-slate-900 outline-none placeholder:text-slate-400"
+                      />
                       <button
                         type="button"
                         onClick={() => void handleAskChat()}
                         disabled={chatLoading}
-                        className="inline-flex h-11 items-center gap-1.5 rounded-2xl bg-[linear-gradient(135deg,#0f172a_0%,#1e293b_100%)] px-5 text-sm font-bold text-white shadow-[0_12px_24px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(15,23,42,0.35)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                        className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl border border-emerald-700/70 bg-[linear-gradient(135deg,#16a34a_0%,#047857_100%)] px-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(5,150,105,0.34)] transition hover:-translate-y-1 hover:shadow-[0_22px_52px_rgba(5,150,105,0.42)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                       >
                         <SendHorizontal className="h-4 w-4" />
                         {chatLoading ? "Zpracovávám…" : "Odeslat"}

@@ -64,6 +64,7 @@ import { parseAllianzAutoPdf } from "../lib/parseAllianzAutoPdf";
 import { parsePillowAutoPdf } from "../lib/parsePillowAutoPdf";
 import { parseCsobAutoPdf } from "../lib/parseCsobAutoPdf";
 import { parseCppCestovkoPdf } from "../lib/parseCppCestovkoPdf";
+import { parseCppSimplexPdf } from "../lib/parseCppSimplexPdf";
 import { detectProductFromPdf } from "../lib/detectProductFromPdf";
 import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
@@ -897,6 +898,7 @@ export default function CalculatorPage() {
         product === "pillowAuto" ||
         product === "kooperativaAuto" ||
         product === "cppcestovko" ||
+        product === "cppsimplex" ||
         product === "neon" ||
         product === "flexi" ||
         product === "domex" ||
@@ -1873,6 +1875,7 @@ export default function CalculatorPage() {
         | Awaited<ReturnType<typeof parsePillowAutoPdf>>
         | Awaited<ReturnType<typeof parseCsobAutoPdf>>
         | Awaited<ReturnType<typeof parseCppCestovkoPdf>>
+        | Awaited<ReturnType<typeof parseCppSimplexPdf>>
         | null = null;
 
       if (importProduct === "cppAuto") {
@@ -1899,9 +1902,11 @@ export default function CalculatorPage() {
         parsed = await parseComfortPdf(file);
       } else if (importProduct === "cppcestovko") {
         parsed = await parseCppCestovkoPdf(file);
+      } else if (importProduct === "cppsimplex") {
+        parsed = await parseCppSimplexPdf(file);
       } else {
         setPdfImportError(
-          "Načítání z PDF je teď dostupné jen pro ČPP Auto, SLAVIA Auto, Allianz Auto, ČSOB Auto, Pillow Auto, Kooperativa Auto, ČPP Cestovko, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
+          "Načítání z PDF je teď dostupné jen pro ČPP Auto, SLAVIA Auto, Allianz Auto, ČSOB Auto, Pillow Auto, Kooperativa Auto, ČPP Cestovko, ČPP Simplex, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
         );
         setPdfImportStatus(null);
         return;
@@ -2289,7 +2294,9 @@ export default function CalculatorPage() {
       setPdfImportStatus(
         applied > 0
           ? `Načteno z PDF (${applied} polí). Zkontroluj prosím.`
-          : "V PDF se nenašla čitelná data, doplň ručně."
+          : importProduct === "cppsimplex"
+            ? "PDF pro ČPP Simplex nahráno. Extrakci polí doladíme v dalším kroku."
+            : "V PDF se nenašla čitelná data, doplň ručně."
       );
     } catch (err) {
       console.error("PDF import selhal", err);
@@ -4227,6 +4234,7 @@ export default function CalculatorPage() {
               productOpen={productOpen}
               currentProductLabel={currentProduct.label}
               productLogoSrc={productInstitutionLogo(product)}
+              productInstitutionId={currentProductInstitutionId}
               productLogoImageClass={institutionLogoImageClass(currentProductInstitutionId)}
               productLogoFrameClass={institutionLogoFrameClass(currentProductInstitutionId, "chip")}
               pdfDropActive={pdfDropActive}

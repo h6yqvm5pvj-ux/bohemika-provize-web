@@ -59,6 +59,16 @@ const DETECTION_RULES: DetectionRule[] = [
       "Na 1. stránce jsou texty „Česká podnikatelská pojišťovna“ a „CESTOVNÍ POJIŠTĚNÍ“.",
   },
   {
+    product: "cppsimplex",
+    mustContain: [
+      { page: "any", text: normalizeText("Česká podnikatelská pojišťovna") },
+      { page: "any", text: normalizeText("SIMPLEX") },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „Česká podnikatelská pojišťovna“ a „SIMPLEX“.",
+  },
+  {
     product: "slaviaauto",
     mustContain: [
       { page: 1, text: normalizeText("Pojištění vozidel") },

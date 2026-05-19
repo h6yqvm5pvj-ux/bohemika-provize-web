@@ -52,7 +52,6 @@ import {
   institutionLogoFrameClass,
   institutionLogoImageClass,
 } from "@/app/lib/institutionLogoDisplay";
-import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 
 type FirestoreTimestamp = {
   seconds: number;
@@ -1893,42 +1892,8 @@ function ContractsPageContent() {
     <AppLayout active="contracts">
       <div className="min-h-screen w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl space-y-6 font-mono text-slate-900">
-        {/* HEADER */}
-        <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <SplitTitle text="Smlouvy" className="!text-slate-900" />
-
-          {canShowTeamToggle && (
-            <div className="ui-chip-group self-start text-xs sm:self-end">
-              <button
-                type="button"
-                onClick={() => setShowTeam(false)}
-                className={`ui-chip ui-focus inline-flex items-center gap-1.5 px-3 py-1.5 ${
-                  !showTeam
-                    ? "ui-chip-active"
-                    : ""
-                }`}
-              >
-                <UserRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                <span>Moje smlouvy</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowTeam(true)}
-                className={`ui-chip ui-focus inline-flex items-center gap-1.5 px-3 py-1.5 ${
-                  showTeam
-                    ? "ui-chip-active"
-                    : ""
-                }`}
-              >
-                <UsersRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                <span>Týmové smlouvy</span>
-              </button>
-            </div>
-          )}
-        </header>
-
         {/* SEARCH BAR + FILTER + BULK ACTIONS */}
-        <div className="sticky top-16 z-40 mt-2 flex flex-col gap-2 rounded-2xl border border-slate-200/80 bg-slate-50/95 p-2 shadow-[0_8px_20px_rgba(15,23,42,0.06)] backdrop-blur supports-[backdrop-filter]:bg-slate-50/85 sm:flex-row sm:items-center sm:justify-between lg:top-2">
+        <div className="sticky top-16 z-40 flex flex-col gap-2 rounded-2xl border border-slate-200/80 bg-slate-50/95 p-2 shadow-[0_8px_20px_rgba(15,23,42,0.06)] backdrop-blur supports-[backdrop-filter]:bg-slate-50/85 sm:flex-row sm:items-center sm:justify-between lg:top-2">
           <div className="ui-card ui-card-quiet flex flex-1 items-center gap-2 rounded-2xl bg-white px-4 py-2.5">
             <span className="text-sm">🔍</span>
             <input
@@ -1941,6 +1906,35 @@ function ContractsPageContent() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            {canShowTeamToggle && (
+              <div className="ui-chip-group text-xs">
+                <button
+                  type="button"
+                  onClick={() => setShowTeam(false)}
+                  className={`ui-chip ui-focus inline-flex items-center gap-1.5 px-3 py-1.5 ${
+                    !showTeam
+                      ? "ui-chip-active"
+                      : ""
+                  }`}
+                >
+                  <UserRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                  <span>Moje smlouvy</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowTeam(true)}
+                  className={`ui-chip ui-focus inline-flex items-center gap-1.5 px-3 py-1.5 ${
+                    showTeam
+                      ? "ui-chip-active"
+                      : ""
+                  }`}
+                >
+                  <UsersRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                  <span>Týmové smlouvy</span>
+                </button>
+              </div>
+            )}
+
             <div className="ui-chip-group text-xs">
               <button
                 type="button"
@@ -2214,7 +2208,11 @@ function ContractsPageContent() {
                 const institutionLabel = institutionLabelForProduct(c.productKey as Product | undefined);
                 const institutionId = institutionForProduct(c.productKey as Product | undefined);
                 const institutionLogo = institutionId ? INSTITUTION_LOGO_BY_ID[institutionId] : null;
+                const institutionGhostLogo =
+                  institutionId === "allianz" ? "/icons/allianzkulaty.png" : institutionLogo;
                 const displayProductName = productCardLabel(c.productKey as Product | undefined);
+                const alignLogoToRightDivider =
+                  institutionId === "csob" || institutionId === "uniqa" || institutionId === "allianz";
 
                 const CardContent = (
                   <article
@@ -2253,20 +2251,30 @@ function ContractsPageContent() {
                     </div>
                   )}
 
-                  {institutionLogo ? (
-                    <div className="pointer-events-none absolute inset-y-0 left-0 w-[62%] overflow-hidden">
+                  {institutionGhostLogo ? (
+                    <div className="pointer-events-none absolute inset-y-0 left-0 w-[62%] overflow-hidden [mask-image:linear-gradient(90deg,black_0%,black_72%,transparent_100%)] [-webkit-mask-image:linear-gradient(90deg,black_0%,black_72%,transparent_100%)]">
                       <div className={`absolute inset-0 ${institutionGhostTintClass(institutionId)}`} />
-                      <div className="absolute inset-y-0 left-[-12%] w-[118%]">
+                      <div
+                        className={`absolute inset-y-0 ${
+                          alignLogoToRightDivider
+                            ? "left-auto right-0 w-[112%]"
+                            : "left-[-12%] w-[118%]"
+                        }`}
+                      >
                         <Image
-                          src={institutionLogo}
+                          src={institutionGhostLogo}
                           alt=""
                           fill
                           aria-hidden="true"
                           sizes="(min-width: 768px) 360px, 260px"
-                          className={`${institutionLogoImageClass(institutionId)} object-contain opacity-[0.24] [filter:grayscale(0.72)_contrast(1.03)]`}
+                          className={`${institutionLogoImageClass(institutionId)} object-contain ${
+                            institutionId === "csob"
+                              ? "object-right opacity-[0.42] [filter:grayscale(0.45)_contrast(1.08)]"
+                              : `${alignLogoToRightDivider ? "object-right " : ""}opacity-[0.24] [filter:grayscale(0.72)_contrast(1.03)]`
+                          }`}
                         />
                       </div>
-                      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.33)_42%,rgba(255,255,255,0.82)_72%,rgba(255,255,255,1)_100%)]" />
+                      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.07)_0%,rgba(255,255,255,0.28)_40%,rgba(248,250,252,0.44)_68%,rgba(248,250,252,0)_100%)]" />
                     </div>
                   ) : null}
 

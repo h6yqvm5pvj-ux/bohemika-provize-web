@@ -773,37 +773,43 @@ export default function AdminRequestsPage() {
                 </button>
               </div>
 
-              <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    Celkem žádostí
-                  </div>
-                  <div className="mt-1 text-2xl font-bold text-slate-900">{totalRequestsCount}</div>
-                </div>
-                <div className="rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 shadow-sm">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">
-                    Čeká vyřízení
-                  </div>
-                  <div className="mt-1 text-2xl font-bold text-amber-900">{pendingUnifiedCount}</div>
-                </div>
-                <div className="rounded-2xl border border-sky-200 bg-sky-50/70 px-4 py-3 shadow-sm">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
-                    Ukončení spolupráce
-                  </div>
-                  <div className="mt-1 text-2xl font-bold text-sky-900">
-                    {pendingEndCollaborationCount}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-3 shadow-sm">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-rose-700">
-                    Urgent po SLA
-                  </div>
-                  <div className="mt-1 text-2xl font-bold text-rose-900">{overdueUrgentCount}</div>
-                </div>
-              </div>
-
               {activeAdminSection === "requests" ? (
-                <>
+                <div className="grid items-start gap-5 xl:grid-cols-[260px_minmax(0,1fr)]">
+                  <aside className="space-y-2 xl:sticky xl:top-24">
+                    <h2 className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
+                      Přehled
+                    </h2>
+                    <div className="space-y-2 rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm">
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Celkem žádostí
+                        </div>
+                        <div className="mt-1 text-2xl font-bold text-slate-900">{totalRequestsCount}</div>
+                      </div>
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                          Čeká vyřízení
+                        </div>
+                        <div className="mt-1 text-2xl font-bold text-amber-900">{pendingUnifiedCount}</div>
+                      </div>
+                      <div className="rounded-xl border border-sky-200 bg-sky-50/70 px-3 py-2.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                          Ukončení spolupráce
+                        </div>
+                        <div className="mt-1 text-2xl font-bold text-sky-900">
+                          {pendingEndCollaborationCount}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-rose-200 bg-rose-50/70 px-3 py-2.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-700">
+                          Urgent po SLA
+                        </div>
+                        <div className="mt-1 text-2xl font-bold text-rose-900">{overdueUrgentCount}</div>
+                      </div>
+                    </div>
+                  </aside>
+
+                  <div className="min-w-0">
                   <h2 className="mb-2 inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
                     Žádosti
                   </h2>
@@ -872,8 +878,20 @@ export default function AdminRequestsPage() {
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      {filteredUnifiedRequests.map((item) => {
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
+                          Fronta žádostí
+                        </p>
+                        <span className="text-xs text-slate-500">
+                          Posuň do strany
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <div className="pointer-events-none absolute inset-y-0 left-0 z-[2] w-5 bg-gradient-to-r from-[#f7fbff] to-transparent" />
+                        <div className="pointer-events-none absolute inset-y-0 right-0 z-[2] w-7 bg-gradient-to-l from-[#f7fbff] to-transparent" />
+                        <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 pr-1 [scrollbar-width:thin]">
+                          {filteredUnifiedRequests.map((item) => {
                         if (item.kind === "endCollaboration") {
                           const request = item.request;
                           const pending = request.status === "pending";
@@ -895,7 +913,7 @@ export default function AdminRequestsPage() {
                           return (
                             <article
                               key={item.id}
-                              className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-[1px] hover:shadow-[0_14px_28px_rgba(15,23,42,0.1)]"
+                              className="relative w-[min(100%,44rem)] shrink-0 snap-start overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-[1px] hover:shadow-[0_14px_28px_rgba(15,23,42,0.1)]"
                             >
                               <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${toneBarClass}`} />
                               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -1021,7 +1039,7 @@ export default function AdminRequestsPage() {
                         return (
                           <article
                             key={item.id}
-                            className={`relative overflow-hidden rounded-2xl border bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-[1px] hover:shadow-[0_14px_28px_rgba(15,23,42,0.1)] ${
+                            className={`relative w-[min(100%,44rem)] shrink-0 snap-start overflow-hidden rounded-2xl border bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-[1px] hover:shadow-[0_14px_28px_rgba(15,23,42,0.1)] ${
                               slaInfo.isOverdueUrgent
                                 ? "border-rose-300"
                                 : "border-slate-200"
@@ -1236,10 +1254,13 @@ export default function AdminRequestsPage() {
                             )}
                           </article>
                         );
-                      })}
+                          })}
+                        </div>
+                      </div>
                     </div>
                   )}
-                </>
+                  </div>
+                </div>
               ) : (
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 shadow-sm">
                   Pro práci s uživateli přepni na sekci{" "}

@@ -9,6 +9,7 @@ type CalculatorProductAndPdfSectionProps = {
   productOpen: boolean;
   currentProductLabel: string;
   productLogoSrc: string;
+  productInstitutionId?: string | null;
   productLogoImageClass: string;
   productLogoFrameClass: string;
   pdfDropActive: boolean;
@@ -30,6 +31,7 @@ export function CalculatorProductAndPdfSection({
   productOpen,
   currentProductLabel,
   productLogoSrc,
+  productInstitutionId,
   productLogoImageClass,
   productLogoFrameClass,
   pdfDropActive,
@@ -45,6 +47,9 @@ export function CalculatorProductAndPdfSection({
   onDragLeave,
   onDrop,
 }: CalculatorProductAndPdfSectionProps) {
+  const isPillowGhost = productInstitutionId === "pillow";
+  const isCppGhost = productInstitutionId === "cpp";
+
   return (
     <section className="relative overflow-hidden rounded-[1.35rem] border border-slate-300 bg-white/90 p-4 shadow-[0_16px_34px_rgba(15,23,42,0.07)]">
       <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#d4af37_0%,#cbd5e1_56%,#0f172a_100%)]" aria-hidden="true" />
@@ -62,9 +67,41 @@ export function CalculatorProductAndPdfSection({
             <button
               type="button"
               onClick={onToggleProductPicker}
-              className="group flex min-h-[4.75rem] w-full items-center justify-between rounded-2xl border border-slate-300 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_54%,#eef2f7_100%)] px-3.5 py-3 text-sm text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] outline-none transition hover:border-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+              className="group relative isolate flex min-h-[4.75rem] w-full items-center justify-between overflow-hidden rounded-2xl border border-slate-300 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_54%,#eef2f7_100%)] px-3.5 py-3 text-sm text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] outline-none transition hover:border-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
             >
-              <span className="flex min-w-0 items-center gap-3">
+              <span
+                className={`pointer-events-none absolute inset-0 overflow-hidden ${
+                  isPillowGhost || isCppGhost
+                    ? "[mask-image:linear-gradient(90deg,black_0%,black_92%,transparent_100%)] [-webkit-mask-image:linear-gradient(90deg,black_0%,black_92%,transparent_100%)]"
+                    : "[mask-image:linear-gradient(90deg,black_0%,black_82%,transparent_100%)] [-webkit-mask-image:linear-gradient(90deg,black_0%,black_82%,transparent_100%)]"
+                }`}
+                aria-hidden="true"
+              >
+                <span className="absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(100,116,139,0.12)_0%,transparent_58%),radial-gradient(circle_at_44%_78%,rgba(148,163,184,0.1)_0%,transparent_56%)]" />
+                <span
+                  className={`absolute inset-y-0 right-0 ${
+                    isPillowGhost ? "w-full" : isCppGhost ? "w-[112%]" : "w-[132%]"
+                  }`}
+                >
+                  <Image
+                    src={productLogoSrc}
+                    alt=""
+                    fill
+                    aria-hidden="true"
+                    sizes="(min-width: 768px) 320px, 220px"
+                    className={
+                      isPillowGhost
+                        ? "object-contain object-right opacity-[0.24] [filter:grayscale(0.58)_contrast(1.04)]"
+                        : isCppGhost
+                          ? "object-contain object-right scale-[0.86] opacity-[0.2] [filter:grayscale(0.6)_contrast(1.04)]"
+                          : `${productLogoImageClass} object-cover object-right opacity-[0.18] [filter:grayscale(0.68)_contrast(1.05)]`
+                    }
+                  />
+                </span>
+                <span className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.2)_38%,rgba(248,250,252,0.3)_68%,rgba(248,250,252,0.08)_100%)]" />
+              </span>
+
+              <span className="relative z-[1] flex min-w-0 items-center gap-3">
                 <div
                   className={`relative flex-shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${productLogoFrameClass}`}
                 >
@@ -77,7 +114,7 @@ export function CalculatorProductAndPdfSection({
                   <span className="truncate text-base font-bold">{currentProductLabel}</span>
                 </span>
               </span>
-              <span className="ml-3 inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition group-hover:text-slate-950">
+              <span className="relative z-[1] ml-3 inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition group-hover:text-slate-950">
                 <ChevronDown
                   size={18}
                   strokeWidth={2.2}

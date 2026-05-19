@@ -775,7 +775,7 @@ export default function ToolsPage() {
       )}
 
       {linksModalOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="Odkazy na portály institucí">
+        <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="Odkazy na portály institucí">
           <button
             type="button"
             className="absolute inset-0 bg-slate-950/58 backdrop-blur-sm"
@@ -783,7 +783,7 @@ export default function ToolsPage() {
             aria-label="Zavřít dialog"
           />
 
-          <div className="relative z-10 w-full max-w-3xl overflow-hidden rounded-[30px] border border-white/75 bg-[linear-gradient(160deg,rgba(255,255,255,0.97)_0%,rgba(248,250,252,0.97)_100%)] p-5 shadow-[0_32px_90px_rgba(2,6,23,0.38)] sm:p-7">
+          <div className="relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[30px] border border-white/75 bg-[linear-gradient(160deg,rgba(255,255,255,0.97)_0%,rgba(248,250,252,0.97)_100%)] p-5 shadow-[0_32px_90px_rgba(2,6,23,0.38)] sm:max-h-[calc(100dvh-3rem)] sm:p-7">
             <button
               type="button"
               onClick={() => setLinksModalOpen(false)}
@@ -801,7 +801,7 @@ export default function ToolsPage() {
               </p>
             </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="mt-5 grid grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
               {INSTITUTION_PORTAL_TARGETS.map((target) => (
                 <a
                   key={target.key}
