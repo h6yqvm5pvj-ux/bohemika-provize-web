@@ -13,6 +13,7 @@ import {
   BarChart3,
   Bike,
   Bot,
+  Building2,
   Calculator,
   CarFront,
   Files,
@@ -457,6 +458,14 @@ export default function ToolsPage() {
         description: "Odkazy na portály institucí.",
         icon: Landmark,
         onClick: () => setLinksModalOpen(true),
+      },
+      {
+        key: "ares",
+        category: "Obecné",
+        title: "ARES",
+        description: "Vyhledání ekonomických subjektů v ARES podle IČO, názvu firmy a obce.",
+        icon: Building2,
+        href: "/pomucky/ares",
       },
       {
         key: "projekce-vykonu",
