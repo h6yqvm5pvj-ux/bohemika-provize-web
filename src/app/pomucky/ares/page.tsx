@@ -9,10 +9,12 @@ import {
   CheckCircle2,
   ChevronRight,
   Hash,
+  History,
   Loader2,
   Mailbox,
   MapPin,
   ShieldCheck,
+  X,
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -147,6 +149,36 @@ function formatDateCs(value: string | null): string {
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return value;
   return dt.toLocaleDateString("cs-CZ");
+}
+
+function parseCzechDate(value: string | null): Date | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const match = trimmed.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})$/);
+  if (match) {
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3]);
+    const parsed = new Date(year, month - 1, day);
+    if (
+      Number.isFinite(day) &&
+      Number.isFinite(month) &&
+      Number.isFinite(year) &&
+      parsed.getFullYear() === year &&
+      parsed.getMonth() === month - 1 &&
+      parsed.getDate() === day
+    ) {
+      parsed.setHours(0, 0, 0, 0);
+      return parsed;
+    }
+  }
+
+  const fallback = new Date(trimmed);
+  if (Number.isNaN(fallback.getTime())) return null;
+  fallback.setHours(0, 0, 0, 0);
+  return fallback;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -466,9 +498,15 @@ export default function AresToolPage() {
   const [entities, setEntities] = useState<AresEntity[]>([]);
   const [pocetCelkem, setPocetCelkem] = useState(0);
   const [detailByIco, setDetailByIco] = useState<Record<string, AresDetail>>({});
-  const [expandedDetailIco, setExpandedDetailIco] = useState<string | null>(null);
+  const [activeDetailIco, setActiveDetailIco] = useState<string | null>(null);
   const [detailLoadingIco, setDetailLoadingIco] = useState<string | null>(null);
   const [detailErrorByIco, setDetailErrorByIco] = useState<Record<string, string>>({});
+  const [showHistoricalStatutarni, setShowHistoricalStatutarni] = useState(false);
+  const [statutarniReferenceDate, setStatutarniReferenceDate] = useState<Date>(() => {
+    const current = new Date();
+    current.setHours(0, 0, 0, 0);
+    return current;
+  });
 
   const primaryInputRef = useRef<HTMLInputElement | null>(null);
   const resultScrollTargetRef = useRef<HTMLDivElement | null>(null);
@@ -529,7 +567,7 @@ export default function AresToolPage() {
 
     setLoading(true);
     setError(null);
-    setExpandedDetailIco(null);
+    setActiveDetailIco(null);
     setDetailByIco({});
     setDetailErrorByIco({});
 
@@ -559,17 +597,12 @@ export default function AresToolPage() {
     }
   }, [canSearch, ico, obec, obchodniJmeno, user]);
 
-  const handleToggleDetail = useCallback(
+  const handleOpenDetail = useCallback(
     async (entity: AresEntity) => {
       const entityIco = entity.ico;
       if (!entityIco || entityIco.length !== 8) return;
 
-      if (expandedDetailIco === entityIco) {
-        setExpandedDetailIco(null);
-        return;
-      }
-
-      setExpandedDetailIco(entityIco);
+      setActiveDetailIco(entityIco);
 
       if (detailByIco[entityIco]) return;
 
@@ -592,8 +625,73 @@ export default function AresToolPage() {
         setDetailLoadingIco((current) => (current === entityIco ? null : current));
       }
     },
-    [detailByIco, expandedDetailIco]
+    [detailByIco]
   );
+
+  const handleCloseDetail = useCallback(() => {
+    setActiveDetailIco(null);
+  }, []);
+
+  useEffect(() => {
+    if (!activeDetailIco || typeof window === "undefined") return;
+
+    const previousOverflow = document.body.style.overflow;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveDetailIco(null);
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onEscape);
+    };
+  }, [activeDetailIco]);
+
+  useEffect(() => {
+    setShowHistoricalStatutarni(false);
+    if (!activeDetailIco) return;
+    const current = new Date();
+    current.setHours(0, 0, 0, 0);
+    setStatutarniReferenceDate(current);
+  }, [activeDetailIco]);
+
+  const activeEntity = useMemo(
+    () => (activeDetailIco ? entities.find((entity) => entity.ico === activeDetailIco) ?? null : null),
+    [activeDetailIco, entities]
+  );
+  const activeDetail = activeDetailIco ? detailByIco[activeDetailIco] : null;
+  const activeDetailError = activeDetailIco ? detailErrorByIco[activeDetailIco] : null;
+  const activeDetailLoading = !!activeDetailIco && detailLoadingIco === activeDetailIco;
+  const statutarniReferenceLabel = useMemo(
+    () => statutarniReferenceDate.toLocaleDateString("cs-CZ"),
+    [statutarniReferenceDate]
+  );
+  const currentStatutarniRos = activeDetail?.sections.statutarniRos ?? [];
+  const statutarniVrByValidity = useMemo(() => {
+    const current: AresDetail["sections"]["statutarniVr"] = [];
+    const historical: AresDetail["sections"]["statutarniVr"] = [];
+    const rows = activeDetail?.sections.statutarniVr ?? [];
+
+    for (const row of rows) {
+      const datumZapisu = parseCzechDate(row.datumZapisu);
+      const datumVymazu = parseCzechDate(row.datumVymazu);
+      const startsInFuture = !!datumZapisu && datumZapisu > statutarniReferenceDate;
+      const endedBeforeReference = !!datumVymazu && datumVymazu < statutarniReferenceDate;
+
+      if (startsInFuture || endedBeforeReference) {
+        historical.push(row);
+      } else {
+        current.push(row);
+      }
+    }
+
+    return { current, historical };
+  }, [activeDetail, statutarniReferenceDate]);
+  const currentStatutarniCount = currentStatutarniRos.length + statutarniVrByValidity.current.length;
 
   return (
     <AppLayout active="tools">
@@ -707,250 +805,369 @@ export default function AresToolPage() {
               Výsledky ARES vyhledávání
             </h2>
 
-            <div className="mt-5 grid gap-4">
+            <div className={`mt-5 grid gap-4 ${entities.length === 1 ? "mx-auto max-w-3xl" : ""} md:grid-cols-2`}>
               {entities.map((entity, idx) => {
                 const isActive = !entity.datumZaniku;
-                const statusTone = isActive ? "green" : "rose";
-                const activeRegisters = entity.aktivniRegistry.slice(0, 8);
+                const activeRegisters = entity.aktivniRegistry.slice(0, 3);
+                const extraRegisters = Math.max(0, entity.aktivniRegistry.length - activeRegisters.length);
                 const entityIco = entity.ico;
                 const canLoadDetail = !!entityIco && entityIco.length === 8;
-                const isExpanded = canLoadDetail && expandedDetailIco === entityIco;
-                const detail = canLoadDetail ? detailByIco[entityIco] : null;
-                const detailLoading = canLoadDetail && detailLoadingIco === entityIco;
-                const detailError = canLoadDetail ? detailErrorByIco[entityIco] : null;
+                const isSelected = canLoadDetail && activeDetailIco === entityIco;
+                const primarySourceLabel = (entity.primarniZdroj ?? "ARES").toUpperCase();
+                const fallbackAddress = [entity.sidlo.psc, entity.sidlo.nazevObce, entity.sidlo.nazevStatu].filter(Boolean).join(" ");
+                const addressText =
+                  entity.sidlo.textovaAdresa ??
+                  (fallbackAddress || "Adresa neuvedena");
+                const timelineLabel = `${formatDateCs(entity.datumVzniku)} / ${formatDateCs(entity.datumZaniku)}`;
 
                 return (
-                  <article
+                  <button
                     key={`${entity.ico ?? entity.icoId ?? entity.obchodniJmeno}-${idx}`}
-                    className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"
+                    type="button"
+                    disabled={!canLoadDetail}
+                    onClick={() => void handleOpenDetail(entity)}
+                    className={`group relative overflow-hidden rounded-[26px] p-[1px] text-left transition duration-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-200 ${
+                      isSelected ? "shadow-[0_24px_52px_rgba(15,23,42,0.15)]" : "hover:-translate-y-0.5 hover:shadow-[0_20px_44px_rgba(15,23,42,0.12)]"
+                    } disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0`}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="text-xl font-semibold text-slate-900">{entity.obchodniJmeno}</h3>
-                      <Pill tone={statusTone}>{isActive ? "AKTIVNÍ" : "ZANIKLÝ"}</Pill>
-                    </div>
+                    <div
+                      aria-hidden
+                      className={`pointer-events-none absolute inset-0 bg-[linear-gradient(140deg,rgba(148,163,184,0.38),rgba(148,163,184,0.14)_42%,rgba(52,211,153,0.36))] transition-opacity ${
+                        isSelected ? "opacity-100" : "opacity-75 group-hover:opacity-100"
+                      }`}
+                    />
 
-                    <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                      <div>
-                        <p className="text-slate-500">IČO</p>
-                        <p className="font-semibold text-slate-900">{entity.ico ?? entity.icoId ?? "—"}</p>
+                    <div
+                      className={`relative rounded-[25px] px-5 py-4 ${
+                        isSelected ? "bg-emerald-50/80" : "bg-white/95"
+                      }`}
+                    >
+                      <div
+                        aria-hidden
+                        className="pointer-events-none absolute inset-x-8 top-0 h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(148,163,184,0),rgba(100,116,139,0.45),rgba(30,41,59,0.72),rgba(100,116,139,0.45),rgba(148,163,184,0))]"
+                      />
+                      <div
+                        aria-hidden
+                        className="pointer-events-none absolute inset-x-10 top-[2px] h-px rounded-full bg-[linear-gradient(90deg,rgba(148,163,184,0),rgba(226,232,240,0.88),rgba(148,163,184,0))]"
+                      />
+
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{primarySourceLabel}</p>
+                          <h3 className="mt-1 line-clamp-2 text-2xl leading-[1.05] font-semibold tracking-tight text-slate-900 sm:text-3xl">
+                            {entity.obchodniJmeno}
+                          </h3>
+                        </div>
+                        <span
+                          className={`inline-flex shrink-0 rounded-full border px-3 py-1 text-xs font-semibold tracking-wide ${
+                            isActive ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"
+                          }`}
+                        >
+                          {isActive ? "AKTIVNÍ" : "ZANIKLÝ"}
+                        </span>
                       </div>
-                      <div>
-                        <p className="text-slate-500">Právní forma</p>
-                        <p className="font-semibold text-slate-900">{entity.pravniForma ?? entity.pravniFormaRos ?? "—"}</p>
+
+                      <div className="mt-4 grid grid-cols-[1fr_auto] items-center gap-4 border-t border-slate-200/90 pt-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">IČO</p>
+                          <p className="mt-1 text-lg font-semibold text-slate-900">{entity.ico ?? entity.icoId ?? "—"}</p>
+                        </div>
+                        <div className="border-l border-slate-200 pl-4 text-right">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Vznik / zánik</p>
+                          <p className="mt-1 text-sm font-medium text-slate-700">{timelineLabel}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-slate-500">Primární zdroj</p>
-                        <p className="font-semibold text-slate-900 uppercase">{entity.primarniZdroj ?? "—"}</p>
+
+                      <div className="mt-3 flex items-start gap-2 text-sm text-slate-700">
+                        <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                        <span className="line-clamp-2">{addressText}</span>
                       </div>
-                      <div>
-                        <p className="text-slate-500">Vznik / zánik</p>
-                        <p className="font-semibold text-slate-900">
-                          {formatDateCs(entity.datumVzniku)} / {formatDateCs(entity.datumZaniku)}
-                        </p>
-                      </div>
-                    </div>
 
-                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-                      <span>
-                        {entity.sidlo.textovaAdresa ??
-                          ([entity.sidlo.psc, entity.sidlo.nazevObce, entity.sidlo.nazevStatu].filter(Boolean).join(" ") ||
-                            "Adresa neuvedena")}
-                      </span>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      {activeRegisters.length > 0 ? (
-                        activeRegisters.map((register) => (
-                          <Pill key={`${entity.ico ?? entity.icoId}-${register}`} tone="amber">
-                            {register}
-                          </Pill>
-                        ))
-                      ) : (
-                        <Pill>Aktivní registr neuveden</Pill>
-                      )}
-                    </div>
-
-                    <div className="mt-4">
-                      <button
-                        type="button"
-                        disabled={!canLoadDetail}
-                        onClick={() => void handleToggleDetail(entity)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
-                        {canLoadDetail ? "Rozbalit detail subjektu" : "Detail není dostupný (subjekt bez českého IČO)"}
-                      </button>
-                    </div>
-
-                    {isExpanded && (
-                      <div className="mt-4 space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
-                        {detailLoading && (
-                          <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
-                            <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
-                            Načítám detail ze všech registrů ARES
-                          </div>
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        {activeRegisters.length > 0 ? (
+                          activeRegisters.map((register) => (
+                            <span
+                              key={`${entity.ico ?? entity.icoId}-${register}`}
+                              className="inline-flex rounded-full border border-slate-200 bg-slate-100/75 px-2.5 py-1 text-[11px] font-semibold tracking-[0.08em] text-slate-700"
+                            >
+                              {register}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="inline-flex rounded-full border border-slate-200 bg-slate-100/75 px-2.5 py-1 text-[11px] font-semibold tracking-[0.08em] text-slate-700">
+                            Bez registru
+                          </span>
                         )}
-
-                        {detailError && (
-                          <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                            {detailError}
-                          </div>
-                        )}
-
-                        {!detailLoading && !detailError && detail && (
-                          <>
-                            <section className="space-y-2">
-                              <h4 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
-                                <Building2 className="h-4 w-4 text-slate-500" />
-                                Souhrn detailu
-                              </h4>
-                              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                                <div className="flex items-start gap-3">
-                                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500">
-                                    <Mailbox className="h-4 w-4" />
-                                  </span>
-                                  <div className="min-w-0">
-                                    <p className="text-slate-500">Datová schránka</p>
-                                    <p className="font-semibold text-slate-900">{detail.subject.datovaSchranka ?? "—"}</p>
-                                    {detail.subject.datoveSchranky.length > 1 && (
-                                      <p className="mt-1 text-xs text-slate-600">
-                                        Další schránky: {detail.subject.datoveSchranky.slice(1).map((row) => row.identifikatorDs).join(", ")}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                {DETAIL_SOURCE_KEYS.map((sourceKey) => {
-                                  const health = detail.sourceHealth[sourceKey];
-                                  const tone = health.ok ? "green" : sourceKey === "core" ? "rose" : "amber";
-                                  const label = DETAIL_SOURCE_LABELS[sourceKey];
-                                  return (
-                                    <Pill
-                                      key={`health-${sourceKey}`}
-                                      tone={tone}
-                                      icon={
-                                        health.ok ? (
-                                          <CheckCircle2 className="h-3.5 w-3.5" />
-                                        ) : (
-                                          <AlertTriangle className="h-3.5 w-3.5" />
-                                        )
-                                      }
-                                    >
-                                      {health.ok ? `${label} OK` : `${label} nedostupné`}
-                                    </Pill>
-                                  );
-                                })}
-                              </div>
-                            </section>
-
-                            <section className="space-y-2">
-                              <h4 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
-                                <MapPin className="h-4 w-4 text-slate-500" />
-                                Provozovny (ROS + RŽP)
-                              </h4>
-                              <div className="text-sm text-slate-700">
-                                ROS: {detail.sections.provozovnyRos.length} | RŽP: {detail.sections.provozovnyRzp.length}
-                              </div>
-                              <div className="grid gap-2 lg:grid-cols-2">
-                                {detail.sections.provozovnyRos.map((row, rowIdx) => (
-                                  <div key={`ros-provozovna-${row.icp ?? "none"}-${rowIdx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                                    <p className="font-semibold text-slate-900">ROS ICP: {row.icp ?? "—"}</p>
-                                    <p className="text-slate-700">{row.adresa ?? "Adresa neuvedena"}</p>
-                                    <p className="text-xs text-slate-500">
-                                      {row.datumOd ?? "—"} - {row.datumDo ?? "dosud"}
-                                    </p>
-                                  </div>
-                                ))}
-                                {detail.sections.provozovnyRzp.map((row, rowIdx) => (
-                                  <div key={`rzp-provozovna-${row.icp ?? "none"}-${rowIdx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                                    <p className="font-semibold text-slate-900">RŽP ICP: {row.icp ?? "—"}</p>
-                                    <p className="text-slate-700">{row.nazev ?? "Bez názvu"}</p>
-                                    <p className="text-slate-700">{row.adresa ?? "Adresa neuvedena"}</p>
-                                    <p className="text-xs text-slate-500">
-                                      {row.datumOd ?? "—"} - {row.datumDo ?? "dosud"}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            </section>
-
-                            <section className="space-y-2">
-                              <h4 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
-                                <Building2 className="h-4 w-4 text-slate-500" />
-                                Živnosti (RŽP)
-                              </h4>
-                              <div className="grid gap-2">
-                                {detail.sections.zivnostiRzp.map((row, rowIdx) => (
-                                  <div key={`zivnost-${rowIdx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                                    <p className="font-semibold text-slate-900">{row.predmet ?? "Předmět podnikání neuveden"}</p>
-                                    <p className="text-slate-700">
-                                      Druh: {row.druh ?? "—"} | Provozovny: {row.provozovny} | Odpovědní zástupci: {row.odpovedniZastupci}
-                                    </p>
-                                    <p className="text-xs text-slate-500">
-                                      {row.datumVzniku ?? "—"} - {row.datumZaniku ?? "dosud"}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            </section>
-
-                            <section className="space-y-2">
-                              <h4 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
-                                <ShieldCheck className="h-4 w-4 text-slate-500" />
-                                Statutární orgány (ROS + VR)
-                              </h4>
-                              <div className="grid gap-2 lg:grid-cols-2">
-                                {detail.sections.statutarniRos.map((row, rowIdx) => (
-                                  <div key={`ros-statutarni-${rowIdx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                                    <p className="font-semibold text-slate-900">{row.jmeno ?? "Neuvedeno"}</p>
-                                    <p className="text-slate-600">ROS | nar.: {row.datumNarozeni ?? "—"}</p>
-                                  </div>
-                                ))}
-                                {detail.sections.statutarniVr.map((row, rowIdx) => (
-                                  <div key={`vr-statutarni-${rowIdx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                                    <p className="font-semibold text-slate-900">{row.jmeno ?? "Neuvedeno"}</p>
-                                    <p className="text-slate-700">{row.organ ?? "VR orgán"} | {row.role ?? "role neuvedena"}</p>
-                                    <p className="text-xs text-slate-500">
-                                      {row.datumZapisu ?? "—"} - {row.datumVymazu ?? "dosud"}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            </section>
-
-                            <section className="space-y-2">
-                              <h4 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
-                                <AlertTriangle className="h-4 w-4 text-slate-500" />
-                                Insolvence / konkurzy
-                              </h4>
-                              {detail.sections.insolvencniUdalosti.length > 0 ? (
-                                <div className="grid gap-2">
-                                  {detail.sections.insolvencniUdalosti.map((row, rowIdx) => (
-                                    <div key={`insolvence-${rowIdx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                                      <p className="font-semibold text-slate-900">{row.typ}</p>
-                                      <p className="text-slate-700">
-                                        Zdroj: {row.zdroj} | Datum: {row.datum ?? "—"}
-                                      </p>
-                                      {row.detail && <p className="mt-1 text-xs text-slate-600">{row.detail}</p>}
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-sm text-slate-600">V dostupných registrech není evidovaná insolvenční událost.</p>
-                              )}
-                            </section>
-
-                          </>
+                        {extraRegisters > 0 && (
+                          <span className="inline-flex rounded-full border border-slate-200 bg-slate-100/75 px-2.5 py-1 text-[11px] font-semibold tracking-[0.08em] text-slate-700">
+                            +{extraRegisters}
+                          </span>
                         )}
                       </div>
-                    )}
-                  </article>
+
+                      <div className="mt-4 flex items-center justify-between border-t border-slate-200/90 pt-3">
+                        <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Detail subjektu</p>
+                        <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                          {canLoadDetail ? "Otevřít" : "Nedostupný"}
+                          <span
+                            className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition ${
+                              isSelected ? "translate-x-0.5" : "group-hover:translate-x-0.5"
+                            }`}
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  </button>
                 );
               })}
             </div>
           </section>
+        )}
+
+        {activeDetailIco && (
+          <div className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-900/45 p-3 backdrop-blur-[2px] sm:p-6">
+            <button
+              type="button"
+              aria-label="Zavřít detail subjektu"
+              onClick={handleCloseDetail}
+              className="absolute inset-0"
+            />
+
+            <section className="relative z-10 w-full max-w-6xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.35)]">
+              <header className="border-b border-slate-200 bg-slate-50/90 px-5 py-4 sm:px-6">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Detail subjektu</p>
+                    <h3 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+                      {activeEntity?.obchodniJmeno ?? activeDetail?.subject.obchodniJmeno ?? "Subjekt"}
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-600">
+                      IČO: {activeDetailIco}
+                      {activeEntity?.primarniZdroj ? ` | Zdroj: ${activeEntity.primarniZdroj}` : ""}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleCloseDetail}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-600 transition hover:border-slate-400 hover:bg-slate-100 hover:text-slate-900"
+                    aria-label="Zavřít"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+              </header>
+
+              <div className="max-h-[78vh] overflow-y-auto p-5 sm:p-6">
+                {activeDetailLoading && (
+                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
+                    Načítám detail ze všech registrů ARES
+                  </div>
+                )}
+
+                {activeDetailError && (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {activeDetailError}
+                  </div>
+                )}
+
+                {!activeDetailLoading && !activeDetailError && activeDetail && (
+                  <div className="space-y-4">
+                    <section className="space-y-2">
+                      <h4 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
+                        <Building2 className="h-4 w-4 text-slate-500" />
+                        Souhrn detailu
+                      </h4>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                        <div className="flex items-start gap-3">
+                          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500">
+                            <Mailbox className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-slate-500">Datová schránka</p>
+                            <p className="font-semibold text-slate-900">{activeDetail.subject.datovaSchranka ?? "—"}</p>
+                            {activeDetail.subject.datoveSchranky.length > 1 && (
+                              <p className="mt-1 text-xs text-slate-600">
+                                Další schránky: {activeDetail.subject.datoveSchranky.slice(1).map((row) => row.identifikatorDs).join(", ")}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {DETAIL_SOURCE_KEYS.map((sourceKey) => {
+                          const health = activeDetail.sourceHealth[sourceKey];
+                          const tone = health.ok ? "green" : sourceKey === "core" ? "rose" : "amber";
+                          const label = DETAIL_SOURCE_LABELS[sourceKey];
+                          return (
+                            <Pill
+                              key={`modal-health-${sourceKey}`}
+                              tone={tone}
+                              icon={
+                                health.ok ? (
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                ) : (
+                                  <AlertTriangle className="h-3.5 w-3.5" />
+                                )
+                              }
+                            >
+                              {health.ok ? `${label} OK` : `${label} nedostupné`}
+                            </Pill>
+                          );
+                        })}
+                      </div>
+                    </section>
+
+                    <section className="space-y-2">
+                      <h4 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
+                        <MapPin className="h-4 w-4 text-slate-500" />
+                        Provozovny (ROS + RŽP)
+                      </h4>
+                      <div className="text-sm text-slate-700">
+                        ROS: {activeDetail.sections.provozovnyRos.length} | RŽP: {activeDetail.sections.provozovnyRzp.length}
+                      </div>
+                      <div className="grid gap-2 lg:grid-cols-2">
+                        {activeDetail.sections.provozovnyRos.map((row, rowIdx) => (
+                          <div key={`modal-ros-provozovna-${row.icp ?? "none"}-${rowIdx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                            <p className="font-semibold text-slate-900">ROS ICP: {row.icp ?? "—"}</p>
+                            <p className="text-slate-700">{row.adresa ?? "Adresa neuvedena"}</p>
+                            <p className="text-xs text-slate-500">
+                              {row.datumOd ?? "—"} - {row.datumDo ?? "dosud"}
+                            </p>
+                          </div>
+                        ))}
+                        {activeDetail.sections.provozovnyRzp.map((row, rowIdx) => (
+                          <div key={`modal-rzp-provozovna-${row.icp ?? "none"}-${rowIdx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                            <p className="font-semibold text-slate-900">RŽP ICP: {row.icp ?? "—"}</p>
+                            <p className="text-slate-700">{row.nazev ?? "Bez názvu"}</p>
+                            <p className="text-slate-700">{row.adresa ?? "Adresa neuvedena"}</p>
+                            <p className="text-xs text-slate-500">
+                              {row.datumOd ?? "—"} - {row.datumDo ?? "dosud"}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="space-y-2">
+                      <h4 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
+                        <Building2 className="h-4 w-4 text-slate-500" />
+                        Živnosti (RŽP)
+                      </h4>
+                      <div className="grid gap-2">
+                        {activeDetail.sections.zivnostiRzp.map((row, rowIdx) => (
+                          <div key={`modal-zivnost-${rowIdx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                            <p className="font-semibold text-slate-900">{row.predmet ?? "Předmět podnikání neuveden"}</p>
+                            <p className="text-slate-700">
+                              Druh: {row.druh ?? "—"} | Provozovny: {row.provozovny} | Odpovědní zástupci: {row.odpovedniZastupci}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {row.datumVzniku ?? "—"} - {row.datumZaniku ?? "dosud"}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
+                          <ShieldCheck className="h-4 w-4 text-slate-500" />
+                          Statutární orgány (ROS + VR)
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => setShowHistoricalStatutarni((current) => !current)}
+                          aria-pressed={showHistoricalStatutarni}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                        >
+                          <History className="h-3.5 w-3.5" />
+                          {showHistoricalStatutarni ? "Skrýt historické" : "Zobrazit historické"}
+                        </button>
+                      </div>
+                      <p className="text-xs text-slate-600">Aktuální ke dni {statutarniReferenceLabel}: {currentStatutarniCount}</p>
+                      <div className="grid gap-2 lg:grid-cols-2">
+                        {currentStatutarniRos.map((row, rowIdx) => (
+                          <div key={`modal-ros-statutarni-${rowIdx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                            <p className="font-semibold text-slate-900">{row.jmeno ?? "Neuvedeno"}</p>
+                            <p className="text-slate-600">ROS | nar.: {row.datumNarozeni ?? "—"}</p>
+                          </div>
+                        ))}
+                        {statutarniVrByValidity.current.map((row, rowIdx) => (
+                          <div key={`modal-vr-statutarni-${rowIdx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                            <p className="font-semibold text-slate-900">{row.jmeno ?? "Neuvedeno"}</p>
+                            <p className="text-slate-700">{row.organ ?? "VR orgán"} | {row.role ?? "role neuvedena"}</p>
+                            <p className="text-xs text-slate-500">
+                              {row.datumZapisu ?? "—"} - {row.datumVymazu ?? "dosud"}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                      {currentStatutarniCount === 0 && (
+                        <p className="text-sm text-slate-600">
+                          K datu {statutarniReferenceLabel} není v dostupných datech evidovaný aktuální statutární orgán.
+                        </p>
+                      )}
+                      {showHistoricalStatutarni && (
+                        <>
+                          <div className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Historické položky (VR): {statutarniVrByValidity.historical.length}
+                          </div>
+                          {statutarniVrByValidity.historical.length > 0 ? (
+                            <div className="grid gap-2 lg:grid-cols-2">
+                              {statutarniVrByValidity.historical.map((row, rowIdx) => (
+                                <div
+                                  key={`modal-vr-statutarni-historical-${rowIdx}`}
+                                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                                >
+                                  <p className="font-semibold text-slate-900">{row.jmeno ?? "Neuvedeno"}</p>
+                                  <p className="text-slate-700">{row.organ ?? "VR orgán"} | {row.role ?? "role neuvedena"}</p>
+                                  <p className="text-xs text-slate-500">
+                                    {row.datumZapisu ?? "—"} - {row.datumVymazu ?? "dosud"}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-600">Historické záznamy pro VR nejsou dostupné.</p>
+                          )}
+                        </>
+                      )}
+                    </section>
+
+                    <section className="space-y-2">
+                      <h4 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
+                        <AlertTriangle className="h-4 w-4 text-slate-500" />
+                        Insolvence / konkurzy
+                      </h4>
+                      {activeDetail.sections.insolvencniUdalosti.length > 0 ? (
+                        <div className="grid gap-2">
+                          {activeDetail.sections.insolvencniUdalosti.map((row, rowIdx) => (
+                            <div key={`modal-insolvence-${rowIdx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                              <p className="font-semibold text-slate-900">{row.typ}</p>
+                              <p className="text-slate-700">
+                                Zdroj: {row.zdroj} | Datum: {row.datum ?? "—"}
+                              </p>
+                              {row.detail && <p className="mt-1 text-xs text-slate-600">{row.detail}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-600">V dostupných registrech není evidovaná insolvenční událost.</p>
+                      )}
+                    </section>
+                  </div>
+                )}
+
+                {!activeDetailLoading && !activeDetailError && !activeDetail && (
+                  <p className="text-sm text-slate-600">Detail pro zvolený subjekt není zatím dostupný.</p>
+                )}
+              </div>
+            </section>
+          </div>
         )}
 
         {searchActivated && !loading && entities.length === 0 && !error && (

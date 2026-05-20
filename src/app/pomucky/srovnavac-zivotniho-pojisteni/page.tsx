@@ -245,7 +245,7 @@ const INSURER_LOGOS: Record<string, string> = {
   "ČPP": "/icons/cpp.png",
   "ČSOB": "/icons/csob.png",
   "Generali Česká": "/icons/generali.png",
-  "Komerční pojišťovna": "/icons/cclogo1.png",
+  "Komerční pojišťovna": "/icons/kblogo.png",
   Kooperativa: "/icons/koop-v2.png",
   Maxima: "/icons/maxima.png",
   MetLife: "/icons/metlife.png",
@@ -1221,6 +1221,14 @@ export default function LifeInsuranceComparisonPage() {
                       const hasAnySelected = selectedCount > 0;
                       const tintClass =
                         INSURER_CARD_TINTS[group.insurer] ?? INSURER_CARD_TINT_DEFAULT;
+                      const ghostLogoClass =
+                        group.insurer === "ČPP"
+                          ? "object-contain p-0 opacity-[0.32] saturate-0 contrast-125 scale-[1.3]"
+                          : group.insurer === "Pillow"
+                            ? "object-contain p-1 opacity-[0.3] saturate-0 contrast-125 scale-[1.2]"
+                            : group.insurer === "UNIQA"
+                              ? "object-contain p-1 opacity-[0.3] saturate-0 contrast-125 scale-[1.12]"
+                          : "object-contain p-4 opacity-[0.27] saturate-0 contrast-125";
                       const selectionBadgeLabel = allSelected
                         ? "Vybráno"
                         : partiallySelected
@@ -1264,7 +1272,7 @@ export default function LifeInsuranceComparisonPage() {
                                 alt=""
                                 fill
                                 sizes="(max-width: 768px) 100vw, 50vw"
-                                className="object-contain p-4 opacity-[0.27] saturate-0 contrast-125"
+                                className={ghostLogoClass}
                               />
                               <div className={`absolute inset-0 ${tintClass}`} />
                             </div>
@@ -1293,10 +1301,7 @@ export default function LifeInsuranceComparisonPage() {
                                 {selectionBadgeLabel}
                               </button>
 
-                              <div className="flex items-end justify-between gap-3">
-                                <h3 className="min-w-0 truncate text-2xl font-bold tracking-[-0.015em] text-slate-900">
-                                  {group.insurer}
-                                </h3>
+                              <div className="flex items-end justify-end gap-3">
                                 <button
                                   type="button"
                                   onClick={(event) => {

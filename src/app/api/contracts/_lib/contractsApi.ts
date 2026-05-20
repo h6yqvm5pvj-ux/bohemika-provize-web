@@ -86,6 +86,12 @@ import { normalizeNeonDurationYears } from "@/app/lib/productFormulas/neon";
 import { calculateMaxCizinKomplex } from "@/app/lib/productFormulas/maxcizinkomplex";
 import { calculateCppHafan } from "@/app/lib/productFormulas/cpphafan";
 import { calculateAllianzMujDomov } from "@/app/lib/productFormulas/allianzMujDomov";
+import {
+  evaluateSubscriptionAccess,
+  normalizeIsoDay,
+  normalizeSubscriptionStatus as normalizeSubscriptionStatusValue,
+  type SubscriptionEffectiveState,
+} from "@/lib/subscriptionAccess";
 
 export type ContractsGetMode = "auto" | "detail" | "list";
 export type ContractsPatchAction =
@@ -564,14 +570,19 @@ const DEFAULT_PUBLIC_APP_ORIGIN = "https://bohemka.app";
 
 let cachedUserTree: { value: UserTreeResult; expiresAtMs: number } | null = null;
 let cachedUserTreePromise: Promise<UserTreeResult> | null = null;
+type CachedSubscriptionAccess = {
+  status: SubscriptionStatus;
+  paidUntil: string | null;
+  effectiveState: SubscriptionEffectiveState;
+};
 const cachedSubscriptionStatus = new Map<
   string,
-  { value: SubscriptionStatus | null; expiresAtMs: number }
+  { value: CachedSubscriptionAccess | null; expiresAtMs: number }
 >();
 
 const readCachedSubscriptionStatus = (
   key: string
-): SubscriptionStatus | null | undefined => {
+): CachedSubscriptionAccess | null | undefined => {
   const now = Date.now();
   const cached = cachedSubscriptionStatus.get(key);
   if (!cached) return undefined;
@@ -584,7 +595,7 @@ const readCachedSubscriptionStatus = (
 
 const writeCachedSubscriptionStatus = (
   key: string,
-  value: SubscriptionStatus | null
+  value: CachedSubscriptionAccess | null
 ) => {
   const now = Date.now();
   cachedSubscriptionStatus.set(key, {
@@ -4363,24 +4374,20 @@ const toNonEmptyCandidateValues = (values: Array<string | null | undefined>): st
     )
   );
 
-const normalizeSubscriptionStatus = (value: unknown): SubscriptionStatus | null => {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) return null;
-  if (normalized === "active") return "active";
-  if (normalized === "expired") return "expired";
-  return "none";
-};
-
-const resolveSubscriptionStatusFromSources = (
+const resolveSubscriptionSnapshotFromSources = (
   sources: Array<Record<string, unknown> | null | undefined>
-): SubscriptionStatus | null => {
+): { status: SubscriptionStatus; paidUntil: string | null } | null => {
   for (const source of sources) {
     if (!source) continue;
-    const direct = normalizeSubscriptionStatus(source.subscriptionStatus);
-    if (direct) return direct;
-    const legacy = normalizeSubscriptionStatus(source.subscriptionstatus);
-    if (legacy) return legacy;
+    const status = normalizeSubscriptionStatusValue(
+      source.subscriptionStatus ?? source.subscriptionstatus
+    ) as SubscriptionStatus;
+    const paidUntil = normalizeIsoDay(
+      source.subscriptionPaidUntil ?? source.subscriptionpaiduntil
+    );
+    if (status !== "none" || paidUntil) {
+      return { status, paidUntil };
+    }
   }
   return null;
 };
@@ -4393,7 +4400,7 @@ const loadUserSubscriptionStatus = async ({
   email: string;
   rawTokenEmail: string;
   uid: string;
-}): Promise<SubscriptionStatus | null> => {
+}): Promise<CachedSubscriptionAccess | null> => {
   if (!adminDb) return null;
 
   const cacheKey = normalizeEmail(email || rawTokenEmail || uid);
@@ -4420,12 +4427,22 @@ const loadUserSubscriptionStatus = async ({
       (snap) =>
         (snap.data() as Record<string, unknown> | undefined) ?? ({} as Record<string, unknown>)
     );
-  const privateStatus = resolveSubscriptionStatusFromSources(privateSources);
-  if (privateStatus) {
+  const privateSnapshot = resolveSubscriptionSnapshotFromSources(privateSources);
+  if (privateSnapshot) {
+    const evaluated = evaluateSubscriptionAccess({
+      subscriptionStatus: privateSnapshot.status,
+      subscriptionPaidFrom: null,
+      subscriptionPaidUntil: privateSnapshot.paidUntil,
+    });
+    const resolved: CachedSubscriptionAccess = {
+      status: privateSnapshot.status,
+      paidUntil: privateSnapshot.paidUntil,
+      effectiveState: evaluated.state,
+    };
     if (cacheKey) {
-      writeCachedSubscriptionStatus(cacheKey, privateStatus);
+      writeCachedSubscriptionStatus(cacheKey, resolved);
     }
-    return privateStatus;
+    return resolved;
   }
 
   const [directPublicSnaps, byEmailSnaps, byUidSnap] = await Promise.all([
@@ -4458,7 +4475,18 @@ const loadUserSubscriptionStatus = async ({
     );
   });
 
-  const resolved = resolveSubscriptionStatusFromSources(publicSources);
+  const publicSnapshot = resolveSubscriptionSnapshotFromSources(publicSources);
+  const resolved = publicSnapshot
+    ? ({
+        status: publicSnapshot.status,
+        paidUntil: publicSnapshot.paidUntil,
+        effectiveState: evaluateSubscriptionAccess({
+          subscriptionStatus: publicSnapshot.status,
+          subscriptionPaidFrom: null,
+          subscriptionPaidUntil: publicSnapshot.paidUntil,
+        }).state,
+      } satisfies CachedSubscriptionAccess)
+    : null;
   if (cacheKey) {
     writeCachedSubscriptionStatus(cacheKey, resolved);
   }
@@ -4494,12 +4522,15 @@ async function getAuthContext(
   }
 
   if (requireActiveSubscription) {
-    const subscriptionStatus = await loadUserSubscriptionStatus({
+    const subscriptionAccess = await loadUserSubscriptionStatus({
       email,
       rawTokenEmail,
       uid: identity.uid,
     });
-    if (subscriptionStatus === "expired") {
+    if (subscriptionAccess?.effectiveState === "blocked") {
+      if (subscriptionAccess.status === "unpaid") {
+        return { error: "Účet je označený jako nezaplacený.", status: 403 } as const;
+      }
       return { error: "Účet má expirované předplatné.", status: 403 } as const;
     }
   }

@@ -198,33 +198,6 @@ const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
   cppPPRbez: "Majetek a odpovědnost podnikatelů",
 };
 
-function institutionGhostTintClass(institution?: Institution | null): string {
-  switch (institution) {
-    case "cpp":
-      return "bg-[radial-gradient(circle_at_12%_22%,rgba(59,130,246,0.16)_0%,transparent_52%),radial-gradient(circle_at_42%_76%,rgba(239,68,68,0.12)_0%,transparent_54%)]";
-    case "csob":
-      return "bg-[radial-gradient(circle_at_16%_20%,rgba(14,165,233,0.17)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(59,130,246,0.11)_0%,transparent_54%)]";
-    case "kooperativa":
-      return "bg-[radial-gradient(circle_at_16%_20%,rgba(239,68,68,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(220,38,38,0.11)_0%,transparent_54%)]";
-    case "allianz":
-      return "bg-[radial-gradient(circle_at_16%_20%,rgba(37,99,235,0.17)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(59,130,246,0.11)_0%,transparent_54%)]";
-    case "slavia":
-      return "bg-[radial-gradient(circle_at_16%_20%,rgba(249,115,22,0.17)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(245,158,11,0.11)_0%,transparent_54%)]";
-    case "uniqa":
-      return "bg-[radial-gradient(circle_at_16%_20%,rgba(67,56,202,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(99,102,241,0.11)_0%,transparent_54%)]";
-    case "pillow":
-      return "bg-[radial-gradient(circle_at_16%_20%,rgba(2,132,199,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(6,182,212,0.11)_0%,transparent_54%)]";
-    case "maxima":
-      return "bg-[radial-gradient(circle_at_16%_20%,rgba(190,24,93,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(236,72,153,0.11)_0%,transparent_54%)]";
-    case "axa":
-      return "bg-[radial-gradient(circle_at_16%_20%,rgba(22,163,74,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(34,197,94,0.11)_0%,transparent_54%)]";
-    case "comfort":
-      return "bg-[radial-gradient(circle_at_16%_20%,rgba(245,158,11,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(234,179,8,0.11)_0%,transparent_54%)]";
-    default:
-      return "bg-[radial-gradient(circle_at_16%_20%,rgba(148,163,184,0.16)_0%,transparent_52%),radial-gradient(circle_at_44%_78%,rgba(100,116,139,0.11)_0%,transparent_54%)]";
-  }
-}
-
 function paymentsPerYear(freq?: PaymentFrequency | null): number {
   switch (freq) {
     case "monthly":
@@ -281,10 +254,6 @@ function endorsementDeltaAmount(c: ContractDoc): number | null {
 
 function institutionLabelForProduct(product?: Product | null): string | null {
   return productInstitutionLabel(product, null);
-}
-
-function institutionForProduct(product?: Product | null): Institution | null {
-  return productInstitutionId(product);
 }
 
 function institutionMonogram(label: string): string {
@@ -2194,25 +2163,12 @@ function ContractsPageContent() {
                 const lifecycleStatus = contractLifecycleStatus(c as ContractDoc);
                 const isStorno = lifecycleStatus === "storno";
                 const isDozita = lifecycleStatus === "dozita";
-                const statusStripeClass = isStorno
-                  ? "bg-gradient-to-b from-amber-400 to-amber-600"
-                  : isDozita
-                    ? "bg-gradient-to-b from-sky-400 to-sky-600"
-                    : c.paid
-                      ? "bg-gradient-to-b from-emerald-400 to-emerald-600"
-                      : "bg-gradient-to-b from-rose-400 to-rose-600";
                 const groupedEntryCount = Number((c as ContractDoc).groupedEntryCount ?? 1);
                 const groupedEndorsementCount = Number(
                   (c as ContractDoc).groupedEndorsementCount ?? 0
                 );
                 const institutionLabel = institutionLabelForProduct(c.productKey as Product | undefined);
-                const institutionId = institutionForProduct(c.productKey as Product | undefined);
-                const institutionLogo = institutionId ? INSTITUTION_LOGO_BY_ID[institutionId] : null;
-                const institutionGhostLogo =
-                  institutionId === "allianz" ? "/icons/allianzkulaty.png" : institutionLogo;
                 const displayProductName = productCardLabel(c.productKey as Product | undefined);
-                const alignLogoToRightDivider =
-                  institutionId === "csob" || institutionId === "uniqa" || institutionId === "allianz";
 
                 const CardContent = (
                   <article
@@ -2225,8 +2181,12 @@ function ContractsPageContent() {
                     }}
                   >
                   <div
-                    className={`pointer-events-none absolute inset-y-2 left-1 w-1 rounded-full opacity-85 ${statusStripeClass}`}
                     aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(148,163,184,0),rgba(100,116,139,0.45),rgba(30,41,59,0.72),rgba(100,116,139,0.45),rgba(148,163,184,0))]"
+                  />
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-10 top-[2px] z-[1] h-px rounded-full bg-[linear-gradient(90deg,rgba(148,163,184,0),rgba(226,232,240,0.88),rgba(148,163,184,0))]"
                   />
                   {selectMode && (
                     <div className="absolute right-3 top-3 z-10">
@@ -2250,33 +2210,6 @@ function ContractsPageContent() {
                       <span className="text-[11px]">↗</span>
                     </div>
                   )}
-
-                  {institutionGhostLogo ? (
-                    <div className="pointer-events-none absolute inset-y-0 left-0 w-[62%] overflow-hidden [mask-image:linear-gradient(90deg,black_0%,black_72%,transparent_100%)] [-webkit-mask-image:linear-gradient(90deg,black_0%,black_72%,transparent_100%)]">
-                      <div className={`absolute inset-0 ${institutionGhostTintClass(institutionId)}`} />
-                      <div
-                        className={`absolute inset-y-0 ${
-                          alignLogoToRightDivider
-                            ? "left-auto right-0 w-[112%]"
-                            : "left-[-12%] w-[118%]"
-                        }`}
-                      >
-                        <Image
-                          src={institutionGhostLogo}
-                          alt=""
-                          fill
-                          aria-hidden="true"
-                          sizes="(min-width: 768px) 360px, 260px"
-                          className={`${institutionLogoImageClass(institutionId)} object-contain ${
-                            institutionId === "csob"
-                              ? "object-right opacity-[0.42] [filter:grayscale(0.45)_contrast(1.08)]"
-                              : `${alignLogoToRightDivider ? "object-right " : ""}opacity-[0.24] [filter:grayscale(0.72)_contrast(1.03)]`
-                          }`}
-                        />
-                      </div>
-                      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.07)_0%,rgba(255,255,255,0.28)_40%,rgba(248,250,252,0.44)_68%,rgba(248,250,252,0)_100%)]" />
-                    </div>
-                  ) : null}
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_190px] sm:gap-4">
                     <div className="relative z-[1] min-w-0">

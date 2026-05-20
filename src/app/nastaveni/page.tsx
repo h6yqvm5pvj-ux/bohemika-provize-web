@@ -325,15 +325,51 @@ const SETTINGS_KEYS = {
   tipsterMode: "settings.tipsterMode",
 };
 
-type SettingsTab = "account" | "career" | "notifications" | "design" | "requests";
+type SettingsTab =
+  | "account"
+  | "subscription"
+  | "career"
+  | "notifications"
+  | "design"
+  | "requests";
 
 const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
   { id: "account", label: "Účet" },
+  { id: "subscription", label: "Předplatné" },
   { id: "career", label: "Kariéra" },
   { id: "notifications", label: "Notifikace" },
   { id: "requests", label: "Žádosti" },
   { id: "design", label: "Design" },
 ];
+
+type SubscriptionEffectiveState = "active" | "grace" | "blocked";
+type SubscriptionStatusValue = "active" | "expired" | "unpaid" | "none";
+type SubscriptionPlanValue = "monthly" | "semiannual" | "yearly" | "unlimited";
+
+type SubscriptionPaymentRow = {
+  id: string;
+  plan: string;
+  amountCzk: number;
+  periodFrom: string;
+  periodUntil: string;
+  note: string | null;
+  createdAtMs: number | null;
+  createdByEmail: string | null;
+};
+
+type SubscriptionMeResponse = {
+  ok?: boolean;
+  subscription?: {
+    status?: SubscriptionStatusValue;
+    effectiveState?: SubscriptionEffectiveState;
+    reason?: string;
+    plan?: SubscriptionPlanValue | null;
+    paidFrom?: string | null;
+    paidUntil?: string | null;
+    graceUntil?: string | null;
+  };
+  payments?: SubscriptionPaymentRow[];
+};
 
 const normalizeEmail = (email?: string | null) =>
   (email ?? "").trim().toLowerCase();
@@ -341,6 +377,27 @@ const normalizeEmail = (email?: string | null) =>
 const formatDateTime = (valueMs: number | null | undefined): string => {
   if (!valueMs || !Number.isFinite(valueMs)) return "—";
   return new Date(valueMs).toLocaleString("cs-CZ");
+};
+
+const formatIsoDay = (value: string | null | undefined): string => {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("cs-CZ", { timeZone: "Europe/Prague" });
+};
+
+const formatMoneyCzk = (value: number): string =>
+  new Intl.NumberFormat("cs-CZ", {
+    style: "currency",
+    currency: "CZK",
+    maximumFractionDigits: 0,
+  }).format(value);
+
+const SUBSCRIPTION_PLAN_LABELS: Record<SubscriptionPlanValue, string> = {
+  monthly: "Měsíční",
+  semiannual: "Pololetní",
+  yearly: "Roční",
+  unlimited: "Neomezený",
 };
 
 const hasNonEmptyToken = (value: unknown): boolean =>
@@ -630,6 +687,17 @@ export default function SettingsPage() {
   const [positionTimelineLocked, setPositionTimelineLocked] = useState(false);
   const [timelineSetupRequired, setTimelineSetupRequired] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>("career");
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
+  const [subscriptionSnapshot, setSubscriptionSnapshot] = useState<{
+    status: SubscriptionStatusValue;
+    effectiveState: SubscriptionEffectiveState;
+    plan: SubscriptionPlanValue | null;
+    paidFrom: string | null;
+    paidUntil: string | null;
+    graceUntil: string | null;
+  } | null>(null);
+  const [subscriptionPayments, setSubscriptionPayments] = useState<SubscriptionPaymentRow[]>([]);
   const [showCareerTimelineHelp, setShowCareerTimelineHelp] = useState(false);
   const [userRequests, setUserRequests] = useState<UserRequestPayload[]>([]);
   const [userRequestsLoading, setUserRequestsLoading] = useState(false);
@@ -982,6 +1050,48 @@ export default function SettingsPage() {
 
     loadMeta();
   }, [user]);
+
+  const loadSubscription = useCallback(async () => {
+    if (!user) {
+      setSubscriptionSnapshot(null);
+      setSubscriptionPayments([]);
+      setSubscriptionError(null);
+      setSubscriptionLoading(false);
+      return;
+    }
+
+    setSubscriptionLoading(true);
+    setSubscriptionError(null);
+    try {
+      const payload = await fetchAuthedJsonOrThrow<SubscriptionMeResponse>(
+        user,
+        "/api/subscription/me",
+        { method: "GET" }
+      );
+      const row = payload?.subscription;
+      setSubscriptionSnapshot({
+        status: (row?.status as SubscriptionStatusValue) || "none",
+        effectiveState: (row?.effectiveState as SubscriptionEffectiveState) || "blocked",
+        plan: (row?.plan as SubscriptionPlanValue | null) ?? null,
+        paidFrom: row?.paidFrom ?? null,
+        paidUntil: row?.paidUntil ?? null,
+        graceUntil: row?.graceUntil ?? null,
+      });
+      setSubscriptionPayments(Array.isArray(payload?.payments) ? payload.payments : []);
+    } catch (error) {
+      setSubscriptionSnapshot(null);
+      setSubscriptionPayments([]);
+      setSubscriptionError(
+        error instanceof Error ? error.message : "Nepodařilo se načíst předplatné."
+      );
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    void loadSubscription();
+  }, [loadSubscription]);
 
   useEffect(() => {
     applyMotionPreference(reduceMotion);
@@ -3290,6 +3400,148 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 </div>
+            </section>
+            )}
+
+            {activeTab === "subscription" && !timelineSetupRequired && (
+            <section className={`space-y-4 ${panelClass}`}>
+              <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
+              <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
+                <Landmark size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                <span>Předplatné</span>
+              </h2>
+
+              {subscriptionLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  Načítám údaje o předplatném…
+                </div>
+              ) : subscriptionError ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {subscriptionError}
+                </div>
+              ) : subscriptionSnapshot ? (
+                <>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Stav
+                      </div>
+                      <div
+                        className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                          subscriptionSnapshot.effectiveState === "active"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : subscriptionSnapshot.effectiveState === "grace"
+                              ? "border-amber-200 bg-amber-50 text-amber-700"
+                              : "border-rose-200 bg-rose-50 text-rose-700"
+                        }`}
+                      >
+                        {subscriptionSnapshot.effectiveState === "active"
+                          ? "Aktivní"
+                          : subscriptionSnapshot.effectiveState === "grace"
+                            ? "Ochranná lhůta"
+                            : subscriptionSnapshot.status === "unpaid"
+                              ? "Nezaplaceno"
+                              : "Blokováno"}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Tarif
+                      </div>
+                      <div className="mt-2 text-sm font-semibold text-slate-900">
+                        {subscriptionSnapshot.plan
+                          ? SUBSCRIPTION_PLAN_LABELS[subscriptionSnapshot.plan]
+                          : "—"}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Zaplaceno od
+                      </div>
+                      <div className="mt-2 text-sm font-semibold text-slate-900">
+                        {formatIsoDay(subscriptionSnapshot.paidFrom)}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Zaplaceno do
+                      </div>
+                      <div className="mt-2 text-sm font-semibold text-slate-900">
+                        {subscriptionSnapshot.plan === "unlimited"
+                          ? "Neomezeně"
+                          : formatIsoDay(subscriptionSnapshot.paidUntil)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {subscriptionSnapshot.effectiveState === "grace" ? (
+                    <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      Předplatné je po splatnosti. Přístup běží v ochranné lhůtě do{" "}
+                      <span className="font-semibold">
+                        {formatIsoDay(subscriptionSnapshot.graceUntil)}
+                      </span>
+                      . Pro zachování přístupu uhraď platbu.
+                    </div>
+                  ) : null}
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                    <h3 className="mb-2 text-sm font-semibold text-slate-900">
+                      Historie plateb
+                    </h3>
+
+                    {subscriptionPayments.length === 0 ? (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                        Zatím není evidovaná žádná platba.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-left text-xs text-slate-700">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                              <th className="px-2 py-2">Tarif</th>
+                              <th className="px-2 py-2">Částka</th>
+                              <th className="px-2 py-2">Období</th>
+                              <th className="px-2 py-2">Zapsal</th>
+                              <th className="px-2 py-2">Poznámka</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {subscriptionPayments.map((payment) => (
+                              <tr key={payment.id} className="border-b border-slate-100 align-top">
+                                <td className="px-2 py-2 font-semibold text-slate-900">
+                                  {payment.plan in SUBSCRIPTION_PLAN_LABELS
+                                    ? SUBSCRIPTION_PLAN_LABELS[
+                                        payment.plan as SubscriptionPlanValue
+                                      ]
+                                    : payment.plan || "—"}
+                                </td>
+                                <td className="px-2 py-2">{formatMoneyCzk(payment.amountCzk || 0)}</td>
+                                <td className="px-2 py-2">
+                                  {formatIsoDay(payment.periodFrom)} – {formatIsoDay(payment.periodUntil)}
+                                </td>
+                                <td className="px-2 py-2">
+                                  <div>{payment.createdByEmail || "—"}</div>
+                                  <div className="text-[10px] text-slate-500">
+                                    {formatDateTime(payment.createdAtMs)}
+                                  </div>
+                                </td>
+                                <td className="px-2 py-2">{payment.note || "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  Předplatné zatím není nastavené.
+                </div>
+              )}
             </section>
             )}
 

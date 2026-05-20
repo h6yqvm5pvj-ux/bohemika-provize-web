@@ -44,7 +44,7 @@ const RAG_COMPARISON_CHUNK_LIMIT = 420;
 const RAG_COMPARISON_VALUE_PREVIEW = 4;
 
 const TOP_PREMIUM_SYSTEM_PROMPT = [
-  "Jsi Top Premium Chat, interní AI pomocník pro finanční poradce v ČR.",
+  "Jsi Bohemka Asistent, interní AI pomocník pro finanční poradce v ČR.",
   "Specializace: pojištění, investice a investiční zlato.",
   "Odpovídej stručně v bodech (typicky 3 až 5 bodů).",
   "Jeden bod má být krátký, ideálně jedna věta.",
@@ -121,8 +121,8 @@ const WEBSITE_FEATURES: WebsiteFeature[] = [
     title: "AI Asistent",
     path: "/pomucky/ai-asistent",
     summary:
-      "Top Premium Chat pro interní dotazy k pojištění, investicím a investičnímu zlatu (bez přístupu ke smlouvám).",
-    keywords: ["ai asistent", "top premium chat", "chat", "asistent"],
+      "Bohemka Asistent pro interní dotazy k pojištění, investicím a investičnímu zlatu (bez přístupu ke smlouvám).",
+    keywords: ["ai asistent", "bohemka asistent", "chat", "asistent", "top premium chat"],
   },
   {
     id: "srovnavac-zivotniho",
@@ -1343,7 +1343,7 @@ export async function POST(req: NextRequest) {
   if (!payload) {
     return withRateLimitHeaders(
       NextResponse.json(
-        { ok: false, error: "Neplatný payload pro Top Premium Chat." },
+        { ok: false, error: "Neplatný payload pro Bohemka Asistent." },
         { status: 400 }
       ),
       ctx
@@ -1414,7 +1414,7 @@ export async function POST(req: NextRequest) {
         {
           ok: false,
           error:
-            "Top Premium Chat nemá přístup ke smlouvám. Můžu poradit obecně k pojištění, investicím nebo investičnímu zlatu, ale nevyhledám konkrétní smlouvu.",
+            "Bohemka Asistent nemá přístup ke smlouvám. Můžu poradit obecně k pojištění, investicím nebo investičnímu zlatu, ale nevyhledám konkrétní smlouvu.",
         },
         { status: 403 }
       ),
@@ -1437,7 +1437,7 @@ export async function POST(req: NextRequest) {
         NextResponse.json(
           {
             ok: false,
-            error: "Top Premium Chat není nakonfigurovaný (chybí OPENAI_API_KEY).",
+            error: "Bohemka Asistent není nakonfigurovaný (chybí OPENAI_API_KEY).",
           },
           { status: 503 }
         ),
@@ -1519,7 +1519,7 @@ export async function POST(req: NextRequest) {
 
     if (!openAiCall.ok) {
       const errorMessage =
-        readError(openAiCall.payload) || `Top Premium Chat selhal (HTTP ${openAiCall.status}).`;
+        readError(openAiCall.payload) || `Bohemka Asistent selhal (HTTP ${openAiCall.status}).`;
       return withRateLimitHeaders(
         NextResponse.json({ ok: false, error: errorMessage }, { status: openAiCall.status }),
         ctx
@@ -1533,8 +1533,8 @@ export async function POST(req: NextRequest) {
             ok: false,
             error:
               openAiCall.responseStatus === "incomplete" || openAiCall.incompleteReason
-                ? `Top Premium Chat nevrátil textovou odpověď (${openAiCall.incompleteReason || openAiCall.responseStatus}).`
-                : "Top Premium Chat nevrátil textovou odpověď.",
+                ? `Bohemka Asistent nevrátil textovou odpověď (${openAiCall.incompleteReason || openAiCall.responseStatus}).`
+                : "Bohemka Asistent nevrátil textovou odpověď.",
           },
           { status: 502 }
         ),
@@ -1570,8 +1570,8 @@ export async function POST(req: NextRequest) {
         {
           ok: false,
           error: isTimeout
-            ? "Top Premium Chat timeoutoval."
-            : "Nepodařilo se spojit se službou Top Premium Chat.",
+            ? "Bohemka Asistent timeoutoval."
+            : "Nepodařilo se spojit se službou Bohemka Asistent.",
         },
         { status: 504 }
       ),

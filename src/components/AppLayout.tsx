@@ -40,6 +40,10 @@ import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import type { UserProfileResponse } from "@/app/lib/userProfileCache";
+import {
+  evaluateSubscriptionFromProfile,
+  type EvaluatedSubscriptionAccess,
+} from "@/lib/subscriptionAccess";
 
 type ActivePage =
   | "home"
@@ -57,7 +61,8 @@ interface AppLayoutProps {
   active: ActivePage;
 }
 
-type SubscriptionStatusWeb = "none" | "active" | "expired";
+type SubscriptionAccessUiState = "none" | "active" | "grace" | "blocked";
+type SubscriptionBlockReason = "none" | "unpaid" | "expired";
 
 const hasCareerTimelineConfigured = (data: Record<string, unknown>): boolean => {
   const raw = data.positionTimeline;
@@ -72,6 +77,13 @@ const hasCareerTimelineConfigured = (data: Record<string, unknown>): boolean => 
 };
 
 const PROFILE_CACHE_MAX_AGE_MS = 60 * 1000;
+
+const formatIsoDayCz = (value: string | null): string => {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("cs-CZ", { timeZone: "Europe/Prague" });
+};
 
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -90,9 +102,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     pathname === "/nastaveni" ||
     pathname === "/smlouvy";
 
-  // status zatím nepoužíváme v UI
-  const [subscriptionStatus, setSubscriptionStatus] =
-    useState<SubscriptionStatusWeb>("none");
+  const [subscriptionAccessState, setSubscriptionAccessState] =
+    useState<SubscriptionAccessUiState>("none");
+  const [subscriptionBlockReason, setSubscriptionBlockReason] =
+    useState<SubscriptionBlockReason>("none");
+  const [subscriptionEvaluation, setSubscriptionEvaluation] =
+    useState<EvaluatedSubscriptionAccess | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [authReady, setAuthReady] = useState(false);
   const [needsCareerTimelineSetup, setNeedsCareerTimelineSetup] = useState(false);
@@ -112,7 +127,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       if (resolved) return;
       console.warn("Auth ready timeout in AppLayout; falling back to guest redirect.");
       setUser(null);
-      setSubscriptionStatus("none");
+      setSubscriptionAccessState("none");
+      setSubscriptionBlockReason("none");
+      setSubscriptionEvaluation(null);
       setLoadingProfile(false);
       setNeedsCareerTimelineSetup(false);
       setShowCareerTimelinePrompt(false);
@@ -125,7 +142,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       window.clearTimeout(readyFallbackTimer);
       setUser(u);
       if (!u) {
-        setSubscriptionStatus("none");
+        setSubscriptionAccessState("none");
+        setSubscriptionBlockReason("none");
+        setSubscriptionEvaluation(null);
         setLoadingProfile(false);
         setNeedsCareerTimelineSetup(false);
         setShowCareerTimelinePrompt(false);
@@ -306,19 +325,19 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     payload: UserProfileResponse,
     currentUser: FirebaseUser
   ) => {
-    const data = payload?.profile ?? {};
-    const statusRaw = (data.subscriptionStatus as string | undefined)?.trim().toLowerCase();
-    let status: SubscriptionStatusWeb = "none";
-
-    if (statusRaw === "active") {
-      status = "active";
-    } else if (statusRaw === "expired") {
-      status = "expired";
-    } else {
-      status = "none";
-    }
-
-    setSubscriptionStatus(status);
+    const data = (payload?.profile ?? {}) as Record<string, unknown>;
+    const evaluation = evaluateSubscriptionFromProfile(data);
+    setSubscriptionEvaluation(evaluation);
+    setSubscriptionAccessState(
+      evaluation.state === "blocked" ? "blocked" : evaluation.state
+    );
+    setSubscriptionBlockReason(
+      evaluation.reason === "unpaid"
+        ? "unpaid"
+        : evaluation.reason === "expired"
+          ? "expired"
+          : "none"
+    );
     setNeedsCareerTimelineSetup(!hasCareerTimelineConfigured(data));
     const has = payload?.hasTeam === true;
     setHasTeam(has);
@@ -334,7 +353,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   ) => {
     const emailRaw = currentUser?.email;
     if (!emailRaw) {
-      setSubscriptionStatus("none");
+      setSubscriptionAccessState("none");
+      setSubscriptionBlockReason("none");
+      setSubscriptionEvaluation(null);
       setNeedsCareerTimelineSetup(false);
       setLoadingProfile(false);
       setHasTeam(false);
@@ -363,7 +384,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       applySubscriptionPayload(payload, currentUser);
     } catch (e) {
       console.warn("Chyba při načítání subscription profilu:", e);
-      setSubscriptionStatus("none");
+      setSubscriptionAccessState("none");
+      setSubscriptionBlockReason("none");
+      setSubscriptionEvaluation(null);
       setNeedsCareerTimelineSetup(false);
       setHasTeam(false);
     } finally {
@@ -392,7 +415,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
   useEffect(() => {
     if (!user) return;
-    if (loadingProfile || subscriptionStatus === "expired") return;
+    if (loadingProfile || subscriptionAccessState === "blocked") return;
     if (!needsCareerTimelineSetup) {
       setShowCareerTimelinePrompt(false);
       return;
@@ -402,7 +425,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       return;
     }
     setShowCareerTimelinePrompt(true);
-  }, [user, loadingProfile, subscriptionStatus, needsCareerTimelineSetup, pathname]);
+  }, [user, loadingProfile, subscriptionAccessState, needsCareerTimelineSetup, pathname]);
 
   const handleCareerTimelineSetup = () => {
     setShowCareerTimelinePrompt(false);
@@ -536,12 +559,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
   const showPaywall =
     !!user &&
-    subscriptionStatus === "expired" &&
+    subscriptionAccessState === "blocked" &&
     !loadingProfile;
   const timelineSetupGateActive =
     !!user &&
     !loadingProfile &&
-    subscriptionStatus !== "expired" &&
+    subscriptionAccessState !== "blocked" &&
     needsCareerTimelineSetup;
   const isAdminRequestsUser = isAdminPanelEmail(user?.email);
 
@@ -827,6 +850,25 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 : "justify-center px-3 py-6 sm:px-4 sm:py-8 lg:px-8",
             ].join(" ")}
           >
+            {subscriptionAccessState === "grace" &&
+            !showPaywall &&
+            !loadingProfile &&
+            subscriptionEvaluation ? (
+              <div className="fixed bottom-5 right-5 z-40 max-w-md rounded-2xl border border-amber-300 bg-amber-50/95 px-4 py-3 text-sm text-amber-900 shadow-[0_16px_34px_rgba(15,23,42,0.2)] backdrop-blur">
+                <p className="font-semibold">Předplatné vypršelo, uhraď prosím platbu.</p>
+                <p className="mt-1 text-xs text-amber-800">
+                  Přístup běží v ochranné lhůtě do{" "}
+                  <span className="font-semibold">
+                    {formatIsoDayCz(subscriptionEvaluation.graceUntil)}
+                  </span>
+                  . Poslední zaplacené období skončilo{" "}
+                  <span className="font-semibold">
+                    {formatIsoDayCz(subscriptionEvaluation.paidUntil)}
+                  </span>
+                  .
+                </p>
+              </div>
+            ) : null}
             {loadingProfile && user ? (
               <div className="flex w-full min-h-[70vh] items-center justify-center">
                 <div
@@ -838,12 +880,18 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             ) : showPaywall ? (
               <div className="w-full max-w-md rounded-3xl border border-white/15 bg-slate-950/90 backdrop-blur-2xl px-6 py-6 sm:px-8 sm:py-8 shadow-[0_24px_80px_rgba(0,0,0,0.9)] space-y-5 text-center">
                 <h1 className="text-xl sm:text-2xl font-semibold">
-                  Předplatné vypršelo
+                  {subscriptionBlockReason === "unpaid"
+                    ? "Účet je nezaplacený"
+                    : "Předplatné vypršelo"}
                 </h1>
                 <p className="text-sm text-slate-200">
-                  Pro další používání webu je potřeba mít aktivní
-                  předplatné. Pokud máš pocit, že něco nesedí,
-                  zkus načíst profil znovu nebo kontaktuj podporu.
+                  {subscriptionBlockReason === "unpaid"
+                    ? "Účet je označený jako nezaplacený. Po úhradě platby klikni na načtení profilu."
+                    : `Ochranná 3denní lhůta už skončila${
+                        subscriptionEvaluation?.graceUntil
+                          ? ` (${formatIsoDayCz(subscriptionEvaluation.graceUntil)})`
+                          : ""
+                      }. Pro další používání je potřeba aktivní předplatné.`}
                 </p>
 
                 <div className="space-y-3">

@@ -144,7 +144,7 @@ export default function AiAsistentPage() {
       };
       setChatMessages((current) => [...current, assistantMessage]);
     } catch (error) {
-      console.error("Top Premium Chat selhal:", error);
+      console.error("Bohemka Asistent selhal:", error);
       setChatError(error instanceof Error ? error.message : "AI asistent není teď dostupný.");
     } finally {
       setChatLoading(false);
@@ -171,7 +171,7 @@ export default function AiAsistentPage() {
               <div className="space-y-2">
                 <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.15em] text-cyan-800">
                   <Sparkles className="h-3.5 w-3.5" />
-                  Top Premium Chat
+                  Bohemka Asistent
                 </span>
                 <h1 className="text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">
                   AI Asistent

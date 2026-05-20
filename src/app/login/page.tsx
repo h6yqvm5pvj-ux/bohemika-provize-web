@@ -16,6 +16,7 @@ import {
 } from "firebase/auth";
 import { auth } from "../firebase";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
+import { evaluateSubscriptionFromProfile } from "@/lib/subscriptionAccess";
 
 const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
   "auth/multi-factor-auth-required",
@@ -155,12 +156,6 @@ export default function LoginPage() {
     }
   };
 
-  // pomocná funkce: vyhodnotí, jestli má user aktivní předplatné
-  function evaluateSubscription(data: any): boolean {
-    const statusRaw = (data?.subscriptionStatus as string | undefined)?.trim().toLowerCase();
-    return statusRaw !== "expired"; // povolíme vše kromě explicitně expirovaného
-  }
-
   // pokud už je přihlášený, zkusíme ověřit předplatné a podle toho pustíme dál
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -187,7 +182,11 @@ export default function LoginPage() {
           return;
         }
         const data = response?.profile ?? {};
-        const hasActive = evaluateSubscription(data);
+        const subscription = evaluateSubscriptionFromProfile(
+          data as Record<string, unknown>
+        );
+        const hasActive =
+          subscription.state === "active" || subscription.state === "grace";
 
         if (hasActive) {
           // OK → pustíme na hlavní stránku
@@ -196,7 +195,11 @@ export default function LoginPage() {
         } else {
           // žádné / expirované předplatné → odhlásit a ukázat hlášku
           await safeSignOut();
-          setError("Tento účet nemá aktivní (platné) předplatné.");
+          setError(
+            subscription.reason === "unpaid"
+              ? "Tento účet je označený jako nezaplacený. Pro přístup je potřeba uhradit předplatné."
+              : "Tento účet nemá aktivní (platné) předplatné."
+          );
         }
       } catch (e) {
         console.error("Chyba při ověřování předplatného:", e);

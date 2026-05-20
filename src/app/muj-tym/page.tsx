@@ -1463,7 +1463,7 @@ export default function TeamPage() {
                   <div className="grid grid-cols-1 gap-2">
                     <Link
                       href="/pomucky/struktura"
-                      className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-sky-300 bg-[linear-gradient(135deg,#f0f8ff_0%,#dceeff_100%)] px-3 py-2 text-sm font-semibold text-sky-900 shadow-[0_10px_22px_rgba(14,116,144,0.16)] transition hover:-translate-y-0.5 hover:border-sky-500 hover:shadow-[0_14px_30px_rgba(14,116,144,0.22)]"
+                      className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-sky-500/80 bg-[linear-gradient(135deg,#38bdf8_0%,#2563eb_100%)] px-3 py-2 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(37,99,235,0.34)] transition hover:-translate-y-0.5 hover:border-sky-400 hover:brightness-105 hover:shadow-[0_16px_34px_rgba(37,99,235,0.42)]"
                     >
                       <Network size={14} strokeWidth={2} aria-hidden="true" />
                       Struktura
@@ -1471,7 +1471,7 @@ export default function TeamPage() {
                     {canSendTeamMessage ? (
                       <Link
                         href="/pomucky/zprava-tymu"
-                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-[linear-gradient(135deg,#effcf6_0%,#dff8ec_100%)] px-3 py-2 text-sm font-semibold text-emerald-900 shadow-[0_10px_22px_rgba(5,150,105,0.16)] transition hover:-translate-y-0.5 hover:border-emerald-500 hover:shadow-[0_14px_30px_rgba(5,150,105,0.22)]"
+                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/80 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] px-3 py-2 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(5,150,105,0.32)] transition hover:-translate-y-0.5 hover:border-emerald-400 hover:brightness-105 hover:shadow-[0_16px_34px_rgba(5,150,105,0.4)]"
                       >
                         <MessageSquare size={14} strokeWidth={2} aria-hidden="true" />
                         Zpráva týmu
@@ -1480,7 +1480,7 @@ export default function TeamPage() {
                     {showTeamSidebar ? (
                       <Link
                         href="/muj-tym/sin-slavy"
-                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-[linear-gradient(135deg,#fff8e9_0%,#ffefd0_100%)] px-3 py-2 text-sm font-semibold text-amber-900 shadow-[0_10px_22px_rgba(180,83,9,0.16)] transition hover:-translate-y-0.5 hover:border-amber-500 hover:shadow-[0_14px_30px_rgba(180,83,9,0.22)]"
+                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/80 bg-[linear-gradient(135deg,#fbbf24_0%,#d97706_100%)] px-3 py-2 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(180,83,9,0.32)] transition hover:-translate-y-0.5 hover:border-amber-400 hover:brightness-105 hover:shadow-[0_16px_34px_rgba(180,83,9,0.4)]"
                       >
                         <Trophy size={14} strokeWidth={2} aria-hidden="true" />
                         Síň slávy

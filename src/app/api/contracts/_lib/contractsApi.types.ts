@@ -257,7 +257,7 @@ export type UserProfileSnapshot = {
   positionTimeline: unknown;
 };
 
-export type SubscriptionStatus = "active" | "expired" | "none";
+export type SubscriptionStatus = "active" | "expired" | "unpaid" | "none";
 
 export type AuthContextOptions = {
   requireKnownUser?: boolean;

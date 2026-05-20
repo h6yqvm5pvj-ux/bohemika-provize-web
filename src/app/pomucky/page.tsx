@@ -226,12 +226,22 @@ const TACHOMETER_UPLOAD_TARGETS = [
   },
 ] as const;
 
-const INSTITUTION_PORTAL_TARGETS = [
+type InstitutionPortalTarget = {
+  key: string;
+  label: string;
+  href: string;
+  logoPath: string;
+  tintClass: string;
+  ghostLogoClass?: string;
+};
+
+const INSTITUTION_PORTAL_TARGETS: InstitutionPortalTarget[] = [
   {
     key: "maxx",
     label: "Maxx",
     href: "https://sjednatel.bohemiaservis.cz/login",
     logoPath: "/icons/bohemikalogo.png",
+    ghostLogoClass: "p-1 scale-[1.24]",
     tintClass:
       "bg-[radial-gradient(circle_at_20%_18%,rgba(37,99,235,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(6,182,212,0.16)_0%,transparent_66%)]",
   },
@@ -240,6 +250,7 @@ const INSTITUTION_PORTAL_TARGETS = [
     label: "BSF Aplikace",
     href: "https://bsfaplikace.cz/sign/",
     logoPath: "/icons/bohemikalogo.png",
+    ghostLogoClass: "p-1 scale-[1.24]",
     tintClass:
       "bg-[radial-gradient(circle_at_20%_18%,rgba(79,70,229,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(34,197,94,0.16)_0%,transparent_66%)]",
   },
@@ -258,6 +269,14 @@ const INSTITUTION_PORTAL_TARGETS = [
     logoPath: "/icons/allianz.png",
     tintClass:
       "bg-[radial-gradient(circle_at_20%_18%,rgba(37,99,235,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(99,102,241,0.16)_0%,transparent_66%)]",
+  },
+  {
+    key: "uniqa-unihub",
+    label: "UNIQA UniHub",
+    href: "https://login.uniqa.cz/",
+    logoPath: "/icons/uniqa.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(37,99,235,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(56,189,248,0.16)_0%,transparent_66%)]",
   },
   {
     key: "kooperativa-knz",
@@ -291,7 +310,7 @@ const INSTITUTION_PORTAL_TARGETS = [
     tintClass:
       "bg-[radial-gradient(circle_at_20%_18%,rgba(168,85,247,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(236,72,153,0.16)_0%,transparent_66%)]",
   },
-] as const;
+];
 
 function normalizeSearchValue(value: string): string {
   return value
@@ -366,7 +385,7 @@ export default function ToolsPage() {
         category: "Obecné",
         title: "AI Asistent",
         description:
-          "Top Premium Chat jako interní pomocník pro pojištění, investice a investiční zlato (bez přístupu ke smlouvám).",
+          "Bohemka Asistent jako interní pomocník pro pojištění, investice a investiční zlato (bez přístupu ke smlouvám).",
         icon: Bot,
         href: "/pomucky/ai-asistent",
       },
@@ -825,7 +844,7 @@ export default function ToolsPage() {
                     alt={`Logo ${target.label}`}
                     fill
                     sizes="(max-width: 768px) 100vw, 50vw"
-                    className="pointer-events-none object-contain p-4 opacity-[0.18] saturate-0 contrast-125"
+                    className={`pointer-events-none object-contain opacity-[0.18] saturate-0 contrast-125 ${target.ghostLogoClass ?? "p-4"}`}
                   />
                   <div className={`pointer-events-none absolute inset-0 ${target.tintClass}`} />
 
