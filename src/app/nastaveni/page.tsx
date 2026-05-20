@@ -715,7 +715,6 @@ export default function SettingsPage() {
   );
   const [pushSupported, setPushSupported] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
-  const [notifyMinutes, setNotifyMinutes] = useState<number>(60);
   const [notificationSettings, setNotificationSettings] =
     useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
@@ -974,10 +973,6 @@ export default function SettingsPage() {
             );
             const n = stored ? Number(stored) : 0;
             if (Number.isFinite(n)) setMonthlyGoal(n);
-          }
-
-          if (typeof data.notifyMinutes === "number") {
-            setNotifyMinutes(data.notifyMinutes);
           }
 
           if (typeof data.boxTheme === "string") {
@@ -1385,11 +1380,6 @@ export default function SettingsPage() {
       window.localStorage.setItem(SETTINGS_KEYS.tipsterMode, value ? "1" : "0");
     }
     await saveUserFields({ tipsterCollaborationMode: value });
-  };
-
-  const handleNotifyMinutesChange = async (value: number) => {
-    setNotifyMinutes(value);
-    await saveUserFields({ notifyMinutes: value });
   };
 
   const persistNotificationSettings = async (
@@ -2646,238 +2636,267 @@ export default function SettingsPage() {
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_7%_95%,rgba(99,102,241,0.1),transparent_34%)]" />
 
                 <div className="relative z-10 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-                    <BellRing size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                    <span>Notifikace</span>
-                  </h2>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
-                      Aktivní typy: {enabledNotificationTypes}/6
-                    </span>
-                    <span
-                      className={`rounded-full px-3 py-1 text-[11px] font-semibold border shadow-[0_8px_18px_rgba(15,23,42,0.08)] ${
-                        fcmActive
-                          ? "border-emerald-700 bg-emerald-600 text-[#f8fafc]"
-                          : "border-rose-700 bg-rose-600 text-[#f8fafc]"
-                      }`}
-                    >
-                      {fcmActive ? "Push aktivní" : "Push neaktivní"}
-                    </span>
-                  </div>
-                </div>
-
-                {!pushSupported ? (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-                    Tento prohlížeč nepodporuje web push notifikace.
-                  </div>
-                ) : (
-                  <div className="grid gap-4 xl:grid-cols-[1.35fr_0.9fr]">
-                    <div className={`${notificationCardClass} space-y-3`}>
-                      <div className="space-y-1">
-                        <div className="text-xs uppercase tracking-wide text-slate-500">Zařízení & oprávnění</div>
-                        <p className="text-sm text-slate-700">
-                          Oprávnění prohlížeče:{" "}
-                          <span className="font-semibold text-slate-900">
-                            {pushPermission === "granted"
-                              ? "povoleno"
-                              : pushPermission === "denied"
-                                ? "zamítnuto"
-                                : pushPermission === "default"
-                                  ? "nepotvrzeno"
-                                  : "nepodporováno"}
-                          </span>
-                        </p>
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          onClick={() => void handleEnableBrowserPush()}
-                          disabled={pushBusy}
-                          className="rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_12px_24px_rgba(16,185,129,0.28)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {pushBusy ? "Nastavuju…" : "Zapnout push"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDisableBrowserPush()}
-                          disabled={pushBusy}
-                          className="rounded-xl border border-slate-900 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.06)] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Vypnout push
-                        </button>
-                      </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
+                      <BellRing size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                      <span>Notifikace</span>
+                    </h2>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
+                        Aktivní typy: {enabledNotificationTypes}/6
+                      </span>
+                      <span
+                        className={`rounded-full px-3 py-1 text-[11px] font-semibold border shadow-[0_8px_18px_rgba(15,23,42,0.08)] ${
+                          fcmActive
+                            ? "border-emerald-700 bg-emerald-600 text-[#f8fafc]"
+                            : "border-rose-700 bg-rose-600 text-[#f8fafc]"
+                        }`}
+                      >
+                        {fcmActive ? "Push aktivní" : "Push neaktivní"}
+                      </span>
                     </div>
+                  </div>
 
-                    <div className={`${notificationCardClass} space-y-2`}>
-                      <label className="text-xs uppercase tracking-wide text-slate-500">
-                        Minuty před událostí
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={1440}
-                        value={notifyMinutes}
-                        onChange={(e) =>
-                          handleNotifyMinutesChange(
-                            Math.max(0, Math.min(1440, Number(e.target.value) || 0))
-                          )
-                        }
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base font-semibold text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
-                      />
-                      <p className="text-xs text-slate-500">
-                        Použije se při odeslání push notifikace z kalendáře (výchozí 60 min).
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+                    <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(165deg,rgba(255,255,255,0.96)_0%,rgba(241,245,249,0.96)_100%)] p-4 shadow-[0_18px_38px_rgba(15,23,42,0.09)]">
+                      <div className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                        Přehled
+                      </div>
+                      <h3 className="mt-2 text-xl font-bold tracking-[-0.015em] text-slate-900">
+                        Push notifikace
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Správa oprávnění zařízení, typů notifikací a testovací zprávy.
                       </p>
-                    </div>
-                  </div>
-                )}
 
-                <div className="grid gap-4 xl:grid-cols-[1.08fr_1fr]">
-                  <div className={`${notificationCardClass} space-y-3`}>
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Typy notifikací</div>
-                    <div className="space-y-2.5">
-                      {NOTIFICATION_TYPE_OPTIONS.map((t) => {
-                        const active = notificationSettings.types[t.id];
-                        const Icon = t.icon;
-                        return (
-                          <button
-                            key={t.id}
-                            type="button"
-                            onClick={() => toggleNotificationType(t.id)}
-                            role="switch"
-                            aria-checked={active}
-                            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm font-semibold text-slate-800 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:border-slate-300 hover:bg-slate-50"
-                          >
-                            <span className="inline-flex items-center gap-2.5">
-                              <span
-                                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border transition ${
-                                  active
-                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                    : "border-slate-200 bg-slate-50 text-slate-500"
-                                }`}
-                              >
-                                <Icon className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
-                              </span>
-                              <span>{t.label}</span>
-                            </span>
-                            <span
-                              className={`relative inline-flex h-7 w-12 shrink-0 rounded-full border transition ${active ? notificationToggleOnClass : notificationToggleOffClass}`}
+                      <div className="mt-3 space-y-3">
+                        {!pushSupported ? (
+                          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                            Tento prohlížeč nepodporuje web push notifikace.
+                          </div>
+                        ) : (
+                          <div className={`${notificationCardClass} space-y-3 ring-1 ring-emerald-200/80`}>
+                            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#10b981_0%,#22c55e_100%)]" />
+                            <BellRing
+                              className="pointer-events-none absolute -right-3 bottom-[-12px] h-20 w-20 text-slate-300/30"
+                              strokeWidth={1.7}
                               aria-hidden="true"
-                            >
-                              <span
-                                className={`absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(15,23,42,0.25)] transition-all ${active ? "left-[26px]" : "left-[2px]"}`}
-                              />
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className={`${notificationCardClass} space-y-3`}>
-                    <div className="text-xs uppercase tracking-wide text-slate-500">
-                      Intranet příspěvky
-                    </div>
-                    <p className="text-xs text-slate-600">
-                      Zvol si, jestli chceš push na všechny sekce nebo jen na vybrané.
-                    </p>
-                    <div className="inline-flex w-full max-w-md rounded-xl border border-slate-200 bg-slate-100/90 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
-                      <button
-                        type="button"
-                        onClick={() => void setIntranetNotificationMode("all")}
-                        className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                          notificationSettings.intranet.mode === "all"
-                            ? "bg-[linear-gradient(135deg,#0f172a_0%,#0b1f3e_72%,#1d4ed8_100%)] text-[#f8fafc] shadow-[0_10px_22px_rgba(29,78,216,0.26)]"
-                            : "text-slate-700 hover:bg-white"
-                        }`}
-                      >
-                        Všechny sekce
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void setIntranetNotificationMode("selected")}
-                        className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                          notificationSettings.intranet.mode === "selected"
-                            ? "bg-[linear-gradient(135deg,#0f172a_0%,#0b1f3e_72%,#1d4ed8_100%)] text-[#f8fafc] shadow-[0_10px_22px_rgba(29,78,216,0.26)]"
-                            : "text-slate-700 hover:bg-white"
-                        }`}
-                      >
-                        Jen vybrané
-                      </button>
-                    </div>
-
-                    {notificationSettings.intranet.mode === "selected" ? (
-                      <div className="space-y-2">
-                        <div className="space-y-2">
-                          {INTRANET_SECTIONS.map((section) => {
-                            const active =
-                              notificationSettings.intranet.sections.includes(section.key);
-                            const Icon = INTRANET_SECTION_ICON_BY_KEY[section.key];
-                            return (
+                            />
+                            <div className="relative space-y-1">
+                              <div className="text-xs uppercase tracking-wide text-slate-500">Zařízení & oprávnění</div>
+                              <p className="text-sm text-slate-700">
+                                Oprávnění prohlížeče:{" "}
+                                <span className="font-semibold text-slate-900">
+                                  {pushPermission === "granted"
+                                    ? "povoleno"
+                                    : pushPermission === "denied"
+                                      ? "zamítnuto"
+                                      : pushPermission === "default"
+                                        ? "nepotvrzeno"
+                                        : "nepodporováno"}
+                                </span>
+                              </p>
+                            </div>
+                            <div className="relative grid gap-2 sm:grid-cols-2">
                               <button
-                                key={section.key}
                                 type="button"
-                                onClick={() =>
-                                  void toggleIntranetNotificationSection(section.key)
-                                }
-                                role="switch"
-                                aria-checked={active}
-                                className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-800 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:border-slate-300 hover:bg-slate-50"
+                                onClick={() => void handleEnableBrowserPush()}
+                                disabled={pushBusy}
+                                className="rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_12px_24px_rgba(16,185,129,0.28)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                <span className="inline-flex items-center gap-2.5">
-                                  <span
-                                    className={`inline-flex h-6 w-6 items-center justify-center rounded-md border transition ${
-                                      active
-                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                        : "border-slate-200 bg-slate-50 text-slate-500"
-                                    }`}
-                                  >
-                                    <Icon className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
-                                  </span>
-                                  <span>{section.label}</span>
-                                </span>
-                                <span
-                                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition ${active ? notificationToggleOnClass : notificationToggleOffClass}`}
-                                  aria-hidden="true"
-                                >
-                                  <span
-                                    className={`absolute top-1/2 h-[18px] w-[18px] -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(15,23,42,0.25)] transition-all ${active ? "left-[22px]" : "left-[2px]"}`}
-                                  />
-                                </span>
+                                {pushBusy ? "Nastavuju…" : "Zapnout push"}
                               </button>
-                            );
-                          })}
-                        </div>
-                        {notificationSettings.intranet.sections.length === 0 ? (
-                          <p className="text-[11px] text-amber-700">
-                            Není vybraná žádná sekce, intranet push nebude chodit.
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
+                              <button
+                                type="button"
+                                onClick={() => void handleDisableBrowserPush()}
+                                disabled={pushBusy}
+                                className="rounded-xl border border-slate-900 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.06)] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Vypnout push
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
-                <div className={`${notificationCardClass} flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`}>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Testovací push</div>
-                    <p className="text-xs text-slate-500">
-                      Ověř, že push chodí přes webový token tohoto účtu.
-                    </p>
+                        <div className={`${notificationCardClass} space-y-3 ring-1 ring-indigo-200/80`}>
+                          <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#4f46e5_0%,#3b82f6_100%)]" />
+                          <BellRing
+                            className="pointer-events-none absolute -right-3 bottom-[-12px] h-20 w-20 text-slate-300/30"
+                            strokeWidth={1.7}
+                            aria-hidden="true"
+                          />
+                          <div className="relative text-xs uppercase tracking-wide text-slate-500">Typy notifikací</div>
+                          <div className="relative space-y-2.5">
+                            {NOTIFICATION_TYPE_OPTIONS.map((t) => {
+                              const active = notificationSettings.types[t.id];
+                              const Icon = t.icon;
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => toggleNotificationType(t.id)}
+                                  role="switch"
+                                  aria-checked={active}
+                                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm font-semibold text-slate-800 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:border-slate-300 hover:bg-slate-50"
+                                >
+                                  <span className="inline-flex items-center gap-2.5">
+                                    <span
+                                      className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border transition ${
+                                        active
+                                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                          : "border-slate-200 bg-slate-50 text-slate-500"
+                                      }`}
+                                    >
+                                      <Icon className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+                                    </span>
+                                    <span>{t.label}</span>
+                                  </span>
+                                  <span
+                                    className={`relative inline-flex h-7 w-12 shrink-0 rounded-full border transition ${active ? notificationToggleOnClass : notificationToggleOffClass}`}
+                                    aria-hidden="true"
+                                  >
+                                    <span
+                                      className={`absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(15,23,42,0.25)] transition-all ${active ? "left-[26px]" : "left-[2px]"}`}
+                                    />
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className={`${notificationCardClass} flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ring-1 ring-slate-200/80`}>
+                          <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#1d4ed8_100%)]" />
+                          <BellRing
+                            className="pointer-events-none absolute -right-3 bottom-[-12px] h-20 w-20 text-slate-300/30"
+                            strokeWidth={1.7}
+                            aria-hidden="true"
+                          />
+                          <div className="relative">
+                            <div className="text-xs uppercase tracking-wide text-slate-500">Testovací push</div>
+                            <p className="text-xs text-slate-500">
+                              Ověř, že push chodí přes webový token tohoto účtu.
+                            </p>
+                          </div>
+                          <div className="relative flex flex-col gap-2 sm:items-end">
+                            {testPushStatus ? (
+                              <span className="text-[11px] text-slate-600">{testPushStatus}</span>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={handleTestPush}
+                              className="rounded-xl border border-slate-900 bg-[linear-gradient(135deg,#0f172a_0%,#0b1f3e_72%,#1d4ed8_100%)] px-4 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_12px_24px_rgba(29,78,216,0.24)] transition hover:brightness-95"
+                            >
+                              Odeslat test
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <aside className="rounded-[28px] border border-slate-200 bg-[linear-gradient(165deg,rgba(255,255,255,0.96)_0%,rgba(241,245,249,0.96)_100%)] p-4 shadow-[0_18px_38px_rgba(15,23,42,0.09)]">
+                      <div className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                        Nastavení
+                      </div>
+                      <h3 className="mt-2 text-xl font-bold tracking-[-0.015em] text-slate-900">
+                        Intranet sekce
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Nastavení intranet sekcí pro push notifikace.
+                      </p>
+
+                      <div className="mt-3 space-y-3">
+                        <div className={`${notificationCardClass} space-y-3 ring-1 ring-violet-200/80`}>
+                          <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#7c3aed_0%,#22d3ee_100%)]" />
+                          <Sparkles
+                            className="pointer-events-none absolute -right-3 bottom-[-12px] h-20 w-20 text-slate-300/30"
+                            strokeWidth={1.7}
+                            aria-hidden="true"
+                          />
+                          <div className="relative text-xs uppercase tracking-wide text-slate-500">
+                            Intranet příspěvky
+                          </div>
+                          <p className="relative text-xs text-slate-600">
+                            Zvol si, jestli chceš push na všechny sekce nebo jen na vybrané.
+                          </p>
+                          <div className="relative inline-flex w-full rounded-xl border border-slate-200 bg-slate-100/90 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                            <button
+                              type="button"
+                              onClick={() => void setIntranetNotificationMode("all")}
+                              className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                                notificationSettings.intranet.mode === "all"
+                                  ? "bg-[linear-gradient(135deg,#0f172a_0%,#0b1f3e_72%,#1d4ed8_100%)] text-[#f8fafc] shadow-[0_10px_22px_rgba(29,78,216,0.26)]"
+                                  : "text-slate-700 hover:bg-white"
+                              }`}
+                            >
+                              Všechny sekce
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void setIntranetNotificationMode("selected")}
+                              className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                                notificationSettings.intranet.mode === "selected"
+                                  ? "bg-[linear-gradient(135deg,#0f172a_0%,#0b1f3e_72%,#1d4ed8_100%)] text-[#f8fafc] shadow-[0_10px_22px_rgba(29,78,216,0.26)]"
+                                  : "text-slate-700 hover:bg-white"
+                              }`}
+                            >
+                              Jen vybrané
+                            </button>
+                          </div>
+
+                          {notificationSettings.intranet.mode === "selected" ? (
+                            <div className="relative space-y-2">
+                              <div className="space-y-2">
+                                {INTRANET_SECTIONS.map((section) => {
+                                  const active =
+                                    notificationSettings.intranet.sections.includes(section.key);
+                                  const Icon = INTRANET_SECTION_ICON_BY_KEY[section.key];
+                                  return (
+                                    <button
+                                      key={section.key}
+                                      type="button"
+                                      onClick={() =>
+                                        void toggleIntranetNotificationSection(section.key)
+                                      }
+                                      role="switch"
+                                      aria-checked={active}
+                                      className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-800 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:border-slate-300 hover:bg-slate-50"
+                                    >
+                                      <span className="inline-flex items-center gap-2.5">
+                                        <span
+                                          className={`inline-flex h-6 w-6 items-center justify-center rounded-md border transition ${
+                                            active
+                                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                              : "border-slate-200 bg-slate-50 text-slate-500"
+                                          }`}
+                                        >
+                                          <Icon className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+                                        </span>
+                                        <span>{section.label}</span>
+                                      </span>
+                                      <span
+                                        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition ${active ? notificationToggleOnClass : notificationToggleOffClass}`}
+                                        aria-hidden="true"
+                                      >
+                                        <span
+                                          className={`absolute top-1/2 h-[18px] w-[18px] -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(15,23,42,0.25)] transition-all ${active ? "left-[22px]" : "left-[2px]"}`}
+                                        />
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {notificationSettings.intranet.sections.length === 0 ? (
+                                <p className="text-[11px] text-amber-700">
+                                  Není vybraná žádná sekce, intranet push nebude chodit.
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </aside>
                   </div>
-                  <div className="flex flex-col gap-2 sm:items-end">
-                    {testPushStatus ? (
-                      <span className="text-[11px] text-slate-600">{testPushStatus}</span>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={handleTestPush}
-                      className="rounded-xl border border-slate-900 bg-[linear-gradient(135deg,#0f172a_0%,#0b1f3e_72%,#1d4ed8_100%)] px-4 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_12px_24px_rgba(29,78,216,0.24)] transition hover:brightness-95"
-                    >
-                      Odeslat test
-                    </button>
-                  </div>
-                </div>
                 </div>
               </section>
               )}

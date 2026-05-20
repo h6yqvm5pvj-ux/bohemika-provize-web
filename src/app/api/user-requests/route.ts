@@ -5,6 +5,7 @@ import { toDate } from "@/app/lib/formatters";
 import type { CommissionMode, Position } from "@/app/types/domain";
 import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { addDaysIso, getTodayIsoInPrague } from "@/lib/subscriptionAccess";
 import {
   requireAuthedRateLimited,
   withRateLimitHeaders,
@@ -34,6 +35,7 @@ const USER_REQUEST_MANAGER_EMAIL_MAX_LEN = 180;
 const USER_REQUEST_FULL_NAME_MAX_LEN = 120;
 const USER_REQUEST_TEMP_PASSWORD_MIN_LEN = 8;
 const USER_REQUEST_TEMP_PASSWORD_MAX_LEN = 128;
+const NEW_USER_TRIAL_DAYS = 2;
 
 type UserRequestSubject = "userCreation" | "other";
 type UserRequestPriority = "normal" | "urgent";
@@ -230,6 +232,8 @@ async function createUserFromRequest(
     createdUid = authUser.uid;
 
     const now = FieldValue.serverTimestamp();
+    const trialFrom = getTodayIsoInPrague();
+    const trialUntil = addDaysIso(trialFrom, NEW_USER_TRIAL_DAYS - 1);
     const publicProfile: Record<string, unknown> = {
       email: params.requestedCorporateEmail,
       userId: authUser.uid,
@@ -251,6 +255,8 @@ async function createUserFromRequest(
 
     const privateProfile = {
       subscriptionStatus: "active",
+      subscriptionPaidFrom: trialFrom,
+      subscriptionPaidUntil: trialUntil,
       adminFunction: false,
       createdAt: now,
       createdByEmail: params.decidedByEmail,

@@ -885,7 +885,7 @@ export default function TeamPage() {
     () => !!selected?.email && !!userEmail && selected.email.toLowerCase() !== userEmail.toLowerCase(),
     [selected, userEmail]
   );
-  const canEditSelectedCareer = canManagePositions && isSelectedSubordinate;
+  const canEditSelectedCareer = isSelectedSubordinate;
   const canEndSelectedCollaboration =
     canManagePositions &&
     isSelectedSubordinate &&

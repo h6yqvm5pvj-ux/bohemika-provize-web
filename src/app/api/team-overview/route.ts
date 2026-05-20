@@ -2094,7 +2094,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const context = await loadTeamContext(email);
-    if (!context.canManagePositions) {
+    if (parsed.action !== "update" && !context.canManagePositions) {
       return NextResponse.json(
         {
           ok: false,
@@ -2321,16 +2321,6 @@ export async function GET(req: NextRequest) {
             error: "Uživatel není ve tvé týmové struktuře.",
           } satisfies TeamOverviewError,
           { status: 404 }
-        );
-      }
-
-      if (target.email !== email && !context.canManagePositions) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Nemáš oprávnění zobrazit kariéru tohoto uživatele.",
-          } satisfies TeamOverviewError,
-          { status: 403 }
         );
       }
 

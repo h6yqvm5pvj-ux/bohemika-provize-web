@@ -5,6 +5,7 @@ import { type CommissionMode, type Position } from "@/app/types/domain";
 import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
+import { addDaysIso, getTodayIsoInPrague } from "@/lib/subscriptionAccess";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,7 @@ type ApiSuccess = {
 const CREATE_USER_RATE_LIMIT = 20;
 const CREATE_USER_WINDOW_MS = 10 * 60_000;
 const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
+const NEW_USER_TRIAL_DAYS = 2;
 
 const POSITION_VALUES: Position[] = [
   "poradce1",
@@ -311,6 +313,8 @@ export async function POST(req: NextRequest) {
     createdUid = authUser.uid;
 
     const now = FieldValue.serverTimestamp();
+    const trialFrom = getTodayIsoInPrague();
+    const trialUntil = addDaysIso(trialFrom, NEW_USER_TRIAL_DAYS - 1);
     const publicProfile: Record<string, unknown> = {
       email: parsed.email,
       userId: authUser.uid,
@@ -331,6 +335,8 @@ export async function POST(req: NextRequest) {
 
     const privateProfile = {
       subscriptionStatus: "active",
+      subscriptionPaidFrom: trialFrom,
+      subscriptionPaidUntil: trialUntil,
       adminFunction: false,
       createdAt: now,
       createdByEmail: ctx.email,
