@@ -10,6 +10,7 @@ import {
   CalendarDays,
   CarFront,
   CircleHelp,
+  Clock3,
   ExternalLink,
   FileText,
   HeartPulse,
@@ -399,6 +400,49 @@ const SUBSCRIPTION_PLAN_LABELS: Record<SubscriptionPlanValue, string> = {
   yearly: "Roční",
   unlimited: "Neomezený",
 };
+
+type SubscriptionPriceCard = {
+  id: Exclude<SubscriptionPlanValue, "unlimited">;
+  label: string;
+  priceLabel: string;
+  cadenceLabel: string;
+  tintClass: string;
+  accentClass: string;
+  ringClass: string;
+};
+
+const SUBSCRIPTION_PRICE_CARDS: readonly SubscriptionPriceCard[] = [
+  {
+    id: "monthly",
+    label: "Měsíční",
+    priceLabel: "300 Kč",
+    cadenceLabel: "za měsíc",
+    tintClass:
+      "bg-[linear-gradient(130deg,rgba(186,230,253,0.45)_0%,rgba(255,255,255,0.92)_52%,rgba(224,231,255,0.55)_100%)]",
+    accentClass: "bg-[linear-gradient(90deg,#0284c7_0%,#4f46e5_100%)]",
+    ringClass: "ring-sky-200/80",
+  },
+  {
+    id: "semiannual",
+    label: "Pololetní",
+    priceLabel: "1.590 Kč",
+    cadenceLabel: "na 6 měsíců",
+    tintClass:
+      "bg-[linear-gradient(130deg,rgba(196,181,253,0.45)_0%,rgba(255,255,255,0.92)_52%,rgba(196,242,224,0.55)_100%)]",
+    accentClass: "bg-[linear-gradient(90deg,#7c3aed_0%,#0f766e_100%)]",
+    ringClass: "ring-violet-200/80",
+  },
+  {
+    id: "yearly",
+    label: "Roční",
+    priceLabel: "2.800 Kč",
+    cadenceLabel: "na 12 měsíců",
+    tintClass:
+      "bg-[linear-gradient(130deg,rgba(254,240,138,0.42)_0%,rgba(255,255,255,0.92)_52%,rgba(191,219,254,0.5)_100%)]",
+    accentClass: "bg-[linear-gradient(90deg,#d97706_0%,#2563eb_100%)]",
+    ringClass: "ring-amber-200/80",
+  },
+];
 
 const hasNonEmptyToken = (value: unknown): boolean =>
   typeof value === "string" && value.trim().length > 0;
@@ -3411,137 +3455,236 @@ export default function SettingsPage() {
                 <span>Předplatné</span>
               </h2>
 
-              {subscriptionLoading ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  Načítám údaje o předplatném…
-                </div>
-              ) : subscriptionError ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                  {subscriptionError}
-                </div>
-              ) : subscriptionSnapshot ? (
-                <>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        Stav
-                      </div>
-                      <div
-                        className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                          subscriptionSnapshot.effectiveState === "active"
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : subscriptionSnapshot.effectiveState === "grace"
-                              ? "border-amber-200 bg-amber-50 text-amber-700"
-                              : "border-rose-200 bg-rose-50 text-rose-700"
-                        }`}
-                      >
-                        {subscriptionSnapshot.effectiveState === "active"
-                          ? "Aktivní"
-                          : subscriptionSnapshot.effectiveState === "grace"
-                            ? "Ochranná lhůta"
-                            : subscriptionSnapshot.status === "unpaid"
-                              ? "Nezaplaceno"
-                              : "Blokováno"}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        Tarif
-                      </div>
-                      <div className="mt-2 text-sm font-semibold text-slate-900">
-                        {subscriptionSnapshot.plan
-                          ? SUBSCRIPTION_PLAN_LABELS[subscriptionSnapshot.plan]
-                          : "—"}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        Zaplaceno od
-                      </div>
-                      <div className="mt-2 text-sm font-semibold text-slate-900">
-                        {formatIsoDay(subscriptionSnapshot.paidFrom)}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        Zaplaceno do
-                      </div>
-                      <div className="mt-2 text-sm font-semibold text-slate-900">
-                        {subscriptionSnapshot.plan === "unlimited"
-                          ? "Neomezeně"
-                          : formatIsoDay(subscriptionSnapshot.paidUntil)}
-                      </div>
-                    </div>
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.8fr)]">
+                <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(165deg,rgba(255,255,255,0.96)_0%,rgba(241,245,249,0.96)_100%)] p-4 shadow-[0_18px_38px_rgba(15,23,42,0.09)]">
+                  <div className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                    Přehled
                   </div>
+                  <h3 className="mt-2 text-xl font-bold tracking-[-0.015em] text-slate-900">
+                    Stav tvého předplatného
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Rychlý přehled platnosti a historie plateb.
+                  </p>
 
-                  {subscriptionSnapshot.effectiveState === "grace" ? (
-                    <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                      Předplatné je po splatnosti. Přístup běží v ochranné lhůtě do{" "}
-                      <span className="font-semibold">
-                        {formatIsoDay(subscriptionSnapshot.graceUntil)}
-                      </span>
-                      . Pro zachování přístupu uhraď platbu.
-                    </div>
-                  ) : null}
-
-                  <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                    <h3 className="mb-2 text-sm font-semibold text-slate-900">
-                      Historie plateb
-                    </h3>
-
-                    {subscriptionPayments.length === 0 ? (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                        Zatím není evidovaná žádná platba.
+                  <div className="mt-3 space-y-4">
+                    {subscriptionLoading ? (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                        Načítám údaje o předplatném…
                       </div>
+                    ) : subscriptionError ? (
+                      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                        {subscriptionError}
+                      </div>
+                    ) : subscriptionSnapshot ? (
+                      <>
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          <article
+                            className={`relative isolate overflow-hidden rounded-2xl border border-white/90 bg-white/85 p-4 shadow-[0_12px_24px_rgba(15,23,42,0.08)] ring-1 ${
+                              subscriptionSnapshot.effectiveState === "active"
+                                ? "ring-emerald-200/80"
+                                : subscriptionSnapshot.effectiveState === "grace"
+                                  ? "ring-amber-200/80"
+                                  : "ring-rose-200/80"
+                            }`}
+                          >
+                            <div
+                              className={`absolute inset-x-0 top-0 h-1 ${
+                                subscriptionSnapshot.effectiveState === "active"
+                                  ? "bg-[linear-gradient(90deg,#059669_0%,#22c55e_100%)]"
+                                  : subscriptionSnapshot.effectiveState === "grace"
+                                    ? "bg-[linear-gradient(90deg,#d97706_0%,#f59e0b_100%)]"
+                                    : "bg-[linear-gradient(90deg,#e11d48_0%,#fb7185_100%)]"
+                              }`}
+                            />
+                            <ShieldCheck
+                              className="pointer-events-none absolute -right-3 bottom-[-14px] h-20 w-20 text-slate-300/30"
+                              strokeWidth={1.5}
+                              aria-hidden="true"
+                            />
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              Stav
+                            </div>
+                            <div
+                              className={`relative mt-2 inline-flex rounded-full border px-3 py-1.5 text-base font-semibold leading-none ${
+                                subscriptionSnapshot.effectiveState === "active"
+                                  ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                  : subscriptionSnapshot.effectiveState === "grace"
+                                    ? "border-amber-300 bg-amber-50 text-amber-800"
+                                    : "border-rose-300 bg-rose-50 text-rose-700"
+                              }`}
+                            >
+                              {subscriptionSnapshot.effectiveState === "active"
+                                ? "Aktivní"
+                                : subscriptionSnapshot.effectiveState === "grace"
+                                  ? "Ochranná lhůta"
+                                  : subscriptionSnapshot.status === "unpaid"
+                                    ? "Nezaplaceno"
+                                    : "Blokováno"}
+                            </div>
+                          </article>
+
+                          <article className="relative isolate overflow-hidden rounded-2xl border border-white/90 bg-white/85 p-4 shadow-[0_12px_24px_rgba(15,23,42,0.08)] ring-1 ring-indigo-200/70">
+                            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#3730a3_0%,#2563eb_100%)]" />
+                            <Clock3
+                              className="pointer-events-none absolute -right-3 bottom-[-14px] h-20 w-20 text-slate-300/30"
+                              strokeWidth={1.5}
+                              aria-hidden="true"
+                            />
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              Tarif
+                            </div>
+                            <div className="relative mt-2 text-[33px] font-black leading-none tracking-[-0.02em] text-slate-900">
+                              {subscriptionSnapshot.plan
+                                ? SUBSCRIPTION_PLAN_LABELS[subscriptionSnapshot.plan]
+                                : "—"}
+                            </div>
+                          </article>
+
+                          <article className="relative isolate overflow-hidden rounded-2xl border border-white/90 bg-white/85 p-4 shadow-[0_12px_24px_rgba(15,23,42,0.08)] ring-1 ring-sky-200/80">
+                            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0284c7_0%,#38bdf8_100%)]" />
+                            <Clock3
+                              className="pointer-events-none absolute -right-3 bottom-[-14px] h-20 w-20 text-slate-300/30"
+                              strokeWidth={1.5}
+                              aria-hidden="true"
+                            />
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              Zaplaceno od
+                            </div>
+                            <div className="relative mt-2 text-[33px] font-black leading-none tracking-[-0.02em] text-slate-900">
+                              {formatIsoDay(subscriptionSnapshot.paidFrom)}
+                            </div>
+                          </article>
+
+                          <article className="relative isolate overflow-hidden rounded-2xl border border-white/90 bg-white/85 p-4 shadow-[0_12px_24px_rgba(15,23,42,0.08)] ring-1 ring-violet-200/80">
+                            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#7c3aed_0%,#22d3ee_100%)]" />
+                            <Landmark
+                              className="pointer-events-none absolute -right-3 bottom-[-14px] h-20 w-20 text-slate-300/30"
+                              strokeWidth={1.5}
+                              aria-hidden="true"
+                            />
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              Zaplaceno do
+                            </div>
+                            <div className="relative mt-2 text-[33px] font-black leading-none tracking-[-0.02em] text-slate-900">
+                              {subscriptionSnapshot.plan === "unlimited"
+                                ? "Neomezeně"
+                                : formatIsoDay(subscriptionSnapshot.paidUntil)}
+                            </div>
+                          </article>
+                        </div>
+
+                        {subscriptionSnapshot.effectiveState === "grace" ? (
+                          <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            Předplatné je po splatnosti. Přístup běží v ochranné lhůtě do{" "}
+                            <span className="font-semibold">
+                              {formatIsoDay(subscriptionSnapshot.graceUntil)}
+                            </span>
+                            . Pro zachování přístupu uhraď platbu.
+                          </div>
+                        ) : null}
+
+                        <div className="rounded-2xl border border-white/90 bg-white/90 p-3 shadow-[0_12px_24px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/80">
+                          <h3 className="mb-2 text-sm font-semibold text-slate-900">
+                            Historie plateb
+                          </h3>
+
+                          {subscriptionPayments.length === 0 ? (
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                              Zatím není evidovaná žádná platba.
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full text-left text-xs text-slate-700">
+                                <thead>
+                                  <tr className="border-b border-slate-200 text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                                    <th className="px-2 py-2">Tarif</th>
+                                    <th className="px-2 py-2">Částka</th>
+                                    <th className="px-2 py-2">Období</th>
+                                    <th className="px-2 py-2">Zapsal</th>
+                                    <th className="px-2 py-2">Poznámka</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {subscriptionPayments.map((payment) => (
+                                    <tr key={payment.id} className="border-b border-slate-100 align-top">
+                                      <td className="px-2 py-2 font-semibold text-slate-900">
+                                        {payment.plan in SUBSCRIPTION_PLAN_LABELS
+                                          ? SUBSCRIPTION_PLAN_LABELS[
+                                              payment.plan as SubscriptionPlanValue
+                                            ]
+                                          : payment.plan || "—"}
+                                      </td>
+                                      <td className="px-2 py-2">{formatMoneyCzk(payment.amountCzk || 0)}</td>
+                                      <td className="px-2 py-2">
+                                        {formatIsoDay(payment.periodFrom)} – {formatIsoDay(payment.periodUntil)}
+                                      </td>
+                                      <td className="px-2 py-2">
+                                        <div>{payment.createdByEmail || "—"}</div>
+                                        <div className="text-[10px] text-slate-500">
+                                          {formatDateTime(payment.createdAtMs)}
+                                        </div>
+                                      </td>
+                                      <td className="px-2 py-2">{payment.note || "—"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </>
                     ) : (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full text-left text-xs text-slate-700">
-                          <thead>
-                            <tr className="border-b border-slate-200 text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                              <th className="px-2 py-2">Tarif</th>
-                              <th className="px-2 py-2">Částka</th>
-                              <th className="px-2 py-2">Období</th>
-                              <th className="px-2 py-2">Zapsal</th>
-                              <th className="px-2 py-2">Poznámka</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {subscriptionPayments.map((payment) => (
-                              <tr key={payment.id} className="border-b border-slate-100 align-top">
-                                <td className="px-2 py-2 font-semibold text-slate-900">
-                                  {payment.plan in SUBSCRIPTION_PLAN_LABELS
-                                    ? SUBSCRIPTION_PLAN_LABELS[
-                                        payment.plan as SubscriptionPlanValue
-                                      ]
-                                    : payment.plan || "—"}
-                                </td>
-                                <td className="px-2 py-2">{formatMoneyCzk(payment.amountCzk || 0)}</td>
-                                <td className="px-2 py-2">
-                                  {formatIsoDay(payment.periodFrom)} – {formatIsoDay(payment.periodUntil)}
-                                </td>
-                                <td className="px-2 py-2">
-                                  <div>{payment.createdByEmail || "—"}</div>
-                                  <div className="text-[10px] text-slate-500">
-                                    {formatDateTime(payment.createdAtMs)}
-                                  </div>
-                                </td>
-                                <td className="px-2 py-2">{payment.note || "—"}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                        Předplatné zatím není nastavené.
                       </div>
                     )}
                   </div>
-                </>
-              ) : (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  Předplatné zatím není nastavené.
                 </div>
-              )}
+
+                <aside className="rounded-[28px] border border-slate-200 bg-[linear-gradient(165deg,rgba(255,255,255,0.96)_0%,rgba(241,245,249,0.96)_100%)] p-4 shadow-[0_18px_38px_rgba(15,23,42,0.09)]">
+                  <div className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                    Ceník
+                  </div>
+                  <h3 className="mt-2 text-xl font-bold tracking-[-0.015em] text-slate-900">
+                    Tarify předplatného
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Přehled aktuálních tarifů včetně délky období.
+                  </p>
+
+                  <div className="mt-3 space-y-3">
+                    {SUBSCRIPTION_PRICE_CARDS.map((priceCard) => (
+                      <article
+                        key={priceCard.id}
+                        className={`group relative isolate min-h-[136px] overflow-hidden rounded-2xl border border-white/80 ${priceCard.tintClass} p-4 shadow-[0_14px_28px_rgba(15,23,42,0.11)] ring-1 ${priceCard.ringClass}`}
+                      >
+                        <div className={`absolute inset-x-0 top-0 h-1 ${priceCard.accentClass}`} />
+                        <Landmark
+                          className="pointer-events-none absolute -right-2 bottom-[-16px] h-24 w-24 text-slate-300/35"
+                          strokeWidth={1.5}
+                          aria-hidden="true"
+                        />
+
+                        <div className="relative flex h-full flex-col justify-between gap-3">
+                          <div className="inline-flex w-fit items-center rounded-full border border-slate-200/90 bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                            {priceCard.label}
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="text-[28px] font-black leading-none tracking-[-0.02em] text-slate-900">
+                              {priceCard.priceLabel}
+                            </div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+                              {priceCard.cadenceLabel}
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </aside>
+              </div>
             </section>
             )}
 

@@ -184,15 +184,32 @@ const getSubscriptionStatePillClass = (row: {
   subscription?: { effectiveState?: string; status?: string };
 }) => {
   if (row.subscription?.effectiveState === "active") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-emerald-600 bg-emerald-500 text-white";
   }
   if (row.subscription?.effectiveState === "grace") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return "border-amber-600 bg-amber-500 text-slate-950";
   }
   if (row.subscription?.status === "unpaid") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return "border-rose-600 bg-rose-500 text-white";
   }
-  return "border-slate-200 bg-slate-100 text-slate-700";
+  return "border-slate-700 bg-slate-600 text-white";
+};
+
+const getSubscriptionPlanPillClass = (plan: unknown): string => {
+  const normalized = typeof plan === "string" ? plan.trim().toLowerCase() : "";
+  if (normalized === "unlimited") {
+    return "border-amber-600 bg-amber-400 text-amber-950";
+  }
+  if (normalized === "monthly") {
+    return "border-sky-600 bg-sky-500 text-white";
+  }
+  if (normalized === "semiannual") {
+    return "border-indigo-600 bg-indigo-500 text-white";
+  }
+  if (normalized === "yearly") {
+    return "border-cyan-600 bg-cyan-500 text-white";
+  }
+  return "border-slate-600 bg-slate-500 text-white";
 };
 
 const formatDaysUntilDue = (days: number | null | undefined): string => {
@@ -679,6 +696,16 @@ export default function AdminRequestsPage() {
       );
     });
   }, [subscriptionDirectoryFilter, subscriptionDirectoryRows, subscriptionDirectorySearch]);
+
+  const subscriptionDirectoryStats = useMemo(() => {
+    const total = subscriptionDirectoryRows.length;
+    const overdue = subscriptionDirectoryRows.filter((row) => row.flags?.isOverdue === true).length;
+    const dueSoon = subscriptionDirectoryRows.filter((row) => row.flags?.isDueSoon === true).length;
+    const active = subscriptionDirectoryRows.filter(
+      (row) => row.subscription.effectiveState === "active"
+    ).length;
+    return { total, overdue, dueSoon, active };
+  }, [subscriptionDirectoryRows]);
 
   const handleDecision = useCallback(
     async (requestId: string, action: "approve" | "reject") => {
@@ -1849,9 +1876,10 @@ export default function AdminRequestsPage() {
             </div>
 
             <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-              <aside className="rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm">
+              <aside className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(160deg,#ffffff_0%,#f8fbff_52%,#eef4ff_100%)] p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-slate-900" />
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-slate-900">Uživatelé</h3>
+                  <h3 className="text-sm font-semibold text-slate-900">Adresář předplatného</h3>
                   <button
                     type="button"
                     onClick={() => void loadSubscriptionDirectory()}
@@ -1863,8 +1891,35 @@ export default function AdminRequestsPage() {
                   </button>
                 </div>
 
+                <div className="mb-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-xl border border-slate-300 bg-slate-100 px-2.5 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                      Celkem
+                    </div>
+                    <div className="mt-1 text-lg font-bold text-slate-900">{subscriptionDirectoryStats.total}</div>
+                  </div>
+                  <div className="rounded-xl border border-rose-700 bg-rose-600 px-2.5 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-100">
+                      Po splatnosti
+                    </div>
+                    <div className="mt-1 text-lg font-bold text-white">{subscriptionDirectoryStats.overdue}</div>
+                  </div>
+                  <div className="rounded-xl border border-orange-700 bg-orange-500 px-2.5 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-50">
+                      Brzy končí
+                    </div>
+                    <div className="mt-1 text-lg font-bold text-white">{subscriptionDirectoryStats.dueSoon}</div>
+                  </div>
+                  <div className="rounded-xl border border-emerald-700 bg-emerald-600 px-2.5 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-50">
+                      Aktivní
+                    </div>
+                    <div className="mt-1 text-lg font-bold text-white">{subscriptionDirectoryStats.active}</div>
+                  </div>
+                </div>
+
                 <div
-                  className="mb-3 inline-flex w-full rounded-xl border border-slate-300 bg-slate-100 p-1"
+                  className="mb-3 inline-flex w-full rounded-2xl border border-slate-300 bg-white/80 p-1 shadow-[0_6px_14px_rgba(15,23,42,0.05)]"
                   role="tablist"
                   aria-label="Filtr předplatného"
                 >
@@ -1875,9 +1930,9 @@ export default function AdminRequestsPage() {
                         key={filterOption.id}
                         type="button"
                         onClick={() => setSubscriptionDirectoryFilter(filterOption.id)}
-                        className={`inline-flex flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${
+                        className={`inline-flex flex-1 items-center justify-center rounded-xl px-2 py-1.5 text-[11px] font-semibold transition ${
                           active
-                            ? "border border-slate-900 bg-white text-slate-900 shadow-[0_4px_10px_rgba(15,23,42,0.08)]"
+                            ? "border border-slate-900 bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.2)]"
                             : "border border-transparent text-slate-600 hover:text-slate-900"
                         }`}
                       >
@@ -1930,6 +1985,7 @@ export default function AdminRequestsPage() {
                               row.subscription.plan as SubscriptionPlanValue
                             ]
                           : "Bez tarifu";
+                      const planClass = getSubscriptionPlanPillClass(row.subscription.plan);
                       const dueSoonLabel = row.flags?.isDueSoon
                         ? formatDaysUntilDue(row.flags?.daysUntilDue)
                         : "";
@@ -1945,46 +2001,37 @@ export default function AdminRequestsPage() {
                             setSubscriptionLookupStatus(null);
                             void loadSubscriptionForEmail(row.email);
                           }}
-                          className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                          className={`relative w-full overflow-hidden rounded-2xl border px-3 py-2.5 text-left transition ${
                             selected
-                              ? "border-blue-500 bg-[linear-gradient(135deg,#2563eb_0%,#1d4ed8_58%,#1e3a8a_100%)] text-white shadow-[0_12px_24px_rgba(37,99,235,0.35)]"
+                              ? "border-slate-900 bg-slate-50 text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.1)]"
                               : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50"
                           }`}
                         >
+                          {selected ? (
+                            <span className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-emerald-400" />
+                          ) : null}
                           <div className="truncate text-sm font-semibold">{title}</div>
                           <div
                             className={`truncate text-xs ${
-                              selected ? "text-blue-100" : "text-slate-500"
+                              selected ? "text-slate-600" : "text-slate-500"
                             }`}
                           >
                             {row.email}
                           </div>
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             <span
-                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                                selected
-                                  ? "border-white/35 bg-white/10 text-white"
-                                  : stateClass
-                              }`}
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${stateClass}`}
                             >
                               {stateLabel}
                             </span>
                             <span
-                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                                selected
-                                  ? "border-white/30 bg-white/5 text-slate-100"
-                                  : "border-slate-200 bg-slate-100 text-slate-700"
-                              }`}
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${planClass}`}
                             >
                               {planLabel}
                             </span>
                             {dueSoonLabel ? (
                               <span
-                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                                  selected
-                                    ? "border-amber-200/60 bg-amber-100/20 text-amber-100"
-                                    : "border-amber-200 bg-amber-50 text-amber-700"
-                                }`}
+                                className="rounded-full border border-orange-600 bg-orange-500 px-2 py-0.5 text-[10px] font-semibold text-white"
                               >
                                 {dueSoonLabel}
                               </span>
@@ -1998,7 +2045,45 @@ export default function AdminRequestsPage() {
               </aside>
 
               <div className="space-y-3">
-                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+                  <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-slate-900" />
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Detail</div>
+                      <div className="mt-1 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
+                        {subscriptionData?.user?.fullName ||
+                          subscriptionData?.user?.email ||
+                          (subscriptionLookupEmail ? nameFromEmail(subscriptionLookupEmail) : "Vyber uživatele")}
+                      </div>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {subscriptionData?.user?.email || subscriptionLookupEmail || "Klikni vlevo na uživatele."}
+                      </p>
+                    </div>
+                    {subscriptionData?.subscription ? (
+                      <span
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold ${getSubscriptionStatePillClass({
+                          subscription: {
+                            effectiveState: subscriptionData.subscription.effectiveState,
+                            status: subscriptionData.subscription.status,
+                          },
+                        })}`}
+                      >
+                        {getSubscriptionStateLabel({
+                          subscription: {
+                            effectiveState: subscriptionData.subscription.effectiveState,
+                            status: subscriptionData.subscription.status,
+                          },
+                        })}
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                        Bez výběru
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                       Tarif
@@ -2050,7 +2135,7 @@ export default function AdminRequestsPage() {
                       type="button"
                       onClick={() => void handleAddSubscriptionPayment()}
                       disabled={subscriptionLookupLoading}
-                      className="inline-flex items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center justify-center rounded-2xl border border-emerald-500/80 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(5,150,105,0.28)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {subscriptionPlanDraft === "unlimited" ? "Nastavit neomezený" : "Zapsat platbu"}
                     </button>
@@ -2058,7 +2143,7 @@ export default function AdminRequestsPage() {
                       type="button"
                       onClick={() => void handleSetSubscriptionUnpaid()}
                       disabled={subscriptionLookupLoading}
-                      className="inline-flex items-center justify-center rounded-2xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center justify-center rounded-2xl border border-rose-500/80 bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(225,29,72,0.3)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Označit nezaplaceno
                     </button>
@@ -2087,7 +2172,7 @@ export default function AdminRequestsPage() {
 
                 {subscriptionData?.subscription ? (
                   <div className="space-y-3">
-                <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50/50 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold text-slate-900">
@@ -2118,35 +2203,36 @@ export default function AdminRequestsPage() {
                     </span>
                   </div>
                   <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-700 sm:grid-cols-3">
-                    <div>
-                      Tarif:{" "}
-                      <span className="font-semibold text-slate-900">
+                    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Tarif</div>
+                      <div className="mt-1 font-semibold text-slate-900">
                         {subscriptionData.subscription.plan &&
                         subscriptionData.subscription.plan in SUBSCRIPTION_PLAN_LABELS
                           ? SUBSCRIPTION_PLAN_LABELS[
                               subscriptionData.subscription.plan as SubscriptionPlanValue
                             ]
                           : "—"}
-                      </span>
+                      </div>
                     </div>
-                    <div>
-                      Od:{" "}
-                      <span className="font-semibold text-slate-900">
+                    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Od</div>
+                      <div className="mt-1 font-semibold text-slate-900">
                         {formatIsoDay(subscriptionData.subscription.paidFrom)}
-                      </span>
+                      </div>
                     </div>
-                    <div>
-                      Do:{" "}
-                      <span className="font-semibold text-slate-900">
+                    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Do</div>
+                      <div className="mt-1 font-semibold text-slate-900">
                         {subscriptionData.subscription.plan === "unlimited"
                           ? "Neomezeně"
                           : formatIsoDay(subscriptionData.subscription.paidUntil)}
-                      </span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+                  <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-slate-900" />
                   <h3 className="mb-2 text-sm font-semibold text-slate-900">Historie plateb</h3>
                   {(subscriptionData.payments ?? []).length === 0 ? (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
