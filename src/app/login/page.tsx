@@ -3,6 +3,7 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   FactorId,
   getMultiFactorResolver,
@@ -388,6 +389,16 @@ export default function LoginPage() {
     <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(120%_140%_at_20%_0%,#eef2ff_0%,#f8fafc_46%,#ffffff_100%)] text-slate-900">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_45%,#cbd5e1_100%)]" />
       <div className="pointer-events-none absolute -top-24 left-1/2 h-64 w-[min(80vw,720px)] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,#c7d2fe_0%,#e2e8f0_44%,transparent_72%)] opacity-60 blur-2xl" />
+      <div className="pointer-events-none absolute -left-24 bottom-[-180px] h-[520px] w-[520px] opacity-[0.24] sm:-left-32 sm:h-[680px] sm:w-[680px] lg:-left-40 lg:h-[860px] lg:w-[860px]">
+        <Image
+          src="/icons/bohemika_logo.png"
+          alt=""
+          fill
+          sizes="(max-width: 640px) 520px, (max-width: 1024px) 680px, 860px"
+          className="object-contain saturate-0 contrast-125"
+          priority
+        />
+      </div>
 
       <div className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-12 sm:py-16">
         <div className="w-full max-w-xl space-y-7 font-mono">
@@ -396,7 +407,7 @@ export default function LoginPage() {
               <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
               Přihlášení
             </div>
-            <h1 className="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
+            <h1 className="text-5xl font-semibold tracking-tight text-slate-900 sm:text-6xl">
               Bohemka.App
             </h1>
             <p className="text-sm text-slate-600">Přihlaš se do svého účtu.</p>
@@ -514,7 +525,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="mt-2 w-full rounded-2xl border border-slate-900 bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-2 w-full rounded-2xl border border-slate-900/80 bg-gradient-to-r from-slate-900 via-indigo-900 to-blue-900 py-3 text-base font-semibold tracking-[0.01em] text-white shadow-[0_10px_24px_rgba(15,23,42,0.28)] transition duration-200 hover:-translate-y-0.5 hover:from-slate-800 hover:via-indigo-800 hover:to-blue-800 hover:shadow-[0_14px_30px_rgba(37,99,235,0.33)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               >
                 {loading
                   ? mfaResolver
