@@ -87,6 +87,13 @@ type LoginAttemptResponse = {
   error?: string;
 };
 
+type InstallPlatform = "ios" | "android" | "desktop";
+
+type DeferredInstallPromptEvent = Event & {
+  prompt: () => Promise<{ outcome: "accepted" | "dismissed"; platform: string } | void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
 function attemptWord(count: number): string {
   if (count === 1) return "pokus";
   if (count >= 2 && count <= 4) return "pokusy";
@@ -129,6 +136,32 @@ async function postLoginAttempt(
   throw new Error("Nepodařilo se ověřit bezpečnostní limit přihlášení.");
 }
 
+const detectInstallPlatform = (): InstallPlatform => {
+  if (typeof navigator === "undefined") return "desktop";
+  const ua = navigator.userAgent.toLowerCase();
+  if (/iphone|ipad|ipod/.test(ua)) return "ios";
+  if (/android/.test(ua)) return "android";
+  return "desktop";
+};
+
+const detectIosSafari = (): boolean => {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent.toLowerCase();
+  const isIos = /iphone|ipad|ipod/.test(ua);
+  if (!isIos) return false;
+  return /safari/.test(ua) && !/(crios|fxios|edgios|opios)/.test(ua);
+};
+
+const isStandaloneDisplay = (): boolean => {
+  if (typeof window === "undefined") return false;
+  const nav = window.navigator as Navigator & { standalone?: boolean };
+  const mediaMatch =
+    typeof window.matchMedia === "function"
+      ? window.matchMedia("(display-mode: standalone)").matches
+      : false;
+  return mediaMatch || nav.standalone === true;
+};
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -141,6 +174,13 @@ export default function LoginPage() {
   const [mfaCode, setMfaCode] = useState("");
   const [mfaHintUid, setMfaHintUid] = useState<string | null>(null);
   const [mfaHintLabel, setMfaHintLabel] = useState<string | null>(null);
+  const [installPlatform, setInstallPlatform] = useState<InstallPlatform>("desktop");
+  const [isIosSafari, setIsIosSafari] = useState(false);
+  const [isStandaloneApp, setIsStandaloneApp] = useState(false);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] =
+    useState<DeferredInstallPromptEvent | null>(null);
+  const [installGuideOpen, setInstallGuideOpen] = useState(false);
+  const [installFeedback, setInstallFeedback] = useState<string | null>(null);
 
   const clearMfaState = () => {
     setMfaResolver(null);
@@ -215,6 +255,42 @@ export default function LoginPage() {
 
     return () => unsub();
   }, [router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    setInstallPlatform(detectInstallPlatform());
+    setIsIosSafari(detectIosSafari());
+    setIsStandaloneApp(isStandaloneDisplay());
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredInstallPrompt(event as DeferredInstallPromptEvent);
+    };
+
+    const handleAppInstalled = () => {
+      setDeferredInstallPrompt(null);
+      setInstallGuideOpen(false);
+      setIsStandaloneApp(true);
+      setInstallFeedback("Hotovo. Aplikace je přidaná na plochu.");
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setIsStandaloneApp(isStandaloneDisplay());
+      }
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   const handleMfaSubmit = async () => {
     if (!mfaResolver || !mfaHintUid) {
@@ -385,6 +461,54 @@ export default function LoginPage() {
   const fieldInputClass =
     "w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.06)] outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
 
+  const handleInstallCta = async () => {
+    setInstallFeedback(null);
+
+    if (isStandaloneApp) {
+      setInstallFeedback("Aplikaci už máš nainstalovanou na ploše.");
+      return;
+    }
+
+    if (deferredInstallPrompt) {
+      try {
+        await deferredInstallPrompt.prompt();
+        const choice = await deferredInstallPrompt.userChoice;
+        if (choice.outcome === "accepted") {
+          setInstallFeedback("Instalace potvrzena. Ikona se zobrazí na ploše.");
+        } else {
+          setInstallFeedback("Instalaci můžeš dokončit kdykoliv později.");
+          setInstallGuideOpen(true);
+        }
+      } catch (error) {
+        console.warn("[PWA] Instalace se nepodařila spustit:", error);
+        setInstallFeedback("Instalaci se nepodařilo otevřít. Zkus to znovu.");
+        setInstallGuideOpen(true);
+      } finally {
+        setDeferredInstallPrompt(null);
+      }
+      return;
+    }
+
+    setInstallGuideOpen((prev) => !prev);
+  };
+
+  const installCtaLabel = isStandaloneApp
+    ? "Aplikace je nainstalovaná"
+    : deferredInstallPrompt
+      ? "Nainstalovat aplikaci"
+      : installPlatform === "ios"
+        ? "Jak přidat na plochu"
+        : "Jak nainstalovat";
+
+  const installLeadText = isStandaloneApp
+    ? "Spouštěj Bohemka.App přímo z plochy jako klasickou aplikaci."
+    : deferredInstallPrompt
+      ? "Aplikaci můžeš přidat na plochu jedním kliknutím."
+      : installPlatform === "ios"
+        ? "Na iPhonu přidáš aplikaci přes Safari a tlačítko Sdílet."
+        : "Když se instalace neukáže automaticky, použij ruční postup níže.";
+  const shouldShowInstallAssistant = installPlatform !== "desktop";
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(120%_140%_at_20%_0%,#eef2ff_0%,#f8fafc_46%,#ffffff_100%)] text-slate-900">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_45%,#cbd5e1_100%)]" />
@@ -536,6 +660,67 @@ export default function LoginPage() {
                     : "Přihlásit se"}
               </button>
             </form>
+
+            {shouldShowInstallAssistant ? (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white/75 p-4 shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                      Aplikace na plochu
+                    </div>
+                    <p className="mt-1 text-sm text-slate-700">{installLeadText}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleInstallCta();
+                    }}
+                    disabled={isStandaloneApp}
+                    className={`inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold transition ${
+                      isStandaloneApp
+                        ? "cursor-default border-emerald-300 bg-emerald-100 text-emerald-800"
+                        : "border-slate-900/80 bg-slate-900 text-white hover:bg-black"
+                    }`}
+                  >
+                    {installCtaLabel}
+                  </button>
+                </div>
+
+                {installFeedback ? (
+                  <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                    {installFeedback}
+                  </p>
+                ) : null}
+
+                {(installGuideOpen || installPlatform === "ios") && !isStandaloneApp ? (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-700">
+                    <p className="font-semibold text-slate-800">
+                      {installPlatform === "ios"
+                        ? "Postup pro iPhone"
+                        : "Ruční postup instalace"}
+                    </p>
+                    <ol className="mt-2 list-decimal space-y-1 pl-4">
+                      {installPlatform === "ios" ? (
+                        <>
+                          <li>
+                            Otevři stránku v Safari
+                            {!isIosSafari ? " (teď nejsi v Safari)." : "."}
+                          </li>
+                          <li>Klepni na Sdílet (čtverec se šipkou nahoru).</li>
+                          <li>Zvol „Přidat na plochu“ a potvrď „Přidat“.</li>
+                        </>
+                      ) : (
+                        <>
+                          <li>V menu prohlížeče otevři nabídku stránky (⋮ nebo ⋯).</li>
+                          <li>Zvol „Nainstalovat aplikaci“ nebo „Přidat na plochu“.</li>
+                          <li>Potvrď instalaci, ikona se pak objeví na ploše.</li>
+                        </>
+                      )}
+                    </ol>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </section>
         </div>
       </div>
