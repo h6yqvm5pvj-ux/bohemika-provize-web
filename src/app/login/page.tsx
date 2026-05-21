@@ -292,6 +292,25 @@ export default function LoginPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!installGuideOpen || typeof document === "undefined") return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setInstallGuideOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [installGuideOpen]);
+
   const handleMfaSubmit = async () => {
     if (!mfaResolver || !mfaHintUid) {
       setError("Dvoufázové ověření se nepodařilo inicializovat. Zkus přihlášení znovu.");
@@ -474,6 +493,7 @@ export default function LoginPage() {
         await deferredInstallPrompt.prompt();
         const choice = await deferredInstallPrompt.userChoice;
         if (choice.outcome === "accepted") {
+          setInstallGuideOpen(false);
           setInstallFeedback("Instalace potvrzena. Ikona se zobrazí na ploše.");
         } else {
           setInstallFeedback("Instalaci můžeš dokončit kdykoliv později.");
@@ -504,10 +524,9 @@ export default function LoginPage() {
     ? "Spouštěj Bohemka.App přímo z plochy jako klasickou aplikaci."
     : deferredInstallPrompt
       ? "Aplikaci můžeš přidat na plochu jedním kliknutím."
-      : installPlatform === "ios"
-        ? "Na iPhonu přidáš aplikaci přes Safari a tlačítko Sdílet."
-        : "Když se instalace neukáže automaticky, použij ruční postup níže.";
+      : "Klepni na tlačítko a otevře se krátký návod.";
   const shouldShowInstallAssistant = installPlatform !== "desktop";
+  const isInstallGuideForIos = installPlatform === "ios";
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(120%_140%_at_20%_0%,#eef2ff_0%,#f8fafc_46%,#ffffff_100%)] text-slate-900">
@@ -691,39 +710,95 @@ export default function LoginPage() {
                     {installFeedback}
                   </p>
                 ) : null}
-
-                {(installGuideOpen || installPlatform === "ios") && !isStandaloneApp ? (
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-700">
-                    <p className="font-semibold text-slate-800">
-                      {installPlatform === "ios"
-                        ? "Postup pro iPhone"
-                        : "Ruční postup instalace"}
-                    </p>
-                    <ol className="mt-2 list-decimal space-y-1 pl-4">
-                      {installPlatform === "ios" ? (
-                        <>
-                          <li>
-                            Otevři stránku v Safari
-                            {!isIosSafari ? " (teď nejsi v Safari)." : "."}
-                          </li>
-                          <li>Klepni na Sdílet (čtverec se šipkou nahoru).</li>
-                          <li>Zvol „Přidat na plochu“ a potvrď „Přidat“.</li>
-                        </>
-                      ) : (
-                        <>
-                          <li>V menu prohlížeče otevři nabídku stránky (⋮ nebo ⋯).</li>
-                          <li>Zvol „Nainstalovat aplikaci“ nebo „Přidat na plochu“.</li>
-                          <li>Potvrď instalaci, ikona se pak objeví na ploše.</li>
-                        </>
-                      )}
-                    </ol>
-                  </div>
-                ) : null}
               </div>
             ) : null}
           </section>
         </div>
       </div>
+
+      {shouldShowInstallAssistant && installGuideOpen && !isStandaloneApp ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/50 p-3 backdrop-blur-[2px] sm:items-center sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="install-guide-title"
+          onClick={() => setInstallGuideOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_64%,#eff4f9_100%)] p-5 shadow-[0_30px_70px_rgba(15,23,42,0.26)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#2563eb_58%,#06b6d4_100%)]" />
+            <button
+              type="button"
+              onClick={() => setInstallGuideOpen(false)}
+              className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-lg leading-none text-slate-600 transition hover:text-slate-900"
+              aria-label="Zavřít návod"
+            >
+              ×
+            </button>
+
+            <div className="pr-10">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-600">
+                Rychlý návod
+              </p>
+              <h3
+                id="install-guide-title"
+                className="mt-1 text-2xl font-bold tracking-[-0.02em] text-slate-900"
+              >
+                {isInstallGuideForIos ? "Přidání na plochu (iPhone)" : "Instalace aplikace"}
+              </h3>
+              <p className="mt-2 text-sm text-slate-600">
+                {isInstallGuideForIos
+                  ? "Trvá to asi 10 sekund. Po přidání ji najdeš na ploše jako klasickou appku."
+                  : "Pokud se neukáže systémové okno, projdi rychlé kroky níže."}
+              </p>
+            </div>
+
+            <ol className="mt-4 space-y-2">
+              {isInstallGuideForIos ? (
+                <>
+                  <li className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-800">
+                    1. Otevři stránku v <span className="font-semibold">Safari</span>
+                    {!isIosSafari ? " (teď nejsi v Safari)." : "."}
+                  </li>
+                  <li className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-800">
+                    2. Klepni na <span className="font-semibold">Sdílet</span>{" "}
+                    <span aria-hidden="true">□↑</span>.
+                  </li>
+                  <li className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-800">
+                    3. Zvol <span className="font-semibold">Přidat na plochu</span> a potvrď{" "}
+                    <span className="font-semibold">Přidat</span>.
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-800">
+                    1. Otevři nabídku prohlížeče (⋮ nebo ⋯).
+                  </li>
+                  <li className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-800">
+                    2. Zvol <span className="font-semibold">Nainstalovat aplikaci</span> nebo{" "}
+                    <span className="font-semibold">Přidat na plochu</span>.
+                  </li>
+                  <li className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-800">
+                    3. Potvrď instalaci.
+                  </li>
+                </>
+              )}
+            </ol>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setInstallGuideOpen(false)}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-900/80 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
+              >
+                Rozumím
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
