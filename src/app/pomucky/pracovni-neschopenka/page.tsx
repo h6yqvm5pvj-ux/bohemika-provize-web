@@ -12,27 +12,27 @@ const PERIODS = [
     label: "1.–30. den",
     rate: 0.6,
     note: "60 % redukovaného DVZ",
-    stripClass: "bg-[linear-gradient(90deg,#10b981_0%,#86efac_100%)]",
-    badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    accentClass: "text-emerald-700",
+    stripClass: "bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]",
+    badgeClass: "border-blue-200 bg-blue-50 text-blue-800",
+    accentClass: "text-blue-700",
   },
   {
     id: "p60",
     label: "31.–60. den",
     rate: 0.66,
     note: "66 % redukovaného DVZ",
-    stripClass: "bg-[linear-gradient(90deg,#0ea5e9_0%,#7dd3fc_100%)]",
-    badgeClass: "border-sky-200 bg-sky-50 text-sky-700",
-    accentClass: "text-sky-700",
+    stripClass: "bg-[linear-gradient(90deg,#0b1220_0%,#1c467f_55%,#3a78c2_100%)]",
+    badgeClass: "border-indigo-200 bg-indigo-50 text-indigo-800",
+    accentClass: "text-indigo-700",
   },
   {
     id: "p90",
     label: "61. den a dál",
     rate: 0.72,
     note: "72 % redukovaného DVZ",
-    stripClass: "bg-[linear-gradient(90deg,#c89d2e_0%,#f6d36b_100%)]",
-    badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
-    accentClass: "text-amber-700",
+    stripClass: "bg-[linear-gradient(90deg,#0b1220_0%,#234f87_55%,#4c86c8_100%)]",
+    badgeClass: "border-sky-200 bg-sky-50 text-sky-800",
+    accentClass: "text-sky-700",
   },
 ] as const;
 
@@ -88,14 +88,14 @@ export default function PracovniNeschopenkaPage() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr_1fr]">
-              <label className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition focus-within:border-emerald-300 focus-within:shadow-[0_10px_24px_rgba(16,185,129,0.12)]">
-                <div className="h-1 bg-[linear-gradient(90deg,#10b981_0%,#86efac_100%)]" />
+              <label className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition focus-within:border-blue-300 focus-within:shadow-[0_10px_24px_rgba(37,99,235,0.14)]">
+                <div className="h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
                 <div className="px-4 py-4">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                       Čistý měsíční příjem
                     </span>
-                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                    <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">
                       vstup
                     </span>
                   </div>
@@ -107,7 +107,7 @@ export default function PracovniNeschopenkaPage() {
                       const v = handleNumber(e.target.value, netIncome);
                       setNetIncome(Math.max(0, Math.round(v)));
                     }}
-                    className="mt-3 w-full border-0 border-b border-slate-200 bg-transparent px-0 pb-2 text-2xl font-semibold leading-none text-slate-950 outline-none transition focus:border-emerald-300 focus:ring-0"
+                    className="mt-3 w-full border-0 border-b border-slate-200 bg-transparent px-0 pb-2 text-2xl font-semibold leading-none text-slate-950 outline-none transition focus:border-blue-300 focus:ring-0"
                   />
                   <p className="mt-2 text-[11px] leading-snug text-slate-500">
                     Výchozí částka pro dopočet doporučeného krytí.
@@ -116,34 +116,34 @@ export default function PracovniNeschopenkaPage() {
               </label>
 
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-                <div className="h-1 bg-[linear-gradient(90deg,#0ea5e9_0%,#7dd3fc_100%)]" />
+                <div className="h-1 bg-[linear-gradient(90deg,#0b1220_0%,#1c467f_55%,#3a78c2_100%)]" />
                 <div className="flex min-h-[132px] flex-col justify-between px-4 py-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                       Doporučená denní dávka
                     </div>
-                    <div className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                    <div className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-800">
                       den
                     </div>
                   </div>
-                  <div className="text-right text-4xl font-semibold leading-none text-sky-700">
+                  <div className="text-right text-4xl font-semibold leading-none text-indigo-700">
                     {formatMoney(recommendedDaily)}
                   </div>
                 </div>
               </div>
 
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-                <div className="h-1 bg-[linear-gradient(90deg,#c89d2e_0%,#f6d36b_100%)]" />
+                <div className="h-1 bg-[linear-gradient(90deg,#0b1220_0%,#234f87_55%,#4c86c8_100%)]" />
                 <div className="flex min-h-[132px] flex-col justify-between px-4 py-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                       Měsíční krytí
                     </div>
-                    <div className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                    <div className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
                       30 dní
                     </div>
                   </div>
-                  <div className="text-right text-4xl font-semibold leading-none text-amber-700">
+                  <div className="text-right text-4xl font-semibold leading-none text-sky-800">
                     {formatMoney(recommendedMonthly)}
                   </div>
                 </div>
@@ -252,13 +252,13 @@ export default function PracovniNeschopenkaPage() {
           )}
         </section>
 
-        <section className="rounded-3xl border border-slate-900 bg-rose-300 px-5 py-4">
+        <section className="rounded-3xl border border-slate-200 bg-[linear-gradient(145deg,#eef4ff_0%,#e3ecfb_100%)] px-5 py-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-black uppercase tracking-[0.16em]">
+              <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-[0.16em]">
                 Upozornění na krácení (–50 %) nemocenské dávky vyplácené státem.
               </h3>
-              <p className="text-sm text-black">
+              <p className="text-sm text-slate-800">
                 Rvačka, opilost, zneužití látek nebo úmyslný přestupek/trestný čin
                 snižují dávku o polovinu.
               </p>

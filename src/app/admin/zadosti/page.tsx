@@ -1110,19 +1110,55 @@ export default function AdminRequestsPage() {
     <AppLayout active="admin">
       <div className="w-full max-w-[1200px] space-y-6 px-2 pb-8 sm:px-4">
         <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(170deg,#ffffff_0%,#f8fbff_55%,#eff5fb_100%)] px-5 py-5 shadow-[0_22px_46px_rgba(15,23,42,0.1)] sm:px-6">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-300 via-sky-400 to-indigo-500" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
 
           <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
             <div>
               <span className="mb-2 inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold tracking-wide text-sky-800">
                 Řídicí panel
               </span>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                Admin
-              </h1>
-              <p className="mt-1 text-sm text-slate-600">
-                Správa interních akcí a uživatelů.
-              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                  Admin
+                </h1>
+                {isAllowedAdmin ? (
+                  <div className="flex w-fit max-w-full flex-wrap gap-1 overflow-x-auto rounded-full border border-slate-300 bg-white p-1 shadow-[0_10px_24px_rgba(15,23,42,0.1)]">
+                    <button
+                      type="button"
+                      onClick={() => setActiveAdminSection("requests")}
+                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                        activeAdminSection === "requests"
+                          ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
+                    >
+                      Žádosti
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveAdminSection("createUser")}
+                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                        activeAdminSection === "createUser"
+                          ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
+                    >
+                      Přidat uživatele
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveAdminSection("subscriptions")}
+                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                        activeAdminSection === "subscriptions"
+                          ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
+                    >
+                      Předplatné
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
             {isAllowedAdmin && activeAdminSection === "requests" ? (
               <button
@@ -1143,42 +1179,6 @@ export default function AdminRequestsPage() {
             </div>
           ) : (
             <>
-              <div className="mb-4 flex w-fit max-w-full flex-wrap gap-1 overflow-x-auto rounded-full border border-slate-300 bg-white p-1 shadow-[0_10px_24px_rgba(15,23,42,0.1)]">
-                <button
-                  type="button"
-                  onClick={() => setActiveAdminSection("requests")}
-                  className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                    activeAdminSection === "requests"
-                      ? "bg-slate-900 text-white shadow-[0_8px_18px_rgba(15,23,42,0.2)]"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}
-                >
-                  Žádosti
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveAdminSection("createUser")}
-                  className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                    activeAdminSection === "createUser"
-                      ? "bg-slate-900 text-white shadow-[0_8px_18px_rgba(15,23,42,0.2)]"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}
-                >
-                  Přidat uživatele
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveAdminSection("subscriptions")}
-                  className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                    activeAdminSection === "subscriptions"
-                      ? "bg-slate-900 text-white shadow-[0_8px_18px_rgba(15,23,42,0.2)]"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}
-                >
-                  Předplatné
-                </button>
-              </div>
-
               {activeAdminSection === "requests" ? (
                 <div className="grid items-start gap-5 xl:grid-cols-[260px_minmax(0,1fr)]">
                   <aside className="space-y-2 xl:sticky xl:top-24">
@@ -1674,7 +1674,7 @@ export default function AdminRequestsPage() {
 
         {isAllowedAdmin && activeAdminSection === "createUser" ? (
           <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(170deg,#ffffff_0%,#f8fbff_55%,#eff5fb_100%)] px-5 py-5 shadow-[0_22px_46px_rgba(15,23,42,0.1)] sm:px-6">
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-300 via-cyan-400 to-emerald-400" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <span className="mb-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold tracking-wide text-emerald-800">
@@ -1810,16 +1810,16 @@ export default function AdminRequestsPage() {
                         onClick={() => setNewUserMode(m.id)}
                         className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
                           active
-                            ? "border border-slate-900 bg-white text-slate-900 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
+                            ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_6px_16px_rgba(5,150,105,0.34)]"
                             : "border border-transparent text-slate-600 hover:text-slate-900"
                         }`}
                         role="radio"
                         aria-checked={active}
                       >
                         {isAccelerated ? (
-                          <Zap size={14} strokeWidth={2.2} className={active ? "text-amber-500" : "text-amber-600"} aria-hidden="true" />
+                          <Zap size={14} strokeWidth={2.2} className={active ? "!text-white" : "text-amber-600"} aria-hidden="true" />
                         ) : (
-                          <Snail size={14} strokeWidth={2.2} className={active ? "text-slate-600" : "text-slate-500"} aria-hidden="true" />
+                          <Snail size={14} strokeWidth={2.2} className={active ? "!text-white" : "text-slate-500"} aria-hidden="true" />
                         )}
                         {m.label}
                       </button>
@@ -1849,7 +1849,7 @@ export default function AdminRequestsPage() {
                 <button
                   type="submit"
                   disabled={createUserBusy}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-700 bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <UserPlus size={15} strokeWidth={2.2} aria-hidden="true" />
                   {createUserBusy ? "Vytvářím..." : "Vytvořit uživatele"}
@@ -1861,7 +1861,7 @@ export default function AdminRequestsPage() {
 
         {isAllowedAdmin && activeAdminSection === "subscriptions" ? (
           <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(170deg,#ffffff_0%,#f8fbff_55%,#eff5fb_100%)] px-5 py-5 shadow-[0_22px_46px_rgba(15,23,42,0.1)] sm:px-6">
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-300 via-orange-400 to-rose-400" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
             <div className="mb-4">
               <span className="mb-2 inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold tracking-wide text-amber-800">
                 Fakturace
@@ -1877,7 +1877,7 @@ export default function AdminRequestsPage() {
 
             <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
               <aside className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(160deg,#ffffff_0%,#f8fbff_52%,#eef4ff_100%)] p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
-                <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-slate-900" />
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-slate-900">Adresář předplatného</h3>
                   <button
@@ -2232,7 +2232,7 @@ export default function AdminRequestsPage() {
                 </div>
 
                 <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
-                  <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-slate-900" />
+                  <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
                   <h3 className="mb-2 text-sm font-semibold text-slate-900">Historie plateb</h3>
                   {(subscriptionData.payments ?? []).length === 0 ? (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
