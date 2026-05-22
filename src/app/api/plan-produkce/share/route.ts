@@ -39,6 +39,12 @@ const normalizeEmail = (value: unknown): string =>
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
+const clampText = (value: unknown, maxLen: number): string => {
+  const text = normalizeText(value);
+  if (!text) return "";
+  return text.length > maxLen ? text.slice(0, maxLen) : text;
+};
+
 const nameFromEmail = (email: string): string => {
   const local = email.split("@")[0] ?? "";
   const parts = local.split(/[.\-_]/).filter(Boolean);
@@ -204,6 +210,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => null)) as
       | {
           recipientEmail?: unknown;
+          noteText?: unknown;
           plan?: unknown;
         }
       | null;
@@ -231,10 +238,12 @@ export async function POST(req: NextRequest) {
     }
 
     const plan = parsePlanSnapshot(body?.plan);
+    const noteText = clampText(body?.noteText, 240);
     const senderName = await resolveSenderName(ctx.email, ctx.uid);
+    const withNote = noteText ? ` Zpráva: ${noteText}` : "";
     const bodyText = `${senderName} ti sdílel(a) plán produkce. Odhad okamžité provize: ${formatMoney(
       plan.totalImmediate
-    )}.`;
+    )}.${withNote}`;
 
     const { written } = await writeMailboxEntries({
       recipientEmails: [recipient.email],
@@ -245,6 +254,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         senderEmail: ctx.email,
         senderName,
+        noteText,
         lifeContracts: plan.lifeContracts,
         lifePremium: Math.round(plan.lifePremium),
         autoContracts: plan.autoContracts,
@@ -268,6 +278,7 @@ export async function POST(req: NextRequest) {
         mailboxDirection: "sent",
         recipientEmail: recipient.email,
         recipientName: recipient.name,
+        noteText,
         lifeContracts: plan.lifeContracts,
         lifePremium: Math.round(plan.lifePremium),
         autoContracts: plan.autoContracts,

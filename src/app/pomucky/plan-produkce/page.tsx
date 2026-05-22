@@ -53,6 +53,7 @@ function parseNumber(text: string): number {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SHARE_EMOJIS = ["🙂", "👏", "🔥", "💪", "🚀", "✅", "🎯"];
 
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -178,6 +179,7 @@ export default function PlanProdukcePage() {
   const [shareSuggestionsLoading, setShareSuggestionsLoading] = useState(false);
   const [shareSelectedRecipient, setShareSelectedRecipient] = useState<RecipientOption | null>(null);
   const [shareUseDirectManager, setShareUseDirectManager] = useState(false);
+  const [shareMessageText, setShareMessageText] = useState("");
   const [shareSubmitting, setShareSubmitting] = useState(false);
   const [shareErrorText, setShareErrorText] = useState<string | null>(null);
   const [shareSuccessText, setShareSuccessText] = useState<string | null>(null);
@@ -882,6 +884,7 @@ export default function PlanProdukcePage() {
     setShareSuggestions([]);
     setShareSuggestionsLoading(false);
     setShareUseDirectManager(false);
+    setShareMessageText("");
   };
 
   const closeShareModal = () => {
@@ -894,6 +897,7 @@ export default function PlanProdukcePage() {
     setShareSelectedRecipient(null);
     setShareRecipientQuery("");
     setShareErrorText(null);
+    setShareMessageText("");
   };
 
   const handleSelectSuggestion = (recipient: RecipientOption) => {
@@ -921,6 +925,10 @@ export default function PlanProdukcePage() {
 
     setShareSelectedRecipient(null);
     setShareRecipientQuery("");
+  };
+
+  const appendShareEmoji = (emoji: string) => {
+    setShareMessageText((prev) => `${prev}${emoji}`);
   };
 
   const handleSharePlan = async () => {
@@ -956,6 +964,7 @@ export default function PlanProdukcePage() {
           method: "POST",
           body: JSON.stringify({
             recipientEmail: recipient.email,
+            noteText: shareMessageText,
             plan: {
               lifeContracts: estimates.lifeCount,
               lifePremium: parseNumber(lifePremium),
@@ -980,6 +989,7 @@ export default function PlanProdukcePage() {
       setShareRecipientQuery("");
       setShareSuggestions([]);
       setShareSuggestionsLoading(false);
+      setShareMessageText("");
     } catch (err: any) {
       setShareErrorText(err?.message || "Plán se nepodařilo odeslat.");
     } finally {
@@ -1054,7 +1064,7 @@ export default function PlanProdukcePage() {
         </div>
 
         <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] space-y-2">
-          <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-amber-400" />
+          <span className="absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#0b1220_0%,#15356b_52%,#2d5ea7_100%)]" />
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-slate-600">
@@ -1342,6 +1352,38 @@ export default function PlanProdukcePage() {
                     </div>
                   )}
 
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="plan-share-message"
+                      className="block text-xs font-semibold uppercase tracking-[0.14em] text-slate-600"
+                    >
+                      Text zprávy (volitelné)
+                    </label>
+                    <textarea
+                      id="plan-share-message"
+                      value={shareMessageText}
+                      onChange={(e) => setShareMessageText(e.target.value)}
+                      rows={3}
+                      maxLength={240}
+                      placeholder="Napiš krátký vzkaz k plánu…"
+                      className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-slate-500">Emoji:</span>
+                      {SHARE_EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => appendShareEmoji(emoji)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-base transition hover:border-slate-300 hover:bg-slate-50"
+                          aria-label={`Přidat emoji ${emoji}`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {shareErrorText && (
                     <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
                       {shareErrorText}
@@ -1402,21 +1444,21 @@ function PlanCard({
 }) {
   const toneStyles = {
     emerald: {
-      strip: "bg-emerald-400",
+      strip: "bg-[linear-gradient(90deg,#0b1220_0%,#132c58_52%,#1d4c8f_100%)]",
       focus: "focus:ring-emerald-500 focus:border-emerald-500",
       metric: "text-emerald-700",
       summaryBorder: "border-emerald-100",
       summaryBg: "bg-emerald-50/40",
     },
     sky: {
-      strip: "bg-sky-400",
+      strip: "bg-[linear-gradient(90deg,#0b1220_0%,#163567_52%,#285fb0_100%)]",
       focus: "focus:ring-sky-500 focus:border-sky-500",
       metric: "text-sky-700",
       summaryBorder: "border-sky-100",
       summaryBg: "bg-sky-50/40",
     },
     amber: {
-      strip: "bg-amber-400",
+      strip: "bg-[linear-gradient(90deg,#0b1220_0%,#1c3a66_52%,#3a6fb4_100%)]",
       focus: "focus:ring-amber-500 focus:border-amber-500",
       metric: "text-amber-700",
       summaryBorder: "border-amber-100",
@@ -1426,7 +1468,7 @@ function PlanCard({
 
   return (
     <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_30px_rgba(15,23,42,0.08)] space-y-4">
-      <span className={`absolute inset-x-0 top-0 h-1 ${toneStyles.strip}`} />
+      <span className={`absolute inset-x-0 top-0 h-1.5 ${toneStyles.strip}`} />
       <div className="pt-1 text-center">
         <h2 className="text-2xl font-semibold text-slate-900">{title}</h2>
       </div>

@@ -58,6 +58,10 @@ const buildSharedPlanPreviewHtml = (item: MailboxItem): string | null => {
   const propertyContracts = parseNonNegativeInt(metadata.propertyContracts);
   const propertyPremium = parseNonNegativeNumber(metadata.propertyPremium);
   const totalImmediate = parseNonNegativeNumber(metadata.totalImmediate);
+  const noteText =
+    typeof metadata.noteText === "string" && metadata.noteText.trim().length > 0
+      ? metadata.noteText.trim()
+      : "";
 
   const rows = [
     {
@@ -147,6 +151,16 @@ const buildSharedPlanPreviewHtml = (item: MailboxItem): string | null => {
             font-size: 30px;
             font-weight: 800;
           }
+          .note {
+            margin-top: 10px;
+            border-radius: 12px;
+            border: 1px solid #d7e3f4;
+            background: #f7fbff;
+            padding: 10px 12px;
+            font-size: 13px;
+            color: #1f355d;
+            white-space: pre-wrap;
+          }
           .card {
             margin-top: 12px;
             padding: 14px;
@@ -208,6 +222,8 @@ const buildSharedPlanPreviewHtml = (item: MailboxItem): string | null => {
             <div class="kpi-label">Odhad okamžité provize</div>
             <div class="kpi-value">${escapeHtml(formatMoney(totalImmediate))}</div>
           </div>
+
+          ${noteText ? `<div class="note"><strong>Poznámka:</strong> ${escapeHtml(noteText)}</div>` : ""}
 
           <div class="card">
             <p class="title">Souhrn vstupních sekcí</p>
