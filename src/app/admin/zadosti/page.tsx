@@ -1879,7 +1879,10 @@ export default function AdminRequestsPage() {
               <aside className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(160deg,#ffffff_0%,#f8fbff_52%,#eef4ff_100%)] p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
                 <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-slate-900">Adresář předplatného</h3>
+                  <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                    <Inbox size={14} strokeWidth={2.1} className="text-slate-500" aria-hidden="true" />
+                    Adresář předplatného
+                  </h3>
                   <button
                     type="button"
                     onClick={() => void loadSubscriptionDirectory()}
@@ -1892,29 +1895,41 @@ export default function AdminRequestsPage() {
                 </div>
 
                 <div className="mb-3 grid grid-cols-2 gap-2">
-                  <div className="rounded-xl border border-slate-300 bg-slate-100 px-2.5 py-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                      Celkem
+                  <div className="rounded-xl border border-slate-300 bg-slate-100 px-2.5 py-2 shadow-[0_6px_14px_rgba(15,23,42,0.08)]">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                        Celkem
+                      </div>
+                      <Inbox size={14} strokeWidth={2.1} className="text-slate-500" aria-hidden="true" />
                     </div>
-                    <div className="mt-1 text-lg font-bold text-slate-900">{subscriptionDirectoryStats.total}</div>
+                    <div className="mt-1.5 text-xl font-bold text-slate-900">{subscriptionDirectoryStats.total}</div>
                   </div>
-                  <div className="rounded-xl border border-rose-700 bg-rose-600 px-2.5 py-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-100">
-                      Po splatnosti
+                  <div className="rounded-xl border border-rose-700 bg-rose-600 px-2.5 py-2 shadow-[0_8px_18px_rgba(225,29,72,0.3)]">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-100">
+                        Po splatnosti
+                      </div>
+                      <Clock3 size={14} strokeWidth={2.1} className="text-rose-100" aria-hidden="true" />
                     </div>
-                    <div className="mt-1 text-lg font-bold text-white">{subscriptionDirectoryStats.overdue}</div>
+                    <div className="mt-1.5 text-xl font-bold text-white">{subscriptionDirectoryStats.overdue}</div>
                   </div>
-                  <div className="rounded-xl border border-orange-700 bg-orange-500 px-2.5 py-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-50">
-                      Brzy končí
+                  <div className="rounded-xl border border-orange-700 bg-orange-500 px-2.5 py-2 shadow-[0_8px_18px_rgba(249,115,22,0.3)]">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-50">
+                        Brzy končí
+                      </div>
+                      <RefreshCcw size={14} strokeWidth={2.1} className="text-orange-50" aria-hidden="true" />
                     </div>
-                    <div className="mt-1 text-lg font-bold text-white">{subscriptionDirectoryStats.dueSoon}</div>
+                    <div className="mt-1.5 text-xl font-bold text-white">{subscriptionDirectoryStats.dueSoon}</div>
                   </div>
-                  <div className="rounded-xl border border-emerald-700 bg-emerald-600 px-2.5 py-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-50">
-                      Aktivní
+                  <div className="rounded-xl border border-emerald-700 bg-emerald-600 px-2.5 py-2 shadow-[0_8px_18px_rgba(5,150,105,0.32)]">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-50">
+                        Aktivní
+                      </div>
+                      <Check size={14} strokeWidth={2.4} className="text-emerald-50" aria-hidden="true" />
                     </div>
-                    <div className="mt-1 text-lg font-bold text-white">{subscriptionDirectoryStats.active}</div>
+                    <div className="mt-1.5 text-xl font-bold text-white">{subscriptionDirectoryStats.active}</div>
                   </div>
                 </div>
 
@@ -1930,12 +1945,19 @@ export default function AdminRequestsPage() {
                         key={filterOption.id}
                         type="button"
                         onClick={() => setSubscriptionDirectoryFilter(filterOption.id)}
-                        className={`inline-flex flex-1 items-center justify-center rounded-xl px-2 py-1.5 text-[11px] font-semibold transition ${
+                        className={`inline-flex flex-1 items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-[11px] font-semibold transition ${
                           active
-                            ? "border border-slate-900 bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.2)]"
+                            ? "border border-emerald-600 bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] text-white shadow-[0_10px_18px_rgba(5,150,105,0.28)]"
                             : "border border-transparent text-slate-600 hover:text-slate-900"
                         }`}
                       >
+                        {filterOption.id === "all" ? (
+                          <Inbox size={12} strokeWidth={2.2} aria-hidden="true" />
+                        ) : filterOption.id === "overdue" ? (
+                          <Clock3 size={12} strokeWidth={2.2} aria-hidden="true" />
+                        ) : (
+                          <RefreshCcw size={12} strokeWidth={2.2} aria-hidden="true" />
+                        )}
                         {filterOption.label}
                       </button>
                     );
@@ -1990,6 +2012,7 @@ export default function AdminRequestsPage() {
                         ? formatDaysUntilDue(row.flags?.daysUntilDue)
                         : "";
                       const title = row.fullName || nameFromEmail(row.email);
+                      const avatarInitial = (title.trim().charAt(0) || row.email.charAt(0)).toUpperCase();
 
                       return (
                         <button
@@ -2010,32 +2033,46 @@ export default function AdminRequestsPage() {
                           {selected ? (
                             <span className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-emerald-400" />
                           ) : null}
-                          <div className="truncate text-sm font-semibold">{title}</div>
-                          <div
-                            className={`truncate text-xs ${
-                              selected ? "text-slate-600" : "text-slate-500"
-                            }`}
-                          >
-                            {row.email}
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-1.5">
+                          <div className="flex items-start gap-2">
                             <span
-                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${stateClass}`}
+                              className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
+                                selected
+                                  ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                                  : "border-slate-300 bg-slate-100 text-slate-700"
+                              }`}
                             >
-                              {stateLabel}
+                              {avatarInitial}
                             </span>
-                            <span
-                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${planClass}`}
-                            >
-                              {planLabel}
-                            </span>
-                            {dueSoonLabel ? (
-                              <span
-                                className="rounded-full border border-orange-600 bg-orange-500 px-2 py-0.5 text-[10px] font-semibold text-white"
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-semibold">{title}</div>
+                              <div
+                                className={`truncate text-xs ${
+                                  selected ? "text-slate-600" : "text-slate-500"
+                                }`}
                               >
-                                {dueSoonLabel}
-                              </span>
-                            ) : null}
+                                {row.email}
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                <span
+                                  className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${stateClass}`}
+                                >
+                                  {stateLabel}
+                                </span>
+                                <span
+                                  className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${planClass}`}
+                                >
+                                  {planLabel}
+                                </span>
+                                {dueSoonLabel ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 rounded-full border border-orange-600 bg-orange-500 px-2 py-0.5 text-[10px] font-semibold text-white"
+                                  >
+                                    <Clock3 size={10} strokeWidth={2.4} aria-hidden="true" />
+                                    {dueSoonLabel}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
                           </div>
                         </button>
                       );
@@ -2049,7 +2086,10 @@ export default function AdminRequestsPage() {
                   <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-slate-900" />
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Detail</div>
+                      <div className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                        <UserCheck2 size={12} strokeWidth={2.2} aria-hidden="true" />
+                        Detail
+                      </div>
                       <div className="mt-1 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
                         {subscriptionData?.user?.fullName ||
                           subscriptionData?.user?.email ||
@@ -2085,7 +2125,8 @@ export default function AdminRequestsPage() {
 
                 <div className="grid gap-3 rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    <label className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      <Landmark size={12} strokeWidth={2.2} className="text-slate-500" aria-hidden="true" />
                       Tarif
                     </label>
                     <select
@@ -2106,7 +2147,8 @@ export default function AdminRequestsPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    <label className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      <Clock3 size={12} strokeWidth={2.2} className="text-slate-500" aria-hidden="true" />
                       Začátek období (volitelné)
                     </label>
                     <input
@@ -2118,7 +2160,8 @@ export default function AdminRequestsPage() {
                   </div>
 
                   <div className="space-y-1.5 lg:col-span-2">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    <label className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      <Copy size={12} strokeWidth={2.2} className="text-slate-500" aria-hidden="true" />
                       Poznámka
                     </label>
                     <input
@@ -2135,16 +2178,18 @@ export default function AdminRequestsPage() {
                       type="button"
                       onClick={() => void handleAddSubscriptionPayment()}
                       disabled={subscriptionLookupLoading}
-                      className="inline-flex items-center justify-center rounded-2xl border border-emerald-500/80 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(5,150,105,0.28)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-emerald-500/80 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(5,150,105,0.28)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
                     >
+                      <Check size={14} strokeWidth={2.4} aria-hidden="true" />
                       {subscriptionPlanDraft === "unlimited" ? "Nastavit neomezený" : "Zapsat platbu"}
                     </button>
                     <button
                       type="button"
                       onClick={() => void handleSetSubscriptionUnpaid()}
                       disabled={subscriptionLookupLoading}
-                      className="inline-flex items-center justify-center rounded-2xl border border-rose-500/80 bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(225,29,72,0.3)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-rose-500/80 bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(225,29,72,0.3)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
                     >
+                      <X size={14} strokeWidth={2.4} aria-hidden="true" />
                       Označit nezaplaceno
                     </button>
                   </div>
@@ -2172,7 +2217,7 @@ export default function AdminRequestsPage() {
 
                 {subscriptionData?.subscription ? (
                   <div className="space-y-3">
-                <div className="rounded-3xl border border-slate-200 bg-slate-50/50 p-3">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50/50 p-3 shadow-[0_6px_16px_rgba(15,23,42,0.05)]">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold text-slate-900">
@@ -2204,7 +2249,10 @@ export default function AdminRequestsPage() {
                   </div>
                   <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-700 sm:grid-cols-3">
                     <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Tarif</div>
+                      <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                        <Landmark size={11} strokeWidth={2.2} aria-hidden="true" />
+                        Tarif
+                      </div>
                       <div className="mt-1 font-semibold text-slate-900">
                         {subscriptionData.subscription.plan &&
                         subscriptionData.subscription.plan in SUBSCRIPTION_PLAN_LABELS
@@ -2215,13 +2263,19 @@ export default function AdminRequestsPage() {
                       </div>
                     </div>
                     <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Od</div>
+                      <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                        <Clock3 size={11} strokeWidth={2.2} aria-hidden="true" />
+                        Od
+                      </div>
                       <div className="mt-1 font-semibold text-slate-900">
                         {formatIsoDay(subscriptionData.subscription.paidFrom)}
                       </div>
                     </div>
                     <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Do</div>
+                      <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                        <Clock3 size={11} strokeWidth={2.2} aria-hidden="true" />
+                        Do
+                      </div>
                       <div className="mt-1 font-semibold text-slate-900">
                         {subscriptionData.subscription.plan === "unlimited"
                           ? "Neomezeně"
@@ -2233,7 +2287,10 @@ export default function AdminRequestsPage() {
 
                 <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
                   <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
-                  <h3 className="mb-2 text-sm font-semibold text-slate-900">Historie plateb</h3>
+                  <h3 className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                    <RefreshCcw size={14} strokeWidth={2.1} className="text-slate-600" aria-hidden="true" />
+                    Historie plateb
+                  </h3>
                   {(subscriptionData.payments ?? []).length === 0 ? (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
                       Zatím bez plateb.
