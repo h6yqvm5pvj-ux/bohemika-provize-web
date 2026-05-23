@@ -35,6 +35,24 @@ export function monthsBetweenPayments(freq?: PaymentFrequency | null): number {
   }
 }
 
+function normalizeStornoStatus(status: unknown): "active" | "storno" {
+  if (typeof status !== "string") return "active";
+  const normalized = status.trim().toLowerCase();
+  return normalized === "storno" ||
+    normalized === "stornovana" ||
+    normalized === "stornována"
+    ? "storno"
+    : "active";
+}
+
+function monthSerial(value: Date): number {
+  return value.getFullYear() * 12 + value.getMonth();
+}
+
+function isFromStornoMonth(date: Date, stornoDate: Date): boolean {
+  return monthSerial(date) >= monthSerial(stornoDate);
+}
+
 export function generateCashflow(
   entries: EntryDoc[],
   horizonYears = 10
@@ -54,7 +72,7 @@ export function generateCashflow(
     const normalizedOwnerEmail = ownerEmail
       ? ownerEmail.toLowerCase()
       : null;
-    const status = (entry.status ?? "").toString().trim().toLowerCase();
+    const status = normalizeStornoStatus(entry.status);
     const isStorno = status === "storno";
     const parsedStornoDate = toDate(entry.stornoDate);
     const stornoCutoffDate = isStorno ? parsedStornoDate ?? now : null;
@@ -114,7 +132,7 @@ export function generateCashflow(
     ) => {
       if (!Number.isFinite(amount) || amount === 0) return;
       if (date > horizonLimit) return;
-      if (stornoCutoffDate && date.getTime() > stornoCutoffDate.getTime()) return;
+      if (stornoCutoffDate && isFromStornoMonth(date, stornoCutoffDate)) return;
 
       out.push({
         id: `${entry.id}-${date.getTime()}-${note ?? ""}-${globalItemSequence++}`,

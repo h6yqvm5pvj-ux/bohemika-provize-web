@@ -2495,8 +2495,19 @@ const tipPayoutSourceKey = (ownerEmail: string, entryId: string): string =>
 
 const normalizeContractStatusForTip = (status: unknown): "active" | "storno" => {
   if (typeof status !== "string") return "active";
-  return status.trim().toLowerCase() === "storno" ? "storno" : "active";
+  const normalized = status.trim().toLowerCase();
+  return normalized === "storno" ||
+    normalized === "stornovana" ||
+    normalized === "stornována"
+    ? "storno"
+    : "active";
 };
+
+const monthSerial = (value: Date): number =>
+  value.getFullYear() * 12 + value.getMonth();
+
+const isFromStornoMonth = (payoutDate: Date, stornoDate: Date): boolean =>
+  monthSerial(payoutDate) >= monthSerial(stornoDate);
 
 const resolveTipAmountFirstYear = ({
   entry,
@@ -2585,7 +2596,7 @@ const buildTipPayoutOccurrences = ({
       firstPayoutDate.getMonth() + stepMonths * index,
       firstPayoutDate.getDate()
     );
-    if (stornoCutoffDate && payoutDate.getTime() > stornoCutoffDate.getTime()) {
+    if (stornoCutoffDate && isFromStornoMonth(payoutDate, stornoCutoffDate)) {
       continue;
     }
 
