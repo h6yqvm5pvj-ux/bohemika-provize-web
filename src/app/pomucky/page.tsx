@@ -432,7 +432,7 @@ export default function ToolsPage() {
       {
         key: "katastr",
         category: "Pojištění majetku",
-        title: "Katastr nemovitostí",
+        title: "Nahlížení do katastru nemovitostí",
         description: "Vyhledej údaje z CUZK podle kódu adresního místa (RÚIAN) s autorizací přes tvůj účet.",
         icon: Home,
         href: "/cuzk",

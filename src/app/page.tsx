@@ -132,7 +132,6 @@ const HOME_LAYOUT_DEFAULT: HomeSection[] = [
   "goal",
   "leaderboard",
   "quickActions",
-  "chart",
 ];
 const PERFORMANCE_DEFAULT: PerformanceMode = "default";
 const QUICK_ACTIONS_DEFAULT: QuickAction[] = [];
@@ -148,7 +147,7 @@ const QUICK_ACTION_OPTIONS: QuickAction[] = [
   { key: "export-produkce", title: "Export produkce", href: "/pomucky/export-produkce", category: "Finance" },
   { key: "plan-produkce", title: "Plán produkce", href: "/pomucky/plan-produkce", category: "Finance" },
   { key: "zlato", title: "Zlato", href: "/pomucky/zlato", category: "Investice" },
-  { key: "katastr", title: "Katastr nemovitostí", href: "/cuzk", category: "Pojištění majetku" },
+  { key: "katastr", title: "Nahlížení do katastru nemovitostí", href: "/cuzk", category: "Pojištění majetku" },
   { key: "proklepka-vozidla", title: "Proklepka vozidla", href: "/pomucky/proklepka-vozidla", category: "Pojištění vozidel" },
   { key: "naceneni-celniho-skla", title: "Nacenění čelního skla", href: "/pomucky/naceneni-celniho-skla", category: "Pojištění vozidel" },
   { key: "projekce-vykonu", title: "Projekce výkonu", href: "/pomucky/projekce-vykonu", category: "Finance" },
@@ -311,8 +310,8 @@ export default function HomePage() {
     historyLoading,
   } = useHomeData({
     email: normalizedEmail,
-    loadPersonalHistory: homeWidgets.productionChart,
-    loadTeamHistory: homeWidgets.productionChart || homeWidgets.teamLeaderboard,
+    loadPersonalHistory: false,
+    loadTeamHistory: homeWidgets.teamLeaderboard,
   });
   const { loading: cashflowLoading, cashflowItems } = useCashflowData({
     userEmail: normalizedEmail,
@@ -718,7 +717,7 @@ export default function HomePage() {
   const showExpectedPayoutSection = shouldLoadExpectedPayout;
   const showMonthlyGoalSection = homeWidgets.monthlyGoal;
   const showLeaderboardSection = showTeamBox && homeWidgets.teamLeaderboard;
-  const showChartSection = homeWidgets.productionChart;
+  const showChartSection = false;
   const showGoldWidget = homeWidgets.goldWidget;
   const showQuickActions = homeWidgets.quickActions;
   const reorderEnabled = widgetPanelOpen;
@@ -1254,7 +1253,7 @@ export default function HomePage() {
               ) : null}
             </Link>
 
-            <div className="relative">
+            <div className="relative z-[120]">
               <button
                 type="button"
                 onClick={() => setWidgetPanelOpen((prev) => !prev)}
@@ -1266,7 +1265,7 @@ export default function HomePage() {
               </button>
 
               {widgetPanelOpen && (
-                <div className="absolute right-0 z-20 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                <div className="absolute right-0 z-[130] mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
                   <div className="flex items-center justify-between gap-2 pb-2">
                     <div className="text-sm font-semibold text-slate-900">
                       Přizpůsobení domova
@@ -1294,7 +1293,6 @@ export default function HomePage() {
                         note: "Jen pro manažery s týmem",
                       },
                       { key: "quickActions", label: "Rychlé akce (pomůcky)", disabled: false },
-                      { key: "productionChart", label: "Graf produkce", disabled: false },
                     ].map((opt) => {
                     const checked = homeWidgets[opt.key as keyof HomeWidgets];
                     const disabled = opt.disabled;

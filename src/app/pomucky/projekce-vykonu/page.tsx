@@ -172,10 +172,10 @@ function projectNeon(
   if (po3) res.push({ date: annPlusYears(3), amount: po3.amount * stornoFactor(3) });
   if (po4) res.push({ date: annPlusYears(4), amount: po4.amount * stornoFactor(4) });
   if (nasl25) {
-    for (let y = 2; y <= 5; y++) res.push({ date: annPlusYears(y), amount: nasl25.amount * stornoFactor(y) });
+    for (let y = 1; y <= 4; y++) res.push({ date: annPlusYears(y), amount: nasl25.amount * stornoFactor(y) });
   }
   if (nasl510) {
-    for (let y = 5; y <= 10; y++) res.push({ date: annPlusYears(y), amount: nasl510.amount * stornoFactor(y) });
+    for (let y = 4; y <= 9; y++) res.push({ date: annPlusYears(y), amount: nasl510.amount * stornoFactor(y) });
   }
   return res;
 }

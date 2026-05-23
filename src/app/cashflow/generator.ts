@@ -162,12 +162,14 @@ export function generateCashflow(
 
         const maxYears = Math.max(1, entry.durationYears ?? 10);
         if (nasl25) {
-          for (let year = 2; year <= 5 && year <= maxYears; year++) {
+          // ČPP NEON: položka "2.–5. rok" se v praxi vyplácí už od 1. výročí.
+          for (let year = 1; year <= 4 && year <= maxYears; year++) {
             pushItem(nasl25.amount, annPlusYears(year), "ročně");
           }
         }
         if (nasl510) {
-          for (let year = 5; year <= 10 && year <= maxYears; year++) {
+          // Stejné posunutí o 1 rok i pro blok "5.–10. rok".
+          for (let year = 4; year <= 9 && year <= maxYears; year++) {
             pushItem(nasl510.amount, annPlusYears(year), "ročně");
           }
         }
