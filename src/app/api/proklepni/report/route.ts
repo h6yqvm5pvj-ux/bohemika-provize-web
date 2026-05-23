@@ -66,6 +66,7 @@ type ProklepniInspectionRow = {
   trvani_min?: unknown;
   defect_count?: unknown;
   worst_severity?: unknown;
+  same_day_group_id?: unknown;
 };
 
 type ProklepniOwnerRow = {
@@ -393,11 +394,23 @@ function extractInitialDataArrays(joinedPayload: string, max = 12): unknown[][] 
     const markerIdx = joinedPayload.indexOf(marker, cursor);
     if (markerIdx < 0) break;
 
-    const start = joinedPayload.indexOf("[", markerIdx + marker.length);
-    if (start < 0) break;
+    let valueStart = markerIdx + marker.length;
+    while (valueStart < joinedPayload.length && /\s/.test(joinedPayload[valueStart] ?? "")) {
+      valueStart += 1;
+    }
 
-    const raw = sliceBalanced(joinedPayload, start, "[", "]");
-    if (!raw) break;
+    // Newer Proklepni payloads can store initialData as a string reference.
+    // We only parse direct array payloads and skip everything else.
+    if (joinedPayload[valueStart] !== "[") {
+      cursor = valueStart + 1;
+      continue;
+    }
+
+    const raw = sliceBalanced(joinedPayload, valueStart, "[", "]");
+    if (!raw) {
+      cursor = valueStart + 1;
+      continue;
+    }
 
     try {
       const parsed = JSON.parse(raw) as unknown;
@@ -406,7 +419,7 @@ function extractInitialDataArrays(joinedPayload: string, max = 12): unknown[][] 
       // ignore malformed array
     }
 
-    cursor = start + raw.length;
+    cursor = valueStart + raw.length;
   }
 
   return out;
@@ -415,7 +428,10 @@ function extractInitialDataArrays(joinedPayload: string, max = 12): unknown[][] 
 function looksLikeOdometerRow(value: unknown): value is ProklepniOdometerRow {
   const row = readObject(value);
   if (!row) return false;
-  return "odometr_km" in row || "delta_km" in row;
+  const hasCore = "datum" in row && "odometr_km" in row;
+  const hasDeltaOrQuality = "delta_km" in row || "delta_days" in row || "quality" in row;
+  const looksLikeInspection = "stanice_cislo" in row || "druh_prohlidky" in row || "defect_count" in row;
+  return hasCore && hasDeltaOrQuality && !looksLikeInspection;
 }
 
 function looksLikeInspectionRow(value: unknown): value is ProklepniInspectionRow {
@@ -457,12 +473,13 @@ function pickInitialDataArrays(arrays: unknown[][]): {
     if (!arr.length) continue;
     const sample = arr[0];
 
-    if (!picked.odometer.length && looksLikeOdometerRow(sample)) {
-      picked.odometer = arr.filter(looksLikeOdometerRow);
-      continue;
-    }
+    // STK arrays also contain odometer values; prefer explicit inspection mapping first.
     if (!picked.inspections.length && looksLikeInspectionRow(sample)) {
       picked.inspections = arr.filter(looksLikeInspectionRow);
+      continue;
+    }
+    if (!picked.odometer.length && looksLikeOdometerRow(sample)) {
+      picked.odometer = arr.filter(looksLikeOdometerRow);
       continue;
     }
     if (!picked.owners.length && looksLikeOwnerRow(sample)) {
@@ -744,6 +761,7 @@ export async function GET(req: NextRequest) {
       durationMin: toInt(row.trvani_min),
       defectCount: toInt(row.defect_count),
       worstSeverity: safeText(row.worst_severity),
+      sameDayGroupId: safeText(row.same_day_group_id),
     }));
 
     const owners = arrays.owners.map((row) => ({

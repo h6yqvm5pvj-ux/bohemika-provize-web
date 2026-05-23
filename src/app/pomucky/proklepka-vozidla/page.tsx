@@ -180,6 +180,7 @@ type ProklepniReportInspectionRow = {
   durationMin?: unknown;
   defectCount?: unknown;
   worstSeverity?: unknown;
+  sameDayGroupId?: unknown;
 };
 
 type ProklepniReportOwnerRow = {
@@ -754,7 +755,13 @@ function normalizeProklepniOwnerRecords(rows: ProklepniReportOwnerRow[]): OwnerR
 }
 
 function normalizeProklepniStkChecks(rows: ProklepniReportInspectionRow[]): StkCheck[] {
-  const mapped = rows.map((raw, idx) => {
+  type ParsedStkRow = StkCheck & {
+    groupKey: string;
+    _defectCount: number | null;
+    _severity: string;
+  };
+
+  const mapped: ParsedStkRow[] = rows.map((raw, idx) => {
     const row = raw as ProklepniReportInspectionRow;
     const date = parseDateLoose(row.dateIso);
     const mileageRaw = toNumber(row.mileageKm);
@@ -790,6 +797,11 @@ function normalizeProklepniStkChecks(rows: ProklepniReportInspectionRow[]): StkC
     const protocolLabel = safeStr(row.protocolLabel) === "—" ? "Protokol neuveden" : safeStr(row.protocolLabel);
     const defectCount = toNumber(row.defectCount);
     const worstSeverity = safeStr(row.worstSeverity);
+    const sameDayGroupId = safeStr(row.sameDayGroupId);
+    const groupKey =
+      sameDayGroupId !== "—"
+        ? sameDayGroupId
+        : (date?.toISOString().slice(0, 10) ?? `fallback-${idx}`);
 
     return {
       id: `proklepni-stk-${idx}-${protocolLabel}-${formatDateCs(date)}-${mileage ?? "no-km"}`,
@@ -802,16 +814,72 @@ function normalizeProklepniStkChecks(rows: ProklepniReportInspectionRow[]): StkC
       stationLabel,
       protocolLabel,
       sourceLabel,
+      groupKey,
       _defectCount: defectCount,
       _severity: worstSeverity,
     };
   });
 
-  return mapped
+  const groupedMap = new Map<string, ParsedStkRow[]>();
+  for (const row of mapped) {
+    const bucket = groupedMap.get(row.groupKey);
+    if (bucket) bucket.push(row);
+    else groupedMap.set(row.groupKey, [row]);
+  }
+
+  const grouped = Array.from(groupedMap.values()).map((group, idx) => {
+    const primary = [...group].sort((a, b) => {
+      const score = (row: ParsedStkRow) => {
+        let points = 0;
+        if (row.sourceLabel === "STK") points += 2;
+        if (row.stationLabel !== "Stanice neuvedena") points += 1;
+        if (row.protocolLabel !== "Protokol neuveden") points += 1;
+        return points;
+      };
+      return score(b) - score(a);
+    })[0];
+
+    const hasSme = group.some((row) => row.sourceLabel === "SME");
+    const hasStk = group.some((row) => row.sourceLabel === "STK");
+    const sourceLabel = hasSme && hasStk ? "STK + SME" : hasSme ? "SME" : "STK";
+    const typeLabel = group.some((row) => row.typeLabel === "Evidenční") ? "Evidenční" : "Pravidelná";
+    const isPassed = group.every((row) => row.isPassed);
+    const firstFailed = group.find((row) => !row.isPassed);
+    const mileageCandidates = group
+      .map((row) => row.mileageKm)
+      .filter((value): value is number => isPlausibleMileage(value));
+    const mileageKm =
+      mileageCandidates.length > 0 ? Math.max(...mileageCandidates) : primary.mileageKm;
+    const defectCount = group.reduce((sum, row) => sum + (row._defectCount != null && row._defectCount > 0 ? row._defectCount : 0), 0);
+    const severity =
+      group.map((row) => row._severity).find((label) => label && label !== "—") ?? "—";
+
+    return {
+      ...primary,
+      id: `proklepni-stk-group-${idx}-${primary.groupKey}`,
+      mileageKm,
+      typeLabel,
+      isPassed,
+      resultLabel: isPassed ? "Bez závad" : (firstFailed?.resultLabel ?? "Nezpůsobilé"),
+      sourceLabel,
+      stationLabel:
+        group.length > 1 && primary.stationLabel !== "Stanice neuvedena"
+          ? `${primary.stationLabel} (+${group.length - 1})`
+          : primary.stationLabel,
+      protocolLabel:
+        group.length > 1 && primary.protocolLabel !== "Protokol neuveden"
+          ? `${primary.protocolLabel} (+${group.length - 1})`
+          : primary.protocolLabel,
+      _defectCount: defectCount > 0 ? defectCount : null,
+      _severity: severity,
+    } satisfies ParsedStkRow;
+  });
+
+  return grouped
     .sort((a, b) => (b.date?.getTime() ?? -Infinity) - (a.date?.getTime() ?? -Infinity))
     .map((row) => {
-      const defectCount = (row as typeof row & { _defectCount?: number | null })._defectCount;
-      const severity = (row as typeof row & { _severity?: string })._severity;
+      const defectCount = row._defectCount;
+      const severity = row._severity;
       if (!row.isPassed && defectCount != null && defectCount > 0) {
         return {
           ...row,
