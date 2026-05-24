@@ -310,6 +310,15 @@ const INSTITUTION_PORTAL_TARGETS: InstitutionPortalTarget[] = [
     tintClass:
       "bg-[radial-gradient(circle_at_20%_18%,rgba(168,85,247,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(236,72,153,0.16)_0%,transparent_66%)]",
   },
+  {
+    key: "comfort-commodity",
+    label: "Comfort Commodity",
+    href: "https://eshop.comfort-commodity.cz/#/",
+    logoPath: "/icons/cclogo.png",
+    ghostLogoClass: "p-3 scale-[1.08]",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(14,116,144,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(8,145,178,0.16)_0%,transparent_66%)]",
+  },
 ];
 
 function normalizeSearchValue(value: string): string {

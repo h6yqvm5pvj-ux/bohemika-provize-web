@@ -39,19 +39,20 @@ const PERIODS = [
 const DAILY_TARGET_RATIO = 0.4; // min. 40 % poklesu příjmu pokrývá komerční pojištění
 
 export default function PracovniNeschopenkaPage() {
-  const [netIncome, setNetIncome] = useState(30000);
+  const [netIncome, setNetIncome] = useState<number | null>(30000);
   const [calculationOpen, setCalculationOpen] = useState(false);
+  const normalizedNetIncome = netIncome ?? 0;
 
   const recommendedDaily = Math.max(
     0,
-    Math.round((netIncome * DAILY_TARGET_RATIO) / 30)
+    Math.round((normalizedNetIncome * DAILY_TARGET_RATIO) / 30)
   );
   const recommendedMonthly = recommendedDaily * 30;
 
   const results = useMemo(() => {
     return PERIODS.map((p) => {
-      const stateBenefit = Math.round(netIncome * p.rate);
-      const shortfall = Math.max(0, netIncome - stateBenefit);
+      const stateBenefit = Math.round(normalizedNetIncome * p.rate);
+      const shortfall = Math.max(0, normalizedNetIncome - stateBenefit);
       return {
         ...p,
         stateBenefit,
@@ -59,14 +60,15 @@ export default function PracovniNeschopenkaPage() {
         coverage: Math.max(shortfall, recommendedMonthly),
       };
     });
-  }, [netIncome, recommendedMonthly]);
+  }, [normalizedNetIncome, recommendedMonthly]);
 
-  const handleNumber = (val: string, fallback: number) => {
+  const handleNumber = (val: string) => {
+    if (!val.trim()) return null;
     const num = Number(val.replace(",", "."));
-    return Number.isFinite(num) ? num : fallback;
+    return Number.isFinite(num) ? num : null;
   };
 
-  const disabled = netIncome <= 0;
+  const disabled = normalizedNetIncome <= 0;
 
   return (
     <AppLayout active="tools">
@@ -102,9 +104,13 @@ export default function PracovniNeschopenkaPage() {
                   <input
                     type="number"
                     min={0}
-                    value={netIncome}
+                    value={netIncome ?? ""}
                     onChange={(e) => {
-                      const v = handleNumber(e.target.value, netIncome);
+                      const v = handleNumber(e.target.value);
+                      if (v == null) {
+                        setNetIncome(null);
+                        return;
+                      }
                       setNetIncome(Math.max(0, Math.round(v)));
                     }}
                     className="mt-3 w-full border-0 border-b border-slate-200 bg-transparent px-0 pb-2 text-2xl font-semibold leading-none text-slate-950 outline-none transition focus:border-blue-300 focus:ring-0"
@@ -217,7 +223,7 @@ export default function PracovniNeschopenkaPage() {
                             {formatMoney(period.shortfall)}
                           </div>
                           <div className={`text-[11px] ${period.accentClass}`}>
-                            {Math.round((period.shortfall / netIncome) * 100)} %
+                            {Math.round((period.shortfall / normalizedNetIncome) * 100)} %
                           </div>
                         </div>
                       </div>

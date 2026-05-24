@@ -42,7 +42,6 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
-import SplitTitle from "../plan-produkce/SplitTitle";
 import { auth } from "@/app/firebase-auth";
 
 const modernSans = Manrope({
@@ -333,6 +332,7 @@ type PlacedImage = {
 type ImageInteraction = {
   imageId: string;
   mode: "move" | "resize";
+  scale: number;
   startClientX: number;
   startClientY: number;
   originX: number;
@@ -649,6 +649,7 @@ async function syncFooterProfileToCloud(
 }
 
 export default function TvorbaPage() {
+  const previewViewportRef = useRef<HTMLDivElement | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const savedEditorRangeRef = useRef<Range | null>(null);
@@ -708,9 +709,15 @@ export default function TvorbaPage() {
     underline: false,
     strikeThrough: false,
   });
+  const [previewScale, setPreviewScale] = useState(1);
+  const [previewBaseSize, setPreviewBaseSize] = useState({ width: 0, height: 0 });
   const selectedFontOption =
     FONT_OPTIONS.find((option) => option.key === fontFamilyKey) ?? FONT_OPTIONS[0];
   const selectedPdfQuality = PDF_QUALITY_PRESETS[pdfQualityPreset];
+  const previewFrameWidth =
+    previewBaseSize.width > 0 ? previewBaseSize.width * previewScale : null;
+  const previewFrameHeight =
+    previewBaseSize.height > 0 ? previewBaseSize.height * previewScale : null;
 
   const collectFooterProfile = (): FooterProfile => ({
     fullName: fullName.trim(),
@@ -1035,8 +1042,9 @@ export default function TvorbaPage() {
       const interaction = imageInteractionRef.current;
       if (!interaction) return;
 
-      const deltaX = event.clientX - interaction.startClientX;
-      const deltaY = event.clientY - interaction.startClientY;
+      const scale = interaction.scale > 0 ? interaction.scale : 1;
+      const deltaX = (event.clientX - interaction.startClientX) / scale;
+      const deltaY = (event.clientY - interaction.startClientY) / scale;
 
       setPlacedImages((prev) =>
         prev.map((image) => {
@@ -1081,6 +1089,47 @@ export default function TvorbaPage() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
       document.body.style.userSelect = "";
+    };
+  }, []);
+
+  useEffect(() => {
+    const viewport = previewViewportRef.current;
+    const page = pageRef.current;
+    if (!viewport || !page) return;
+
+    let frameId = 0;
+    const measure = () => {
+      const baseWidth = Math.max(1, page.offsetWidth);
+      const baseHeight = Math.max(1, page.offsetHeight);
+      const availableWidth = Math.max(1, viewport.clientWidth - 24);
+      const nextScale = Math.min(1, availableWidth / baseWidth);
+
+      setPreviewBaseSize((prev) =>
+        prev.width === baseWidth && prev.height === baseHeight
+          ? prev
+          : { width: baseWidth, height: baseHeight }
+      );
+      setPreviewScale((prev) => (Math.abs(prev - nextScale) < 0.001 ? prev : nextScale));
+    };
+    const scheduleMeasure = () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+      frameId = window.requestAnimationFrame(measure);
+    };
+
+    scheduleMeasure();
+    const observer = new ResizeObserver(scheduleMeasure);
+    observer.observe(viewport);
+    observer.observe(page);
+    window.addEventListener("resize", scheduleMeasure);
+
+    return () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+      observer.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
     };
   }, []);
 
@@ -1446,18 +1495,20 @@ export default function TvorbaPage() {
     const image = placedImages.find((item) => item.id === imageId);
     if (!image) return;
 
-    const stageRect = stage.getBoundingClientRect();
+    const stageWidth = Math.max(1, stage.clientWidth);
+    const stageHeight = Math.max(1, stage.clientHeight);
     imageInteractionRef.current = {
       imageId,
       mode,
+      scale: previewScale > 0 ? previewScale : 1,
       startClientX: event.clientX,
       startClientY: event.clientY,
       originX: image.x,
       originY: image.y,
       originWidth: image.width,
       originHeight: image.height,
-      stageWidth: Math.max(1, stageRect.width),
-      stageHeight: Math.max(1, stageRect.height),
+      stageWidth,
+      stageHeight,
     };
     setActiveImageId(imageId);
     document.body.style.userSelect = "none";
@@ -1487,9 +1538,9 @@ export default function TvorbaPage() {
     try {
       const src = await readFileAsDataUrl(file);
       const { width: naturalWidth, height: naturalHeight } = await getImageNaturalSize(src);
-      const stageRect = editorStageRef.current?.getBoundingClientRect();
-      const stageWidth = Math.max(300, stageRect?.width ?? 640);
-      const stageHeight = Math.max(300, stageRect?.height ?? 730);
+      const stage = editorStageRef.current;
+      const stageWidth = Math.max(300, stage?.clientWidth ?? 640);
+      const stageHeight = Math.max(300, stage?.clientHeight ?? 730);
 
       const maxWidth = Math.min(260, Math.max(120, stageWidth - 24));
       const startWidth = clampNumber(naturalWidth, 120, maxWidth);
@@ -1771,12 +1822,8 @@ export default function TvorbaPage() {
   return (
     <AppLayout active="tools">
       <div className="w-full max-w-[1360px] space-y-7">
-        <header className="space-y-3 sm:flex sm:items-end sm:justify-between sm:space-y-0">
-          <SplitTitle text="Tvorba" />
-        </header>
-
-        <div className="grid items-start gap-6 xl:grid-cols-[352px_1fr]">
-          <aside className="xl:sticky xl:top-6 rounded-[30px] border border-slate-300 bg-gradient-to-br from-white via-slate-50 to-[#eef2ff] p-4 shadow-[0_24px_64px_rgba(15,23,42,0.18)] space-y-4">
+        <div className="grid items-start gap-6 xl:grid-cols-[332px_1fr]">
+          <aside className="w-full max-w-[332px] xl:sticky xl:top-6 rounded-[30px] border border-slate-300 bg-gradient-to-br from-white via-slate-50 to-[#eef2ff] p-4 shadow-[0_24px_64px_rgba(15,23,42,0.18)] space-y-4">
             <section className="space-y-3">
               <div className="flex items-center gap-2">
                 <Type className="h-4 w-4 text-slate-600" />
@@ -2300,12 +2347,34 @@ export default function TvorbaPage() {
             </section>
           </aside>
 
-          <section className="rounded-[32px] border border-slate-300 bg-gradient-to-br from-slate-100 via-white to-slate-100 p-4 md:p-6 shadow-[0_24px_64px_rgba(15,23,42,0.16)] overflow-auto">
-            <div className="mx-auto w-fit rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_20px_52px_rgba(15,23,42,0.22)]">
-              <div
-                ref={pageRef}
-                className="relative w-[210mm] min-h-[297mm] overflow-hidden bg-white text-slate-900 shadow-[0_18px_42px_rgba(15,23,42,0.22)]"
-              >
+          <section className="overflow-auto">
+            <div className="mx-auto w-fit overflow-hidden rounded-[24px] border border-slate-300/90 bg-white shadow-[0_20px_52px_rgba(15,23,42,0.22)]">
+              <div className="flex items-center gap-2 border-b border-[#1e293b] bg-[#0b1220] px-4 py-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#fb7185]" />
+                <span className="h-2.5 w-2.5 rounded-full bg-[#f59e0b]" />
+                <span className="h-2.5 w-2.5 rounded-full bg-[#22c55e]" />
+                <span className="ml-2 truncate rounded bg-[#1f2937] px-2 py-0.5 text-[10px] font-medium text-[#cbd5e1]">
+                  Bohemika.App PDF export preview
+                </span>
+              </div>
+              <div ref={previewViewportRef} className="bg-slate-100/80 p-3">
+                <div
+                  className="relative mx-auto"
+                  style={{
+                    width: previewFrameWidth ? `${previewFrameWidth}px` : undefined,
+                    height: previewFrameHeight ? `${previewFrameHeight}px` : undefined,
+                  }}
+                >
+                  <div
+                    className="origin-top-left"
+                    style={{
+                      transform: `scale(${previewScale})`,
+                    }}
+                  >
+                    <div
+                      ref={pageRef}
+                      className="relative w-[210mm] min-h-[297mm] overflow-hidden bg-white text-slate-900 shadow-[0_18px_42px_rgba(15,23,42,0.22)]"
+                    >
                 <header className="relative h-[42mm] border-b border-slate-200 px-[14mm] py-[1mm] flex items-center">
                   <Image
                     src="/icons/nadpislogo.jpg"
@@ -2482,6 +2551,9 @@ export default function TvorbaPage() {
                     </div>
                   </div>
                 </footer>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
