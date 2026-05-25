@@ -78,6 +78,9 @@ const QUICK_ACTION_SET = new Set([
 ]);
 
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ONLINE_CARD_SLUG_MAX_LEN = 64;
+const ONLINE_CARD_SLUG_MIN_LEN = 3;
 const ALLOWED_PATCH_KEYS = new Set([
   "commissionMode",
   "monthlyGoal",
@@ -95,6 +98,7 @@ const ALLOWED_PATCH_KEYS = new Set([
   "homePerformanceMode",
   "homeQuickActions",
   "tvorbaFooterProfile",
+  "onlineCard",
   "lastActivePing",
 ]);
 
@@ -277,6 +281,131 @@ async function getHasTeam(email: string): Promise<boolean> {
     .limit(1)
     .get();
   return !snap.empty;
+}
+
+type OnlineCardPayload = {
+  enabled: boolean;
+  slug: string;
+  fullName: string;
+  title: string;
+  phone: string;
+  email: string;
+  website: string;
+  bio: string;
+  location: string;
+  updatedAt: string;
+};
+
+const normalizeOnlineCardSlug = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return "";
+  const ascii = trimmed
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return ascii.slice(0, ONLINE_CARD_SLUG_MAX_LEN);
+};
+
+const normalizeOnlineCardWebsite = (value: string): string | null => {
+  if (!value) return "";
+  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  let url: URL;
+  try {
+    url = new URL(withProtocol);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  return url.toString();
+};
+
+function sanitizeOnlineCard(value: unknown): OnlineCardPayload | null {
+  if (!isPlainObject(value)) return null;
+
+  const enabled = value.enabled === true;
+  const slug = normalizeOnlineCardSlug(value.slug);
+  const fullName = normalizeOptionalText(value.fullName, 120);
+  const title = normalizeOptionalText(value.title, 120);
+  const phone = normalizeOptionalText(value.phone, 80);
+  const emailRaw = normalizeOptionalText(value.email, 160);
+  const websiteRaw = normalizeOptionalText(value.website, 220);
+  const bio = normalizeOptionalText(value.bio, 1_000);
+  const location = normalizeOptionalText(value.location, 120);
+
+  if (
+    fullName == null ||
+    title == null ||
+    phone == null ||
+    emailRaw == null ||
+    websiteRaw == null ||
+    bio == null ||
+    location == null
+  ) {
+    return null;
+  }
+
+  const email = normalizeEmail(emailRaw);
+  if (email && !SIMPLE_EMAIL_RE.test(email)) return null;
+
+  const website = normalizeOnlineCardWebsite(websiteRaw);
+  if (website == null) return null;
+
+  if (enabled) {
+    if (!fullName) return null;
+    if (slug.length < ONLINE_CARD_SLUG_MIN_LEN) return null;
+  }
+
+  return {
+    enabled,
+    slug,
+    fullName,
+    title,
+    phone,
+    email,
+    website,
+    bio,
+    location,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function findOnlineCardSlugConflict({
+  slug,
+  ownerEmail,
+  ownerRawTokenEmail,
+  ownerUid,
+}: {
+  slug: string;
+  ownerEmail: string;
+  ownerRawTokenEmail: string;
+  ownerUid: string;
+}): Promise<string | null> {
+  if (!adminDb || !slug) return null;
+
+  const ownerEmailLower = normalizeEmail(ownerEmail);
+  const ownerRawEmailLower = normalizeEmail(ownerRawTokenEmail);
+  const usersCol = adminDb.collection("users");
+  const snap = await usersCol.where("onlineCard.slug", "==", slug).limit(12).get();
+
+  for (const docSnap of snap.docs) {
+    const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
+    const docIdEmail = normalizeEmail(docSnap.id);
+    const dataEmail = normalizeEmail(data.email);
+    const dataUid = typeof data.userId === "string" ? data.userId.trim() : "";
+    const sameUser =
+      docIdEmail === ownerEmailLower ||
+      dataEmail === ownerEmailLower ||
+      (ownerRawEmailLower !== "" && dataEmail === ownerRawEmailLower) ||
+      (ownerUid !== "" && dataUid === ownerUid);
+
+    if (!sameUser) {
+      return dataEmail || docIdEmail || docSnap.id;
+    }
+  }
+
+  return null;
 }
 
 function sanitizeNotificationSettings(value: unknown): Record<string, unknown> | null {
@@ -694,6 +823,12 @@ function buildPatchFromBody(
     patch.homeQuickActions = value;
   }
 
+  if (body.onlineCard != null) {
+    const value = sanitizeOnlineCard(body.onlineCard);
+    if (!value) return { error: "Pole onlineCard má neplatný formát." };
+    patch.onlineCard = value;
+  }
+
   if (body.tvorbaFooterProfile != null) {
     const value = sanitizeTvorbaFooterProfile(body.tvorbaFooterProfile);
     if (!value) return { error: "Pole tvorbaFooterProfile má neplatný formát." };
@@ -743,6 +878,10 @@ export async function GET(req: NextRequest) {
       profile.positionTimeline = sanitizedTimeline;
       profile.position = resolveCurrentPositionFromTimeline(sanitizedTimeline);
     }
+    const sanitizedOnlineCard = sanitizeOnlineCard(profile.onlineCard);
+    if (sanitizedOnlineCard) {
+      profile.onlineCard = sanitizedOnlineCard;
+    }
     const hasProfile = Boolean(publicData || privateData);
 
     const res = NextResponse.json({
@@ -778,7 +917,7 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const { email } = ctx;
+    const { email, rawTokenEmail, uid } = ctx;
     const rateLimit = consumeRateLimit({
       namespace: "api:user-profile:patch",
       key: email,
@@ -809,6 +948,29 @@ export async function PATCH(req: NextRequest) {
         { ok: false, error: "Není co uložit." } satisfies ApiError,
         { status: 400 }
       );
+    }
+
+    const patchOnlineCard =
+      patch.onlineCard && typeof patch.onlineCard === "object"
+        ? (patch.onlineCard as Record<string, unknown>)
+        : null;
+    if (patchOnlineCard?.enabled === true) {
+      const slug = typeof patchOnlineCard.slug === "string" ? patchOnlineCard.slug.trim() : "";
+      const conflictEmail = await findOnlineCardSlugConflict({
+        slug,
+        ownerEmail: email,
+        ownerRawTokenEmail: rawTokenEmail,
+        ownerUid: uid,
+      });
+      if (conflictEmail) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Slug vizitky je už obsazený (${conflictEmail}). Zvol jiný.`,
+          } satisfies ApiError,
+          { status: 409 }
+        );
+      }
     }
 
     await adminDb.collection("users").doc(email).set(patch, { merge: true });
