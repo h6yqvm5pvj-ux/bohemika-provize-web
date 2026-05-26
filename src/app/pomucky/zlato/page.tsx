@@ -6,7 +6,6 @@ import Image from "next/image";
 import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
-import SplitTitle from "../plan-produkce/SplitTitle";
 
 const OUNCE_G = 31.1034768; // trojská unce
 
@@ -1325,16 +1324,9 @@ export default function GoldToolPage() {
     <AppLayout active="tools">
       <div className="w-full bg-white px-3 py-4 sm:px-4 sm:py-6 lg:px-8">
         <div className="mx-auto w-full max-w-5xl space-y-4 font-mono text-slate-900">
-          <header className="flex flex-col gap-1">
-            <SplitTitle
-              text="Detailní pohyby cen zlata a přehled cen u partnera Comfort Commodity"
-              className="!text-slate-900"
-            />
-          </header>
-
           <section className="space-y-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-800 bg-slate-950 p-1">
+              <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-300 bg-white p-1 shadow-[0_10px_24px_rgba(15,23,42,0.1)]">
                 {[
                   { key: "movement", label: "POHYB CENY" },
                   { key: "comfort", label: "COMFORT COMMODITY" },
@@ -1347,7 +1339,9 @@ export default function GoldToolPage() {
                       onClick={() => setView(item.key as GoldView)}
                       className={[
                         "whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition sm:text-sm",
-                        active ? "bg-white text-slate-900" : "text-white hover:bg-white/10",
+                        active
+                          ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
                       ].join(" ")}
                     >
                       {item.label}
@@ -1358,7 +1352,7 @@ export default function GoldToolPage() {
 
               {view === "movement" ? (
                 <div className="lg:justify-end">
-                  <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-800 bg-slate-950 p-1">
+                  <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-300 bg-white p-1 shadow-[0_10px_24px_rgba(15,23,42,0.1)]">
                     {(Object.keys(UNITS) as UnitKey[]).map((k) => {
                       const active = unit === k;
                       return (
@@ -1368,7 +1362,9 @@ export default function GoldToolPage() {
                           onClick={() => setUnit(k)}
                           className={[
                             "whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition",
-                            active ? "bg-white text-slate-900" : "text-white hover:bg-white/10",
+                            active
+                              ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
+                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
                           ].join(" ")}
                         >
                           {UNITS[k].label}

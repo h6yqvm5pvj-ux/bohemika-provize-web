@@ -1,17 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import { Space_Grotesk } from "next/font/google";
 import {
   BadgeCheck,
   CalendarDays,
   Camera,
   CarFront,
+  ChevronRight,
   ClipboardCopy,
   ExternalLink,
   Eye,
   Gauge,
   Info,
+  Loader2,
   Plus,
   RotateCcw,
   Search,
@@ -36,6 +39,18 @@ import {
   type WindshieldInputs,
   type WindshieldVehicleSummary,
 } from "./valuation";
+
+const headingFont = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["700"],
+  display: "swap",
+});
+
+const WINDSHIELD_LOADING_PHASES = [
+  "Kontroluji formát VIN a připravuji dotaz",
+  "Načítám technická data vozidla z registru",
+  "Dopočítávám doporučený limit čelního skla",
+] as const;
 
 type VehicleData = Record<string, unknown>;
 
@@ -258,6 +273,14 @@ function autoKellyOfferNote(offer: AutoKellyWindshieldOffer): string {
   ].filter((value) => value.trim().length > 0).join(" · ");
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function revealStyle(delayMs: number): CSSProperties {
+  return { animationDelay: `${delayMs}ms` };
+}
+
 function StatBox({ label, value, icon }: { label: string; value: ReactNode; icon: ReactNode }) {
   return (
     <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2.5">
@@ -349,11 +372,72 @@ function FeatureToggle({
   );
 }
 
+function WindshieldLoadingState({ phaseIndex }: { phaseIndex: number }) {
+  const safePhaseIndex = clamp(phaseIndex, 0, WINDSHIELD_LOADING_PHASES.length - 1);
+  const progressPct = ((safePhaseIndex + 1) / WINDSHIELD_LOADING_PHASES.length) * 100;
+
+  return (
+    <section className="relative overflow-hidden rounded-3xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/70 via-white to-sky-50/60 p-5 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+      <div className="pointer-events-none absolute -left-20 top-8 h-36 w-36 rounded-full bg-emerald-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute -right-20 bottom-0 h-36 w-36 rounded-full bg-sky-200/40 blur-3xl" />
+
+      <div className="relative">
+        <div className="flex items-start gap-4">
+          <div className="relative mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-200 bg-white shadow-sm">
+            <span className="absolute inset-0 rounded-2xl border border-emerald-300/70 motion-safe:animate-ping" />
+            <Wind className="h-5 w-5 text-emerald-700 motion-safe:animate-bounce" />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+              <Loader2 className="h-4 w-4 text-emerald-700 motion-safe:animate-spin" />
+              Načítám data pro nacenění skla
+            </div>
+            <p className="mt-1 text-sm text-slate-600">{WINDSHIELD_LOADING_PHASES[safePhaseIndex]}</p>
+
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-emerald-100/90">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-sky-500 transition-[width] duration-500 ease-out"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          {WINDSHIELD_LOADING_PHASES.map((phase, idx) => {
+            const isActive = idx === safePhaseIndex;
+            const isDone = idx < safePhaseIndex;
+            return (
+              <div
+                key={phase}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
+                  isActive
+                    ? "border-emerald-300 bg-white text-emerald-900 shadow-sm"
+                    : isDone
+                      ? "border-emerald-200 bg-emerald-50/80 text-emerald-800"
+                      : "border-slate-200 bg-white/80 text-slate-500"
+                }`}
+              >
+                <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${isActive || isDone ? "bg-emerald-500" : "bg-slate-300"}`}>
+                  {isActive && <span className="absolute inset-0 rounded-full bg-emerald-400 motion-safe:animate-ping" />}
+                </span>
+                <span className="truncate font-medium">{phase}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function WindshieldValuationPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [vin, setVin] = useState("");
   const [vinFromQuery, setVinFromQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingPhaseIndex, setLoadingPhaseIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<LookupResult | null>(null);
   const [copied, setCopied] = useState(false);
@@ -370,6 +454,7 @@ export default function WindshieldValuationPage() {
   const autoLookupVinRef = useRef<string | null>(null);
   const autoKellyLookupKeyRef = useRef<string | null>(null);
   const compactVinInputRef = useRef<HTMLInputElement | null>(null);
+  const resultScrollTargetRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (authUser) => setUser(authUser));
@@ -381,6 +466,15 @@ export default function WindshieldValuationPage() {
     const qsVin = normalizeVinInput(new URLSearchParams(window.location.search).get("vin"));
     setVinFromQuery(qsVin);
   }, []);
+
+  useEffect(() => {
+    if (!loading) return;
+    setLoadingPhaseIndex(0);
+    const interval = window.setInterval(() => {
+      setLoadingPhaseIndex((current) => (current + 1) % WINDSHIELD_LOADING_PHASES.length);
+    }, 900);
+    return () => window.clearInterval(interval);
+  }, [loading]);
 
   useEffect(() => {
     if (!vinFromQuery) return;
@@ -526,6 +620,17 @@ export default function WindshieldValuationPage() {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [searchActivated]);
+
+  useEffect(() => {
+    if (!searchActivated || loading || typeof window === "undefined") return;
+    const frame = window.requestAnimationFrame(() => {
+      resultScrollTargetRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading, searchActivated]);
 
   const handleResetVin = useCallback(() => {
     setVin("");
@@ -738,95 +843,42 @@ export default function WindshieldValuationPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="mx-auto w-full max-w-6xl space-y-4 pb-8">
-        <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-2">
-            <h1 className="flex items-center gap-2.5 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-              <Wind className="h-7 w-7 text-slate-700" />
-              <span>Nacenění čelního skla</span>
-            </h1>
-          </div>
-          {searchActivated && (
-            <div className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 text-xs text-slate-600">
-              VIN → doporučená cena výměny skla.
+      <div className="windshield-tool-shell mx-auto w-full max-w-6xl space-y-5 pb-10 md:[zoom:0.92] xl:[zoom:0.86]">
+        <section className="windshield-reveal px-2 py-10 sm:px-4 sm:py-14" style={revealStyle(20)}>
+          <div className="mx-auto max-w-4xl">
+            <div className="text-center">
+              <div className="windshield-float inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-emerald-700">
+                <ShieldCheck className="h-4 w-4" />
+                Rychlý odhad skel
+              </div>
+              <h1 className={`${headingFont.className} windshield-hero-title mx-auto mt-5 max-w-4xl text-5xl font-bold leading-[1.02] tracking-tight text-slate-900 sm:text-6xl md:text-7xl`}>
+                Nacenění čelního skla
+                <span className="block text-sky-600">během pár vteřin</span>
+              </h1>
             </div>
-          )}
-        </header>
 
-        {searchActivated ? (
-          <section className="rounded-xl border border-slate-100 bg-white px-4 py-4 transition-all duration-300">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:gap-3">
-              <div className="min-w-0 flex-1 space-y-1.5 lg:max-w-[620px]">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">VIN</label>
-                <input
-                  ref={compactVinInputRef}
-                  type="text"
-                  value={vin}
-                  onChange={(event) => setVin(normalizeVinInput(event.target.value))}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && canSearch && !loading) void handleSearch();
-                  }}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-                  placeholder='např. "TMB..."'
-                />
-              </div>
-              <div className="flex flex-wrap gap-2 lg:shrink-0 lg:pb-0.5">
-                <button
-                  type="button"
-                  onClick={handleResetVin}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  Vymazat
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSearch()}
-                  disabled={loading || !canSearch}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Search className="h-4 w-4" />
-                  {loading ? "Načítám..." : "Načíst data"}
-                </button>
-              </div>
-            </div>
-            {!user && (
-              <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                Přihlaš se, aby šlo volat data o vozidle.
-              </p>
-            )}
-            {error && (
-              <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                {error}
-              </p>
-            )}
-          </section>
-        ) : (
-          <section className="flex min-h-[58vh] items-center justify-center px-2 py-8 sm:px-4">
-            <div className="mx-auto w-full max-w-5xl">
-              <div className="mx-auto max-w-4xl text-center">
-                <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-                  Zadej VIN vozidla
-                </h2>
-              </div>
-
-              <div className="mx-auto mt-7 max-w-4xl space-y-4">
-                <input
-                  autoFocus
-                  type="text"
-                  value={vin}
-                  onChange={(event) => setVin(normalizeVinInput(event.target.value))}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && canSearch && !loading) void handleSearch();
-                  }}
-                  className="h-[72px] w-full rounded-2xl border border-emerald-300 bg-white px-6 text-center text-xl font-semibold tracking-[0.08em] text-slate-900 outline-none transition placeholder:tracking-normal placeholder:text-slate-400 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
-                  placeholder='např. "WAUZZZ..."'
-                />
-                <div className="flex flex-wrap items-center justify-center gap-2">
+            <div className="windshield-glow mx-auto mt-8 w-full max-w-4xl rounded-[30px] border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/60">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2">
+                  <Search className="h-8 w-8 text-slate-400" />
+                  <input
+                    ref={compactVinInputRef}
+                    autoFocus
+                    type="text"
+                    value={vin}
+                    onChange={(event) => setVin(normalizeVinInput(event.target.value))}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && canSearch && !loading) void handleSearch();
+                    }}
+                    className="w-full border-none bg-transparent text-xl font-medium text-slate-900 placeholder:text-slate-400 outline-none"
+                    placeholder='např. "WAUZZZ..."'
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2 px-2 pb-2 md:px-0 md:pb-0">
                   <button
                     type="button"
                     onClick={handleResetVin}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    className="inline-flex h-16 items-center gap-2 rounded-[22px] border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-900"
                   >
                     <RotateCcw className="h-4 w-4" />
                     Vymazat
@@ -835,31 +887,48 @@ export default function WindshieldValuationPage() {
                     type="button"
                     onClick={() => void handleSearch()}
                     disabled={loading || !canSearch}
-                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-700 bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="windshield-cta group inline-flex h-16 items-center justify-center gap-3 rounded-[22px] border border-emerald-900/30 bg-[linear-gradient(135deg,#0f766e_0%,#059669_48%,#22c55e_100%)] px-8 text-lg font-semibold tracking-tight text-white shadow-[0_16px_36px_rgba(5,150,105,0.34),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-200 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                   >
-                    <Search className="h-4 w-4" />
                     {loading ? "Načítám..." : "Načíst data"}
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
+                      {loading ? <Loader2 className="h-5 w-5 motion-safe:animate-spin" /> : <ChevronRight className="h-5 w-5" />}
+                    </span>
                   </button>
                 </div>
               </div>
+            </div>
 
+            <div className="mx-auto mt-5 max-w-4xl text-center">
+              {searchActivated && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-600">
+                  VIN → doporučená cena výměny čelního skla.
+                </div>
+              )}
               {!user && (
-                <p className="mx-auto mt-4 max-w-4xl rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <p className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   Přihlaš se, aby šlo volat data o vozidle.
                 </p>
               )}
               {error && (
-                <p className="mx-auto mt-3 max-w-4xl rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   {error}
                 </p>
               )}
             </div>
-          </section>
+          </div>
+        </section>
+
+        <div ref={resultScrollTargetRef} className="scroll-mt-28" />
+
+        {searchActivated && loading && (
+          <div className="windshield-reveal" style={revealStyle(60)}>
+            <WindshieldLoadingState phaseIndex={loadingPhaseIndex} />
+          </div>
         )}
 
-        {searchActivated && (
+        {searchActivated && !loading && (
           <>
-            <section className="mx-auto max-w-4xl space-y-4 rounded-xl border border-slate-100 bg-white px-4 py-4">
+            <section className="windshield-reveal mx-auto max-w-4xl space-y-4 rounded-xl border border-slate-100 bg-white px-4 py-4" style={revealStyle(80)}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="h-5 w-5 text-slate-700" />
@@ -911,7 +980,7 @@ export default function WindshieldValuationPage() {
               </div>
             </section>
 
-            <details className="rounded-xl border border-slate-100 bg-white px-4 py-4">
+            <details className="windshield-reveal rounded-xl border border-slate-100 bg-white px-4 py-4" style={revealStyle(120)}>
               <summary className="flex cursor-pointer list-none flex-col gap-1 text-sm font-semibold text-slate-900 sm:flex-row sm:items-center sm:justify-between">
                 <span className="inline-flex items-center gap-2">
                   <Search className="h-5 w-5 text-slate-700" />
@@ -1154,7 +1223,7 @@ export default function WindshieldValuationPage() {
               </section>
             </details>
 
-            <details className="rounded-xl border border-slate-100 bg-white px-4 py-4">
+            <details className="windshield-reveal rounded-xl border border-slate-100 bg-white px-4 py-4" style={revealStyle(160)}>
               <summary className="flex cursor-pointer list-none flex-col gap-1 text-sm font-semibold text-slate-900 sm:flex-row sm:items-center sm:justify-between">
                 <span className="inline-flex items-center gap-2">
                   <Settings2 className="h-5 w-5 text-slate-700" />
@@ -1364,7 +1433,7 @@ export default function WindshieldValuationPage() {
               </div>
             </details>
 
-            <details className="rounded-xl border border-slate-100 bg-white px-4 py-4">
+            <details className="windshield-reveal rounded-xl border border-slate-100 bg-white px-4 py-4" style={revealStyle(200)}>
               <summary className="flex cursor-pointer list-none flex-col gap-1 text-sm font-semibold text-slate-900 sm:flex-row sm:items-center sm:justify-between">
                 <span className="inline-flex items-center gap-2">
                   <CarFront className="h-5 w-5 text-slate-700" />
@@ -1395,6 +1464,144 @@ export default function WindshieldValuationPage() {
           </>
         )}
       </div>
+
+      <style jsx global>{`
+        @keyframes windshield-bg-pan {
+          0% {
+            transform: translate3d(-10%, -12%, 0) scale(1);
+            opacity: 0.52;
+          }
+          50% {
+            transform: translate3d(8%, 4%, 0) scale(1.06);
+            opacity: 0.7;
+          }
+          100% {
+            transform: translate3d(16%, -10%, 0) scale(1.03);
+            opacity: 0.5;
+          }
+        }
+
+        @keyframes windshield-reveal-up {
+          0% {
+            opacity: 0;
+            transform: translateY(26px) scale(0.985);
+            filter: blur(6px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: blur(0);
+          }
+        }
+
+        @keyframes windshield-float-y {
+          0%,
+          100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-5px);
+          }
+        }
+
+        @keyframes windshield-glow-pulse {
+          0%,
+          100% {
+            box-shadow: 0 12px 28px rgba(2, 132, 199, 0.08), 0 0 0 1px rgba(16, 185, 129, 0.08);
+          }
+          50% {
+            box-shadow: 0 16px 34px rgba(2, 132, 199, 0.16), 0 0 0 1px rgba(16, 185, 129, 0.18);
+          }
+        }
+
+        @keyframes windshield-cta-shimmer {
+          0% {
+            transform: translateX(-130%);
+          }
+          50%,
+          100% {
+            transform: translateX(130%);
+          }
+        }
+
+        .windshield-tool-shell {
+          position: relative;
+          isolation: isolate;
+        }
+
+        .windshield-tool-shell::before {
+          content: "";
+          position: absolute;
+          inset: 32px 16px auto 16px;
+          height: 300px;
+          z-index: -1;
+          border-radius: 44px;
+          background: radial-gradient(50% 60% at 18% 44%, rgba(16, 185, 129, 0.16), transparent 74%),
+            radial-gradient(58% 62% at 82% 36%, rgba(14, 165, 233, 0.18), transparent 78%);
+          filter: blur(18px);
+          animation: windshield-bg-pan 14s ease-in-out infinite alternate;
+        }
+
+        .windshield-reveal {
+          opacity: 0;
+          animation: windshield-reveal-up 760ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .windshield-float {
+          animation: windshield-float-y 4.6s ease-in-out infinite;
+        }
+
+        .windshield-glow {
+          animation: windshield-glow-pulse 4.2s ease-in-out infinite;
+        }
+
+        .windshield-hero-title {
+          text-wrap: balance;
+        }
+
+        .windshield-cta {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .windshield-cta::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(110deg, transparent 34%, rgba(255, 255, 255, 0.35) 50%, transparent 66%);
+          transform: translateX(-130%);
+          animation: windshield-cta-shimmer 3.3s ease-in-out infinite;
+          pointer-events: none;
+        }
+
+        .windshield-cta:disabled::after {
+          animation: none;
+        }
+
+        :root[data-motion="off"] .windshield-tool-shell::before,
+        :root[data-motion="off"] .windshield-reveal,
+        :root[data-motion="off"] .windshield-float,
+        :root[data-motion="off"] .windshield-glow,
+        :root[data-motion="off"] .windshield-cta::after {
+          animation: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+          filter: none !important;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .windshield-tool-shell::before,
+          .windshield-reveal,
+          .windshield-float,
+          .windshield-glow,
+          .windshield-cta::after {
+            animation: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+            filter: none !important;
+          }
+        }
+      `}</style>
     </AppLayout>
   );
 }

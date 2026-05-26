@@ -74,7 +74,7 @@ export type NeonImmediateBreakdown = {
   total: number;
 };
 
-const NEON_IMMEDIATE_TOTAL_COEFFICIENTS: Record<Position, number> = {
+const NEON_IMMEDIATE_101A_COEFFICIENTS: Record<Position, number> = {
   poradce1: 1.2,
   poradce2: 1.38,
   poradce3: 1.502,
@@ -151,7 +151,7 @@ export const hasNeonImmediateCoefficient = (
   position: Position | null | undefined
 ): position is Position =>
   !!position &&
-  Number.isFinite(NEON_IMMEDIATE_TOTAL_COEFFICIENTS[position]) &&
+  Number.isFinite(NEON_IMMEDIATE_101A_COEFFICIENTS[position]) &&
   Number.isFinite(NEON_IMMEDIATE_B0301_COEFFICIENTS[position]) &&
   Number.isFinite(NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS[position]);
 
@@ -163,24 +163,24 @@ export const buildNeonImmediateBreakdown = (
   if (!hasNeonImmediateCoefficient(position)) return null;
 
   const includeB3601 = isAcceleratedMode(mode);
-  const totalCoefficient = NEON_IMMEDIATE_TOTAL_COEFFICIENTS[position];
+  const a101Coefficient = NEON_IMMEDIATE_101A_COEFFICIENTS[position];
   const b0301Coefficient = NEON_IMMEDIATE_B0301_COEFFICIENTS[position];
   const b3601HalfCoefficient = includeB3601
     ? NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS[position]
     : 0;
-  const a101Coefficient =
-    totalCoefficient - b0301Coefficient - b3601HalfCoefficient;
+  const totalCoefficient =
+    a101Coefficient + b0301Coefficient + b3601HalfCoefficient;
   if (!Number.isFinite(totalCoefficient) || totalCoefficient <= 0) return null;
+  if (!Number.isFinite(a101Coefficient) || a101Coefficient < 0) return null;
   if (!Number.isFinite(b0301Coefficient) || b0301Coefficient < 0) return null;
   if (!Number.isFinite(b3601HalfCoefficient) || b3601HalfCoefficient < 0) return null;
-  if (a101Coefficient < -0.000001) return null;
 
   const total = Number(amount);
   if (!Number.isFinite(total) || total <= 0) return null;
 
   const baseAmount = total / totalCoefficient;
   const partDefs: { label: string; raw: number }[] = [
-    { label: "Provize 101A", raw: baseAmount * Math.max(0, a101Coefficient) },
+    { label: "Provize 101A", raw: baseAmount * a101Coefficient },
     { label: "Provize B0301", raw: baseAmount * b0301Coefficient },
     ...(includeB3601
       ? [

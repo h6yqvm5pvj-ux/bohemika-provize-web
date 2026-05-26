@@ -1862,28 +1862,58 @@ function ContractsPageContent() {
       <div className="min-h-screen w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl space-y-6 font-mono text-slate-900">
         {/* SEARCH BAR + FILTER + BULK ACTIONS */}
-        <div className="sticky top-16 z-40 flex flex-col gap-2 rounded-2xl border border-slate-200/80 bg-slate-50/95 p-2 shadow-[0_8px_20px_rgba(15,23,42,0.06)] backdrop-blur supports-[backdrop-filter]:bg-slate-50/85 sm:flex-row sm:items-center sm:justify-between lg:top-2">
-          <div className="ui-card ui-card-quiet flex flex-1 items-center gap-2 rounded-2xl bg-white px-4 py-2.5">
-            <span className="text-sm">🔍</span>
-            <input
-              type="text"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              placeholder="Hledat klienta nebo číslo smlouvy"
-              className="w-full border-none bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500"
-            />
+        <div className="sticky top-16 z-40 space-y-2 rounded-2xl border border-slate-200/80 bg-slate-50/95 p-2 shadow-[0_8px_20px_rgba(15,23,42,0.06)] backdrop-blur supports-[backdrop-filter]:bg-slate-50/85 lg:top-2">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+            <div className="ui-card ui-card-quiet flex flex-1 items-center gap-2 rounded-2xl bg-white px-4 py-2.5 xl:min-w-[320px]">
+              <span className="text-sm">🔍</span>
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Hledat klienta nebo číslo smlouvy"
+                className="w-full border-none bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
+              <button
+                type="button"
+                onClick={() => setFilterModalOpen(true)}
+                className="ui-focus inline-flex items-center gap-1.5 rounded-full border border-emerald-700 bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] px-3 py-1.5 text-xs font-semibold !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)] transition hover:brightness-95"
+              >
+                <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                <span>Filtr</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectMode) {
+                    clearSelection();
+                  } else {
+                    setSelectMode(true);
+                  }
+                }}
+                className={`ui-focus rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  selectMode
+                    ? "border-rose-600 bg-rose-100 text-rose-700"
+                    : "border-emerald-700 bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)] hover:brightness-95"
+                }`}
+              >
+                {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <div className="flex flex-wrap items-center gap-2">
             {canShowTeamToggle && (
               <div className="ui-chip-group text-xs">
                 <button
                   type="button"
                   onClick={() => setShowTeam(false)}
-                  className={`ui-chip ui-focus inline-flex items-center gap-1.5 px-3 py-1.5 ${
+                  className={`ui-focus inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                     !showTeam
-                      ? "ui-chip-active"
-                      : ""
+                      ? "border-transparent bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
+                      : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                   }`}
                 >
                   <UserRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
@@ -1892,10 +1922,10 @@ function ContractsPageContent() {
                 <button
                   type="button"
                   onClick={() => setShowTeam(true)}
-                  className={`ui-chip ui-focus inline-flex items-center gap-1.5 px-3 py-1.5 ${
+                  className={`ui-focus inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                     showTeam
-                      ? "ui-chip-active"
-                      : ""
+                      ? "border-transparent bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
+                      : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                   }`}
                 >
                   <UsersRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
@@ -1910,10 +1940,10 @@ function ContractsPageContent() {
                 onClick={() =>
                   startFilterTransition(() => setFilterMode("latest"))
                 }
-                className={`ui-chip ui-focus inline-flex items-center gap-1.5 px-3 py-1.5 ${
+                className={`ui-focus inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                   filterMode === "latest"
-                    ? "ui-chip-active"
-                    : ""
+                    ? "border-transparent bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
+                    : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
               >
                 <ArrowDownUp size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
@@ -1924,10 +1954,10 @@ function ContractsPageContent() {
                 onClick={() =>
                   startFilterTransition(() => setFilterMode("anniversary"))
                 }
-                className={`ui-chip ui-focus inline-flex items-center gap-1.5 px-3 py-1.5 ${
+                className={`ui-focus inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                   filterMode === "anniversary"
-                    ? "ui-chip-active"
-                    : ""
+                    ? "border-transparent bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
+                    : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
               >
                 <CalendarDays size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
@@ -1946,63 +1976,39 @@ function ContractsPageContent() {
               <AlertCircle size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
               <span>Jen nezaplacené</span>
             </button>
-
-            <div className="inline-flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setFilterModalOpen(true)}
-                className="ui-btn-primary ui-focus inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs"
-              >
-                <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                <span>Filtr</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectMode) {
-                    clearSelection();
-                  } else {
-                    setSelectMode(true);
-                  }
-                }}
-                className={`ui-focus rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                  selectMode
-                    ? "border-rose-600 bg-rose-100 text-rose-700"
-                    : "ui-btn-primary"
-                }`}
-              >
-                {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
-              </button>
-              {selectMode && (
-                <button
-                  type="button"
-                  disabled={selectedKeys.size === 0 || bulkDeleting}
-                  onClick={handleBulkDelete}
-                  className="rounded-full border border-rose-600 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                >
-                  {bulkDeleting
-                    ? "Mažu…"
-                    : selectedKeys.size === 0
-                    ? "Smazat"
-                    : `Smazat (${selectedKeys.size})`}
-                </button>
-              )}
-              {selectMode && (
-                <button
-                  type="button"
-                  disabled={selectedKeys.size === 0 || bulkMarking}
-                  onClick={handleBulkMarkPaid}
-                  className="rounded-full border border-emerald-600 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                >
-                  {bulkMarking
-                    ? "Ukládám…"
-                    : selectedKeys.size === 0
-                    ? "Označit zaplaceno"
-                    : `Zaplaceno (${selectedKeys.size})`}
-                </button>
-              )}
-            </div>
           </div>
+
+          {selectMode && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/85 pt-2">
+              <span className="text-xs font-semibold text-slate-600">
+                Vybráno: {selectedKeys.size}
+              </span>
+              <button
+                type="button"
+                disabled={selectedKeys.size === 0 || bulkDeleting}
+                onClick={handleBulkDelete}
+                className="rounded-full border border-rose-600 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {bulkDeleting
+                  ? "Mažu…"
+                  : selectedKeys.size === 0
+                  ? "Smazat"
+                  : `Smazat (${selectedKeys.size})`}
+              </button>
+              <button
+                type="button"
+                disabled={selectedKeys.size === 0 || bulkMarking}
+                onClick={handleBulkMarkPaid}
+                className="rounded-full border border-emerald-600 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {bulkMarking
+                  ? "Ukládám…"
+                  : selectedKeys.size === 0
+                  ? "Označit zaplaceno"
+                  : `Zaplaceno (${selectedKeys.size})`}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* LIST SMLOUV */}

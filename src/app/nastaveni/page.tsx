@@ -1,7 +1,7 @@
 // src/app/nastaveni/page.tsx
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import {
   AtSign,
@@ -9,22 +9,30 @@ import {
   Calculator,
   CalendarDays,
   CarFront,
+  ChevronLeft,
+  ChevronRight,
   CircleHelp,
   Clock3,
   Download,
+  Building2,
   ExternalLink,
   FileText,
   Globe,
+  Globe2,
   HeartPulse,
   Home,
   KeyRound,
   Maximize2,
+  Mail,
+  MapPin,
   Minimize2,
   Landmark,
+  PhoneCall,
   ShieldCheck,
   Snail,
   Sparkles,
   TrendingUp,
+  Upload,
   UserRound,
   UsersRound,
   QrCode as QrCodeIcon,
@@ -51,6 +59,7 @@ import QRCode from "qrcode";
 
 import { auth } from "../firebase";
 import { AppLayout } from "@/components/AppLayout";
+import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
 import { PremiumOnlineCardPreview } from "@/components/PremiumOnlineCardPreview";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
@@ -488,13 +497,20 @@ type OnlineCardDraft = {
   phone: string;
   email: string;
   website: string;
+  ico: string;
   bio: string;
   location: string;
+  officeLabel: string;
+  officePhotos: string[];
 };
 
 const ONLINE_CARD_SLUG_MAX_LEN = 64;
 const ONLINE_CARD_SLUG_MIN_LEN = 3;
 const ONLINE_CARD_WEBSITE_MAX_LEN = 220;
+const ONLINE_CARD_ICO_MAX_LEN = 8;
+const ONLINE_CARD_OFFICE_MAX_LEN = 160;
+const ONLINE_CARD_OFFICE_PHOTOS_MAX = 3;
+const ONLINE_CARD_OFFICE_PHOTO_URL_MAX_LEN = 1_200;
 const ONLINE_CARD_PUBLIC_BASE_URL = "https://bohemka.app";
 
 const slugifyOnlineCard = (value: unknown): string => {
@@ -541,6 +557,38 @@ const sanitizeOnlineCardWebsiteInput = (value: string): string => {
   }
 };
 
+const sanitizeOnlineCardPhotoUrl = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > ONLINE_CARD_OFFICE_PHOTO_URL_MAX_LEN) return "";
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return "";
+    }
+    return url.toString();
+  } catch {
+    return "";
+  }
+};
+
+const normalizeOnlineCardOfficePhotos = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const next: string[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of value) {
+    const photoUrl = sanitizeOnlineCardPhotoUrl(entry);
+    if (!photoUrl || seen.has(photoUrl)) continue;
+    seen.add(photoUrl);
+    next.push(photoUrl);
+    if (next.length >= ONLINE_CARD_OFFICE_PHOTOS_MAX) break;
+  }
+
+  return next;
+};
+
 const titleCaseWord = (value: string): string =>
   value.length > 1
     ? `${value.charAt(0).toUpperCase()}${value.slice(1).toLowerCase()}`
@@ -579,8 +627,11 @@ const defaultOnlineCardFromUser = (
     phone: "",
     email: emailValue,
     website: "",
+    ico: "",
     bio: "",
     location: "",
+    officeLabel: "",
+    officePhotos: [],
   };
 };
 
@@ -614,8 +665,17 @@ const normalizeOnlineCardDraft = (
       typeof row.website === "string"
         ? row.website.trim().slice(0, ONLINE_CARD_WEBSITE_MAX_LEN)
         : "",
+    ico:
+      typeof row.ico === "string"
+        ? row.ico.replace(/\D+/g, "").slice(0, ONLINE_CARD_ICO_MAX_LEN)
+        : "",
     bio: typeof row.bio === "string" ? row.bio.trim().slice(0, 1_000) : "",
     location: typeof row.location === "string" ? row.location.trim().slice(0, 120) : "",
+    officeLabel:
+      typeof row.officeLabel === "string"
+        ? row.officeLabel.trim().slice(0, ONLINE_CARD_OFFICE_MAX_LEN)
+        : "",
+    officePhotos: normalizeOnlineCardOfficePhotos(row.officePhotos),
   };
 };
 
@@ -627,8 +687,11 @@ const EMPTY_ONLINE_CARD_DRAFT: OnlineCardDraft = {
   phone: "",
   email: "",
   website: "",
+  ico: "",
   bio: "",
   location: "",
+  officeLabel: "",
+  officePhotos: [],
 };
 
 type InlineStatus = {
@@ -650,6 +713,12 @@ type PushTokenApiResponse = {
   error?: string;
   tokenStored?: boolean;
   tokenRemoved?: boolean;
+};
+
+type OnlineCardOfficePhotoUploadResponse = {
+  ok?: boolean;
+  url?: string;
+  error?: string;
 };
 
 type UserRequestSubject = "userCreation" | "other";
@@ -886,6 +955,8 @@ export default function SettingsPage() {
   const [onlineCardSaving, setOnlineCardSaving] = useState(false);
   const [onlineCardStatus, setOnlineCardStatus] = useState<InlineStatus | null>(null);
   const [onlineCardStudioFullscreen, setOnlineCardStudioFullscreen] = useState(false);
+  const [onlineCardOfficeUploading, setOnlineCardOfficeUploading] = useState(false);
+  const [onlineCardOfficePhotoIndex, setOnlineCardOfficePhotoIndex] = useState(0);
   const [onlineCardQrOpen, setOnlineCardQrOpen] = useState(false);
   const [onlineCardQrDataUrl, setOnlineCardQrDataUrl] = useState("");
   const [onlineCardQrLoading, setOnlineCardQrLoading] = useState(false);
@@ -1002,6 +1073,13 @@ export default function SettingsPage() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [onlineCardStudioFullscreen]);
+
+  useEffect(() => {
+    setOnlineCardOfficePhotoIndex((prev) => {
+      if (onlineCardDraft.officePhotos.length === 0) return 0;
+      return Math.min(prev, onlineCardDraft.officePhotos.length - 1);
+    });
+  }, [onlineCardDraft.officePhotos]);
 
   useEffect(() => {
     if (!onlineCardQrOpen || typeof window === "undefined") return;
@@ -1604,6 +1682,91 @@ export default function SettingsPage() {
     });
   };
 
+  const shiftOnlineCardOfficePhoto = (direction: 1 | -1) => {
+    const photoCount = onlineCardDraft.officePhotos.length;
+    if (photoCount <= 1) return;
+    setOnlineCardOfficePhotoIndex((prev) => (prev + direction + photoCount) % photoCount);
+  };
+
+  const removeOnlineCardOfficePhoto = (photoIndex: number) => {
+    setOnlineCardStatus(null);
+    setOnlineCardDraft((prev) => {
+      if (photoIndex < 0 || photoIndex >= prev.officePhotos.length) return prev;
+      const nextPhotos = prev.officePhotos.filter((_, index) => index !== photoIndex);
+      return {
+        ...prev,
+        officePhotos: nextPhotos,
+      };
+    });
+  };
+
+  const uploadOnlineCardOfficePhoto = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!selectedFile) return;
+
+    if (!user) {
+      setOnlineCardStatus({
+        type: "error",
+        message: "Pro nahrání fotky kanceláře se nejdřív přihlas.",
+      });
+      return;
+    }
+
+    if (onlineCardDraft.officePhotos.length >= ONLINE_CARD_OFFICE_PHOTOS_MAX) {
+      setOnlineCardStatus({
+        type: "info",
+        message: `Maximální počet fotek kanceláře je ${ONLINE_CARD_OFFICE_PHOTOS_MAX}.`,
+      });
+      return;
+    }
+
+    setOnlineCardOfficeUploading(true);
+    setOnlineCardStatus(null);
+
+    try {
+      const formData = new FormData();
+      formData.set("file", selectedFile);
+
+      const response = await fetchAuthedJsonOrThrow<OnlineCardOfficePhotoUploadResponse>(
+        user,
+        "/api/online-card/office-photo",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      const uploadedUrl = sanitizeOnlineCardPhotoUrl(response?.url);
+      if (!uploadedUrl) {
+        throw new Error("Nahraná fotka nevrátila platnou URL.");
+      }
+
+      setOnlineCardDraft((prev) => {
+        const merged = normalizeOnlineCardOfficePhotos([...prev.officePhotos, uploadedUrl]);
+        return {
+          ...prev,
+          officePhotos: merged,
+        };
+      });
+      setOnlineCardStatus({
+        type: "success",
+        message: "Fotka kanceláře je připravená. Nezapomeň kliknout na Uložit vizitku.",
+      });
+    } catch (error) {
+      console.error("Chyba při nahrávání fotky kanceláře:", error);
+      setOnlineCardStatus({
+        type: "error",
+        message:
+          error instanceof Error && error.message.trim()
+            ? error.message
+            : "Fotku kanceláře se nepodařilo nahrát.",
+      });
+    } finally {
+      setOnlineCardOfficeUploading(false);
+    }
+  };
+
   const handleSaveOnlineCard = async () => {
     const fullName = onlineCardDraft.fullName.trim();
     const email = normalizeEmail(onlineCardDraft.email);
@@ -1657,8 +1820,11 @@ export default function SettingsPage() {
       phone: onlineCardDraft.phone.trim().slice(0, 80),
       email,
       website,
+      ico: onlineCardDraft.ico.replace(/\D+/g, "").slice(0, ONLINE_CARD_ICO_MAX_LEN),
       bio: onlineCardDraft.bio.trim().slice(0, 1_000),
       location: onlineCardDraft.location.trim().slice(0, 120),
+      officeLabel: onlineCardDraft.officeLabel.trim().slice(0, ONLINE_CARD_OFFICE_MAX_LEN),
+      officePhotos: normalizeOnlineCardOfficePhotos(onlineCardDraft.officePhotos),
     };
 
     const saved = await saveUserFields({ onlineCard: payload });
@@ -2516,6 +2682,10 @@ export default function SettingsPage() {
   const onlineCardPublishReady =
     !onlineCardDraft.enabled ||
     (onlineCardSlugValid && onlineCardDraft.fullName.trim().length > 0);
+  const onlineCardOfficePhotoCount = onlineCardDraft.officePhotos.length;
+  const activeOnlineCardOfficePhoto = onlineCardDraft.officePhotos[onlineCardOfficePhotoIndex] ?? "";
+  const onlineCardOfficeUploadBlocked =
+    onlineCardOfficeUploading || onlineCardOfficePhotoCount >= ONLINE_CARD_OFFICE_PHOTOS_MAX;
   const handlePreviewMeetingCta = () => {
     if (typeof window === "undefined") return;
     if (onlineCardPublicUrl) {
@@ -2570,6 +2740,238 @@ export default function SettingsPage() {
     link.click();
     document.body.removeChild(link);
   };
+  const onlineCardStudioOfficeSection = (
+    <section className="relative overflow-hidden rounded-[30px] border border-violet-400/18 bg-[linear-gradient(160deg,rgba(14,11,29,0.96)_0%,rgba(8,8,20,0.98)_100%)] p-6 shadow-[0_24px_70px_rgba(6,4,23,0.48)] sm:p-8">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(139,92,246,0.2),transparent_34%)]" />
+      <div className="relative z-10 space-y-4">
+        <div className="text-center">
+          <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
+            <Building2 className="h-3.5 w-3.5" />
+            Kancelář
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <div className="rounded-xl border border-dashed border-violet-300/45 bg-white/[0.03] px-3 py-2 transition-colors hover:border-violet-200/65 focus-within:border-violet-200/80 focus-within:bg-white/[0.05]">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-200/78">
+              Název nebo adresa kanceláře
+            </p>
+            <input
+              type="text"
+              value={onlineCardDraft.officeLabel}
+              onChange={(event) =>
+                updateOnlineCardDraft({
+                  officeLabel: event.target.value.slice(0, ONLINE_CARD_OFFICE_MAX_LEN),
+                })
+              }
+              placeholder="Např. Bohemika Praha 4, Budějovická 123"
+              maxLength={ONLINE_CARD_OFFICE_MAX_LEN}
+              className="mt-1 w-full bg-transparent text-base font-semibold !text-white/92 placeholder:!text-white/40 outline-none"
+            />
+          </div>
+          <p className="text-[11px] text-violet-100/65">
+            {onlineCardDraft.officeLabel.length}/{ONLINE_CARD_OFFICE_MAX_LEN} znaků
+          </p>
+        </div>
+
+        <div className="space-y-2 rounded-2xl border border-white/14 bg-white/[0.03] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-200/78">
+              Fotky kanceláře
+            </p>
+            <span className="text-[11px] text-violet-100/70">
+              {onlineCardOfficePhotoCount}/{ONLINE_CARD_OFFICE_PHOTOS_MAX}
+            </span>
+          </div>
+
+          <label
+            className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+              onlineCardOfficeUploadBlocked
+                ? "cursor-not-allowed border-white/20 bg-white/10 text-violet-100/60"
+                : "border-violet-300/35 bg-white/[0.06] text-white hover:bg-white/[0.12]"
+            }`}
+          >
+            <Upload className="h-3.5 w-3.5" />
+            {onlineCardOfficeUploading ? "Nahrávám..." : "Nahrát fotku"}
+            <input
+              type="file"
+              className="hidden"
+              accept="image/jpeg,image/png,image/webp"
+              disabled={onlineCardOfficeUploadBlocked}
+              onChange={(event) => void uploadOnlineCardOfficePhoto(event)}
+            />
+          </label>
+
+          {activeOnlineCardOfficePhoto ? (
+            <div className="space-y-3">
+              <div className="relative overflow-hidden rounded-2xl border border-white/14 bg-white/[0.04]">
+                <img
+                  src={activeOnlineCardOfficePhoto}
+                  alt={`Náhled kanceláře ${onlineCardOfficePhotoIndex + 1}`}
+                  className="h-[210px] w-full object-cover sm:h-[280px]"
+                />
+                {onlineCardOfficePhotoCount > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => shiftOnlineCardOfficePhoto(-1)}
+                      className="absolute left-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-slate-950/45 text-white transition hover:bg-slate-950/65"
+                      aria-label="Předchozí fotka kanceláře"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => shiftOnlineCardOfficePhoto(1)}
+                      className="absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-slate-950/45 text-white transition hover:bg-slate-950/65"
+                      aria-label="Další fotka kanceláře"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {onlineCardDraft.officePhotos.map((photoUrl, index) => (
+                  <div key={photoUrl} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setOnlineCardOfficePhotoIndex(index)}
+                      className={`overflow-hidden rounded-xl border transition ${
+                        index === onlineCardOfficePhotoIndex
+                          ? "border-violet-200 shadow-[0_0_0_1px_rgba(196,181,253,0.7)]"
+                          : "border-white/18"
+                      }`}
+                      aria-label={`Zobrazit fotku kanceláře ${index + 1}`}
+                    >
+                      <img
+                        src={photoUrl}
+                        alt={`Miniatura kanceláře ${index + 1}`}
+                        className="h-14 w-20 object-cover"
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeOnlineCardOfficePhoto(index)}
+                      className="absolute -right-2 -top-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/40 bg-slate-950/75 text-white transition hover:bg-slate-900"
+                      aria-label={`Smazat fotku kanceláře ${index + 1}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-violet-100/70">
+              Nahraj až {ONLINE_CARD_OFFICE_PHOTOS_MAX} fotky. Na veřejné vizitce se budou přepínat
+              šipkami.
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+  const onlineCardStudioContactSection = (
+    <section className="relative overflow-hidden rounded-[30px] border border-violet-400/18 bg-[linear-gradient(160deg,rgba(14,11,29,0.96)_0%,rgba(8,8,20,0.98)_100%)] p-6 shadow-[0_24px_70px_rgba(6,4,23,0.48)] sm:p-8">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(139,92,246,0.2),transparent_34%)]" />
+      <div className="relative z-10 space-y-5">
+        <div className="text-center">
+          <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
+            <Mail className="h-3.5 w-3.5" />
+            Kontakt
+          </p>
+        </div>
+
+        <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+          {[
+            {
+              key: "phone",
+              label: "Telefon",
+              icon: PhoneCall,
+              value: onlineCardDraft.phone,
+              placeholder: "+420 777 000 111",
+              maxLength: 80,
+              inputMode: "tel" as const,
+              onChange: (next: string) => updateOnlineCardDraft({ phone: next.slice(0, 80) }),
+            },
+            {
+              key: "email",
+              label: "E-mail",
+              icon: Mail,
+              value: onlineCardDraft.email,
+              placeholder: "jmeno@bohemika.eu",
+              maxLength: 160,
+              inputMode: "email" as const,
+              onChange: (next: string) => updateOnlineCardDraft({ email: next.slice(0, 160) }),
+            },
+            {
+              key: "web",
+              label: "Web",
+              icon: Globe2,
+              value: onlineCardDraft.website,
+              placeholder: "https://...",
+              maxLength: ONLINE_CARD_WEBSITE_MAX_LEN,
+              inputMode: "url" as const,
+              onChange: (next: string) => updateOnlineCardDraft({ website: next.slice(0, ONLINE_CARD_WEBSITE_MAX_LEN) }),
+            },
+            {
+              key: "ico",
+              label: "IČO",
+              icon: Building2,
+              value: onlineCardDraft.ico,
+              placeholder: "12345678",
+              maxLength: ONLINE_CARD_ICO_MAX_LEN,
+              inputMode: "numeric" as const,
+              onChange: (next: string) => updateOnlineCardDraft({ ico: next.replace(/\D+/g, "").slice(0, ONLINE_CARD_ICO_MAX_LEN) }),
+            },
+            {
+              key: "location",
+              label: "Lokalita",
+              icon: MapPin,
+              value: onlineCardDraft.location,
+              placeholder: "Město",
+              maxLength: 120,
+              inputMode: "text" as const,
+              onChange: (next: string) => updateOnlineCardDraft({ location: next.slice(0, 120) }),
+            },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <div key={item.key} className="group space-y-2">
+                <div className="inline-flex items-center gap-2.5 text-violet-200/75">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/14 bg-white/[0.07] text-violet-100 transition-colors group-hover:border-violet-300/60 group-hover:text-white">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/75">
+                    {item.label}
+                  </span>
+                </div>
+
+                <div className="pl-[42px]">
+                  <div className="rounded-xl border border-dashed border-violet-300/45 bg-white/[0.03] px-3 py-2 transition-colors hover:border-violet-200/65 focus-within:border-violet-200/80 focus-within:bg-white/[0.05]">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-200/78">
+                      Kontakt
+                    </p>
+                    <input
+                      type="text"
+                      value={item.value}
+                      onChange={(event) => item.onChange(event.target.value)}
+                      placeholder={item.placeholder}
+                      maxLength={item.maxLength}
+                      inputMode={item.inputMode}
+                      className="mt-1 w-full bg-transparent text-[18px] font-semibold leading-tight !text-white/92 placeholder:!text-white/40 outline-none sm:text-[22px]"
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
 
   return (
     <AppLayout active="settings">
@@ -3282,7 +3684,8 @@ export default function SettingsPage() {
                           <span>Online Vizitka Studio</span>
                         </h2>
                         <p className="mt-1 text-xs text-slate-500">
-                          Klikni přímo do náhledu a upravuj obsah naživo.
+                          Klikni přímo do náhledu a upravuj obsah naživo. Pod hlavní vizitkou níže
+                          najdeš i sekce profi stránky poradce.
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -3300,28 +3703,39 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
-                    <PremiumOnlineCardPreview
-                      editable
-                      value={{
-                        fullName: onlineCardDraft.fullName,
-                        title: onlineCardDraft.title,
-                        phone: onlineCardDraft.phone,
-                        email: onlineCardDraft.email,
-                        website: onlineCardDraft.website,
-                        bio: onlineCardDraft.bio,
-                        location: onlineCardDraft.location,
-                      }}
-                      meetingCta={{
-                        label: "Sjednat schůzku",
-                        onClick: handlePreviewMeetingCta,
-                      }}
-                      onPatch={(patch) => updateOnlineCardDraft(patch)}
-                    />
+                    <div className="online-card-studio-preview space-y-4">
+                      <PremiumOnlineCardPreview
+                        editable
+                        layout="fullWidth"
+                        showContactSection={false}
+                        value={{
+                          fullName: onlineCardDraft.fullName,
+                          title: onlineCardDraft.title,
+                          phone: onlineCardDraft.phone,
+                          email: onlineCardDraft.email,
+                          website: onlineCardDraft.website,
+                          ico: onlineCardDraft.ico,
+                          bio: onlineCardDraft.bio,
+                          location: onlineCardDraft.location,
+                          officeLabel: onlineCardDraft.officeLabel,
+                          officePhotos: onlineCardDraft.officePhotos,
+                        }}
+                        meetingCta={{
+                          label: "Sjednat schůzku",
+                          onClick: handlePreviewMeetingCta,
+                        }}
+                        onPatch={(patch) => updateOnlineCardDraft(patch)}
+                      />
 
-                    <p className="text-[11px] text-slate-500">
-                      Přímá editace náhledu upravuje pole vizitky. Odeslání změn do profilu proveď
-                      tlačítkem Uložit vizitku.
-                    </p>
+                      <p className="text-[11px] text-slate-500">
+                        Přímá editace náhledu upravuje pole vizitky. Odeslání změn do profilu proveď
+                        tlačítkem Uložit vizitku.
+                      </p>
+
+                      <AdvisorProfileSections />
+                      {onlineCardStudioOfficeSection}
+                      {onlineCardStudioContactSection}
+                    </div>
                   </div>
 
                   <aside className="space-y-3 rounded-2xl border border-slate-200 bg-[linear-gradient(165deg,rgba(255,255,255,0.96)_0%,rgba(241,245,249,0.96)_100%)] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
@@ -3473,24 +3887,35 @@ export default function SettingsPage() {
                       </header>
 
                       <div className="flex-1 overflow-y-auto p-3 sm:p-5">
-                        <PremiumOnlineCardPreview
-                          editable
-                          className="mx-auto min-h-full max-w-5xl"
-                          value={{
-                            fullName: onlineCardDraft.fullName,
-                            title: onlineCardDraft.title,
-                            phone: onlineCardDraft.phone,
-                            email: onlineCardDraft.email,
-                            website: onlineCardDraft.website,
-                            bio: onlineCardDraft.bio,
-                            location: onlineCardDraft.location,
-                          }}
-                          meetingCta={{
-                            label: "Sjednat schůzku",
-                            onClick: handlePreviewMeetingCta,
-                          }}
-                          onPatch={(patch) => updateOnlineCardDraft(patch)}
-                        />
+                        <div className="w-full space-y-4">
+                          <div className="online-card-studio-preview space-y-4">
+                            <PremiumOnlineCardPreview
+                              editable
+                              layout="fullWidth"
+                              showContactSection={false}
+                              value={{
+                                fullName: onlineCardDraft.fullName,
+                                title: onlineCardDraft.title,
+                                phone: onlineCardDraft.phone,
+                                email: onlineCardDraft.email,
+                                website: onlineCardDraft.website,
+                                ico: onlineCardDraft.ico,
+                                bio: onlineCardDraft.bio,
+                                location: onlineCardDraft.location,
+                                officeLabel: onlineCardDraft.officeLabel,
+                                officePhotos: onlineCardDraft.officePhotos,
+                              }}
+                              meetingCta={{
+                                label: "Sjednat schůzku",
+                                onClick: handlePreviewMeetingCta,
+                              }}
+                              onPatch={(patch) => updateOnlineCardDraft(patch)}
+                            />
+                            <AdvisorProfileSections />
+                            {onlineCardStudioOfficeSection}
+                            {onlineCardStudioContactSection}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

@@ -41,6 +41,44 @@ const escapeHtml = (value: string): string =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+const splitMeetingTopicsAndMessage = (
+  topicsRaw: string,
+  messageRaw: string
+): { topics: string[]; message: string } => {
+  const directTopics = topicsRaw
+    .split("||")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, 16);
+  if (directTopics.length > 0) {
+    return { topics: directTopics, message: messageRaw.trim() };
+  }
+
+  const trimmedMessage = messageRaw.trim();
+  if (!trimmedMessage) {
+    return { topics: [], message: "" };
+  }
+
+  const lines = trimmedMessage.split(/\r?\n/);
+  const firstLine = (lines[0] ?? "").trim();
+  const match = firstLine.match(/^t[ée]mata zájmu:\s*(.+)$/i);
+  if (!match) {
+    return { topics: [], message: trimmedMessage };
+  }
+
+  const topics = match[1]
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, 16);
+  const message = lines
+    .slice(1)
+    .join("\n")
+    .trim();
+
+  return { topics, message };
+};
+
 const buildSharedPlanPreviewHtml = (item: MailboxItem): string | null => {
   if (item.type !== "production_plan_share") return null;
   const metadata = item.metadata ?? {};
@@ -630,6 +668,191 @@ const buildDirectMessagePreviewHtml = (item: MailboxItem): string | null => {
   `;
 };
 
+const buildOnlineCardMeetingRequestPreviewHtml = (item: MailboxItem): string | null => {
+  if (item.type !== "online_card_meeting_request") return null;
+  const metadata = item.metadata ?? {};
+
+  const requesterName =
+    typeof metadata.requesterName === "string" && metadata.requesterName.trim().length > 0
+      ? metadata.requesterName.trim()
+      : "Neznámý žadatel";
+  const requesterEmail =
+    typeof metadata.requesterEmail === "string" && metadata.requesterEmail.trim().length > 0
+      ? metadata.requesterEmail.trim()
+      : "";
+  const requesterPhone =
+    typeof metadata.requesterPhone === "string" && metadata.requesterPhone.trim().length > 0
+      ? metadata.requesterPhone.trim()
+      : "";
+  const ownerName =
+    typeof metadata.meetingOwnerName === "string" && metadata.meetingOwnerName.trim().length > 0
+      ? metadata.meetingOwnerName.trim()
+      : "";
+  const slug =
+    typeof metadata.slug === "string" && metadata.slug.trim().length > 0
+      ? metadata.slug.trim()
+      : "";
+  const requestId =
+    typeof metadata.requestId === "string" && metadata.requestId.trim().length > 0
+      ? metadata.requestId.trim()
+      : item.id;
+  const topicsRaw =
+    typeof metadata.requesterTopics === "string" ? metadata.requesterTopics : "";
+  const messageRaw =
+    typeof metadata.requesterMessage === "string" ? metadata.requesterMessage : "";
+  const { topics, message } = splitMeetingTopicsAndMessage(topicsRaw, messageRaw);
+
+  return `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          * { box-sizing: border-box; }
+          body {
+            margin: 0;
+            padding: 24px;
+            background: linear-gradient(155deg, #edf3fb 0%, #f8fbff 55%, #eef4fc 100%);
+            font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            color: #10213d;
+          }
+          .page {
+            max-width: 860px;
+            margin: 0 auto;
+            border-radius: 24px;
+            border: 1px solid #d8e2f0;
+            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+            box-shadow: 0 24px 58px rgba(16, 33, 61, 0.16);
+            padding: 18px 20px 22px;
+          }
+          .pill {
+            display: inline-flex;
+            border-radius: 999px;
+            border: 1px solid #ccd9ec;
+            background: #f4f8ff;
+            color: #26406e;
+            padding: 5px 12px;
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 700;
+          }
+          h1 {
+            margin: 12px 0 6px;
+            font-size: 34px;
+            line-height: 1.02;
+            color: #112347;
+            font-weight: 800;
+          }
+          .meta {
+            font-size: 13px;
+            color: #4b5f83;
+            margin-bottom: 12px;
+          }
+          .grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 10px;
+          }
+          .card {
+            border: 1px solid #d4deec;
+            border-radius: 12px;
+            padding: 10px;
+            background: #f8fbff;
+          }
+          .label {
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #5f7494;
+            font-weight: 700;
+          }
+          .value {
+            margin-top: 4px;
+            color: #13284d;
+            font-size: 16px;
+            font-weight: 700;
+            word-break: break-word;
+          }
+          .topics {
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+          }
+          .topic {
+            display: inline-flex;
+            border-radius: 999px;
+            border: 1px solid #c8d7ee;
+            background: #eff6ff;
+            color: #1d4f91;
+            padding: 5px 10px;
+            font-size: 12px;
+            font-weight: 700;
+          }
+          .message {
+            margin-top: 10px;
+            border-radius: 12px;
+            border: 1px solid #d9e4f4;
+            background: #f7fbff;
+            padding: 12px;
+            color: #1f355d;
+            font-size: 15px;
+            white-space: pre-wrap;
+          }
+          .footer {
+            margin-top: 12px;
+            font-size: 11px;
+            color: #60748f;
+            border-top: 1px dashed #cad7ea;
+            padding-top: 8px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+          <span class="pill">Žádost z online vizitky</span>
+          <h1>${escapeHtml(item.title || "Nová žádost o schůzku")}</h1>
+          <div class="meta">Doručeno ${escapeHtml(formatDateTime(item.createdAtMs))}${
+            ownerName ? ` • Poradce: <strong>${escapeHtml(ownerName)}</strong>` : ""
+          }</div>
+
+          <div class="grid">
+            <div class="card">
+              <div class="label">Žadatel</div>
+              <div class="value">${escapeHtml(requesterName)}</div>
+            </div>
+            <div class="card">
+              <div class="label">Telefon</div>
+              <div class="value">${escapeHtml(requesterPhone || "Neuvedeno")}</div>
+            </div>
+            <div class="card">
+              <div class="label">E-mail</div>
+              <div class="value">${escapeHtml(requesterEmail || "Neuvedeno")}</div>
+            </div>
+            <div class="card">
+              <div class="label">Vizitka</div>
+              <div class="value">${escapeHtml(slug ? `/vizitka/${slug}` : "Neuvedeno")}</div>
+            </div>
+          </div>
+
+          ${
+            topics.length > 0
+              ? `<div class="topics">${topics.map((topic) => `<span class="topic">${escapeHtml(topic)}</span>`).join("")}</div>`
+              : ""
+          }
+
+          <div class="message">${escapeHtml(message || "Žadatel neposlal doplňující zprávu.")}</div>
+
+          <div class="footer">
+            ID žádosti: ${escapeHtml(requestId)} • Náhled z notifikačního centra.
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
 export const buildMailboxPreviewHtml = (item: MailboxItem): string | null => {
   if (item.type === "production_plan_share") {
     return buildSharedPlanPreviewHtml(item);
@@ -639,6 +862,9 @@ export const buildMailboxPreviewHtml = (item: MailboxItem): string | null => {
   }
   if (item.type === "direct_message") {
     return buildDirectMessagePreviewHtml(item);
+  }
+  if (item.type === "online_card_meeting_request") {
+    return buildOnlineCardMeetingRequestPreviewHtml(item);
   }
   return null;
 };

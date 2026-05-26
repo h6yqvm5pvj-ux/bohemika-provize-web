@@ -36,6 +36,7 @@ type IncomingBody = {
   phone?: unknown;
   email?: unknown;
   message?: unknown;
+  topics?: unknown;
   company?: unknown;
 };
 
@@ -47,6 +48,42 @@ const sanitizeText = (value: unknown, maxLen: number): string => {
   const trimmed = value.trim();
   if (!trimmed) return "";
   return trimmed.slice(0, maxLen);
+};
+
+const sanitizeMeetingTopics = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const out = new Set<string>();
+  value.forEach((entry) => {
+    const topic = sanitizeText(entry, 90);
+    if (!topic) return;
+    out.add(topic);
+  });
+  return [...out].slice(0, 16);
+};
+
+const splitTopicsAndNoteFromMessage = (value: string): { topics: string[]; note: string } => {
+  const trimmed = value.trim();
+  if (!trimmed) return { topics: [], note: "" };
+
+  const lines = trimmed.split(/\r?\n/);
+  const firstLine = (lines[0] ?? "").trim();
+  const match = firstLine.match(/^t[ée]mata zájmu:\s*(.+)$/i);
+  if (!match) {
+    return { topics: [], note: trimmed };
+  }
+
+  const topics = match[1]
+    .split(",")
+    .map((entry) => sanitizeText(entry, 90))
+    .filter(Boolean)
+    .slice(0, 16);
+
+  const note = lines
+    .slice(1)
+    .join("\n")
+    .trim();
+
+  return { topics, note };
 };
 
 const normalizeSlug = (value: unknown): string => {
@@ -244,8 +281,12 @@ export async function POST(req: NextRequest) {
     const fullName = sanitizeText(body.fullName, 120);
     const phone = sanitizeText(body.phone, 80);
     const email = normalizeEmail(body.email);
-    const message = sanitizeText(body.message, 1200);
+    const messageRaw = sanitizeText(body.message, 1200);
+    const topicsRaw = sanitizeMeetingTopics(body.topics);
     const honeypot = sanitizeText(body.company, 120);
+    const parsedLegacy = splitTopicsAndNoteFromMessage(messageRaw);
+    const topics = topicsRaw.length > 0 ? topicsRaw : parsedLegacy.topics;
+    const message = topicsRaw.length > 0 ? messageRaw : parsedLegacy.note;
 
     if (!slug || slug.length < 3 || !SLUG_RE.test(slug)) {
       return withRateHeaders(
@@ -317,6 +358,7 @@ export async function POST(req: NextRequest) {
         fullName,
         phone,
         email,
+        topics,
         message,
         ip,
         userAgent: req.headers.get("user-agent")?.slice(0, 240) || "",
@@ -346,6 +388,7 @@ export async function POST(req: NextRequest) {
         requesterName: fullName,
         requesterPhone: phone,
         requesterEmail: email,
+        requesterTopics: topics.join("||"),
         requesterMessage: message,
         meetingOwnerName: owner.ownerName,
       },

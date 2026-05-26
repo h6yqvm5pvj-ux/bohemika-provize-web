@@ -81,6 +81,10 @@ const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ONLINE_CARD_SLUG_MAX_LEN = 64;
 const ONLINE_CARD_SLUG_MIN_LEN = 3;
+const ONLINE_CARD_ICO_MAX_LEN = 8;
+const ONLINE_CARD_OFFICE_MAX_LEN = 160;
+const ONLINE_CARD_OFFICE_PHOTOS_MAX = 3;
+const ONLINE_CARD_OFFICE_PHOTO_URL_MAX_LEN = 1_200;
 const ALLOWED_PATCH_KEYS = new Set([
   "commissionMode",
   "monthlyGoal",
@@ -291,8 +295,11 @@ type OnlineCardPayload = {
   phone: string;
   email: string;
   website: string;
+  ico: string;
   bio: string;
   location: string;
+  officeLabel: string;
+  officePhotos: string[];
   updatedAt: string;
 };
 
@@ -321,6 +328,39 @@ const normalizeOnlineCardWebsite = (value: string): string | null => {
   return url.toString();
 };
 
+const normalizeOnlineCardPhotoUrl = (value: unknown): string | null => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (trimmed.length > ONLINE_CARD_OFFICE_PHOTO_URL_MAX_LEN) return null;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  return url.toString();
+};
+
+const sanitizeOnlineCardPhotos = (value: unknown): string[] | null => {
+  if (value == null) return [];
+  if (!Array.isArray(value)) return null;
+
+  const seen = new Set<string>();
+  const photos: string[] = [];
+  for (const entry of value) {
+    const normalized = normalizeOnlineCardPhotoUrl(entry);
+    if (normalized == null) return null;
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    photos.push(normalized);
+    if (photos.length >= ONLINE_CARD_OFFICE_PHOTOS_MAX) break;
+  }
+
+  return photos;
+};
+
 function sanitizeOnlineCard(value: unknown): OnlineCardPayload | null {
   if (!isPlainObject(value)) return null;
 
@@ -331,8 +371,11 @@ function sanitizeOnlineCard(value: unknown): OnlineCardPayload | null {
   const phone = normalizeOptionalText(value.phone, 80);
   const emailRaw = normalizeOptionalText(value.email, 160);
   const websiteRaw = normalizeOptionalText(value.website, 220);
+  const icoRaw = value.ico;
   const bio = normalizeOptionalText(value.bio, 1_000);
   const location = normalizeOptionalText(value.location, 120);
+  const officeLabel = normalizeOptionalText(value.officeLabel, ONLINE_CARD_OFFICE_MAX_LEN);
+  const officePhotos = sanitizeOnlineCardPhotos(value.officePhotos);
 
   if (
     fullName == null ||
@@ -341,7 +384,9 @@ function sanitizeOnlineCard(value: unknown): OnlineCardPayload | null {
     emailRaw == null ||
     websiteRaw == null ||
     bio == null ||
-    location == null
+    location == null ||
+    officeLabel == null ||
+    officePhotos == null
   ) {
     return null;
   }
@@ -351,6 +396,12 @@ function sanitizeOnlineCard(value: unknown): OnlineCardPayload | null {
 
   const website = normalizeOnlineCardWebsite(websiteRaw);
   if (website == null) return null;
+
+  let ico = "";
+  if (icoRaw != null) {
+    if (typeof icoRaw !== "string") return null;
+    ico = icoRaw.replace(/\D+/g, "").slice(0, ONLINE_CARD_ICO_MAX_LEN);
+  }
 
   if (enabled) {
     if (!fullName) return null;
@@ -365,8 +416,11 @@ function sanitizeOnlineCard(value: unknown): OnlineCardPayload | null {
     phone,
     email,
     website,
+    ico,
     bio,
     location,
+    officeLabel,
+    officePhotos,
     updatedAt: new Date().toISOString(),
   };
 }

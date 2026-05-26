@@ -9,15 +9,17 @@ export function estimatePayoutDate(
 ): Date {
   const year = policyStart.getFullYear();
   const month = policyStart.getMonth();
-  const day = policyStart.getDate();
-  let dayForCutoff = day;
+  // Cutoff řídíme primárně datem sjednání.
+  // Pokud datum sjednání chybí, použijeme den počátku.
+  const dayForCutoff = agreementDate
+    ? agreementDate.getDate()
+    : policyStart.getDate();
 
-  if (agreementDate) {
-    dayForCutoff = Math.max(dayForCutoff, agreementDate.getDate());
+  if (dayForCutoff > cutoffDay) {
+    return new Date(year, month + 2, 1);
   }
 
-  const monthsToAdd = dayForCutoff > cutoffDay ? 2 : 1;
-  return new Date(year, month + monthsToAdd, 1);
+  return new Date(year, month + 1, 27);
 }
 
 export function monthsBetweenPayments(freq?: PaymentFrequency | null): number {

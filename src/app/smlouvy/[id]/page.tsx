@@ -4114,7 +4114,7 @@ export default function ContractDetailPage() {
                     {neonImmediateBreakdown.totalCoefficient.toLocaleString("cs-CZ", {
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 3,
-                    })}
+                    })} %
                   </span>
                 </p>
                 <p className="text-sm text-slate-600">
@@ -4123,7 +4123,7 @@ export default function ContractDetailPage() {
                     {neonImmediateBreakdown.a101Coefficient.toLocaleString("cs-CZ", {
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 4,
-                    })}
+                    })} %
                   </span>
                 </p>
                 <p className="text-sm text-slate-600">
@@ -4132,7 +4132,7 @@ export default function ContractDetailPage() {
                     {neonImmediateBreakdown.b0301Coefficient.toLocaleString("cs-CZ", {
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 3,
-                    })}
+                    })} %
                   </span>
                 </p>
                 {neonImmediateBreakdown.includeB3601 && (
@@ -4142,7 +4142,7 @@ export default function ContractDetailPage() {
                       {neonImmediateBreakdown.b3601HalfCoefficient.toLocaleString("cs-CZ", {
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 4,
-                      })}
+                      })} %
                     </span>
                   </p>
                 )}

@@ -1,4 +1,3 @@
-import { ArrowUpRight, Globe2 } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import type { PremiumOnlineCardValue } from "@/components/PremiumOnlineCardPreview";
@@ -10,6 +9,8 @@ export const dynamic = "force-dynamic";
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ONLINE_CARD_OFFICE_PHOTOS_MAX = 3;
+const ONLINE_CARD_OFFICE_PHOTO_URL_MAX_LEN = 1_200;
 
 const normalizeText = (value: unknown, maxLen: number): string => {
   if (typeof value !== "string") return "";
@@ -51,6 +52,36 @@ const normalizeWebsite = (value: unknown): string => {
   return url.toString();
 };
 
+const normalizePhotoUrl = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > ONLINE_CARD_OFFICE_PHOTO_URL_MAX_LEN) return "";
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return "";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+  return url.toString();
+};
+
+const normalizeOfficePhotos = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const photos: string[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of value) {
+    const url = normalizePhotoUrl(entry);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    photos.push(url);
+    if (photos.length >= ONLINE_CARD_OFFICE_PHOTOS_MAX) break;
+  }
+
+  return photos;
+};
+
 const parseOnlineCard = (value: unknown): (PremiumOnlineCardValue & { enabled: boolean; slug: string }) | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
@@ -62,8 +93,11 @@ const parseOnlineCard = (value: unknown): (PremiumOnlineCardValue & { enabled: b
   const phone = normalizeText(row.phone, 80);
   const email = normalizeEmail(row.email);
   const website = normalizeWebsite(row.website);
+  const ico = normalizeText(row.ico, 24).replace(/\D+/g, "").slice(0, 8);
   const bio = normalizeText(row.bio, 1_000);
   const location = normalizeText(row.location, 120);
+  const officeLabel = normalizeText(row.officeLabel, 160);
+  const officePhotos = normalizeOfficePhotos(row.officePhotos);
 
   if (!enabled) return null;
   if (!slug || slug.length < 3) return null;
@@ -77,8 +111,11 @@ const parseOnlineCard = (value: unknown): (PremiumOnlineCardValue & { enabled: b
     phone,
     email,
     website,
+    ico,
     bio,
     location,
+    officeLabel,
+    officePhotos,
   };
 };
 
@@ -98,8 +135,11 @@ async function loadOnlineCardBySlug(slug: string): Promise<PremiumOnlineCardValu
       phone: parsed.phone,
       email: parsed.email,
       website: parsed.website,
+      ico: parsed.ico,
       bio: parsed.bio,
       location: parsed.location,
+      officeLabel: parsed.officeLabel,
+      officePhotos: parsed.officePhotos,
     };
   }
 
@@ -121,26 +161,16 @@ export default async function OnlineCardPage({
   if (!card) notFound();
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[linear-gradient(160deg,#f8fbff_0%,#f1f6ff_42%,#eef4ff_100%)] px-4 py-8 sm:px-6 sm:py-10">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_14%_8%,rgba(125,211,252,0.25),transparent_35%),radial-gradient(circle_at_88%_2%,rgba(96,165,250,0.18),transparent_30%)]" />
-      <div className="pointer-events-none absolute inset-0 opacity-45 [background-image:linear-gradient(rgba(148,163,184,0.17)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.17)_1px,transparent_1px)] [background-size:64px_64px]" />
+    <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_15%_12%,#271245_0%,#110a21_36%,#080715_72%,#05040f_100%)]">
+      <div className="pointer-events-none absolute -left-24 top-12 h-96 w-96 rounded-full bg-violet-500/28 blur-[110px] vizitka-ambient-float" />
+      <div className="pointer-events-none absolute -right-32 top-[22%] h-[32rem] w-[32rem] rounded-full bg-indigo-500/24 blur-[130px] vizitka-ambient-float [animation-delay:-4.5s] [animation-duration:21s]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_84%_4%,rgba(139,92,246,0.22),transparent_34%),radial-gradient(circle_at_18%_72%,rgba(59,130,246,0.16),transparent_40%),radial-gradient(circle_at_72%_78%,rgba(14,165,233,0.1),transparent_44%)] vizitka-bg-shift" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(192,132,252,0.52),transparent)] vizitka-line-pulse" />
 
-      <div className="relative mx-auto w-full max-w-5xl space-y-5">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/90 bg-white/80 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.07)] backdrop-blur-xl">
-            <Globe2 className="h-3.5 w-3.5 text-slate-600" />
-            Veřejná vizitka
-          </div>
-          <a
-            href="https://bohemka.app"
-            className="inline-flex items-center gap-2 rounded-full border border-slate-300/90 bg-white/85 px-4 py-2 text-sm font-semibold text-slate-800 shadow-[0_12px_28px_rgba(15,23,42,0.07)] transition hover:border-slate-400 hover:bg-white"
-          >
-            Zpět na bohemka.app
-            <ArrowUpRight className="h-4 w-4" />
-          </a>
-        </header>
-
-        <OnlineCardPublicClient slug={requestedSlug} card={card} />
+      <div className="relative w-full px-4 pb-10 pt-6 sm:px-8 sm:pb-12 sm:pt-8 lg:px-12">
+        <div>
+          <OnlineCardPublicClient slug={requestedSlug} card={card} />
+        </div>
       </div>
     </main>
   );

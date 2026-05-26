@@ -5,6 +5,7 @@ import { adminDb } from "@/lib/server/firebaseAdmin";
 const MAILBOX_MAX_RECIPIENTS = 500;
 const TITLE_MAX_LEN = 120;
 const BODY_MAX_LEN = 280;
+const METADATA_STRING_MAX_LEN = 2000;
 
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -39,7 +40,7 @@ const sanitizeMetadata = (
   Object.entries(value).forEach(([key, raw]) => {
     if (!key) return;
     if (typeof raw === "string") {
-      out[key] = raw.slice(0, 400);
+      out[key] = raw.slice(0, METADATA_STRING_MAX_LEN);
       return;
     }
     if (typeof raw === "number") {

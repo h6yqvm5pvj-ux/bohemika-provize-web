@@ -534,6 +534,12 @@ export default function PostaPage() {
       setPreviewItem(item);
       return;
     }
+    if (item.type === "online_card_meeting_request") {
+      setSharedExportPreviewHtml(null);
+      setSharedExportPreviewLoading(false);
+      setPreviewItem(item);
+      return;
+    }
     if (item.type === "production_plan_share") {
       setSharedExportPreviewHtml(null);
       setSharedExportPreviewLoading(false);
@@ -602,6 +608,8 @@ export default function PostaPage() {
       const nextHref = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
       window.history.replaceState({}, "", nextHref);
     }
+    // `openItem` here intentionally follows current render state; guard refs prevent duplicate opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
   useEffect(() => {
@@ -1259,6 +1267,8 @@ export default function PostaPage() {
                             ? "Náhled sdíleného exportu produkce"
                             : previewItem.type === "production_plan_share"
                             ? "Náhled sdíleného plánu produkce"
+                            : previewItem.type === "online_card_meeting_request"
+                            ? "Detail žádosti o schůzku"
                             : "Náhled zprávy"
                         }
                         className="h-full w-full bg-white"
