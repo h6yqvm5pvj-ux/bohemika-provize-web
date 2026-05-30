@@ -1,10 +1,11 @@
 // src/app/nastaveni/page.tsx
 "use client";
 
-import { type ChangeEvent, useCallback, useEffect, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import {
   AtSign,
+  ArrowRight,
   BellRing,
   Calculator,
   CalendarDays,
@@ -55,6 +56,7 @@ import {
   type TotpSecret,
   updatePassword,
 } from "firebase/auth";
+import { useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 
 import { auth } from "../firebase";
@@ -62,6 +64,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
 import { PremiumOnlineCardPreview } from "@/components/PremiumOnlineCardPreview";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { invalidateUserProfileCache } from "@/app/lib/userProfileCache";
 import {
   deleteBrowserFcmToken,
   getBrowserFcmToken,
@@ -69,15 +72,6 @@ import {
   getPushPermission,
   isPushSupportedInBrowser,
 } from "@/app/lib/pushNotifications";
-import {
-  BOX_THEME_EVENT,
-  BOX_THEME_LOCAL_STORAGE_KEY,
-  BOX_THEME_OPTIONS,
-  DEFAULT_BOX_THEME,
-  applyBoxThemeToRoot,
-  resolveBoxTheme,
-  type BoxTheme,
-} from "@/lib/boxTheme";
 import {
   DEFAULT_FONT_THEME,
   FONT_THEME_EVENT,
@@ -335,7 +329,6 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
 const SETTINGS_KEYS = {
   mode: "settings.mode",
   monthlyGoal: "settings.monthlyGoal",
-  boxTheme: BOX_THEME_LOCAL_STORAGE_KEY,
   fontTheme: FONT_THEME_LOCAL_STORAGE_KEY,
   reduceMotion: "settings.reduceMotion",
   tipsterMode: "settings.tipsterMode",
@@ -355,7 +348,6 @@ const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
   { id: "subscription", label: "Předplatné" },
   { id: "career", label: "Kariéra" },
   { id: "notifications", label: "Notifikace" },
-  { id: "onlineCard", label: "Online vizitka" },
   { id: "requests", label: "Žádosti" },
   { id: "design", label: "Design" },
 ];
@@ -420,44 +412,41 @@ const SUBSCRIPTION_PLAN_LABELS: Record<SubscriptionPlanValue, string> = {
 
 type SubscriptionPriceCard = {
   id: Exclude<SubscriptionPlanValue, "unlimited">;
-  label: string;
+  title: string;
+  description: string;
   priceLabel: string;
   cadenceLabel: string;
-  tintClass: string;
-  accentClass: string;
-  ringClass: string;
+  footerLabel: string;
+  footerEmphasis: string;
 };
 
 const SUBSCRIPTION_PRICE_CARDS: readonly SubscriptionPriceCard[] = [
   {
     id: "monthly",
-    label: "Měsíční",
+    title: "Měsíční předplatné",
+    description: "Flexibilní přístup ke všem funkcím aplikace bez dlouhého závazku.",
     priceLabel: "300 Kč",
     cadenceLabel: "za měsíc",
-    tintClass:
-      "bg-[linear-gradient(130deg,rgba(186,230,253,0.45)_0%,rgba(255,255,255,0.92)_52%,rgba(224,231,255,0.55)_100%)]",
-    accentClass: "bg-[linear-gradient(90deg,#0284c7_0%,#4f46e5_100%)]",
-    ringClass: "ring-sky-200/80",
+    footerLabel: "Délka období",
+    footerEmphasis: "1 měsíc",
   },
   {
     id: "semiannual",
-    label: "Pololetní",
+    title: "Pololetní předplatné",
+    description: "Šest měsíců přístupu s nižší cenou oproti měsíční platbě.",
     priceLabel: "1.590 Kč",
     cadenceLabel: "na 6 měsíců",
-    tintClass:
-      "bg-[linear-gradient(130deg,rgba(196,181,253,0.45)_0%,rgba(255,255,255,0.92)_52%,rgba(196,242,224,0.55)_100%)]",
-    accentClass: "bg-[linear-gradient(90deg,#7c3aed_0%,#0f766e_100%)]",
-    ringClass: "ring-violet-200/80",
+    footerLabel: "Úspora proti měsíčnímu",
+    footerEmphasis: "210 Kč",
   },
   {
     id: "yearly",
-    label: "Roční",
+    title: "Roční předplatné",
+    description: "Celoroční přístup za nejlepší cenu pro pravidelné používání.",
     priceLabel: "2.800 Kč",
     cadenceLabel: "na 12 měsíců",
-    tintClass:
-      "bg-[linear-gradient(130deg,rgba(254,240,138,0.42)_0%,rgba(255,255,255,0.92)_52%,rgba(191,219,254,0.5)_100%)]",
-    accentClass: "bg-[linear-gradient(90deg,#d97706_0%,#2563eb_100%)]",
-    ringClass: "ring-amber-200/80",
+    footerLabel: "Úspora proti měsíčnímu",
+    footerEmphasis: "800 Kč",
   },
 ];
 
@@ -910,6 +899,8 @@ const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
 
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams();
+  const onlineCardQueryAppliedRef = useRef(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
@@ -946,7 +937,6 @@ export default function SettingsPage() {
   const [notificationSettings, setNotificationSettings] =
     useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
-  const [boxTheme, setBoxTheme] = useState<BoxTheme>(DEFAULT_BOX_THEME);
   const [fontTheme, setFontTheme] = useState<FontTheme>(DEFAULT_FONT_THEME);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [tipsterMode, setTipsterMode] = useState(false);
@@ -1008,16 +998,6 @@ export default function SettingsPage() {
     } else {
       root.removeAttribute("data-motion");
     }
-  };
-
-  const applyBoxThemePreference = (value: unknown) => {
-    const next = resolveBoxTheme(value);
-    setBoxTheme(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(SETTINGS_KEYS.boxTheme, next);
-      applyBoxThemeToRoot(next);
-    }
-    return next;
   };
 
   const applyFontThemePreference = (value: unknown) => {
@@ -1251,16 +1231,6 @@ export default function SettingsPage() {
             if (Number.isFinite(n)) setMonthlyGoal(n);
           }
 
-          if (typeof data.boxTheme === "string") {
-            applyBoxThemePreference(data.boxTheme);
-          } else if (typeof window !== "undefined") {
-            applyBoxThemePreference(
-              window.localStorage.getItem(SETTINGS_KEYS.boxTheme)
-            );
-          } else {
-            setBoxTheme(DEFAULT_BOX_THEME);
-          }
-
           if (typeof data.fontTheme === "string") {
             applyFontThemePreference(data.fontTheme);
           } else if (typeof window !== "undefined") {
@@ -1338,9 +1308,6 @@ export default function SettingsPage() {
             const storedGoal = window.localStorage.getItem(
               SETTINGS_KEYS.monthlyGoal
             );
-            const storedBoxTheme = window.localStorage.getItem(
-              SETTINGS_KEYS.boxTheme
-            );
             const storedFontTheme = window.localStorage.getItem(
               SETTINGS_KEYS.fontTheme
             );
@@ -1348,7 +1315,6 @@ export default function SettingsPage() {
             if (storedMode) setMode(storedMode);
             const n = storedGoal ? Number(storedGoal) : 0;
             if (Number.isFinite(n)) setMonthlyGoal(n);
-            applyBoxThemePreference(storedBoxTheme);
             applyFontThemePreference(storedFontTheme);
             const storedMotion = window.localStorage.getItem(
               SETTINGS_KEYS.reduceMotion
@@ -1437,6 +1403,16 @@ export default function SettingsPage() {
   }, [timelineSetupRequired, activeTab]);
 
   useEffect(() => {
+    if (onlineCardQueryAppliedRef.current) return;
+    if (timelineSetupRequired) return;
+    const requestedTab = searchParams.get("tab");
+    if (requestedTab === "onlineCard" || requestedTab === "online-vizitka") {
+      setActiveTab("onlineCard");
+      onlineCardQueryAppliedRef.current = true;
+    }
+  }, [searchParams, timelineSetupRequired]);
+
+  useEffect(() => {
     if (loadingMeta || typeof window === "undefined") return;
 
     const scrollToTimeline = () => {
@@ -1472,6 +1448,10 @@ export default function SettingsPage() {
         method: "PATCH",
         body: JSON.stringify(partial),
       });
+      invalidateUserProfileCache(user.email);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("app:refresh-user-profile"));
+      }
       return { ok: true };
     } catch (e) {
       console.error("Chyba při ukládání nastavení:", e);
@@ -2304,18 +2284,6 @@ export default function SettingsPage() {
     void loadUserRequests();
   }, [user, loadUserRequests, resetUserRequestForm]);
 
-  const handleBoxThemeChange = async (nextTheme: BoxTheme) => {
-    const resolved = applyBoxThemePreference(nextTheme);
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent(BOX_THEME_EVENT, {
-          detail: { boxTheme: resolved },
-        })
-      );
-    }
-    await saveUserFields({ boxTheme: resolved });
-  };
-
   const handleFontThemeChange = async (nextTheme: FontTheme) => {
     const resolved = applyFontThemePreference(nextTheme);
     if (typeof window !== "undefined") {
@@ -2624,8 +2592,6 @@ export default function SettingsPage() {
   const mfaQrCodeUri = mfaEnrollmentSecret
     ? mfaEnrollmentSecret.generateQrCodeUrl(mfaAccountName, mfaIssuer)
     : "";
-  const positionDisplay = POSITIONS.find((p) => p.id === position)?.label ?? position;
-  const modeDisplay = COMMISSION_MODES.find((m) => m.id === mode)?.label ?? mode;
   const enabledNotificationTypes = Object.values(notificationSettings.types).filter(Boolean).length;
   const panelClass =
     "relative overflow-hidden rounded-2xl border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-6 py-5 shadow-[0_18px_46px_rgba(15,23,42,0.08)] sm:px-8 sm:py-6";
@@ -3006,29 +2972,6 @@ export default function SettingsPage() {
           </div>
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <span className="inline-flex min-h-[58px] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                <UserRound size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                Pozice: {positionDisplay}
-              </span>
-              <span className="inline-flex min-h-[58px] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                <Calculator size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                Režim: {modeDisplay}
-              </span>
-              <span
-                className={`inline-flex min-h-[58px] items-center gap-3 rounded-2xl border px-4 py-3 text-xs font-semibold shadow-[0_10px_24px_rgba(15,23,42,0.05)] ${
-                  tipsterMode ? "border-slate-900 bg-slate-900 text-white" : toggleOffClass
-                }`}
-              >
-                <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
-                Tipař: {tipsterMode ? "ON" : "OFF"}
-              </span>
-              <span className="inline-flex min-h-[58px] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                <BellRing size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                Notifikace: {enabledNotificationTypes}/4
-              </span>
-            </div>
-
             {timelineSetupRequired ? (
               <div className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                 Před prvním použitím aplikace nejdřív nastav a ulož Historii kariéry. Ostatní
@@ -4457,49 +4400,6 @@ export default function SettingsPage() {
                   <div className="space-y-2.5">
                     <div>
                       <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
-                        Barva tmavých boxů
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        Změní barvu tmavých tlačítek a aktivních filtrů v celé aplikaci.
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                      {BOX_THEME_OPTIONS.map((opt) => {
-                        const isActive = boxTheme === opt.id;
-                        return (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            onClick={() => void handleBoxThemeChange(opt.id)}
-                            aria-pressed={isActive}
-                            className={`flex flex-col items-start gap-2 rounded-2xl border px-3 py-2 text-left transition ${
-                              isActive
-                                ? "border-slate-900 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.12)]"
-                                : "border-slate-300 bg-white hover:border-slate-500"
-                            }`}
-                          >
-                            <span
-                              className="h-8 w-full rounded-lg"
-                              style={{
-                                background: `linear-gradient(135deg, ${opt.swatchFrom}, ${opt.swatchTo})`,
-                              }}
-                            />
-                            <span className="text-xs font-semibold text-slate-800">
-                              {opt.label}
-                            </span>
-                            <span className="text-[10px] uppercase tracking-[0.14em] text-slate-500">
-                              {isActive ? "Aktivní" : "Vybrat"}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2.5">
-                    <div>
-                      <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
                         Písmo napříč webem
                       </h3>
                       <p className="text-xs text-slate-500">
@@ -4562,7 +4462,7 @@ export default function SettingsPage() {
                 <span>Předplatné</span>
               </h2>
 
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.8fr)]">
+              <div className="space-y-4">
                 <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(165deg,rgba(255,255,255,0.96)_0%,rgba(241,245,249,0.96)_100%)] p-4 shadow-[0_18px_38px_rgba(15,23,42,0.09)]">
                   <div className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
                     Přehled
@@ -4585,98 +4485,100 @@ export default function SettingsPage() {
                       </div>
                     ) : subscriptionSnapshot ? (
                       <>
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                          <article
-                            className={`relative isolate overflow-hidden rounded-2xl border border-white/90 bg-white/85 p-4 shadow-[0_12px_24px_rgba(15,23,42,0.08)] ring-1 ${
-                              subscriptionSnapshot.effectiveState === "active"
-                                ? "ring-emerald-200/80"
-                                : subscriptionSnapshot.effectiveState === "grace"
-                                  ? "ring-amber-200/80"
-                                  : "ring-rose-200/80"
-                            }`}
-                          >
-                            <div
-                              className={`absolute inset-x-0 top-0 h-1 ${
-                                subscriptionSnapshot.effectiveState === "active"
-                                  ? "bg-[linear-gradient(90deg,#059669_0%,#22c55e_100%)]"
-                                  : subscriptionSnapshot.effectiveState === "grace"
-                                    ? "bg-[linear-gradient(90deg,#d97706_0%,#f59e0b_100%)]"
-                                    : "bg-[linear-gradient(90deg,#e11d48_0%,#fb7185_100%)]"
-                              }`}
-                            />
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                          <article className="relative isolate min-h-[136px] overflow-hidden rounded-[28px] border border-[#6b34a0] bg-[#140b23] px-5 py-4 shadow-[0_22px_40px_rgba(25,8,42,0.48)] ring-1 ring-[#8a4bc6]/35 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_26px_46px_rgba(25,8,42,0.56)]">
+                            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
+                            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
+                            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_14%,rgba(183,96,255,0.28)_0%,rgba(183,96,255,0)_38%),radial-gradient(circle_at_92%_88%,rgba(128,88,245,0.2)_0%,rgba(128,88,245,0)_42%)]" />
+                            <div className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
+                            <div className="pointer-events-none absolute inset-x-5 top-0 h-[2px] rounded-full bg-[linear-gradient(90deg,#4bd39a_0%,#9ef2cc_100%)] opacity-90" />
                             <ShieldCheck
-                              className="pointer-events-none absolute -right-3 bottom-[-14px] h-20 w-20 text-slate-300/30"
+                              className="pointer-events-none absolute -right-1 bottom-[-8px] h-14 w-14 text-[#d4b6f3]/35"
                               strokeWidth={1.5}
                               aria-hidden="true"
                             />
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                              Stav
-                            </div>
-                            <div
-                              className={`relative mt-2 inline-flex rounded-full border px-3 py-1.5 text-base font-semibold leading-none ${
-                                subscriptionSnapshot.effectiveState === "active"
-                                  ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                            <div className="relative z-[1]">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#cfb2ea]">
+                                Stav
+                              </div>
+                              <div
+                                className={`mt-3 inline-flex rounded-full border px-3 py-1.5 text-[17px] font-semibold leading-none shadow-[0_8px_18px_rgba(18,8,36,0.35)] ${
+                                  subscriptionSnapshot.effectiveState === "active"
+                                    ? "border-[#58e1af]/65 bg-[linear-gradient(135deg,rgba(26,76,59,0.9)_0%,rgba(19,56,45,0.88)_100%)] text-[#c8ffe8]"
+                                    : subscriptionSnapshot.effectiveState === "grace"
+                                      ? "border-[#f2ad63]/65 bg-[linear-gradient(135deg,rgba(73,47,25,0.9)_0%,rgba(58,36,18,0.88)_100%)] text-[#ffe0b7]"
+                                      : "border-[#f58ca6]/65 bg-[linear-gradient(135deg,rgba(72,30,46,0.9)_0%,rgba(54,22,35,0.88)_100%)] text-[#ffd0dc]"
+                                }`}
+                              >
+                                {subscriptionSnapshot.effectiveState === "active"
+                                  ? "Aktivní"
                                   : subscriptionSnapshot.effectiveState === "grace"
-                                    ? "border-amber-300 bg-amber-50 text-amber-800"
-                                    : "border-rose-300 bg-rose-50 text-rose-700"
-                              }`}
-                            >
-                              {subscriptionSnapshot.effectiveState === "active"
-                                ? "Aktivní"
-                                : subscriptionSnapshot.effectiveState === "grace"
-                                  ? "Ochranná lhůta"
-                                  : subscriptionSnapshot.status === "unpaid"
-                                    ? "Nezaplaceno"
-                                    : "Blokováno"}
+                                    ? "Ochranná lhůta"
+                                    : subscriptionSnapshot.status === "unpaid"
+                                      ? "Nezaplaceno"
+                                      : "Blokováno"}
+                              </div>
                             </div>
                           </article>
 
-                          <article className="relative isolate overflow-hidden rounded-2xl border border-white/90 bg-white/85 p-4 shadow-[0_12px_24px_rgba(15,23,42,0.08)] ring-1 ring-indigo-200/70">
-                            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#3730a3_0%,#2563eb_100%)]" />
+                          <article className="relative isolate min-h-[136px] overflow-hidden rounded-[28px] border border-[#6b34a0] bg-[#140b23] px-5 py-4 shadow-[0_22px_40px_rgba(25,8,42,0.48)] ring-1 ring-[#8a4bc6]/35 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_26px_46px_rgba(25,8,42,0.56)]">
+                            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
+                            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
+                            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_14%,rgba(183,96,255,0.28)_0%,rgba(183,96,255,0)_38%),radial-gradient(circle_at_92%_88%,rgba(128,88,245,0.2)_0%,rgba(128,88,245,0)_42%)]" />
+                            <div className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
+                            <div className="pointer-events-none absolute inset-x-5 top-0 h-[2px] rounded-full bg-[linear-gradient(90deg,#c085ff_0%,#8f53dc_100%)] opacity-85" />
                             <Clock3
-                              className="pointer-events-none absolute -right-3 bottom-[-14px] h-20 w-20 text-slate-300/30"
+                              className="pointer-events-none absolute -right-1 bottom-[-8px] h-14 w-14 text-[#d4b6f3]/35"
                               strokeWidth={1.5}
                               aria-hidden="true"
                             />
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                              Tarif
-                            </div>
-                            <div className="relative mt-2 text-[33px] font-black leading-none tracking-[-0.02em] text-slate-900">
-                              {subscriptionSnapshot.plan
-                                ? SUBSCRIPTION_PLAN_LABELS[subscriptionSnapshot.plan]
-                                : "—"}
-                            </div>
-                          </article>
-
-                          <article className="relative isolate overflow-hidden rounded-2xl border border-white/90 bg-white/85 p-4 shadow-[0_12px_24px_rgba(15,23,42,0.08)] ring-1 ring-sky-200/80">
-                            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0284c7_0%,#38bdf8_100%)]" />
-                            <Clock3
-                              className="pointer-events-none absolute -right-3 bottom-[-14px] h-20 w-20 text-slate-300/30"
-                              strokeWidth={1.5}
-                              aria-hidden="true"
-                            />
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                              Zaplaceno od
-                            </div>
-                            <div className="relative mt-2 text-[33px] font-black leading-none tracking-[-0.02em] text-slate-900">
-                              {formatIsoDay(subscriptionSnapshot.paidFrom)}
+                            <div className="relative z-[1]">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#cfb2ea]">
+                                Tarif
+                              </div>
+                              <div className="mt-3 text-[30px] font-black leading-[0.95] tracking-[-0.02em] text-[#fbf7ff] [text-shadow:0_3px_18px_rgba(191,127,255,0.24)] xl:text-[26px]">
+                                {subscriptionSnapshot.plan
+                                  ? SUBSCRIPTION_PLAN_LABELS[subscriptionSnapshot.plan]
+                                  : "—"}
+                              </div>
                             </div>
                           </article>
 
-                          <article className="relative isolate overflow-hidden rounded-2xl border border-white/90 bg-white/85 p-4 shadow-[0_12px_24px_rgba(15,23,42,0.08)] ring-1 ring-violet-200/80">
-                            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#7c3aed_0%,#22d3ee_100%)]" />
+                          <article className="relative isolate min-h-[136px] overflow-hidden rounded-[28px] border border-[#6b34a0] bg-[#140b23] px-5 py-4 shadow-[0_22px_40px_rgba(25,8,42,0.48)] ring-1 ring-[#8a4bc6]/35 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_26px_46px_rgba(25,8,42,0.56)]">
+                            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
+                            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
+                            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_14%,rgba(183,96,255,0.28)_0%,rgba(183,96,255,0)_38%),radial-gradient(circle_at_92%_88%,rgba(128,88,245,0.2)_0%,rgba(128,88,245,0)_42%)]" />
+                            <div className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
+                            <div className="pointer-events-none absolute inset-x-5 top-0 h-[2px] rounded-full bg-[linear-gradient(90deg,#b27cff_0%,#67d4ff_100%)] opacity-85" />
                             <Landmark
-                              className="pointer-events-none absolute -right-3 bottom-[-14px] h-20 w-20 text-slate-300/30"
+                              className="pointer-events-none absolute -right-1 bottom-[-8px] h-14 w-14 text-[#d4b6f3]/35"
                               strokeWidth={1.5}
                               aria-hidden="true"
                             />
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                              Zaplaceno do
-                            </div>
-                            <div className="relative mt-2 text-[33px] font-black leading-none tracking-[-0.02em] text-slate-900">
-                              {subscriptionSnapshot.plan === "unlimited"
-                                ? "Neomezeně"
-                                : formatIsoDay(subscriptionSnapshot.paidUntil)}
+                            <div className="relative z-[1]">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#cfb2ea]">
+                                Období
+                              </div>
+                              <div className="mt-3 grid grid-cols-2 gap-4">
+                                <div>
+                                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#c8aee4]">
+                                    Od
+                                  </div>
+                                  <div className="mt-1 text-[17px] font-black leading-tight text-[#fbf7ff] [text-shadow:0_3px_18px_rgba(191,127,255,0.24)]">
+                                    {formatIsoDay(subscriptionSnapshot.paidFrom)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#c8aee4]">
+                                    Do
+                                  </div>
+                                  <div className="mt-1 text-[17px] font-black leading-tight text-[#fbf7ff] [text-shadow:0_3px_18px_rgba(191,127,255,0.24)]">
+                                    {subscriptionSnapshot.plan === "unlimited"
+                                      ? "Neomezeně"
+                                      : formatIsoDay(subscriptionSnapshot.paidUntil)}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </article>
                         </div>
@@ -4749,41 +4651,53 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <aside className="rounded-[28px] border border-slate-200 bg-[linear-gradient(165deg,rgba(255,255,255,0.96)_0%,rgba(241,245,249,0.96)_100%)] p-4 shadow-[0_18px_38px_rgba(15,23,42,0.09)]">
-                  <div className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                <aside className="rounded-[28px] border border-[#3a1d56] bg-[#100b17] p-4 text-[#f6edff] shadow-[0_22px_48px_rgba(16,7,28,0.42)]">
+                  <div className="inline-flex w-fit items-center rounded-full border border-[#6f3d95]/70 bg-[#1e122c] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#caa7eb]">
                     Ceník
                   </div>
-                  <h3 className="mt-2 text-xl font-bold tracking-[-0.015em] text-slate-900">
+                  <h3 className="mt-2 text-xl font-bold text-[#fbf7ff]">
                     Tarify předplatného
                   </h3>
-                  <p className="mt-1 text-sm text-slate-600">
+                  <p className="mt-1 text-sm text-[#c8aee4]">
                     Přehled aktuálních tarifů včetně délky období.
                   </p>
 
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {SUBSCRIPTION_PRICE_CARDS.map((priceCard) => (
                       <article
                         key={priceCard.id}
-                        className={`group relative isolate min-h-[136px] overflow-hidden rounded-2xl border border-white/80 ${priceCard.tintClass} p-4 shadow-[0_14px_28px_rgba(15,23,42,0.11)] ring-1 ${priceCard.ringClass}`}
+                        className="relative isolate min-h-[244px] overflow-hidden rounded-[28px] border border-[#5a2878] bg-[#150e1f] px-5 py-5 shadow-[0_26px_48px_rgba(25,8,42,0.55)] ring-1 ring-[#7a35a7]/35"
                       >
-                        <div className={`absolute inset-x-0 top-0 h-1 ${priceCard.accentClass}`} />
-                        <Landmark
-                          className="pointer-events-none absolute -right-2 bottom-[-16px] h-24 w-24 text-slate-300/35"
-                          strokeWidth={1.5}
-                          aria-hidden="true"
-                        />
+                        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
+                        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
+                        <div className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
 
-                        <div className="relative flex h-full flex-col justify-between gap-3">
-                          <div className="inline-flex w-fit items-center rounded-full border border-slate-200/90 bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                            {priceCard.label}
+                        <div className="relative z-[1] flex min-h-[198px] flex-col">
+                          <div className="inline-flex w-fit items-center rounded-[7px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-3 py-1.5 text-[16px] font-black uppercase leading-none tracking-[0.08em] text-white shadow-[0_10px_20px_rgba(159,72,237,0.4)]">
+                            PRO
                           </div>
 
-                          <div className="space-y-1">
-                            <div className="text-[28px] font-black leading-none tracking-[-0.02em] text-slate-900">
-                              {priceCard.priceLabel}
-                            </div>
-                            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+                          <h4 className="mt-4 text-[24px] font-black leading-tight text-[#fbf7ff]">
+                            {priceCard.title}
+                          </h4>
+                          <p className="mt-3 text-[15px] font-medium leading-[1.42] text-[#c9a7e7]">
+                            {priceCard.description}
+                          </p>
+
+                          <div className="mt-5 flex min-h-[56px] flex-wrap items-center justify-center gap-x-2.5 gap-y-1 rounded-[16px] bg-[linear-gradient(135deg,#ad55f3_0%,#a84ff0_100%)] px-4 text-center text-2xl font-black text-white shadow-[0_18px_34px_rgba(168,79,240,0.34)]">
+                            <span>{priceCard.priceLabel}</span>
+                            <span className="text-base font-bold text-white/85">
                               {priceCard.cadenceLabel}
+                            </span>
+                            <ArrowRight size={24} strokeWidth={2.4} aria-hidden="true" />
+                          </div>
+
+                          <div className="mt-auto pt-5">
+                            <div className="flex min-h-[56px] flex-wrap items-center justify-center gap-2 rounded-[15px] border-2 border-[#a96bdf] bg-[#27183a]/92 px-3.5 py-2.5 text-center text-[14px] font-medium text-[#bfa3da] shadow-[0_0_18px_rgba(169,107,223,0.18)]">
+                              <span>{priceCard.footerLabel}</span>
+                              <span className="rounded-[7px] bg-[#624174] px-2.5 py-1 text-base font-black leading-none text-[#fbf7ff]">
+                                {priceCard.footerEmphasis}
+                              </span>
                             </div>
                           </div>
                         </div>

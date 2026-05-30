@@ -26,10 +26,14 @@ export function MonthlyGoalSection({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const normalizedProgress = Math.max(0, Math.min(100, Number(progress) || 0));
+  const rawProgress = Math.max(0, Number(progress) || 0);
+  const progressForBar = Math.min(100, rawProgress);
+  const progressLabel = new Intl.NumberFormat("cs-CZ", {
+    maximumFractionDigits: 1,
+  }).format(rawProgress);
   const progressFillClass = progressTone?.trim()
     ? `bg-gradient-to-r ${progressTone}`
-    : normalizedProgress >= 51
+    : rawProgress >= 51
       ? "bg-emerald-600"
       : "bg-rose-600";
   const goalDisplayValue = monthlyGoal ? formatMoney(monthlyGoal) : "Není nastaven";
@@ -66,12 +70,11 @@ export function MonthlyGoalSection({
     : "relative min-w-0 h-full overflow-hidden rounded-[24px] border border-slate-200 bg-white px-4 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.1)] focus-within:border-slate-300 focus-within:shadow-[0_12px_28px_rgba(15,23,42,0.1),0_0_0_1px_rgba(148,163,184,0.35)] sm:px-10 sm:py-7";
 
   return (
-    <section className={goalCardClass}>
+    <section className={`monthly-goal-card ${goalCardClass}`}>
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0 right-0 z-0 w-[52%] overflow-hidden"
+        className="monthly-goal-ghost-wrap pointer-events-none absolute inset-y-0 right-0 z-0 w-[52%] overflow-hidden"
       >
-        <div className="absolute inset-y-0 right-0 w-full bg-gradient-to-l from-white via-white/90 to-transparent" />
         <Image
           src="/icons/cilmesice.png"
           alt=""
@@ -79,7 +82,7 @@ export function MonthlyGoalSection({
           height={3000}
           quality={100}
           sizes="(min-width: 640px) 520px, 440px"
-          className="absolute right-[-70px] top-[54%] w-[440px] -translate-y-1/2 select-none opacity-[0.14] saturate-110 sm:right-[-50px] sm:w-[520px]"
+          className="monthly-goal-ghost-logo absolute right-[-70px] top-[54%] w-[440px] -translate-y-1/2 select-none opacity-[0.2] saturate-[1.28] contrast-110 sm:right-[-50px] sm:w-[520px]"
           priority={false}
         />
       </div>
@@ -149,7 +152,7 @@ export function MonthlyGoalSection({
                   <span>Načítám…</span>
                 </span>
               ) : (
-                `${normalizedProgress}%`
+                `${progressLabel}%`
               )}
             </div>
             <button
@@ -167,7 +170,7 @@ export function MonthlyGoalSection({
           <div className="relative h-3.5 w-full overflow-hidden rounded-full border border-slate-200 bg-slate-50">
             <div
               className={`h-full rounded-full ${progressFillClass}`}
-              style={{ width: `${loading ? 0 : normalizedProgress}%` }}
+              style={{ width: `${loading ? 0 : progressForBar}%` }}
             />
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-500">

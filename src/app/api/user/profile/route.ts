@@ -90,7 +90,6 @@ const ALLOWED_PATCH_KEYS = new Set([
   "monthlyGoal",
   "notifyMinutes",
   "backgroundColor",
-  "boxTheme",
   "fontTheme",
   "reduceMotion",
   "tipsterCollaborationMode",
@@ -795,14 +794,6 @@ function buildPatchFromBody(
       return { error: "Pole backgroundColor má neplatnou hodnotu." };
     }
     patch.backgroundColor = value;
-  }
-
-  if (body.boxTheme != null) {
-    const value = normalizeOptionalText(body.boxTheme, 64);
-    if (value == null) {
-      return { error: "Pole boxTheme má neplatnou hodnotu." };
-    }
-    patch.boxTheme = value;
   }
 
   if (body.fontTheme != null) {

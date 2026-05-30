@@ -704,7 +704,7 @@ export default function HomePage() {
   const monthlyGoal = userMeta?.monthlyGoal ?? null;
   const hasGoal = monthlyGoal != null && monthlyGoal > 0;
   const progress = hasGoal
-    ? Math.min(100, Math.round((totalWithTeam / monthlyGoal) * 100))
+    ? Math.max(0, Math.round((totalWithTeam / monthlyGoal) * 100))
     : 0;
   const progressTone =
     progress >= 90

@@ -399,6 +399,14 @@ export default function ToolsPage() {
         href: "/pomucky/ai-asistent",
       },
       {
+        key: "online-vizitka",
+        category: "Obecné",
+        title: "Online Vizitka",
+        description: "Editor pro tvou vlastní online vizitku.",
+        icon: WalletCards,
+        href: "/nastaveni?tab=onlineCard",
+      },
+      {
         key: "investicni-kalkulacka",
         category: "Investice",
         title: "Investiční kalkulačka",
@@ -567,12 +575,12 @@ export default function ToolsPage() {
 
   return (
     <AppLayout active="tools">
-      <div className={`${toolsFont.className} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
+      <div className={`${toolsFont.className} pomucky-tools-root relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
         <div className="relative z-10 mx-auto max-w-7xl space-y-5 px-1 sm:px-2 lg:px-3">
           <section className="py-1 sm:py-2">
             <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
               <div className="space-y-4">
-                <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
+                <span className="pomucky-hub-badge inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
                   <Sparkles className="h-3.5 w-3.5" />
                   Nástrojový Hub
                 </span>
@@ -617,7 +625,7 @@ export default function ToolsPage() {
                     onClick={() => setActiveFilter(filter)}
                     className={[
                       styles.filterChip,
-                      "inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition",
+                      "pomucky-filter-chip inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition",
                       active
                         ? `${visual.active} ${visual.glow}`
                         : visual.inactive,
@@ -663,26 +671,26 @@ export default function ToolsPage() {
                       key={tool.key}
                       type="button"
                       onClick={tool.onClick}
-                      className={`${styles.toolCard} group relative flex min-h-[184px] w-full overflow-hidden rounded-[30px] border border-white/70 ${style.wash} p-4 text-left shadow-[0_20px_54px_rgba(15,23,42,0.12)] ring-1 ${style.ring} transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-1 ${style.cardHover} hover:shadow-[0_26px_66px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80`}
+                      className={`${styles.toolCard} pomucky-tool-card group relative flex min-h-[184px] w-full overflow-hidden rounded-[30px] border border-white/70 ${style.wash} p-4 text-left shadow-[0_20px_54px_rgba(15,23,42,0.12)] ring-1 ${style.ring} transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-1 ${style.cardHover} hover:shadow-[0_26px_66px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80`}
                       style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
                     >
-                      <span className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${style.accent}`} aria-hidden="true" />
+                      <span className={`pomucky-tool-accent absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${style.accent}`} aria-hidden="true" />
 
                       <div className="flex w-full flex-col justify-between gap-4">
                         <div className="flex items-start justify-between gap-4">
                           <span
-                            className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition ${style.icon}`}
+                            className={`pomucky-tool-icon inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition ${style.icon}`}
                           >
                             <ToolIcon className="h-5 w-5" />
                           </span>
 
-                          <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200/80 bg-white/88 text-slate-500 transition ${style.arrow}`}>
+                          <span className={`pomucky-tool-arrow inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200/80 bg-white/88 text-slate-500 transition ${style.arrow}`}>
                             <ArrowUpRight className="h-4.5 w-4.5" />
                           </span>
                         </div>
 
                         <div className="min-w-0">
-                          <p className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${style.badge}`}>
+                          <p className={`pomucky-tool-category text-[11px] font-semibold uppercase tracking-[0.2em] ${style.badge}`}>
                             {tool.category}
                           </p>
                           <h2 className="mt-2 text-[1.45rem] font-bold leading-[1.12] tracking-[-0.015em] text-slate-950">
@@ -708,26 +716,26 @@ export default function ToolsPage() {
                   <CardWrapper
                     key={tool.key}
                     {...wrapperProps}
-                    className={`${styles.toolCard} group relative flex min-h-[184px] overflow-hidden rounded-[30px] border border-white/70 ${style.wash} p-4 shadow-[0_20px_54px_rgba(15,23,42,0.12)] ring-1 ${style.ring} transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-1 ${style.cardHover} hover:shadow-[0_26px_66px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80`}
+                    className={`${styles.toolCard} pomucky-tool-card group relative flex min-h-[184px] overflow-hidden rounded-[30px] border border-white/70 ${style.wash} p-4 shadow-[0_20px_54px_rgba(15,23,42,0.12)] ring-1 ${style.ring} transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-1 ${style.cardHover} hover:shadow-[0_26px_66px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80`}
                     style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
                   >
-                    <span className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${style.accent}`} aria-hidden="true" />
+                    <span className={`pomucky-tool-accent absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${style.accent}`} aria-hidden="true" />
 
                     <div className="flex w-full flex-col justify-between gap-4">
                       <div className="flex items-start justify-between gap-4">
                         <span
-                          className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition ${style.icon}`}
+                          className={`pomucky-tool-icon inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition ${style.icon}`}
                         >
                           <ToolIcon className="h-5 w-5" />
                         </span>
 
-                        <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200/80 bg-white/88 text-slate-500 transition ${style.arrow}`}>
+                        <span className={`pomucky-tool-arrow inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200/80 bg-white/88 text-slate-500 transition ${style.arrow}`}>
                           <ArrowUpRight className="h-4.5 w-4.5" />
                         </span>
                       </div>
 
                       <div className="min-w-0">
-                        <p className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${style.badge}`}>
+                        <p className={`pomucky-tool-category text-[11px] font-semibold uppercase tracking-[0.2em] ${style.badge}`}>
                           {tool.category}
                         </p>
                         <h2 className="mt-2 text-[1.45rem] font-bold leading-[1.12] tracking-[-0.015em] text-slate-950">
@@ -755,7 +763,7 @@ export default function ToolsPage() {
             aria-label="Zavřít dialog"
           />
 
-          <div className="relative z-10 w-full max-w-3xl overflow-hidden rounded-[30px] border border-white/75 bg-[linear-gradient(160deg,rgba(255,255,255,0.97)_0%,rgba(248,250,252,0.97)_100%)] p-5 shadow-[0_32px_90px_rgba(2,6,23,0.38)] sm:p-7">
+          <div className="pomucky-modal-panel relative z-10 w-full max-w-3xl overflow-hidden rounded-[30px] border border-white/75 bg-[linear-gradient(160deg,rgba(255,255,255,0.97)_0%,rgba(248,250,252,0.97)_100%)] p-5 shadow-[0_32px_90px_rgba(2,6,23,0.38)] sm:p-7">
             <button
               type="button"
               onClick={() => setTachometerModalOpen(false)}
@@ -766,7 +774,7 @@ export default function ToolsPage() {
             </button>
 
             <div className="pr-12">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-700">Pojištění vozidel</p>
+              <p className="pomucky-modal-category text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-700">Pojištění vozidel</p>
               <h2 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-slate-950 sm:text-3xl">Nahrát tachometr</h2>
               <p className="mt-2 text-sm text-slate-600 sm:text-base">
                 Vyber pojišťovnu a otevři odkaz pro nahrání aktuálního stavu tachometru.
@@ -780,7 +788,7 @@ export default function ToolsPage() {
                   href={target.href}
                   target="_blank"
                   rel="noreferrer"
-                  className="group relative isolate min-h-[154px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_12px_26px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_34px_rgba(15,23,42,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300/80"
+                  className="pomucky-portal-card group relative isolate min-h-[154px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_12px_26px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_34px_rgba(15,23,42,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300/80"
                   onClick={() => setTachometerModalOpen(false)}
                 >
                   <Image
@@ -790,16 +798,16 @@ export default function ToolsPage() {
                     sizes="(max-width: 768px) 100vw, 50vw"
                     className="pointer-events-none object-contain p-4 opacity-[0.18] saturate-0 contrast-125"
                   />
-                  <div className={`pointer-events-none absolute inset-0 ${target.tintClass}`} />
+                  <div className={`pomucky-portal-tint pointer-events-none absolute inset-0 ${target.tintClass}`} />
 
                   <div className="relative flex h-full flex-col justify-between">
-                    <div className="inline-flex w-fit items-center rounded-full border border-slate-200/90 bg-white/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                    <div className="pomucky-portal-pill inline-flex w-fit items-center rounded-full border border-slate-200/90 bg-white/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
                       Otevřít
                     </div>
 
                     <div className="flex items-end justify-between gap-3">
                       <h3 className="text-2xl font-bold tracking-[-0.015em] text-slate-900">{target.label}</h3>
-                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/90 bg-white/90 text-slate-700 transition group-hover:border-blue-300 group-hover:bg-blue-700 group-hover:text-white">
+                      <span className="pomucky-portal-arrow inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/90 bg-white/90 text-slate-700 transition group-hover:border-blue-300 group-hover:bg-blue-700 group-hover:text-white">
                         <ArrowUpRight className="h-4.5 w-4.5" />
                       </span>
                     </div>
@@ -820,7 +828,7 @@ export default function ToolsPage() {
             aria-label="Zavřít dialog"
           />
 
-          <div className="relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[30px] border border-white/75 bg-[linear-gradient(160deg,rgba(255,255,255,0.97)_0%,rgba(248,250,252,0.97)_100%)] p-5 shadow-[0_32px_90px_rgba(2,6,23,0.38)] sm:max-h-[calc(100dvh-3rem)] sm:p-7">
+          <div className="pomucky-modal-panel relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[30px] border border-white/75 bg-[linear-gradient(160deg,rgba(255,255,255,0.97)_0%,rgba(248,250,252,0.97)_100%)] p-5 shadow-[0_32px_90px_rgba(2,6,23,0.38)] sm:max-h-[calc(100dvh-3rem)] sm:p-7">
             <button
               type="button"
               onClick={() => setLinksModalOpen(false)}
@@ -831,7 +839,7 @@ export default function ToolsPage() {
             </button>
 
             <div className="pr-12">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-700">Obecné</p>
+              <p className="pomucky-modal-category text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-700">Obecné</p>
               <h2 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-slate-950 sm:text-3xl">Odkazy</h2>
               <p className="mt-2 text-sm text-slate-600 sm:text-base">
                 Odkazy na portály institucí.
@@ -845,7 +853,7 @@ export default function ToolsPage() {
                   href={target.href}
                   target="_blank"
                   rel="noreferrer"
-                  className="group relative isolate min-h-[154px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_12px_26px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_34px_rgba(15,23,42,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/80"
+                  className="pomucky-portal-card group relative isolate min-h-[154px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_12px_26px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_34px_rgba(15,23,42,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/80"
                   onClick={() => setLinksModalOpen(false)}
                 >
                   <Image
@@ -855,16 +863,16 @@ export default function ToolsPage() {
                     sizes="(max-width: 768px) 100vw, 50vw"
                     className={`pointer-events-none object-contain opacity-[0.18] saturate-0 contrast-125 ${target.ghostLogoClass ?? "p-4"}`}
                   />
-                  <div className={`pointer-events-none absolute inset-0 ${target.tintClass}`} />
+                  <div className={`pomucky-portal-tint pointer-events-none absolute inset-0 ${target.tintClass}`} />
 
                   <div className="relative flex h-full flex-col justify-between">
-                    <div className="inline-flex w-fit items-center rounded-full border border-slate-200/90 bg-white/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                    <div className="pomucky-portal-pill inline-flex w-fit items-center rounded-full border border-slate-200/90 bg-white/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
                       Otevřít
                     </div>
 
                     <div className="flex items-end justify-between gap-3">
                       <h3 className="text-2xl font-bold tracking-[-0.015em] text-slate-900">{target.label}</h3>
-                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/90 bg-white/90 text-slate-700 transition group-hover:border-indigo-300 group-hover:bg-indigo-700 group-hover:text-white">
+                      <span className="pomucky-portal-arrow inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/90 bg-white/90 text-slate-700 transition group-hover:border-indigo-300 group-hover:bg-indigo-700 group-hover:text-white">
                         <ArrowUpRight className="h-4.5 w-4.5" />
                       </span>
                     </div>

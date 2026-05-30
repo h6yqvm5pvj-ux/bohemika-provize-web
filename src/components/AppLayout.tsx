@@ -27,11 +27,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
-  BOX_THEME_EVENT,
-  BOX_THEME_LOCAL_STORAGE_KEY,
-  applyBoxThemeToRoot,
-} from "@/lib/boxTheme";
-import {
   FONT_THEME_EVENT,
   FONT_THEME_LOCAL_STORAGE_KEY,
   applyFontThemeToRoot,
@@ -88,7 +83,6 @@ const formatIsoDayCz = (value: string | null): string => {
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [backgroundColor, setBackgroundColor] = useState<"white">("white");
   const pathname = usePathname();
   const router = useRouter();
   const showToolsBackToIndex = active === "tools" && pathname !== "/pomucky";
@@ -194,35 +188,14 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  // Načíst a aplikovat barvu tmavých boxů (tlačítka/chipy) z localStorage
+  // Box theme setting was removed from Nastavení; clear legacy persisted theme.
   useLayoutEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const applyFromValue = (value?: unknown) => {
-      const theme = applyBoxThemeToRoot(
-        value ?? window.localStorage.getItem(BOX_THEME_LOCAL_STORAGE_KEY)
-      );
-      window.localStorage.setItem(BOX_THEME_LOCAL_STORAGE_KEY, theme);
-    };
-
-    applyFromValue();
-
-    const onStorage = (ev: StorageEvent) => {
-      if (ev.key && ev.key !== BOX_THEME_LOCAL_STORAGE_KEY) return;
-      applyFromValue(ev.newValue);
-    };
-
-    const onCustom = (ev: Event) => {
-      const detail = (ev as CustomEvent<{ boxTheme?: string }>).detail;
-      applyFromValue(detail?.boxTheme);
-    };
-
-    window.addEventListener("storage", onStorage);
-    window.addEventListener(BOX_THEME_EVENT, onCustom as EventListener);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener(BOX_THEME_EVENT, onCustom as EventListener);
-    };
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    const root = document.documentElement;
+    window.localStorage.removeItem("settings.boxTheme");
+    root.removeAttribute("data-box-theme");
+    root.style.removeProperty("--ui-surface-strong");
+    root.style.removeProperty("--ui-focus");
   }, []);
 
   // Načíst a aplikovat font napříč aplikací z localStorage
@@ -256,61 +229,26 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     };
   }, []);
 
-  // Animated background nastavení z localStorage
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let mounted = true;
-    const updateFromStorage = () => {
-      const storedColor = window.localStorage.getItem(
-        "settings.backgroundColor"
-      );
-      if (storedColor !== "white") {
-        window.localStorage.setItem("settings.backgroundColor", "white");
-      }
-      if (!mounted) return;
-      setBackgroundColor("white");
-    };
-
-    updateFromStorage();
-    const handler = () => updateFromStorage();
-    const customHandler = (ev: Event) => {
-      const detail = (ev as CustomEvent<{ backgroundColor?: string }>).detail;
-      if (detail && typeof detail.backgroundColor === "string") {
-        window.localStorage.setItem("settings.backgroundColor", "white");
-        setBackgroundColor("white");
-      } else {
-        updateFromStorage();
-      }
-    };
-    window.addEventListener("storage", handler);
-    window.addEventListener("settings:updateBackground", customHandler as any);
-    return () => {
-      window.removeEventListener("storage", handler);
-      window.removeEventListener("settings:updateBackground", customHandler as any);
-      mounted = false;
-    };
-  }, []);
-
   // zavřít mobilní menu po změně stránky
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  // Přepínání třídy na body kvůli světlému / černému kontrastu
+  // Zafixovat globální světlý režim.
   useEffect(() => {
     if (typeof document === "undefined") return;
     const body = document.body;
 
-    // vyčisti staré třídy
     body.classList.remove(
       "simple-bg",
+      "simple-bg-blue",
       "simple-bg-black",
       "simple-bg-white"
     );
 
     body.classList.add("simple-bg");
     body.classList.add("simple-bg-white");
-  }, [backgroundColor]);
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -501,6 +439,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     "bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.24)]";
   const navItemInactiveClass =
     "text-slate-700 hover:bg-slate-100 hover:text-slate-900";
+  const activeNavRailClass = "bg-emerald-400";
 
   const navItems: {
     key: ActivePage;
@@ -568,6 +507,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     subscriptionAccessState !== "blocked" &&
     needsCareerTimelineSetup;
   const isAdminRequestsUser = isAdminPanelEmail(user?.email);
+  const shellFontClass = "font-mono";
 
   // Pokud auth není připravené, nerenderuj obsah (zamezení blikání nechráněného UI)
   if (!authReady) {
@@ -583,13 +523,13 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     return null;
   }
 
+  const backgroundStyle = { backgroundColor: "#ffffff" };
+
   return (
     <main className="relative min-h-screen text-slate-900">
       <div
         className="fixed inset-0 -z-10 transition-colors duration-200"
-        style={{
-          backgroundColor: "#ffffff",
-        }}
+        style={backgroundStyle}
       />
 
       <div className="relative flex min-h-screen">
@@ -619,7 +559,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         )}
 
         {/* SIDEBAR */}
-        <aside className="hidden w-56 flex-col border-r border-slate-200 bg-white/95 font-mono shadow-[8px_0_30px_rgba(15,23,42,0.08)] backdrop-blur-sm lg:flex">
+        <aside
+          className={`hidden w-56 flex-col border-r border-slate-200 bg-white/95 shadow-[8px_0_30px_rgba(15,23,42,0.08)] backdrop-blur-sm lg:flex ${shellFontClass}`}
+        >
           <div className="border-b border-slate-200 px-5 py-5">
             <div className="flex items-center gap-3 justify-center">
               <Image
@@ -630,7 +572,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 className="h-12 w-auto"
                 priority
               />
-              <div className="text-base font-semibold tracking-tight">
+              <div className="text-base font-semibold tracking-tight text-slate-900">
                 Bohemka.App
               </div>
             </div>
@@ -653,7 +595,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                   >
                     {isActive ? (
                       <span
-                        className="absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-emerald-400"
+                        className={`absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full ${activeNavRailClass}`}
                         aria-hidden="true"
                       />
                     ) : null}
@@ -673,7 +615,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                   >
                     {isActive ? (
                       <span
-                        className="absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-emerald-400"
+                        className={`absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full ${activeNavRailClass}`}
                         aria-hidden="true"
                       />
                     ) : null}
@@ -687,7 +629,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             })}
           </nav>
 
-          <div className="mt-auto border-t border-slate-200 px-4 py-4 text-sm">
+          <div
+            className="mt-auto border-t border-slate-200 px-4 py-4 text-sm"
+          >
             <div className="ui-card ui-card-quiet rounded-2xl bg-slate-50 p-3">
               {user && (
                 <div className="mb-2 text-[11px] text-slate-600">
@@ -710,7 +654,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
         <div className="flex min-w-0 flex-1 flex-col">
           {/* MOBILE TOP BAR */}
-          <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-900 bg-white px-3 py-2.5 font-mono lg:hidden">
+          <header
+            className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-900 bg-white px-3 py-2.5 lg:hidden ${shellFontClass}`}
+          >
             <div className="flex min-w-0 items-center gap-2">
               <Image
                 src="/icons/bohemika_logo.png"
@@ -725,7 +671,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                   Bohemka.App
                 </span>
                 {user && (
-                  <span className="block max-w-[46vw] truncate text-[10px] text-slate-500 min-[390px]:max-w-[52vw]">
+                  <span
+                    className="block max-w-[46vw] truncate text-[10px] text-slate-500 min-[390px]:max-w-[52vw]"
+                  >
                     {user.email}
                   </span>
                 )}
@@ -748,7 +696,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                 onClick={() => setMobileMenuOpen(false)}
               />
-              <div className="relative h-full w-80 max-w-[88%] overflow-y-auto border-r border-slate-900 bg-white px-4 py-5 font-mono shadow-2xl">
+              <div
+                className={`relative h-full w-80 max-w-[88%] overflow-y-auto border-r border-slate-900 bg-white px-4 py-5 shadow-2xl ${shellFontClass}`}
+              >
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Image
@@ -786,7 +736,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                         >
                           {isActive ? (
                             <span
-                              className="absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-emerald-400"
+                              className={`absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full ${activeNavRailClass}`}
                               aria-hidden="true"
                             />
                           ) : null}
@@ -807,7 +757,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                         >
                           {isActive ? (
                             <span
-                              className="absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-emerald-400"
+                              className={`absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full ${activeNavRailClass}`}
                               aria-hidden="true"
                             />
                           ) : null}
@@ -845,7 +795,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           {/* CONTENT / PAYWALL */}
           <div
             className={[
-              `app-content relative flex min-w-0 w-full flex-1 items-start ${contentOverflowClass} font-mono`,
+              `app-content relative flex min-w-0 w-full flex-1 items-start ${contentOverflowClass} ${shellFontClass}`,
               isFullBleedPage
                 ? "justify-start px-0 py-6 sm:py-8 lg:px-0"
                 : "justify-center px-3 py-6 sm:px-4 sm:py-8 lg:px-8",

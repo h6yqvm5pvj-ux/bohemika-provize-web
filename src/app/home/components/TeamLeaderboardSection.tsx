@@ -25,67 +25,63 @@ export function TeamLeaderboardSection({
   isLiteUI,
 }: Props) {
   const leaderboardClass = isLiteUI
-    ? "relative h-full overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 sm:px-7 sm:py-6"
-    : "relative h-full overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[0_12px_28px_rgba(15,23,42,0.07)] sm:px-7 sm:py-6";
+    ? "relative h-full overflow-hidden rounded-[30px] border border-slate-200 bg-white px-5 py-5 text-slate-900 sm:px-7 sm:py-6"
+    : "relative h-full overflow-hidden rounded-[30px] border border-slate-200 bg-white px-5 py-5 text-slate-900 shadow-[0_12px_28px_rgba(15,23,42,0.08)] sm:px-7 sm:py-6";
 
   const visibleEntries = entries.slice(0, 10);
   const leaderPremium = visibleEntries[0]?.totalPremium ?? 0;
   const premiumBase = leaderPremium > 0 ? leaderPremium : 1;
 
-  const getInitials = (name: string) =>
-    name
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part.charAt(0).toUpperCase())
-      .join("");
-
   const getRankAccent = (idx: number) => {
     if (idx === 0) {
       return {
-        chip: "text-amber-100 border-amber-200/60 bg-amber-300/12",
-        badge: "border-amber-200/80 bg-gradient-to-br from-amber-200 via-amber-300 to-yellow-400 text-slate-950",
+        chip: "text-amber-100 border-amber-200/72 bg-amber-300/12",
+        badge: "border-amber-200/85 bg-[linear-gradient(135deg,#fef08a_0%,#facc15_72%,#eab308_100%)] text-slate-950",
         amount: "text-amber-200",
-        glow: "from-amber-300/18 via-amber-200/8 to-transparent",
+        aura: "bg-amber-300/24",
         progress: "from-amber-300 to-yellow-300",
       };
     }
     if (idx === 1) {
       return {
-        chip: "text-sky-100 border-sky-200/60 bg-sky-300/10",
-        badge: "border-sky-100/80 bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300 text-slate-900",
+        chip: "text-sky-100 border-sky-200/64 bg-sky-300/12",
+        badge: "border-sky-100/80 bg-[linear-gradient(135deg,#dbeafe_0%,#bfdbfe_70%,#93c5fd_100%)] text-slate-900",
         amount: "text-sky-200",
-        glow: "from-sky-300/16 via-cyan-200/8 to-transparent",
+        aura: "bg-sky-300/22",
         progress: "from-sky-300 to-cyan-200",
       };
     }
     if (idx === 2) {
       return {
-        chip: "text-orange-100 border-orange-200/60 bg-orange-300/10",
-        badge: "border-orange-200/80 bg-gradient-to-br from-orange-200 via-orange-300 to-amber-400 text-slate-950",
+        chip: "text-orange-100 border-orange-200/64 bg-orange-300/12",
+        badge: "border-orange-200/82 bg-[linear-gradient(135deg,#fed7aa_0%,#fdba74_68%,#fb923c_100%)] text-slate-950",
         amount: "text-orange-200",
-        glow: "from-orange-300/16 via-amber-200/8 to-transparent",
+        aura: "bg-orange-300/22",
         progress: "from-orange-300 to-amber-200",
       };
     }
+
     return {
-      chip: "text-slate-200 border-white/15 bg-white/8",
-      badge: "border-white/35 bg-slate-800 text-slate-100",
+      chip: "text-violet-100 border-violet-100/38 bg-violet-300/12",
+      badge: "border-violet-100/45 bg-violet-300/18 text-violet-50",
       amount: "text-emerald-200",
-      glow: "from-emerald-300/12 via-emerald-200/5 to-transparent",
-      progress: "from-emerald-300 to-teal-200",
+      aura: "bg-violet-300/20",
+      progress: "from-violet-300 to-fuchsia-300",
     };
   };
 
+  const chipGroupClass =
+    "inline-flex rounded-full border border-violet-100/34 bg-violet-950/40 p-1";
+  const activeChipClass =
+    "rounded-full border border-violet-900/65 bg-violet-900/85 px-3 py-1.5 font-semibold text-violet-50 shadow-[0_8px_20px_rgba(26,10,60,0.35)]";
+  const idleChipClass =
+    "rounded-full border border-transparent px-3 py-1.5 font-semibold text-violet-100/72 transition hover:text-violet-50";
+
   return (
     <section className={leaderboardClass} data-fixed-box-theme="slate">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_0%,rgba(16,185,129,0.12),transparent_42%)]" />
-
       <div className="relative z-10 mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.22em] text-slate-400">
-            Týmový výkon
-          </p>
+          <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Týmový výkon</p>
           <h2 className="mt-1 inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-[1.75rem]">
             <Trophy className="h-6 w-6 text-amber-500" strokeWidth={1.9} aria-hidden="true" />
             <span>Žebříček týmu</span>
@@ -93,62 +89,42 @@ export function TeamLeaderboardSection({
         </div>
 
         <div className="flex flex-col items-start gap-2 text-[11px] sm:items-end sm:text-xs">
-          <div className="ui-chip-group">
+          <div className={chipGroupClass}>
             <button
               type="button"
               onClick={() => onProductFilterChange("life")}
-              className={`ui-chip ui-focus px-3 py-1.5 ${
-                lbProductFilter === "life"
-                  ? "ui-chip-active"
-                  : ""
-              }`}
+              className={lbProductFilter === "life" ? activeChipClass : idleChipClass}
             >
               Život
             </button>
             <button
               type="button"
               onClick={() => onProductFilterChange("other")}
-              className={`ui-chip ui-focus px-3 py-1.5 ${
-                lbProductFilter === "other"
-                  ? "ui-chip-active"
-                  : ""
-              }`}
+              className={lbProductFilter === "other" ? activeChipClass : idleChipClass}
             >
               Vedlejší produkty
             </button>
           </div>
 
-          <div className="ui-chip-group">
+          <div className={chipGroupClass}>
             <button
               type="button"
               onClick={() => onRangeChange("month")}
-              className={`ui-chip ui-focus px-3 py-1.5 ${
-                lbRange === "month"
-                  ? "ui-chip-active"
-                  : ""
-              }`}
+              className={lbRange === "month" ? activeChipClass : idleChipClass}
             >
               Aktuální měsíc
             </button>
             <button
               type="button"
               onClick={() => onRangeChange("sixMonths")}
-              className={`ui-chip ui-focus px-3 py-1.5 ${
-                lbRange === "sixMonths"
-                  ? "ui-chip-active"
-                  : ""
-              }`}
+              className={lbRange === "sixMonths" ? activeChipClass : idleChipClass}
             >
               Posledních 6 měsíců
             </button>
             <button
               type="button"
               onClick={() => onRangeChange("year")}
-              className={`ui-chip ui-focus px-3 py-1.5 ${
-                lbRange === "year"
-                  ? "ui-chip-active"
-                  : ""
-              }`}
+              className={lbRange === "year" ? activeChipClass : idleChipClass}
             >
               Aktuální rok
             </button>
@@ -157,18 +133,18 @@ export function TeamLeaderboardSection({
       </div>
 
       {loading ? (
-        <div className="relative z-10 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-7 text-center">
-          <div className="inline-flex items-center gap-2 text-sm text-slate-600">
+        <div className="relative z-10 rounded-2xl border border-violet-100/28 bg-violet-950/30 px-4 py-7 text-center">
+          <div className="inline-flex items-center gap-2 text-sm text-violet-100/80">
             <span
-              className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700"
+              className="h-4 w-4 animate-spin rounded-full border-2 border-violet-100/35 border-t-violet-100"
               aria-hidden="true"
             />
             <span>Načítám týmovou produkci…</span>
           </div>
         </div>
       ) : entries.length === 0 ? (
-        <div className="relative z-10 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-7 text-center">
-          <p className="text-sm text-slate-600">
+        <div className="relative z-10 rounded-2xl border border-dashed border-violet-100/32 bg-violet-950/28 px-4 py-7 text-center">
+          <p className="text-sm text-violet-100/78">
             Pro zvolené období a typ produktu zatím nemá tým žádnou produkci.
           </p>
         </div>
@@ -182,66 +158,60 @@ export function TeamLeaderboardSection({
             );
 
             return (
-            <li
-              key={row.email}
-              className="group relative overflow-hidden rounded-2xl border border-slate-700/70 bg-slate-950 px-4 py-3 shadow-[0_14px_26px_rgba(2,6,23,0.35)] sm:px-5 sm:py-4"
-            >
-              <div className={`pointer-events-none absolute inset-0 bg-gradient-to-r ${accents.glow}`} />
+              <li
+                key={row.email}
+                className="group relative overflow-hidden rounded-[28px] border border-violet-100/34 bg-[radial-gradient(circle_at_16%_0%,rgba(167,139,250,0.24),transparent_44%),linear-gradient(160deg,#2d1357_0%,#1b0b40_58%,#100726_100%)] px-4 py-3 shadow-[0_16px_34px_rgba(11,3,33,0.42)] sm:px-5 sm:py-4"
+              >
+                <span className={`pointer-events-none absolute -left-10 top-1/2 h-32 w-32 -translate-y-1/2 rounded-full blur-3xl ${accents.aura}`} />
+                <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(128deg,rgba(255,255,255,0.13)_0%,rgba(255,255,255,0)_40%)]" />
 
-              <div className="relative flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${accents.badge}`}
-                    >
-                      {idx + 1}
-                    </div>
-                    <div
-                      className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/6 text-[11px] font-semibold text-slate-200 sm:flex`}
-                    >
-                      {getInitials(row.name)}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-white sm:text-base">
-                        {row.name}
+                <div className="relative flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${accents.badge}`}
+                      >
+                        {idx + 1}
                       </div>
-                      <div className="mt-0.5 flex items-center gap-2">
-                        <span className="text-[11px] text-white/70">{leaderboardLabel}</span>
-                        {idx < 3 ? (
-                          <span
-                            className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${accents.chip}`}
-                          >
-                            Top {idx + 1}
-                          </span>
-                        ) : null}
+                      <div className="min-w-0">
+                        <div className="truncate text-[1.55rem] font-semibold leading-none text-violet-50 sm:text-[1.8rem]">
+                          {row.name}
+                        </div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className="text-[11px] text-violet-100/72">{leaderboardLabel}</span>
+                          {idx < 3 ? (
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${accents.chip}`}
+                            >
+                              Top {idx + 1}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-violet-100/62">Pojistné</div>
+                      <div className={`whitespace-nowrap text-[1.95rem] font-semibold leading-none sm:text-[2.45rem] ${accents.amount}`}>
+                        <AnimatedMoney value={row.totalPremium} />
                       </div>
                     </div>
                   </div>
 
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-[0.14em] text-white/60">
-                      Pojistné
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between text-[10px] text-violet-100/62">
+                      <span>Výkon vůči 1. místu</span>
+                      <span>{progress} %</span>
                     </div>
-                    <div className={`text-lg font-semibold sm:text-xl ${accents.amount}`}>
-                      <AnimatedMoney value={row.totalPremium} />
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-violet-100/17">
+                      <div
+                        className={`h-full rounded-full bg-gradient-to-r ${accents.progress} transition-[width] duration-300`}
+                        style={{ width: `${progress}%` }}
+                      />
                     </div>
                   </div>
                 </div>
-
-                <div>
-                  <div className="mb-1.5 flex items-center justify-between text-[10px] text-white/60">
-                    <span>Výkon vůči 1. místu</span>
-                    <span>{progress} %</span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/12">
-                    <div
-                      className={`h-full rounded-full bg-gradient-to-r ${accents.progress} transition-[width] duration-300`}
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </li>
+              </li>
             );
           })}
         </ol>

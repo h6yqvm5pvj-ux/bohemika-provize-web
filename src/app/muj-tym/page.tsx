@@ -1357,9 +1357,11 @@ export default function TeamPage() {
 
   return (
     <AppLayout active="team">
-      <div className={`${introStyles.pageEnter} w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2`}>
+      <div
+        className={`${introStyles.pageEnter} team-panel-root w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2`}
+      >
         <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <SplitTitle text="Můj tým" className="!text-slate-900" />
+          <SplitTitle text="Můj tým" className="team-panel-title !text-slate-900" />
         </header>
 
         {!authReady ? (
@@ -1434,7 +1436,7 @@ export default function TeamPage() {
               }`}
             >
               {showTeamSidebar ? (
-              <aside className="ui-card relative h-full overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+              <aside className="ui-card team-panel-sidebar relative h-full overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
                 <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-slate-900" />
                 <div className="flex h-full flex-col gap-3">
                   <div className="flex min-w-0 sm:min-w-[220px] items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-[0_6px_14px_rgba(15,23,42,0.05)]">
@@ -1519,7 +1521,7 @@ export default function TeamPage() {
                             key={m.email}
                             onClick={() => setSelectedEmail(m.email)}
                             className={[
-                              "relative w-full min-h-[72px] overflow-hidden rounded-xl border px-3 py-1.5 text-left transition",
+                              "team-member-card relative w-full min-h-[72px] overflow-hidden rounded-xl border px-3 py-1.5 text-left transition",
                               isSelected
                                 ? "border-slate-900 bg-slate-50 text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.10)]"
                                 : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50",
@@ -1582,8 +1584,7 @@ export default function TeamPage() {
               </aside>
               ) : null}
 
-              <div className="ui-card relative space-y-4 overflow-hidden rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:p-5">
-                  <span className="absolute inset-x-0 top-0 h-1 bg-slate-900" />
+              <div className="relative space-y-4">
                   {selected ? (
                     <>
                       <div className="relative z-10 flex flex-col gap-3 border-b border-slate-200 pb-4">
@@ -1675,18 +1676,18 @@ export default function TeamPage() {
 
                       {detailTab === "overview" ? (
                         <>
-                          <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4 sm:grid-cols-3">
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+                            <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4 sm:grid-cols-3">
+                            <div className="team-stat-card rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
                               <div className="text-[11px] uppercase tracking-wide text-slate-500">Naposledy aktivní</div>
                               <div className="text-base font-semibold text-slate-900" title={formatLastActive(selected.email)}>
                                 {formatRelative(lastActive[selected.email])}
                               </div>
                             </div>
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+                            <div className="team-stat-card rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
                               <div className="text-[11px] uppercase tracking-wide text-slate-500">Celkem smluv</div>
                               <div className="text-2xl font-bold text-slate-900">{contractCountLabel(selected.email, "total")}</div>
                             </div>
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+                            <div className="team-stat-card rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
                               <div className="text-[11px] uppercase tracking-wide text-slate-500">Smluv tento měsíc</div>
                               <div className="text-2xl font-bold text-slate-900">{contractCountLabel(selected.email, "month")}</div>
                             </div>
@@ -1742,9 +1743,9 @@ export default function TeamPage() {
                                     const logo = insurerLogoPath(row.name);
                                     const logoKey = institutionLogoKeyFromPath(logo);
                                     return (
-                                    <div
-                                      key={row.name}
-                                      className={`grid grid-cols-1 gap-1 rounded-xl border border-slate-200 bg-white px-4 py-3 ${productionGridColsClass} sm:items-center sm:gap-3`}
+                                  <div
+                                    key={row.name}
+                                      className={`team-production-row grid grid-cols-1 gap-1 rounded-xl border border-slate-200 bg-white px-4 py-3 ${productionGridColsClass} sm:items-center sm:gap-3`}
                                     >
                                       <div className="min-w-0 flex items-center gap-2">
                                         {logo ? (
@@ -2020,8 +2021,8 @@ export default function TeamPage() {
         )}
       </div>
       {endCollaborationModalOpen && selected ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
-          <div className="w-full max-w-lg rounded-2xl border border-rose-300 bg-white p-4 shadow-2xl">
+        <div className="team-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="team-modal-panel w-full max-w-lg rounded-2xl border border-rose-300 bg-white p-4 shadow-2xl">
             <div className="flex items-center justify-between gap-3">
               <div className="text-sm font-semibold uppercase tracking-[0.14em] text-rose-700">
                 Ukončit spolupráci
