@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Crown, Crosshair, Layers, Sparkles, Users } from "lucide-react";
+import { Crown, Crosshair, Layers, Minus, Plus, Sparkles, Users } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { positionLabel as positionLabelValue } from "@/app/lib/formatters";
 import SplitTitle from "../plan-produkce/SplitTitle";
@@ -34,8 +34,16 @@ type TeamOverviewApiResponse = {
 type TreeNode = UserNode & { children: TreeNode[] };
 type PositionedNode = TreeNode & { x: number; y: number };
 
-const NODE_WIDTH = 220;
-const NODE_HEIGHT = 98;
+const NODE_WIDTH = 254;
+const NODE_HEIGHT = 146;
+const DEFAULT_ZOOM = 1;
+const MIN_ZOOM = 0.55;
+const MAX_ZOOM = 1.9;
+const ZOOM_STEP = 0.1;
+
+function clampZoom(value: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(value.toFixed(2))));
+}
 
 function nameFromEmail(email: string): string {
   const local = email.split("@")[0] ?? "";
@@ -48,13 +56,6 @@ function nameFromEmail(email: string): string {
 
 function positionLabel(pos: Position | null): string {
   return positionLabelValue(pos, { emptyLabel: "Neznámá pozice" });
-}
-
-function roleIcon(pos: Position | null): string {
-  if (!pos) return "•";
-  if (pos.startsWith("manazer")) return "♔";
-  if (pos.startsWith("poradce")) return "◉";
-  return "•";
 }
 
 function truncateText(value: string, max: number): string {
@@ -98,6 +99,7 @@ export default function StructurePage() {
   const treeScrollRef = useRef<HTMLDivElement | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [nodes, setNodes] = useState<Map<string, UserNode>>(new Map());
   const [visibleEmails, setVisibleEmails] = useState<Set<string>>(new Set());
 
@@ -253,9 +255,9 @@ export default function StructurePage() {
         edges: [] as { from: PositionedNode; to: PositionedNode }[],
       };
 
-    const H_STEP = 274;
-    const V_STEP = 170;
-    const TOP_PADDING = 40;
+    const H_STEP = 272;
+    const V_STEP = 168;
+    const TOP_PADDING = 34;
     let nextX = 0;
     let maxDepth = 0;
     const placed: PositionedNode[] = [];
@@ -286,7 +288,7 @@ export default function StructurePage() {
     const minX = Math.min(...placed.map((p) => p.x));
     const maxX = Math.max(...placed.map((p) => p.x));
     const contentWidth = (maxX - minX) * H_STEP + NODE_WIDTH;
-    const width = Math.max(contentWidth + 180, 940);
+    const width = Math.max(contentWidth + 160, 920);
     const offsetX = (width - contentWidth) / 2 + NODE_WIDTH / 2 - minX * H_STEP;
 
     const edges: { from: PositionedNode; to: PositionedNode }[] = [];
@@ -315,6 +317,28 @@ export default function StructurePage() {
     if (!el) return;
     el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
   }, []);
+
+  const zoomIn = useCallback(() => {
+    setZoom((prev) => clampZoom(prev + ZOOM_STEP));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setZoom((prev) => clampZoom(prev - ZOOM_STEP));
+  }, []);
+
+  const zoomReset = useCallback(() => {
+    setZoom(DEFAULT_ZOOM);
+  }, []);
+
+  const handleTreeWheelZoom = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const direction = event.deltaY < 0 ? 1 : -1;
+      setZoom((prev) => clampZoom(prev + direction * ZOOM_STEP));
+    },
+    []
+  );
 
   useEffect(() => {
     centerTree();
@@ -384,14 +408,44 @@ export default function StructurePage() {
                 Poradce
               </span>
             </div>
-            <button
-              type="button"
-              onClick={centerTree}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:text-slate-900"
-            >
-              <Crosshair className="h-3.5 w-3.5" />
-              Vycentrovat strom
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/90 p-1 shadow-[0_8px_20px_rgba(15,23,42,0.08)]">
+                <button
+                  type="button"
+                  onClick={zoomOut}
+                  disabled={zoom <= MIN_ZOOM + 0.001}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Oddálit strom"
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={zoomReset}
+                  className="rounded-full px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                  aria-label="Resetovat přiblížení stromu"
+                >
+                  {Math.round(zoom * 100)}%
+                </button>
+                <button
+                  type="button"
+                  onClick={zoomIn}
+                  disabled={zoom >= MAX_ZOOM - 0.001}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Přiblížit strom"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={centerTree}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:text-slate-900"
+              >
+                <Crosshair className="h-3.5 w-3.5" />
+                Vycentrovat strom
+              </button>
+            </div>
           </div>
 
           <div className="relative z-10 px-1 py-2">
@@ -410,126 +464,303 @@ export default function StructurePage() {
             ) : (
               <div
                 ref={treeScrollRef}
+                onWheel={handleTreeWheelZoom}
                 className="relative w-full overflow-auto rounded-[24px] border border-white/80 bg-white/65 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
               >
                 <svg
-                  style={{ minWidth: "100%" }}
-                  width={layout.width}
-                  height={layout.height}
+                  className="mx-auto block"
+                  width={layout.width * zoom}
+                  height={layout.height * zoom}
                   viewBox={`0 0 ${layout.width} ${layout.height}`}
                   preserveAspectRatio="xMidYMin meet"
                 >
                   <defs>
                     <linearGradient id={`${svgPrefix}-edge`} x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#7dd3fc" stopOpacity="0.75" />
-                      <stop offset="55%" stopColor="#60a5fa" stopOpacity="0.52" />
-                      <stop offset="100%" stopColor="#a5b4fc" stopOpacity="0.66" />
+                      <stop offset="0%" stopColor="#7dd3fc" stopOpacity="0.82" />
+                      <stop offset="52%" stopColor="#60a5fa" stopOpacity="0.7" />
+                      <stop offset="100%" stopColor="#c084fc" stopOpacity="0.78" />
                     </linearGradient>
-                    <linearGradient id={`${svgPrefix}-node-current`} x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#ecfdf5" />
-                      <stop offset="100%" stopColor="#dbeafe" />
+                    <linearGradient id={`${svgPrefix}-card-current`} x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#2f154f" />
+                      <stop offset="100%" stopColor="#120927" />
                     </linearGradient>
-                    <linearGradient id={`${svgPrefix}-node-manager`} x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#eef2ff" />
-                      <stop offset="100%" stopColor="#e0e7ff" />
+                    <linearGradient id={`${svgPrefix}-card-manager`} x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#35155b" />
+                      <stop offset="100%" stopColor="#13092d" />
                     </linearGradient>
-                    <linearGradient id={`${svgPrefix}-node-adviser`} x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#ffffff" />
-                      <stop offset="100%" stopColor="#f8fafc" />
+                    <linearGradient id={`${svgPrefix}-card-adviser`} x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#281944" />
+                      <stop offset="100%" stopColor="#100d2b" />
                     </linearGradient>
-                    <linearGradient id={`${svgPrefix}-node-unknown`} x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#f8fafc" />
-                      <stop offset="100%" stopColor="#f1f5f9" />
+                    <linearGradient id={`${svgPrefix}-card-unknown`} x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#253046" />
+                      <stop offset="100%" stopColor="#0f172a" />
+                    </linearGradient>
+                    <radialGradient id={`${svgPrefix}-card-glow`} cx="25%" cy="0%" r="88%">
+                      <stop offset="0%" stopColor="rgba(249,244,255,0.32)" />
+                      <stop offset="55%" stopColor="rgba(249,244,255,0.08)" />
+                      <stop offset="100%" stopColor="rgba(249,244,255,0)" />
+                    </radialGradient>
+                    <linearGradient id={`${svgPrefix}-card-diagonal`} x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="rgba(255,255,255,0.2)" />
+                      <stop offset="30%" stopColor="rgba(255,255,255,0.05)" />
+                      <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+                    </linearGradient>
+                    <linearGradient id={`${svgPrefix}-badge-current`} x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#67f3d0" />
+                      <stop offset="100%" stopColor="#39d5ff" />
+                    </linearGradient>
+                    <linearGradient id={`${svgPrefix}-badge-manager`} x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#cc75ff" />
+                      <stop offset="100%" stopColor="#9f57ff" />
+                    </linearGradient>
+                    <linearGradient id={`${svgPrefix}-badge-adviser`} x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#77d9ff" />
+                      <stop offset="100%" stopColor="#5fa7ff" />
+                    </linearGradient>
+                    <linearGradient id={`${svgPrefix}-badge-unknown`} x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#bdc7de" />
+                      <stop offset="100%" stopColor="#97a8c7" />
+                    </linearGradient>
+                    <linearGradient id={`${svgPrefix}-pill-current`} x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#6ff4cf" />
+                      <stop offset="100%" stopColor="#4dceff" />
+                    </linearGradient>
+                    <linearGradient id={`${svgPrefix}-pill-manager`} x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#cb75ff" />
+                      <stop offset="100%" stopColor="#a85aff" />
+                    </linearGradient>
+                    <linearGradient id={`${svgPrefix}-pill-adviser`} x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#74d8ff" />
+                      <stop offset="100%" stopColor="#75abff" />
+                    </linearGradient>
+                    <linearGradient id={`${svgPrefix}-pill-unknown`} x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#b4bfd5" />
+                      <stop offset="100%" stopColor="#93a6c7" />
+                    </linearGradient>
+                    <linearGradient id={`${svgPrefix}-pill-gloss`} x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="rgba(255,255,255,0.5)" />
+                      <stop offset="100%" stopColor="rgba(255,255,255,0.08)" />
                     </linearGradient>
                     <filter id={`${svgPrefix}-shadow`} x="-35%" y="-35%" width="170%" height="190%">
-                      <feDropShadow dx="0" dy="12" stdDeviation="8" floodColor="#0f172a" floodOpacity="0.18" />
+                      <feDropShadow dx="0" dy="16" stdDeviation="12" floodColor="#05030f" floodOpacity="0.46" />
                     </filter>
-                    <filter id={`${svgPrefix}-glow`} x="-60%" y="-60%" width="220%" height="240%">
-                      <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="#22c55e" floodOpacity="0.32" />
+                    <filter id={`${svgPrefix}-glow-current`} x="-65%" y="-65%" width="230%" height="240%">
+                      <feDropShadow dx="0" dy="0" stdDeviation="12" floodColor="#34d399" floodOpacity="0.38" />
+                      <feDropShadow dx="0" dy="10" stdDeviation="9" floodColor="#042f2e" floodOpacity="0.46" />
+                    </filter>
+                    <filter id={`${svgPrefix}-glow-manager`} x="-65%" y="-65%" width="230%" height="240%">
+                      <feDropShadow dx="0" dy="0" stdDeviation="12" floodColor="#c084fc" floodOpacity="0.44" />
+                      <feDropShadow dx="0" dy="10" stdDeviation="9" floodColor="#1b1038" floodOpacity="0.52" />
+                    </filter>
+                    <filter id={`${svgPrefix}-glow-adviser`} x="-65%" y="-65%" width="230%" height="240%">
+                      <feDropShadow dx="0" dy="0" stdDeviation="12" floodColor="#60a5fa" floodOpacity="0.44" />
+                      <feDropShadow dx="0" dy="10" stdDeviation="9" floodColor="#11253f" floodOpacity="0.5" />
+                    </filter>
+                    <filter id={`${svgPrefix}-glow-unknown`} x="-65%" y="-65%" width="230%" height="240%">
+                      <feDropShadow dx="0" dy="0" stdDeviation="10" floodColor="#94a3b8" floodOpacity="0.3" />
+                      <feDropShadow dx="0" dy="10" stdDeviation="9" floodColor="#0f172a" floodOpacity="0.48" />
                     </filter>
                   </defs>
 
                   {layout.edges.map(({ from, to }) => (
-                    <path
-                      key={`${from.email}-${to.email}`}
-                      d={`M ${from.x * layout.stepX + layout.offsetX} ${from.y + NODE_HEIGHT}
-                        C ${from.x * layout.stepX + layout.offsetX} ${from.y + NODE_HEIGHT + 28},
-                          ${to.x * layout.stepX + layout.offsetX} ${to.y - 28},
-                          ${to.x * layout.stepX + layout.offsetX} ${to.y}`}
-                      fill="none"
-                      stroke={`url(#${svgPrefix}-edge)`}
-                      strokeLinecap="round"
-                      strokeOpacity="0.8"
-                      strokeWidth={2.4}
-                    />
+                    (() => {
+                      const fromX = from.x * layout.stepX + layout.offsetX;
+                      const toX = to.x * layout.stepX + layout.offsetX;
+                      const fromY = from.y + NODE_HEIGHT;
+                      const toY = to.y;
+                      const isVertical = Math.abs(fromX - toX) < 1;
+                      const bend = isVertical ? Math.min(26, layout.stepX * 0.1) : 0;
+                      const c1x = isVertical ? fromX + bend : fromX;
+                      const c2x = isVertical ? toX - bend : toX;
+
+                      return (
+                        <path
+                          key={`${from.email}-${to.email}`}
+                          d={`M ${fromX} ${fromY}
+                            C ${c1x} ${fromY + 24},
+                              ${c2x} ${toY - 24},
+                              ${toX} ${toY}`}
+                          fill="none"
+                          stroke={`url(#${svgPrefix}-edge)`}
+                          strokeLinecap="round"
+                          strokeOpacity={isVertical ? 0.97 : 0.88}
+                          strokeWidth={isVertical ? 3.2 : 2.7}
+                        />
+                      );
+                    })()
                   ))}
 
                   {layout.nodes.map((node) => {
                     const isCurrent = currentUserEmail === node.email;
                     const isManager = Boolean(node.position?.startsWith("manazer"));
                     const isAdviser = Boolean(node.position?.startsWith("poradce"));
-                    const nodeFill = isCurrent
-                      ? `url(#${svgPrefix}-node-current)`
+                    const roleLabel = positionLabel(node.position);
+                    const roleBadge = isCurrent ? "TY" : isManager ? "MANAŽER" : isAdviser ? "PORADCE" : "ČLEN";
+                    const roleSubtitle = isCurrent
+                      ? "Vlastní účet ve struktuře"
                       : isManager
-                      ? `url(#${svgPrefix}-node-manager)`
+                      ? "Nadřízený v této větvi"
                       : isAdviser
-                      ? `url(#${svgPrefix}-node-adviser)`
-                      : `url(#${svgPrefix}-node-unknown)`;
-                    const stroke = isCurrent ? "#16a34a" : isManager ? "#818cf8" : "#c7d2e3";
-                    const rolePillFill = isCurrent ? "#dcfce7" : isManager ? "#e0e7ff" : "#f8fafc";
-                    const rolePillStroke = isCurrent ? "#86efac" : isManager ? "#c7d2fe" : "#d6e1ee";
-                    const roleTextColor = isCurrent ? "#047857" : isManager ? "#3730a3" : "#334155";
-                    const avatarFill = isCurrent ? "#34d399" : isManager ? "#818cf8" : "#0ea5e9";
+                      ? "Aktivní týmový poradce"
+                      : "Pozice není vyplněná";
                     const initials = initialsFromName(node.name);
+                    const RolePillIcon = isManager ? Crown : isCurrent ? Users : isAdviser ? Users : Layers;
+                    const badgeWidth = Math.min(148, Math.max(78, roleBadge.length * 10 + 24));
+                    const cardTheme = isCurrent
+                      ? {
+                          fill: `url(#${svgPrefix}-card-current)`,
+                          border: "#66f2cc",
+                          badgeFill: `url(#${svgPrefix}-badge-current)`,
+                          pillFill: `url(#${svgPrefix}-pill-current)`,
+                          pillStroke: "rgba(130,255,226,0.62)",
+                          glow: `url(#${svgPrefix}-glow-current)`,
+                          subtitleColor: "#bcf4e4",
+                          initialsFill: "#0f172a",
+                          lineColor: "rgba(137,255,225,0.45)",
+                        }
+                      : isManager
+                      ? {
+                          fill: `url(#${svgPrefix}-card-manager)`,
+                          border: "#b77cff",
+                          badgeFill: `url(#${svgPrefix}-badge-manager)`,
+                          pillFill: `url(#${svgPrefix}-pill-manager)`,
+                          pillStroke: "rgba(223,180,255,0.65)",
+                          glow: `url(#${svgPrefix}-glow-manager)`,
+                          subtitleColor: "#d8c0ff",
+                          initialsFill: "#1f1140",
+                          lineColor: "rgba(198,152,255,0.48)",
+                        }
+                      : isAdviser
+                      ? {
+                          fill: `url(#${svgPrefix}-card-adviser)`,
+                          border: "#79bcff",
+                          badgeFill: `url(#${svgPrefix}-badge-adviser)`,
+                          pillFill: `url(#${svgPrefix}-pill-adviser)`,
+                          pillStroke: "rgba(177,224,255,0.64)",
+                          glow: `url(#${svgPrefix}-glow-adviser)`,
+                          subtitleColor: "#c6e3ff",
+                          initialsFill: "#132443",
+                          lineColor: "rgba(137,201,255,0.46)",
+                        }
+                      : {
+                          fill: `url(#${svgPrefix}-card-unknown)`,
+                          border: "#9aa7be",
+                          badgeFill: `url(#${svgPrefix}-badge-unknown)`,
+                          pillFill: `url(#${svgPrefix}-pill-unknown)`,
+                          pillStroke: "rgba(210,220,240,0.58)",
+                          glow: `url(#${svgPrefix}-glow-unknown)`,
+                          subtitleColor: "#d6deeb",
+                          initialsFill: "#142033",
+                          lineColor: "rgba(190,201,222,0.45)",
+                        };
 
                     return (
                       <g
                         key={node.email}
                         transform={`translate(${node.x * layout.stepX + layout.offsetX - NODE_WIDTH / 2}, ${node.y})`}
-                        filter={isCurrent ? `url(#${svgPrefix}-glow)` : `url(#${svgPrefix}-shadow)`}
+                        filter={cardTheme.glow}
                       >
                         <rect
                           width={NODE_WIDTH}
                           height={NODE_HEIGHT}
-                          rx="18"
-                          fill={nodeFill}
-                          stroke={stroke}
-                          strokeOpacity={isCurrent ? 0.95 : 0.9}
-                          strokeWidth={isCurrent ? 2.4 : 1.8}
+                          rx="24"
+                          fill={cardTheme.fill}
+                          stroke={cardTheme.border}
+                          strokeOpacity={0.82}
+                          strokeWidth={1.9}
                         />
-                        <circle cx="24" cy="24" r="11" fill={avatarFill} />
+                        <rect
+                          x="2"
+                          y="2"
+                          width={NODE_WIDTH - 4}
+                          height={NODE_HEIGHT - 4}
+                          rx="22"
+                          fill="none"
+                          stroke="rgba(255,255,255,0.16)"
+                          strokeWidth="1"
+                        />
+                        <rect width={NODE_WIDTH} height={NODE_HEIGHT} rx="24" fill={`url(#${svgPrefix}-card-glow)`} />
+                        <path
+                          d={`M 0 ${NODE_HEIGHT} L ${Math.round(NODE_WIDTH * 0.55)} 0`}
+                          fill="none"
+                          stroke={`url(#${svgPrefix}-card-diagonal)`}
+                          strokeWidth="1.2"
+                        />
+                        <rect x="16" y="14" width={badgeWidth} height="28" rx="10" fill={cardTheme.badgeFill} />
                         <text
-                          x="24"
-                          y="27.8"
+                          x={16 + badgeWidth / 2}
+                          y="33"
                           textAnchor="middle"
-                          fill="#f8fafc"
-                          fontSize="9.5"
+                          fill="#120d25"
+                          fontSize="12.2"
+                          fontWeight="800"
+                          letterSpacing="0.08em"
+                        >
+                          {roleBadge}
+                        </text>
+                        <circle cx={NODE_WIDTH - 26} cy="28" r="12" fill="rgba(255,255,255,0.88)" />
+                        <circle cx={NODE_WIDTH - 26} cy="28" r="12" fill="none" stroke="rgba(255,255,255,0.36)" strokeWidth="1" />
+                        <text
+                          x={NODE_WIDTH - 26}
+                          y="32.2"
+                          textAnchor="middle"
+                          fill={cardTheme.initialsFill}
+                          fontSize="9.8"
                           fontWeight="700"
                         >
                           {initials}
                         </text>
-                        <text x="42" y="29" textAnchor="start" fill="#0f172a" fontSize="14" fontWeight="700">
+                        <text x="16" y="70" textAnchor="start" fill="#f8f4ff" fontSize="22" fontWeight="700">
                           {truncateText(node.name, 19)}
                         </text>
+                        <text x="16" y="92" textAnchor="start" fill={cardTheme.subtitleColor} fontSize="12.2" fontWeight="500">
+                          {truncateText(roleSubtitle, 31)}
+                        </text>
                         <rect
-                          x="14"
-                          y="57"
-                          width={NODE_WIDTH - 28}
-                          height="25"
-                          rx="9"
-                          fill={rolePillFill}
-                          stroke={rolePillStroke}
-                          strokeWidth="1.1"
+                          x="16"
+                          y={NODE_HEIGHT - 43}
+                          width={NODE_WIDTH - 32}
+                          height="30"
+                          rx="13"
+                          fill={cardTheme.pillFill}
+                          stroke={cardTheme.pillStroke}
+                          strokeWidth="1"
+                        />
+                        <rect
+                          x="16"
+                          y={NODE_HEIGHT - 43}
+                          width={NODE_WIDTH - 32}
+                          height="15"
+                          rx="13"
+                          fill={`url(#${svgPrefix}-pill-gloss)`}
+                          opacity="0.7"
+                        />
+                        <circle cx="36" cy={NODE_HEIGHT - 28} r="9" fill="rgba(20,14,36,0.16)" />
+                        <RolePillIcon
+                          x={30}
+                          y={NODE_HEIGHT - 34}
+                          width={12}
+                          height={12}
+                          color="#140e24"
+                          strokeWidth={2.15}
+                        />
+                        <path
+                          d={`M 18 ${NODE_HEIGHT - 8} L ${NODE_WIDTH - 18} ${NODE_HEIGHT - 8}`}
+                          fill="none"
+                          stroke={cardTheme.lineColor}
+                          strokeWidth="3"
+                          strokeLinecap="round"
                         />
                         <text
-                          x={NODE_WIDTH / 2}
-                          y="74"
-                          textAnchor="middle"
-                          fill={roleTextColor}
-                          fontSize="11.5"
+                          x="52"
+                          y={NODE_HEIGHT - 22}
+                          textAnchor="start"
+                          fill="#140e24"
+                          fontSize="12.7"
                           fontWeight="700"
                         >
-                          {`${roleIcon(node.position)} ${positionLabel(node.position)}`}
+                          {truncateText(roleLabel, 23)}
                         </text>
                       </g>
                     );
