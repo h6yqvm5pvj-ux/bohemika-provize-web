@@ -56,7 +56,6 @@ import {
   type TotpSecret,
   updatePassword,
 } from "firebase/auth";
-import { useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 
 import { auth } from "../firebase";
@@ -899,7 +898,6 @@ const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
 
 
 export default function SettingsPage() {
-  const searchParams = useSearchParams();
   const onlineCardQueryAppliedRef = useRef(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
@@ -1405,12 +1403,13 @@ export default function SettingsPage() {
   useEffect(() => {
     if (onlineCardQueryAppliedRef.current) return;
     if (timelineSetupRequired) return;
-    const requestedTab = searchParams.get("tab");
+    if (typeof window === "undefined") return;
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
     if (requestedTab === "onlineCard" || requestedTab === "online-vizitka") {
       setActiveTab("onlineCard");
       onlineCardQueryAppliedRef.current = true;
     }
-  }, [searchParams, timelineSetupRequired]);
+  }, [timelineSetupRequired]);
 
   useEffect(() => {
     if (loadingMeta || typeof window === "undefined") return;
