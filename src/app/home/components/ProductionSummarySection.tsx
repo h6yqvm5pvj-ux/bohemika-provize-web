@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type UIEvent, useEffect, useRef, useState } from "react";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -224,6 +224,10 @@ type ProductionColumnProps = {
   previousAmountValue: number;
 };
 
+type ProductionCard = ProductionColumnProps & {
+  id: string;
+};
+
 function ProductionColumn({
   tone,
   titleTop,
@@ -289,6 +293,8 @@ export function ProductionSummarySection({
   isLiteUI,
 }: Props) {
   const [loadingProgress, setLoadingProgress] = useState(14);
+  const [mobileCardIndex, setMobileCardIndex] = useState(0);
+  const mobileCarouselRef = useRef<HTMLDivElement | null>(null);
   const clampedLoadingProgress = Math.max(8, Math.min(97, loadingProgress));
 
   useEffect(() => {
@@ -325,6 +331,87 @@ export function ProductionSummarySection({
     : "relative h-full overflow-hidden rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-3 py-3 text-white shadow-[0_20px_44px_rgba(11,3,33,0.5)] transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 hover:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(221,214,254,0.24)] focus-within:border-violet-200/60 focus-within:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(221,214,254,0.3)] sm:px-4 sm:py-4";
   const hasTipIncome = myTipImmediateSum > 0;
   const hasManagerTipIncome = myTipImmediateSum > 0;
+  const ownCard: ProductionCard = {
+    id: "own",
+    tone: "own",
+    titleTop: "Vlastní",
+    titleBottom: "produkce",
+    description: "Aktuální osobní výkon za vybrané období.",
+    icon: UserRound,
+    countLabel: "Počet smluv",
+    countValue: myContractsCount,
+    amountValue: myImmediateSum,
+    previousAmountValue: myImmediatePrevSum,
+  };
+  const teamCard: ProductionCard = {
+    id: "team",
+    tone: "team",
+    titleTop: "Týmová",
+    titleBottom: "produkce",
+    description: "Součet produkce podřízené týmové struktury.",
+    icon: UsersRound,
+    countLabel: "Počet smluv",
+    countValue: teamContractsCount,
+    amountValue: teamImmediateSum,
+    previousAmountValue: teamImmediatePrevSum,
+  };
+  const tipCard: ProductionCard = {
+    id: "tip",
+    tone: "tip",
+    titleTop: "Tipařská",
+    titleBottom: "produkce",
+    description: "Provize ze smluv vedených jako tipařské.",
+    icon: Tag,
+    countLabel: "Počet tipů",
+    countValue: myTipContractsCount,
+    amountValue: myTipImmediateSum,
+    previousAmountValue: myTipImmediatePrevSum,
+  };
+  const totalCard: ProductionCard = {
+    id: "total",
+    tone: "total",
+    titleTop: "Celková",
+    titleBottom: "produkce",
+    description: "Vlastní a týmová produkce v jednom součtu.",
+    icon: BarChart3,
+    countLabel: "Počet smluv",
+    countValue: totalContractsCount,
+    amountValue: totalWithTeam,
+    previousAmountValue: totalPrevWithTeam,
+  };
+  const desktopCards = !showTeamBox
+    ? hasTipIncome
+      ? [ownCard, tipCard]
+      : [ownCard]
+    : hasManagerTipIncome
+      ? [ownCard, teamCard, tipCard, totalCard]
+      : [ownCard, teamCard, totalCard];
+  const mobileCards = showTeamBox ? [ownCard, teamCard, totalCard] : [ownCard];
+
+  useEffect(() => {
+    if (mobileCarouselRef.current) {
+      mobileCarouselRef.current.scrollTo({ left: 0, behavior: "auto" });
+    }
+  }, [showTeamBox]);
+
+  const handleMobileCarouselScroll = (event: UIEvent<HTMLDivElement>) => {
+    const element = event.currentTarget;
+    if (mobileCards.length <= 1) {
+      if (mobileCardIndex !== 0) {
+        setMobileCardIndex(0);
+      }
+      return;
+    }
+    const viewportWidth = element.clientWidth;
+    if (viewportWidth <= 0) return;
+    const nextIndex = Math.max(
+      0,
+      Math.min(mobileCards.length - 1, Math.round(element.scrollLeft / viewportWidth))
+    );
+    if (nextIndex !== mobileCardIndex) {
+      setMobileCardIndex(nextIndex);
+    }
+  };
 
   if (loading) {
     return (
@@ -339,33 +426,27 @@ export function ProductionSummarySection({
   if (!showTeamBox) {
     return (
       <section className={containerShellClass} data-fixed-box-theme="slate">
-        <div className={`relative z-10 grid gap-3 ${hasTipIncome ? "md:grid-cols-2" : ""}`}>
-          {hasTipIncome ? <ShortDividerLines columns={2} visibilityClass="md:block" /> : null}
-          <ProductionColumn
-            tone="own"
-            titleTop="Vlastní"
-            titleBottom="produkce"
-            description="Aktuální osobní výkon za vybrané období."
-            icon={UserRound}
-            countLabel="Počet smluv"
-            countValue={myContractsCount}
-            amountValue={myImmediateSum}
-            previousAmountValue={myImmediatePrevSum}
-          />
+        <div className="relative z-10 md:hidden">
+          <div
+            ref={mobileCarouselRef}
+            onScroll={handleMobileCarouselScroll}
+            className="overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          >
+            <div className="flex">
+              {mobileCards.map((card) => (
+                <div key={card.id} className="w-full shrink-0 snap-start">
+                  <ProductionColumn {...card} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
 
-          {hasTipIncome ? (
-            <ProductionColumn
-              tone="tip"
-              titleTop="Tipařská"
-              titleBottom="produkce"
-              description="Provize ze smluv vedených jako tipařské."
-              icon={Tag}
-              countLabel="Počet tipů"
-              countValue={myTipContractsCount}
-              amountValue={myTipImmediateSum}
-              previousAmountValue={myTipImmediatePrevSum}
-            />
-          ) : null}
+        <div className={`relative z-10 hidden gap-3 md:grid ${hasTipIncome ? "md:grid-cols-2" : ""}`}>
+          {hasTipIncome ? <ShortDividerLines columns={2} visibilityClass="md:block" /> : null}
+          {desktopCards.map((card) => (
+            <ProductionColumn key={card.id} {...card} />
+          ))}
         </div>
       </section>
     );
@@ -373,8 +454,38 @@ export function ProductionSummarySection({
 
   return (
     <section className={containerShellClass} data-fixed-box-theme="slate">
+      <div className="relative z-10 md:hidden">
+        <div
+          ref={mobileCarouselRef}
+          onScroll={handleMobileCarouselScroll}
+          className="overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <div className="flex">
+            {mobileCards.map((card) => (
+              <div key={card.id} className="w-full shrink-0 snap-start">
+                <ProductionColumn {...card} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-2 flex items-center justify-center gap-1.5">
+          {mobileCards.map((card, index) => (
+            <span
+              key={card.id}
+              className={`h-1.5 rounded-full transition-all ${
+                index === mobileCardIndex ? "w-5 bg-violet-100/90" : "w-1.5 bg-violet-100/35"
+              }`}
+            />
+          ))}
+        </div>
+        <p className="mt-2 text-center text-[11px] font-medium text-violet-100/68">
+          Swipe do strany pro týmovou a celkovou produkci.
+        </p>
+      </div>
+
       <div
-        className={`relative z-10 grid gap-3 ${
+        className={`relative z-10 hidden gap-3 md:grid ${
           hasManagerTipIncome ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3"
         }`}
       >
@@ -387,55 +498,9 @@ export function ProductionSummarySection({
           <ShortDividerLines columns={3} visibilityClass="md:block" />
         )}
 
-        <ProductionColumn
-          tone="own"
-          titleTop="Vlastní"
-          titleBottom="produkce"
-          description="Aktuální osobní výkon za vybrané období."
-          icon={UserRound}
-          countLabel="Počet smluv"
-          countValue={myContractsCount}
-          amountValue={myImmediateSum}
-          previousAmountValue={myImmediatePrevSum}
-        />
-
-        <ProductionColumn
-          tone="team"
-          titleTop="Týmová"
-          titleBottom="produkce"
-          description="Součet produkce podřízené týmové struktury."
-          icon={UsersRound}
-          countLabel="Počet smluv"
-          countValue={teamContractsCount}
-          amountValue={teamImmediateSum}
-          previousAmountValue={teamImmediatePrevSum}
-        />
-
-        {hasManagerTipIncome ? (
-          <ProductionColumn
-            tone="tip"
-            titleTop="Tipařská"
-            titleBottom="produkce"
-            description="Provize ze smluv vedených jako tipařské."
-            icon={Tag}
-            countLabel="Počet tipů"
-            countValue={myTipContractsCount}
-            amountValue={myTipImmediateSum}
-            previousAmountValue={myTipImmediatePrevSum}
-          />
-        ) : null}
-
-        <ProductionColumn
-          tone="total"
-          titleTop="Celková"
-          titleBottom="produkce"
-          description="Vlastní a týmová produkce v jednom součtu."
-          icon={BarChart3}
-          countLabel="Počet smluv"
-          countValue={totalContractsCount}
-          amountValue={totalWithTeam}
-          previousAmountValue={totalPrevWithTeam}
-        />
+        {desktopCards.map((card) => (
+          <ProductionColumn key={card.id} {...card} />
+        ))}
       </div>
     </section>
   );
