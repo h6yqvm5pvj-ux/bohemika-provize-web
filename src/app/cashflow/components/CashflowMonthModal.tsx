@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { X } from "lucide-react";
 
-import { REVENUE_SCOPE_THEME } from "@/app/lib/revenueScopeTheme";
 import {
   calculateNetCashflow,
   calculateStornoFund,
@@ -35,63 +34,80 @@ export function CashflowMonthModal({
 
   return (
     <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/58 px-4 py-6 backdrop-blur-[2px]"
+      className="fixed inset-0 z-30 flex items-center justify-center bg-[#08030f]/78 px-4 py-6 backdrop-blur-[7px]"
       onClick={onClose}
     >
       <div
-        className="relative w-[min(1120px,96vw)] overflow-hidden rounded-[32px] border border-slate-200 bg-white p-4 text-slate-900 shadow-[0_34px_86px_rgba(2,6,23,0.34)] sm:p-6"
+        className="relative flex max-h-[95vh] w-[min(1520px,96vw)] flex-col overflow-hidden rounded-[34px] border border-slate-200 bg-[#fbfdff] p-4 text-slate-900 shadow-[0_38px_92px_rgba(2,6,23,0.38)] sm:p-6"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="space-y-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                Přehled měsíce
-              </p>
-              <h3 className="text-2xl font-semibold text-slate-900 sm:text-3xl">{month.label}</h3>
-              <p className="text-sm text-slate-600">{month.items.length} smluv</p>
-            </div>
-            <div className="flex items-start gap-2 sm:gap-3">
-              <div className="grid grid-cols-1 gap-3 sm:min-w-[560px] sm:grid-cols-3">
-                <div className="rounded-2xl border border-slate-200/90 bg-white/80 px-4 py-3 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                    Brutto
-                  </div>
-                  <div className="mt-1 text-xl font-semibold leading-none text-slate-900 sm:text-[1.9rem]">
-                    {formatMoney(month.total)}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-rose-200 bg-rose-50/85 px-4 py-3 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-rose-700">
-                    STORNO fond ({stornoPercent} %)
-                  </div>
-                  <div className="mt-1 text-xl font-semibold leading-none text-rose-700 sm:text-[1.9rem]">
-                    - {formatMoney(stornoFund)}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-emerald-300 bg-emerald-50/85 px-4 py-3 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-emerald-700">
-                    Čisté cashflow
-                  </div>
-                  <div className="mt-1 text-xl font-semibold leading-none text-emerald-700 sm:text-[1.9rem]">
-                    {formatMoney(netTotal)}
-                  </div>
-                </div>
+        <span
+          className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#ca85ff_0%,#aa57f5_46%,#8f44e8_100%)]"
+          aria-hidden="true"
+        />
+        <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(244,239,252,0.96)_0%,rgba(250,248,255,0.98)_44%,rgba(252,251,255,1)_100%)]" />
+        <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(146deg,rgba(197,105,255,0.08)_0%,rgba(197,105,255,0)_38%,rgba(166,86,246,0.06)_100%)]" />
+        <span className="pointer-events-none absolute -top-20 left-28 h-[21rem] w-px rotate-[35deg] bg-[#9a5dcb]/10" />
+        <span className="pointer-events-none absolute -right-16 top-10 h-40 w-40 rounded-full bg-[#ae62ff]/12 blur-3xl" />
+
+        <div className="relative z-[1] flex min-h-0 flex-1 flex-col gap-4">
+          <div className="px-1 pt-1">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Přehled měsíce
+                </p>
+                <h3 className="text-[2.2rem] font-bold leading-tight text-slate-900 sm:text-[3rem]">
+                  {month.label}
+                </h3>
+                <p className="text-[1.05rem] text-slate-600">{month.items.length} smluv</p>
               </div>
 
-              <button
-                type="button"
-                onClick={onClose}
-                className="ui-focus inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white/95 text-slate-600 shadow-[0_10px_24px_rgba(15,23,42,0.1)] transition hover:border-slate-400 hover:bg-white hover:text-slate-900"
-                aria-label="Zavřít přehled měsíce"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-start gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <div className="min-w-[220px] rounded-[20px] border border-[#d7c3ed] bg-[#f4ecff] px-5 py-3 text-right">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#71558f]">
+                      Brutto
+                    </div>
+                    <div className="mt-1 whitespace-nowrap font-mono text-[2.2rem] font-bold leading-none tracking-[-0.02em] text-[#1a1028]">
+                      {formatMoney(month.total)}
+                    </div>
+                  </div>
+
+                  <div className="min-w-[220px] rounded-[20px] border border-rose-200 bg-rose-50 px-5 py-3 text-right">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-700">
+                      STORNO fond ({stornoPercent} %)
+                    </div>
+                    <div className="mt-1 whitespace-nowrap font-mono text-[2.2rem] font-bold leading-none tracking-[-0.02em] text-rose-700">
+                      - {formatMoney(stornoFund)}
+                    </div>
+                  </div>
+
+                  <div className="min-w-[220px] rounded-[20px] border border-emerald-300 bg-emerald-50 px-5 py-3 text-right">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                      Čisté cashflow
+                    </div>
+                    <div className="mt-1 whitespace-nowrap font-mono text-[2.2rem] font-bold leading-none tracking-[-0.02em] text-emerald-700">
+                      {formatMoney(netTotal)}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="ui-focus inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:text-slate-900"
+                  aria-label="Zavřít přehled měsíce"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="max-h-[58vh] space-y-3 overflow-y-auto rounded-2xl border border-slate-200/85 bg-white/70 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] sm:p-4">
-            {sortedItems.map((item) => {
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-[28px] border border-slate-200 bg-[#f7f8fd] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)] sm:p-4">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {sortedItems.map((item) => {
               const dateLabel = item.date.toLocaleDateString("cs-CZ");
               const contractNo =
                 item.contractNumber && item.contractNumber.trim() !== ""
@@ -120,87 +136,89 @@ export function CashflowMonthModal({
               const isTeamIncome =
                 !isTipIncome && (item.source === "manager" || item.isManagerOverride);
               const scopeBadgeClass = isTipIncome
-                ? REVENUE_SCOPE_THEME.tip.badgeClass
+                ? "border-fuchsia-400/60 bg-fuchsia-500/18 text-fuchsia-100"
                 : isTeamIncome
-                ? REVENUE_SCOPE_THEME.team.badgeClass
-                : REVENUE_SCOPE_THEME.own.badgeClass;
+                ? "border-indigo-400/60 bg-indigo-500/18 text-indigo-100"
+                : "border-emerald-400/60 bg-emerald-500/20 text-emerald-100";
               const tipSourceOwner =
                 item.tipSourceAdviserEmail && item.tipSourceAdviserEmail.trim() !== ""
                   ? item.tipSourceAdviserEmail.trim().toLowerCase()
                   : null;
 
-              return (
-                <article
-                  key={item.id}
-                  className="relative rounded-2xl border border-slate-200/90 bg-white px-4 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.06)] transition hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.1)]"
-                >
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_280px] sm:gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-                    <button
-                      type="button"
-                      onClick={() => onSelectItem(item)}
-                      className="min-w-0 text-left"
-                    >
-                      <div className="text-xl leading-tight font-semibold text-slate-900 sm:text-2xl">
-                        {productLabel(item.productKey)}
-                      </div>
+                return (
+                  <article
+                    key={item.id}
+                    className="group relative isolate overflow-hidden rounded-[22px] border border-[#6a3b97] bg-[#1c122c] shadow-[0_12px_24px_rgba(9,4,18,0.44)] ring-1 ring-[#7d4ab0]/24 transition hover:-translate-y-0.5 hover:border-[#9d63d1] hover:shadow-[0_18px_34px_rgba(9,4,18,0.56)]"
+                  >
+                    <span className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-[#cb85ff] via-[#ab5ff6] to-[#9652ef]" />
+                    <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,36,107,0.44)_0%,rgba(26,16,40,0.75)_45%,rgba(18,12,27,0.94)_100%)]" />
 
-                      <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                        {dateLabel}
-                        {contractNo ? ` · ${contractNo}` : ""}
-                      </div>
+                    <div className="relative z-[1] grid grid-cols-1 gap-4 p-4 md:grid-cols-[minmax(0,1fr)_250px] md:items-end md:p-5">
+                      <button
+                        type="button"
+                        onClick={() => onSelectItem(item)}
+                        className="min-w-0 text-left md:pr-3"
+                      >
+                        <div className="text-[1.85rem] leading-tight font-bold tracking-[-0.01em] text-[#f9f4ff]">
+                          {productLabel(item.productKey)}
+                        </div>
 
-                      <div className="mt-3 grid grid-cols-1 gap-1 text-sm text-slate-700">
-                        {isTipIncome ? (
+                        <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.15em] text-[#c5abdf]">
+                          {dateLabel}
+                          {contractNo ? ` · ${contractNo}` : ""}
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 gap-1 text-[1.03rem] text-[#e6dcf3]">
+                          {isTipIncome ? (
+                            <p>
+                              <span className="text-[#bfa5d8]">TIP od:</span>{" "}
+                              <span className="font-medium text-[#faf5ff]">{tipSourceOwner ?? "—"}</span>
+                            </p>
+                          ) : (
+                            <p>
+                              <span className="text-[#bfa5d8]">Klient:</span>{" "}
+                              <span className="font-medium text-[#faf5ff]">{clientName ?? "—"}</span>
+                            </p>
+                          )}
                           <p>
-                            <span className="text-slate-500">TIP od:</span>{" "}
-                            <span className="text-slate-900">{tipSourceOwner ?? "—"}</span>
+                            <span className="text-[#bfa5d8]">
+                              {isTipIncome ? "Typ:" : "Frekvence:"}
+                            </span>{" "}
+                            <span className="font-medium text-[#faf5ff]">
+                              {isTipIncome ? "TIP provize" : frequencyText(item.frequency)}
+                            </span>
                           </p>
-                        ) : (
-                          <p>
-                            <span className="text-slate-500">Klient:</span>{" "}
-                            <span className="text-slate-900">{clientName ?? "—"}</span>
-                          </p>
-                        )}
-                        <p>
-                          <span className="text-slate-500">
-                            {isTipIncome ? "Typ:" : "Frekvence:"}
-                          </span>{" "}
-                          <span className="text-slate-900">
-                            {isTipIncome ? "TIP provize" : frequencyText(item.frequency)}
-                          </span>
-                        </p>
-                      </div>
-                    </button>
+                        </div>
+                      </button>
 
-                    <div className="border-t border-slate-200/85 pt-3 sm:border-l sm:border-slate-200/85 sm:border-t-0 sm:pl-5 sm:pt-0">
-                      <div className="flex items-end justify-between gap-3 sm:h-full sm:flex-col sm:items-end sm:justify-between">
+                      <div className="text-right md:border-l md:border-[#6d3f9a] md:pl-4">
                         <div className="text-right">
-                          <span className="text-xs uppercase tracking-[0.12em] text-slate-500">
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#c8aee4]">
                             Výplata
                           </span>
-                          <div className="mt-1 whitespace-nowrap text-3xl leading-none font-semibold tracking-tight text-slate-900 sm:text-[2.2rem]">
+                          <div className="mt-1 whitespace-nowrap font-mono text-[2.45rem] leading-none font-bold tracking-[-0.03em] text-[#f9f4ff]">
                             {formatMoney(item.amount)}
                           </div>
                           {item.productKey !== STORNO_EXEMPT_PRODUCT && (
-                            <div className="mt-1 text-sm text-slate-500">
+                            <div className="mt-1 text-sm text-[#c7aedf]">
                               Po odečtení StornoFondu:{" "}
-                              <span className="font-semibold text-slate-700">
+                              <span className="font-semibold text-[#f4ecff]">
                                 {formatMoney(item.amount * (1 - STORNO_FUND_RATE))}
                               </span>
                             </div>
                           )}
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                           <span
-                            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium ${scopeBadgeClass}`}
+                            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-semibold ${scopeBadgeClass}`}
                           >
                             {isTipIncome ? "TIP" : isTeamIncome ? "Týmová" : "Vlastní"}
                           </span>
                           {href && (
                             <Link
                               href={href}
-                              className="inline-flex items-center rounded-full border border-slate-900 bg-slate-950 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-slate-800"
+                              className="inline-flex items-center rounded-full border border-[#9a67d0] bg-[#120d20] px-4 py-1.5 text-sm font-semibold text-[#fbf7ff] transition hover:border-[#c89bff] hover:bg-[#a95eff] hover:text-[#160d24]"
                             >
                               Otevřít smlouvu
                             </Link>
@@ -208,20 +226,10 @@ export function CashflowMonthModal({
                         </div>
                       </div>
                     </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(2,6,23,0.24)] transition hover:bg-slate-800"
-            >
-              Zavřít
-            </button>
+                  </article>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>

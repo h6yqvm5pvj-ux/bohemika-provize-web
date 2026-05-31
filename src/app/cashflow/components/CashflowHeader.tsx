@@ -47,13 +47,20 @@ export function CashflowHeader({
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-1 gap-2.5 sm:max-w-[280px]">
-            <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                Celkem cashflow
-              </div>
-              <div className="mt-1 whitespace-nowrap text-[1.8rem] font-semibold leading-none text-emerald-600 sm:text-[2rem] font-mono">
-                {formatMoney(totalCashflow)}
+          <div className="grid w-full grid-cols-1 gap-2.5 sm:max-w-[380px]">
+            <div className="relative isolate overflow-hidden rounded-[22px] border border-[#6b34a0] bg-[#140b23] px-4 py-3 shadow-[0_18px_34px_rgba(20,8,34,0.42)] ring-1 ring-[#8a4bc6]/35">
+              <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
+              <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
+              <span className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
+              <span className="pointer-events-none absolute inset-x-4 top-0 h-[2px] rounded-full bg-[linear-gradient(90deg,#cb85ff_0%,#aa57f5_45%,#8f44e8_100%)] opacity-90" />
+
+              <div className="relative z-[1]">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#c8aee4]">
+                  Celkem očekávané cashflow
+                </div>
+                <div className="mt-1 whitespace-nowrap font-mono text-[1.8rem] font-semibold leading-none text-[#fbf7ff] sm:text-[2rem]">
+                  {formatMoney(totalCashflow)}
+                </div>
               </div>
             </div>
           </div>
