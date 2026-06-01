@@ -1,6 +1,6 @@
 import SplitTitle from "../../pomucky/plan-produkce/SplitTitle";
 import { formatMoney } from "../helpers";
-import { CalendarRange, Sparkles } from "lucide-react";
+import { Coins, CalendarRange, Sparkles } from "lucide-react";
 
 type CashflowHeaderProps = {
   totalCashflow: number;
@@ -47,18 +47,22 @@ export function CashflowHeader({
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-1 gap-2.5 sm:max-w-[380px]">
-            <div className="relative isolate overflow-hidden rounded-[22px] border border-[#6b34a0] bg-[#140b23] px-4 py-3 shadow-[0_18px_34px_rgba(20,8,34,0.42)] ring-1 ring-[#8a4bc6]/35">
+          <div className="w-full xl:w-auto xl:pl-4">
+            <div className="relative isolate inline-flex w-fit max-w-full flex-col overflow-hidden rounded-[22px] border border-[#6b34a0] bg-[#140b23] px-4 py-3 shadow-[0_18px_34px_rgba(20,8,34,0.42)] ring-1 ring-[#8a4bc6]/35 sm:px-5">
               <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
               <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
               <span className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
               <span className="pointer-events-none absolute inset-x-4 top-0 h-[2px] rounded-full bg-[linear-gradient(90deg,#cb85ff_0%,#aa57f5_45%,#8f44e8_100%)] opacity-90" />
 
               <div className="relative z-[1]">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#c8aee4]">
+                <Coins
+                  className="pointer-events-none absolute right-0 top-0 h-[30px] w-[30px] text-[#d9bdf4]"
+                  strokeWidth={2.1}
+                />
+                <div className="max-w-[18ch] pr-10 text-[11px] font-semibold uppercase leading-[1.22] tracking-[0.14em] text-[#c8aee4]">
                   Celkem očekávané cashflow
                 </div>
-                <div className="mt-1 whitespace-nowrap font-mono text-[1.8rem] font-semibold leading-none text-[#fbf7ff] sm:text-[2rem]">
+                <div className="mt-1.5 w-fit max-w-full whitespace-nowrap font-mono text-[1.75rem] font-semibold leading-none text-[#fbf7ff] sm:text-[1.95rem]">
                   {formatMoney(totalCashflow)}
                 </div>
               </div>
