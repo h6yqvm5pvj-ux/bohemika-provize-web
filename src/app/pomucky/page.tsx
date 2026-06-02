@@ -25,6 +25,7 @@ import {
   Landmark,
   PenTool,
   Scale,
+  ScrollText,
   Search,
   ShieldCheck,
   Sparkles,
@@ -380,6 +381,14 @@ export default function ToolsPage() {
         description: "Pomůcka pro správně vypsaný Záznam z jednání.",
         icon: FileSignature,
         href: "/pomucky/zaznam",
+      },
+      {
+        key: "vypoved-smlouvy",
+        category: "Obecné",
+        title: "Výpověď smlouvy",
+        description: "Pomůcka pro přípravu výpovědi smlouvy.",
+        icon: ScrollText,
+        href: "/pomucky/vypoved-smlouvy",
       },
       {
         key: "tvorba",
