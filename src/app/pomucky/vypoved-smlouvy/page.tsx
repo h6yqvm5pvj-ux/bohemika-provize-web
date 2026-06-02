@@ -135,6 +135,7 @@ type InsurerLabel = (typeof INSURERS)[number]["label"];
 const CPP_AGREEMENT_PDF_URL = "/dokumenty/zpneonstornodohodou.pdf";
 const CPP_STANDARD_TERMINATION_PDF_URL = "/dokumenty/Výpověď_PS_ŽP_062023.pdf";
 const GENERALI_NON_LIFE_PDF_URL = "/dokumenty/generalinezivot.pdf";
+const KOOPERATIVA_TERMINATION_PDF_URL = "/dokumenty/koopvypoved.pdf";
 const GENERALI_UPLOAD_URL = "https://www.generaliceska.cz/napiste-nam";
 const AGREEMENT_PAGE_COUNT = 3;
 const STANDARD_TERMINATION_PAGE_COUNT = 2;
@@ -416,6 +417,14 @@ const GENERALI_NON_LIFE_PDF_CONFIG: FillablePdfPreviewConfig = {
   description: "PDF obsahuje vlastní formulářová pole. Údaje doplň přímo do náhledu nebo otevři dokument v nové kartě.",
 };
 
+const KOOPERATIVA_TERMINATION_PDF_CONFIG: FillablePdfPreviewConfig = {
+  id: "kooperativa-termination",
+  pdfUrl: KOOPERATIVA_TERMINATION_PDF_URL,
+  eyebrow: "Kooperativa výpověď",
+  title: "Náhled a doplnění PDF",
+  description: "PDF obsahuje vlastní formulářová pole. Údaje doplň přímo do náhledu nebo otevři dokument v nové kartě.",
+};
+
 function createEmptyPdfFields(fieldDefs: readonly PdfFieldDef[]) {
   return Object.fromEntries(fieldDefs.map((field) => [field.key, ""]));
 }
@@ -457,12 +466,20 @@ export default function ContractTerminationPage() {
     (reason === "anniversary" || reason === "twoMonths");
   const showGeneraliNonLifeDocument =
     completed && insuranceType === "nonLife" && insurer === "Generali";
+  const showKooperativaDocument =
+    completed &&
+    insurer === "Kooperativa" &&
+    (insuranceType === "life" || insuranceType === "nonLife");
   const activePdfConfig = showCppAgreementDocument
     ? CPP_AGREEMENT_PDF_CONFIG
     : showCppStandardTerminationDocument
       ? CPP_STANDARD_TERMINATION_PDF_CONFIG
       : null;
-  const activeFillablePdfConfig = showGeneraliNonLifeDocument ? GENERALI_NON_LIFE_PDF_CONFIG : null;
+  const activeFillablePdfConfig = showGeneraliNonLifeDocument
+    ? GENERALI_NON_LIFE_PDF_CONFIG
+    : showKooperativaDocument
+      ? KOOPERATIVA_TERMINATION_PDF_CONFIG
+      : null;
   const activeDocument = activePdfConfig ?? activeFillablePdfConfig;
 
   const validateCurrentStep = () => {
@@ -811,8 +828,19 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
   useEffect(() => {
     let cancelled = false;
 
+    const waitForCanvases = async (pageCount: number) => {
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+
+        if (canvasRefs.current.slice(0, pageCount).every(Boolean)) return;
+      }
+    };
+
     async function renderPdf() {
       setRenderStatus("loading");
+      canvasRefs.current = [];
 
       try {
         const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -830,26 +858,18 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
 
           const page = await doc.getPage(pageNumber);
           const viewport = page.getViewport({ scale: 1 });
-          const renderViewport = page.getViewport({ scale: 2 });
-          const canvas = canvasRefs.current[pageNumber - 1];
-          const context = canvas?.getContext("2d");
 
           nextPages.push({ width: viewport.width, height: viewport.height });
-
-          if (canvas && context) {
-            canvas.width = Math.floor(renderViewport.width);
-            canvas.height = Math.floor(renderViewport.height);
-            await page.render({ canvas, canvasContext: context, viewport: renderViewport }).promise;
-          }
 
           const annotations = await page.getAnnotations({ intent: "display" });
           annotations.forEach((annotation: { fieldName?: string; fieldType?: string; checkBox?: boolean; rect?: number[] }, index: number) => {
             if (!annotation.fieldType || !annotation.rect) return;
 
             const [x1, y1, x2, y2] = annotation.rect;
+            const annotationName = annotation.fieldName ?? `Pole ${index + 1}`;
             const generatedField = {
-              key: annotation.fieldName ?? `${pageNumber}-${index}`,
-              label: annotation.fieldName ?? `Pole ${index + 1}`,
+              key: `p${pageNumber}-a${index}-${annotationName}`,
+              label: annotationName,
               page: pageNumber - 1,
               left: (x1 / viewport.width) * 100,
               top: ((viewport.height - y2) / viewport.height) * 100,
@@ -874,10 +894,28 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
           setGeneratedCheckboxes(nextCheckboxes);
           setFields(Object.fromEntries(nextFields.map((field) => [field.key, ""])));
           setCheckboxes(Object.fromEntries(nextCheckboxes.map((field) => [field.key, false])));
-          setRenderStatus("ready");
         }
+
+        await waitForCanvases(doc.numPages);
+
+        for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+          if (cancelled) return;
+
+          const page = await doc.getPage(pageNumber);
+          const renderViewport = page.getViewport({ scale: 2 });
+          const canvas = canvasRefs.current[pageNumber - 1];
+          const context = canvas?.getContext("2d");
+
+          if (!canvas || !context) continue;
+
+          canvas.width = Math.floor(renderViewport.width);
+          canvas.height = Math.floor(renderViewport.height);
+          await page.render({ canvas, canvasContext: context, viewport: renderViewport }).promise;
+        }
+
+        if (!cancelled) setRenderStatus("ready");
       } catch (error) {
-        console.error("Náhled PDF Generali se nepodařilo vykreslit.", error);
+        console.error("Náhled PDF se nepodařilo vykreslit.", error);
         if (!cancelled) setRenderStatus("error");
       }
     }
