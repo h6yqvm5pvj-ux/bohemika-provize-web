@@ -101,9 +101,21 @@ function buildStrictNonceCsp(
 export function middleware(req: NextRequest) {
   const nonce = createNonce();
   const pathname = req.nextUrl.pathname.toLowerCase();
-  const isPdfDocumentPreview =
-    pathname.startsWith("/dokumenty/") && pathname.endsWith(".pdf");
-  const frameAncestors = isPdfDocumentPreview ? "'self'" : "'none'";
+  if (pathname.startsWith("/dokumenty/")) {
+    return new NextResponse("Not found", {
+      status: 404,
+      headers: {
+        "Cache-Control": "private, no-store, max-age=0",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+      },
+    });
+  }
+
+  const frameAncestors = "'none'";
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-csp-nonce", nonce);
 
@@ -114,7 +126,7 @@ export function middleware(req: NextRequest) {
   });
 
   const strictCsp = buildStrictNonceCsp(nonce, frameAncestors);
-  res.headers.set("X-Frame-Options", isPdfDocumentPreview ? "SAMEORIGIN" : "DENY");
+  res.headers.set("X-Frame-Options", "DENY");
 
   if (process.env.CSP_STRICT_ENFORCE === "1") {
     res.headers.set("Content-Security-Policy", strictCsp);

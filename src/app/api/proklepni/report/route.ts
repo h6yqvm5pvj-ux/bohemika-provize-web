@@ -1,10 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import {
+  requireIpRateLimited,
+  withIpRateLimitHeaders,
+} from "@/lib/server/apiEntryGuard";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const VIN_RE = /^[A-HJ-NPR-Z0-9]{11,25}$/;
 const UPSTREAM_BASE_URL = "https://proklepni.cz/check/";
+const PROKLEPNI_REPORT_RATE_LIMIT = 30;
+const PROKLEPNI_REPORT_RATE_LIMIT_WINDOW_MS = 10 * 60_000;
 
 type JsonObject = Record<string, unknown>;
 
@@ -659,11 +666,22 @@ function extractTechnicalSectionsFromHtml(html: string): ProklepniTechnicalSecti
 }
 
 export async function GET(req: NextRequest) {
+  const guard = requireIpRateLimited(req, {
+    namespace: "api:proklepni:report:get",
+    limit: PROKLEPNI_REPORT_RATE_LIMIT,
+    windowMs: PROKLEPNI_REPORT_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!guard.ok) return guard.response;
+  const withRateLimit = (response: NextResponse) =>
+    withIpRateLimitHeaders(response, guard.ctx);
+
   const vin = normalizeVin(new URL(req.url).searchParams.get("vin"));
   if (!VIN_RE.test(vin)) {
-    return NextResponse.json(
-      { ok: false, error: "VIN není ve validním formátu." },
-      { status: 400 }
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "VIN není ve validním formátu." },
+        { status: 400 }
+      )
     );
   }
 
@@ -695,9 +713,11 @@ export async function GET(req: NextRequest) {
     });
 
     if (!upstream.ok) {
-      return NextResponse.json(
-        { ok: false, error: `Nepodařilo se načíst proklepni data (${upstream.status}).` },
-        { status: 502 }
+      return withRateLimit(
+        NextResponse.json(
+          { ok: false, error: `Nepodařilo se načíst proklepni data (${upstream.status}).` },
+          { status: 502 }
+        )
       );
     }
 
@@ -774,40 +794,44 @@ export async function GET(req: NextRequest) {
       toIso: safeText(row.datum_do),
     }));
 
-    return NextResponse.json(
-      {
-        ok: true,
-        source: "proklepni",
-        vin,
-        report: {
-          status,
-          summary,
-          stkStatus,
-          hero,
-          valuation,
-          technical: {
-            sections: technicalSections,
+    return withRateLimit(
+      NextResponse.json(
+        {
+          ok: true,
+          source: "proklepni",
+          vin,
+          report: {
+            status,
+            summary,
+            stkStatus,
+            hero,
+            valuation,
+            technical: {
+              sections: technicalSections,
+            },
+            odometerHistory,
+            inspections,
+            owners,
           },
-          odometerHistory,
-          inspections,
-          owners,
         },
-      },
-      {
-        status: 200,
-        headers: { "Cache-Control": "private, no-store, max-age=0" },
-      }
+        {
+          status: 200,
+          headers: { "Cache-Control": "private, no-store, max-age=0" },
+        }
+      )
     );
   } catch (err: any) {
     const isTimeout = err?.name === "AbortError";
-    return NextResponse.json(
-      {
-        ok: false,
-        error: isTimeout
-          ? "Načítání proklepni reportu vypršelo."
-          : "Nepodařilo se načíst proklepni report.",
-      },
-      { status: 504 }
+    return withRateLimit(
+      NextResponse.json(
+        {
+          ok: false,
+          error: isTimeout
+            ? "Načítání proklepni reportu vypršelo."
+            : "Nepodařilo se načíst proklepni report.",
+        },
+        { status: 504 }
+      )
     );
   } finally {
     clearTimeout(timeout);

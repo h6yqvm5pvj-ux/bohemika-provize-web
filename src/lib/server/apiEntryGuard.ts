@@ -1,13 +1,23 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth } from "@/lib/server/firebaseAdmin";
-import { applyRateLimitHeaders, consumeRateLimit, type RateLimitResult } from "@/lib/server/rateLimit";
+import {
+  applyRateLimitHeaders,
+  consumeRateLimit,
+  getRequestIp,
+  type RateLimitResult,
+} from "@/lib/server/rateLimit";
 
 export type AuthedRateLimitContext = {
   token: string;
   uid: string;
   email: string;
   decoded: Awaited<ReturnType<NonNullable<typeof adminAuth>["verifyIdToken"]>>;
+  rateLimit: RateLimitResult;
+};
+
+export type IpRateLimitContext = {
+  key: string;
   rateLimit: RateLimitResult;
 };
 
@@ -110,6 +120,55 @@ export async function requireAuthedRateLimited(
 }
 
 export function withRateLimitHeaders(response: NextResponse, ctx: AuthedRateLimitContext): NextResponse {
+  applyRateLimitHeaders(response.headers, ctx.rateLimit);
+  return response;
+}
+
+export function requireIpRateLimited(
+  req: Request,
+  {
+    namespace,
+    limit,
+    windowMs,
+  }: {
+    namespace: string;
+    limit: number;
+    windowMs: number;
+  }
+): { ok: true; ctx: IpRateLimitContext } | { ok: false; response: NextResponse } {
+  const key = getRequestIp(req);
+  const rateLimit = consumeRateLimit({
+    namespace,
+    key,
+    limit,
+    windowMs,
+  });
+
+  if (!rateLimit.allowed) {
+    const response = NextResponse.json(
+      { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." },
+      { status: 429 }
+    );
+    applyRateLimitHeaders(response.headers, rateLimit);
+    return {
+      ok: false,
+      response,
+    };
+  }
+
+  return {
+    ok: true,
+    ctx: {
+      key,
+      rateLimit,
+    },
+  };
+}
+
+export function withIpRateLimitHeaders(
+  response: NextResponse,
+  ctx: IpRateLimitContext
+): NextResponse {
   applyRateLimitHeaders(response.headers, ctx.rateLimit);
   return response;
 }

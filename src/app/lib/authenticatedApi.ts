@@ -66,3 +66,57 @@ export async function fetchAuthedJsonOrThrow<T extends JsonRecord = JsonRecord>(
   }
   return data;
 }
+
+export async function fetchAuthedBlob(
+  user: FirebaseUser,
+  input: string,
+  init?: RequestInit
+): Promise<Response> {
+  let token = await user.getIdToken();
+  const requestWithToken = async (idToken: string) => {
+    const headers = new Headers(init?.headers ?? {});
+    headers.set("Authorization", `Bearer ${idToken}`);
+    return fetch(input, {
+      ...(init ?? {}),
+      headers,
+      cache: init?.cache ?? "no-store",
+    });
+  };
+
+  let response = await requestWithToken(token);
+  if (response.status === 401) {
+    token = await user.getIdToken(true);
+    response = await requestWithToken(token);
+  }
+
+  return response;
+}
+
+export async function fetchAuthedBlobOrThrow(
+  user: FirebaseUser,
+  input: string,
+  init?: RequestInit
+): Promise<Blob> {
+  const response = await fetchAuthedBlob(user, input, init);
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const payload = (await response.json()) as unknown;
+      if (
+        payload &&
+        typeof payload === "object" &&
+        typeof (payload as Record<string, unknown>).error === "string"
+      ) {
+        message = (payload as Record<string, string>).error;
+      }
+    } catch {
+      // Binary endpoints may fail before JSON is available.
+    }
+
+    const err = new Error(message) as Error & { status?: number };
+    err.status = response.status;
+    throw err;
+  }
+
+  return response.blob();
+}

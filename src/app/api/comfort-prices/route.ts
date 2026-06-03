@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 
+import {
+  requireIpRateLimited,
+  withIpRateLimitHeaders,
+} from "@/lib/server/apiEntryGuard";
+
 export const runtime = "nodejs";
 export const revalidate = 60;
 
@@ -28,6 +33,8 @@ const DEFAULT_API_BASE = "https://eshop.comfort-commodity.cz/api-produkce/eshop/
 const CACHE_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 12_000;
 const AGENT = "Bohemika-SmartApp/1.0";
+const COMFORT_PRICES_RATE_LIMIT = 120;
+const COMFORT_PRICES_RATE_LIMIT_WINDOW_MS = 60_000;
 
 let lastLiveState: LiveState | null = null;
 let cachedToken: { token: string; ts: number } | null = null;
@@ -266,33 +273,48 @@ async function loadLiveState(): Promise<LiveState> {
   return state;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const guard = requireIpRateLimited(req, {
+    namespace: "api:comfort-prices:get",
+    limit: COMFORT_PRICES_RATE_LIMIT,
+    windowMs: COMFORT_PRICES_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!guard.ok) return guard.response;
+  const withRateLimit = (response: NextResponse) =>
+    withIpRateLimitHeaders(response, guard.ctx);
+
   try {
     const state = await loadLiveState();
-    return NextResponse.json({
-      ok: true,
-      source: "live",
-      fetchedAt: state.ts,
-      prices: state.prices,
-    });
+    return withRateLimit(
+      NextResponse.json({
+        ok: true,
+        source: "live",
+        fetchedAt: state.ts,
+        prices: state.prices,
+      })
+    );
   } catch (err: any) {
     if (lastLiveState) {
-      return NextResponse.json({
-        ok: true,
-        source: "fallback",
-        stale: true,
-        fetchedAt: lastLiveState.ts,
-        prices: lastLiveState.prices,
-        message: String(err?.message || "Comfort sync failed; using cached snapshot."),
-      });
+      return withRateLimit(
+        NextResponse.json({
+          ok: true,
+          source: "fallback",
+          stale: true,
+          fetchedAt: lastLiveState.ts,
+          prices: lastLiveState.prices,
+          message: String(err?.message || "Comfort sync failed; using cached snapshot."),
+        })
+      );
     }
 
-    return NextResponse.json(
-      {
-        ok: false,
-        error: String(err?.message || "Comfort sync failed."),
-      },
-      { status: 500 }
+    return withRateLimit(
+      NextResponse.json(
+        {
+          ok: false,
+          error: String(err?.message || "Comfort sync failed."),
+        },
+        { status: 500 }
+      )
     );
   }
 }

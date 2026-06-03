@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Accessibility,
@@ -15,6 +14,12 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
+
+import {
+  SECURE_DOCUMENT_FILE_NAMES,
+  type SecureDocumentId,
+  useSecureDocumentBlob,
+} from "@/app/lib/secureDocuments";
 
 type WaiverInvalidityScope = "twoAndThree" | "threeOnly";
 type InvalidityDegreesSelection = "all" | "twoAndThree" | "threeOnly";
@@ -313,10 +318,15 @@ export function LifeRecordForm() {
     setMaxDailyPreviewCarrier(carrier);
     setShowMaxDailyPreview(true);
   };
-  const maxDailyPreviewSrc =
+  const maxDailyPreviewDocumentId: SecureDocumentId =
     maxDailyPreviewCarrier === "kooperativa"
-      ? "/dokumenty/koopprijem.jpg"
-      : "/dokumenty/maxdenni.jpg";
+      ? "koop-prijem"
+      : "max-denni-cpp";
+  const maxDailyPreviewDocument = useSecureDocumentBlob(
+    showMaxDailyPreview ? maxDailyPreviewDocumentId : null
+  );
+  const maxDailyPreviewDownloadName =
+    SECURE_DOCUMENT_FILE_NAMES[maxDailyPreviewDocumentId];
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2359,12 +2369,18 @@ export function LifeRecordForm() {
             </div>
             <div className="flex items-center gap-2">
               <a
-                href={maxDailyPreviewSrc}
-                download
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
+                href={maxDailyPreviewDocument.url ?? "#"}
+                download={maxDailyPreviewDownloadName}
+                onClick={(event) => {
+                  if (!maxDailyPreviewDocument.url) event.preventDefault();
+                }}
+                className={`inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black ${
+                  maxDailyPreviewDocument.url ? "" : "pointer-events-none opacity-60"
+                }`}
+                aria-disabled={!maxDailyPreviewDocument.url}
               >
                 <Download className="h-4 w-4" />
-                Stáhnout
+                {maxDailyPreviewDocument.loading ? "Načítám..." : "Stáhnout"}
               </a>
               <button
                 type="button"
@@ -2379,13 +2395,22 @@ export function LifeRecordForm() {
 
           <div className="mt-5">
             <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-              <Image
-                src={maxDailyPreviewSrc}
-                alt="Maximální pojistné částky denního odškodného"
-                width={2481}
-                height={3508}
-                className="h-auto w-full object-contain"
-              />
+              {maxDailyPreviewDocument.loading ? (
+                <div className="flex min-h-[360px] items-center justify-center text-sm font-medium text-slate-600">
+                  Načítám dokument...
+                </div>
+              ) : maxDailyPreviewDocument.error ? (
+                <div className="flex min-h-[360px] items-center justify-center px-4 text-center text-sm font-medium text-rose-700">
+                  {maxDailyPreviewDocument.error}
+                </div>
+              ) : maxDailyPreviewDocument.url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={maxDailyPreviewDocument.url}
+                  alt="Maximální pojistné částky denního odškodného"
+                  className="h-auto w-full object-contain"
+                />
+              ) : null}
             </div>
           </div>
         </div>

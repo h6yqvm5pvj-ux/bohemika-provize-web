@@ -19,6 +19,10 @@ import {
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
+import {
+  type SecureDocumentId,
+  useSecureDocumentBlob,
+} from "@/app/lib/secureDocuments";
 import SplitTitle from "../plan-produkce/SplitTitle";
 
 type InsuranceType = "life" | "nonLife";
@@ -42,7 +46,7 @@ type PdfCheckboxDef = {
 };
 type PdfPreviewConfig = {
   id: string;
-  pdfUrl: string;
+  documentId: SecureDocumentId;
   pageCount: number;
   eyebrow: string;
   title: string;
@@ -58,7 +62,7 @@ type PdfPreviewConfig = {
 };
 type FillablePdfPreviewConfig = {
   id: string;
-  pdfUrl: string;
+  documentId: SecureDocumentId;
   uploadUrl?: string;
   eyebrow: string;
   title: string;
@@ -132,10 +136,10 @@ const INSURERS = [
 
 type InsurerLabel = (typeof INSURERS)[number]["label"];
 
-const CPP_AGREEMENT_PDF_URL = "/dokumenty/zpneonstornodohodou.pdf";
-const CPP_STANDARD_TERMINATION_PDF_URL = "/dokumenty/Výpověď_PS_ŽP_062023.pdf";
-const GENERALI_NON_LIFE_PDF_URL = "/dokumenty/generalinezivot.pdf";
-const KOOPERATIVA_TERMINATION_PDF_URL = "/dokumenty/koopvypoved.pdf";
+const CPP_AGREEMENT_DOCUMENT_ID: SecureDocumentId = "cpp-storno-dohodou";
+const CPP_STANDARD_TERMINATION_DOCUMENT_ID: SecureDocumentId = "cpp-vypoved-zp";
+const GENERALI_NON_LIFE_DOCUMENT_ID: SecureDocumentId = "generali-nezivot";
+const KOOPERATIVA_TERMINATION_DOCUMENT_ID: SecureDocumentId = "koop-vypoved";
 const GENERALI_UPLOAD_URL = "https://www.generaliceska.cz/napiste-nam";
 const AGREEMENT_PAGE_COUNT = 3;
 const STANDARD_TERMINATION_PAGE_COUNT = 2;
@@ -380,7 +384,7 @@ const STANDARD_TERMINATION_FIELD_HEIGHTS: Partial<Record<string, number>> = {
 
 const CPP_AGREEMENT_PDF_CONFIG: PdfPreviewConfig = {
   id: "cpp-agreement",
-  pdfUrl: CPP_AGREEMENT_PDF_URL,
+  documentId: CPP_AGREEMENT_DOCUMENT_ID,
   pageCount: AGREEMENT_PAGE_COUNT,
   eyebrow: "ČPP dohodou",
   title: "Náhled a doplnění PDF",
@@ -396,7 +400,7 @@ const CPP_AGREEMENT_PDF_CONFIG: PdfPreviewConfig = {
 
 const CPP_STANDARD_TERMINATION_PDF_CONFIG: PdfPreviewConfig = {
   id: "cpp-standard-termination",
-  pdfUrl: CPP_STANDARD_TERMINATION_PDF_URL,
+  documentId: CPP_STANDARD_TERMINATION_DOCUMENT_ID,
   pageCount: STANDARD_TERMINATION_PAGE_COUNT,
   eyebrow: "ČPP výpověď",
   title: "Náhled a doplnění PDF",
@@ -410,7 +414,7 @@ const CPP_STANDARD_TERMINATION_PDF_CONFIG: PdfPreviewConfig = {
 
 const GENERALI_NON_LIFE_PDF_CONFIG: FillablePdfPreviewConfig = {
   id: "generali-non-life",
-  pdfUrl: GENERALI_NON_LIFE_PDF_URL,
+  documentId: GENERALI_NON_LIFE_DOCUMENT_ID,
   uploadUrl: GENERALI_UPLOAD_URL,
   eyebrow: "Generali neživotní pojištění",
   title: "Náhled a doplnění PDF",
@@ -419,7 +423,7 @@ const GENERALI_NON_LIFE_PDF_CONFIG: FillablePdfPreviewConfig = {
 
 const KOOPERATIVA_TERMINATION_PDF_CONFIG: FillablePdfPreviewConfig = {
   id: "kooperativa-termination",
-  pdfUrl: KOOPERATIVA_TERMINATION_PDF_URL,
+  documentId: KOOPERATIVA_TERMINATION_DOCUMENT_ID,
   eyebrow: "Kooperativa výpověď",
   title: "Náhled a doplnění PDF",
   description: "PDF obsahuje vlastní formulářová pole. Údaje doplň přímo do náhledu nebo otevři dokument v nové kartě.",
@@ -817,6 +821,7 @@ export default function ContractTerminationPage() {
 }
 
 function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
+  const documentFile = useSecureDocumentBlob(config.documentId);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [checkboxes, setCheckboxes] = useState<Record<string, boolean>>({});
   const [generatedFields, setGeneratedFields] = useState<GeneratedPdfField[]>([]);
@@ -842,13 +847,19 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
       setRenderStatus("loading");
       canvasRefs.current = [];
 
+      if (!documentFile.blob) {
+        if (documentFile.error) setRenderStatus("error");
+        return;
+      }
+
       try {
         const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
         if (pdfjsLib.GlobalWorkerOptions) {
           pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
         }
 
-        const doc = await pdfjsLib.getDocument({ url: config.pdfUrl }).promise;
+        const pdfBytes = new Uint8Array(await documentFile.blob.arrayBuffer());
+        const doc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
         const nextPages: GeneratedPdfPage[] = [];
         const nextFields: GeneratedPdfField[] = [];
         const nextCheckboxes: GeneratedPdfCheckbox[] = [];
@@ -925,7 +936,7 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
     return () => {
       cancelled = true;
     };
-  }, [config.pdfUrl]);
+  }, [documentFile.blob, documentFile.error]);
 
   const resetPdf = () => {
     setFields(Object.fromEntries(generatedFields.map((field) => [field.key, ""])));
@@ -1068,13 +1079,19 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
 
         <div className="flex flex-wrap items-center gap-2">
           <a
-            href={config.pdfUrl}
+            href={documentFile.url ?? "#"}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+            onClick={(event) => {
+              if (!documentFile.url) event.preventDefault();
+            }}
+            className={`inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 ${
+              documentFile.url ? "" : "pointer-events-none opacity-60"
+            }`}
+            aria-disabled={!documentFile.url}
           >
             <ExternalLink className="h-4 w-4" />
-            Otevřít PDF
+            {documentFile.loading ? "Načítám PDF" : "Otevřít PDF"}
           </a>
           <button
             type="button"
@@ -1186,6 +1203,7 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
 }
 
 function LifeInsurancePdfPreview({ config }: { config: PdfPreviewConfig }) {
+  const documentFile = useSecureDocumentBlob(config.documentId);
   const [fields, setFields] = useState<Record<string, string>>(() => createEmptyPdfFields(config.fields));
   const [checkboxes, setCheckboxes] = useState<Record<string, boolean>>(() => createEmptyPdfCheckboxes(config.checkboxes));
   const [renderStatus, setRenderStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -1203,13 +1221,19 @@ function LifeInsurancePdfPreview({ config }: { config: PdfPreviewConfig }) {
     async function renderPdf() {
       setRenderStatus("loading");
 
+      if (!documentFile.blob) {
+        if (documentFile.error) setRenderStatus("error");
+        return;
+      }
+
       try {
         const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
         if (pdfjsLib.GlobalWorkerOptions) {
           pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
         }
 
-        const doc = await pdfjsLib.getDocument({ url: config.pdfUrl }).promise;
+        const pdfBytes = new Uint8Array(await documentFile.blob.arrayBuffer());
+        const doc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
 
         for (let pageNumber = 1; pageNumber <= Math.min(doc.numPages, config.pageCount); pageNumber += 1) {
           if (cancelled) return;
@@ -1238,7 +1262,7 @@ function LifeInsurancePdfPreview({ config }: { config: PdfPreviewConfig }) {
     return () => {
       cancelled = true;
     };
-  }, [config.pageCount, config.pdfUrl]);
+  }, [config.pageCount, documentFile.blob, documentFile.error]);
 
   const updateField = (key: string, value: string) => {
     setFields((prev) => ({
@@ -1396,13 +1420,19 @@ function LifeInsurancePdfPreview({ config }: { config: PdfPreviewConfig }) {
 
         <div className="flex flex-wrap items-center gap-2">
           <a
-            href={config.pdfUrl}
+            href={documentFile.url ?? "#"}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+            onClick={(event) => {
+              if (!documentFile.url) event.preventDefault();
+            }}
+            className={`inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 ${
+              documentFile.url ? "" : "pointer-events-none opacity-60"
+            }`}
+            aria-disabled={!documentFile.url}
           >
             <ExternalLink className="h-4 w-4" />
-            Otevřít PDF
+            {documentFile.loading ? "Načítám PDF" : "Otevřít PDF"}
           </a>
           <button
             type="button"

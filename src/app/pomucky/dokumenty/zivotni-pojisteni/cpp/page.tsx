@@ -12,6 +12,11 @@ import {
   institutionLogoFrameClass,
   institutionLogoImageClass,
 } from "@/app/lib/institutionLogoDisplay";
+import {
+  SECURE_DOCUMENT_FILE_NAMES,
+  type SecureDocumentId,
+  useSecureDocumentBlob,
+} from "@/app/lib/secureDocuments";
 import SplitTitle from "../../../plan-produkce/SplitTitle";
 
 const documentsFont = Space_Grotesk({
@@ -30,9 +35,20 @@ const STORNO_RULES = [
   "Pokud storno dohodou nahrajete nejdříve do SUSu k pojistné smlouvě a na můj mail ho zašlete až poté, nebo ho vůbec na můj mail nepošlete, bude zpracováno jako standardní žádost, nikoliv jako storno dohodou.",
 ] as const;
 
+const DOCUMENT_BY_MODAL: Record<"storno" | "vypoved" | "maxdenni", SecureDocumentId> = {
+  storno: "cpp-storno-dohodou",
+  vypoved: "cpp-vypoved-zp",
+  maxdenni: "max-denni-cpp",
+};
+
 export default function CppLifeDocumentsPage() {
   const [activeTab, setActiveTab] = useState<"prehled" | "vypoved">("prehled");
   const [activeModal, setActiveModal] = useState<"storno" | "vypoved" | "maxdenni" | null>(null);
+  const activeDocumentId = activeModal ? DOCUMENT_BY_MODAL[activeModal] : null;
+  const activeDocument = useSecureDocumentBlob(activeDocumentId);
+  const activeDownloadName = activeDocumentId
+    ? SECURE_DOCUMENT_FILE_NAMES[activeDocumentId]
+    : "dokument";
 
   return (
     <AppLayout active="tools">
@@ -204,18 +220,18 @@ export default function CppLifeDocumentsPage() {
 
               <div className="flex items-center gap-2">
                 <a
-                  href={
-                    activeModal === "storno"
-                      ? "/dokumenty/zpneonstornodohodou.pdf"
-                      : activeModal === "vypoved"
-                        ? "/dokumenty/Výpověď_PS_ŽP_062023.pdf"
-                        : "/dokumenty/maxdenni.jpg"
-                  }
-                  download
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
+                  href={activeDocument.url ?? "#"}
+                  download={activeDownloadName}
+                  onClick={(event) => {
+                    if (!activeDocument.url) event.preventDefault();
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black ${
+                    activeDocument.url ? "" : "pointer-events-none opacity-60"
+                  }`}
+                  aria-disabled={!activeDocument.url}
                 >
                   <Download className="h-4 w-4" />
-                  Stáhnout
+                  {activeDocument.loading ? "Načítám..." : "Stáhnout"}
                 </a>
                 <button
                   type="button"
@@ -263,13 +279,22 @@ export default function CppLifeDocumentsPage() {
             ) : (
               <div className="mt-5">
                 <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                  <Image
-                    src="/dokumenty/maxdenni.jpg"
-                    alt="Maximální pojistné částky denního odškodného"
-                    width={2481}
-                    height={3508}
-                    className="h-auto w-full object-contain"
-                  />
+                  {activeDocument.loading ? (
+                    <div className="flex min-h-[360px] items-center justify-center text-sm font-medium text-slate-600">
+                      Načítám dokument...
+                    </div>
+                  ) : activeDocument.error ? (
+                    <div className="flex min-h-[360px] items-center justify-center px-4 text-center text-sm font-medium text-rose-700">
+                      {activeDocument.error}
+                    </div>
+                  ) : activeDocument.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={activeDocument.url}
+                      alt="Maximální pojistné částky denního odškodného"
+                      className="h-auto w-full object-contain"
+                    />
+                  ) : null}
                 </div>
               </div>
             )}

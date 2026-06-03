@@ -22,6 +22,10 @@ const baseSecurityHeaders = [
 const securityHeaders = [...baseSecurityHeaders];
 
 const nextConfig: NextConfig = {
+  outputFileTracingIncludes: {
+    "/api/documents/file": ["./private/dokumenty/**/*"],
+    "/api/documents/neon": ["./private/dokumenty/**/*"],
+  },
   async headers() {
     return [
       {

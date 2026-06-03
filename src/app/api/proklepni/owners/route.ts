@@ -1,10 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import {
+  requireIpRateLimited,
+  withIpRateLimitHeaders,
+} from "@/lib/server/apiEntryGuard";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const VIN_RE = /^[A-HJ-NPR-Z0-9]{11,25}$/;
 const UPSTREAM_BASE_URL = "https://proklepni.cz/check/";
+const PROKLEPNI_OWNERS_RATE_LIMIT = 30;
+const PROKLEPNI_OWNERS_RATE_LIMIT_WINDOW_MS = 10 * 60_000;
 
 type ProklepniOwnerRaw = {
   typ_subjektu?: unknown;
@@ -194,11 +201,22 @@ function roleFromRaw(raw: ProklepniOwnerRaw): string {
 }
 
 export async function GET(req: NextRequest) {
+  const guard = requireIpRateLimited(req, {
+    namespace: "api:proklepni:owners:get",
+    limit: PROKLEPNI_OWNERS_RATE_LIMIT,
+    windowMs: PROKLEPNI_OWNERS_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!guard.ok) return guard.response;
+  const withRateLimit = (response: NextResponse) =>
+    withIpRateLimitHeaders(response, guard.ctx);
+
   const vin = normalizeVin(new URL(req.url).searchParams.get("vin"));
   if (!VIN_RE.test(vin)) {
-    return NextResponse.json(
-      { ok: false, error: "VIN není ve validním formátu." },
-      { status: 400 }
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "VIN není ve validním formátu." },
+        { status: 400 }
+      )
     );
   }
 
@@ -218,18 +236,22 @@ export async function GET(req: NextRequest) {
     });
 
     if (!upstream.ok) {
-      return NextResponse.json(
-        { ok: false, error: `Nepodařilo se načíst fallback data (${upstream.status}).` },
-        { status: 502 }
+      return withRateLimit(
+        NextResponse.json(
+          { ok: false, error: `Nepodařilo se načíst fallback data (${upstream.status}).` },
+          { status: 502 }
+        )
       );
     }
 
     const html = await upstream.text();
     const ownerRows = pickBestOwnersArray(html);
     if (!ownerRows) {
-      return NextResponse.json(
-        { ok: false, error: "V HTML fallbacku nebyla nalezena sekce vlastníků." },
-        { status: 422 }
+      return withRateLimit(
+        NextResponse.json(
+          { ok: false, error: "V HTML fallbacku nebyla nalezena sekce vlastníků." },
+          { status: 422 }
+        )
       );
     }
 
@@ -248,29 +270,33 @@ export async function GET(req: NextRequest) {
       })
       .filter((row) => row.name.length > 0);
 
-    return NextResponse.json(
-      {
-        ok: true,
-        vin,
-        source: "proklepni",
-        recordCount: rows.length,
-        records: rows,
-      },
-      {
-        status: 200,
-        headers: { "Cache-Control": "private, no-store, max-age=0" },
-      }
+    return withRateLimit(
+      NextResponse.json(
+        {
+          ok: true,
+          vin,
+          source: "proklepni",
+          recordCount: rows.length,
+          records: rows,
+        },
+        {
+          status: 200,
+          headers: { "Cache-Control": "private, no-store, max-age=0" },
+        }
+      )
     );
   } catch (err: any) {
     const isTimeout = err?.name === "AbortError";
-    return NextResponse.json(
-      {
-        ok: false,
-        error: isTimeout
-          ? "Fallback načítání historie vlastníků vypršelo."
-          : "Nepodařilo se načíst fallback historii vlastníků.",
-      },
-      { status: 504 }
+    return withRateLimit(
+      NextResponse.json(
+        {
+          ok: false,
+          error: isTimeout
+            ? "Fallback načítání historie vlastníků vypršelo."
+            : "Nepodařilo se načíst fallback historii vlastníků.",
+        },
+        { status: 504 }
+      )
     );
   } finally {
     clearTimeout(timeout);

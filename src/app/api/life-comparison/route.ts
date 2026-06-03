@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
+
+import {
+  requireIpRateLimited,
+  withIpRateLimitHeaders,
+} from "@/lib/server/apiEntryGuard";
 import { resolveLifeComparisonSourcePayload } from "@/lib/server/lifeComparisonSource";
+
+const LIFE_COMPARISON_RATE_LIMIT = 120;
+const LIFE_COMPARISON_RATE_LIMIT_WINDOW_MS = 60_000;
 
 type ComparisonProduct = {
   id: string;
@@ -221,6 +229,15 @@ function filterPayload(payload: ComparisonPayload, options: QueryOptions): Compa
 }
 
 export async function GET(request: Request) {
+  const guard = requireIpRateLimited(request, {
+    namespace: "api:life-comparison:get",
+    limit: LIFE_COMPARISON_RATE_LIMIT,
+    windowMs: LIFE_COMPARISON_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!guard.ok) return guard.response;
+  const withRateLimit = (response: NextResponse) =>
+    withIpRateLimitHeaders(response, guard.ctx);
+
   const configuredUpstreamUrl =
     process.env.LIFE_COMPARISON_API_URL?.trim() ||
     process.env.NEXT_PUBLIC_LIFE_COMPARISON_API_URL?.trim();
@@ -237,9 +254,11 @@ export async function GET(request: Request) {
       });
 
       if (!upstreamResponse.ok) {
-        return NextResponse.json(
-          { error: `Upstream returned HTTP ${upstreamResponse.status}.` },
-          { status: 502 }
+        return withRateLimit(
+          NextResponse.json(
+            { error: `Upstream returned HTTP ${upstreamResponse.status}.` },
+            { status: 502 }
+          )
         );
       }
 
@@ -249,9 +268,11 @@ export async function GET(request: Request) {
     }
 
     if (!isComparisonPayload(payload)) {
-      return NextResponse.json(
-        { error: "Invalid online life comparison payload." },
-        { status: 502 }
+      return withRateLimit(
+        NextResponse.json(
+          { error: "Invalid online life comparison payload." },
+          { status: 502 }
+        )
       );
     }
 
@@ -261,29 +282,33 @@ export async function GET(request: Request) {
       0
     );
 
-    return NextResponse.json({
-      ...filteredPayload,
-      meta: {
-        filters: {
-          sectionTerms: options.sectionTerms,
-          productIds: options.productIds,
-          insurerTerms: options.insurerTerms,
-          search: options.search,
-          differencesOnly: options.differencesOnly,
-          includeEmptySections: options.includeEmptySections,
+    return withRateLimit(
+      NextResponse.json({
+        ...filteredPayload,
+        meta: {
+          filters: {
+            sectionTerms: options.sectionTerms,
+            productIds: options.productIds,
+            insurerTerms: options.insurerTerms,
+            search: options.search,
+            differencesOnly: options.differencesOnly,
+            includeEmptySections: options.includeEmptySections,
+          },
+          stats: {
+            productCount: filteredPayload.products.length,
+            sectionCount: filteredPayload.sections.length,
+            itemCount: totalItems,
+          },
         },
-        stats: {
-          productCount: filteredPayload.products.length,
-          sectionCount: filteredPayload.sections.length,
-          itemCount: totalItems,
-        },
-      },
-    });
+      })
+    );
   } catch (error) {
     console.error("Failed to load online life comparison payload", error);
-    return NextResponse.json(
-      { error: "Failed to fetch online life comparison payload." },
-      { status: 502 }
+    return withRateLimit(
+      NextResponse.json(
+        { error: "Failed to fetch online life comparison payload." },
+        { status: 502 }
+      )
     );
   }
 }

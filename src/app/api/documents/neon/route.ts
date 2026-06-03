@@ -2,7 +2,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { adminAuth } from "@/lib/server/firebaseAdmin";
+import {
+  requireAuthedRateLimited,
+  withRateLimitHeaders,
+} from "@/lib/server/apiEntryGuard";
 
 export const runtime = "nodejs";
 
@@ -30,12 +33,8 @@ const MIME_BY_EXT: Record<string, string> = {
   ".pdf": "application/pdf",
   ".jpg": "image/jpeg",
 };
-
-function getBearerToken(req: NextRequest): string {
-  const authHeader = req.headers.get("authorization") ?? "";
-  if (!authHeader.toLowerCase().startsWith("bearer ")) return "";
-  return authHeader.slice(7).trim();
-}
+const NEON_DOCUMENT_RATE_LIMIT = 120;
+const NEON_DOCUMENT_RATE_LIMIT_WINDOW_MS = 60_000;
 
 function parsePeriod(value: string | null): NeonPeriod | null {
   return value === "2019" || value === "2024" ? value : null;
@@ -49,32 +48,24 @@ function parseType(value: string | null): NeonDocumentType | null {
   return value === "pdf" || value === "preview" ? value : null;
 }
 
+function contentDisposition(fileName: string, shouldDownload: boolean): string {
+  const fallback = fileName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "document";
+  return `${shouldDownload ? "attachment" : "inline"}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(
+    fileName
+  )}`;
+}
+
 export async function GET(req: NextRequest) {
-  if (!adminAuth) {
-    return NextResponse.json(
-      { ok: false, error: "Server není správně nakonfigurován (Firebase Admin)." },
-      { status: 500 }
-    );
-  }
-
-  const token = getBearerToken(req);
-  if (!token) {
-    return NextResponse.json(
-      { ok: false, error: "Missing bearer token" },
-      { status: 401 }
-    );
-  }
-
-  try {
-    await adminAuth.verifyIdToken(token, true);
-  } catch (err: any) {
-    const code = err?.code || "auth/invalid-token";
-    const message = err?.message || "Invalid or expired token";
-    return NextResponse.json(
-      { ok: false, error: `Invalid or expired token (${code}): ${message}` },
-      { status: 401 }
-    );
-  }
+  const guard = await requireAuthedRateLimited(req, {
+    namespace: "api:documents:neon:get",
+    limit: NEON_DOCUMENT_RATE_LIMIT,
+    windowMs: NEON_DOCUMENT_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!guard.ok) return guard.response;
 
   const url = new URL(req.url);
   const period = parsePeriod(url.searchParams.get("period"));
@@ -83,16 +74,22 @@ export async function GET(req: NextRequest) {
   const shouldDownload = url.searchParams.get("download") === "1";
 
   if (!period || !type) {
-    return NextResponse.json(
-      { ok: false, error: "Missing or invalid query (period/type)." },
-      { status: 400 }
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Missing or invalid query (period/type)." },
+        { status: 400 }
+      ),
+      guard.ctx
     );
   }
 
   if (type === "preview" && !role) {
-    return NextResponse.json(
-      { ok: false, error: "Missing or invalid role for preview." },
-      { status: 400 }
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Missing or invalid role for preview." },
+        { status: 400 }
+      ),
+      guard.ctx
     );
   }
 
@@ -106,22 +103,28 @@ export async function GET(req: NextRequest) {
   try {
     buffer = await readFile(filePath);
   } catch {
-    return NextResponse.json(
-      { ok: false, error: "Soubor nebyl nalezen." },
-      { status: 404 }
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Soubor nebyl nalezen." },
+        { status: 404 }
+      ),
+      guard.ctx
     );
   }
 
   const ext = fileName.toLowerCase().endsWith(".pdf") ? ".pdf" : ".jpg";
   const contentType = MIME_BY_EXT[ext] ?? "application/octet-stream";
 
-  return new NextResponse(new Uint8Array(buffer), {
-    status: 200,
-    headers: {
-      "Content-Type": contentType,
-      "Content-Length": String(buffer.length),
-      "Cache-Control": "private, no-store, max-age=0",
-      "Content-Disposition": `${shouldDownload ? "attachment" : "inline"}; filename="${fileName}"`,
-    },
-  });
+  return withRateLimitHeaders(
+    new NextResponse(new Uint8Array(buffer), {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Content-Length": String(buffer.length),
+        "Cache-Control": "private, no-store, max-age=0",
+        "Content-Disposition": contentDisposition(fileName, shouldDownload),
+      },
+    }),
+    guard.ctx
+  );
 }
