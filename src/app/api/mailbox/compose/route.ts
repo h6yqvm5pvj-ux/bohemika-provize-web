@@ -17,8 +17,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUBJECT_MAX_LEN = 160;
 const MESSAGE_MAX_LEN = 4000;
 const FILES_MAX_COUNT = 6;
-const FILE_MAX_SIZE_BYTES = 12 * 1024 * 1024;
-const FILE_TOTAL_MAX_BYTES = 30 * 1024 * 1024;
+const FILE_MAX_SIZE_BYTES = 20 * 1024 * 1024;
+const FILE_TOTAL_MAX_BYTES = FILES_MAX_COUNT * FILE_MAX_SIZE_BYTES;
+const CLIENT_METADATA_JSON_MAX_LEN = 12_000;
+const TIP_SNAPSHOT_JSON_MAX_LEN = 24_000;
+const TIP_FIELD_MAX_COUNT = 40;
+const TIP_FIELD_LABEL_MAX_LEN = 90;
+const TIP_FIELD_VALUE_MAX_LEN = 1200;
 const MAILBOX_PUSH_MAX_TOKENS_PER_USER = 8;
 const MAILBOX_PUSH_MAX_TOKENS_PER_MULTICAST = 500;
 
@@ -31,6 +36,13 @@ type MailboxAttachment = {
   path: string;
 };
 
+type PublicMailboxAttachment = Omit<MailboxAttachment, "path">;
+
+type TipSnapshotField = {
+  label: string;
+  value: string;
+};
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
@@ -39,6 +51,83 @@ const normalizeEmail = (value: unknown): string =>
 
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
+
+const isAllowedAttachmentFile = (file: File): boolean => {
+  const contentType = file.type.toLowerCase();
+  if (contentType.startsWith("image/") || contentType === "application/pdf") {
+    return true;
+  }
+  return /\.(avif|gif|heic|heif|jpe?g|pdf|png|webp)$/i.test(file.name);
+};
+
+const parseClientMetadata = (value: unknown): Record<string, unknown> => {
+  const raw = normalizeText(value);
+  if (!raw) return {};
+  if (raw.length > CLIENT_METADATA_JSON_MAX_LEN) {
+    throw new Error("Metadata zprávy jsou příliš velká.");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Metadata zprávy nejsou platný JSON.");
+  }
+  if (!isPlainObject(parsed)) return {};
+
+  const tipProduct = normalizeText(parsed.tipProduct).slice(0, 40);
+  const tipProductLabel = normalizeText(parsed.tipProductLabel).slice(0, 80);
+  const clientMetadata: Record<string, unknown> = {};
+  if (parsed.tipsterTip === true) clientMetadata.tipsterTip = true;
+  if (tipProduct) clientMetadata.tipProduct = tipProduct;
+  if (tipProductLabel) clientMetadata.tipProductLabel = tipProductLabel;
+  return clientMetadata;
+};
+
+const parseTipSnapshot = (value: unknown): { fields: TipSnapshotField[] } | null => {
+  const raw = normalizeText(value);
+  if (!raw) return null;
+  if (raw.length > TIP_SNAPSHOT_JSON_MAX_LEN) {
+    throw new Error("Data tipu jsou příliš velká.");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Data tipu nejsou platný JSON.");
+  }
+
+  const fieldsRaw = Array.isArray(parsed)
+    ? parsed
+    : isPlainObject(parsed) && Array.isArray(parsed.fields)
+      ? parsed.fields
+      : [];
+
+  const fields = fieldsRaw
+    .map((entry) => {
+      if (!isPlainObject(entry)) return null;
+      const label = normalizeText(entry.label).slice(0, TIP_FIELD_LABEL_MAX_LEN);
+      const value = normalizeText(entry.value).slice(0, TIP_FIELD_VALUE_MAX_LEN);
+      if (!label || !value) return null;
+      return { label, value } satisfies TipSnapshotField;
+    })
+    .filter((entry): entry is TipSnapshotField => entry !== null)
+    .slice(0, TIP_FIELD_MAX_COUNT);
+
+  return { fields };
+};
+
+const toPublicAttachments = (
+  attachments: MailboxAttachment[]
+): PublicMailboxAttachment[] =>
+  attachments.map(({ id, name, url, contentType, sizeBytes }) => ({
+    id,
+    name,
+    url,
+    contentType,
+    sizeBytes,
+  }));
 
 const nameFromEmail = (email: string): string => {
   const local = email.split("@")[0] ?? "";
@@ -407,6 +496,38 @@ export async function POST(req: NextRequest) {
   const recipientEmail = normalizeEmail(form.get("recipientEmail"));
   const subject = normalizeText(form.get("subject")).slice(0, SUBJECT_MAX_LEN);
   const messageText = normalizeText(form.get("text")).slice(0, MESSAGE_MAX_LEN);
+  let clientMetadata: Record<string, unknown>;
+  try {
+    clientMetadata = parseClientMetadata(form.get("metadataJson"));
+  } catch (error) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        {
+          ok: false,
+          error: error instanceof Error ? error.message : "Neplatná metadata zprávy.",
+        },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+  let tipSnapshot: { fields: TipSnapshotField[] } | null = null;
+  if (clientMetadata.tipsterTip === true) {
+    try {
+      tipSnapshot = parseTipSnapshot(form.get("tipSnapshotJson"));
+    } catch (error) {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          {
+            ok: false,
+            error: error instanceof Error ? error.message : "Neplatná data tipu.",
+          },
+          { status: 400 }
+        ),
+        ctx
+      );
+    }
+  }
 
   if (!recipientEmail || !EMAIL_RE.test(recipientEmail)) {
     return withRateLimitHeaders(
@@ -457,6 +578,15 @@ export async function POST(req: NextRequest) {
         ctx
       );
     }
+    if (!isAllowedAttachmentFile(file)) {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: `Soubor ${name} není podporovaný. Povolené jsou obrázky a PDF.` },
+          { status: 400 }
+        ),
+        ctx
+      );
+    }
     if (file.size <= 0) {
       return withRateLimitHeaders(
         NextResponse.json(
@@ -487,7 +617,9 @@ export async function POST(req: NextRequest) {
       NextResponse.json(
         {
           ok: false,
-          error: "Celková velikost příloh je příliš vysoká (max 30 MB).",
+          error: `Celková velikost příloh je příliš vysoká (max ${Math.floor(
+            FILE_TOTAL_MAX_BYTES / (1024 * 1024)
+          )} MB).`,
         },
         { status: 400 }
       ),
@@ -525,6 +657,7 @@ export async function POST(req: NextRequest) {
       files,
       uploaderEmail: ctx.email,
     });
+    const publicAttachments = toPublicAttachments(attachments);
 
     const messagePreview = messageText || "Příloha bez textu.";
 
@@ -538,8 +671,17 @@ export async function POST(req: NextRequest) {
       .doc(ctx.email)
       .collection("mailbox")
       .doc();
+    const tipRef =
+      clientMetadata.tipsterTip === true
+        ? adminDb
+            .collection("usersPrivate")
+            .doc(ctx.email)
+            .collection("tipsterTips")
+            .doc()
+        : null;
 
     const commonMetadata = {
+      ...clientMetadata,
       messageId,
       senderEmail: ctx.email,
       senderName,
@@ -583,6 +725,27 @@ export async function POST(req: NextRequest) {
         mailboxDirection: "sent",
       },
     });
+    if (tipRef) {
+      batch.set(tipRef, {
+        tipsterEmail: ctx.email,
+        tipsterName: senderName,
+        recipientEmail: recipient.email,
+        recipientName: recipient.name,
+        product: normalizeText(clientMetadata.tipProduct) || "other",
+        productLabel: normalizeText(clientMetadata.tipProductLabel) || subject,
+        title: subject,
+        messageText,
+        fields: tipSnapshot?.fields ?? [],
+        attachments: publicAttachments,
+        attachmentCount: publicAttachments.length,
+        status: "pending",
+        mailboxMessageId: messageId,
+        recipientMailboxId: recipientRef.id,
+        senderMailboxId: senderRef.id,
+        createdAtMs,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
     await batch.commit();
 
     try {
@@ -604,6 +767,11 @@ export async function POST(req: NextRequest) {
         recipientEmail: recipient.email,
         recipientName: recipient.name,
         attachments: attachments.length,
+        attachmentItems: publicAttachments,
+        messageId,
+        recipientMailboxId: recipientRef.id,
+        senderMailboxId: senderRef.id,
+        tipId: tipRef?.id ?? null,
       }),
       ctx
     );

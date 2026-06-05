@@ -5,12 +5,15 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   BarChart3,
+  Check,
   Copy,
+  LoaderCircle,
   Mail,
   MessageSquare,
   Network,
   Search,
   Trophy,
+  UsersRound,
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -30,11 +33,16 @@ import { type Position } from "@/app/types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import introStyles from "../cashflow/cashflowIntro.module.css";
 
+type AccountType = "advisor" | "tipster";
+
 type Member = {
   email: string;
   name: string;
+  accountType?: AccountType | null;
   position?: Position | null;
   managerEmail?: string | null;
+  tipRecipientEmail?: string | null;
+  teamParentEmail?: string | null;
   docId?: string;
 };
 
@@ -191,6 +199,17 @@ function isManagerPosition(pos?: Position | null): boolean {
   return pos.startsWith("manazer");
 }
 
+const resolveMemberAccountType = (value: unknown): AccountType =>
+  typeof value === "string" && value.trim().toLowerCase() === "tipster"
+    ? "tipster"
+    : "advisor";
+
+const memberTeamParentEmail = (member: Member): string | null =>
+  (member.teamParentEmail ?? member.managerEmail ?? "").trim().toLowerCase() || null;
+
+const memberRoleLabel = (member: Member): string =>
+  member.accountType === "tipster" ? "Tipař" : positionLabel(member.position);
+
 const ONLINE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minut
 const RECENT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 1 den
 
@@ -217,6 +236,11 @@ type ContractStats = {
   categoryMetrics: Record<Category, AggregateMetrics>;
   institutionMetrics: Record<string, AggregateMetrics>;
   institutionByCategory: Record<Category, Record<string, AggregateMetrics>>;
+};
+type TipStats = {
+  total: number;
+  month: number;
+  contracted: number;
 };
 const PRODUCTION_CATEGORY_TABS: { key: ProductionCategory; label: string }[] = [
   { key: "life", label: "Životní pojištění" },
@@ -267,6 +291,7 @@ type TeamCachePayload = {
   members: Member[];
   lastActive: Record<string, number | null>;
   contractCounts: Record<string, ContractStats>;
+  tipCounts: Record<string, TipStats>;
   contractsLoaded: boolean;
   contractsError: boolean;
   userPosition: Position | null;
@@ -280,12 +305,16 @@ type TeamOverviewApiSuccess = {
   members?: Array<{
     email?: string | null;
     name?: string | null;
+    accountType?: AccountType | null;
     position?: Position | null;
     managerEmail?: string | null;
+    tipRecipientEmail?: string | null;
+    teamParentEmail?: string | null;
     docId?: string | null;
   }>;
   lastActive?: Record<string, number | null>;
   contractCounts?: Record<string, ContractStats>;
+  tipCounts?: Record<string, TipStats>;
 };
 
 type TeamOverviewApiError = {
@@ -359,9 +388,11 @@ export default function TeamPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(16);
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [lastActive, setLastActive] = useState<Record<string, number | null>>({});
   const [contractCounts, setContractCounts] = useState<Record<string, ContractStats>>({});
+  const [tipCounts, setTipCounts] = useState<Record<string, TipStats>>({});
   const [contractsLoaded, setContractsLoaded] = useState(false);
   const [contractsError, setContractsError] = useState(false);
   const [userPosition, setUserPosition] = useState<Position | null>(null);
@@ -406,11 +437,13 @@ export default function TeamPage() {
   const [membersViewportHeight, setMembersViewportHeight] = useState(0);
 
   const cacheKey = useMemo(() => (userEmail ? `team:${userEmail}` : null), [userEmail]);
+  const clampedLoadingProgress = Math.max(8, Math.min(97, loadingProgress));
 
   const applyCachedTeamState = (payload: TeamCachePayload) => {
     setMembers(payload.members);
     setLastActive(payload.lastActive);
     setContractCounts(payload.contractCounts);
+    setTipCounts(payload.tipCounts ?? {});
     setContractsLoaded(payload.contractsLoaded);
     setContractsError(payload.contractsError);
     setUserPosition(payload.userPosition);
@@ -438,10 +471,11 @@ export default function TeamPage() {
     const loadTeam = async () => {
       if (!authReady) return;
       if (!userEmail) {
-        setMembers([]);
-        setLastActive({});
-        setContractCounts({});
-        setContractsLoaded(true);
+	        setMembers([]);
+	        setLastActive({});
+	        setContractCounts({});
+	        setTipCounts({});
+	        setContractsLoaded(true);
         setContractsError(false);
         setUserPosition(null);
         setCanManagePositions(false);
@@ -454,6 +488,7 @@ export default function TeamPage() {
       let lastActiveMap: Record<string, number | null> = {};
       let all: Member[] = [];
       let stats: Record<string, ContractStats> = {};
+      let tipStats: Record<string, TipStats> = {};
       let nextContractsLoaded = true;
       let nextContractsError = false;
       const fallbackPayload = cacheKey ? teamDataCache[cacheKey]?.payload ?? null : null;
@@ -515,11 +550,22 @@ export default function TeamPage() {
         rawMembers.forEach((raw) => {
           const email = (raw.email ?? "").trim().toLowerCase();
           if (!email) return;
+          const accountType = resolveMemberAccountType(raw.accountType);
+          const managerEmail = (raw.managerEmail ?? "").trim().toLowerCase() || null;
+          const tipRecipientEmail =
+            (raw.tipRecipientEmail ?? "").trim().toLowerCase() || null;
+          const teamParentEmail =
+            (raw.teamParentEmail ?? "").trim().toLowerCase() ||
+            (accountType === "tipster" ? tipRecipientEmail : managerEmail) ||
+            null;
           membersByEmail.set(email, {
             email,
             name: (raw.name ?? "").trim() || nameFromEmail(email),
+            accountType,
             position: (raw.position as Position | null | undefined) ?? null,
-            managerEmail: (raw.managerEmail ?? "").trim().toLowerCase() || null,
+            managerEmail,
+            tipRecipientEmail,
+            teamParentEmail,
             docId: (raw.docId ?? "").trim() || email,
           });
         });
@@ -528,8 +574,11 @@ export default function TeamPage() {
           membersByEmail.set(userEmail, {
             email: userEmail,
             name: nameFromEmail(userEmail),
+            accountType: "advisor",
             position: null,
             managerEmail: null,
+            tipRecipientEmail: null,
+            teamParentEmail: null,
             docId: userEmail,
           });
         }
@@ -553,6 +602,7 @@ export default function TeamPage() {
         });
 
         stats = responseData.contractCounts ?? {};
+        tipStats = responseData.tipCounts ?? {};
         nextContractsLoaded = true;
         nextContractsError = false;
 
@@ -561,6 +611,7 @@ export default function TeamPage() {
         setMembers(all);
         setLastActive(lastActiveMap);
         setContractCounts(stats);
+        setTipCounts(tipStats);
         setContractsLoaded(true);
         setContractsError(false);
         if (all.length) {
@@ -575,12 +626,14 @@ export default function TeamPage() {
           all = fallbackPayload.members;
           lastActiveMap = fallbackPayload.lastActive;
           stats = fallbackPayload.contractCounts;
+          tipStats = fallbackPayload.tipCounts ?? {};
           nextContractsLoaded = fallbackPayload.contractsLoaded;
           nextContractsError = fallbackPayload.contractsError;
         } else {
           setMembers([]);
           setLastActive({});
           setContractCounts({});
+          setTipCounts({});
           setContractsLoaded(true);
           setContractsError(true);
           setUserPosition(null);
@@ -593,10 +646,11 @@ export default function TeamPage() {
           teamDataCache[cacheKey] = {
             ts: Date.now(),
             payload: {
-              members: all,
-              lastActive: lastActiveMap,
-              contractCounts: stats,
-              contractsLoaded: nextContractsLoaded,
+	              members: all,
+	              lastActive: lastActiveMap,
+	              contractCounts: stats,
+	              tipCounts: tipStats,
+	              contractsLoaded: nextContractsLoaded,
               contractsError: nextContractsError,
               userPosition: pos,
               canManagePositions: canManage,
@@ -628,29 +682,66 @@ export default function TeamPage() {
     // only depends on signed-in user; selection should not retrigger fetch
   }, [authReady, userEmail, cacheKey, refreshNonce]);
 
+  useEffect(() => {
+    if (!loading) {
+      const resetFrame = window.requestAnimationFrame(() => setLoadingProgress(16));
+      return () => window.cancelAnimationFrame(resetFrame);
+    }
+
+    const startedAt = performance.now();
+    let frame = 0;
+
+    const animate = () => {
+      const elapsed = performance.now() - startedAt;
+      const phase = Math.min(1, elapsed / 3400);
+      const eased = 1 - Math.pow(1 - phase, 2.1);
+      const target = Math.round(16 + eased * 80);
+      setLoadingProgress((prev) => (target > prev ? target : prev));
+      frame = window.requestAnimationFrame(animate);
+    };
+
+    frame = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading]);
+
   const filteredMembers = useMemo(() => {
     const term = search.trim().toLowerCase();
 
-    const base = members.filter(
-      (m) => !term || m.name.toLowerCase().includes(term) || m.email.toLowerCase().includes(term)
-    );
+    const base = members.filter((m) => {
+      if (!term) return true;
+      return (
+        m.name.toLowerCase().includes(term) ||
+        m.email.toLowerCase().includes(term) ||
+        memberRoleLabel(m).toLowerCase().includes(term)
+      );
+    });
 
     const toActivityRank = (email: string) => {
       const ts = lastActive[email];
       if (!ts) return Number.NEGATIVE_INFINITY;
       return ts;
     };
+    const metricValue = (member: Member, key: "month" | "total") => {
+      if (member.accountType === "tipster") {
+        return key === "month"
+          ? tipCounts[member.email]?.month ?? 0
+          : tipCounts[member.email]?.total ?? 0;
+      }
+      return key === "month"
+        ? contractCounts[member.email]?.month ?? 0
+        : contractCounts[member.email]?.total ?? 0;
+    };
 
     return base.sort((a, b) => {
       if (sortBy === "name") return a.name.localeCompare(b.name, "cs");
       if (sortBy === "month") {
-        const aVal = contractCounts[a.email]?.month ?? 0;
-        const bVal = contractCounts[b.email]?.month ?? 0;
+        const aVal = metricValue(a, "month");
+        const bVal = metricValue(b, "month");
         if (aVal !== bVal) return bVal - aVal;
       }
       if (sortBy === "total") {
-        const aVal = contractCounts[a.email]?.total ?? 0;
-        const bVal = contractCounts[b.email]?.total ?? 0;
+        const aVal = metricValue(a, "total");
+        const bVal = metricValue(b, "total");
         if (aVal !== bVal) return bVal - aVal;
       }
       // default i fallback: nejaktivnější první
@@ -658,7 +749,16 @@ export default function TeamPage() {
       if (actDiff !== 0) return actDiff;
       return a.name.localeCompare(b.name, "cs");
     });
-  }, [members, search, sortBy, lastActive, contractCounts]);
+  }, [members, search, sortBy, lastActive, contractCounts, tipCounts]);
+
+  const loadingStage =
+    clampedLoadingProgress < 34
+      ? "Stahuju členy týmu z organizační struktury…"
+      : clampedLoadingProgress < 68
+        ? "Mapuju aktivitu a páruju data smluv…"
+        : "Finalizuji produkční statistiky a přehledy…";
+  const loadingPhaseIndex =
+    clampedLoadingProgress < 34 ? 0 : clampedLoadingProgress < 68 ? 1 : 2;
 
   useEffect(() => {
     const el = membersListRef.current;
@@ -788,6 +888,7 @@ export default function TeamPage() {
   }, []);
 
   const selected = members.find((m) => m.email === selectedEmail) ?? null;
+  const selectedIsTipster = selected?.accountType === "tipster";
   const showMonthlyPremiumInProduction = productionCategory === "life";
   const productionGridColsClass = showMonthlyPremiumInProduction
     ? "sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px]"
@@ -805,7 +906,7 @@ export default function TeamPage() {
       }))
       .filter((row) => row.contracts > 0 || row.annualPremium > 0 || row.monthlyPremium > 0)
       .sort((a, b) => b.annualPremium - a.annualPremium || b.contracts - a.contracts || a.name.localeCompare(b.name, "cs"));
-  }, [selected, productionCategory, contractCounts]);
+	  }, [selected, productionCategory, contractCounts]);
   const selectedProductionTotals = useMemo(
     () =>
       selectedProductionRows.reduce(
@@ -818,6 +919,10 @@ export default function TeamPage() {
       ),
     [selectedProductionRows]
   );
+  const productionBoxTitle = selectedIsTipster ? "Sjednané smlouvy z tipů" : "Produkce";
+  const emptyProductionMessage = selectedIsTipster
+    ? "V této kategorii zatím nejsou sjednané smlouvy z tipů."
+    : "V této kategorii zatím nejsou smlouvy.";
   const subordinatesOfSelected = useMemo(() => {
     if (!selected) {
       return [] as Array<Member & { depth: number; managerName: string | null }>;
@@ -833,7 +938,7 @@ export default function TeamPage() {
         membersByEmail.set(emailKey, member);
       }
 
-      const managerKey = (member.managerEmail ?? "").trim().toLowerCase();
+      const managerKey = memberTeamParentEmail(member);
       if (!managerKey) return;
       const existing = childrenByManager.get(managerKey) ?? [];
       existing.push(member);
@@ -860,7 +965,7 @@ export default function TeamPage() {
         if (visited.has(childEmailKey)) return;
         visited.add(childEmailKey);
 
-        const managerKey = (child.managerEmail ?? "").trim().toLowerCase();
+        const managerKey = memberTeamParentEmail(child);
         const managerFromMap = managerKey ? membersByEmail.get(managerKey) : null;
         const managerName = managerKey
           ? managerFromMap?.name ?? nameFromEmail(managerKey)
@@ -885,10 +990,12 @@ export default function TeamPage() {
     () => !!selected?.email && !!userEmail && selected.email.toLowerCase() !== userEmail.toLowerCase(),
     [selected, userEmail]
   );
-  const canEditSelectedCareer = isSelectedSubordinate;
+  const canEditSelectedCareer =
+    isSelectedSubordinate && selected?.accountType !== "tipster";
   const canEndSelectedCollaboration =
     canManagePositions &&
     isSelectedSubordinate &&
+    selected?.accountType !== "tipster" &&
     Boolean((selected?.managerEmail ?? "").trim());
 
   useEffect(() => {
@@ -994,8 +1101,26 @@ export default function TeamPage() {
     return value != null ? String(value) : "0";
   };
 
-  const canSendTeamMessage = isManagerPosition(userPosition) && members.length > 0;
-  const showTeamSidebar = isManagerPosition(userPosition);
+  const tipCountLabel = (email: string, key: "total" | "month" | "contracted") => {
+    if (contractsError) return "—";
+    if (!contractsLoaded && Object.keys(tipCounts).length === 0) return "—";
+    const stats = tipCounts[email];
+    const value =
+      key === "total"
+        ? stats?.total
+        : key === "month"
+          ? stats?.month
+          : stats?.contracted;
+    return value != null ? String(value) : "0";
+  };
+
+  const hasTeamListMembers = members.some(
+    (member) => !userEmail || member.email.toLowerCase() !== userEmail.toLowerCase()
+  );
+  const showManagerTeamTools = isManagerPosition(userPosition);
+  const canSendTeamMessage = showManagerTeamTools && hasTeamListMembers;
+  const showTeamSidebar = showManagerTeamTools || hasTeamListMembers;
+  const teamListTitle = showManagerTeamTools ? "Podřízení" : "Tipaři";
 
   const loadEndCollaborationPreview = async (member: Member) => {
     setEndCollaborationPreviewLoading(true);
@@ -1367,15 +1492,19 @@ export default function TeamPage() {
         {!authReady ? (
           <p className="text-sm text-slate-600">Načítám přihlášení…</p>
         ) : loading ? (
-          <div className={`${introStyles.loadingShell} rounded-[28px] border border-white/80 px-4 py-5 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:px-6 sm:py-6`}>
+          <div className={`${introStyles.loadingShell} rounded-[30px] border border-cyan-100/70 px-4 py-5 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:px-6 sm:py-6`}>
             <span className={introStyles.loadingAuraA} aria-hidden="true" />
             <span className={introStyles.loadingAuraB} aria-hidden="true" />
             <span className={introStyles.loadingSweep} aria-hidden="true" />
 
             <div className="relative z-10 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-center">
-              <div className="space-y-4">
-                <span className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-800">
-                  Team engine
+              <div className="space-y-4 sm:space-y-5">
+                <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200/90 bg-cyan-50/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-800">
+                  <span className="relative inline-flex h-2 w-2">
+                    <span className="absolute inset-0 rounded-full bg-cyan-500/80 animate-ping" />
+                    <span className="relative h-2 w-2 rounded-full bg-cyan-600" />
+                  </span>
+                  Team sync
                 </span>
 
                 <div className="space-y-1.5">
@@ -1387,20 +1516,69 @@ export default function TeamPage() {
                   </p>
                 </div>
 
-                <div className="space-y-2">
+                <div className="grid grid-cols-3 gap-2">
+                  {["Členové", "Aktivita", "Statistiky"].map((phase, index) => {
+                    const state =
+                      index < loadingPhaseIndex
+                        ? "done"
+                        : index === loadingPhaseIndex
+                          ? "active"
+                          : "idle";
+
+                    return (
+                      <div
+                        key={phase}
+                        className={`inline-flex items-center justify-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                          state === "done"
+                            ? "border-emerald-300/55 bg-emerald-100/65 text-emerald-800"
+                            : state === "active"
+                              ? "border-cyan-300/75 bg-cyan-100/70 text-cyan-800"
+                              : "border-slate-300/70 bg-white/70 text-slate-500"
+                        }`}
+                      >
+                        {state === "done" ? <Check className="h-3 w-3" /> : null}
+                        <span>{phase}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="space-y-2.5">
                   <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                     <span>Synchronizace</span>
-                    <span>probíhá</span>
+                    <span>{clampedLoadingProgress}%</span>
                   </div>
-                  <div className={introStyles.loadingProgress} />
+                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-300/55">
+                    <div
+                      className="relative h-full rounded-full bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-500 transition-[width] duration-300 ease-out"
+                      style={{ width: `${clampedLoadingProgress}%` }}
+                    >
+                      <span className="absolute inset-y-0 right-0 w-12 bg-gradient-to-r from-transparent via-white/60 to-transparent opacity-90 animate-pulse" />
+                    </div>
+                  </div>
+                  <div className="inline-flex items-center gap-2 text-xs text-slate-600">
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin text-slate-500" />
+                    {loadingStage}
+                  </div>
                 </div>
               </div>
 
               <div className="flex justify-center xl:justify-end">
-                <div className={introStyles.loadingEngine} aria-hidden="true">
-                  <span className={introStyles.loadingRing} />
-                  <span className={`${introStyles.loadingRing} ${introStyles.loadingRingSecondary}`} />
-                  <span className={introStyles.loadingCore} />
+                <div className="relative h-[10.5rem] w-[10.5rem]">
+                  <div
+                    className="absolute inset-0 rounded-full"
+                    style={{
+                      background: `conic-gradient(from -90deg, rgba(56,189,248,0.92) 0deg ${clampedLoadingProgress * 3.6}deg, rgba(148,163,184,0.26) ${clampedLoadingProgress * 3.6}deg 360deg)`,
+                    }}
+                  />
+                  <div className="absolute inset-[10px] rounded-full border border-white/65 bg-white/70 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.2)]" />
+                  <div className="absolute inset-[26px] rounded-full bg-[radial-gradient(circle_at_32%_28%,rgba(255,255,255,0.95)_0%,rgba(191,219,254,0.88)_55%,rgba(147,197,253,0.8)_100%)] shadow-[0_0_34px_rgba(56,189,248,0.28)]" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <UsersRound className="h-6 w-6 text-slate-700/85" strokeWidth={2.2} />
+                    <span className="mt-1 text-xs font-semibold tracking-[0.12em] text-slate-700">
+                      {clampedLoadingProgress}%
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1409,16 +1587,16 @@ export default function TeamPage() {
               {[0, 1, 2].map((index) => (
                 <div
                   key={index}
-                  className={`${introStyles.loadingSkeletonCard} rounded-2xl border border-slate-200/90 bg-white/85 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.07)]`}
+                  className={`${introStyles.loadingSkeletonCard} rounded-2xl border border-slate-200/90 bg-white/87 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.07)]`}
                 >
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
+                  <div className="inline-flex items-center rounded-full border border-cyan-100 bg-cyan-50/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700">
                     Člen týmu
                   </div>
-                  <div className="mt-2 h-7 w-24 rounded-lg bg-slate-200/90" />
+                  <div className="mt-2 h-7 w-28 rounded-lg bg-slate-200/90" />
                   <div className="mt-3 space-y-2">
                     <div className="h-3 w-5/6 rounded-full bg-slate-200/85" />
-                    <div className="h-3 w-2/3 rounded-full bg-slate-200/85" />
                     <div className="h-3 w-3/4 rounded-full bg-slate-200/85" />
+                    <div className="h-3 w-2/3 rounded-full bg-slate-200/85" />
                   </div>
                 </div>
               ))}
@@ -1478,9 +1656,9 @@ export default function TeamPage() {
                         <MessageSquare size={14} strokeWidth={2} aria-hidden="true" />
                         Zpráva týmu
                       </Link>
-                    ) : null}
-                    {showTeamSidebar ? (
-                      <Link
+	                    ) : null}
+	                    {showManagerTeamTools ? (
+	                      <Link
                         href="/muj-tym/sin-slavy"
                         className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/80 bg-[linear-gradient(135deg,#fbbf24_0%,#d97706_100%)] px-3 py-2 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(180,83,9,0.32)] transition hover:-translate-y-0.5 hover:border-amber-400 hover:brightness-105 hover:shadow-[0_16px_34px_rgba(180,83,9,0.4)]"
                       >
@@ -1490,9 +1668,9 @@ export default function TeamPage() {
                     ) : null}
                   </div>
 
-                  <div className="space-y-2 border-t border-slate-200 pt-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Podřízení</div>
+	                  <div className="space-y-2 border-t border-slate-200 pt-3">
+	                    <div className="flex items-center justify-between">
+	                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{teamListTitle}</div>
                       <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
                         {filteredMembers.length} osob
                       </span>
@@ -1557,6 +1735,11 @@ export default function TeamPage() {
                                 </div>
 
                                 <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                                  {m.accountType === "tipster" ? (
+                                    <span className="inline-flex items-center justify-center rounded-full border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700">
+                                      Tipař
+                                    </span>
+                                  ) : null}
                                   <span
                                     className={`text-[10px] inline-flex items-center justify-center gap-1 rounded-full border px-1.5 py-0.5 ${last.className}`}
                                     aria-label={last.title}
@@ -1592,8 +1775,12 @@ export default function TeamPage() {
                           <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1">Detail</div>
                           <div className="whitespace-nowrap text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">{selected.name}</div>
                           <div className="mt-2 space-y-0.5">
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Pozice</div>
-                            <div className="text-2xl font-bold leading-tight text-slate-900">{positionLabel(selected.position)}</div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                              {selected.accountType === "tipster" ? "Role" : "Pozice"}
+                            </div>
+                            <div className="text-2xl font-bold leading-tight text-slate-900">
+                              {memberRoleLabel(selected)}
+                            </div>
                           </div>
                           <p className="text-sm text-slate-500 mt-1">{selected.email}</p>
                           <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -1676,27 +1863,50 @@ export default function TeamPage() {
 
                       {detailTab === "overview" ? (
                         <>
-                            <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4 sm:grid-cols-3">
+                          <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4 sm:grid-cols-3">
                             <div className="team-stat-card rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
-                              <div className="text-[11px] uppercase tracking-wide text-slate-500">Naposledy aktivní</div>
-                              <div className="text-base font-semibold text-slate-900" title={formatLastActive(selected.email)}>
-                                {formatRelative(lastActive[selected.email])}
+                              <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                                {selectedIsTipster ? "Celkem TIPŮ" : "Naposledy aktivní"}
+                              </div>
+                              {selectedIsTipster ? (
+                                <div className="text-2xl font-bold text-slate-900">
+                                  {tipCountLabel(selected.email, "total")}
+                                </div>
+                              ) : (
+                                <div
+                                  className="text-base font-semibold text-slate-900"
+                                  title={formatLastActive(selected.email)}
+                                >
+                                  {formatRelative(lastActive[selected.email])}
+                                </div>
+                              )}
+                            </div>
+                            <div className="team-stat-card rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+                              <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                                {selectedIsTipster ? "TIPŮ tento měsíc" : "Celkem smluv"}
+                              </div>
+                              <div className="text-2xl font-bold text-slate-900">
+                                {selectedIsTipster
+                                  ? tipCountLabel(selected.email, "month")
+                                  : contractCountLabel(selected.email, "total")}
                               </div>
                             </div>
                             <div className="team-stat-card rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
-                              <div className="text-[11px] uppercase tracking-wide text-slate-500">Celkem smluv</div>
-                              <div className="text-2xl font-bold text-slate-900">{contractCountLabel(selected.email, "total")}</div>
-                            </div>
-                            <div className="team-stat-card rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
-                              <div className="text-[11px] uppercase tracking-wide text-slate-500">Smluv tento měsíc</div>
-                              <div className="text-2xl font-bold text-slate-900">{contractCountLabel(selected.email, "month")}</div>
+                              <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                                {selectedIsTipster ? "Sjednaných TIPŮ" : "Smluv tento měsíc"}
+                              </div>
+                              <div className="text-2xl font-bold text-slate-900">
+                                {selectedIsTipster
+                                  ? tipCountLabel(selected.email, "contracted")
+                                  : contractCountLabel(selected.email, "month")}
+                              </div>
                             </div>
                           </div>
 
                           <div className="relative overflow-hidden space-y-3 rounded-2xl border border-slate-200 bg-slate-50/40 px-3 py-4">
                             <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-slate-900" />
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Produkce</div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{productionBoxTitle}</div>
                               <div className="text-xs font-semibold text-slate-500">
                                 {showMonthlyPremiumInProduction
                                   ? "Pojišťovna / počet smluv / měsíční / roční"
@@ -1726,7 +1936,7 @@ export default function TeamPage() {
 
                             <div className="ui-card ui-card-quiet rounded-2xl bg-slate-50 px-4 py-4">
                               {selectedProductionRows.length === 0 ? (
-                                <div className="text-sm text-slate-500">V této kategorii zatím nejsou smlouvy.</div>
+	                                <div className="text-sm text-slate-500">{emptyProductionMessage}</div>
                               ) : (
                                 <div className="space-y-1.5">
                                   <div
@@ -1807,12 +2017,20 @@ export default function TeamPage() {
                           ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                               {subordinatesOfSelected.map((sub) => (
-                                <div
-                                  key={sub.email}
-                                  className="rounded-2xl border border-slate-200 bg-white px-3 py-3"
-                                >
-                                  <div className="text-base font-semibold text-slate-900">{sub.name}</div>
-                                </div>
+	                                <div
+	                                  key={sub.email}
+	                                  className="rounded-2xl border border-slate-200 bg-white px-3 py-3"
+	                                >
+	                                  <div className="text-base font-semibold text-slate-900">{sub.name}</div>
+	                                  <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-500">
+	                                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold">
+	                                      {memberRoleLabel(sub)}
+	                                    </span>
+	                                    {sub.depth > 1 ? (
+	                                      <span>{sub.depth}. úroveň</span>
+	                                    ) : null}
+	                                  </div>
+	                                </div>
                               ))}
                             </div>
                           )}

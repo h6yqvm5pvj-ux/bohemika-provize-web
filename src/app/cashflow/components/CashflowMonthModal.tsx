@@ -16,21 +16,34 @@ type CashflowMonthModalProps = {
   month: MonthGroup | null;
   onClose: () => void;
   onSelectItem: (item: CashflowItem) => void;
+  tipsterMode?: boolean;
 };
+
+function formatItemCount(count: number, singular: string, few: string, many: string): string {
+  if (count === 1) return `1 ${singular}`;
+  if (count >= 2 && count <= 4) return `${count} ${few}`;
+  return `${count} ${many}`;
+}
 
 export function CashflowMonthModal({
   month,
   onClose,
   onSelectItem,
+  tipsterMode = false,
 }: CashflowMonthModalProps) {
   if (!month) return null;
 
   const sortedItems = [...month.items].sort(
     (a, b) => a.date.getTime() - b.date.getTime()
   );
+  const tipOnlyMonth =
+    tipsterMode || month.items.every((item) => item.isTipPayout === true);
   const stornoFund = calculateStornoFund(month.items);
   const netTotal = calculateNetCashflow(month.total, stornoFund);
   const stornoPercent = Math.round(STORNO_FUND_RATE * 100);
+  const itemCountLabel = tipOnlyMonth
+    ? formatItemCount(month.items.length, "tip", "tipy", "tipů")
+    : formatItemCount(month.items.length, "smlouva", "smlouvy", "smluv");
 
   return (
     <div
@@ -60,14 +73,14 @@ export function CashflowMonthModal({
                 <h3 className="text-[2.2rem] font-bold leading-tight text-slate-900 sm:text-[3rem]">
                   {month.label}
                 </h3>
-                <p className="text-[1.05rem] text-slate-600">{month.items.length} smluv</p>
+                <p className="text-[1.05rem] text-slate-600">{itemCountLabel}</p>
               </div>
 
               <div className="flex items-start gap-3">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                   <div className="min-w-[220px] rounded-[20px] border border-[#d7c3ed] bg-[#f4ecff] px-5 py-3 text-right">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#71558f]">
-                      Brutto
+                      {tipOnlyMonth ? "TIP provize" : "Brutto"}
                     </div>
                     <div className="mt-1 whitespace-nowrap font-mono text-[2.2rem] font-bold leading-none tracking-[-0.02em] text-[#1a1028]">
                       {formatMoney(month.total)}

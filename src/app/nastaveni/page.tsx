@@ -330,7 +330,6 @@ const SETTINGS_KEYS = {
   monthlyGoal: "settings.monthlyGoal",
   fontTheme: FONT_THEME_LOCAL_STORAGE_KEY,
   reduceMotion: "settings.reduceMotion",
-  tipsterMode: "settings.tipsterMode",
 };
 
 type SettingsTab =
@@ -937,7 +936,6 @@ export default function SettingsPage() {
   const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
   const [fontTheme, setFontTheme] = useState<FontTheme>(DEFAULT_FONT_THEME);
   const [reduceMotion, setReduceMotion] = useState(false);
-  const [tipsterMode, setTipsterMode] = useState(false);
   const [onlineCardDraft, setOnlineCardDraft] =
     useState<OnlineCardDraft>(EMPTY_ONLINE_CARD_DRAFT);
   const [onlineCardSaving, setOnlineCardSaving] = useState(false);
@@ -1258,23 +1256,6 @@ export default function SettingsPage() {
             }
           }
 
-          if (typeof data.tipsterCollaborationMode === "boolean") {
-            setTipsterMode(data.tipsterCollaborationMode);
-            if (typeof window !== "undefined") {
-              window.localStorage.setItem(
-                SETTINGS_KEYS.tipsterMode,
-                data.tipsterCollaborationMode ? "1" : "0"
-              );
-            }
-          } else if (typeof window !== "undefined") {
-            const storedTipsterMode = window.localStorage.getItem(
-              SETTINGS_KEYS.tipsterMode
-            );
-            if (storedTipsterMode === "1" || storedTipsterMode === "0") {
-              setTipsterMode(storedTipsterMode === "1");
-            }
-          }
-
           const onlineCardFallback = defaultOnlineCardFromUser(
             email,
             data as Record<string, unknown>
@@ -1320,12 +1301,6 @@ export default function SettingsPage() {
             if (storedMotion === "1") {
               setReduceMotion(true);
               applyMotionPreference(true);
-            }
-            const storedTipsterMode = window.localStorage.getItem(
-              SETTINGS_KEYS.tipsterMode
-            );
-            if (storedTipsterMode === "1" || storedTipsterMode === "0") {
-              setTipsterMode(storedTipsterMode === "1");
             }
           }
         }
@@ -1636,14 +1611,6 @@ export default function SettingsPage() {
       window.localStorage.setItem(SETTINGS_KEYS.mode, value);
     }
     await saveUserFields({ commissionMode: value });
-  };
-
-  const handleTipsterModeChange = async (value: boolean) => {
-    setTipsterMode(value);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(SETTINGS_KEYS.tipsterMode, value ? "1" : "0");
-    }
-    await saveUserFields({ tipsterCollaborationMode: value });
   };
 
   const updateOnlineCardDraft = (patch: Partial<OnlineCardDraft>) => {
@@ -3069,31 +3036,6 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold text-slate-900">
-                      Režim tipařské spolupráce
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleTipsterModeChange(!tipsterMode)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                        tipsterMode
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : toggleOffClass
-                      }`}
-                      aria-pressed={tipsterMode}
-                    >
-                      <span
-                        className={`h-2.5 w-2.5 rounded-full ${
-                          tipsterMode ? "bg-white" : "bg-slate-400"
-                        }`}
-                        aria-hidden="true"
-                      />
-                      {tipsterMode ? "ON" : "OFF"}
-                    </button>
-                  </div>
-                </div>
               </section>
               )}
 

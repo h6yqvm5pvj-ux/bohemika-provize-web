@@ -56,6 +56,11 @@ export type MailboxComposeResponse = {
   recipientName?: string;
   recipientEmail?: string;
   attachments?: number;
+  attachmentItems?: MailboxAttachment[];
+  messageId?: string;
+  recipientMailboxId?: string;
+  senderMailboxId?: string;
+  tipId?: string | null;
   error?: string;
 };
 

@@ -19,6 +19,7 @@ import {
 } from "@/lib/server/rateLimit";
 import { isAdminPanelEmail } from "@/lib/adminAccess";
 import type {
+  AccountType,
   AggregateMetrics,
   Category,
   ContractStats,
@@ -29,6 +30,7 @@ import type {
   TeamOverviewError,
   TeamOverviewPatchSuccess,
   TeamOverviewSuccess,
+  TipStats,
 } from "./teamOverview.types";
 
 const TEAM_OVERVIEW_RATE_LIMIT = 120;
@@ -69,6 +71,16 @@ const POSITION_SET = new Set<Position>(POSITION_VALUES);
 
 const normalizeEmail = (value: string | null | undefined): string =>
   (value ?? "").trim().toLowerCase();
+
+const resolveAccountType = (data: Record<string, unknown>): AccountType => {
+  const raw =
+    typeof data.accountType === "string"
+      ? data.accountType
+      : typeof data.userRole === "string"
+        ? data.userRole
+        : "";
+  return raw.trim().toLowerCase() === "tipster" ? "tipster" : "advisor";
+};
 
 const normalizeOptionalText = (value: unknown, maxLen: number): string | null => {
   if (value == null) return null;
@@ -317,6 +329,14 @@ function emptyContractStats(): ContractStats {
     categoryMetrics: emptyCategoryMetrics(),
     institutionMetrics: {},
     institutionByCategory: emptyInstitutionByCategory(),
+  };
+}
+
+function emptyTipStats(): TipStats {
+  return {
+    total: 0,
+    month: 0,
+    contracted: 0,
   };
 }
 
@@ -600,16 +620,25 @@ function candidateFromDoc(
   // Document id is canonical identity. Do not trust mutable data.email here.
   const email = normalizeEmail(docSnap.id);
   if (!email) return null;
+  const accountType = resolveAccountType(data);
+  const managerEmail = normalizeEmail(data.managerEmail as string | undefined) || null;
+  const tipRecipientEmail =
+    normalizeEmail(data.tipRecipientEmail as string | undefined) || null;
+  const teamParentEmail =
+    accountType === "tipster" ? tipRecipientEmail : managerEmail;
 
   return {
     email,
     name: nameFromEmail(email),
+    accountType,
     position: hasValidTimeline ? timelinePosition : fallbackPosition,
     commissionMode:
       data.commissionMode === "standard" || data.commissionMode === "accelerated"
         ? (data.commissionMode as CommissionMode)
         : null,
-    managerEmail: normalizeEmail(data.managerEmail as string | undefined) || null,
+    managerEmail,
+    tipRecipientEmail,
+    teamParentEmail,
     docId: String(docSnap.id ?? email),
     lastActiveTs: (() => {
       const ts = toDate(data.lastActive)?.getTime();
@@ -635,10 +664,10 @@ function pickBestMember(current: TeamMember, next: TeamMember, emailKey: string)
     return currentHasPosition < nextHasPosition ? current : next;
   }
 
-  const currentHasManager = current.managerEmail ? 0 : 1;
-  const nextHasManager = next.managerEmail ? 0 : 1;
-  if (currentHasManager !== nextHasManager) {
-    return currentHasManager < nextHasManager ? current : next;
+  const currentHasTeamParent = current.teamParentEmail ? 0 : 1;
+  const nextHasTeamParent = next.teamParentEmail ? 0 : 1;
+  if (currentHasTeamParent !== nextHasTeamParent) {
+    return currentHasTeamParent < nextHasTeamParent ? current : next;
   }
 
   return currentDoc.localeCompare(nextDoc, "cs") <= 0 ? current : next;
@@ -704,9 +733,12 @@ async function loadTeamContext(
     ownCandidate = {
       email: ownEmail,
       name: nameFromEmail(ownEmail),
+      accountType: "advisor",
       position: null,
       commissionMode: null,
       managerEmail: null,
+      tipRecipientEmail: null,
+      teamParentEmail: null,
       docId: ownEmail,
       lastActiveTs: null,
       adminFunction: false,
@@ -725,16 +757,33 @@ async function loadTeamContext(
       const chunk = frontier.slice(i, i + FIRESTORE_IN_LIMIT);
       if (chunk.length === 0) continue;
 
-      let subsSnap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
-      if (chunk.length === 1) {
-        subsSnap = await usersCol.where("managerEmail", "==", chunk[0]).get();
-      } else {
-        subsSnap = await usersCol.where("managerEmail", "in", chunk).get();
-      }
+      const childSnaps = await Promise.all(
+        chunk.length === 1
+          ? [
+              usersCol.where("managerEmail", "==", chunk[0]).get(),
+              usersCol.where("tipRecipientEmail", "==", chunk[0]).get(),
+            ]
+          : [
+              usersCol.where("managerEmail", "in", chunk).get(),
+              usersCol.where("tipRecipientEmail", "in", chunk).get(),
+            ]
+      );
+      const childDocsById = new Map<
+        string,
+        FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
+      >();
+      childSnaps.forEach((snap) => {
+        snap.docs.forEach((docSnap) => {
+          childDocsById.set(docSnap.id, docSnap);
+        });
+      });
 
-      for (const docSnap of subsSnap.docs) {
+      for (const docSnap of childDocsById.values()) {
         const candidate = candidateFromDoc(docSnap);
         if (!candidate) continue;
+        if (!candidate.teamParentEmail || !chunk.includes(candidate.teamParentEmail)) {
+          continue;
+        }
 
         const existing = membersByEmail.get(candidate.email);
         if (existing) {
@@ -746,7 +795,7 @@ async function loadTeamContext(
           membersByEmail.set(candidate.email, candidate);
         }
 
-        if (!visited.has(candidate.email)) {
+        if (candidate.accountType !== "tipster" && !visited.has(candidate.email)) {
           visited.add(candidate.email);
           nextFrontier.push(candidate.email);
         }
@@ -773,7 +822,7 @@ async function loadTeamContext(
 
   if (options?.includeAncestors) {
     const seenAncestors = new Set<string>();
-    let cursor = normalizeEmail(ownNode.managerEmail);
+    let cursor = normalizeEmail(ownNode.teamParentEmail);
     let guard = 0;
 
     while (cursor && !seenAncestors.has(cursor) && guard < 12) {
@@ -782,7 +831,7 @@ async function loadTeamContext(
 
       const existingAncestor = membersByEmail.get(cursor);
       if (existingAncestor) {
-        cursor = normalizeEmail(existingAncestor.managerEmail);
+        cursor = normalizeEmail(existingAncestor.teamParentEmail);
         continue;
       }
 
@@ -793,9 +842,12 @@ async function loadTeamContext(
         membersByEmail.set(cursor, {
           email: cursor,
           name: nameFromEmail(cursor),
+          accountType: "advisor",
           position: null,
           commissionMode: null,
           managerEmail: null,
+          tipRecipientEmail: null,
+          teamParentEmail: null,
           docId: cursor,
           lastActiveTs: null,
           adminFunction: false,
@@ -809,7 +861,7 @@ async function loadTeamContext(
         existing ? pickBestMember(existing, ancestor, ancestor.email) : ancestor
       );
 
-      cursor = normalizeEmail(ancestor.managerEmail);
+      cursor = normalizeEmail(ancestor.teamParentEmail);
     }
   }
 
@@ -902,6 +954,80 @@ function consumeOwnerEntry({
   stats[ownerEmail] = current;
 }
 
+function consumeTipsterContractEntry({
+  stats,
+  tipsterSet,
+  data,
+  entryPath,
+  seen,
+  monthStart,
+  nextMonthStart,
+}: {
+  stats: Record<string, ContractStats>;
+  tipsterSet: Set<string>;
+  data: Record<string, unknown>;
+  entryPath: string;
+  seen: Set<string>;
+  monthStart: number;
+  nextMonthStart: number;
+}) {
+  const tipsterEmail = normalizeEmail(data.tipContractTipsterEmail as string | undefined);
+  if (!tipsterEmail || !tipsterSet.has(tipsterEmail)) return;
+
+  const key = `${tipsterEmail}___${entryPath}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+
+  const current = stats[tipsterEmail] ?? emptyContractStats();
+  current.total += 1;
+
+  const category = categorizeProduct(data.productKey as Product | undefined);
+  current.categories[category] = (current.categories[category] ?? 0) + 1;
+
+  const annualPremium = annualPremiumFromEntry(data, category);
+  const monthlyPremium = annualPremium / 12;
+
+  const byCategory = current.categoryMetrics[category] ?? {
+    contracts: 0,
+    annualPremium: 0,
+    monthlyPremium: 0,
+  };
+  byCategory.contracts += 1;
+  byCategory.annualPremium += annualPremium;
+  byCategory.monthlyPremium += monthlyPremium;
+  current.categoryMetrics[category] = byCategory;
+
+  const institution =
+    productInstitutionLabel(data.productKey as Product | undefined, "Ostatní") ?? "Ostatní";
+  const byInstitution = current.institutionMetrics[institution] ?? {
+    contracts: 0,
+    annualPremium: 0,
+    monthlyPremium: 0,
+  };
+  byInstitution.contracts += 1;
+  byInstitution.annualPremium += annualPremium;
+  byInstitution.monthlyPremium += monthlyPremium;
+  current.institutionMetrics[institution] = byInstitution;
+
+  const byInstitutionForCategory = current.institutionByCategory[category][institution] ?? {
+    contracts: 0,
+    annualPremium: 0,
+    monthlyPremium: 0,
+  };
+  byInstitutionForCategory.contracts += 1;
+  byInstitutionForCategory.annualPremium += annualPremium;
+  byInstitutionForCategory.monthlyPremium += monthlyPremium;
+  current.institutionByCategory[category][institution] = byInstitutionForCategory;
+
+  const signed = toDate(data.contractSignedDate ?? data.createdAt);
+  const ts = signed?.getTime();
+  if (ts != null && ts >= monthStart && ts < nextMonthStart) {
+    current.month += 1;
+  }
+
+  stats[tipsterEmail] = current;
+}
+
 async function buildContractStatsByOwnerFromEntries(
   owners: string[]
 ): Promise<Record<string, ContractStats>> {
@@ -941,6 +1067,162 @@ async function buildContractStatsByOwnerFromEntries(
         nextMonthStart,
       });
     }
+  }
+
+  return stats;
+}
+
+async function buildContractStatsByTipsterFromEntries(
+  tipsterEmails: string[],
+  fallbackOwnerEmails: string[]
+): Promise<Record<string, ContractStats>> {
+  if (!adminDb) {
+    throw new Error("Firebase Admin credentials are not configured.");
+  }
+
+  const db = adminDb;
+  const stats: Record<string, ContractStats> = {};
+  const tipsterSet = new Set(
+    tipsterEmails.map((email) => normalizeEmail(email)).filter(Boolean)
+  );
+  if (tipsterSet.size === 0) return stats;
+
+  const seen = new Set<string>();
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+
+  const consumeDoc = (
+    docSnap: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
+  ) => {
+    consumeTipsterContractEntry({
+      stats,
+      tipsterSet,
+      data: docSnap.data() as Record<string, unknown>,
+      entryPath: docSnap.ref.path,
+      seen,
+      monthStart,
+      nextMonthStart,
+    });
+  };
+
+  try {
+    const normalizedTipsters = [...tipsterSet];
+    for (let i = 0; i < normalizedTipsters.length; i += FIRESTORE_IN_LIMIT) {
+      const chunk = normalizedTipsters.slice(i, i + FIRESTORE_IN_LIMIT);
+      if (chunk.length === 0) continue;
+
+      const snap =
+        chunk.length === 1
+          ? await db
+              .collectionGroup("entries")
+              .where("tipContractTipsterEmail", "==", chunk[0])
+              .get()
+          : await db
+              .collectionGroup("entries")
+              .where("tipContractTipsterEmail", "in", chunk)
+              .get();
+      snap.docs.forEach(consumeDoc);
+    }
+
+    return stats;
+  } catch (err) {
+    console.warn(
+      "buildContractStatsByTipsterFromEntries: collectionGroup query failed, falling back to owner scan",
+      err
+    );
+  }
+
+  const ownerEmails = Array.from(
+    new Set(fallbackOwnerEmails.map((email) => normalizeEmail(email)).filter(Boolean))
+  );
+
+  for (const ownerEmail of ownerEmails) {
+    const entriesRef = db.collection("users").doc(ownerEmail).collection("entries");
+    const PAGE_SIZE = 400;
+    let cursorId: string | null = null;
+
+    while (true) {
+      let query = entriesRef.orderBy("__name__").limit(PAGE_SIZE);
+      if (cursorId) {
+        query = query.startAfter(cursorId);
+      }
+      const snap = await query.get();
+      if (snap.empty) break;
+
+      snap.docs.forEach(consumeDoc);
+
+      cursorId = snap.docs[snap.docs.length - 1]?.id ?? null;
+      if (snap.size < PAGE_SIZE) break;
+    }
+  }
+
+  return stats;
+}
+
+function normalizeTipOverviewStatus(value: unknown): "pending" | "contracted" | "failed" {
+  if (value === "failed") return "failed";
+  if (value === "paid" || value === "contracted") return "contracted";
+  return "pending";
+}
+
+function tipCreatedAtMs(data: Record<string, unknown>): number | null {
+  const rawMs = finiteNumber(data.createdAtMs);
+  if (rawMs > 0) return Math.round(rawMs);
+  const created = toDate(data.createdAt);
+  const ms = created?.getTime();
+  return Number.isFinite(ms) ? Number(ms) : null;
+}
+
+async function buildTipStatsByTipster(
+  tipsterEmails: string[]
+): Promise<Record<string, TipStats>> {
+  if (!adminDb) {
+    throw new Error("Firebase Admin credentials are not configured.");
+  }
+
+  const stats: Record<string, TipStats> = {};
+  const emails = Array.from(
+    new Set(tipsterEmails.map((email) => normalizeEmail(email)).filter(Boolean))
+  );
+  if (emails.length === 0) return stats;
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+
+  for (const email of emails) {
+    const current = stats[email] ?? emptyTipStats();
+    const tipsRef = adminDb.collection("usersPrivate").doc(email).collection("tipsterTips");
+    const PAGE_SIZE = 400;
+    let cursorId: string | null = null;
+
+    while (true) {
+      let query = tipsRef.orderBy("__name__").limit(PAGE_SIZE);
+      if (cursorId) {
+        query = query.startAfter(cursorId);
+      }
+      const snap = await query.get();
+      if (snap.empty) break;
+
+      for (const docSnap of snap.docs) {
+        const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+        current.total += 1;
+        if (normalizeTipOverviewStatus(data.status) === "contracted") {
+          current.contracted += 1;
+        }
+
+        const createdMs = tipCreatedAtMs(data);
+        if (createdMs != null && createdMs >= monthStart && createdMs < nextMonthStart) {
+          current.month += 1;
+        }
+      }
+
+      cursorId = snap.docs[snap.docs.length - 1]?.id ?? null;
+      if (snap.size < PAGE_SIZE) break;
+    }
+
+    stats[email] = current;
   }
 
   return stats;
@@ -2343,16 +2625,20 @@ export async function GET(req: NextRequest) {
         members: context.members.map((member) => ({
           email: member.email,
           name: member.name,
+          accountType: member.accountType,
           position: member.position,
           commissionMode: member.commissionMode,
           managerEmail: member.managerEmail,
+          tipRecipientEmail: member.tipRecipientEmail,
+          teamParentEmail: member.teamParentEmail,
           docId: member.docId,
         })),
-        lastActive: Object.fromEntries(
-          context.members.map((member) => [member.email, member.lastActiveTs ?? null])
-        ),
-        contractCounts: {},
-      };
+	        lastActive: Object.fromEntries(
+	          context.members.map((member) => [member.email, member.lastActiveTs ?? null])
+	        ),
+	        contractCounts: {},
+	        tipCounts: {},
+	      };
 
       const response = NextResponse.json(responseBody);
       applyRateLimitHeaders(response.headers, rateLimitResult);
@@ -2362,12 +2648,28 @@ export async function GET(req: NextRequest) {
     const owners = Array.from(
       new Set(context.members.map((member) => member.email).filter(Boolean))
     );
+    const advisorOwners = Array.from(
+      new Set(
+        context.members
+          .filter((member) => member.accountType !== "tipster")
+          .map((member) => member.email)
+          .filter(Boolean)
+      )
+    );
+    const tipsterOwners = Array.from(
+      new Set(
+        context.members
+          .filter((member) => member.accountType === "tipster")
+          .map((member) => member.email)
+          .filter(Boolean)
+      )
+    );
 
     const now = new Date();
     const nowMs = now.getTime();
     const yearMonth = currentYearMonth(now);
 
-    const readModel = await loadContractStatsFromReadModel(owners, yearMonth, nowMs);
+    const readModel = await loadContractStatsFromReadModel(advisorOwners, yearMonth, nowMs);
     const contractCounts: Record<string, ContractStats> = {};
     Object.entries(readModel.stats).forEach(([owner, stat]) => {
       contractCounts[owner] = cloneContractStats(stat);
@@ -2395,6 +2697,24 @@ export async function GET(req: NextRequest) {
       }
     });
 
+    const [tipsterContractStats, tipCounts] = await Promise.all([
+      buildContractStatsByTipsterFromEntries(tipsterOwners, advisorOwners),
+      buildTipStatsByTipster(tipsterOwners),
+    ]);
+
+    tipsterOwners.forEach((tipsterEmail) => {
+      contractCounts[tipsterEmail] = tipsterContractStats[tipsterEmail]
+        ? cloneContractStats(tipsterContractStats[tipsterEmail]!)
+        : emptyContractStats();
+      if (!tipCounts[tipsterEmail]) {
+        tipCounts[tipsterEmail] = emptyTipStats();
+      }
+      tipCounts[tipsterEmail]!.contracted = Math.max(
+        tipCounts[tipsterEmail]!.contracted,
+        contractCounts[tipsterEmail]?.total ?? 0
+      );
+    });
+
     const responseBody: TeamOverviewSuccess = {
       ok: true,
       position: context.ownPosition,
@@ -2402,15 +2722,19 @@ export async function GET(req: NextRequest) {
       members: context.members.map((member) => ({
         email: member.email,
         name: member.name,
+        accountType: member.accountType,
         position: member.position,
         commissionMode: member.commissionMode,
         managerEmail: member.managerEmail,
+        tipRecipientEmail: member.tipRecipientEmail,
+        teamParentEmail: member.teamParentEmail,
         docId: member.docId,
       })),
       lastActive: Object.fromEntries(
         context.members.map((member) => [member.email, member.lastActiveTs ?? null])
       ),
       contractCounts,
+      tipCounts,
     };
 
     const response = NextResponse.json(responseBody);

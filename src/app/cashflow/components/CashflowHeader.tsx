@@ -6,12 +6,14 @@ type CashflowHeaderProps = {
   totalCashflow: number;
   showPastYears: boolean;
   onTogglePastYears: () => void;
+  tipsterMode?: boolean;
 };
 
 export function CashflowHeader({
   totalCashflow,
   showPastYears,
   onTogglePastYears,
+  tipsterMode = false,
 }: CashflowHeaderProps) {
   return (
     <header className="relative overflow-hidden rounded-[32px] border border-white/80 bg-[linear-gradient(140deg,rgba(255,255,255,0.95)_0%,rgba(240,249,255,0.96)_45%,rgba(238,242,255,0.94)_100%)] px-5 py-6 text-slate-900 shadow-[0_24px_70px_rgba(15,23,42,0.14)] sm:px-8 sm:py-8">
@@ -23,7 +25,7 @@ export function CashflowHeader({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
             <Sparkles className="h-3.5 w-3.5" />
-            Cashflow Premium
+            {tipsterMode ? "Tipařské cashflow" : "Cashflow Premium"}
           </span>
           <button
             type="button"
@@ -38,12 +40,14 @@ export function CashflowHeader({
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="space-y-3">
             <SplitTitle
-              text="Provizní kalendář"
+              text={tipsterMode ? "Provizní kalendář TIPŮ" : "Provizní kalendář"}
               wrap={false}
               className="!text-4xl !text-slate-900 sm:!text-5xl"
             />
             <p className="max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
-              Predikce výplat napříč měsíci a roky v jednotném přehledu. Otevři rok, zkontroluj měsíce a jdi až na detail položky.
+              {tipsterMode
+                ? "Přehled sjednaných tipů a očekávaných TIP provizí napříč měsíci a roky."
+                : "Predikce výplat napříč měsíci a roky v jednotném přehledu. Otevři rok, zkontroluj měsíce a jdi až na detail položky."}
             </p>
           </div>
 
@@ -60,7 +64,7 @@ export function CashflowHeader({
                   strokeWidth={2.1}
                 />
                 <div className="max-w-[18ch] pr-10 text-[11px] font-semibold uppercase leading-[1.22] tracking-[0.14em] text-[#c8aee4]">
-                  Celkem očekávané cashflow
+                  {tipsterMode ? "Celkem očekávané TIP provize" : "Celkem očekávané cashflow"}
                 </div>
                 <div className="mt-1.5 w-fit max-w-full whitespace-nowrap font-mono text-[1.75rem] font-semibold leading-none text-[#fbf7ff] sm:text-[1.95rem]">
                   {formatMoney(totalCashflow)}

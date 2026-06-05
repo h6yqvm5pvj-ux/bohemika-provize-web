@@ -57,6 +57,11 @@ export type ContractDoc = {
   tipContractImmediateFirstYearGross?: number | null;
   tipContractImmediateFirstYearNet?: number | null;
   tipContractTipsterAmountFirstYear?: number | null;
+  tipContractSourceTipId?: string | null;
+  tipContractSourceTipTitle?: string | null;
+  tipContractSourceTipProductLabel?: string | null;
+  tipContractSourceTipClientName?: string | null;
+  tipContractSourceTipCreatedAtMs?: number | null;
   carMake?: string | null;
   carPlate?: string | null;
   carVin?: string | null;

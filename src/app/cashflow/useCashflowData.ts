@@ -25,6 +25,7 @@ type UseCashflowDataParams = {
   userEmail: string | null | undefined;
   scopeFilter: ScopeFilter;
   productFilter: ProductFilter;
+  tipsterMode?: boolean;
   enabled?: boolean;
 };
 
@@ -83,6 +84,7 @@ const TIP_PAYOUTS_MAX_PAGES = 200;
 const CONTRACTS_CACHE_TTL_MS = 2 * 60 * 1000;
 const CASHFLOW_MIN_LOADING_MS = 1800;
 const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
+type SnapshotMode = "standard" | "tipster";
 const contractsSnapshotCache: Record<
   string,
   { ts: number; payload: RawContractsSnapshot }
@@ -117,6 +119,8 @@ const getContractsUpdatedAtMs = (): number => {
   }
 };
 
+const snapshotCacheKey = (email: string, mode: SnapshotMode): string => `${email}::${mode}`;
+
 const isSnapshotFresh = (
   snapshotTs: number,
   updatedAtMs: number
@@ -140,7 +144,8 @@ function stableHash(parts: string[]): string {
 }
 
 async function fetchContractsSnapshot(
-  email: string
+  email: string,
+  mode: SnapshotMode
 ): Promise<RawContractsSnapshot> {
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error("Nejsi přihlášený.");
@@ -350,6 +355,18 @@ async function fetchContractsSnapshot(
     return [] as TipPayoutApiItem[];
   });
 
+  if (mode === "tipster") {
+    const tipPayouts = await tipPayoutsPromise;
+    return {
+      email,
+      myPosition: null,
+      hasAnyTeam: false,
+      ownEntries: [],
+      teamEntriesRaw: [],
+      tipPayouts,
+    };
+  }
+
   const ownResult = await collectScope("my");
   const myPosition = ownResult.positionHint ?? null;
   let teamEntriesRaw: EntryDoc[] = [];
@@ -384,43 +401,47 @@ async function fetchContractsSnapshot(
 }
 
 async function getContractsSnapshot(
-  email: string
+  email: string,
+  mode: SnapshotMode
 ): Promise<RawContractsSnapshot> {
-  const cached = contractsSnapshotCache[email];
+  const cacheKey = snapshotCacheKey(email, mode);
+  const cached = contractsSnapshotCache[cacheKey];
   const updatedAtMs = getContractsUpdatedAtMs();
   if (cached && isSnapshotFresh(cached.ts, updatedAtMs)) {
     return cached.payload;
   }
   if (cached && !isSnapshotFresh(cached.ts, updatedAtMs)) {
-    delete contractsSnapshotCache[email];
+    delete contractsSnapshotCache[cacheKey];
   }
 
-  if (contractsSnapshotInFlight[email]) {
-    return contractsSnapshotInFlight[email];
+  if (contractsSnapshotInFlight[cacheKey]) {
+    return contractsSnapshotInFlight[cacheKey];
   }
 
-  contractsSnapshotInFlight[email] = fetchContractsSnapshot(email)
+  contractsSnapshotInFlight[cacheKey] = fetchContractsSnapshot(email, mode)
     .then((payload) => {
-      contractsSnapshotCache[email] = { ts: Date.now(), payload };
+      contractsSnapshotCache[cacheKey] = { ts: Date.now(), payload };
       return payload;
     })
     .finally(() => {
-      delete contractsSnapshotInFlight[email];
+      delete contractsSnapshotInFlight[cacheKey];
     });
 
-  return contractsSnapshotInFlight[email];
+  return contractsSnapshotInFlight[cacheKey];
 }
 
 export function useCashflowData({
   userEmail,
   scopeFilter,
   productFilter,
+  tipsterMode = false,
   enabled = true,
 }: UseCashflowDataParams): UseCashflowDataResult {
+  const snapshotMode: SnapshotMode = tipsterMode ? "tipster" : "standard";
   const [loading, setLoading] = useState(() => {
     if (!enabled || !userEmail) return false;
     const normalized = normalizeEmail(userEmail);
-    const cachedRaw = contractsSnapshotCache[normalized];
+    const cachedRaw = contractsSnapshotCache[snapshotCacheKey(normalized, snapshotMode)];
     if (!cachedRaw) return true;
     return !isSnapshotFresh(cachedRaw.ts, getContractsUpdatedAtMs());
   });
@@ -440,14 +461,15 @@ export function useCashflowData({
 
     const load = async () => {
       const normalized = normalizeEmail(userEmail);
-      const cachedRaw = contractsSnapshotCache[normalized];
+      const cacheKey = snapshotCacheKey(normalized, snapshotMode);
+      const cachedRaw = contractsSnapshotCache[cacheKey];
       const updatedAtMs = getContractsUpdatedAtMs();
       const cached =
         cachedRaw && isSnapshotFresh(cachedRaw.ts, updatedAtMs)
           ? cachedRaw
           : undefined;
       if (cachedRaw && !cached) {
-        delete contractsSnapshotCache[normalized];
+        delete contractsSnapshotCache[cacheKey];
       }
       const hasCachedPayload = Boolean(cached?.payload);
       const loadingStartedAt = hasCachedPayload ? 0 : Date.now();
@@ -461,7 +483,7 @@ export function useCashflowData({
         const emailRaw = userEmail.trim();
         const email = emailRaw.toLowerCase();
         if (!email) throw new Error("Chybí e-mail uživatele");
-        const payload = await getContractsSnapshot(email);
+        const payload = await getContractsSnapshot(email, snapshotMode);
         if (cancelled) return;
         setSnapshot(payload);
         setHasTeam(payload.hasAnyTeam);
@@ -497,7 +519,7 @@ export function useCashflowData({
         window.clearTimeout(finishLoadingTimer);
       }
     };
-  }, [userEmail, enabled]);
+  }, [userEmail, enabled, snapshotMode]);
 
   const cashflowItems = useMemo<CashflowItem[]>(() => {
     if (!enabled || !snapshot) return [];
@@ -577,7 +599,7 @@ export function useCashflowData({
       entriesForCashflow = [...ownEntries, ...overrides];
     }
 
-    if (productFilter === "tip") {
+    if (tipsterMode || productFilter === "tip") {
       entriesForCashflow = [];
     } else if (productFilter !== "all") {
       entriesForCashflow = entriesForCashflow.filter((entry) => {
@@ -637,7 +659,7 @@ export function useCashflowData({
     }
 
     const generatedCashflow = generateCashflow(entriesForCashflow, 10);
-    const includeTipPayouts = productFilter === "all" || productFilter === "tip";
+    const includeTipPayouts = tipsterMode || productFilter === "all" || productFilter === "tip";
     const tipCashflowItems: CashflowItem[] = includeTipPayouts
       ? snapshot.tipPayouts.reduce<CashflowItem[]>((acc, payout, index) => {
           const payoutTs =
@@ -702,6 +724,7 @@ export function useCashflowData({
         email,
         scopeFilter,
         productFilter,
+        tipsterMode,
         myPosition: snapshot.myPosition,
         hasAnyTeam: snapshot.hasAnyTeam,
         allEntries: allEntries.length,
@@ -718,7 +741,7 @@ export function useCashflowData({
     }
 
     return cashflow;
-  }, [enabled, snapshot, scopeFilter, productFilter]);
+  }, [enabled, snapshot, scopeFilter, productFilter, tipsterMode]);
 
   return {
     loading,

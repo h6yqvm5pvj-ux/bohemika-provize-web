@@ -9,11 +9,14 @@ const LOOKUP_RATE_LIMIT = 180;
 const LOOKUP_RATE_WINDOW_MS = 60_000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+type UserAccountType = "advisor" | "tipster";
+
 type UserLookupSuccess = {
   ok: true;
   exists: boolean;
   email: string | null;
   name: string | null;
+  accountType: UserAccountType | null;
 };
 
 type UserLookupError = {
@@ -25,6 +28,7 @@ type UserCandidate = {
   docId: string;
   email: string;
   name: string | null;
+  accountType: UserAccountType;
 };
 
 function normalizeEmail(value: unknown): string {
@@ -35,6 +39,16 @@ function normalizeOptionalName(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed.slice(0, 200) : null;
+}
+
+function resolveAccountType(raw: Record<string, unknown>): UserAccountType {
+  const value =
+    typeof raw.accountType === "string"
+      ? raw.accountType
+      : typeof raw.userRole === "string"
+        ? raw.userRole
+        : "";
+  return value.trim().toLowerCase() === "tipster" ? "tipster" : "advisor";
 }
 
 function getBearerToken(req: NextRequest): string | null {
@@ -79,6 +93,7 @@ function candidateFromRaw(
       normalizeOptionalName(raw.name) ||
       normalizeOptionalName(raw.fullName) ||
       null,
+    accountType: resolveAccountType(raw),
   };
 }
 
@@ -187,6 +202,7 @@ export async function GET(req: NextRequest) {
       exists: Boolean(found),
       email: found?.email ?? null,
       name: found?.name ?? null,
+      accountType: found?.accountType ?? null,
     } satisfies UserLookupSuccess);
     applyRateLimitHeaders(response.headers, rateLimitResult);
     return response;

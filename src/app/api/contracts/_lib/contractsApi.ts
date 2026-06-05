@@ -1,6 +1,7 @@
 // src/app/api/contracts/route.ts
 import { NextResponse, type NextRequest } from "next/server";
 import { createHash } from "node:crypto";
+import { FieldValue } from "firebase-admin/firestore";
 
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
 import { writeMailboxEntries } from "@/lib/server/mailbox";
@@ -141,6 +142,11 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "contractNumber",
   "tipContractTipsterEmail",
   "tipContractTipsterPercent",
+  "tipContractSourceTipId",
+  "tipContractSourceTipTitle",
+  "tipContractSourceTipProductLabel",
+  "tipContractSourceTipClientName",
+  "tipContractSourceTipCreatedAtMs",
   "carMake",
   "carPlate",
   "carVin",
@@ -1108,6 +1114,11 @@ type NormalizedCreateEntryPayload = {
   tipContractImmediateFirstYearGross: number | null;
   tipContractImmediateFirstYearNet: number | null;
   tipContractTipsterAmountFirstYear: number | null;
+  tipContractSourceTipId: string | null;
+  tipContractSourceTipTitle: string | null;
+  tipContractSourceTipProductLabel: string | null;
+  tipContractSourceTipClientName: string | null;
+  tipContractSourceTipCreatedAtMs: number | null;
   carMake: string | null;
   carPlate: string | null;
   carVin: string | null;
@@ -1220,8 +1231,39 @@ const normalizeCreateEntryPayload = ({
     { min: TIP_CONTRACT_PERCENT_MIN, max: TIP_CONTRACT_PERCENT_MAX }
   );
   if (!tipContractTipsterPercentParsed.ok) return tipContractTipsterPercentParsed;
+  const tipContractSourceTipIdParsed = parseOptionalTrimmedText(
+    raw.tipContractSourceTipId,
+    "tipContractSourceTipId",
+    240
+  );
+  if (!tipContractSourceTipIdParsed.ok) return tipContractSourceTipIdParsed;
+  const tipContractSourceTipTitleParsed = parseOptionalTrimmedText(
+    raw.tipContractSourceTipTitle,
+    "tipContractSourceTipTitle",
+    240
+  );
+  if (!tipContractSourceTipTitleParsed.ok) return tipContractSourceTipTitleParsed;
+  const tipContractSourceTipProductLabelParsed = parseOptionalTrimmedText(
+    raw.tipContractSourceTipProductLabel,
+    "tipContractSourceTipProductLabel",
+    120
+  );
+  if (!tipContractSourceTipProductLabelParsed.ok) return tipContractSourceTipProductLabelParsed;
+  const tipContractSourceTipClientNameParsed = parseOptionalTrimmedText(
+    raw.tipContractSourceTipClientName,
+    "tipContractSourceTipClientName",
+    200
+  );
+  if (!tipContractSourceTipClientNameParsed.ok) return tipContractSourceTipClientNameParsed;
+  const tipContractSourceTipCreatedAtMsParsed = parseOptionalFiniteNumber(
+    raw.tipContractSourceTipCreatedAtMs,
+    "tipContractSourceTipCreatedAtMs",
+    { min: 0, max: 4_102_444_800_000 }
+  );
+  if (!tipContractSourceTipCreatedAtMsParsed.ok) return tipContractSourceTipCreatedAtMsParsed;
 
   const tipContractTipsterEmail = normalizeEmail(tipContractTipsterEmailParsed.value);
+  const tipContractSourceTipId = tipContractSourceTipIdParsed.value;
   const rawTipContractPercent = tipContractTipsterPercentParsed.value;
   let tipContractTipsterPercent: number | null = null;
   if (rawTipContractPercent != null) {
@@ -1248,6 +1290,15 @@ const normalizeCreateEntryPayload = ({
   }
   if (tipContractTipsterEmail && tipContractTipsterEmail === ownerEmail) {
     return { ok: false, error: "Tipař nemůže být stejný uživatel jako sjednatel." };
+  }
+  if (tipContractSourceTipId && tipContractSourceTipId.includes("/")) {
+    return { ok: false, error: "Pole tipContractSourceTipId má neplatný formát." };
+  }
+  if (tipContractSourceTipId && !tipContractTipsterEmail) {
+    return {
+      ok: false,
+      error: "Vybraný tip musí mít vyplněného tipaře.",
+    };
   }
 
   const carMakeParsed = parseOptionalTrimmedText(raw.carMake, "carMake", 120);
@@ -1614,6 +1665,20 @@ const normalizeCreateEntryPayload = ({
       tipContractImmediateFirstYearGross: null,
       tipContractImmediateFirstYearNet: null,
       tipContractTipsterAmountFirstYear: null,
+      tipContractSourceTipId: tipContractSourceTipId || null,
+      tipContractSourceTipTitle: tipContractSourceTipId
+        ? tipContractSourceTipTitleParsed.value || null
+        : null,
+      tipContractSourceTipProductLabel: tipContractSourceTipId
+        ? tipContractSourceTipProductLabelParsed.value || null
+        : null,
+      tipContractSourceTipClientName: tipContractSourceTipId
+        ? tipContractSourceTipClientNameParsed.value || null
+        : null,
+      tipContractSourceTipCreatedAtMs:
+        tipContractSourceTipId && tipContractSourceTipCreatedAtMsParsed.value != null
+          ? Math.round(tipContractSourceTipCreatedAtMsParsed.value)
+          : null,
       carMake: carMakeParsed.value,
       carPlate: carPlateParsed.value,
       carVin: carVinParsed.value,
@@ -2781,6 +2846,110 @@ const syncTipPayoutDocsForEntry = async ({
   if (opsInBatch > 0) {
     await batch.commit();
   }
+};
+
+const markLinkedAdvisorTipAsContracted = async ({
+  ownerEmail,
+  entryId,
+  entryData,
+}: {
+  ownerEmail: string;
+  entryId: string;
+  entryData: ContractDoc | null | undefined;
+}): Promise<void> => {
+  if (!adminDb || !entryData) return;
+  const normalizedOwner = normalizeEmail(ownerEmail);
+  const normalizedEntryId = entryId.trim();
+  const sourceTipId =
+    typeof entryData.tipContractSourceTipId === "string"
+      ? entryData.tipContractSourceTipId.trim()
+      : "";
+  const tipsterEmail = normalizeEmail(entryData.tipContractTipsterEmail);
+  if (!normalizedOwner || !normalizedEntryId || !sourceTipId || !tipsterEmail) return;
+
+  const mailboxRef = adminDb
+    .collection("usersPrivate")
+    .doc(normalizedOwner)
+    .collection("mailbox")
+    .doc(sourceTipId);
+  const mailboxSnap = await mailboxRef.get();
+  if (!mailboxSnap.exists) return;
+
+  const data = (mailboxSnap.data() ?? {}) as Record<string, unknown>;
+  const metadata =
+    data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
+      ? (data.metadata as Record<string, unknown>)
+      : {};
+  if (
+    data.type !== "direct_message" ||
+    metadata.tipsterTip !== true ||
+    metadata.mailboxDirection !== "received" ||
+    normalizeEmail(metadata.senderEmail as string | null | undefined) !== tipsterEmail
+  ) {
+    return;
+  }
+
+  const nowMs = Date.now();
+  const linkedContractPath = `users/${normalizedOwner}/entries/${normalizedEntryId}`;
+  const linkedContractNumber =
+    typeof entryData.contractNumber === "string" && entryData.contractNumber.trim()
+      ? entryData.contractNumber.trim()
+      : null;
+  const batch = adminDb.batch();
+  batch.set(
+    adminDb
+      .collection("usersPrivate")
+      .doc(normalizedOwner)
+      .collection("advisorTipStatuses")
+      .doc(sourceTipId),
+    {
+      status: "contracted",
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedAtMs: nowMs,
+      linkedContractOwnerEmail: normalizedOwner,
+      linkedContractEntryId: normalizedEntryId,
+      linkedContractPath,
+      linkedContractNumber,
+    },
+    { merge: true }
+  );
+
+  const mailboxMessageId =
+    typeof metadata.messageId === "string" ? metadata.messageId.trim() : "";
+  const tipsterTipsCol = adminDb
+    .collection("usersPrivate")
+    .doc(tipsterEmail)
+    .collection("tipsterTips");
+  const tipSnap = await tipsterTipsCol
+    .where("recipientMailboxId", "==", sourceTipId)
+    .limit(1)
+    .get();
+  const fallbackSnap =
+    tipSnap.empty && mailboxMessageId
+      ? await tipsterTipsCol
+          .where("mailboxMessageId", "==", mailboxMessageId)
+          .limit(1)
+          .get()
+      : null;
+  const tipDoc = tipSnap.docs[0] ?? fallbackSnap?.docs[0] ?? null;
+  if (tipDoc) {
+    batch.set(
+      tipDoc.ref,
+      {
+        status: "contracted",
+        statusUpdatedAt: FieldValue.serverTimestamp(),
+        statusUpdatedAtMs: nowMs,
+        statusUpdatedByEmail: normalizedOwner,
+        linkedContractOwnerEmail: normalizedOwner,
+        linkedContractEntryId: normalizedEntryId,
+        linkedContractPath,
+        linkedContractNumber,
+      },
+      { merge: true }
+    );
+  }
+
+  await batch.commit();
 };
 
 const computeItemsForProductPositionAndMode = ({
@@ -5543,6 +5712,19 @@ export async function handleContractsCreate(req: NextRequest) {
         console.warn(
           "POST /api/contracts create: TIP payout sync selhal:",
           tipSyncErr
+        );
+      }
+
+      try {
+        await markLinkedAdvisorTipAsContracted({
+          ownerEmail: targetOwnerEmail,
+          entryId: createdRef.id,
+          entryData: trustedPayload,
+        });
+      } catch (tipLinkErr) {
+        console.warn(
+          "POST /api/contracts create: napojení smlouvy na TIP selhalo:",
+          tipLinkErr
         );
       }
 

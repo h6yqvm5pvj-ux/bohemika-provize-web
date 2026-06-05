@@ -44,6 +44,8 @@ const POSITION_VALUES: Position[] = [
 
 const POSITION_SET = new Set<Position>(POSITION_VALUES);
 const COMMISSION_MODE_SET = new Set<CommissionMode>(["accelerated", "standard"]);
+type UserAccountType = "advisor" | "tipster";
+const ACCOUNT_TYPE_SET = new Set<UserAccountType>(["advisor", "tipster"]);
 
 type AuthContext = {
   email: string;
@@ -56,8 +58,10 @@ type ParsedCreateUser = {
   password: string;
   fullName: string | null;
   managerEmail: string | null;
+  tipRecipientEmail: string | null;
   position: Position;
   commissionMode: CommissionMode;
+  accountType: UserAccountType;
 };
 
 const normalizeEmail = (value: unknown): string =>
@@ -150,13 +154,40 @@ function parseCreateUserPayload(body: unknown): ParsedCreateUser | { error: stri
   }
   const fullName = fullNameRaw || null;
 
-  const managerEmailRaw = normalizeEmail(body.managerEmail);
-  const managerEmail = managerEmailRaw || null;
-  if (managerEmail && !EMAIL_RE.test(managerEmail)) {
-    return { error: "E-mail nadřízeného není platný." };
+  const accountTypeRaw =
+    typeof body.accountType === "string" ? body.accountType.trim() : "advisor";
+  if (!ACCOUNT_TYPE_SET.has(accountTypeRaw as UserAccountType)) {
+    return { error: "Pole accountType má neplatnou hodnotu." };
   }
-  if (managerEmail === email) {
-    return { error: "Nadřízený nemůže být stejný jako nový uživatel." };
+  const accountType = accountTypeRaw as UserAccountType;
+
+  const managerEmailRaw = normalizeEmail(body.managerEmail);
+  const tipRecipientEmailRaw =
+    normalizeEmail(body.tipRecipientEmail) ||
+    (accountType === "tipster" ? managerEmailRaw : "");
+  const managerEmail = accountType === "advisor" ? managerEmailRaw || null : null;
+  const tipRecipientEmail =
+    accountType === "tipster" ? tipRecipientEmailRaw || null : null;
+  const relationEmail = accountType === "tipster" ? tipRecipientEmail : managerEmail;
+
+  if (relationEmail && !EMAIL_RE.test(relationEmail)) {
+    return {
+      error:
+        accountType === "tipster"
+          ? "E-mail příjemce tipů není platný."
+          : "E-mail nadřízeného není platný.",
+    };
+  }
+  if (relationEmail === email) {
+    return {
+      error:
+        accountType === "tipster"
+          ? "Příjemce tipů nemůže být stejný jako nový uživatel."
+          : "Nadřízený nemůže být stejný jako nový uživatel.",
+    };
+  }
+  if (accountType === "tipster" && !tipRecipientEmail) {
+    return { error: "U tipaře zadej příjemce tipů." };
   }
 
   const positionRaw =
@@ -178,8 +209,10 @@ function parseCreateUserPayload(body: unknown): ParsedCreateUser | { error: stri
     password,
     fullName,
     managerEmail,
+    tipRecipientEmail,
     position: positionRaw as Position,
     commissionMode: modeRaw as CommissionMode,
+    accountType,
   };
 }
 
@@ -251,9 +284,11 @@ export async function POST(req: NextRequest) {
 
   let profileExists = false;
   let authUserExists = false;
-  let managerExists = true;
+  let relationProfileExists = true;
+  const relationEmail =
+    parsed.accountType === "tipster" ? parsed.tipRecipientEmail : parsed.managerEmail;
   try {
-    [profileExists, authUserExists, managerExists] = await Promise.all([
+    [profileExists, authUserExists, relationProfileExists] = await Promise.all([
       anyInternalProfileExists(parsed.email),
       adminAuth
         .getUserByEmail(parsed.email)
@@ -262,7 +297,7 @@ export async function POST(req: NextRequest) {
           if (error?.code === "auth/user-not-found") return false;
           throw error;
         }),
-      parsed.managerEmail ? publicProfileExists(parsed.managerEmail) : Promise.resolve(true),
+      relationEmail ? publicProfileExists(relationEmail) : Promise.resolve(true),
     ]);
   } catch (error) {
     const mapped = mapAuthCreateError(error);
@@ -292,9 +327,15 @@ export async function POST(req: NextRequest) {
     return res;
   }
 
-  if (!managerExists) {
+  if (!relationProfileExists) {
     const res = NextResponse.json(
-      { ok: false, error: "Zadaný nadřízený nemá interní profil v systému." } satisfies ApiError,
+      {
+        ok: false,
+        error:
+          parsed.accountType === "tipster"
+            ? "Zadaný příjemce tipů nemá interní profil v systému."
+            : "Zadaný nadřízený nemá interní profil v systému.",
+      } satisfies ApiError,
       { status: 400 }
     );
     applyRateLimitHeaders(res.headers, rateLimit);
@@ -318,11 +359,14 @@ export async function POST(req: NextRequest) {
     const publicProfile: Record<string, unknown> = {
       email: parsed.email,
       userId: authUser.uid,
+      accountType: parsed.accountType,
+      userRole: parsed.accountType,
       position: parsed.position,
       commissionMode: parsed.commissionMode,
       managerEmail: parsed.managerEmail,
-      canChangePosition: true,
-      activeCollaboration: true,
+      tipRecipientEmail: parsed.tipRecipientEmail,
+      canChangePosition: parsed.accountType === "advisor",
+      activeCollaboration: parsed.accountType === "advisor",
       createdAt: now,
       createdByEmail: ctx.email,
       updatedAt: now,
@@ -333,10 +377,12 @@ export async function POST(req: NextRequest) {
       publicProfile.fullName = parsed.fullName;
     }
 
-    const privateProfile = {
+    const privateProfile: Record<string, unknown> = {
       subscriptionStatus: "active",
       subscriptionPaidFrom: trialFrom,
-      subscriptionPaidUntil: trialUntil,
+      subscriptionPaidUntil:
+        parsed.accountType === "tipster" ? null : trialUntil,
+      subscriptionPlan: parsed.accountType === "tipster" ? "unlimited" : null,
       adminFunction: false,
       createdAt: now,
       createdByEmail: ctx.email,

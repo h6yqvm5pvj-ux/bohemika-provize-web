@@ -17,6 +17,7 @@ type ApiSuccess = {
   ok: true;
   email: string;
   hasTeam: boolean;
+  hasTipsters: boolean;
   hasProfile: boolean;
   profile: Record<string, unknown>;
 };
@@ -284,6 +285,25 @@ async function getHasTeam(email: string): Promise<boolean> {
     .limit(1)
     .get();
   return !snap.empty;
+}
+
+async function getHasTipsters(email: string): Promise<boolean> {
+  if (!adminDb) return false;
+  const snap = await adminDb
+    .collection("users")
+    .where("tipRecipientEmail", "==", email)
+    .limit(6)
+    .get();
+  return snap.docs.some((docSnap) => {
+    const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
+    const accountType =
+      typeof data.accountType === "string"
+        ? data.accountType
+        : typeof data.userRole === "string"
+          ? data.userRole
+          : "";
+    return accountType.trim().toLowerCase() === "tipster";
+  });
 }
 
 type OnlineCardPayload = {
@@ -908,10 +928,11 @@ export async function GET(req: NextRequest) {
       return res;
     }
 
-    const [publicData, privateData, hasTeam] = await Promise.all([
+    const [publicData, privateData, hasTeam, hasTipsters] = await Promise.all([
       loadBestPublicProfile({ email, rawTokenEmail, uid }),
       loadPrivateProfile({ email, rawTokenEmail }),
       getHasTeam(email),
+      getHasTipsters(email),
     ]);
     const profileRaw = {
       ...(publicData ?? {}),
@@ -933,6 +954,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       email,
       hasTeam,
+      hasTipsters,
       hasProfile,
       profile,
     } satisfies ApiSuccess);

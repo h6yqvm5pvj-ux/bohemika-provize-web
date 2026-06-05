@@ -26,6 +26,7 @@ import { MonthlyGoalSection } from "./home/components/MonthlyGoalSection";
 import { ProductionChartSection } from "./home/components/ProductionChartSection";
 import { ProductionSummarySection } from "./home/components/ProductionSummarySection";
 import { TeamLeaderboardSection } from "./home/components/TeamLeaderboardSection";
+import { TipsterHomeView } from "./home/components/TipsterHomeView";
 import { invalidateHomeCache, useHomeData } from "./home/useHomeData";
 import { type PaymentFrequency, type Product } from "./types/domain";
 import {
@@ -102,6 +103,20 @@ type PersonalSeriesPoint = {
   lifeMonthly: number;
   otherAnnual: number;
   totalCombined: number;
+};
+
+type AccountType = "advisor" | "tipster";
+
+const resolveAccountType = (
+  profile: Record<string, unknown> | null | undefined
+): AccountType => {
+  const raw =
+    typeof profile?.accountType === "string"
+      ? profile.accountType
+      : typeof profile?.userRole === "string"
+        ? profile.userRole
+        : "";
+  return raw.trim().toLowerCase() === "tipster" ? "tipster" : "advisor";
 };
 
 const HOME_WIDGETS_DEFAULT: HomeWidgets = {
@@ -284,12 +299,20 @@ export default function HomePage() {
   const [subPickerOpen, setSubPickerOpen] = useState(false);
   const [subSearch, setSubSearch] = useState("");
   const [authReady, setAuthReady] = useState(false);
+  const [accessProfileReady, setAccessProfileReady] = useState(false);
+  const [accessProfileError, setAccessProfileError] = useState<string | null>(null);
+  const [accessProfile, setAccessProfile] = useState<Record<string, unknown> | null>(null);
   const [mailUnreadCount, setMailUnreadCount] = useState(0);
   const normalizedEmail = useMemo(
     () => user?.email?.toLowerCase() ?? null,
     [user?.email]
   );
-  const shouldLoadExpectedPayout = homeWidgets.expectedPayout;
+  const accountType = useMemo(() => resolveAccountType(accessProfile), [accessProfile]);
+  const shouldLoadAdvisorHome =
+    authReady && !!user && accessProfileReady && accountType !== "tipster";
+  const advisorDataEmail = shouldLoadAdvisorHome ? normalizedEmail : null;
+  const shouldLoadExpectedPayout =
+    shouldLoadAdvisorHome && homeWidgets.expectedPayout;
 
   const {
     userMeta,
@@ -309,12 +332,12 @@ export default function HomePage() {
     summaryLoading,
     historyLoading,
   } = useHomeData({
-    email: normalizedEmail,
+    email: advisorDataEmail,
     loadPersonalHistory: false,
-    loadTeamHistory: homeWidgets.teamLeaderboard,
+    loadTeamHistory: shouldLoadAdvisorHome && homeWidgets.teamLeaderboard,
   });
   const { loading: cashflowLoading, cashflowItems } = useCashflowData({
-    userEmail: normalizedEmail,
+    userEmail: advisorDataEmail,
     scopeFilter: "combined",
     productFilter: "all",
     enabled: shouldLoadExpectedPayout,
@@ -354,6 +377,39 @@ export default function HomePage() {
       unsub();
     };
   }, []);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (!user) {
+      setAccessProfile(null);
+      setAccessProfileError(null);
+      setAccessProfileReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    setAccessProfileReady(false);
+    setAccessProfileError(null);
+
+    getUserProfileCached(user, { maxAgeMs: 60 * 1000 })
+      .then((payload) => {
+        if (cancelled) return;
+        setAccessProfile((payload?.profile ?? {}) as Record<string, unknown>);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("Ověření typu účtu selhalo:", error);
+        setAccessProfile(null);
+        setAccessProfileError("Nepodařilo se ověřit typ účtu.");
+      })
+      .finally(() => {
+        if (!cancelled) setAccessProfileReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, user]);
 
   useEffect(() => {
     if (!authReady || !user) {
@@ -1229,6 +1285,40 @@ export default function HomePage() {
 
   if (!user) {
     return <AppLayout active="home">{null}</AppLayout>;
+  }
+
+  if (!accessProfileReady) {
+    return (
+      <AppLayout active="home">
+        <div className="flex min-h-[70vh] w-full items-center justify-center bg-slate-50 px-4">
+          <div
+            className="h-14 w-14 animate-spin rounded-full border-[4px] border-current border-t-transparent text-slate-700"
+            role="status"
+            aria-label="Ověřuji typ účtu"
+          />
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (accessProfileError) {
+    return (
+      <AppLayout active="home">
+        <div className="flex min-h-[70vh] w-full items-center justify-center bg-slate-50 px-4">
+          <div className="rounded-3xl border border-rose-200 bg-white px-5 py-4 text-sm font-medium text-rose-800 shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
+            {accessProfileError}
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (accountType === "tipster") {
+    return (
+      <AppLayout active="home">
+        <TipsterHomeView user={user} profile={accessProfile ?? {}} />
+      </AppLayout>
+    );
   }
 
   return (

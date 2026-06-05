@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, RefreshCcw, Repeat2 } from "lucide-react";
+import { RefreshCcw, Repeat2, Tag } from "lucide-react";
 
 import { type PaymentFrequency, type Product } from "../types/domain";
 import { placeholderForAmount } from "./calculatorHelpers";
@@ -148,14 +148,11 @@ export function CalculatorAmountAndActionsSection({
             <button
               type="button"
               onClick={onOpenTipContractModal}
-              className={`ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition ${
-                hasTipContractConfig
-                  ? "border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700"
-                  : ""
-              }`}
+              aria-pressed={hasTipContractConfig}
+              className="ui-focus inline-flex items-center gap-2 rounded-full border border-fuchsia-500/55 bg-[linear-gradient(135deg,#e879f9_0%,#a21caf_100%)] px-5 py-2.5 text-sm font-bold text-[#f8fafc] shadow-[0_12px_24px_rgba(162,28,175,0.34)] transition hover:-translate-y-0.5 hover:border-fuchsia-400 hover:shadow-[0_16px_30px_rgba(162,28,175,0.4)]"
             >
-              <FileText size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-              {hasTipContractConfig ? "Smlouva z TIPU ✓" : "Smlouva z TIPU"}
+              <Tag size={17} strokeWidth={2.4} className="shrink-0" aria-hidden="true" />
+              Smlouva z TIPU
             </button>
             {isLifeProduct && product === "neon" && (
               <button

@@ -59,6 +59,12 @@ export const formatFileSize = (bytes: number): string => {
 export const isSentMailboxItem = (item: MailboxItem): boolean =>
   Boolean(item.metadata && item.metadata.mailboxDirection === "sent");
 
+export const isTipsterTipMailboxItem = (item: MailboxItem): boolean => {
+  if (item.metadata && item.metadata.tipsterTip === true) return true;
+  if (/^nový tip\s*-/i.test(item.title.trim())) return true;
+  return item.body.toLowerCase().includes("nový tip z tipařského formuláře");
+};
+
 export const sentRecipientText = (item: MailboxItem): string => {
   const recipientName =
     item.metadata && typeof item.metadata.recipientName === "string"

@@ -10,6 +10,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { AnimatedMoney, AnimatedNumber } from "./AnimatedNumbers";
+import { LoadingProgressPanel } from "./LoadingProgressPanel";
 
 type Props = {
   loading: boolean;
@@ -69,61 +70,6 @@ const PRODUCTION_THEME: Record<ProductionTone, ProductionToneTheme> = {
     arrowClass: "text-emerald-200/90",
   },
 };
-
-function ProductionLoadingPanel({
-  progress,
-  stage,
-}: {
-  progress: number;
-  stage: string;
-}) {
-  const safeProgress = Math.max(8, Math.min(97, progress));
-
-  return (
-    <div className="relative w-full overflow-hidden rounded-[24px] border border-violet-100/30 bg-violet-950/24 px-4 py-4 sm:px-6 sm:py-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-2 text-sm font-semibold text-violet-50">
-            <span
-              className="h-4 w-4 animate-spin rounded-full border-2 border-violet-100/40 border-t-violet-100"
-              aria-hidden="true"
-            />
-            Načítám data produkce
-          </div>
-          <div className="mt-2 text-sm text-violet-100/80">{stage}</div>
-          <div className="mt-1 text-xs uppercase tracking-[0.14em] text-violet-100/75">
-            {safeProgress}% připraveno
-          </div>
-        </div>
-
-        <div className="relative h-16 w-16 shrink-0">
-          <div
-            className="absolute inset-0 rounded-full"
-            style={{
-              background: `conic-gradient(from -90deg, rgba(221,214,254,1) 0deg ${safeProgress * 3.6}deg, rgba(196,181,253,0.24) ${safeProgress * 3.6}deg 360deg)`,
-            }}
-          />
-          <div className="absolute inset-[5px] rounded-full bg-violet-950/92" />
-          <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-violet-100">
-            {safeProgress}%
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-violet-100/20">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-violet-300 via-fuchsia-300 to-indigo-200 transition-[width] duration-300 ease-out"
-          style={{ width: `${safeProgress}%` }}
-        />
-      </div>
-
-      <div className="mt-4 space-y-2">
-        <div className="h-2 w-[78%] animate-pulse rounded-full bg-violet-100/30" />
-        <div className="h-2 w-[66%] animate-pulse rounded-full bg-violet-100/24" style={{ animationDelay: "120ms" }} />
-      </div>
-    </div>
-  );
-}
 
 function buildTrend(currentValue: number, previousValue: number): {
   direction: "up" | "down" | "flat";
@@ -417,7 +363,12 @@ export function ProductionSummarySection({
     return (
       <section className={containerShellClass} data-fixed-box-theme="slate">
         <div className="relative z-10 flex h-full items-center">
-          <ProductionLoadingPanel progress={clampedLoadingProgress} stage={loadingStage} />
+          <LoadingProgressPanel
+            title="Načítám data produkce"
+            stage={loadingStage}
+            progress={clampedLoadingProgress}
+            accentLabel="Produkce"
+          />
         </div>
       </section>
     );

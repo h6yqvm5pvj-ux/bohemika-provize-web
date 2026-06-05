@@ -143,69 +143,36 @@ const FILTER_VISUALS: Record<FilterKey, FilterVisual> = {
 const CATEGORY_VISUALS: Record<
   ToolCategory,
   {
-    badge: string;
     icon: string;
-    cardHover: string;
-    arrow: string;
-    accent: string;
-    wash: string;
-    ring: string;
   }
 > = {
   "Pojištění majetku": {
-    badge: "text-cyan-700",
-    icon: "border-cyan-200/90 bg-cyan-50 text-cyan-700 group-hover:border-cyan-300 group-hover:bg-cyan-100 group-hover:text-cyan-900",
-    cardHover: "hover:border-cyan-300/90",
-    arrow: "group-hover:border-cyan-300 group-hover:bg-cyan-700 group-hover:text-white",
-    accent: "from-cyan-400 via-sky-500 to-blue-500",
-    wash: "bg-[linear-gradient(135deg,rgba(236,254,255,0.92)_0%,rgba(255,255,255,0.98)_52%,rgba(240,249,255,0.9)_100%)]",
-    ring: "ring-cyan-100/70",
+    icon: "text-cyan-100 group-hover:text-cyan-50",
   },
   "Pojištění vozidel": {
-    badge: "text-blue-700",
-    icon: "border-blue-200/90 bg-blue-50 text-blue-700 group-hover:border-blue-300 group-hover:bg-blue-100 group-hover:text-blue-900",
-    cardHover: "hover:border-blue-300/90",
-    arrow: "group-hover:border-blue-300 group-hover:bg-blue-700 group-hover:text-white",
-    accent: "from-blue-500 via-indigo-500 to-violet-500",
-    wash: "bg-[linear-gradient(135deg,rgba(239,246,255,0.92)_0%,rgba(255,255,255,0.98)_52%,rgba(238,242,255,0.9)_100%)]",
-    ring: "ring-blue-100/70",
+    icon: "text-blue-100 group-hover:text-blue-50",
   },
   "Životní pojištění": {
-    badge: "text-rose-700",
-    icon: "border-rose-200/90 bg-rose-50 text-rose-700 group-hover:border-rose-300 group-hover:bg-rose-100 group-hover:text-rose-900",
-    cardHover: "hover:border-rose-300/90",
-    arrow: "group-hover:border-rose-300 group-hover:bg-rose-700 group-hover:text-white",
-    accent: "from-rose-500 via-pink-500 to-fuchsia-500",
-    wash: "bg-[linear-gradient(135deg,rgba(255,241,242,0.92)_0%,rgba(255,255,255,0.98)_52%,rgba(253,242,248,0.9)_100%)]",
-    ring: "ring-rose-100/70",
+    icon: "text-rose-100 group-hover:text-rose-50",
   },
   Finance: {
-    badge: "text-emerald-700",
-    icon: "border-emerald-200/90 bg-emerald-50 text-emerald-700 group-hover:border-emerald-300 group-hover:bg-emerald-100 group-hover:text-emerald-900",
-    cardHover: "hover:border-emerald-300/90",
-    arrow: "group-hover:border-emerald-300 group-hover:bg-emerald-700 group-hover:text-white",
-    accent: "from-emerald-400 via-emerald-500 to-teal-500",
-    wash: "bg-[linear-gradient(135deg,rgba(236,253,245,0.92)_0%,rgba(255,255,255,0.98)_52%,rgba(240,253,250,0.9)_100%)]",
-    ring: "ring-emerald-100/70",
+    icon: "text-emerald-100 group-hover:text-emerald-50",
   },
   Investice: {
-    badge: "text-amber-700",
-    icon: "border-amber-200/90 bg-amber-50 text-amber-700 group-hover:border-amber-300 group-hover:bg-amber-100 group-hover:text-amber-900",
-    cardHover: "hover:border-amber-300/90",
-    arrow: "group-hover:border-amber-300 group-hover:bg-amber-700 group-hover:text-white",
-    accent: "from-amber-400 via-orange-500 to-orange-600",
-    wash: "bg-[linear-gradient(135deg,rgba(255,251,235,0.92)_0%,rgba(255,255,255,0.98)_52%,rgba(255,247,237,0.9)_100%)]",
-    ring: "ring-amber-100/70",
+    icon: "text-amber-100 group-hover:text-amber-50",
   },
   Obecné: {
-    badge: "text-indigo-700",
-    icon: "border-indigo-200/90 bg-indigo-50 text-indigo-700 group-hover:border-indigo-300 group-hover:bg-indigo-100 group-hover:text-indigo-900",
-    cardHover: "hover:border-indigo-300/90",
-    arrow: "group-hover:border-indigo-300 group-hover:bg-indigo-700 group-hover:text-white",
-    accent: "from-indigo-400 via-indigo-500 to-blue-600",
-    wash: "bg-[linear-gradient(135deg,rgba(238,242,255,0.92)_0%,rgba(255,255,255,0.98)_52%,rgba(239,246,255,0.9)_100%)]",
-    ring: "ring-indigo-100/70",
+    icon: "text-indigo-100 group-hover:text-indigo-50",
   },
+};
+
+const CATEGORY_BADGE_LABEL: Record<ToolCategory, string> = {
+  "Pojištění majetku": "MAJETEK",
+  "Pojištění vozidel": "AUTO",
+  "Životní pojištění": "ŽIVOT",
+  Finance: "FINANCE",
+  Investice: "INVESTICE",
+  Obecné: "OBECNÉ",
 };
 
 const TACHOMETER_UPLOAD_TARGETS = [
@@ -675,39 +642,48 @@ export default function ToolsPage() {
                 if (tool.onClick) {
                   const ToolIcon = tool.icon;
                   const style = CATEGORY_VISUALS[tool.category];
+                  const categoryBadgeLabel = CATEGORY_BADGE_LABEL[tool.category];
                   return (
                     <button
                       key={tool.key}
                       type="button"
                       onClick={tool.onClick}
-                      className={`${styles.toolCard} pomucky-tool-card group relative flex min-h-[184px] w-full overflow-hidden rounded-[30px] border border-white/70 ${style.wash} p-4 text-left shadow-[0_20px_54px_rgba(15,23,42,0.12)] ring-1 ${style.ring} transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-1 ${style.cardHover} hover:shadow-[0_26px_66px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80`}
+                      className={`${styles.toolCard} pomucky-tool-card group relative isolate flex min-h-[276px] w-full overflow-hidden rounded-[30px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-[18px] text-left shadow-[0_28px_72px_rgba(11,6,30,0.52)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_36px_86px_rgba(10,5,30,0.62)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80`}
                       style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
                     >
-                      <span className={`pomucky-tool-accent absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${style.accent}`} aria-hidden="true" />
+                      <span className="pointer-events-none absolute -left-12 -top-16 h-44 w-44 rounded-full bg-violet-300/24 blur-3xl" aria-hidden="true" />
+                      <span className="pointer-events-none absolute -right-16 bottom-4 h-40 w-40 rounded-full bg-fuchsia-400/18 blur-3xl" aria-hidden="true" />
+                      <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(124deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0)_34%)]" aria-hidden="true" />
 
-                      <div className="flex w-full flex-col justify-between gap-4">
-                        <div className="flex items-start justify-between gap-4">
-                          <span
-                            className={`pomucky-tool-icon inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition ${style.icon}`}
-                          >
-                            <ToolIcon className="h-5 w-5" />
+                      <div className="relative z-10 flex w-full flex-col gap-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="inline-flex items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3.5 py-1.5 text-[0.72rem] font-extrabold uppercase tracking-[0.2em] text-[#1d1138] shadow-[0_10px_26px_rgba(168,85,247,0.5)]">
+                            {categoryBadgeLabel}
                           </span>
 
-                          <span className={`pomucky-tool-arrow inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200/80 bg-white/88 text-slate-500 transition ${style.arrow}`}>
-                            <ArrowUpRight className="h-4.5 w-4.5" />
+                          <span
+                            className={`inline-flex h-14 w-14 shrink-0 items-center justify-center transition ${style.icon}`}
+                          >
+                            <ToolIcon className="h-8 w-8" />
                           </span>
                         </div>
 
                         <div className="min-w-0">
-                          <p className={`pomucky-tool-category text-[11px] font-semibold uppercase tracking-[0.2em] ${style.badge}`}>
-                            {tool.category}
-                          </p>
-                          <h2 className="mt-2 text-[1.45rem] font-bold leading-[1.12] tracking-[-0.015em] text-slate-950">
+                          <h2 className="text-[1.55rem] font-bold leading-[1.1] tracking-[-0.02em] text-[#f8fafc]">
                             {tool.title}
                           </h2>
-                          <p className="mt-2 text-[0.95rem] leading-relaxed text-slate-600">
+                          <p className="mt-2 text-[0.98rem] leading-relaxed text-violet-100/75">
                             {tool.description}
                           </p>
+                        </div>
+
+                        <div className="mt-auto">
+                          <span className="inline-flex items-center justify-between rounded-[22px] border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_16px_34px_rgba(82,25,147,0.42)]">
+                            <span className="text-[1.08rem] font-bold tracking-[-0.015em] text-[#1b1036]">
+                              Otevřít pomůcku
+                            </span>
+                            <ArrowUpRight className="h-5 w-5 text-[#1b1036]" />
+                          </span>
                         </div>
                       </div>
                     </button>
@@ -717,6 +693,7 @@ export default function ToolsPage() {
                 const CardWrapper = tool.external ? "a" : Link;
                 const ToolIcon = tool.icon;
                 const style = CATEGORY_VISUALS[tool.category];
+                const categoryBadgeLabel = CATEGORY_BADGE_LABEL[tool.category];
                 const wrapperProps = tool.external
                   ? { href: tool.href ?? "#", target: "_blank", rel: "noreferrer" }
                   : { href: tool.href ?? "#" };
@@ -725,34 +702,42 @@ export default function ToolsPage() {
                   <CardWrapper
                     key={tool.key}
                     {...wrapperProps}
-                    className={`${styles.toolCard} pomucky-tool-card group relative flex min-h-[184px] overflow-hidden rounded-[30px] border border-white/70 ${style.wash} p-4 shadow-[0_20px_54px_rgba(15,23,42,0.12)] ring-1 ${style.ring} transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-1 ${style.cardHover} hover:shadow-[0_26px_66px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80`}
+                    className={`${styles.toolCard} pomucky-tool-card group relative isolate flex min-h-[276px] w-full overflow-hidden rounded-[30px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-[18px] shadow-[0_28px_72px_rgba(11,6,30,0.52)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_36px_86px_rgba(10,5,30,0.62)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80`}
                     style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
                   >
-                    <span className={`pomucky-tool-accent absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${style.accent}`} aria-hidden="true" />
+                    <span className="pointer-events-none absolute -left-12 -top-16 h-44 w-44 rounded-full bg-violet-300/24 blur-3xl" aria-hidden="true" />
+                    <span className="pointer-events-none absolute -right-16 bottom-4 h-40 w-40 rounded-full bg-fuchsia-400/18 blur-3xl" aria-hidden="true" />
+                    <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(124deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0)_34%)]" aria-hidden="true" />
 
-                    <div className="flex w-full flex-col justify-between gap-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <span
-                          className={`pomucky-tool-icon inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition ${style.icon}`}
-                        >
-                          <ToolIcon className="h-5 w-5" />
+                    <div className="relative z-10 flex w-full flex-col gap-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="inline-flex items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3.5 py-1.5 text-[0.72rem] font-extrabold uppercase tracking-[0.2em] text-[#1d1138] shadow-[0_10px_26px_rgba(168,85,247,0.5)]">
+                          {categoryBadgeLabel}
                         </span>
 
-                        <span className={`pomucky-tool-arrow inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200/80 bg-white/88 text-slate-500 transition ${style.arrow}`}>
-                          <ArrowUpRight className="h-4.5 w-4.5" />
+                        <span
+                          className={`inline-flex h-14 w-14 shrink-0 items-center justify-center transition ${style.icon}`}
+                        >
+                          <ToolIcon className="h-8 w-8" />
                         </span>
                       </div>
 
                       <div className="min-w-0">
-                        <p className={`pomucky-tool-category text-[11px] font-semibold uppercase tracking-[0.2em] ${style.badge}`}>
-                          {tool.category}
-                        </p>
-                        <h2 className="mt-2 text-[1.45rem] font-bold leading-[1.12] tracking-[-0.015em] text-slate-950">
+                        <h2 className="text-[1.55rem] font-bold leading-[1.1] tracking-[-0.02em] text-[#f8fafc]">
                           {tool.title}
                         </h2>
-                        <p className="mt-2 text-[0.95rem] leading-relaxed text-slate-600">
+                        <p className="mt-2 text-[0.98rem] leading-relaxed text-violet-100/75">
                           {tool.description}
                         </p>
+                      </div>
+
+                      <div className="mt-auto">
+                        <span className="inline-flex items-center justify-between rounded-[22px] border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_16px_34px_rgba(82,25,147,0.42)]">
+                          <span className="text-[1.08rem] font-bold tracking-[-0.015em] text-[#1b1036]">
+                            Otevřít pomůcku
+                          </span>
+                          <ArrowUpRight className="h-5 w-5 text-[#1b1036]" />
+                        </span>
                       </div>
                     </div>
                   </CardWrapper>

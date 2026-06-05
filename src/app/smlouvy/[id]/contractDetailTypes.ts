@@ -77,6 +77,11 @@ export type ContractDoc = {
   tipContractImmediateFirstYearGross?: number | null;
   tipContractImmediateFirstYearNet?: number | null;
   tipContractTipsterAmountFirstYear?: number | null;
+  tipContractSourceTipId?: string | null;
+  tipContractSourceTipTitle?: string | null;
+  tipContractSourceTipProductLabel?: string | null;
+  tipContractSourceTipClientName?: string | null;
+  tipContractSourceTipCreatedAtMs?: number | null;
 
   policyStartDate?: FirestoreTimestamp | Date | string | null;
   policyEndDate?: FirestoreTimestamp | Date | string | null;

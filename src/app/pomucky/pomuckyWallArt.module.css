@@ -109,13 +109,30 @@
   position: absolute;
   inset: 0;
   transform: translateX(-115%);
-  background: linear-gradient(112deg, transparent 8%, rgba(255, 255, 255, 0.35) 48%, transparent 82%);
+  background: linear-gradient(112deg, transparent 8%, rgba(196, 181, 253, 0.38) 48%, transparent 82%);
   transition: transform 420ms ease;
   pointer-events: none;
 }
 
 .toolCard:hover::before {
   transform: translateX(120%);
+}
+
+.toolCard::after {
+  content: "";
+  position: absolute;
+  inset: -42% auto auto -26%;
+  width: 72%;
+  height: 180%;
+  background: linear-gradient(130deg, rgba(196, 181, 253, 0.26) 0%, rgba(196, 181, 253, 0) 58%);
+  transform: rotate(12deg);
+  opacity: 0.5;
+  transition: opacity 260ms ease;
+  pointer-events: none;
+}
+
+.toolCard:hover::after {
+  opacity: 0.68;
 }
 
 @keyframes drift {
@@ -167,6 +184,7 @@
   }
 
   .toolCard::before,
+  .toolCard::after,
   .filterChip::after {
     transition: none;
   }

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, WalletCards } from "lucide-react";
 
 import { formatMoney } from "../homeUtils";
+import { LoadingProgressPanel } from "./LoadingProgressPanel";
 
 type Props = {
   loading: boolean;
@@ -68,7 +69,7 @@ export function ExpectedPayoutSection({
       {loading ? (
         <div className="relative z-10 flex h-full flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
-            <h2 className="inline-flex items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-violet-50 sm:text-3xl">
+            <h2 className="inline-flex items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-violet-50 sm:whitespace-nowrap sm:text-3xl">
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-100/48 bg-violet-300/18">
                 <WalletCards className="h-4.5 w-4.5 text-emerald-200" strokeWidth={2.2} aria-hidden="true" />
               </span>
@@ -83,48 +84,17 @@ export function ExpectedPayoutSection({
             </Link>
           </div>
 
-          <div className="relative overflow-hidden rounded-[24px] border border-violet-100/30 bg-violet-950/24 px-4 py-4 sm:px-6 sm:py-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="inline-flex items-center gap-2 text-sm font-semibold text-violet-50">
-                  <span
-                    className="h-4 w-4 animate-spin rounded-full border-2 border-violet-100/40 border-t-violet-100"
-                    aria-hidden="true"
-                  />
-                  Načítám data výplaty
-                </div>
-                <div className="mt-2 text-sm text-violet-100/80">{loadingStage}</div>
-                <div className="mt-1 text-xs uppercase tracking-[0.14em] text-violet-100/75">
-                  {clampedLoadingProgress}% připraveno
-                </div>
-              </div>
-
-              <div className="relative h-16 w-16 shrink-0">
-                <div
-                  className="absolute inset-0 rounded-full"
-                  style={{
-                    background: `conic-gradient(from -90deg, rgba(221,214,254,1) 0deg ${clampedLoadingProgress * 3.6}deg, rgba(196,181,253,0.24) ${clampedLoadingProgress * 3.6}deg 360deg)`,
-                  }}
-                />
-                <div className="absolute inset-[5px] rounded-full bg-violet-950/92" />
-                <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-violet-100">
-                  {clampedLoadingProgress}%
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-violet-100/20">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-violet-300 via-fuchsia-300 to-indigo-200 transition-[width] duration-300 ease-out"
-                style={{ width: `${clampedLoadingProgress}%` }}
-              />
-            </div>
-          </div>
+          <LoadingProgressPanel
+            title="Načítám data výplaty"
+            stage={loadingStage}
+            progress={clampedLoadingProgress}
+            accentLabel="Výplata"
+          />
         </div>
       ) : (
         <div className="relative z-10 grid gap-4 md:grid-cols-[minmax(0,1fr)_230px] md:items-start md:gap-5">
           <div className="min-w-0">
-            <h2 className="inline-flex items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-violet-50 sm:text-3xl">
+            <h2 className="inline-flex items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-violet-50 sm:whitespace-nowrap sm:text-3xl">
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-100/48 bg-violet-300/18">
                 <WalletCards className="h-4.5 w-4.5 text-emerald-200" strokeWidth={2.2} aria-hidden="true" />
               </span>

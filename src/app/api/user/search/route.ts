@@ -12,12 +12,15 @@ const USER_SEARCH_MAX_RESULTS = 8;
 const USER_SEARCH_MIN_QUERY_LEN = 2;
 const USER_DIRECTORY_CACHE_TTL_MS = 45_000;
 
+type UserAccountType = "advisor" | "tipster";
+
 type UserSearchSuccess = {
   ok: true;
   users: Array<{
     email: string;
     name: string;
     managerEmail: string | null;
+    accountType: UserAccountType;
   }>;
 };
 
@@ -30,6 +33,7 @@ type UserDirectoryRow = {
   email: string;
   name: string;
   managerEmail: string | null;
+  accountType: UserAccountType;
   searchEmail: string;
   searchName: string;
 };
@@ -75,6 +79,16 @@ const pickBestName = (data: Record<string, unknown>, email: string): string => {
   return nameFromEmail(email);
 };
 
+const resolveAccountType = (data: Record<string, unknown>): UserAccountType => {
+  const raw =
+    typeof data.accountType === "string"
+      ? data.accountType
+      : typeof data.userRole === "string"
+        ? data.userRole
+        : "";
+  return raw.trim().toLowerCase() === "tipster" ? "tipster" : "advisor";
+};
+
 const chooseBetterRow = (current: UserDirectoryRow, next: UserDirectoryRow): UserDirectoryRow => {
   const currentHasCustomName = normalizeSearch(current.name) !== normalizeSearch(nameFromEmail(current.email));
   const nextHasCustomName = normalizeSearch(next.name) !== normalizeSearch(nameFromEmail(next.email));
@@ -111,6 +125,7 @@ async function loadUserDirectoryRows(): Promise<UserDirectoryRow[]> {
       email,
       name,
       managerEmail,
+      accountType: resolveAccountType(data),
       searchEmail: normalizeSearch(email),
       searchName: normalizeSearch(name),
     };
@@ -186,6 +201,7 @@ export async function GET(req: NextRequest) {
         email: item.row.email,
         name: item.row.name,
         managerEmail: item.row.managerEmail,
+        accountType: item.row.accountType,
       }));
 
     return withRateLimitHeaders(

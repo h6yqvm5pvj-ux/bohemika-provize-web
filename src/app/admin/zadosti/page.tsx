@@ -334,6 +334,21 @@ const COMMISSION_MODES: { id: CommissionMode; label: string }[] = [
   { id: "standard", label: "Běžný" },
 ];
 
+type NewUserAccountType = "advisor" | "tipster";
+
+const ACCOUNT_TYPES: { id: NewUserAccountType; label: string; description: string }[] = [
+  {
+    id: "advisor",
+    label: "Vázaný zástupce",
+    description: "Běžný interní účet s přístupem do aplikace.",
+  },
+  {
+    id: "tipster",
+    label: "Tipař",
+    description: "Omezený účet pouze pro odesílání tipů.",
+  },
+];
+
 type CreateUserResponse = {
   ok?: boolean;
   email?: string;
@@ -451,6 +466,8 @@ export default function AdminRequestsPage() {
   const [newUserManagerEmail, setNewUserManagerEmail] = useState("");
   const [newUserPosition, setNewUserPosition] = useState<Position>("poradce1");
   const [newUserMode, setNewUserMode] = useState<CommissionMode>("standard");
+  const [newUserAccountType, setNewUserAccountType] =
+    useState<NewUserAccountType>("advisor");
   const [createUserBusy, setCreateUserBusy] = useState(false);
   const [createUserStatus, setCreateUserStatus] = useState<InlineStatus | null>(null);
   const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>("requests");
@@ -892,7 +909,17 @@ export default function AdminRequestsPage() {
     if (managerEmail && managerEmail === email) {
       setCreateUserStatus({
         type: "error",
-        message: "Nadřízený nemůže být stejný jako nový uživatel.",
+        message:
+          newUserAccountType === "tipster"
+            ? "Příjemce tipů nemůže být stejný jako nový uživatel."
+            : "Nadřízený nemůže být stejný jako nový uživatel.",
+      });
+      return;
+    }
+    if (newUserAccountType === "tipster" && !managerEmail) {
+      setCreateUserStatus({
+        type: "error",
+        message: "U tipaře vyplň příjemce tipů.",
       });
       return;
     }
@@ -909,7 +936,10 @@ export default function AdminRequestsPage() {
             email,
             password: newUserPassword,
             fullName: newUserFullName,
-            managerEmail,
+            accountType: newUserAccountType,
+            managerEmail: newUserAccountType === "advisor" ? managerEmail : "",
+            tipRecipientEmail:
+              newUserAccountType === "tipster" ? managerEmail : "",
             position: newUserPosition,
             commissionMode: newUserMode,
           }),
@@ -924,6 +954,7 @@ export default function AdminRequestsPage() {
       setNewUserFullName("");
       setNewUserPosition("poradce1");
       setNewUserMode("standard");
+      setNewUserAccountType("advisor");
       const ownEmail = normalizeEmail(user.email);
       setNewUserManagerEmail(ownEmail || managerEmail);
     } catch (error) {
@@ -941,6 +972,7 @@ export default function AdminRequestsPage() {
     isAllowedAdmin,
     newUserEmail,
     newUserFullName,
+    newUserAccountType,
     newUserManagerEmail,
     newUserMode,
     newUserPassword,
@@ -1686,6 +1718,7 @@ export default function AdminRequestsPage() {
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
                   Vytvoří Firebase Auth účet, veřejný profil a aktivní interní profil.
+                  U tipaře se zpřístupní jen odesílání tipů.
                 </p>
               </div>
             </div>
@@ -1725,6 +1758,47 @@ export default function AdminRequestsPage() {
                 />
               </div>
 
+              <div className="space-y-1.5 lg:col-span-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  Typ účtu
+                </label>
+                <div
+                  className="grid gap-2 sm:grid-cols-2"
+                  role="radiogroup"
+                  aria-label="Typ nového účtu"
+                >
+                  {ACCOUNT_TYPES.map((type) => {
+                    const active = newUserAccountType === type.id;
+                    return (
+                      <button
+                        key={type.id}
+                        type="button"
+                        onClick={() => {
+                          setNewUserAccountType(type.id);
+                          setCreateUserStatus(null);
+                        }}
+                        className={`rounded-2xl border px-4 py-3 text-left transition ${
+                          active
+                            ? "border-slate-900 bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.22)]"
+                            : "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-300 hover:bg-white"
+                        }`}
+                        role="radio"
+                        aria-checked={active}
+                      >
+                        <span className="block text-sm font-semibold">{type.label}</span>
+                        <span
+                          className={`mt-1 block text-xs leading-relaxed ${
+                            active ? "text-slate-200" : "text-slate-500"
+                          }`}
+                        >
+                          {type.description}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                   Dočasné heslo
@@ -1762,7 +1836,7 @@ export default function AdminRequestsPage() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  Nadřízený
+                  {newUserAccountType === "tipster" ? "Příjemce tipů" : "Nadřízený"}
                 </label>
                 <input
                   type="email"
@@ -1770,63 +1844,75 @@ export default function AdminRequestsPage() {
                   className={fieldClass}
                   value={newUserManagerEmail}
                   onChange={(event) => setNewUserManagerEmail(event.target.value)}
-                  placeholder="Bez nadřízeného nech prázdné"
+                  placeholder={
+                    newUserAccountType === "tipster"
+                      ? "E-mail uživatele, který dostane tipy"
+                      : "Bez nadřízeného nech prázdné"
+                  }
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  Výchozí pozice
-                </label>
-                <select
-                  className={fieldClass}
-                  value={newUserPosition}
-                  onChange={(event) => setNewUserPosition(event.target.value as Position)}
-                >
-                  {POSITIONS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {newUserAccountType === "advisor" ? (
+                <>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      Výchozí pozice
+                    </label>
+                    <select
+                      className={fieldClass}
+                      value={newUserPosition}
+                      onChange={(event) => setNewUserPosition(event.target.value as Position)}
+                    >
+                      {POSITIONS.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  Režim provizí
-                </label>
-                <div
-                  className="inline-flex w-full rounded-2xl border border-slate-300 bg-slate-100 p-1"
-                  role="radiogroup"
-                  aria-label="Režim provizí nového uživatele"
-                >
-                  {COMMISSION_MODES.map((m) => {
-                    const active = newUserMode === m.id;
-                    const isAccelerated = m.id === "accelerated";
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setNewUserMode(m.id)}
-                        className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                          active
-                            ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_6px_16px_rgba(5,150,105,0.34)]"
-                            : "border border-transparent text-slate-600 hover:text-slate-900"
-                        }`}
-                        role="radio"
-                        aria-checked={active}
-                      >
-                        {isAccelerated ? (
-                          <Zap size={14} strokeWidth={2.2} className={active ? "!text-white" : "text-amber-600"} aria-hidden="true" />
-                        ) : (
-                          <Snail size={14} strokeWidth={2.2} className={active ? "!text-white" : "text-slate-500"} aria-hidden="true" />
-                        )}
-                        {m.label}
-                      </button>
-                    );
-                  })}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      Režim provizí
+                    </label>
+                    <div
+                      className="inline-flex w-full rounded-2xl border border-slate-300 bg-slate-100 p-1"
+                      role="radiogroup"
+                      aria-label="Režim provizí nového uživatele"
+                    >
+                      {COMMISSION_MODES.map((m) => {
+                        const active = newUserMode === m.id;
+                        const isAccelerated = m.id === "accelerated";
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => setNewUserMode(m.id)}
+                            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                              active
+                                ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_6px_16px_rgba(5,150,105,0.34)]"
+                                : "border border-transparent text-slate-600 hover:text-slate-900"
+                            }`}
+                            role="radio"
+                            aria-checked={active}
+                          >
+                            {isAccelerated ? (
+                              <Zap size={14} strokeWidth={2.2} className={active ? "!text-white" : "text-amber-600"} aria-hidden="true" />
+                            ) : (
+                              <Snail size={14} strokeWidth={2.2} className={active ? "!text-white" : "text-slate-500"} aria-hidden="true" />
+                            )}
+                            {m.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 lg:col-span-2">
+                  Tipař po přihlášení uvidí pouze domovskou stránku s tlačítkem pro přidání tipu.
                 </div>
-              </div>
+              )}
 
               <div className="flex flex-col gap-2 pt-1 lg:col-span-2 sm:flex-row sm:items-center sm:justify-between">
                 {createUserStatus ? (

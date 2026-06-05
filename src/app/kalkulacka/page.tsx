@@ -5,9 +5,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
+  CalendarDays,
+  CheckCircle2,
   Download,
+  FileText,
+  Lightbulb,
+  Mail,
   Search,
+  Tag,
   Users,
+  UserRound,
   X,
 } from "lucide-react";
 import { auth } from "../firebase";
@@ -142,6 +149,20 @@ const SETTINGS_KEYS = {
 const TIPSTER_PERCENT_PRESETS = [10, 20, 30, 40, 50, 75, 100];
 const TIP_CONTRACT_PERCENT_OPTIONS = Array.from({ length: 19 }, (_, idx) => (idx + 1) * 5);
 const EMAIL_LOOKUP_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TIP_CONTRACT_STATUS_LABELS: Record<TipLifecycleStatus, string> = {
+  pending: "Čeká na zpracování",
+  contracted: "Sjednáno",
+  failed: "Obchod neproběhl",
+};
+const TIP_CONTRACT_TIPS_FILTER_OPTIONS = [
+  { key: "all", label: "Všechny" },
+  { key: "new", label: "Nové" },
+  { key: "contracted", label: "Sjednané" },
+] as const;
+const ACCOUNT_TYPE_LABELS: Record<UserAccountType, string> = {
+  advisor: "Vázaný zástupce",
+  tipster: "Tipař",
+};
 const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   cppAuto: "/provize/cppauto.jpg",
   slaviaauto: "/provize/slaviaauto.jpg",
@@ -161,6 +182,18 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
 ];
 const CONTRACTS_CREATE_IDEMPOTENCY_HEADER = "x-idempotency-key";
 const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
+
+const formatTipCreatedAt = (createdAtMs: number | null): string => {
+  if (!createdAtMs || !Number.isFinite(createdAtMs)) return "Datum neuvedeno";
+  try {
+    return new Intl.DateTimeFormat("cs-CZ", {
+      dateStyle: "short",
+      timeStyle: "short",
+    }).format(new Date(createdAtMs));
+  } catch {
+    return "Datum neuvedeno";
+  }
+};
 
 type NeonCoefficientView = "current" | "historical";
 type CalculatorViewMode = "addContract" | "commissionOnly";
@@ -287,25 +320,69 @@ type SubordinateOption = {
   commissionMode: CommissionMode | null;
 };
 
+type UserAccountType = "advisor" | "tipster";
+type TipLifecycleStatus = "pending" | "contracted" | "failed";
+type TipContractTipsFilter = (typeof TIP_CONTRACT_TIPS_FILTER_OPTIONS)[number]["key"];
+
+type TipContractUserOption = {
+  email: string;
+  name: string;
+  managerEmail: string | null;
+  accountType: UserAccountType;
+};
+
+type UserSearchApiResponse = {
+  ok?: boolean;
+  users?: TipContractUserOption[];
+  error?: string;
+};
+
 type TipsterLookupApiResponse = {
   ok?: boolean;
   exists?: boolean;
   email?: string | null;
   name?: string | null;
+  accountType?: UserAccountType | null;
   error?: string;
 };
 
 type TipsterLookupState =
   | { status: "idle" }
   | { status: "checking" }
-  | { status: "found"; email: string; name: string | null }
+  | { status: "found"; email: string; name: string | null; accountType: UserAccountType }
   | { status: "notFound" }
   | { status: "error"; message: string };
+
+type TipContractTipOption = {
+  id: string;
+  title: string;
+  product: string;
+  productLabel: string;
+  status: TipLifecycleStatus;
+  tipsterEmail: string;
+  tipsterName: string;
+  clientName: string;
+  phone: string;
+  email: string;
+  createdAtMs: number | null;
+};
+
+type AdvisorTipsByUserApiResponse = {
+  ok?: boolean;
+  items?: TipContractTipOption[];
+  error?: string;
+};
 
 type TipContractConfig = {
   tipsterEmail: string | null;
   tipsterName: string | null;
+  tipsterAccountType: UserAccountType | null;
   tipsterPercent: number;
+  sourceTipId: string | null;
+  sourceTipTitle: string | null;
+  sourceTipProductLabel: string | null;
+  sourceTipClientName: string | null;
+  sourceTipCreatedAtMs: number | null;
 };
 
 type ContractNumberLiveCheckState =
@@ -561,6 +638,7 @@ export default function CalculatorPage() {
     useState<MaxCizinKomplexVariant>("exclusiveStandard");
   const [amountText, setAmountText] = useState<string>("");
   const [tipsterModeEnabled, setTipsterModeEnabled] = useState(false);
+  const [tipsterModeSaving, setTipsterModeSaving] = useState(false);
   const [calculatorViewMode, setCalculatorViewMode] =
     useState<CalculatorViewMode>("addContract");
   const [tipsterPercent, setTipsterPercent] = useState(100);
@@ -571,6 +649,18 @@ export default function CalculatorPage() {
   const [tipContractLookupState, setTipContractLookupState] = useState<TipsterLookupState>({
     status: "idle",
   });
+  const [tipContractUserSuggestions, setTipContractUserSuggestions] = useState<TipContractUserOption[]>([]);
+  const [tipContractSuggestionsLoading, setTipContractSuggestionsLoading] = useState(false);
+  const [tipContractSelectedUser, setTipContractSelectedUser] =
+    useState<TipContractUserOption | null>(null);
+  const [tipContractTipsModalOpen, setTipContractTipsModalOpen] = useState(false);
+  const [tipContractTipsLoading, setTipContractTipsLoading] = useState(false);
+  const [tipContractTipsError, setTipContractTipsError] = useState<string | null>(null);
+  const [tipContractTips, setTipContractTips] = useState<TipContractTipOption[]>([]);
+  const [tipContractTipsFilter, setTipContractTipsFilter] =
+    useState<TipContractTipsFilter>("all");
+  const [tipContractSelectedTip, setTipContractSelectedTip] =
+    useState<TipContractTipOption | null>(null);
   const [tipContractConfig, setTipContractConfig] = useState<TipContractConfig | null>(null);
   const [comfortGradual, setComfortGradual] = useState<boolean>(false);
   const [comfortPaymentText, setComfortPaymentText] = useState<string>("");
@@ -1502,9 +1592,71 @@ export default function CalculatorPage() {
 
   useEffect(() => {
     if (tipsterModeEnabled) {
+      setCalculatorViewMode("commissionOnly");
       setTipContractModalOpen(false);
     }
   }, [tipsterModeEnabled]);
+
+  useEffect(() => {
+    if (!tipContractModalOpen || !user) {
+      setTipContractUserSuggestions([]);
+      setTipContractSuggestionsLoading(false);
+      return;
+    }
+
+    const query = tipContractDraftEmail.trim();
+    if (query.length < 2) {
+      setTipContractUserSuggestions([]);
+      setTipContractSuggestionsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setTipContractSuggestionsLoading(true);
+      try {
+        const payload = await fetchAuthedJsonOrThrow<UserSearchApiResponse>(
+          user,
+          `/api/user/search?q=${encodeURIComponent(query)}`,
+          { method: "GET" }
+        );
+        if (cancelled) return;
+
+        const users = Array.isArray(payload.users)
+          ? payload.users
+              .map((option): TipContractUserOption => {
+                const email =
+                  typeof option.email === "string" ? option.email.trim().toLowerCase() : "";
+                return {
+                  email,
+                  name: typeof option.name === "string" ? option.name.trim() : "",
+                  managerEmail:
+                    typeof option.managerEmail === "string" && option.managerEmail.trim()
+                      ? option.managerEmail.trim().toLowerCase()
+                      : null,
+                  accountType: option.accountType === "tipster" ? "tipster" : "advisor",
+                };
+              })
+              .filter((option) => option.email)
+          : [];
+        setTipContractUserSuggestions(users);
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load TIP user suggestions", err);
+          setTipContractUserSuggestions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setTipContractSuggestionsLoading(false);
+        }
+      }
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [tipContractModalOpen, tipContractDraftEmail, user]);
 
   useEffect(() => {
     if (!tipContractModalOpen) return;
@@ -1532,17 +1684,30 @@ export default function CalculatorPage() {
         if (cancelled) return;
 
         if (payload?.exists && typeof payload.email === "string" && payload.email.trim()) {
-          setTipContractLookupState({
-            status: "found",
+          const accountType = payload.accountType === "tipster" ? "tipster" : "advisor";
+          const foundUser = {
             email: payload.email.trim().toLowerCase(),
             name:
               typeof payload.name === "string" && payload.name.trim()
                 ? payload.name.trim()
+                : payload.email.trim().toLowerCase(),
+            managerEmail: null,
+            accountType,
+          } satisfies TipContractUserOption;
+          setTipContractLookupState({
+            status: "found",
+            email: foundUser.email,
+            name:
+              typeof payload.name === "string" && payload.name.trim()
+                ? payload.name.trim()
                 : null,
+            accountType,
           });
+          setTipContractSelectedUser(foundUser);
           return;
         }
 
+        setTipContractSelectedUser(null);
         setTipContractLookupState({ status: "notFound" });
       } catch (lookupErr) {
         if (cancelled) return;
@@ -1670,6 +1835,43 @@ export default function CalculatorPage() {
     };
   }, [user, contractNumber, endorsementDraft]);
 
+  const persistTipsterMode = async (value: boolean) => {
+    if (value === tipsterModeEnabled || tipsterModeSaving) return;
+
+    const previousTipsterMode = tipsterModeEnabled;
+    const previousViewMode = calculatorViewMode;
+
+    setTipsterModeEnabled(value);
+    if (value) {
+      setCalculatorViewMode("commissionOnly");
+    }
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SETTINGS_KEYS.tipsterMode, value ? "1" : "0");
+    }
+
+    if (!user) return;
+
+    setTipsterModeSaving(true);
+    try {
+      await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ tipsterCollaborationMode: value }),
+      });
+    } catch (err) {
+      console.error("Failed to persist tipster mode", err);
+      setTipsterModeEnabled(previousTipsterMode);
+      setCalculatorViewMode(previousViewMode);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          SETTINGS_KEYS.tipsterMode,
+          previousTipsterMode ? "1" : "0"
+        );
+      }
+    } finally {
+      setTipsterModeSaving(false);
+    }
+  };
+
   const setTipsterPercentDraft = (value: number): number => {
     const next = clampTipsterPercent(value);
     setTipsterPercent(next);
@@ -1694,18 +1896,176 @@ export default function CalculatorPage() {
     }
   };
 
+  const getCurrentTipContractUser = (): TipContractUserOption | null => {
+    const normalizedDraftEmail = tipContractDraftEmail.trim().toLowerCase();
+    if (!normalizedDraftEmail) return null;
+    if (tipContractSelectedUser?.email === normalizedDraftEmail) {
+      return tipContractSelectedUser;
+    }
+    if (
+      tipContractLookupState.status === "found" &&
+      tipContractLookupState.email === normalizedDraftEmail
+    ) {
+      return {
+        email: tipContractLookupState.email,
+        name: tipContractLookupState.name ?? tipContractLookupState.email,
+        managerEmail: null,
+        accountType: tipContractLookupState.accountType,
+      };
+    }
+    return null;
+  };
+
+  const handleTipContractUserInputChange = (value: string) => {
+    setTipContractDraftEmail(value);
+    const normalizedValue = value.trim().toLowerCase();
+    if (tipContractSelectedUser?.email !== normalizedValue) {
+      setTipContractSelectedUser(null);
+      setTipContractSelectedTip(null);
+      setTipContractTips([]);
+      setTipContractTipsError(null);
+    }
+  };
+
+  const selectTipContractUser = (option: TipContractUserOption) => {
+    const normalizedEmail = option.email.trim().toLowerCase();
+    const normalizedOption: TipContractUserOption = {
+      ...option,
+      email: normalizedEmail,
+      name: option.name.trim() || normalizedEmail,
+      accountType: option.accountType === "tipster" ? "tipster" : "advisor",
+    };
+    setTipContractDraftEmail(normalizedEmail);
+    setTipContractSelectedUser(normalizedOption);
+    setTipContractLookupState({
+      status: "found",
+      email: normalizedEmail,
+      name: normalizedOption.name,
+      accountType: normalizedOption.accountType,
+    });
+    setTipContractUserSuggestions([]);
+    if (tipContractSelectedTip?.tipsterEmail !== normalizedEmail) {
+      setTipContractSelectedTip(null);
+      setTipContractTips([]);
+      setTipContractTipsError(null);
+    }
+  };
+
+  const loadTipContractTipsForSelectedUser = async () => {
+    const selectedUser = getCurrentTipContractUser();
+    if (!user || !selectedUser) {
+      setSaveMessage("Nejdřív vyber uživatele ze seznamu.");
+      return;
+    }
+
+    setTipContractTipsModalOpen(true);
+    setTipContractTipsLoading(true);
+    setTipContractTipsError(null);
+    setTipContractTipsFilter("all");
+    try {
+      const payload = await fetchAuthedJsonOrThrow<AdvisorTipsByUserApiResponse>(
+        user,
+        `/api/advisor-tips/by-user?email=${encodeURIComponent(selectedUser.email)}`,
+        { method: "GET" }
+      );
+      const items = Array.isArray(payload.items)
+        ? payload.items
+            .map((item): TipContractTipOption => {
+              const status: TipLifecycleStatus =
+                item.status === "contracted" || item.status === "failed"
+                  ? item.status
+                  : "pending";
+              return {
+                id: typeof item.id === "string" ? item.id.trim() : "",
+                title: typeof item.title === "string" ? item.title.trim() : "Nový tip",
+                product: typeof item.product === "string" ? item.product.trim() : "other",
+                productLabel:
+                  typeof item.productLabel === "string" && item.productLabel.trim()
+                    ? item.productLabel.trim()
+                    : "Tip",
+                status,
+                tipsterEmail:
+                  typeof item.tipsterEmail === "string"
+                    ? item.tipsterEmail.trim().toLowerCase()
+                    : selectedUser.email,
+                tipsterName:
+                  typeof item.tipsterName === "string"
+                    ? item.tipsterName.trim()
+                    : selectedUser.name,
+                clientName:
+                  typeof item.clientName === "string" && item.clientName.trim()
+                    ? item.clientName.trim()
+                    : "Klient neuveden",
+                phone: typeof item.phone === "string" ? item.phone.trim() : "",
+                email: typeof item.email === "string" ? item.email.trim() : "",
+                createdAtMs:
+                  typeof item.createdAtMs === "number" && Number.isFinite(item.createdAtMs)
+                    ? Math.round(item.createdAtMs)
+                    : null,
+              };
+            })
+            .filter((item) => item.id)
+        : [];
+      setTipContractTips(items);
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.trim()
+          ? err.message.trim()
+          : "Tipy se nepodařilo načíst.";
+      setTipContractTipsError(message);
+      setTipContractTips([]);
+    } finally {
+      setTipContractTipsLoading(false);
+    }
+  };
+
+  const selectTipContractTip = (tip: TipContractTipOption) => {
+    setTipContractSelectedTip(tip);
+    setTipContractTipsModalOpen(false);
+  };
+
   const openTipContractModal = () => {
     setTipContractDraftPercent(tipContractConfig?.tipsterPercent ?? 50);
     setTipContractDraftEmail(tipContractConfig?.tipsterEmail ?? "");
     if (tipContractConfig?.tipsterEmail) {
+      const accountType = tipContractConfig.tipsterAccountType ?? "advisor";
+      setTipContractSelectedUser({
+        email: tipContractConfig.tipsterEmail,
+        name: tipContractConfig.tipsterName ?? tipContractConfig.tipsterEmail,
+        managerEmail: null,
+        accountType,
+      });
       setTipContractLookupState({
         status: "found",
         email: tipContractConfig.tipsterEmail,
         name: tipContractConfig.tipsterName ?? null,
+        accountType,
       });
     } else {
+      setTipContractSelectedUser(null);
       setTipContractLookupState({ status: "idle" });
     }
+    setTipContractSelectedTip(
+      tipContractConfig?.sourceTipId
+        ? {
+            id: tipContractConfig.sourceTipId,
+            title: tipContractConfig.sourceTipTitle ?? "Nový tip",
+            product: "",
+            productLabel: tipContractConfig.sourceTipProductLabel ?? "Tip",
+            status: "pending",
+            tipsterEmail: tipContractConfig.tipsterEmail ?? "",
+            tipsterName: tipContractConfig.tipsterName ?? "",
+            clientName: tipContractConfig.sourceTipClientName ?? "Klient neuveden",
+            phone: "",
+            email: "",
+            createdAtMs: tipContractConfig.sourceTipCreatedAtMs,
+          }
+        : null
+    );
+    setTipContractUserSuggestions([]);
+    setTipContractTipsModalOpen(false);
+    setTipContractTipsError(null);
+    setTipContractTipsFilter("all");
     setTipContractModalOpen(true);
   };
 
@@ -1723,7 +2083,13 @@ export default function CalculatorPage() {
       setTipContractConfig({
         tipsterEmail: null,
         tipsterName: null,
+        tipsterAccountType: null,
         tipsterPercent: nextPercent,
+        sourceTipId: null,
+        sourceTipTitle: null,
+        sourceTipProductLabel: null,
+        sourceTipClientName: null,
+        sourceTipCreatedAtMs: null,
       });
       setTipContractModalOpen(false);
       setSaveMessage(`Smlouva z TIPU: ${nextPercent} % bez označení tipaře.`);
@@ -1739,14 +2105,25 @@ export default function CalculatorPage() {
     }
 
     const nextEmail = normalizedDraftEmail;
+    const selectedUser = getCurrentTipContractUser();
+    const selectedTip =
+      tipContractSelectedTip?.tipsterEmail === nextEmail ? tipContractSelectedTip : null;
     setTipContractConfig({
       tipsterEmail: nextEmail,
-      tipsterName: tipContractLookupState.name ?? null,
+      tipsterName: selectedUser?.name ?? tipContractLookupState.name ?? null,
+      tipsterAccountType: selectedUser?.accountType ?? tipContractLookupState.accountType,
       tipsterPercent: nextPercent,
+      sourceTipId: selectedTip?.id ?? null,
+      sourceTipTitle: selectedTip?.title ?? null,
+      sourceTipProductLabel: selectedTip?.productLabel ?? null,
+      sourceTipClientName: selectedTip?.clientName ?? null,
+      sourceTipCreatedAtMs: selectedTip?.createdAtMs ?? null,
     });
     setTipContractModalOpen(false);
     setSaveMessage(
-      `Smlouva z TIPU: ${nextPercent} % pro tipaře (${tipContractLookupState.name ?? nextEmail}).`
+      selectedTip
+        ? `Smlouva z TIPU: ${nextPercent} % pro ${selectedUser?.name ?? nextEmail}, vybraný tip ${selectedTip.clientName}.`
+        : `Smlouva z TIPU: ${nextPercent} % pro tipaře (${tipContractLookupState.name ?? nextEmail}).`
     );
   };
 
@@ -1756,6 +2133,13 @@ export default function CalculatorPage() {
     setTipContractDraftEmail("");
     setTipContractDraftPercent(50);
     setTipContractLookupState({ status: "idle" });
+    setTipContractSelectedUser(null);
+    setTipContractUserSuggestions([]);
+    setTipContractSelectedTip(null);
+    setTipContractTips([]);
+    setTipContractTipsModalOpen(false);
+    setTipContractTipsError(null);
+    setTipContractTipsFilter("all");
     setSaveMessage("Smlouva z TIPU byla vypnutá.");
   };
 
@@ -3220,6 +3604,11 @@ export default function CalculatorPage() {
             contractNumber: trimmedContractNumber || null,
             tipContractTipsterEmail: tipContractConfig?.tipsterEmail ?? null,
             tipContractTipsterPercent: tipContractConfig?.tipsterPercent ?? null,
+            tipContractSourceTipId: tipContractConfig?.sourceTipId ?? null,
+            tipContractSourceTipTitle: tipContractConfig?.sourceTipTitle ?? null,
+            tipContractSourceTipProductLabel: tipContractConfig?.sourceTipProductLabel ?? null,
+            tipContractSourceTipClientName: tipContractConfig?.sourceTipClientName ?? null,
+            tipContractSourceTipCreatedAtMs: tipContractConfig?.sourceTipCreatedAtMs ?? null,
             carMake:
               product === "cppAuto" ||
               product === "slaviaauto" ||
@@ -3556,10 +3945,28 @@ export default function CalculatorPage() {
     return () => {
       cancelled = true;
     };
-  }, [showCoefModal, product, user, neonPreviewImageUrl]);
-
-  if (!user) {
-    return (
+    }, [showCoefModal, product, user, neonPreviewImageUrl]);
+  
+    const tipContractTipCounts = useMemo<Record<TipContractTipsFilter, number>>(
+      () => ({
+        all: tipContractTips.length,
+        new: tipContractTips.filter((tip) => tip.status === "pending").length,
+        contracted: tipContractTips.filter((tip) => tip.status === "contracted").length,
+      }),
+      [tipContractTips]
+    );
+    const filteredTipContractTips = useMemo(
+      () =>
+        tipContractTips.filter((tip) => {
+          if (tipContractTipsFilter === "all") return true;
+          if (tipContractTipsFilter === "new") return tip.status === "pending";
+          return tip.status === "contracted";
+        }),
+      [tipContractTips, tipContractTipsFilter]
+    );
+  
+    if (!user) {
+      return (
       <main className="relative min-h-screen overflow-hidden bg-black font-mono text-slate-50">
         <div className="fixed inset-0 -z-10 bg-black" />
 
@@ -3745,7 +4152,10 @@ export default function CalculatorPage() {
     }
   };
 
-  return (
+    const currentTipContractUser = getCurrentTipContractUser();
+    const canShowTipContractTipsButton = currentTipContractUser?.accountType === "tipster";
+  
+    return (
     <AppLayout active="calc">
       <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
       <div className="mx-auto w-full max-w-6xl font-mono text-slate-900">
@@ -3989,35 +4399,102 @@ export default function CalculatorPage() {
 
             <div className="space-y-2">
               <label className="block text-xs uppercase tracking-wide text-slate-600">
-                E-mail tipaře (volitelné)
+                Tipař / uživatel (e-mail nebo jméno)
               </label>
-              <input
-                type="email"
-                value={tipContractDraftEmail}
-                onChange={(e) => setTipContractDraftEmail(e.target.value)}
-                placeholder="napr. tipar@bohemika.cz"
-                className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:border-slate-900 ${
-                  tipContractLookupState.status === "found"
-                    ? "border-emerald-400 bg-emerald-50 focus:ring-emerald-600"
-                    : "border-slate-300 bg-white focus:ring-slate-900"
-                }`}
-              />
+              <div className="relative">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  aria-hidden="true"
+                />
+                <input
+                  type="text"
+                  value={tipContractDraftEmail}
+                  onChange={(e) => handleTipContractUserInputChange(e.target.value)}
+                  placeholder="Začni psát jméno nebo e-mail"
+                  className={`w-full rounded-xl border py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:ring-2 focus:border-slate-900 ${
+                    tipContractLookupState.status === "found"
+                      ? "border-emerald-400 bg-emerald-50 focus:ring-emerald-600"
+                      : "border-slate-300 bg-white focus:ring-slate-900"
+                  }`}
+                />
+                {(tipContractSuggestionsLoading || tipContractUserSuggestions.length > 0) && (
+                  <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-20 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.18)]">
+                    {tipContractSuggestionsLoading && (
+                      <div className="px-3 py-2 text-xs text-slate-500">Načítám návrhy…</div>
+                    )}
+                    {tipContractUserSuggestions.map((option) => (
+                      <button
+                        key={option.email}
+                        type="button"
+                        onClick={() => selectTipContractUser(option)}
+                        className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50"
+                      >
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600">
+                          {option.accountType === "tipster" ? (
+                            <Lightbulb size={16} aria-hidden="true" />
+                          ) : (
+                            <UserRound size={16} aria-hidden="true" />
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-slate-900">
+                            {option.name || option.email}
+                          </span>
+                          <span className="block truncate text-xs text-slate-500">
+                            {option.email} • {ACCOUNT_TYPE_LABELS[option.accountType]}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {tipContractLookupState.status === "checking" && (
                 <p className="text-xs text-slate-500">Ověřuji uživatele…</p>
               )}
               {tipContractLookupState.status === "found" && (
-                <p className="text-xs text-emerald-700">
-                  Uživatel nalezen:{" "}
-                  <strong>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800">
+                    <CheckCircle2 size={14} aria-hidden="true" />
                     {tipContractLookupState.name ?? tipContractLookupState.email}
-                  </strong>
-                </p>
+                    <span className="text-emerald-700/70">
+                      {ACCOUNT_TYPE_LABELS[tipContractLookupState.accountType]}
+                    </span>
+                  </span>
+                  {canShowTipContractTipsButton && (
+                    <button
+                      type="button"
+                      onClick={loadTipContractTipsForSelectedUser}
+                      className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#d946ef_0%,#9d22c9_100%)] px-3 py-1.5 text-xs font-semibold text-white shadow-[0_10px_22px_rgba(217,70,239,0.25)] transition hover:-translate-y-0.5"
+                    >
+                      <Lightbulb size={14} aria-hidden="true" />
+                      {tipContractSelectedTip ? "Změnit TIP" : "Zobrazit TIPY"}
+                    </button>
+                  )}
+                </div>
               )}
               {tipContractLookupState.status === "notFound" && (
                 <p className="text-xs text-rose-700">Uživatel s tímto e-mailem nebyl nalezen.</p>
               )}
               {tipContractLookupState.status === "error" && (
                 <p className="text-xs text-rose-700">{tipContractLookupState.message}</p>
+              )}
+              {tipContractSelectedTip && (
+                <div className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-xs text-fuchsia-950">
+                  <div className="flex items-start gap-2">
+                    <Tag size={15} className="mt-0.5 text-fuchsia-700" aria-hidden="true" />
+                    <div className="min-w-0">
+                      <p className="font-semibold">
+                        Vybraný TIP: {tipContractSelectedTip.productLabel} •{" "}
+                        {tipContractSelectedTip.clientName}
+                      </p>
+                      <p className="mt-0.5 text-fuchsia-900/75">
+                        Vytvořeno {formatTipCreatedAt(tipContractSelectedTip.createdAtMs)}.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -4071,6 +4548,148 @@ export default function CalculatorPage() {
               >
                 Použít
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tipContractTipsModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+            onClick={() => setTipContractTipsModalOpen(false)}
+          />
+          <div className="relative w-full max-w-2xl rounded-3xl border border-slate-300 bg-white p-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-700">
+                  Výběr tipu
+                </p>
+                <h3 className="mt-1 text-xl font-semibold text-slate-950">
+                  Tipy od {currentTipContractUser?.name ?? currentTipContractUser?.email ?? "uživatele"}
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Vyber konkrétní tip, který se má propsat do ukládané smlouvy.
+                </p>
+              </div>
+                <button
+                  type="button"
+                  onClick={() => setTipContractTipsModalOpen(false)}
+                  className="rounded-full border border-slate-300 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
+                  aria-label="Zavřít výběr tipů"
+                >
+                  <X size={16} aria-hidden="true" />
+                </button>
+              </div>
+  
+              {!tipContractTipsLoading && !tipContractTipsError && tipContractTips.length > 0 && (
+                <div className="mt-4 inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                  {TIP_CONTRACT_TIPS_FILTER_OPTIONS.map((option) => {
+                    const active = tipContractTipsFilter === option.key;
+                    return (
+                      <button
+                        key={option.key}
+                        type="button"
+                        onClick={() => setTipContractTipsFilter(option.key)}
+                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                          active
+                            ? "bg-slate-950 text-white shadow-[0_8px_16px_rgba(15,23,42,0.18)]"
+                            : "text-slate-600 hover:bg-white"
+                        }`}
+                      >
+                        {option.label}{" "}
+                        <span className={active ? "text-white/75" : "text-slate-400"}>
+                          ({tipContractTipCounts[option.key]})
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+  
+              <div className="mt-5 max-h-[56vh] space-y-3 overflow-y-auto pr-1">
+                {tipContractTipsLoading ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                    Načítám tipy…
+                  </div>
+                ) : tipContractTipsError ? (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {tipContractTipsError}
+                  </div>
+                ) : tipContractTips.length === 0 ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                    Od tohoto uživatele zatím nemáš žádný přijatý tip.
+                  </div>
+                ) : filteredTipContractTips.length === 0 ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                    V tomto filtru není žádný tip.
+                  </div>
+                  ) : (
+                    filteredTipContractTips.map((tip) => {
+                      const isSelected = tipContractSelectedTip?.id === tip.id;
+                      return (
+                        <button
+                          key={tip.id}
+                          type="button"
+                          onClick={() => selectTipContractTip(tip)}
+                          className={`w-full rounded-2xl border px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(15,23,42,0.12)] ${
+                            isSelected
+                              ? "border-fuchsia-300 bg-fuchsia-50"
+                              : "border-slate-200 bg-white hover:border-slate-300"
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-800">
+                                  <Lightbulb size={13} aria-hidden="true" />
+                                  {tip.productLabel}
+                                </span>
+                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                                  {TIP_CONTRACT_STATUS_LABELS[tip.status]}
+                                </span>
+                              </div>
+                              <h4 className="mt-2 truncate text-lg font-semibold text-slate-950">
+                                {tip.clientName}
+                              </h4>
+                              <div className="mt-2 grid gap-1 text-sm text-slate-600 sm:grid-cols-2">
+                                <span className="inline-flex items-center gap-2">
+                                  <CalendarDays size={15} aria-hidden="true" />
+                                  {formatTipCreatedAt(tip.createdAtMs)}
+                                </span>
+                                {tip.phone && (
+                                  <span className="inline-flex items-center gap-2">
+                                    <UserRound size={15} aria-hidden="true" />
+                                    {tip.phone}
+                                  </span>
+                                )}
+                                {tip.email && (
+                                  <span className="inline-flex items-center gap-2 truncate">
+                                    <Mail size={15} aria-hidden="true" />
+                                    <span className="truncate">{tip.email}</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <span
+                              className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold ${
+                                isSelected
+                                  ? "bg-[linear-gradient(135deg,#d946ef_0%,#9d22c9_100%)] text-white"
+                                  : "border border-slate-300 bg-white text-slate-900"
+                              }`}
+                            >
+                              {isSelected ? (
+                                <CheckCircle2 size={16} aria-hidden="true" />
+                              ) : (
+                                <FileText size={16} aria-hidden="true" />
+                              )}
+                              {isSelected ? "Vybráno" : "Vybrat TIP"}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -4225,6 +4844,35 @@ export default function CalculatorPage() {
             </div>
           )}
         </header>
+        {(isCommissionOnlyMode || tipsterModeEnabled) && (
+          <div className="flex justify-start sm:justify-end">
+            <div className="inline-flex items-center gap-3 rounded-2xl border border-slate-300 bg-white px-3 py-2 shadow-sm">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700">
+                Režim tipařské spolupráce
+              </span>
+              <button
+                type="button"
+                onClick={() => void persistTipsterMode(!tipsterModeEnabled)}
+                disabled={tipsterModeSaving}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  tipsterModeEnabled
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                }`}
+                aria-pressed={tipsterModeEnabled}
+                aria-label="Přepnout režim tipařské spolupráce"
+              >
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    tipsterModeEnabled ? "bg-white" : "bg-slate-400"
+                  }`}
+                  aria-hidden="true"
+                />
+                {tipsterModeSaving ? "Ukládám…" : tipsterModeEnabled ? "ON" : "OFF"}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-6 items-start lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-5 w-full lg:max-w-3xl">

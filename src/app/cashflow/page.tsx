@@ -9,6 +9,7 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "../firebase";
+import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import styles from "../pomucky/pomuckyWallArt.module.css";
 import {
   filterPastItems,
@@ -29,6 +30,18 @@ const cashflowFont = Space_Grotesk({
   weight: ["400", "500", "600", "700"],
 });
 
+type AccountType = "advisor" | "tipster";
+
+const resolveAccountType = (profile: Record<string, unknown> | null | undefined): AccountType => {
+  const raw =
+    typeof profile?.accountType === "string"
+      ? profile.accountType
+      : typeof profile?.userRole === "string"
+        ? profile.userRole
+        : "";
+  return raw.trim().toLowerCase() === "tipster" ? "tipster" : "advisor";
+};
+
 function introDelay(delayMs: number): CSSProperties {
   return {
     ["--cf-delay" as string]: `${delayMs}ms`,
@@ -37,6 +50,8 @@ function introDelay(delayMs: number): CSSProperties {
 
 export default function CashflowPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [profileReady, setProfileReady] = useState(false);
+  const [accountType, setAccountType] = useState<AccountType>("advisor");
   const [showPastYears, setShowPastYears] = useState(false);
   const [selectedItem, setSelectedItem] = useState<CashflowItem | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<MonthGroup | null>(null);
@@ -50,18 +65,47 @@ export default function CashflowPage() {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (!firebaseUser) {
         setUser(null);
+        setProfileReady(true);
+        setAccountType("advisor");
         return;
       }
+      setProfileReady(false);
       setUser(firebaseUser);
     });
 
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    getUserProfileCached(user)
+      .then((payload) => {
+        if (cancelled) return;
+        setAccountType(resolveAccountType(payload.profile));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAccountType("advisor");
+      })
+      .finally(() => {
+        if (!cancelled) setProfileReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const isTipsterMode = accountType === "tipster";
+
   const { loading, cashflowItems, hasTeam } = useCashflowData({
     userEmail: user?.email,
     scopeFilter,
     productFilter,
+    tipsterMode: isTipsterMode,
+    enabled: profileReady && Boolean(user?.email),
   });
 
   const filteredCashflowItems = useMemo(
@@ -110,21 +154,24 @@ export default function CashflowPage() {
               totalCashflow={totalCashflow}
               showPastYears={showPastYears}
               onTogglePastYears={() => setShowPastYears((value) => !value)}
+              tipsterMode={isTipsterMode}
             />
           </div>
 
-          <div className={introStyles.filtersReveal} style={introDelay(170)}>
-            <CashflowFilters
-              hasTeam={hasTeam}
-              scopeFilter={scopeFilter}
-              productFilter={productFilter}
-              onScopeChange={setScopeFilter}
-              onProductChange={setProductFilter}
-            />
-          </div>
+          {!isTipsterMode && (
+            <div className={introStyles.filtersReveal} style={introDelay(170)}>
+              <CashflowFilters
+                hasTeam={hasTeam}
+                scopeFilter={scopeFilter}
+                productFilter={productFilter}
+                onScopeChange={setScopeFilter}
+                onProductChange={setProductFilter}
+              />
+            </div>
+          )}
 
           <div className={introStyles.bodyReveal} style={introDelay(290)}>
-            {loading ? (
+            {loading || !profileReady ? (
               <div className={`${introStyles.loadingShell} rounded-[28px] border border-white/80 px-4 py-5 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:px-6 sm:py-6`}>
                 <span className={introStyles.loadingAuraA} aria-hidden="true" />
                 <span className={introStyles.loadingAuraB} aria-hidden="true" />
@@ -184,7 +231,9 @@ export default function CashflowPage() {
               </div>
             ) : yearGroups.length === 0 ? (
               <p className="rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
-                Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat.
+                {isTipsterMode
+                  ? "Zatím nemáš žádné sjednané tipy, ze kterých by šlo cashflow zobrazit."
+                  : "Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat."}
               </p>
             ) : (
               <CashflowAccordion
@@ -192,6 +241,7 @@ export default function CashflowPage() {
                 expandedYears={expandedYears}
                 onToggleYear={toggleYear}
                 onSelectMonth={setSelectedMonth}
+                tipsterMode={isTipsterMode}
               />
             )}
           </div>
@@ -204,6 +254,7 @@ export default function CashflowPage() {
             setSelectedMonth(null);
             setSelectedItem(item);
           }}
+          tipsterMode={isTipsterMode}
         />
 
         <CashflowItemModal

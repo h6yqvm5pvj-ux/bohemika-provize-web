@@ -6,6 +6,7 @@ export type UserProfileResponse = {
   ok?: boolean;
   hasProfile?: boolean;
   hasTeam?: boolean;
+  hasTipsters?: boolean;
   profile?: Record<string, unknown>;
 };
 

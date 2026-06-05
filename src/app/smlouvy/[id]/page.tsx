@@ -587,6 +587,25 @@ export default function ContractDetailPage() {
       ? `Od uživatele ${tipContractTipsterName || tipContractTipsterEmail} (${tipContractTipsterEmail}).`
       : "Tipař nebyl označen."
     : null;
+  const tipContractSourceTipId =
+    hasTipContract && typeof contract?.tipContractSourceTipId === "string"
+      ? contract.tipContractSourceTipId.trim()
+      : "";
+  const tipContractSourceProductLabel =
+    hasTipContract && typeof contract?.tipContractSourceTipProductLabel === "string"
+      ? contract.tipContractSourceTipProductLabel.trim()
+      : "";
+  const tipContractSourceClientName =
+    hasTipContract && typeof contract?.tipContractSourceTipClientName === "string"
+      ? contract.tipContractSourceTipClientName.trim()
+      : "";
+  const tipContractSourceCreatedAtMs =
+    hasTipContract &&
+    typeof contract?.tipContractSourceTipCreatedAtMs === "number" &&
+    Number.isFinite(contract.tipContractSourceTipCreatedAtMs)
+      ? contract.tipContractSourceTipCreatedAtMs
+      : null;
+  const hasTipContractSource = Boolean(tipContractSourceTipId);
   const tipContractImmediateGross =
     hasTipContract &&
     typeof contract?.tipContractImmediateFirstYearGross === "number" &&
@@ -3611,6 +3630,39 @@ export default function ContractDetailPage() {
 
                           <dd className="mt-2 space-y-2 text-sm text-slate-700">
                             <p className="leading-snug">{tipContractSourceLabel}</p>
+                            {hasTipContractSource && (
+                              <div className="rounded-xl border border-fuchsia-200 bg-white/75 px-3 py-2">
+                                <div className="flex items-start gap-2">
+                                  <Tag
+                                    size={15}
+                                    className="mt-0.5 text-fuchsia-700"
+                                    strokeWidth={2}
+                                    aria-hidden="true"
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-fuchsia-950">
+                                      Vybraný TIP
+                                    </p>
+                                    <p className="mt-0.5 leading-snug text-slate-800">
+                                      {tipContractSourceProductLabel || "Tip"}
+                                      {tipContractSourceClientName
+                                        ? ` • ${tipContractSourceClientName}`
+                                        : ""}
+                                    </p>
+                                    {tipContractSourceCreatedAtMs != null && (
+                                      <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-500">
+                                        <CalendarDays
+                                          size={13}
+                                          strokeWidth={2}
+                                          aria-hidden="true"
+                                        />
+                                        Vytvořeno {formatDate(tipContractSourceCreatedAtMs)}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                             <p className="text-xs text-fuchsia-800/90">
                               Tipař má nárok pouze na podíl z okamžité provize v 1. roce.
                             </p>

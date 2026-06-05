@@ -502,6 +502,7 @@ export default function AresToolPage() {
   const [detailLoadingIco, setDetailLoadingIco] = useState<string | null>(null);
   const [detailErrorByIco, setDetailErrorByIco] = useState<Record<string, string>>({});
   const [showHistoricalStatutarni, setShowHistoricalStatutarni] = useState(false);
+  const [embedMode, setEmbedMode] = useState(false);
   const [statutarniReferenceDate, setStatutarniReferenceDate] = useState<Date>(() => {
     const current = new Date();
     current.setHours(0, 0, 0, 0);
@@ -510,10 +511,28 @@ export default function AresToolPage() {
 
   const primaryInputRef = useRef<HTMLInputElement | null>(null);
   const resultScrollTargetRef = useRef<HTMLDivElement | null>(null);
+  const initialIcoFromUrlRef = useRef("");
+  const initialIcoAutoSearchRef = useRef(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (authUser) => setUser(authUser));
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    setEmbedMode(params.get("embed") === "1");
+
+    const initialIco = normalizeIcoInput(params.get("ico") ?? "");
+    if (!initialIco) return;
+
+    initialIcoFromUrlRef.current = initialIco;
+    setIco(initialIco);
+    setObchodniJmeno("");
+    setObec("");
+    setSearchActivated(true);
   }, []);
 
   useEffect(() => {
@@ -596,6 +615,14 @@ export default function AresToolPage() {
       setLoading(false);
     }
   }, [canSearch, ico, obec, obchodniJmeno, user]);
+
+  useEffect(() => {
+    const initialIco = initialIcoFromUrlRef.current;
+    if (!initialIco || initialIcoAutoSearchRef.current || !user || ico !== initialIco) return;
+
+    initialIcoAutoSearchRef.current = true;
+    void handleSearch();
+  }, [handleSearch, ico, user]);
 
   const handleOpenDetail = useCallback(
     async (entity: AresEntity) => {
@@ -693,10 +720,17 @@ export default function AresToolPage() {
   }, [activeDetail, statutarniReferenceDate]);
   const currentStatutarniCount = currentStatutarniRos.length + statutarniVrByValidity.current.length;
 
-  return (
-    <AppLayout active="tools">
-      <div className="ares-tool-shell mx-auto w-full max-w-6xl space-y-5 pb-10 md:[zoom:0.92] xl:[zoom:0.86]">
-        <section className="ares-reveal px-2 py-10 sm:px-4 sm:py-14" style={revealStyle(20)}>
+  const pageContent = (
+    <>
+      <div
+        className={`ares-tool-shell mx-auto w-full max-w-6xl space-y-5 pb-10 md:[zoom:0.92] xl:[zoom:0.86] ${
+          embedMode ? "px-3 pt-4 sm:px-5" : ""
+        }`}
+      >
+        <section
+          className={`ares-reveal px-2 ${embedMode ? "py-5" : "py-10 sm:px-4 sm:py-14"}`}
+          style={revealStyle(20)}
+        >
           <div className="mx-auto max-w-4xl">
             <div className="text-center">
               <div className="ares-float inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-emerald-700">
@@ -1317,6 +1351,10 @@ export default function AresToolPage() {
           }
         }
       `}</style>
-    </AppLayout>
+    </>
   );
+
+  if (embedMode) return pageContent;
+
+  return <AppLayout active="tools">{pageContent}</AppLayout>;
 }

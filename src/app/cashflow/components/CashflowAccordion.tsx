@@ -10,6 +10,7 @@ type CashflowAccordionProps = {
   expandedYears: Record<number, boolean>;
   onToggleYear: (year: number) => void;
   onSelectMonth: (month: MonthGroup) => void;
+  tipsterMode?: boolean;
 };
 
 type YearVisual = {
@@ -38,11 +39,18 @@ function monthLabelShort(label: string): string {
   return label.replace(/\s+\d{4}$/, "");
 }
 
+function formatItemCount(count: number, singular: string, few: string, many: string): string {
+  if (count === 1) return `1 ${singular}`;
+  if (count >= 2 && count <= 4) return `${count} ${few}`;
+  return `${count} ${many}`;
+}
+
 export function CashflowAccordion({
   yearGroups,
   expandedYears,
   onToggleYear,
   onSelectMonth,
+  tipsterMode = false,
 }: CashflowAccordionProps) {
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -86,7 +94,7 @@ export function CashflowAccordion({
               <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
                 <div className="space-y-3">
                   <span className="inline-flex w-fit items-center rounded-[7px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-3 py-1.5 text-[13px] font-black uppercase leading-none tracking-[0.07em] text-white shadow-[0_10px_20px_rgba(159,72,237,0.4)]">
-                    CASHFLOW
+                    {tipsterMode ? "TIPY" : "CASHFLOW"}
                   </span>
                   <div>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#c8aee4]">
@@ -142,6 +150,9 @@ export function CashflowAccordion({
                       Math.round((month.total / maxMonthTotal) * 100)
                     );
                     const monthLabelOnly = monthLabelShort(month.label);
+                    const itemCountLabel = tipsterMode
+                      ? formatItemCount(month.items.length, "tip", "tipy", "tipů")
+                      : formatItemCount(month.items.length, "smlouva", "smlouvy", "smluv");
 
                     return (
                       <button
@@ -159,10 +170,10 @@ export function CashflowAccordion({
                         <div className="relative z-[1] flex h-full flex-col">
                           <div className="flex items-start justify-between gap-3">
                             <div className="inline-flex w-fit items-center rounded-[9px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-3 py-1.5 text-[11px] font-black uppercase leading-none tracking-[0.07em] text-white shadow-[0_10px_20px_rgba(159,72,237,0.36)]">
-                              CASHFLOW
+                              {tipsterMode ? "TIP provize" : "CASHFLOW"}
                             </div>
                             <div className="rounded-full border border-[#9a67d0]/80 bg-[#2e1c43]/92 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d8bcf3]">
-                              {month.items.length} smluv
+                              {itemCountLabel}
                             </div>
                           </div>
 
@@ -174,7 +185,9 @@ export function CashflowAccordion({
                               {monthLabelOnly}
                             </h3>
                             <p className="mt-1.5 text-sm font-medium text-[#c9a7e7]">
-                              Měsíční výplata podle aktivních smluv
+                              {tipsterMode
+                                ? "Měsíční výplata podle sjednaných tipů"
+                                : "Měsíční výplata podle aktivních smluv"}
                             </p>
                           </div>
 

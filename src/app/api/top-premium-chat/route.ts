@@ -42,6 +42,7 @@ const RAG_MAX_CHUNKS = 6;
 const RAG_MAX_CHUNK_BODY_LEN = 820;
 const RAG_COMPARISON_CHUNK_LIMIT = 420;
 const RAG_COMPARISON_VALUE_PREVIEW = 4;
+const EXTERNAL_SOURCE_HINT_MAX_ITEMS = 3;
 
 const TOP_PREMIUM_SYSTEM_PROMPT = [
   "Jsi Bohemka Asistent, interní AI pomocník pro finanční poradce v ČR.",
@@ -73,6 +74,28 @@ const ADD_CONTRACT_KNOWLEDGE_REPLY = [
   "7) ✅ Klikni na tlačítko „Sepsáno“.",
   "",
   "⚠️ Tohle je správný flow v aktuální webové aplikaci, ne přes samostatné menu „Smlouvy -> Nová smlouva“.",
+].join("\n");
+
+const DOMEX_DISCOUNT_KNOWLEDGE_REPLY = [
+  "✅ Pro slevu DOMEX používej primárně interní návod:",
+  "Pomůcky -> Dokumenty -> Majetek -> Přímá sleva DOMEX.",
+  "",
+  "Podmínky pro přidělení slevy:",
+  "1) Dodržení minimálního celkového pojistného před slevami.",
+  "2) Povolení marketingu (i toho ostatního).",
+  "3) Nastavení automatické valorizace (neplatí u PS, kde je pojištění bytu na cenu obvyklou).",
+  "4) U přesjednání smluv ČPP navýšení skutečně placeného ročního pojistného po slevě min. o 2 000 Kč.",
+  "",
+  "Minimální pojistné před slevami (DOMEX):",
+  "- 12 000 Kč -> sleva 50 %",
+  "- 9 000 Kč -> sleva 45 %",
+  "- 8 000 Kč -> sleva 40 %",
+  "- 7 000 Kč -> sleva 35 %",
+  "- 5 000 Kč -> sleva 30 %",
+  "",
+  "Postup žádosti:",
+  "- Stáhni PDF návrhu smlouvy (nesmí být zaškrtnuta žádná sleva).",
+  "- Odešli ji mailem na marcela.hofmanova@bohemika.eu.",
 ].join("\n");
 
 type WebsiteFeature = {
@@ -402,6 +425,14 @@ type PreparedRagChunk = RagChunk & {
   tokens: string[];
 };
 
+type ExternalSourceHint = {
+  id: string;
+  title: string;
+  url: string;
+  summary: string;
+  keywords: string[];
+};
+
 type ComparisonProduct = {
   id: string;
   insurer: string;
@@ -484,6 +515,39 @@ const WEB_SEARCH_PATTERNS = [
   /\burok/i,
   /\bsazb/i,
 ] as const;
+
+const EXTERNAL_SOURCE_HINTS: ExternalSourceHint[] = [
+  {
+    id: "cpp",
+    title: "ČPP (Česká podnikatelská pojišťovna)",
+    url: "https://www.cpp.cz/",
+    summary:
+      "Oficiální web ČPP pro produktové informace, dokumenty, pojistné podmínky a aktuální podklady.",
+    keywords: [
+      "cpp",
+      "čpp",
+      "ceska podnikatelska pojistovna",
+      "ceska podnikatelska pojistovna as",
+      "pojisteni cpp",
+      "cpp pojisteni",
+    ],
+  },
+  {
+    id: "kooperativa",
+    title: "Kooperativa pojišťovna",
+    url: "https://www.koop.cz/",
+    summary:
+      "Oficiální web Kooperativy pro produktové informace, dokumenty, pojistné podmínky a aktuální podklady.",
+    keywords: [
+      "kooperativa",
+      "koop",
+      "koop.cz",
+      "kooperativa pojistovna",
+      "pojisteni kooperativa",
+      "kooperativa pojisteni",
+    ],
+  },
+];
 
 const HARD_BLOCK_SENSITIVE_RULES: SensitiveBlockRule[] = [
   {
@@ -855,6 +919,58 @@ function buildRagContextBlock(prompt: string, history: TopPremiumChatHistoryMess
   return ["RAG kontext (interní podklady, bez smluv):", ...lines].join("\n");
 }
 
+function scoreExternalSourceHint(haystack: string, source: ExternalSourceHint): number {
+  let score = 0;
+
+  for (const keyword of source.keywords) {
+    const normalizedKeyword = normalizeForPolicy(keyword);
+    if (!normalizedKeyword) continue;
+    if (haystack.includes(normalizedKeyword)) {
+      score += normalizedKeyword.includes(" ") ? 3 : 2;
+    }
+  }
+
+  const sourceTitle = normalizeForPolicy(source.title);
+  if (sourceTitle && haystack.includes(sourceTitle)) score += 4;
+
+  return score;
+}
+
+function selectExternalSourceHints(
+  prompt: string,
+  history: TopPremiumChatHistoryMessage[]
+): ExternalSourceHint[] {
+  const historyText = history.map((item) => item.content).join(" ");
+  const haystack = normalizeForPolicy(`${historyText} ${prompt}`);
+
+  return EXTERNAL_SOURCE_HINTS.map((source) => ({
+    source,
+    score: scoreExternalSourceHint(haystack, source),
+  }))
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, EXTERNAL_SOURCE_HINT_MAX_ITEMS)
+    .map((row) => row.source);
+}
+
+function buildExternalSourceContextBlock(
+  prompt: string,
+  history: TopPremiumChatHistoryMessage[]
+): string {
+  const selected = selectExternalSourceHints(prompt, history);
+  if (selected.length === 0) return "";
+
+  const lines = selected.map(
+    (source, index) => `${index + 1}) ${source.title}: ${source.url} — ${source.summary}`
+  );
+
+  return [
+    "Preferované externí zdroje (pokud je potřeba dohledat aktuální info):",
+    ...lines,
+    "Při relevantním dotazu preferuj tyto oficiální zdroje před obecnými agregátory.",
+  ].join("\n");
+}
+
 function detectHardBlockedSensitiveInput(value: string): string | null {
   const raw = value.trim();
   if (!raw) return null;
@@ -1147,6 +1263,13 @@ function asksHowToAddContract(prompt: string): boolean {
   return addContractPatterns.some((pattern) => pattern.test(normalized));
 }
 
+function asksDomexDiscount(prompt: string): boolean {
+  const normalized = normalizeForPolicy(prompt);
+  const domexMention = /\bdomex\b/.test(normalized);
+  if (!domexMention) return false;
+  return /\b(sleva|slevu|slevy|prim[aá] sleva|ziskat slevu|jak ziskat)\b/.test(normalized);
+}
+
 function tokenizeNormalized(value: string): string[] {
   return normalizeForPolicy(value)
     .split(/[^a-z0-9/]+/)
@@ -1282,7 +1405,8 @@ function buildFeatureHowToReply(
 function buildUpstreamPrompt(
   prompt: string,
   history: TopPremiumChatHistoryMessage[],
-  useWebSearch: boolean
+  useWebSearch: boolean,
+  externalSourceContext: string
 ): string {
   const trimmedPrompt = prompt.trim();
   const sanitizedPrompt = redactSensitiveText(trimmedPrompt).slice(0, MAX_UPSTREAM_MESSAGE_LEN);
@@ -1305,6 +1429,7 @@ function buildUpstreamPrompt(
       "",
       `Datum: ${today}.`,
       webModeInstruction,
+      ...(externalSourceContext ? ["", externalSourceContext] : []),
       "",
       ragContext,
       "",
@@ -1318,6 +1443,7 @@ function buildUpstreamPrompt(
     "",
     `Datum: ${today}.`,
     webModeInstruction,
+    ...(externalSourceContext ? ["", externalSourceContext] : []),
     "",
     ragContext,
     "",
@@ -1376,6 +1502,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (asksDomexDiscount(payload.prompt)) {
+    return withRateLimitHeaders(
+      NextResponse.json({
+        ok: true,
+        reply: DOMEX_DISCOUNT_KNOWLEDGE_REPLY,
+      }),
+      ctx
+    );
+  }
+
   if (asksCapabilities(payload.prompt)) {
     return withRateLimitHeaders(
       NextResponse.json({
@@ -1422,6 +1558,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const externalSourceContext = buildExternalSourceContextBlock(
+    payload.prompt,
+    payload.history
+  );
+
   const useWebSearch = shouldUseWebSearch(payload.prompt, payload.history);
   const controller = new AbortController();
   const timeout = setTimeout(
@@ -1430,7 +1571,12 @@ export async function POST(req: NextRequest) {
   );
 
   try {
-    const aiPrompt = buildUpstreamPrompt(payload.prompt, payload.history, useWebSearch);
+    const aiPrompt = buildUpstreamPrompt(
+      payload.prompt,
+      payload.history,
+      useWebSearch,
+      externalSourceContext
+    );
 
     if (!OPENAI_API_KEY) {
       return withRateLimitHeaders(

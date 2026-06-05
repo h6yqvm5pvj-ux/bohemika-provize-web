@@ -20,6 +20,7 @@ import {
   CalendarDays,
   FileText,
   Home,
+  Lightbulb,
   Settings,
   ShieldCheck,
   UsersRound,
@@ -48,6 +49,7 @@ type ActivePage =
   | "cashflow"
   | "team"
   | "tools"
+  | "tips"
   | "settings"
   | "admin";
 
@@ -58,6 +60,17 @@ interface AppLayoutProps {
 
 type SubscriptionAccessUiState = "none" | "active" | "grace" | "blocked";
 type SubscriptionBlockReason = "none" | "unpaid" | "expired";
+type AccountType = "advisor" | "tipster";
+
+const resolveAccountType = (data: Record<string, unknown>): AccountType => {
+  const raw =
+    typeof data.accountType === "string"
+      ? data.accountType
+      : typeof data.userRole === "string"
+        ? data.userRole
+        : "";
+  return raw.trim().toLowerCase() === "tipster" ? "tipster" : "advisor";
+};
 
 const hasCareerTimelineConfigured = (data: Record<string, unknown>): boolean => {
   const raw = data.positionTimeline;
@@ -85,6 +98,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  const isTipsRoute = pathname === "/tipy" || pathname.startsWith("/tipy/");
+  const isCashflowRoute = pathname === "/cashflow";
+  const isTipsterAllowedRoute = pathname === "/" || isTipsRoute || isCashflowRoute;
   const showToolsBackToIndex = active === "tools" && pathname !== "/pomucky";
   const toolsBackButtonRightAligned = pathname === "/pomucky/invalidita";
   const contentOverflowClass =
@@ -93,6 +109,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const isFullBleedPage =
     pathname?.startsWith("/pomucky/zlato") ||
     pathname === "/" ||
+    isTipsRoute ||
     pathname === "/kalkulacka" ||
     pathname === "/nastaveni" ||
     pathname === "/smlouvy";
@@ -107,6 +124,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [authReady, setAuthReady] = useState(false);
   const [needsCareerTimelineSetup, setNeedsCareerTimelineSetup] = useState(false);
   const [showCareerTimelinePrompt, setShowCareerTimelinePrompt] = useState(false);
+  const [accountType, setAccountType] = useState<AccountType>("advisor");
   const [hasTeam, setHasTeam] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     const cached = window.sessionStorage.getItem("app.hasTeam");
@@ -114,6 +132,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     if (cached === "1") return true;
     return true; // defaultně ukážeme, ať nebliká
   });
+  const [hasTipsters, setHasTipsters] = useState(false);
 
   // Auth listener
   useEffect(() => {
@@ -128,7 +147,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setLoadingProfile(false);
       setNeedsCareerTimelineSetup(false);
       setShowCareerTimelinePrompt(false);
+      setAccountType("advisor");
       setHasTeam(false);
+      setHasTipsters(false);
       setAuthReady(true);
     }, 5000);
 
@@ -143,7 +164,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         setLoadingProfile(false);
         setNeedsCareerTimelineSetup(false);
         setShowCareerTimelinePrompt(false);
+        setAccountType("advisor");
         setHasTeam(false);
+        setHasTipsters(false);
       } else {
         setLoadingProfile(true);
       }
@@ -265,7 +288,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     currentUser: FirebaseUser
   ) => {
     const data = (payload?.profile ?? {}) as Record<string, unknown>;
+    const nextAccountType = resolveAccountType(data);
     const evaluation = evaluateSubscriptionFromProfile(data);
+    setAccountType(nextAccountType);
     setSubscriptionEvaluation(evaluation);
     setSubscriptionAccessState(
       evaluation.state === "blocked" ? "blocked" : evaluation.state
@@ -277,9 +302,13 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           ? "expired"
           : "none"
     );
-    setNeedsCareerTimelineSetup(!hasCareerTimelineConfigured(data));
+    setNeedsCareerTimelineSetup(
+      nextAccountType !== "tipster" && !hasCareerTimelineConfigured(data)
+    );
     const has = payload?.hasTeam === true;
+    const hasTipsterAccounts = payload?.hasTipsters === true;
     setHasTeam(has);
+    setHasTipsters(hasTipsterAccounts);
     if (typeof window !== "undefined" && currentUser.email) {
       const cacheKey = `app.hasTeam:${currentUser.email.toLowerCase()}`;
       window.sessionStorage.setItem(cacheKey, has ? "1" : "0");
@@ -297,7 +326,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setSubscriptionEvaluation(null);
       setNeedsCareerTimelineSetup(false);
       setLoadingProfile(false);
+      setAccountType("advisor");
       setHasTeam(false);
+      setHasTipsters(false);
       return;
     }
 
@@ -327,7 +358,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setSubscriptionBlockReason("none");
       setSubscriptionEvaluation(null);
       setNeedsCareerTimelineSetup(false);
+      setAccountType("advisor");
       setHasTeam(false);
+      setHasTipsters(false);
     } finally {
       setLoadingProfile(false);
     }
@@ -365,6 +398,13 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     }
     setShowCareerTimelinePrompt(true);
   }, [user, loadingProfile, subscriptionAccessState, needsCareerTimelineSetup, pathname]);
+
+  useEffect(() => {
+    if (!user || loadingProfile || accountType !== "tipster") return;
+    if (!isTipsterAllowedRoute) {
+      router.replace("/");
+    }
+  }, [accountType, isTipsterAllowedRoute, loadingProfile, router, user]);
 
   const handleCareerTimelineSetup = () => {
     setShowCareerTimelinePrompt(false);
@@ -447,6 +487,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     label: string;
     icon: LucideIcon;
     requiresTeam?: boolean;
+    requiresTipsters?: boolean;
     requiresAdmin?: boolean;
   }[] = [
     { key: "home", href: "/", label: "Domů", icon: Home },
@@ -464,6 +505,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     },
     { key: "calc", href: "/kalkulacka", label: "Kalkulačka", icon: Calculator },
     { key: "contracts", href: "/smlouvy", label: "Smlouvy", icon: FileText },
+    { key: "tips", href: "/tipy", label: "Tipy", icon: Lightbulb, requiresTipsters: true },
     {
       key: "cashflow",
       href: "/cashflow",
@@ -479,6 +521,22 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       requiresAdmin: true,
     },
     { key: "settings", href: "/nastaveni", label: "Nastavení", icon: Settings },
+  ];
+
+  const tipsterNavItems: {
+    key: ActivePage;
+    href: string;
+    label: string;
+    icon: LucideIcon;
+  }[] = [
+    { key: "home", href: "/", label: "Domů", icon: Home },
+    { key: "tips", href: "/tipy", label: "Tipy", icon: Lightbulb },
+    {
+      key: "cashflow",
+      href: "/cashflow",
+      label: "Provizní kalendář",
+      icon: CalendarDays,
+    },
   ];
 
   const renderNavIcon = (Icon: LucideIcon, isActive: boolean) => (
@@ -497,12 +555,17 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     </span>
   );
 
+  const isTipsterAccount = accountType === "tipster";
+  const activeNavItems = isTipsterAccount ? tipsterNavItems : navItems;
   const showPaywall =
     !!user &&
+    !isTipsterAccount &&
     subscriptionAccessState === "blocked" &&
     !loadingProfile;
+  const tipsterRestrictedRoute = isTipsterAccount && !isTipsterAllowedRoute;
   const timelineSetupGateActive =
     !!user &&
+    !isTipsterAccount &&
     !loadingProfile &&
     subscriptionAccessState !== "blocked" &&
     needsCareerTimelineSetup;
@@ -579,9 +642,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           </div>
 
           <nav className="flex-1 space-y-2 px-3 py-5 text-base">
-            {navItems.map((item) => {
-              if (item.requiresTeam && !hasTeam) return null;
-              if (item.requiresAdmin && !isAdminRequestsUser) return null;
+            {activeNavItems.map((item) => {
+              if ("requiresTeam" in item && item.requiresTeam && !hasTeam) return null;
+              if ("requiresTipsters" in item && item.requiresTipsters && !hasTipsters) return null;
+              if ("requiresAdmin" in item && item.requiresAdmin && !isAdminRequestsUser) return null;
               const isActive = active === item.key;
               const navDisabled = timelineSetupGateActive && item.key !== "settings";
               return (
@@ -720,9 +784,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 </div>
 
                 <nav className="space-y-2">
-                  {navItems.map((item) => {
-                    if (item.requiresTeam && !hasTeam) return null;
-                    if (item.requiresAdmin && !isAdminRequestsUser) return null;
+                  {activeNavItems.map((item) => {
+                    if ("requiresTeam" in item && item.requiresTeam && !hasTeam) return null;
+                    if ("requiresTipsters" in item && item.requiresTipsters && !hasTipsters) return null;
+                    if ("requiresAdmin" in item && item.requiresAdmin && !isAdminRequestsUser) return null;
                     const isActive = active === item.key;
                     const navDisabled = timelineSetupGateActive && item.key !== "settings";
                     return (
@@ -883,6 +948,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                       602 127 638
                     </a>
                   </p>
+                </div>
+              </div>
+            ) : tipsterRestrictedRoute ? (
+              <div className="flex w-full min-h-[70vh] items-center justify-center">
+                <div className="text-sm font-medium text-slate-700">
+                  Přesměrovávám na domovskou stránku…
                 </div>
               </div>
             ) : (

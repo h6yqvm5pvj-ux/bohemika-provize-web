@@ -31,6 +31,7 @@ import {
   formatDateTime,
   formatFileSize,
   isSentMailboxItem,
+  isTipsterTipMailboxItem,
   nameFromEmail,
   normalizeEmail,
   parseMailboxAttachments,
@@ -82,6 +83,7 @@ export default function PostaPage() {
   const [composeMessageText, setComposeMessageText] = useState("");
   const [composeFiles, setComposeFiles] = useState<File[]>([]);
   const [quickReplyText, setQuickReplyText] = useState("");
+  const [quickReplyOpen, setQuickReplyOpen] = useState(false);
   const [quickReplySubmitting, setQuickReplySubmitting] = useState(false);
   const [quickReplyErrorText, setQuickReplyErrorText] = useState<string | null>(null);
   const [quickReplySuccessText, setQuickReplySuccessText] = useState<string | null>(null);
@@ -259,6 +261,7 @@ export default function PostaPage() {
     setSharedExportPreviewHtml(null);
     setSharedExportPreviewLoading(false);
     setQuickReplyText("");
+    setQuickReplyOpen(false);
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
     setQuickReplySubmitting(false);
@@ -464,6 +467,7 @@ export default function PostaPage() {
         body: formData,
       });
       setQuickReplyText("");
+      setQuickReplyOpen(false);
       setQuickReplySuccessText(`Odpověď byla odeslána uživateli ${quickReplyRecipient.name}.`);
       await loadMailbox();
     } catch (err: any) {
@@ -528,6 +532,10 @@ export default function PostaPage() {
     if (!item.read) {
       await markItemsRead([item.id]);
     }
+    setQuickReplyOpen(false);
+    setQuickReplyText("");
+    setQuickReplyErrorText(null);
+    setQuickReplySuccessText(null);
     if (item.type === "direct_message") {
       setSharedExportPreviewHtml(null);
       setSharedExportPreviewLoading(false);
@@ -868,6 +876,7 @@ export default function PostaPage() {
               <div className="space-y-3">
                 {visibleItems.map((item, index) => {
                   const isSent = isSentMailboxItem(item);
+                  const isTipsterTip = isTipsterTipMailboxItem(item);
                   const sentTo = isSent ? sentRecipientText(item) : "";
                   const deleting = deletingIds.includes(item.id);
                   const attachments = item.type === "direct_message" ? parseMailboxAttachments(item) : [];
@@ -876,7 +885,9 @@ export default function PostaPage() {
                     <div
                       key={item.id}
                       className={`${styles.mailCard} group relative w-full overflow-hidden rounded-[24px] border p-4 text-left shadow-[0_12px_30px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 ${
-                        item.read
+                        isTipsterTip
+                          ? "border-violet-200/90 bg-violet-50/88 hover:border-violet-300"
+                          : item.read
                           ? "border-slate-200/85 bg-white/92 hover:border-slate-300"
                           : "border-sky-200/90 bg-sky-50/88 hover:border-sky-300"
                       }`}
@@ -884,7 +895,11 @@ export default function PostaPage() {
                     >
                       <span
                         className={`absolute inset-y-0 left-0 w-1.5 ${
-                          item.read ? "bg-slate-200" : "bg-[linear-gradient(180deg,#0ea5e9_0%,#22c55e_100%)]"
+                          isTipsterTip
+                            ? "bg-[linear-gradient(180deg,#8b5cf6_0%,#c084fc_100%)]"
+                            : item.read
+                            ? "bg-slate-200"
+                            : "bg-[linear-gradient(180deg,#0ea5e9_0%,#22c55e_100%)]"
                         }`}
                         aria-hidden="true"
                       />
@@ -915,7 +930,7 @@ export default function PostaPage() {
                             ) : null}
                             <span
                               className={`inline-block h-2.5 w-2.5 rounded-full ${
-                                item.read ? "bg-slate-300" : "bg-sky-500"
+                                isTipsterTip ? "bg-violet-500" : item.read ? "bg-slate-300" : "bg-sky-500"
                               }`}
                             />
                             <p className="truncate text-sm font-semibold text-slate-900 sm:text-base">
@@ -924,6 +939,11 @@ export default function PostaPage() {
                             {isSent && (
                               <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-indigo-700">
                                 Odeslané
+                              </span>
+                            )}
+                            {isTipsterTip && (
+                              <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-violet-700">
+                                TIP
                               </span>
                             )}
                           </div>
@@ -1249,17 +1269,13 @@ export default function PostaPage() {
                   </button>
                 </div>
 
-                <div
-                  className={`bg-[#d3dae5] p-0 ${
-                    quickReplyEnabled ? "flex h-[84vh] min-h-[640px] flex-col" : "h-[78vh] min-h-[560px]"
-                  }`}
-                >
+                <div className="relative flex h-[84vh] min-h-[640px] flex-col bg-[#d3dae5] p-0">
                   {previewItem.type === "production_export_share" && sharedExportPreviewLoading ? (
                     <div className="grid h-full place-items-center text-sm font-medium text-slate-700">
                       Načítám přesný náhled exportu…
                     </div>
                   ) : (
-                    <div className={quickReplyEnabled ? "min-h-0 flex-1" : "h-full"}>
+                    <div className="min-h-0 flex-1">
                       <iframe
                         srcDoc={mailboxPreviewHtml}
                         title={
@@ -1277,76 +1293,112 @@ export default function PostaPage() {
                   )}
 
                   {quickReplyEnabled && quickReplyRecipient ? (
-                    <div className="border-t border-[#bcc9dc] bg-white/85 px-4 py-3 sm:px-5">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-700">
-                          Rychlá odpověď
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          {quickReplyText.length}/{COMPOSE_MESSAGE_MAX_LEN}
-                        </p>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-600">
-                        Odpověď odejde uživateli{" "}
-                        <span className="font-semibold text-slate-800">{quickReplyRecipient.name}</span>
-                        <span className="text-slate-500"> ({quickReplyRecipient.email})</span>.
-                      </p>
+                    quickReplyOpen ? (
+                      <div className="border-t border-[#bcc9dc] bg-white/92 px-4 py-3 shadow-[0_-14px_30px_rgba(15,23,42,0.10)] sm:px-5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-700">
+                              Rychlá odpověď
+                            </p>
+                            <p className="mt-1 text-xs text-slate-600">
+                              Odpověď odejde uživateli{" "}
+                              <span className="font-semibold text-slate-800">{quickReplyRecipient.name}</span>
+                              <span className="text-slate-500"> ({quickReplyRecipient.email})</span>.
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-[11px] text-slate-500">
+                              {quickReplyText.length}/{COMPOSE_MESSAGE_MAX_LEN}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setQuickReplyOpen(false)}
+                              disabled={quickReplySubmitting}
+                              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              Skrýt
+                            </button>
+                          </div>
+                        </div>
 
-                      <textarea
-                        value={quickReplyText}
-                        onChange={(event) => {
-                          setQuickReplyText(event.target.value);
-                          if (quickReplyErrorText) setQuickReplyErrorText(null);
-                          if (quickReplySuccessText) setQuickReplySuccessText(null);
-                        }}
-                        placeholder="Napiš rychlou odpověď…"
-                        maxLength={COMPOSE_MESSAGE_MAX_LEN}
-                        rows={3}
-                        className="mt-2 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200"
-                      />
+                        <textarea
+                          value={quickReplyText}
+                          onChange={(event) => {
+                            setQuickReplyText(event.target.value);
+                            if (quickReplyErrorText) setQuickReplyErrorText(null);
+                            if (quickReplySuccessText) setQuickReplySuccessText(null);
+                          }}
+                          placeholder="Napiš rychlou odpověď…"
+                          maxLength={COMPOSE_MESSAGE_MAX_LEN}
+                          rows={2}
+                          className="mt-2 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200"
+                        />
 
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        {QUICK_EMOJIS.map((emoji) => (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {QUICK_EMOJIS.map((emoji) => (
+                            <button
+                              key={`quick-reply-emoji-${emoji}`}
+                              type="button"
+                              onClick={() => appendQuickReplyEmoji(emoji)}
+                              disabled={quickReplySubmitting}
+                              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-55"
+                              aria-label={`Vložit emoji ${emoji}`}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+
+                        {quickReplyErrorText ? (
+                          <p className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                            {quickReplyErrorText}
+                          </p>
+                        ) : null}
+                        {quickReplySuccessText ? (
+                          <p className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                            {quickReplySuccessText}
+                          </p>
+                        ) : null}
+
+                        <div className="mt-3 flex justify-end">
                           <button
-                            key={`quick-reply-emoji-${emoji}`}
                             type="button"
-                            onClick={() => appendQuickReplyEmoji(emoji)}
-                            disabled={quickReplySubmitting}
-                            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-55"
-                            aria-label={`Vložit emoji ${emoji}`}
+                            onClick={() => void handleQuickReplySend()}
+                            disabled={quickReplySubmitting || quickReplyText.trim().length === 0}
+                            className="inline-flex items-center gap-2 rounded-xl border border-emerald-700/70 bg-[linear-gradient(135deg,#16a34a_0%,#1d4ed8_100%)] px-4 py-2 text-sm font-semibold text-zinc-50 shadow-[0_12px_30px_rgba(5,150,105,0.28)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {emoji}
+                            {quickReplySubmitting ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Send className="h-4 w-4" />
+                            )}
+                            {quickReplySubmitting ? "Odesílám…" : "Odeslat odpověď"}
                           </button>
-                        ))}
+                        </div>
                       </div>
-
-                      {quickReplyErrorText ? (
-                        <p className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                          {quickReplyErrorText}
-                        </p>
-                      ) : null}
-                      {quickReplySuccessText ? (
-                        <p className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                          {quickReplySuccessText}
-                        </p>
-                      ) : null}
-
-                      <div className="mt-3 flex justify-end">
+                    ) : (
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-wrap items-end justify-between gap-3 bg-[linear-gradient(0deg,rgba(15,23,42,0.22)_0%,rgba(15,23,42,0.08)_46%,rgba(15,23,42,0)_100%)] px-4 pb-4 pt-12 sm:px-5">
+                        <div className="min-w-0">
+                          {quickReplySuccessText ? (
+                            <p className="pointer-events-auto rounded-full border border-emerald-200 bg-white/95 px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-[0_10px_24px_rgba(15,23,42,0.18)]">
+                              {quickReplySuccessText}
+                            </p>
+                          ) : null}
+                        </div>
                         <button
                           type="button"
-                          onClick={() => void handleQuickReplySend()}
-                          disabled={quickReplySubmitting || quickReplyText.trim().length === 0}
-                          className="inline-flex items-center gap-2 rounded-xl border border-emerald-700/70 bg-[linear-gradient(135deg,#16a34a_0%,#1d4ed8_100%)] px-4 py-2 text-sm font-semibold text-zinc-50 shadow-[0_12px_30px_rgba(5,150,105,0.28)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => {
+                            setQuickReplyOpen(true);
+                            setQuickReplySuccessText(null);
+                          }}
+                          className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/40 bg-[linear-gradient(135deg,#7c3aed_0%,#2563eb_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(49,46,129,0.32)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_40px_rgba(49,46,129,0.40)]"
                         >
-                          {quickReplySubmitting ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Send className="h-4 w-4" />
-                          )}
-                          {quickReplySubmitting ? "Odesílám…" : "Odeslat odpověď"}
+                          <SquarePen className="h-4 w-4" />
+                          Rychlá odpověď
                         </button>
                       </div>
-                    </div>
+                    )
                   ) : null}
                 </div>
               </section>

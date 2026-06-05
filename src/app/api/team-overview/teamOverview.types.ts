@@ -1,11 +1,16 @@
 import type { CommissionMode, Position } from "@/app/types/domain";
 
+export type AccountType = "advisor" | "tipster";
+
 export type TeamMember = {
   email: string;
   name: string;
+  accountType: AccountType;
   position: Position | null;
   commissionMode: CommissionMode | null;
   managerEmail: string | null;
+  tipRecipientEmail: string | null;
+  teamParentEmail: string | null;
   docId: string;
   lastActiveTs: number | null;
   adminFunction: boolean;
@@ -35,6 +40,12 @@ export type ContractStats = {
   institutionByCategory: Record<Category, Record<string, AggregateMetrics>>;
 };
 
+export type TipStats = {
+  total: number;
+  month: number;
+  contracted: number;
+};
+
 export type TeamOverviewSuccess = {
   ok: true;
   position: Position | null;
@@ -42,13 +53,17 @@ export type TeamOverviewSuccess = {
   members: Array<{
     email: string;
     name: string;
+    accountType: AccountType;
     position: Position | null;
     commissionMode: CommissionMode | null;
     managerEmail: string | null;
+    tipRecipientEmail: string | null;
+    teamParentEmail: string | null;
     docId: string;
   }>;
   lastActive: Record<string, number | null>;
   contractCounts: Record<string, ContractStats>;
+  tipCounts: Record<string, TipStats>;
 };
 
 export type TeamOverviewError = {
