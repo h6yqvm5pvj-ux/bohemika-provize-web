@@ -62,7 +62,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, alreadyVerified: true });
     }
 
-    const rateLimitResult = consumeRateLimit({
+    const rateLimitResult = await consumeRateLimit({
       namespace: "api:email-verification-link:post",
       key: email,
       limit: EMAIL_VERIFICATION_RATE_LIMIT,

@@ -92,7 +92,7 @@ function buildLockedResponse(bucket: LoginAttemptBucket, nowMs: number) {
 }
 
 export async function POST(req: Request) {
-  const endpointLimit = consumeRateLimit({
+  const endpointLimit = await consumeRateLimit({
     namespace: "api:auth:login-attempts",
     key: getRequestIp(req),
     limit: ENDPOINT_RATE_LIMIT,

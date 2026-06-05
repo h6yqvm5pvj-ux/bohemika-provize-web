@@ -8,6 +8,7 @@ import {
   applyRateLimitHeaders,
   consumeRateLimit,
   getRequestIp,
+  type RateLimitResult,
 } from "@/lib/server/rateLimit";
 
 export const runtime = "nodejs";
@@ -98,7 +99,7 @@ const normalizeSlug = (value: unknown): string => {
   return ascii.slice(0, 64);
 };
 
-function withRateHeaders(res: NextResponse, rateLimit: ReturnType<typeof consumeRateLimit>) {
+function withRateHeaders(res: NextResponse, rateLimit: RateLimitResult) {
   applyRateLimitHeaders(res.headers, rateLimit);
   return res;
 }
@@ -239,7 +240,7 @@ async function sendPushNotification({
 
 export async function POST(req: NextRequest) {
   const ip = getRequestIp(req);
-  const rateLimit = consumeRateLimit({
+  const rateLimit = await consumeRateLimit({
     namespace: "api:online-card:meeting-request:post",
     key: ip,
     limit: REQUEST_RATE_LIMIT,

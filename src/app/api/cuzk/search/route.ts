@@ -892,7 +892,7 @@ export async function GET(req: NextRequest) {
   try {
     authContext = await getAuthContext(req);
 
-    const rateLimitResult = consumeRateLimit({
+    const rateLimitResult = await consumeRateLimit({
       namespace: "api:cuzk:search:get",
       key: authContext.uid || authContext.email,
       limit: RATE_LIMIT_MAX,

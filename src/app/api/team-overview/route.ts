@@ -2296,7 +2296,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const email = await getAuthEmail(req);
-    const rateLimitResult = consumeRateLimit({
+    const rateLimitResult = await consumeRateLimit({
       namespace: "api:team-overview:patch",
       key: email,
       limit: TEAM_OVERVIEW_PATCH_RATE_LIMIT,
@@ -2532,7 +2532,7 @@ export async function GET(req: NextRequest) {
   try {
     const email = await getAuthEmail(req);
 
-    const rateLimitResult = consumeRateLimit({
+    const rateLimitResult = await consumeRateLimit({
       namespace: "api:team-overview:get",
       key: email,
       limit: TEAM_OVERVIEW_RATE_LIMIT,

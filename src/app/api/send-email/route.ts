@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "User e-mail missing in token" }, { status: 401 });
     }
 
-    const rateLimitResult = consumeRateLimit({
+    const rateLimitResult = await consumeRateLimit({
       namespace: "api:send-email:post",
       key: senderEmail,
       limit: SEND_EMAIL_RATE_LIMIT,

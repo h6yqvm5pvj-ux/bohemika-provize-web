@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth } from "@/lib/server/firebaseAdmin";
+import {
+  applyRateLimitHeaders,
+  consumeRateLimit as consumeSharedRateLimit,
+} from "@/lib/server/rateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,13 +18,6 @@ const VIN_RE = /^[A-HJ-NPR-Z0-9]{11,25}$/;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 40;
 
-type RateBucket = {
-  count: number;
-  resetAtMs: number;
-};
-
-const rateBuckets = new Map<string, RateBucket>();
-
 function getBearerToken(req: NextRequest): string {
   const authHeader = req.headers.get("authorization") ?? "";
   if (!authHeader.toLowerCase().startsWith("bearer ")) return "";
@@ -30,40 +27,6 @@ function getBearerToken(req: NextRequest): string {
 function normalizeVin(value: string | null): string {
   if (!value) return "";
   return value.trim().toUpperCase().replace(/\s+/g, "");
-}
-
-function cleanupRateBuckets(nowMs: number): void {
-  if (rateBuckets.size < 1000) return;
-  for (const [key, bucket] of rateBuckets.entries()) {
-    if (nowMs >= bucket.resetAtMs) {
-      rateBuckets.delete(key);
-    }
-  }
-}
-
-function consumeRateLimit(key: string): { allowed: true } | { allowed: false; retryAfterSec: number } {
-  const nowMs = Date.now();
-  cleanupRateBuckets(nowMs);
-
-  const existing = rateBuckets.get(key);
-  if (!existing || nowMs >= existing.resetAtMs) {
-    rateBuckets.set(key, {
-      count: 1,
-      resetAtMs: nowMs + RATE_LIMIT_WINDOW_MS,
-    });
-    return { allowed: true };
-  }
-
-  if (existing.count >= RATE_LIMIT_MAX_REQUESTS) {
-    return {
-      allowed: false,
-      retryAfterSec: Math.max(1, Math.ceil((existing.resetAtMs - nowMs) / 1000)),
-    };
-  }
-
-  existing.count += 1;
-  rateBuckets.set(key, existing);
-  return { allowed: true };
 }
 
 function readErrorMessage(payload: unknown): string | null {
@@ -111,17 +74,19 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const rate = consumeRateLimit(decoded.uid);
+  const rate = await consumeSharedRateLimit({
+    namespace: "api:rsv:vehicle:get",
+    key: decoded.uid,
+    limit: RATE_LIMIT_MAX_REQUESTS,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+  });
   if (!rate.allowed) {
-    return NextResponse.json(
+    const response = NextResponse.json(
       { ok: false, error: "Příliš mnoho požadavků. Zkus to znovu za chvíli." },
-      {
-        status: 429,
-        headers: {
-          "Retry-After": String(rate.retryAfterSec),
-        },
-      }
+      { status: 429 }
     );
+    applyRateLimitHeaders(response.headers, rate);
+    return response;
   }
 
   const vin = normalizeVin(new URL(req.url).searchParams.get("vin"));

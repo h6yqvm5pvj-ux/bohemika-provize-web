@@ -221,13 +221,30 @@
 
 @media (prefers-reduced-motion: reduce) {
   .orb,
-  .wallCard,
   .modalBackdrop,
   .modalPanel {
+    animation: none;
+  }
+
+  .wallCard {
+    opacity: 1;
+    transform: none;
     animation: none;
   }
 
   .createButton::before {
     transition: none;
   }
+}
+
+:global(:root[data-motion="off"]) .orb,
+:global(:root[data-motion="off"]) .modalBackdrop,
+:global(:root[data-motion="off"]) .modalPanel {
+  animation: none;
+}
+
+:global(:root[data-motion="off"]) .wallCard {
+  opacity: 1;
+  transform: none;
+  animation: none;
 }

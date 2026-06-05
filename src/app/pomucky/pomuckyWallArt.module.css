@@ -178,8 +178,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .orb,
+  .orb {
+    animation: none;
+  }
+
   .toolCard {
+    opacity: 1;
+    transform: none;
     animation: none;
   }
 
@@ -188,4 +193,14 @@
   .filterChip::after {
     transition: none;
   }
+}
+
+:global(:root[data-motion="off"]) .orb {
+  animation: none;
+}
+
+:global(:root[data-motion="off"]) .toolCard {
+  opacity: 1;
+  transform: none;
+  animation: none;
 }

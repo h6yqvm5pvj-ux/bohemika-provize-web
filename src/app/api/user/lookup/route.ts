@@ -171,7 +171,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const rateLimitResult = consumeRateLimit({
+    const rateLimitResult = await consumeRateLimit({
       namespace: "api:user:lookup",
       key: requesterEmail,
       limit: LOOKUP_RATE_LIMIT,

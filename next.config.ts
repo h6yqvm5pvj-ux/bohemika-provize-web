@@ -20,6 +20,12 @@ const baseSecurityHeaders = [
 ];
 
 const securityHeaders = [...baseSecurityHeaders];
+const staticImageCacheHeaders = [
+  {
+    key: "Cache-Control",
+    value: "public, max-age=604800, s-maxage=2592000, stale-while-revalidate=2592000",
+  },
+];
 
 const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
@@ -28,6 +34,18 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      {
+        source: "/icons/:path*",
+        headers: staticImageCacheHeaders,
+      },
+      {
+        source: "/provize/:path*",
+        headers: staticImageCacheHeaders,
+      },
+      {
+        source: "/demos/:path*",
+        headers: staticImageCacheHeaders,
+      },
       {
         source: "/(.*)",
         headers: securityHeaders,

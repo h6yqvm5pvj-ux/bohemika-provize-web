@@ -247,7 +247,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const rateLimit = consumeRateLimit({
+  const rateLimit = await consumeRateLimit({
     namespace: "api:user-create:post",
     key: ctx.email,
     limit: CREATE_USER_RATE_LIMIT,

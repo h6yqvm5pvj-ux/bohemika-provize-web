@@ -229,7 +229,7 @@ function filterPayload(payload: ComparisonPayload, options: QueryOptions): Compa
 }
 
 export async function GET(request: Request) {
-  const guard = requireIpRateLimited(request, {
+  const guard = await requireIpRateLimited(request, {
     namespace: "api:life-comparison:get",
     limit: LIFE_COMPARISON_RATE_LIMIT,
     windowMs: LIFE_COMPARISON_RATE_LIMIT_WINDOW_MS,

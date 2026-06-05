@@ -201,7 +201,7 @@ function roleFromRaw(raw: ProklepniOwnerRaw): string {
 }
 
 export async function GET(req: NextRequest) {
-  const guard = requireIpRateLimited(req, {
+  const guard = await requireIpRateLimited(req, {
     namespace: "api:proklepni:owners:get",
     limit: PROKLEPNI_OWNERS_RATE_LIMIT,
     windowMs: PROKLEPNI_OWNERS_RATE_LIMIT_WINDOW_MS,

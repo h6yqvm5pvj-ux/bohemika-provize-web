@@ -222,7 +222,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const rateLimitResult = consumeRateLimit({
+    const rateLimitResult = await consumeRateLimit({
       namespace: "api:tip-payouts:list",
       key: email,
       limit: TIP_PAYOUTS_RATE_LIMIT,

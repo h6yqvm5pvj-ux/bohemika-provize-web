@@ -716,7 +716,7 @@ async function fetchUsdCzk(): Promise<number> {
 }
 
 export async function GET(req: Request) {
-  const rateLimitResult = consumeRateLimit({
+  const rateLimitResult = await consumeRateLimit({
     namespace: "api:gold:get",
     key: getRequestIp(req),
     limit: GOLD_RATE_LIMIT,

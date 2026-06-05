@@ -150,12 +150,27 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .orb,
+  .orb {
+    animation: none;
+  }
+
   .mailCard {
+    opacity: 1;
+    transform: none;
     animation: none;
   }
 
   .actionButton::before {
     transition: none;
   }
+}
+
+:global(:root[data-motion="off"]) .orb {
+  animation: none;
+}
+
+:global(:root[data-motion="off"]) .mailCard {
+  opacity: 1;
+  transform: none;
+  animation: none;
 }

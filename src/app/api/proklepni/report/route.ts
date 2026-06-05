@@ -666,7 +666,7 @@ function extractTechnicalSectionsFromHtml(html: string): ProklepniTechnicalSecti
 }
 
 export async function GET(req: NextRequest) {
-  const guard = requireIpRateLimited(req, {
+  const guard = await requireIpRateLimited(req, {
     namespace: "api:proklepni:report:get",
     limit: PROKLEPNI_REPORT_RATE_LIMIT,
     windowMs: PROKLEPNI_REPORT_RATE_LIMIT_WINDOW_MS,

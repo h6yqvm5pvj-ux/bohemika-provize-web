@@ -89,7 +89,7 @@ export async function requireAuthedRateLimited(
     };
   }
 
-  const rateLimit = consumeRateLimit({
+  const rateLimit = await consumeRateLimit({
     namespace,
     key: email,
     limit,
@@ -124,7 +124,7 @@ export function withRateLimitHeaders(response: NextResponse, ctx: AuthedRateLimi
   return response;
 }
 
-export function requireIpRateLimited(
+export async function requireIpRateLimited(
   req: Request,
   {
     namespace,
@@ -135,9 +135,9 @@ export function requireIpRateLimited(
     limit: number;
     windowMs: number;
   }
-): { ok: true; ctx: IpRateLimitContext } | { ok: false; response: NextResponse } {
+): Promise<{ ok: true; ctx: IpRateLimitContext } | { ok: false; response: NextResponse }> {
   const key = getRequestIp(req);
-  const rateLimit = consumeRateLimit({
+  const rateLimit = await consumeRateLimit({
     namespace,
     key,
     limit,

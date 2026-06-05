@@ -913,7 +913,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { email, uid, rawTokenEmail } = ctx;
-    const rateLimit = consumeRateLimit({
+    const rateLimit = await consumeRateLimit({
       namespace: "api:user-profile:get",
       key: email,
       limit: PROFILE_GET_RATE_LIMIT,
@@ -985,7 +985,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const { email, rawTokenEmail, uid } = ctx;
-    const rateLimit = consumeRateLimit({
+    const rateLimit = await consumeRateLimit({
       namespace: "api:user-profile:patch",
       key: email,
       limit: PROFILE_PATCH_RATE_LIMIT,

@@ -361,7 +361,7 @@ async function getAuthContext(
   };
 }
 
-function applyRateLimitOrRespond({
+async function applyRateLimitOrRespond({
   namespace,
   key,
   limit,
@@ -371,8 +371,8 @@ function applyRateLimitOrRespond({
   key: string;
   limit: number;
   windowMs: number;
-}): { ok: true; headers: Headers } | { ok: false; response: NextResponse<ApiError> } {
-  const result = consumeRateLimit({ namespace, key, limit, windowMs });
+}): Promise<{ ok: true; headers: Headers } | { ok: false; response: NextResponse<ApiError> }> {
+  const result = await consumeRateLimit({ namespace, key, limit, windowMs });
   if (!result.allowed) {
     const response = NextResponse.json(
       { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." } satisfies ApiError,
@@ -405,7 +405,7 @@ export async function GET(req: NextRequest) {
   const auth = await getAuthContext(req);
   if (!auth.ok) return auth.response;
 
-  const rate = applyRateLimitOrRespond({
+  const rate = await applyRateLimitOrRespond({
     namespace: "api:user-stats:get",
     key: auth.ctx.email || auth.ctx.uid,
     limit: USER_STATS_GET_RATE_LIMIT,
@@ -581,7 +581,7 @@ export async function POST(req: NextRequest) {
   const auth = await getAuthContext(req);
   if (!auth.ok) return auth.response;
 
-  const rate = applyRateLimitOrRespond({
+  const rate = await applyRateLimitOrRespond({
     namespace: "api:user-stats:post",
     key: auth.ctx.email || auth.ctx.uid,
     limit: USER_STATS_POST_RATE_LIMIT,

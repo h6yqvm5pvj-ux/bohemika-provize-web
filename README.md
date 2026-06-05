@@ -20,6 +20,17 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Server Rate Limiting
+
+API rate limits use a shared Redis REST store when configured. Set these variables in production:
+
+```bash
+RATE_LIMIT_REDIS_REST_URL=...
+RATE_LIMIT_REDIS_REST_TOKEN=...
+```
+
+The implementation also accepts `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` and Vercel KV `KV_REST_API_URL` / `KV_REST_API_TOKEN`. If no Redis REST credentials are present, the app falls back to per-process memory limits for local development.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

@@ -274,7 +274,7 @@ async function loadLiveState(): Promise<LiveState> {
 }
 
 export async function GET(req: Request) {
-  const guard = requireIpRateLimited(req, {
+  const guard = await requireIpRateLimited(req, {
     namespace: "api:comfort-prices:get",
     limit: COMFORT_PRICES_RATE_LIMIT,
     windowMs: COMFORT_PRICES_RATE_LIMIT_WINDOW_MS,
