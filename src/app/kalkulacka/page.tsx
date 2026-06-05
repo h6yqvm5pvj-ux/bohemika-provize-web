@@ -633,6 +633,30 @@ function getContractsMutationError({
 const productLabel = (p: Product | null) =>
   productLabelFromCatalog(p, p ?? "—");
 
+const PDF_AUTOMATED_PRODUCTS = new Set<Product>([
+  "cppAuto",
+  "slaviaauto",
+  "allianzAuto",
+  "csobAuto",
+  "pillowAuto",
+  "kooperativaAuto",
+  "cppcestovko",
+  "cppsimplex",
+  "neon",
+  "flexi",
+  "domex",
+  "maxcizinkomplex",
+  "comfortcc",
+]);
+
+const hasAutomatedPdfImport = (product: Product) => PDF_AUTOMATED_PRODUCTS.has(product);
+
+const manualPdfImportMessage = (product: Product) =>
+  `Pro produkt ${productLabel(product)} zatím není automatické načítání dat z PDF hotové. PDF se při uložení přiloží ke smlouvě, údaje prosím vyplň ručně.`;
+
+const failedPdfImportMessage = (product: Product) =>
+  `PDF se pro produkt ${productLabel(product)} nepodařilo automaticky přečíst. PDF se při uložení přiloží ke smlouvě, údaje prosím vyplň ručně.`;
+
 const normalizeEmailValue = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
@@ -1016,22 +1040,8 @@ export default function CalculatorPage() {
     return "Okamžitá provize je součet 1. provize a 2. provize po 3 měsících (Při zpracování karty klienta je provize po 3 měsících vyplacena současně s 1. provizí).";
   }, [product, isNeonHistoricalInCoefModal, mode]);
   const canImportFromPdf = useMemo(
-    () =>
-      !tipsterModeEnabled &&
-      (product === "cppAuto" ||
-        product === "slaviaauto" ||
-        product === "allianzAuto" ||
-        product === "csobAuto" ||
-        product === "pillowAuto" ||
-        product === "kooperativaAuto" ||
-        product === "cppcestovko" ||
-        product === "cppsimplex" ||
-        product === "neon" ||
-        product === "flexi" ||
-        product === "domex" ||
-        product === "maxcizinkomplex" ||
-        product === "comfortcc"),
-    [product, tipsterModeEnabled]
+    () => !tipsterModeEnabled,
+    [tipsterModeEnabled]
   );
 
   const coefList = useMemo(
@@ -2284,6 +2294,13 @@ export default function CalculatorPage() {
       setDomexAssistancePlus(false);
     }
     try {
+      if (!hasAutomatedPdfImport(importProduct)) {
+        setImportedContractPdfFile(file);
+        setPdfImportStatus(manualPdfImportMessage(importProduct));
+        setPdfImportError(null);
+        return;
+      }
+
       let parsed:
         | Awaited<ReturnType<typeof parseCppAutoPdf>>
         | Awaited<ReturnType<typeof parseSlaviaAutoPdf>>
@@ -2327,15 +2344,16 @@ export default function CalculatorPage() {
       } else if (importProduct === "cppsimplex") {
         parsed = await parseCppSimplexPdf(file);
       } else {
-        setPdfImportError(
-          "Načítání z PDF je teď dostupné jen pro ČPP Auto, SLAVIA Auto, Allianz Auto, ČSOB Auto, Pillow Auto, Kooperativa Auto, ČPP Cestovko, ČPP Simplex, ČPP ŽP NEON, Kooperativa ŽP FLEXI, ČPP DOMEX, MAXIMA Cizinci a Comfort Commodity."
-        );
-        setPdfImportStatus(null);
+        setImportedContractPdfFile(file);
+        setPdfImportStatus(manualPdfImportMessage(importProduct));
+        setPdfImportError(null);
         return;
       }
 
       if (!parsed) {
-        setPdfImportStatus("PDF se nepodařilo přečíst.");
+        setImportedContractPdfFile(file);
+        setPdfImportStatus(failedPdfImportMessage(importProduct));
+        setPdfImportError(null);
         return;
       }
       let applied = 0;
@@ -2735,9 +2753,9 @@ export default function CalculatorPage() {
           // ignore fallback detection error
         }
       }
-      setPdfImportError("PDF se nepodařilo přečíst. Zkus prosím zadat ručně.");
+      setImportedContractPdfFile(file);
+      setPdfImportError(failedPdfImportMessage(importProduct));
       setPdfImportStatus(null);
-      setImportedContractPdfFile(null);
     } finally {
       setPdfImporting(false);
       if (fileInputRef.current) {
