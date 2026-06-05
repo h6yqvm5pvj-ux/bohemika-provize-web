@@ -1,12 +1,13 @@
 // src/app/smlouvy/[id]/page.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CalendarDays,
+  Eye,
   ExternalLink,
   FileText,
   Package,
@@ -91,6 +92,7 @@ import {
   ContractCommissionSection,
   type MeziprovisionCard,
 } from "./ContractCommissionSection";
+import { fetchAuthedBlob } from "@/app/lib/authenticatedApi";
 
 const CPP_EXTRANET_REDIRECT_URL =
   "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
@@ -113,6 +115,12 @@ const buildCppExtranetDetailUrl = (contract: ContractDoc | null): string | null 
     p_EntityID: entityId,
   });
   return `${CPP_EXTRANET_REDIRECT_URL}?${params.toString()}`;
+};
+
+type ContractPdfPreviewPage = {
+  pageNumber: number;
+  width: number;
+  height: number;
 };
 
 
@@ -188,6 +196,13 @@ export default function ContractDetailPage() {
   const [showStornoModal, setShowStornoModal] = useState(false);
   const [showPaymentVerificationModal, setShowPaymentVerificationModal] =
     useState(false);
+  const [showContractPdfModal, setShowContractPdfModal] = useState(false);
+  const [contractPdfBlobUrl, setContractPdfBlobUrl] = useState<string | null>(null);
+  const [contractPdfPages, setContractPdfPages] = useState<ContractPdfPreviewPage[]>([]);
+  const [contractPdfLoading, setContractPdfLoading] = useState(false);
+  const [contractPdfError, setContractPdfError] = useState<string | null>(null);
+  const contractPdfObjectUrlRef = useRef<string | null>(null);
+  const contractPdfCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
   const [neonImmediateBreakdown, setNeonImmediateBreakdown] =
     useState<NeonImmediateBreakdown | null>(null);
   const [canOpenRefreshReplacement, setCanOpenRefreshReplacement] = useState(false);
@@ -201,6 +216,7 @@ export default function ContractDetailPage() {
         setShowDeleteModal(false);
         setShowStornoModal(false);
         setShowPaymentVerificationModal(false);
+        setShowContractPdfModal(false);
         setNeonImmediateBreakdown(null);
       }
     };
@@ -208,6 +224,7 @@ export default function ContractDetailPage() {
       showDeleteModal ||
       showStornoModal ||
       showPaymentVerificationModal ||
+      showContractPdfModal ||
       isNeonImmediateBreakdownOpen
     ) {
       window.addEventListener("keydown", onKey);
@@ -219,6 +236,7 @@ export default function ContractDetailPage() {
     showDeleteModal,
     showStornoModal,
     showPaymentVerificationModal,
+    showContractPdfModal,
     isNeonImmediateBreakdownOpen,
   ]);
 
@@ -266,6 +284,23 @@ export default function ContractDetailPage() {
     },
     [user]
   );
+
+  const clearContractPdfPreview = useCallback(() => {
+    if (contractPdfObjectUrlRef.current) {
+      URL.revokeObjectURL(contractPdfObjectUrlRef.current);
+      contractPdfObjectUrlRef.current = null;
+    }
+    contractPdfCanvasRefs.current = [];
+    setContractPdfBlobUrl(null);
+    setContractPdfPages([]);
+  }, []);
+
+  const closeContractPdfModal = useCallback(() => {
+    setShowContractPdfModal(false);
+    setContractPdfError(null);
+    setContractPdfLoading(false);
+    clearContractPdfPreview();
+  }, [clearContractPdfPreview]);
 
   useEffect(() => {
     preloadFormulaModule(contract?.productKey ?? null);
@@ -637,6 +672,15 @@ export default function ContractDetailPage() {
       ? KOOPERATIVA_PAYMENT_CHECK_URL
       : null;
   const cppExtranetDetailUrl = buildCppExtranetDetailUrl(contract);
+  const contractPdfAttachment = contract?.contractPdfAttachment ?? null;
+  const hasContractPdfAttachment = Boolean(
+    contractPdfAttachment?.hasFile && contractPdfAttachment?.contentType === "application/pdf"
+  );
+  const contractPdfFileName =
+    typeof contractPdfAttachment?.originalName === "string" &&
+    contractPdfAttachment.originalName.trim()
+      ? contractPdfAttachment.originalName.trim()
+      : "smlouva.pdf";
   const canEmbedPaymentVerification =
     paymentVerificationUrl === KOOPERATIVA_PAYMENT_CHECK_URL ||
     paymentVerificationUrl === CPP_PAYMENT_CHECK_URL;
@@ -753,6 +797,140 @@ export default function ContractDetailPage() {
     requestContractsApi,
     refreshReplacementOwnerEmail,
     refreshReplacementEntryId,
+  ]);
+
+  useEffect(() => {
+    if (!showContractPdfModal) {
+      clearContractPdfPreview();
+      return;
+    }
+    if (!user || !ownerEmail || !entryId || !hasContractPdfAttachment) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const waitForPdfCanvases = async (pageCount: number) => {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+        if (contractPdfCanvasRefs.current.slice(0, pageCount).every(Boolean)) return;
+      }
+    };
+
+    const loadContractPdf = async () => {
+      setContractPdfLoading(true);
+      setContractPdfError(null);
+      clearContractPdfPreview();
+
+      try {
+        const params = new URLSearchParams({
+          ownerEmail,
+          entryId,
+        });
+        const response = await fetchAuthedBlob(
+          user,
+          `/api/contracts/attachment?${params.toString()}`,
+          { method: "GET" }
+        );
+        if (!response.ok) {
+          let message = "PDF smlouvy se nepodařilo načíst.";
+          try {
+            const payload = (await response.json()) as unknown;
+            if (
+              payload &&
+              typeof payload === "object" &&
+              typeof (payload as Record<string, unknown>).error === "string"
+            ) {
+              message = (payload as Record<string, string>).error;
+            }
+          } catch {
+            // Binary endpoint may fail before JSON is available.
+          }
+          throw new Error(message);
+        }
+
+        const blob = await response.blob();
+        if (cancelled) return;
+        const pdfBlob =
+          blob.type === "application/pdf"
+            ? blob
+            : new Blob([blob], { type: "application/pdf" });
+        const objectUrl = URL.createObjectURL(pdfBlob);
+        contractPdfObjectUrlRef.current = objectUrl;
+        setContractPdfBlobUrl(objectUrl);
+
+        const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        if (pdfjsLib.GlobalWorkerOptions) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+        }
+
+        const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer());
+        const doc = await pdfjsLib.getDocument({
+          data: pdfBytes,
+          isEvalSupported: false,
+        }).promise;
+
+        const nextPages: ContractPdfPreviewPage[] = [];
+        for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+          if (cancelled) return;
+          const page = await doc.getPage(pageNumber);
+          const viewport = page.getViewport({ scale: 1 });
+          nextPages.push({
+            pageNumber,
+            width: viewport.width,
+            height: viewport.height,
+          });
+        }
+
+        if (cancelled) return;
+        contractPdfCanvasRefs.current = [];
+        setContractPdfPages(nextPages);
+        await waitForPdfCanvases(doc.numPages);
+
+        for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+          if (cancelled) return;
+          const page = await doc.getPage(pageNumber);
+          const viewport = page.getViewport({ scale: 1.75 });
+          const canvas = contractPdfCanvasRefs.current[pageNumber - 1];
+          const context = canvas?.getContext("2d", { alpha: false });
+          if (!canvas || !context) continue;
+
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
+          await page.render({
+            canvas,
+            canvasContext: context,
+            viewport,
+          }).promise;
+        }
+      } catch (pdfErr) {
+        if (cancelled) return;
+        console.error("PDF smlouvy se nepodařilo načíst:", pdfErr);
+        setContractPdfError(
+          pdfErr instanceof Error && pdfErr.message.trim()
+            ? pdfErr.message.trim()
+            : "PDF smlouvy se nepodařilo načíst."
+        );
+      } finally {
+        if (!cancelled) setContractPdfLoading(false);
+      }
+    };
+
+    void loadContractPdf();
+
+    return () => {
+      cancelled = true;
+      clearContractPdfPreview();
+    };
+  }, [
+    clearContractPdfPreview,
+    entryId,
+    hasContractPdfAttachment,
+    ownerEmail,
+    showContractPdfModal,
+    user,
   ]);
 
   const effectiveManagerPosition = useMemo(() => {
@@ -3330,6 +3508,17 @@ export default function ContractDetailPage() {
                   </button>
                 )}
 
+                {hasContractPdfAttachment && (
+                  <button
+                    type="button"
+                    onClick={() => setShowContractPdfModal(true)}
+                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
+                  >
+                    <Eye size={16} strokeWidth={2} aria-hidden="true" />
+                    <span>Zobrazit smlouvu</span>
+                  </button>
+                )}
+
                 {cppExtranetDetailUrl && (
                   <a
                     href={cppExtranetDetailUrl}
@@ -4371,6 +4560,104 @@ export default function ContractDetailPage() {
             </div>
           </div>
         )}
+
+      {showContractPdfModal && hasContractPdfAttachment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+            aria-label="Zavřít náhled smlouvy"
+            onClick={closeContractPdfModal}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Náhled PDF smlouvy"
+            className="relative z-10 flex h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-2xl shadow-slate-300/40"
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
+                  PDF smlouvy
+                </h3>
+                <p className="mt-1 truncate text-sm text-slate-600 sm:text-base">
+                  {contractPdfFileName}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {contractPdfBlobUrl && (
+                  <a
+                    href={contractPdfBlobUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+                  >
+                    Otevřít v nové kartě
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={closeContractPdfModal}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+                >
+                  Zavřít
+                </button>
+              </div>
+            </div>
+
+            <div className="relative min-h-0 flex-1 overflow-y-auto bg-slate-100 px-3 py-4 sm:px-6">
+              {contractPdfLoading && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/85">
+                  <div className="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm">
+                    <Spinner className="h-4 w-4" />
+                    <span>Načítám PDF smlouvy…</span>
+                  </div>
+                </div>
+              )}
+
+              {contractPdfError && (
+                <div className="flex h-full items-center justify-center px-4">
+                  <div className="max-w-lg rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-center text-sm text-rose-800">
+                    {contractPdfError}
+                  </div>
+                </div>
+              )}
+
+              {!contractPdfError && contractPdfPages.length > 0 && (
+                <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+                  {contractPdfPages.map((page, pageIndex) => (
+                    <div
+                      key={page.pageNumber}
+                      className="relative mx-auto w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_42px_rgba(15,23,42,0.18)]"
+                      style={{ aspectRatio: `${page.width} / ${page.height}` }}
+                    >
+                      <canvas
+                        ref={(node) => {
+                          contractPdfCanvasRefs.current[pageIndex] = node;
+                        }}
+                        className="absolute inset-0 h-full w-full"
+                        aria-label={`Stránka PDF smlouvy ${page.pageNumber}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!contractPdfLoading &&
+                !contractPdfError &&
+                contractPdfBlobUrl &&
+                contractPdfPages.length === 0 && (
+                  <div className="flex h-full items-center justify-center px-4">
+                    <div className="max-w-lg rounded-2xl border border-slate-200 bg-white px-5 py-4 text-center text-sm text-slate-700">
+                      PDF se načetlo, ale nepodařilo se připravit stránky pro náhled.
+                      Zkus ho otevřít v nové kartě.
+                    </div>
+                  </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {canDelete && showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">

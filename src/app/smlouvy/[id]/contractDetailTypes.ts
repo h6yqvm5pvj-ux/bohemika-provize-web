@@ -14,6 +14,16 @@ export type FirestoreTimestamp = {
 
 export type ContractDoc = {
   id: string;
+  contractPdfAttachment?: {
+    kind?: "contractPdf" | string;
+    hasFile?: boolean;
+    originalName?: string | null;
+    contentType?: "application/pdf" | string | null;
+    sizeBytes?: number | null;
+    sha256?: string | null;
+    uploadedAtMs?: number | null;
+    uploadedBy?: string | null;
+  } | null;
   note?: string | null;
   paid?: boolean | null;
   status?: "active" | "storno" | string | null;

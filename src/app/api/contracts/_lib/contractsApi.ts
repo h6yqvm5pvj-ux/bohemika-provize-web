@@ -93,6 +93,12 @@ import {
   normalizeSubscriptionStatus as normalizeSubscriptionStatusValue,
   type SubscriptionEffectiveState,
 } from "@/lib/subscriptionAccess";
+import {
+  deleteContractPdfAttachment,
+  normalizeStoredContractPdfAttachment,
+  toPublicContractPdfAttachment,
+  type StoredContractPdfAttachment,
+} from "@/lib/server/contractPdfStorage";
 
 export type ContractsGetMode = "auto" | "detail" | "list";
 export type ContractsPatchAction =
@@ -567,7 +573,7 @@ const CONTRACT_REFS_COLLECTION = "contractRefs";
 const CONTRACT_NUMBER_CLAIMS_COLLECTION = "contractNumberClaims";
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
-const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
+export const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
 const ENABLE_CONTRACT_CREATE_PUSH = true;
 const NEW_CONTRACT_PUSH_MAX_RECIPIENTS = 40;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_USER = 30;
@@ -819,7 +825,7 @@ const includesEmailInCollection = (value: unknown, targetEmail: string): boolean
   return value.some((item) => extractEmailFromUnknown(item) === targetEmail);
 };
 
-const hasContractAccess = ({
+export const hasContractAccess = ({
   viewerEmail,
   teamEmails,
   ownerEmail,
@@ -854,6 +860,9 @@ const toContractResponseItem = (
   const normalizedOwner = normalizeEmail(ownerEmail);
   return {
     ...data,
+    contractPdfAttachment: toPublicContractPdfAttachment(
+      (data as { contractPdfAttachment?: unknown }).contractPdfAttachment
+    ),
     contractSignedDate: toMillis(data.contractSignedDate),
     createdAt: toMillis(data.createdAt),
     policyStartDate: toMillis((data as any).policyStartDate),
@@ -4744,7 +4753,7 @@ type ContractsEntryGuardResult =
       withRateLimit: (response: NextResponse) => NextResponse;
     };
 
-async function requireContractsEntryGuard(
+export async function requireContractsEntryGuard(
   req: NextRequest,
   rateLimit: {
     namespace: string;
@@ -6434,6 +6443,7 @@ export async function handleContractsDelete(req: NextRequest) {
   const allowedOwners = new Set<string>([email, ...teamEmails]);
   const dirtyOwners = new Set<string>();
   const tipCleanupTargets = new Set<string>();
+  const contractPdfCleanupTargets: StoredContractPdfAttachment[] = [];
   let deleted = 0;
   const db = adminDb;
   let batch = db.batch();
@@ -6462,6 +6472,12 @@ export async function handleContractsDelete(req: NextRequest) {
       const entrySnap = await entryRef.get();
       if (entrySnap.exists) {
         const entryData = entrySnap.data() as ContractDoc;
+        const contractPdfAttachment = normalizeStoredContractPdfAttachment(
+          (entryData as { contractPdfAttachment?: unknown }).contractPdfAttachment
+        );
+        if (contractPdfAttachment) {
+          contractPdfCleanupTargets.push(contractPdfAttachment);
+        }
         const tipsterEmail = normalizeEmail(entryData.tipContractTipsterEmail);
         if (tipsterEmail) {
           const tipsterProfile = await loadUserProfileByEmail(tipsterEmail);
@@ -6529,6 +6545,17 @@ export async function handleContractsDelete(req: NextRequest) {
       console.warn(
         "DELETE /api/contracts: TIP payout cleanup selhal:",
         tipDeleteErr
+      );
+    }
+  }
+
+  for (const attachment of contractPdfCleanupTargets) {
+    try {
+      await deleteContractPdfAttachment(attachment);
+    } catch (pdfDeleteErr) {
+      console.warn(
+        "DELETE /api/contracts: PDF přílohu se nepodařilo smazat ze Storage:",
+        pdfDeleteErr
       );
     }
   }

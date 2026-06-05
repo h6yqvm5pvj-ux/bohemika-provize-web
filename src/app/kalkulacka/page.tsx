@@ -300,6 +300,16 @@ type ContractsMutationResponse = {
   [key: string]: unknown;
 };
 
+type ContractAttachmentUploadResponse = {
+  ok?: boolean;
+  error?: string;
+  attachment?: {
+    hasFile?: boolean;
+    originalName?: string | null;
+    sizeBytes?: number | null;
+  } | null;
+};
+
 type TeamOverviewApiResponse = {
   ok?: boolean;
   error?: string;
@@ -455,6 +465,32 @@ async function requestContractsMutationWithAuth({
   }
 
   return { response, data };
+}
+
+async function uploadContractPdfAttachmentWithAuth({
+  user,
+  ownerEmail,
+  entryId,
+  file,
+}: {
+  user: User;
+  ownerEmail: string;
+  entryId: string;
+  file: File;
+}): Promise<ContractAttachmentUploadResponse> {
+  const form = new FormData();
+  form.set("ownerEmail", ownerEmail);
+  form.set("entryId", entryId);
+  form.set("file", file);
+
+  return fetchAuthedJsonOrThrow<ContractAttachmentUploadResponse>(
+    user,
+    "/api/contracts/attachment",
+    {
+      method: "POST",
+      body: form,
+    }
+  );
 }
 
 async function requestBlobWithAuth({
@@ -728,6 +764,7 @@ export default function CalculatorPage() {
   const [pdfImporting, setPdfImporting] = useState(false);
   const [pdfImportStatus, setPdfImportStatus] = useState<string | null>(null);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
+  const [importedContractPdfFile, setImportedContractPdfFile] = useState<File | null>(null);
   const [pdfClientNameLoaded, setPdfClientNameLoaded] = useState(false);
   const [pdfMatchedClientName, setPdfMatchedClientName] = useState(false);
   const {
@@ -2171,6 +2208,7 @@ export default function CalculatorPage() {
     setPdfImporting(true);
     setPdfImportError(null);
     setPdfImportStatus("Načítám PDF…");
+    setImportedContractPdfFile(null);
     setPdfClientNameLoaded(false);
     setPdfMatchedClientName(false);
     let importProduct: Product = product;
@@ -2675,12 +2713,14 @@ export default function CalculatorPage() {
         }
       }
 
+      setImportedContractPdfFile(file);
+      const attachmentNote = " PDF se při uložení smlouvy přiloží k detailu.";
       setPdfImportStatus(
         applied > 0
-          ? `Načteno z PDF (${applied} polí). Zkontroluj prosím.`
+          ? `Načteno z PDF (${applied} polí). Zkontroluj prosím.${attachmentNote}`
           : importProduct === "cppsimplex"
-            ? "PDF pro ČPP Simplex nahráno. Extrakci polí doladíme v dalším kroku."
-            : "V PDF se nenašla čitelná data, doplň ručně."
+            ? `PDF pro ČPP Simplex nahráno. Extrakci polí doladíme v dalším kroku.${attachmentNote}`
+            : `V PDF se nenašla čitelná data, doplň ručně.${attachmentNote}`
       );
     } catch (err) {
       console.error("PDF import selhal", err);
@@ -2697,6 +2737,7 @@ export default function CalculatorPage() {
       }
       setPdfImportError("PDF se nepodařilo přečíst. Zkus prosím zadat ručně.");
       setPdfImportStatus(null);
+      setImportedContractPdfFile(null);
     } finally {
       setPdfImporting(false);
       if (fileInputRef.current) {
@@ -2720,6 +2761,7 @@ export default function CalculatorPage() {
     onInvalidFile: () => {
       setPdfImportError("Přetáhni prosím PDF soubor.");
       setPdfImportStatus(null);
+      setImportedContractPdfFile(null);
     },
   });
 
@@ -3833,6 +3875,29 @@ export default function CalculatorPage() {
         });
       }
 
+      let pdfAttachmentMessage = "";
+      if (createdEntryId && ownerEmail && importedContractPdfFile) {
+        try {
+          await uploadContractPdfAttachmentWithAuth({
+            user,
+            ownerEmail,
+            entryId: createdEntryId,
+            file: importedContractPdfFile,
+          });
+          pdfAttachmentMessage = " PDF bylo přiloženo k detailu smlouvy.";
+          setPdfImportStatus("PDF bylo bezpečně přiloženo k uložené smlouvě.");
+          setPdfImportError(null);
+          setImportedContractPdfFile(null);
+        } catch (pdfUploadErr) {
+          const message =
+            pdfUploadErr instanceof Error && pdfUploadErr.message.trim()
+              ? pdfUploadErr.message.trim()
+              : "PDF se nepodařilo přiložit.";
+          pdfAttachmentMessage = ` PDF se nepodařilo přiložit: ${message}`;
+          setPdfImportError(`PDF se nepodařilo přiložit: ${message}`);
+        }
+      }
+
       if (typeof window !== "undefined") {
         try {
           sessionStorage.removeItem("contracts_cache_v2");
@@ -3843,11 +3908,10 @@ export default function CalculatorPage() {
         }
       }
 
-      if (shouldRefreshOriginalNeon) {
-        setSaveMessage("Smlouva byla uložena a označena jako Refresh.");
-      } else {
-        setSaveMessage("Smlouva byla uložena mezi sepsané.");
-      }
+      const savedMessage = shouldRefreshOriginalNeon
+        ? "Smlouva byla uložena a označena jako Refresh."
+        : "Smlouva byla uložena mezi sepsané.";
+      setSaveMessage(`${savedMessage}${pdfAttachmentMessage}`);
       setSaveSuccessFlash({
         contractNumber: contractNumber.trim() || null,
         clientName: clientName.trim() || null,
