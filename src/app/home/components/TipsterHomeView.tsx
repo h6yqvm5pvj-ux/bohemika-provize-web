@@ -92,6 +92,14 @@ type AresSearchResponse = {
   entities?: AresSearchEntity[];
 };
 
+type UserLookupResponse = {
+  ok?: boolean;
+  exists?: boolean;
+  email?: string | null;
+  name?: string | null;
+  error?: string;
+};
+
 const EMPTY_FORM: TipFormState = {
   propertyFullName: "",
   propertyBirthNumber: "",
@@ -206,6 +214,7 @@ const MILEAGE_OPTIONS = [
 const TIP_ATTACHMENT_MAX_COUNT = 6;
 const TIP_ATTACHMENT_MAX_SIZE_BYTES = 20 * 1024 * 1024;
 const TIP_ATTACHMENT_ACCEPT = "image/*,application/pdf";
+const PREFERRED_CALL_LABEL = "Preferovaný datum a čas volání";
 
 const labelClass =
   "text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85";
@@ -217,6 +226,15 @@ const normalizeEmail = (value: unknown): string =>
 
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
+
+const nameFromEmail = (email: string): string => {
+  const localPart = email.split("@")[0] ?? "";
+  const parts = localPart.split(/[._-]+/).filter(Boolean);
+  if (parts.length === 0) return "Příjemce";
+  return parts
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+};
 
 const normalizeIco = (value: string): string =>
   value.replace(/\D+/g, "").slice(0, 8);
@@ -450,6 +468,8 @@ export function TipsterHomeView({
   const [aresSuggestLoading, setAresSuggestLoading] = useState(false);
   const [aresSuggestOpen, setAresSuggestOpen] = useState(false);
   const [aresSuggestError, setAresSuggestError] = useState<string | null>(null);
+  const [recipientName, setRecipientName] = useState<string | null>(null);
+  const [recipientNameLoading, setRecipientNameLoading] = useState(false);
   const aresSearchRequestRef = useRef(0);
   const selectedAresQueryRef = useRef("");
 
@@ -461,6 +481,47 @@ export function TipsterHomeView({
     normalizeText(user.displayName) ||
     normalizeEmail(user.email) ||
     "Tipař";
+  const recipientDisplayName =
+    recipientEmail
+      ? recipientName || (recipientNameLoading ? "načítám příjemce…" : nameFromEmail(recipientEmail))
+      : "není nastaven";
+
+  useEffect(() => {
+    let cancelled = false;
+    const profileRecipientName =
+      normalizeText(profile.tipRecipientName) ||
+      normalizeText(profile.tipRecipientFullName) ||
+      normalizeText(profile.recipientName);
+
+    setRecipientName(profileRecipientName || null);
+    if (!recipientEmail) {
+      setRecipientNameLoading(false);
+      return;
+    }
+
+    setRecipientNameLoading(true);
+    void fetchAuthedJsonOrThrow<UserLookupResponse>(
+      user,
+      `/api/user/lookup?email=${encodeURIComponent(recipientEmail)}`,
+      { method: "GET", cache: "no-store" }
+    )
+      .then((payload) => {
+        if (cancelled) return;
+        const lookupName = normalizeText(payload.name);
+        setRecipientName(lookupName || profileRecipientName || nameFromEmail(recipientEmail));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRecipientName(profileRecipientName || nameFromEmail(recipientEmail));
+      })
+      .finally(() => {
+        if (!cancelled) setRecipientNameLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile, recipientEmail, user]);
 
   const updateField = <K extends keyof TipFormState>(key: K, value: TipFormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -468,11 +529,7 @@ export function TipsterHomeView({
     setStatus(null);
   };
 
-  const resetForm = () => {
-    setStep(0);
-    setProduct(null);
-    setForm(EMPTY_FORM);
-    setTipAttachments([]);
+  const clearAresState = () => {
     setAresError(null);
     setAresQuery("");
     setAresSuggestions([]);
@@ -480,6 +537,14 @@ export function TipsterHomeView({
     setAresSuggestLoading(false);
     setAresSuggestError(null);
     selectedAresQueryRef.current = "";
+  };
+
+  const resetForm = () => {
+    setStep(0);
+    setProduct(null);
+    setForm(EMPTY_FORM);
+    setTipAttachments([]);
+    clearAresState();
     setError(null);
   };
 
@@ -525,7 +590,7 @@ export function TipsterHomeView({
   };
 
   useEffect(() => {
-    if (product !== "business") {
+    if (product !== "business" && product !== "vehicle") {
       aresSearchRequestRef.current += 1;
       setAresSuggestions([]);
       setAresSuggestOpen(false);
@@ -679,6 +744,45 @@ export function TipsterHomeView({
     }
   };
 
+  const lookupVehicle = async (icoOverride?: string) => {
+    const ico = normalizeIco(icoOverride ?? form.vehicleCompanyId);
+    if (ico.length !== 8) {
+      setAresError("IČO musí mít 8 číslic.");
+      return;
+    }
+
+    setAresLoading(true);
+    setAresError(null);
+    try {
+      const payload = (await aresGetEntityDetail(ico)) as AresDetailResponse;
+      const subject = payload.subject ?? {};
+      const companyName = normalizeText(subject.obchodniJmeno);
+      const queryLabel = formatAresEntityLabel({
+        ico,
+        obchodniJmeno: subject.obchodniJmeno,
+      });
+
+      selectedAresQueryRef.current = queryLabel;
+      setAresQuery(queryLabel);
+      setAresSuggestions([]);
+      setAresSuggestOpen(false);
+      setAresSuggestError(null);
+      setForm((prev) => ({
+        ...prev,
+        vehicleCompanyId: ico,
+        vehicleClientName: companyName || prev.vehicleClientName,
+      }));
+    } catch (lookupError) {
+      setAresError(
+        lookupError instanceof Error
+          ? lookupError.message
+          : "ARES dohledání se nepodařilo."
+      );
+    } finally {
+      setAresLoading(false);
+    }
+  };
+
   const handleBusinessSearchInput = (value: string) => {
     const query = value;
     const ico = normalizeIco(query);
@@ -764,6 +868,66 @@ export function TipsterHomeView({
     setAresSuggestOpen(true);
   };
 
+  const handleVehicleSearchInput = (value: string) => {
+    const query = value;
+    const ico = normalizeIco(query);
+
+    selectedAresQueryRef.current = "";
+    setAresQuery(query);
+    setAresError(null);
+    setAresSuggestError(null);
+    setAresSuggestOpen(true);
+    setError(null);
+    setStatus(null);
+
+    setForm((prev) => ({
+      ...prev,
+      vehicleCompanyId: isIcoOnlyQuery(query) ? ico : "",
+    }));
+  };
+
+  const selectVehicleAresEntity = (entity: AresSearchEntity) => {
+    const ico = normalizeIco(entity.ico ?? "");
+    const name = normalizeText(entity.obchodniJmeno);
+    const queryLabel = formatAresEntityLabel(entity);
+
+    selectedAresQueryRef.current = queryLabel;
+    setAresQuery(queryLabel);
+    setAresSuggestions([]);
+    setAresSuggestOpen(false);
+    setAresSuggestError(null);
+    setAresError(null);
+    setError(null);
+    setStatus(null);
+    setForm((prev) => ({
+      ...prev,
+      vehicleCompanyId: ico || prev.vehicleCompanyId,
+      vehicleClientName: name || prev.vehicleClientName,
+    }));
+
+    if (ico.length === 8) {
+      void lookupVehicle(ico);
+    }
+  };
+
+  const handleVehicleAresLookup = async () => {
+    const query = aresQuery.trim();
+    const ico = normalizeIco(query || form.vehicleCompanyId);
+
+    if (isIcoOnlyQuery(query) || normalizeIco(form.vehicleCompanyId).length === 8) {
+      await lookupVehicle(ico || form.vehicleCompanyId);
+      return;
+    }
+
+    if (!canSearchAresQuery(query)) {
+      setAresSuggestError("Zadej celé IČO nebo alespoň 2 znaky z názvu firmy.");
+      setAresSuggestOpen(true);
+      return;
+    }
+
+    setAresSuggestOpen(true);
+  };
+
   const tipFields = useMemo<TipSnapshotField[]>(() => {
     if (product === "property") {
       return [
@@ -772,7 +936,7 @@ export function TipsterHomeView({
         fieldSnapshot("Adresa pojištění", form.propertyInsuranceAddress),
         fieldSnapshot("Telefon", form.propertyPhone),
         fieldSnapshot("E-mail", form.propertyEmail),
-        fieldSnapshot("Preferovaný čas volání", form.propertyPreferredCallTime),
+        fieldSnapshot(PREFERRED_CALL_LABEL, form.propertyPreferredCallTime),
         fieldSnapshot("Poznámka", form.note),
       ].filter((field): field is TipSnapshotField => !!field);
     }
@@ -784,7 +948,7 @@ export function TipsterHomeView({
         fieldSnapshot("IČO", form.vehicleCompanyId),
         fieldSnapshot("Telefon", form.vehiclePhone),
         fieldSnapshot("E-mail", form.vehicleEmail),
-        fieldSnapshot("Preferovaný čas volání", form.vehiclePreferredCallTime),
+        fieldSnapshot(PREFERRED_CALL_LABEL, form.vehiclePreferredCallTime),
         fieldSnapshot("SPZ", form.vehiclePlate),
         fieldSnapshot("Roční nájezd km", form.vehicleAnnualMileage),
         fieldSnapshot("Poznámka", form.note),
@@ -799,7 +963,7 @@ export function TipsterHomeView({
         fieldSnapshot("Obrat", form.businessTurnover),
         fieldSnapshot("Počet zaměstnanců", form.businessEmployees),
         fieldSnapshot("Hlavní podnikatelská činnost", form.businessActivity),
-        fieldSnapshot("Preferovaný datum a čas volání", form.businessPreferredCallAt),
+        fieldSnapshot(PREFERRED_CALL_LABEL, form.businessPreferredCallAt),
         fieldSnapshot("Poznámka", form.note),
       ].filter((field): field is TipSnapshotField => !!field);
     }
@@ -809,7 +973,7 @@ export function TipsterHomeView({
         fieldSnapshot("Klient", form.otherClientName),
         fieldSnapshot("Telefon", form.otherPhone),
         fieldSnapshot("E-mail", form.otherEmail),
-        fieldSnapshot("Preferovaný čas volání", form.otherPreferredCallTime),
+        fieldSnapshot(PREFERRED_CALL_LABEL, form.otherPreferredCallTime),
         fieldSnapshot("Popis", form.otherDescription),
         fieldSnapshot("Poznámka", form.note),
       ].filter((field): field is TipSnapshotField => !!field);
@@ -836,7 +1000,7 @@ export function TipsterHomeView({
           fieldLine("Adresa pojištění", form.propertyInsuranceAddress),
           fieldLine("Telefon", form.propertyPhone),
           fieldLine("E-mail", form.propertyEmail),
-          fieldLine("Preferovaný čas volání", form.propertyPreferredCallTime),
+          fieldLine(PREFERRED_CALL_LABEL, form.propertyPreferredCallTime),
           fieldLine("Přílohy", tipAttachments.map((file) => file.name).join(", ")),
           fieldLine("Poznámka", form.note),
         ].filter((line): line is string => !!line)
@@ -851,7 +1015,7 @@ export function TipsterHomeView({
           fieldLine("IČO", form.vehicleCompanyId),
           fieldLine("Telefon", form.vehiclePhone),
           fieldLine("E-mail", form.vehicleEmail),
-          fieldLine("Preferovaný čas volání", form.vehiclePreferredCallTime),
+          fieldLine(PREFERRED_CALL_LABEL, form.vehiclePreferredCallTime),
           fieldLine("SPZ", form.vehiclePlate),
           fieldLine("Roční nájezd km", form.vehicleAnnualMileage),
           fieldLine("Přílohy", tipAttachments.map((file) => file.name).join(", ")),
@@ -869,7 +1033,7 @@ export function TipsterHomeView({
           fieldLine("Obrat", form.businessTurnover),
           fieldLine("Počet zaměstnanců", form.businessEmployees),
           fieldLine("Hlavní podnikatelská činnost", form.businessActivity),
-          fieldLine("Preferovaný datum a čas volání", form.businessPreferredCallAt),
+          fieldLine(PREFERRED_CALL_LABEL, form.businessPreferredCallAt),
           fieldLine("Přílohy", tipAttachments.map((file) => file.name).join(", ")),
           fieldLine("Poznámka", form.note),
         ].filter((line): line is string => !!line)
@@ -882,7 +1046,7 @@ export function TipsterHomeView({
           fieldLine("Klient", form.otherClientName),
           fieldLine("Telefon", form.otherPhone),
           fieldLine("E-mail", form.otherEmail),
-          fieldLine("Preferovaný čas volání", form.otherPreferredCallTime),
+          fieldLine(PREFERRED_CALL_LABEL, form.otherPreferredCallTime),
           fieldLine("Popis", form.otherDescription),
           fieldLine("Přílohy", tipAttachments.map((file) => file.name).join(", ")),
           fieldLine("Poznámka", form.note),
@@ -937,7 +1101,7 @@ export function TipsterHomeView({
 
       resetForm();
       setFormOpen(false);
-      setStatus(`Tip byl odeslán na ${recipientEmail}.`);
+      setStatus(`Tip byl odeslán na ${recipientDisplayName}.`);
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -958,7 +1122,7 @@ export function TipsterHomeView({
           <TextField label="Adresa pojištění" value={form.propertyInsuranceAddress} onChange={(value) => updateField("propertyInsuranceAddress", value)} />
           <TextField label="Telefon" type="tel" value={form.propertyPhone} onChange={(value) => updateField("propertyPhone", value)} />
           <TextField label="E-mail" type="email" value={form.propertyEmail} onChange={(value) => updateField("propertyEmail", value)} />
-          <TextField label="Preferovaný čas volání" value={form.propertyPreferredCallTime} onChange={(value) => updateField("propertyPreferredCallTime", value)} placeholder="Např. pracovní dny 14:00-16:00" />
+          <TextField label={PREFERRED_CALL_LABEL} value={form.propertyPreferredCallTime} onChange={(value) => updateField("propertyPreferredCallTime", value)} placeholder="Např. zítra dopoledne nebo pracovní dny 14:00-16:00" />
           <AttachmentsField files={tipAttachments} onAdd={addTipAttachments} onRemove={removeTipAttachment} />
           <TextareaField label="Poznámka" value={form.note} onChange={(value) => updateField("note", value)} placeholder="Doplňující informace k tipu." />
         </div>
@@ -966,14 +1130,113 @@ export function TipsterHomeView({
     }
 
     if (product === "vehicle") {
+      const showAresSuggestions =
+        aresSuggestOpen &&
+        (aresSuggestLoading ||
+          !!aresSuggestError ||
+          aresSuggestions.length > 0 ||
+          canSearchAresQuery(aresQuery));
+
       return (
         <div className="grid gap-3 sm:grid-cols-2">
           <TextField label="Jméno a příjmení / název firmy" value={form.vehicleClientName} onChange={(value) => updateField("vehicleClientName", value)} />
           <TextField label="Rodné číslo" value={form.vehicleBirthNumber} onChange={(value) => updateField("vehicleBirthNumber", value)} />
-          <TextField label="IČO" value={form.vehicleCompanyId} onChange={(value) => updateField("vehicleCompanyId", normalizeIco(value))} />
+          <label className="space-y-1.5">
+            <span className={labelClass}>IČO nebo název firmy</span>
+            <div className="flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <input
+                  type="text"
+                  autoComplete="off"
+                  className={fieldClass}
+                  value={aresQuery}
+                  onChange={(event) => handleVehicleSearchInput(event.target.value)}
+                  onFocus={() => {
+                    if (canSearchAresQuery(aresQuery)) {
+                      setAresSuggestOpen(true);
+                    }
+                  }}
+                  onBlur={() => {
+                    window.setTimeout(() => setAresSuggestOpen(false), 160);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setAresSuggestOpen(false);
+                    }
+                  }}
+                  placeholder="IČO nebo název firmy"
+                />
+                {showAresSuggestions ? (
+                  <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-72 overflow-auto rounded-2xl border border-white/14 bg-[#130b28] p-1.5 shadow-[0_22px_54px_rgba(7,6,25,0.55)]">
+                    {aresSuggestLoading ? (
+                      <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-violet-100/75">
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        Hledám v ARES...
+                      </div>
+                    ) : null}
+                    {!aresSuggestLoading && aresSuggestError ? (
+                      <div className="px-3 py-2.5 text-sm text-rose-100">
+                        {aresSuggestError}
+                      </div>
+                    ) : null}
+                    {!aresSuggestLoading &&
+                    !aresSuggestError &&
+                    aresSuggestions.length === 0 &&
+                    canSearchAresQuery(aresQuery) ? (
+                      <div className="px-3 py-2.5 text-sm text-violet-100/68">
+                        ARES nenašel žádný subjekt.
+                      </div>
+                    ) : null}
+                    {!aresSuggestLoading && !aresSuggestError
+                      ? aresSuggestions.map((entity, index) => {
+                          const ico = normalizeIco(entity.ico ?? "");
+                          const name = normalizeText(entity.obchodniJmeno) || "Subjekt bez názvu";
+                          const address = formatAresEntityAddress(entity);
+
+                          return (
+                            <button
+                              key={`${ico || name}-${index}`}
+                              type="button"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => selectVehicleAresEntity(entity)}
+                              className="block w-full rounded-xl px-3 py-2.5 text-left transition hover:bg-white/[0.08] focus:bg-white/[0.08] focus:outline-none"
+                            >
+                              <span className="block text-sm font-semibold text-[#f8fafc]">
+                                {name}
+                              </span>
+                              <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-violet-100/68">
+                                {ico ? <span>IČO {ico}</span> : null}
+                                {address ? <span>{address}</span> : null}
+                              </span>
+                            </button>
+                          );
+                        })
+                      : null}
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleVehicleAresLookup()}
+                disabled={aresLoading || aresSuggestLoading}
+                className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl border border-white/18 bg-white/[0.06] text-violet-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
+                title="Dohledat v ARES"
+                aria-label="Dohledat v ARES"
+              >
+                {aresLoading || aresSuggestLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Search className="h-4 w-4" aria-hidden="true" />
+                )}
+              </button>
+            </div>
+            <span className="block text-xs text-violet-100/48">
+              Piš IČO nebo název firmy, potom vyber subjekt z ARES.
+            </span>
+          </label>
           <TextField label="Telefon" type="tel" value={form.vehiclePhone} onChange={(value) => updateField("vehiclePhone", value)} />
           <TextField label="E-mail" type="email" value={form.vehicleEmail} onChange={(value) => updateField("vehicleEmail", value)} />
-          <TextField label="Preferovaný čas volání" value={form.vehiclePreferredCallTime} onChange={(value) => updateField("vehiclePreferredCallTime", value)} placeholder="Např. zítra dopoledne" />
+          <TextField label={PREFERRED_CALL_LABEL} value={form.vehiclePreferredCallTime} onChange={(value) => updateField("vehiclePreferredCallTime", value)} placeholder="Např. zítra dopoledne nebo pracovní dny 14:00-16:00" />
           <TextField label="SPZ" value={form.vehiclePlate} onChange={(value) => updateField("vehiclePlate", value.toUpperCase())} />
           <label className="space-y-1.5">
             <span className={labelClass}>Roční nájezd km</span>
@@ -990,6 +1253,11 @@ export function TipsterHomeView({
               ))}
             </select>
           </label>
+          {aresError ? (
+            <p className="rounded-2xl border border-rose-300/45 bg-rose-400/15 px-4 py-3 text-sm text-rose-100 sm:col-span-2">
+              {aresError}
+            </p>
+          ) : null}
           <AttachmentsField files={tipAttachments} onAdd={addTipAttachments} onRemove={removeTipAttachment} />
           <TextareaField label="Poznámka" value={form.note} onChange={(value) => updateField("note", value)} placeholder="Doplňující informace k vozidlu nebo klientovi." />
         </div>
@@ -1102,7 +1370,7 @@ export function TipsterHomeView({
           <TextField label="Obrat" value={form.businessTurnover} onChange={(value) => updateField("businessTurnover", value)} placeholder="Např. 3 000 000 Kč" />
           <TextField label="Počet zaměstnanců" type="number" value={form.businessEmployees} onChange={(value) => updateField("businessEmployees", value)} />
           <TextField label="Hlavní podnikatelská činnost" value={form.businessActivity} onChange={(value) => updateField("businessActivity", value)} />
-          <TextField label="Preferovaný datum a čas volání" type="datetime-local" value={form.businessPreferredCallAt} onChange={(value) => updateField("businessPreferredCallAt", value)} />
+          <TextField label={PREFERRED_CALL_LABEL} value={form.businessPreferredCallAt} onChange={(value) => updateField("businessPreferredCallAt", value)} placeholder="Např. zítra dopoledne nebo pracovní dny 14:00-16:00" />
           {form.businessCompanyName || form.businessAddress ? (
             <div className="rounded-2xl border border-emerald-300/40 bg-emerald-400/15 px-4 py-3 text-sm text-emerald-100 sm:col-span-2">
               <div className="font-semibold">{form.businessCompanyName || "ARES subjekt"}</div>
@@ -1127,7 +1395,7 @@ export function TipsterHomeView({
         <TextField label="Klient" value={form.otherClientName} onChange={(value) => updateField("otherClientName", value)} />
         <TextField label="Telefon" type="tel" value={form.otherPhone} onChange={(value) => updateField("otherPhone", value)} />
         <TextField label="E-mail" type="email" value={form.otherEmail} onChange={(value) => updateField("otherEmail", value)} />
-        <TextField label="Preferovaný čas volání" value={form.otherPreferredCallTime} onChange={(value) => updateField("otherPreferredCallTime", value)} />
+        <TextField label={PREFERRED_CALL_LABEL} value={form.otherPreferredCallTime} onChange={(value) => updateField("otherPreferredCallTime", value)} placeholder="Např. zítra dopoledne nebo pracovní dny 14:00-16:00" />
         <TextareaField label="Popis tipu" value={form.otherDescription} onChange={(value) => updateField("otherDescription", value)} placeholder="Zatím obecné pole pro ostatní produkty." />
         <AttachmentsField files={tipAttachments} onAdd={addTipAttachments} onRemove={removeTipAttachment} />
         <TextareaField label="Poznámka" value={form.note} onChange={(value) => updateField("note", value)} placeholder="Doplňující informace k tipu." />
@@ -1152,7 +1420,7 @@ export function TipsterHomeView({
               </h1>
               <p className="tipster-hero-copy mt-5 max-w-2xl text-base leading-7 text-slate-100">
                 Přihlášen jako <span className="tipster-hero-strong font-bold text-[#f8fafc]">{displayName}</span>. Tip odejde příjemci{" "}
-                <span className="tipster-hero-accent font-bold text-emerald-50">{recipientEmail || "není nastaven"}</span>
+                <span className="tipster-hero-accent font-bold text-emerald-50">{recipientDisplayName}</span>
                 {" "}a v detailu pak uvidíš stav zpracování.
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -1348,6 +1616,9 @@ export function TipsterHomeView({
                         key={item.id}
                         type="button"
                         onClick={() => {
+                          if (product !== item.id) {
+                            clearAresState();
+                          }
                           setProduct(item.id);
                           setError(null);
                         }}
