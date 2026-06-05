@@ -175,13 +175,20 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAddonNaturalRisks",
   "carAddonKlika",
   "carAddonGlass",
+  "carAddonGlassLimit",
   "carAddonAnimalCollision",
+  "carAddonAnimalCollisionLimit",
   "carAddonAnimalDamage",
+  "carAddonAnimalDamageLimit",
   "carAddonVandalism",
   "carAddonTheft",
+  "carAddonTheftLimit",
   "carAddonNatural",
+  "carAddonNaturalLimit",
   "carAddonOwnDamage",
+  "carAddonOwnDamageLimit",
   "carAddonGap",
+  "carAddonGapLimit",
   "carAddonSmartGap",
   "carAddonServisPro",
   "carAddonReplacementCar",
@@ -363,15 +370,22 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAddonNaturalRisks",
   "carAddonKlika",
   "carAddonGlass",
+  "carAddonGlassLimit",
   "carAddonAnimalCollision",
+  "carAddonAnimalCollisionLimit",
   "carAddonAnimalDamage",
+  "carAddonAnimalDamageLimit",
   "carAddonVandalism",
   "carAddonTheft",
+  "carAddonTheftLimit",
   "carAddonNatural",
+  "carAddonNaturalLimit",
   "carAddonOwnDamage",
+  "carAddonOwnDamageLimit",
   "carAddonPothole",
   "carAddonNonFaultAccident",
   "carAddonGap",
+  "carAddonGapLimit",
   "carAddonSmartGap",
   "carAddonServisPro",
   "carAddonReplacementCar",
@@ -416,6 +430,13 @@ const UPDATE_FIELDS_OPTIONAL_NUMBER_FIELDS = new Set<string>([
   "carLiabilityLimit",
   "carHullSumInsured",
   "carHullDeductible",
+  "carAddonGlassLimit",
+  "carAddonAnimalCollisionLimit",
+  "carAddonAnimalDamageLimit",
+  "carAddonTheftLimit",
+  "carAddonNaturalLimit",
+  "carAddonOwnDamageLimit",
+  "carAddonGapLimit",
 ]);
 const UPDATE_FIELDS_OPTIONAL_BOOLEAN_FIELDS = new Set<string>([
   "carHullRiskAccident",
@@ -1150,13 +1171,20 @@ type NormalizedCreateEntryPayload = {
   carAddonNaturalRisks: boolean | null;
   carAddonKlika: boolean | null;
   carAddonGlass: boolean | null;
+  carAddonGlassLimit: number | null;
   carAddonAnimalCollision: boolean | null;
+  carAddonAnimalCollisionLimit: number | null;
   carAddonAnimalDamage: boolean | null;
+  carAddonAnimalDamageLimit: number | null;
   carAddonVandalism: boolean | null;
   carAddonTheft: boolean | null;
+  carAddonTheftLimit: number | null;
   carAddonNatural: boolean | null;
+  carAddonNaturalLimit: number | null;
   carAddonOwnDamage: boolean | null;
+  carAddonOwnDamageLimit: number | null;
   carAddonGap: boolean | null;
+  carAddonGapLimit: number | null;
   carAddonSmartGap: boolean | null;
   carAddonServisPro: boolean | null;
   carAddonReplacementCar: boolean | null;
@@ -1401,16 +1429,33 @@ const normalizeCreateEntryPayload = ({
   if (!carAddonKlikaParsed.ok) return carAddonKlikaParsed;
   const carAddonGlassParsed = parseOptionalBoolean(raw.carAddonGlass, "carAddonGlass");
   if (!carAddonGlassParsed.ok) return carAddonGlassParsed;
+  const carAddonGlassLimitParsed = parseOptionalFiniteNumber(
+    raw.carAddonGlassLimit,
+    "carAddonGlassLimit"
+  );
+  if (!carAddonGlassLimitParsed.ok) return carAddonGlassLimitParsed;
   const carAddonAnimalCollisionParsed = parseOptionalBoolean(
     raw.carAddonAnimalCollision,
     "carAddonAnimalCollision"
   );
   if (!carAddonAnimalCollisionParsed.ok) return carAddonAnimalCollisionParsed;
+  const carAddonAnimalCollisionLimitParsed = parseOptionalFiniteNumber(
+    raw.carAddonAnimalCollisionLimit,
+    "carAddonAnimalCollisionLimit"
+  );
+  if (!carAddonAnimalCollisionLimitParsed.ok) {
+    return carAddonAnimalCollisionLimitParsed;
+  }
   const carAddonAnimalDamageParsed = parseOptionalBoolean(
     raw.carAddonAnimalDamage,
     "carAddonAnimalDamage"
   );
   if (!carAddonAnimalDamageParsed.ok) return carAddonAnimalDamageParsed;
+  const carAddonAnimalDamageLimitParsed = parseOptionalFiniteNumber(
+    raw.carAddonAnimalDamageLimit,
+    "carAddonAnimalDamageLimit"
+  );
+  if (!carAddonAnimalDamageLimitParsed.ok) return carAddonAnimalDamageLimitParsed;
   const carAddonVandalismParsed = parseOptionalBoolean(
     raw.carAddonVandalism,
     "carAddonVandalism"
@@ -1418,18 +1463,38 @@ const normalizeCreateEntryPayload = ({
   if (!carAddonVandalismParsed.ok) return carAddonVandalismParsed;
   const carAddonTheftParsed = parseOptionalBoolean(raw.carAddonTheft, "carAddonTheft");
   if (!carAddonTheftParsed.ok) return carAddonTheftParsed;
+  const carAddonTheftLimitParsed = parseOptionalFiniteNumber(
+    raw.carAddonTheftLimit,
+    "carAddonTheftLimit"
+  );
+  if (!carAddonTheftLimitParsed.ok) return carAddonTheftLimitParsed;
   const carAddonNaturalParsed = parseOptionalBoolean(
     raw.carAddonNatural,
     "carAddonNatural"
   );
   if (!carAddonNaturalParsed.ok) return carAddonNaturalParsed;
+  const carAddonNaturalLimitParsed = parseOptionalFiniteNumber(
+    raw.carAddonNaturalLimit,
+    "carAddonNaturalLimit"
+  );
+  if (!carAddonNaturalLimitParsed.ok) return carAddonNaturalLimitParsed;
   const carAddonOwnDamageParsed = parseOptionalBoolean(
     raw.carAddonOwnDamage,
     "carAddonOwnDamage"
   );
   if (!carAddonOwnDamageParsed.ok) return carAddonOwnDamageParsed;
+  const carAddonOwnDamageLimitParsed = parseOptionalFiniteNumber(
+    raw.carAddonOwnDamageLimit,
+    "carAddonOwnDamageLimit"
+  );
+  if (!carAddonOwnDamageLimitParsed.ok) return carAddonOwnDamageLimitParsed;
   const carAddonGapParsed = parseOptionalBoolean(raw.carAddonGap, "carAddonGap");
   if (!carAddonGapParsed.ok) return carAddonGapParsed;
+  const carAddonGapLimitParsed = parseOptionalFiniteNumber(
+    raw.carAddonGapLimit,
+    "carAddonGapLimit"
+  );
+  if (!carAddonGapLimitParsed.ok) return carAddonGapLimitParsed;
   const carAddonSmartGapParsed = parseOptionalBoolean(
     raw.carAddonSmartGap,
     "carAddonSmartGap"
@@ -1710,13 +1775,30 @@ const normalizeCreateEntryPayload = ({
       carAddonNaturalRisks: carAddonNaturalRisksParsed.value,
       carAddonKlika: carAddonKlikaParsed.value,
       carAddonGlass: carAddonGlassParsed.value,
+      carAddonGlassLimit: carAddonGlassParsed.value ? carAddonGlassLimitParsed.value : null,
       carAddonAnimalCollision: carAddonAnimalCollisionParsed.value,
+      carAddonAnimalCollisionLimit: carAddonAnimalCollisionParsed.value
+        ? carAddonAnimalCollisionLimitParsed.value
+        : null,
       carAddonAnimalDamage: carAddonAnimalDamageParsed.value,
+      carAddonAnimalDamageLimit: carAddonAnimalDamageParsed.value
+        ? carAddonAnimalDamageLimitParsed.value
+        : null,
       carAddonVandalism: carAddonVandalismParsed.value,
       carAddonTheft: carAddonTheftParsed.value,
+      carAddonTheftLimit: carAddonTheftParsed.value
+        ? carAddonTheftLimitParsed.value
+        : null,
       carAddonNatural: carAddonNaturalParsed.value,
+      carAddonNaturalLimit: carAddonNaturalParsed.value
+        ? carAddonNaturalLimitParsed.value
+        : null,
       carAddonOwnDamage: carAddonOwnDamageParsed.value,
+      carAddonOwnDamageLimit: carAddonOwnDamageParsed.value
+        ? carAddonOwnDamageLimitParsed.value
+        : null,
       carAddonGap: carAddonGapParsed.value,
+      carAddonGapLimit: carAddonGapParsed.value ? carAddonGapLimitParsed.value : null,
       carAddonSmartGap: carAddonSmartGapParsed.value,
       carAddonServisPro: carAddonServisProParsed.value,
       carAddonReplacementCar: carAddonReplacementCarParsed.value,

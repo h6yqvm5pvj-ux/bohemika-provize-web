@@ -989,15 +989,22 @@ export default function ContractDetailPage() {
   const [editCarAddonNaturalRisks, setEditCarAddonNaturalRisks] = useState(false);
   const [editCarAddonKlika, setEditCarAddonKlika] = useState(false);
   const [editCarAddonGlass, setEditCarAddonGlass] = useState(false);
+  const [editCarAddonGlassLimit, setEditCarAddonGlassLimit] = useState("");
   const [editCarAddonAnimalCollision, setEditCarAddonAnimalCollision] = useState(false);
+  const [editCarAddonAnimalCollisionLimit, setEditCarAddonAnimalCollisionLimit] = useState("");
   const [editCarAddonAnimalDamage, setEditCarAddonAnimalDamage] = useState(false);
+  const [editCarAddonAnimalDamageLimit, setEditCarAddonAnimalDamageLimit] = useState("");
   const [editCarAddonVandalism, setEditCarAddonVandalism] = useState(false);
   const [editCarAddonTheft, setEditCarAddonTheft] = useState(false);
+  const [editCarAddonTheftLimit, setEditCarAddonTheftLimit] = useState("");
   const [editCarAddonNatural, setEditCarAddonNatural] = useState(false);
+  const [editCarAddonNaturalLimit, setEditCarAddonNaturalLimit] = useState("");
   const [editCarAddonOwnDamage, setEditCarAddonOwnDamage] = useState(false);
+  const [editCarAddonOwnDamageLimit, setEditCarAddonOwnDamageLimit] = useState("");
   const [editCarAddonPothole, setEditCarAddonPothole] = useState(false);
   const [editCarAddonNonFaultAccident, setEditCarAddonNonFaultAccident] = useState(false);
   const [editCarAddonGap, setEditCarAddonGap] = useState(false);
+  const [editCarAddonGapLimit, setEditCarAddonGapLimit] = useState("");
   const [editCarAddonSmartGap, setEditCarAddonSmartGap] = useState(false);
   const [editCarAddonServisPro, setEditCarAddonServisPro] = useState(false);
   const [editCarAddonReplacementCar, setEditCarAddonReplacementCar] = useState(false);
@@ -1131,15 +1138,22 @@ export default function ContractDetailPage() {
     carAddonNaturalRisks: editCarAddonNaturalRisks,
     carAddonKlika: editCarAddonKlika,
     carAddonGlass: editCarAddonGlass,
+    carAddonGlassLimit: editCarAddonGlassLimit,
     carAddonAnimalCollision: editCarAddonAnimalCollision,
+    carAddonAnimalCollisionLimit: editCarAddonAnimalCollisionLimit,
     carAddonAnimalDamage: editCarAddonAnimalDamage,
+    carAddonAnimalDamageLimit: editCarAddonAnimalDamageLimit,
     carAddonVandalism: editCarAddonVandalism,
     carAddonTheft: editCarAddonTheft,
+    carAddonTheftLimit: editCarAddonTheftLimit,
     carAddonNatural: editCarAddonNatural,
+    carAddonNaturalLimit: editCarAddonNaturalLimit,
     carAddonOwnDamage: editCarAddonOwnDamage,
+    carAddonOwnDamageLimit: editCarAddonOwnDamageLimit,
     carAddonPothole: editCarAddonPothole,
     carAddonNonFaultAccident: editCarAddonNonFaultAccident,
     carAddonGap: editCarAddonGap,
+    carAddonGapLimit: editCarAddonGapLimit,
     carAddonSmartGap: editCarAddonSmartGap,
     carAddonServisPro: editCarAddonServisPro,
     carAddonReplacementCar: editCarAddonReplacementCar,
@@ -1325,11 +1339,20 @@ export default function ContractDetailPage() {
         case "carAddonGlass":
           setEditCarAddonGlass(Boolean(value));
           break;
+        case "carAddonGlassLimit":
+          setEditCarAddonGlassLimit(String(value));
+          break;
         case "carAddonAnimalCollision":
           setEditCarAddonAnimalCollision(Boolean(value));
           break;
+        case "carAddonAnimalCollisionLimit":
+          setEditCarAddonAnimalCollisionLimit(String(value));
+          break;
         case "carAddonAnimalDamage":
           setEditCarAddonAnimalDamage(Boolean(value));
+          break;
+        case "carAddonAnimalDamageLimit":
+          setEditCarAddonAnimalDamageLimit(String(value));
           break;
         case "carAddonVandalism":
           setEditCarAddonVandalism(Boolean(value));
@@ -1337,11 +1360,20 @@ export default function ContractDetailPage() {
         case "carAddonTheft":
           setEditCarAddonTheft(Boolean(value));
           break;
+        case "carAddonTheftLimit":
+          setEditCarAddonTheftLimit(String(value));
+          break;
         case "carAddonNatural":
           setEditCarAddonNatural(Boolean(value));
           break;
+        case "carAddonNaturalLimit":
+          setEditCarAddonNaturalLimit(String(value));
+          break;
         case "carAddonOwnDamage":
           setEditCarAddonOwnDamage(Boolean(value));
+          break;
+        case "carAddonOwnDamageLimit":
+          setEditCarAddonOwnDamageLimit(String(value));
           break;
         case "carAddonPothole":
           setEditCarAddonPothole(Boolean(value));
@@ -1351,6 +1383,9 @@ export default function ContractDetailPage() {
           break;
         case "carAddonGap":
           setEditCarAddonGap(Boolean(value));
+          break;
+        case "carAddonGapLimit":
+          setEditCarAddonGapLimit(String(value));
           break;
         case "carAddonSmartGap":
           setEditCarAddonSmartGap(Boolean(value));
@@ -1774,15 +1809,53 @@ export default function ContractDetailPage() {
     setEditCarAddonNaturalRisks(!!contract.carAddonNaturalRisks);
     setEditCarAddonKlika(!!contract.carAddonKlika);
     setEditCarAddonGlass(!!contract.carAddonGlass);
+    setEditCarAddonGlassLimit(
+      contract.carAddonGlassLimit != null && Number.isFinite(contract.carAddonGlassLimit)
+        ? String(contract.carAddonGlassLimit)
+        : ""
+    );
     setEditCarAddonAnimalCollision(!!contract.carAddonAnimalCollision);
+    setEditCarAddonAnimalCollisionLimit(
+      contract.carAddonAnimalCollisionLimit != null &&
+      Number.isFinite(contract.carAddonAnimalCollisionLimit)
+        ? String(contract.carAddonAnimalCollisionLimit)
+        : ""
+    );
     setEditCarAddonAnimalDamage(!!contract.carAddonAnimalDamage);
+    setEditCarAddonAnimalDamageLimit(
+      contract.carAddonAnimalDamageLimit != null &&
+      Number.isFinite(contract.carAddonAnimalDamageLimit)
+        ? String(contract.carAddonAnimalDamageLimit)
+        : ""
+    );
     setEditCarAddonVandalism(!!contract.carAddonVandalism);
     setEditCarAddonTheft(!!contract.carAddonTheft);
+    setEditCarAddonTheftLimit(
+      contract.carAddonTheftLimit != null && Number.isFinite(contract.carAddonTheftLimit)
+        ? String(contract.carAddonTheftLimit)
+        : ""
+    );
     setEditCarAddonNatural(!!contract.carAddonNatural);
+    setEditCarAddonNaturalLimit(
+      contract.carAddonNaturalLimit != null && Number.isFinite(contract.carAddonNaturalLimit)
+        ? String(contract.carAddonNaturalLimit)
+        : ""
+    );
     setEditCarAddonOwnDamage(!!contract.carAddonOwnDamage);
+    setEditCarAddonOwnDamageLimit(
+      contract.carAddonOwnDamageLimit != null &&
+      Number.isFinite(contract.carAddonOwnDamageLimit)
+        ? String(contract.carAddonOwnDamageLimit)
+        : ""
+    );
     setEditCarAddonPothole(!!contract.carAddonPothole);
     setEditCarAddonNonFaultAccident(!!contract.carAddonNonFaultAccident);
     setEditCarAddonGap(!!contract.carAddonGap);
+    setEditCarAddonGapLimit(
+      contract.carAddonGapLimit != null && Number.isFinite(contract.carAddonGapLimit)
+        ? String(contract.carAddonGapLimit)
+        : ""
+    );
     setEditCarAddonSmartGap(!!contract.carAddonSmartGap);
     setEditCarAddonServisPro(!!contract.carAddonServisPro);
     setEditCarAddonReplacementCar(!!contract.carAddonReplacementCar);
@@ -2233,7 +2306,7 @@ export default function ContractDetailPage() {
 
     try {
       const toNumberOrNull = (txt: string) => {
-        const trimmed = txt.trim().replace(",", ".");
+        const trimmed = txt.trim().replace(/\s+/g, "").replace(",", ".");
         if (!trimmed) return null;
         const n = Number(trimmed);
         return Number.isFinite(n) ? n : null;
@@ -2296,15 +2369,32 @@ export default function ContractDetailPage() {
               carAddonNaturalRisks: !!editCarAddonNaturalRisks,
               carAddonKlika: !!editCarAddonKlika,
               carAddonGlass: !!editCarAddonGlass,
+              carAddonGlassLimit: editCarAddonGlass ? toNumberOrNull(editCarAddonGlassLimit) : null,
               carAddonAnimalCollision: !!editCarAddonAnimalCollision,
+              carAddonAnimalCollisionLimit: editCarAddonAnimalCollision
+                ? toNumberOrNull(editCarAddonAnimalCollisionLimit)
+                : null,
               carAddonAnimalDamage: !!editCarAddonAnimalDamage,
+              carAddonAnimalDamageLimit: editCarAddonAnimalDamage
+                ? toNumberOrNull(editCarAddonAnimalDamageLimit)
+                : null,
               carAddonVandalism: !!editCarAddonVandalism,
               carAddonTheft: !!editCarAddonTheft,
+              carAddonTheftLimit: editCarAddonTheft
+                ? toNumberOrNull(editCarAddonTheftLimit)
+                : null,
               carAddonNatural: !!editCarAddonNatural,
+              carAddonNaturalLimit: editCarAddonNatural
+                ? toNumberOrNull(editCarAddonNaturalLimit)
+                : null,
               carAddonOwnDamage: !!editCarAddonOwnDamage,
+              carAddonOwnDamageLimit: editCarAddonOwnDamage
+                ? toNumberOrNull(editCarAddonOwnDamageLimit)
+                : null,
               carAddonPothole: !!editCarAddonPothole,
               carAddonNonFaultAccident: !!editCarAddonNonFaultAccident,
               carAddonGap: !!editCarAddonGap,
+              carAddonGapLimit: editCarAddonGap ? toNumberOrNull(editCarAddonGapLimit) : null,
               carAddonSmartGap: !!editCarAddonSmartGap,
               carAddonServisPro: !!editCarAddonServisPro,
               carAddonReplacementCar: !!editCarAddonReplacementCar,
@@ -2338,15 +2428,22 @@ export default function ContractDetailPage() {
               carAddonNaturalRisks: null,
               carAddonKlika: null,
               carAddonGlass: null,
+              carAddonGlassLimit: null,
               carAddonAnimalCollision: null,
+              carAddonAnimalCollisionLimit: null,
               carAddonAnimalDamage: null,
+              carAddonAnimalDamageLimit: null,
               carAddonVandalism: null,
               carAddonTheft: null,
+              carAddonTheftLimit: null,
               carAddonNatural: null,
+              carAddonNaturalLimit: null,
               carAddonOwnDamage: null,
+              carAddonOwnDamageLimit: null,
               carAddonPothole: null,
               carAddonNonFaultAccident: null,
               carAddonGap: null,
+              carAddonGapLimit: null,
               carAddonSmartGap: null,
               carAddonServisPro: null,
               carAddonReplacementCar: null,
@@ -2555,15 +2652,22 @@ export default function ContractDetailPage() {
                     carAddonNaturalRisks: autoFields.carAddonNaturalRisks,
                     carAddonKlika: autoFields.carAddonKlika,
                     carAddonGlass: autoFields.carAddonGlass,
+                    carAddonGlassLimit: autoFields.carAddonGlassLimit,
                     carAddonAnimalCollision: autoFields.carAddonAnimalCollision,
+                    carAddonAnimalCollisionLimit: autoFields.carAddonAnimalCollisionLimit,
                     carAddonAnimalDamage: autoFields.carAddonAnimalDamage,
+                    carAddonAnimalDamageLimit: autoFields.carAddonAnimalDamageLimit,
                     carAddonVandalism: autoFields.carAddonVandalism,
                     carAddonTheft: autoFields.carAddonTheft,
+                    carAddonTheftLimit: autoFields.carAddonTheftLimit,
                     carAddonNatural: autoFields.carAddonNatural,
+                    carAddonNaturalLimit: autoFields.carAddonNaturalLimit,
                     carAddonOwnDamage: autoFields.carAddonOwnDamage,
+                    carAddonOwnDamageLimit: autoFields.carAddonOwnDamageLimit,
                     carAddonPothole: autoFields.carAddonPothole,
                     carAddonNonFaultAccident: autoFields.carAddonNonFaultAccident,
                     carAddonGap: autoFields.carAddonGap,
+                    carAddonGapLimit: autoFields.carAddonGapLimit,
                     carAddonSmartGap: autoFields.carAddonSmartGap,
                     carAddonServisPro: autoFields.carAddonServisPro,
                     carAddonReplacementCar: autoFields.carAddonReplacementCar,
@@ -2598,15 +2702,22 @@ export default function ContractDetailPage() {
                     carAddonNaturalRisks: null,
                     carAddonKlika: null,
                     carAddonGlass: null,
+                    carAddonGlassLimit: null,
                     carAddonAnimalCollision: null,
+                    carAddonAnimalCollisionLimit: null,
                     carAddonAnimalDamage: null,
+                    carAddonAnimalDamageLimit: null,
                     carAddonVandalism: null,
                     carAddonTheft: null,
+                    carAddonTheftLimit: null,
                     carAddonNatural: null,
+                    carAddonNaturalLimit: null,
                     carAddonOwnDamage: null,
+                    carAddonOwnDamageLimit: null,
                     carAddonPothole: null,
                     carAddonNonFaultAccident: null,
                     carAddonGap: null,
+                    carAddonGapLimit: null,
                     carAddonSmartGap: null,
                     carAddonServisPro: null,
                     carAddonReplacementCar: null,

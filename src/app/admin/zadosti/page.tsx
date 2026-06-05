@@ -1316,19 +1316,16 @@ export default function AdminRequestsPage() {
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
                           Fronta žádostí
                         </p>
-                        <span className="text-xs text-slate-500">
-                          Posuň do strany
+                        <span className="text-xs font-medium text-slate-500">
+                          {filteredUnifiedRequests.length} položky v seznamu
                         </span>
                       </div>
-                      <div className="relative">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 z-[2] w-5 bg-gradient-to-r from-[#f7fbff] to-transparent" />
-                        <div className="pointer-events-none absolute inset-y-0 right-0 z-[2] w-7 bg-gradient-to-l from-[#f7fbff] to-transparent" />
-                        <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 pr-1 [scrollbar-width:thin]">
+                      <div className="space-y-3">
                           {filteredUnifiedRequests.map((item) => {
                         if (item.kind === "endCollaboration") {
                           const request = item.request;
@@ -1351,7 +1348,7 @@ export default function AdminRequestsPage() {
                           return (
                             <article
                               key={item.id}
-                              className="relative w-[min(100%,44rem)] shrink-0 snap-start overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-[1px] hover:shadow-[0_14px_28px_rgba(15,23,42,0.1)]"
+                              className="relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-[1px] hover:shadow-[0_14px_28px_rgba(15,23,42,0.1)]"
                             >
                               <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${toneBarClass}`} />
                               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -1374,7 +1371,7 @@ export default function AdminRequestsPage() {
                                 </div>
                               </div>
 
-                              <div className="grid gap-1 text-sm text-slate-700 sm:grid-cols-2">
+                              <div className="grid gap-1 text-sm text-slate-700 sm:grid-cols-2 [&_span]:break-words">
                                 <div>
                                   Žádá:{" "}
                                   <span className="font-medium text-slate-900">{request.requestedByEmail}</span>
@@ -1477,7 +1474,7 @@ export default function AdminRequestsPage() {
                         return (
                           <article
                             key={item.id}
-                            className={`relative w-[min(100%,44rem)] shrink-0 snap-start overflow-hidden rounded-2xl border bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-[1px] hover:shadow-[0_14px_28px_rgba(15,23,42,0.1)] ${
+                            className={`relative w-full overflow-hidden rounded-2xl border bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-[1px] hover:shadow-[0_14px_28px_rgba(15,23,42,0.1)] ${
                               slaInfo.isOverdueUrgent
                                 ? "border-rose-300"
                                 : "border-slate-200"
@@ -1505,7 +1502,7 @@ export default function AdminRequestsPage() {
                               </div>
                             </div>
 
-                            <div className="grid gap-1 text-sm text-slate-700 sm:grid-cols-2">
+                            <div className="grid gap-1 text-sm text-slate-700 sm:grid-cols-2 [&_span]:break-words">
                               <div>
                                 Priorita:{" "}
                                 <span className="font-medium text-slate-900">
@@ -1693,7 +1690,6 @@ export default function AdminRequestsPage() {
                           </article>
                         );
                           })}
-                        </div>
                       </div>
                     </div>
                   )}

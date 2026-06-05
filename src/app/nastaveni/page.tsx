@@ -983,7 +983,6 @@ export default function SettingsPage() {
   const [userRequestCorporateEmail, setUserRequestCorporateEmail] = useState("");
   const [userRequestFullName, setUserRequestFullName] = useState("");
   const [userRequestManagerEmail, setUserRequestManagerEmail] = useState("");
-  const [userRequestPosition, setUserRequestPosition] = useState<Position>("poradce1");
   const [userRequestMode, setUserRequestMode] = useState<CommissionMode>("standard");
   const [userRequestPriority, setUserRequestPriority] =
     useState<UserRequestPriority>("normal");
@@ -1987,7 +1986,6 @@ export default function SettingsPage() {
     setUserRequestCorporateEmail("");
     setUserRequestFullName("");
     setUserRequestManagerEmail("");
-    setUserRequestPosition("poradce1");
     setUserRequestMode("standard");
     setUserRequestSubject("userCreation");
     setUserRequestPriority("normal");
@@ -2135,7 +2133,7 @@ export default function SettingsPage() {
             requestedManagerEmail:
               userRequestSubject === "userCreation" ? requestedManagerEmail || null : null,
             requestedPosition:
-              userRequestSubject === "userCreation" ? userRequestPosition : null,
+              userRequestSubject === "userCreation" ? "poradce1" : null,
             requestedCommissionMode:
               userRequestSubject === "userCreation" ? userRequestMode : null,
             message,
@@ -2185,7 +2183,6 @@ export default function SettingsPage() {
     setUserRequestCorporateEmail(request.requestedCorporateEmail ?? "");
     setUserRequestFullName(request.requestedUserDraft?.fullName ?? "");
     setUserRequestManagerEmail(request.requestedUserDraft?.managerEmail ?? "");
-    setUserRequestPosition(request.requestedUserDraft?.position ?? "poradce1");
     setUserRequestMode(request.requestedUserDraft?.commissionMode ?? "standard");
     setUserRequestPriority(request.priority);
     setUserRequestMessage(request.message);
@@ -3984,26 +3981,6 @@ export default function SettingsPage() {
 
                         <div className="space-y-1.5">
                           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                            Výchozí pozice
-                          </label>
-                          <select
-                            className={fieldClass}
-                            value={userRequestPosition}
-                            onChange={(event) => {
-                              setUserRequestPosition(event.target.value as Position);
-                              setUserRequestStatus(null);
-                            }}
-                          >
-                            {POSITIONS.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
                             Režim provizí
                           </label>
                           <div
@@ -4265,14 +4242,6 @@ export default function SettingsPage() {
                                       <dd>{request.requestedUserDraft.managerEmail}</dd>
                                     </div>
                                   ) : null}
-                                  <div className="flex flex-wrap items-baseline gap-1">
-                                    <dt className="font-semibold text-slate-600">Pozice:</dt>
-                                    <dd>
-                                      {POSITIONS.find(
-                                        (p) => p.id === request.requestedUserDraft?.position
-                                      )?.label ?? request.requestedUserDraft.position}
-                                    </dd>
-                                  </div>
                                   <div className="flex flex-wrap items-baseline gap-1">
                                     <dt className="font-semibold text-slate-600">Režim:</dt>
                                     <dd>

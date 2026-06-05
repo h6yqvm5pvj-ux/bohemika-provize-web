@@ -34,15 +34,22 @@ export type AutoFields = {
   carAddonNaturalRisks: boolean;
   carAddonKlika: boolean;
   carAddonGlass: boolean;
+  carAddonGlassLimit: string;
   carAddonAnimalCollision: boolean;
+  carAddonAnimalCollisionLimit: string;
   carAddonAnimalDamage: boolean;
+  carAddonAnimalDamageLimit: string;
   carAddonVandalism: boolean;
   carAddonTheft: boolean;
+  carAddonTheftLimit: string;
   carAddonNatural: boolean;
+  carAddonNaturalLimit: string;
   carAddonOwnDamage: boolean;
+  carAddonOwnDamageLimit: string;
   carAddonPothole: boolean;
   carAddonNonFaultAccident: boolean;
   carAddonGap: boolean;
+  carAddonGapLimit: string;
   carAddonSmartGap: boolean;
   carAddonServisPro: boolean;
   carAddonReplacementCar: boolean;
@@ -77,15 +84,22 @@ export type AutoDetail = {
   carAddonNaturalRisks?: boolean | null;
   carAddonKlika?: boolean | null;
   carAddonGlass?: boolean | null;
+  carAddonGlassLimit?: number | null;
   carAddonAnimalCollision?: boolean | null;
+  carAddonAnimalCollisionLimit?: number | null;
   carAddonAnimalDamage?: boolean | null;
+  carAddonAnimalDamageLimit?: number | null;
   carAddonVandalism?: boolean | null;
   carAddonTheft?: boolean | null;
+  carAddonTheftLimit?: number | null;
   carAddonNatural?: boolean | null;
+  carAddonNaturalLimit?: number | null;
   carAddonOwnDamage?: boolean | null;
+  carAddonOwnDamageLimit?: number | null;
   carAddonPothole?: boolean | null;
   carAddonNonFaultAccident?: boolean | null;
   carAddonGap?: boolean | null;
+  carAddonGapLimit?: number | null;
   carAddonSmartGap?: boolean | null;
   carAddonServisPro?: boolean | null;
   carAddonReplacementCar?: boolean | null;
@@ -145,6 +159,15 @@ type Props = {
   contract: AutoDetail;
   onChange: (key: keyof AutoFields, value: string | boolean) => void;
 };
+
+type AutoAddonLimitField =
+  | "carAddonGlassLimit"
+  | "carAddonAnimalCollisionLimit"
+  | "carAddonAnimalDamageLimit"
+  | "carAddonTheftLimit"
+  | "carAddonNaturalLimit"
+  | "carAddonOwnDamageLimit"
+  | "carAddonGapLimit";
 
 const ToggleRow = ({
   label,
@@ -228,6 +251,40 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
     fields.carHullRiskNatural ||
     fields.carHullRiskVandalism ||
     fields.carHullRiskAnimalCollision;
+  const numericLimit = (value: number | undefined | null) =>
+    value != null && Number.isFinite(value) ? value : null;
+  const addonLimitConfig: Partial<
+    Record<string, { field: AutoAddonLimitField; amount: number | null }>
+  > = {
+    carAddonGlass: {
+      field: "carAddonGlassLimit",
+      amount: numericLimit(contract?.carAddonGlassLimit),
+    },
+    carAddonAnimalCollision: {
+      field: "carAddonAnimalCollisionLimit",
+      amount: numericLimit(contract?.carAddonAnimalCollisionLimit),
+    },
+    carAddonAnimalDamage: {
+      field: "carAddonAnimalDamageLimit",
+      amount: numericLimit(contract?.carAddonAnimalDamageLimit),
+    },
+    carAddonTheft: {
+      field: "carAddonTheftLimit",
+      amount: numericLimit(contract?.carAddonTheftLimit),
+    },
+    carAddonNatural: {
+      field: "carAddonNaturalLimit",
+      amount: numericLimit(contract?.carAddonNaturalLimit),
+    },
+    carAddonOwnDamage: {
+      field: "carAddonOwnDamageLimit",
+      amount: numericLimit(contract?.carAddonOwnDamageLimit),
+    },
+    carAddonGap: {
+      field: "carAddonGapLimit",
+      amount: numericLimit(contract?.carAddonGapLimit),
+    },
+  };
 
   return (
     <>
@@ -608,15 +665,50 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
             { key: "carAddonKeyLossTheft", label: "Ztráta a odcizení klíčů", checked: fields.carAddonKeyLossTheft },
           ]
             .filter((item) => editMode || item.checked)
-            .map((item) => (
-              <ToggleRow
-                key={item.key}
-                label={item.label}
-                checked={item.checked}
-                onChange={(val) => onChange(item.key as keyof AutoFields, val)}
-                disabled={!editMode}
-              />
-            ))}
+            .map((item) => {
+              const limitConfig = addonLimitConfig[item.key];
+              const showLimitInput = Boolean(limitConfig && editMode && item.checked);
+              const showLimitValue = Boolean(
+                limitConfig && !editMode && limitConfig.amount != null
+              );
+
+              return (
+                <div key={item.key} className="space-y-2">
+                  <ToggleRow
+                    label={item.label}
+                    checked={item.checked}
+                    onChange={(val) => onChange(item.key as keyof AutoFields, val)}
+                    disabled={!editMode}
+                  />
+                  {(showLimitInput || showLimitValue) && limitConfig && (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Částka v Kč
+                      </div>
+                      {editMode ? (
+                        <div className="relative">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={fields[limitConfig.field]}
+                            onChange={(e) => onChange(limitConfig.field, e.target.value)}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 pr-9 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-300"
+                            placeholder="např. 20 000"
+                          />
+                          <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs font-semibold text-slate-500">
+                            Kč
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-sm font-semibold text-slate-900">
+                          {formatMoney(limitConfig.amount)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
         </div>
       </div>
     </>
