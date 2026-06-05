@@ -4,6 +4,7 @@
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import {
+  Apple,
   AtSign,
   ArrowRight,
   BellRing,
@@ -29,6 +30,7 @@ import {
   Minimize2,
   Landmark,
   PhoneCall,
+  Play,
   ShieldCheck,
   Snail,
   Sparkles,
@@ -112,6 +114,11 @@ const COMMISSION_MODES: { id: CommissionMode; label: string }[] = [
   { id: "accelerated", label: "Zrychlený" },
   { id: "standard", label: "Běžný" },
 ];
+
+const MICROSOFT_AUTHENTICATOR_APP_STORE_URL =
+  "https://apps.apple.com/cz/app/microsoft-authenticator/id983156458";
+const MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL =
+  "https://play.google.com/store/apps/details?id=com.azure.authenticator";
 
 type PositionTimelineItem = {
   id: string;
@@ -920,6 +927,7 @@ export default function SettingsPage() {
   const [mfaTotpUid, setMfaTotpUid] = useState<string | null>(null);
   const [mfaTotpLabel, setMfaTotpLabel] = useState<string | null>(null);
   const [mfaReauthCode, setMfaReauthCode] = useState("");
+  const [mfaDisableConfirmOpen, setMfaDisableConfirmOpen] = useState(false);
   const [mfaEnrollmentSecret, setMfaEnrollmentSecret] = useState<TotpSecret | null>(null);
   const [mfaEnrollmentCode, setMfaEnrollmentCode] = useState("");
   const [mfaQrCodeDataUrl, setMfaQrCodeDataUrl] = useState("");
@@ -1075,6 +1083,7 @@ export default function SettingsPage() {
     setMfaQrCodeDataUrl("");
     setMfaQrCodeLoading(false);
     setMfaQrCodeError(null);
+    setMfaDisableConfirmOpen(false);
   };
 
   const syncMfaState = async (targetUser: FirebaseUser) => {
@@ -1098,6 +1107,7 @@ export default function SettingsPage() {
       setMfaStatus(null);
       setMfaPassword("");
       setMfaReauthCode("");
+      setMfaDisableConfirmOpen(false);
       clearMfaDraft();
       return;
     }
@@ -2433,6 +2443,7 @@ export default function SettingsPage() {
       await user.reload();
       const activeUser = auth.currentUser ?? user;
       setUser(activeUser);
+      setMfaDisableConfirmOpen(false);
 
       const reauthenticated = await reauthenticateForMfaChange(activeUser);
       if (!reauthenticated) return;
@@ -2486,6 +2497,7 @@ export default function SettingsPage() {
 
       setMfaPassword("");
       setMfaReauthCode("");
+      setMfaDisableConfirmOpen(false);
       clearMfaDraft();
       setMfaStatus({
         type: "success",
@@ -4742,176 +4754,300 @@ export default function SettingsPage() {
                     </div>
                   )}
 
-                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
-                        <ShieldCheck size={12} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
-                        <span>2FA (Microsoft Authenticator)</span>
-                      </div>
-                      <span
-                        className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                          mfaEnabled
-                            ? "border-emerald-700 bg-emerald-600 text-white"
-                            : "border-slate-300 bg-white text-slate-700"
-                        }`}
-                      >
-                        {mfaEnabled ? "Zapnuto" : "Vypnuto"}
-                      </span>
-                    </div>
+	                  <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+		                    <div className="mfa-security-hero bg-[linear-gradient(135deg,#0f172a_0%,#164e63_58%,#047857_100%)] px-4 py-4 text-white sm:px-5 sm:py-5">
+	                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+	                        <div className="flex items-start gap-3">
+	                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10 shadow-[0_10px_24px_rgba(0,0,0,0.22)]">
+	                            <ShieldCheck size={22} strokeWidth={2} aria-hidden="true" />
+	                          </span>
+	                          <div>
+	                            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/75">
+	                              Zabezpečení
+	                            </div>
+	                            <h3 className="mt-0.5 text-lg font-black leading-tight tracking-normal text-white">
+	                              Microsoft Authenticator
+	                            </h3>
+	                            <p className="mt-1 max-w-md text-xs leading-relaxed text-white/80">
+	                              Po zadání hesla se přihlášení potvrzuje ještě jednorázovým kódem z aplikace.
+	                            </p>
+	                          </div>
+	                        </div>
+	                        <span
+	                          className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+	                            mfaEnabled
+	                              ? "border-emerald-200/70 bg-emerald-300/20 text-emerald-50"
+	                              : "border-white/25 bg-white/10 text-white"
+	                          }`}
+	                        >
+	                          <span
+	                            className={`h-2 w-2 rounded-full ${
+	                              mfaEnabled ? "bg-emerald-300" : "bg-slate-300"
+	                            }`}
+	                            aria-hidden="true"
+	                          />
+	                          {mfaEnabled ? "Zapnuto" : "Vypnuto"}
+	                        </span>
+	                      </div>
 
-                    <p className="text-xs text-slate-500">
-                      Po zadání hesla budete při přihlášení potvrzovat ještě jednorázový kód z aplikace Microsoft Authenticator.
-                    </p>
+	                      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+	                        <a
+	                          href={MICROSOFT_AUTHENTICATOR_APP_STORE_URL}
+	                          target="_blank"
+	                          rel="noreferrer"
+	                          aria-label="Otevřít Microsoft Authenticator v App Store"
+	                          className="group flex min-h-[58px] items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5 text-left transition hover:border-white/40 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+	                        >
+	                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-950">
+	                            <Apple size={18} strokeWidth={2.2} aria-hidden="true" />
+	                          </span>
+	                          <span className="min-w-0 flex-1">
+	                            <span className="block text-[10px] font-semibold uppercase tracking-[0.13em] text-white/60">
+	                              Stáhnout v
+	                            </span>
+	                            <span className="block text-sm font-bold text-white">
+	                              App Store
+	                            </span>
+	                          </span>
+	                          <ExternalLink
+	                            size={14}
+	                            strokeWidth={2}
+	                            className="text-white/50 transition group-hover:text-white"
+	                            aria-hidden="true"
+	                          />
+	                        </a>
 
-                    <input
-                      type="password"
-                      autoComplete="current-password"
-                      className={fieldClass}
-                      placeholder="Aktuální heslo pro potvrzení"
-                      value={mfaPassword}
-                      onChange={(e) => setMfaPassword(e.target.value)}
-                    />
+	                        <a
+	                          href={MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL}
+	                          target="_blank"
+	                          rel="noreferrer"
+	                          aria-label="Otevřít Microsoft Authenticator v Google Play"
+	                          className="group flex min-h-[58px] items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5 text-left transition hover:border-white/40 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+	                        >
+	                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#22c55e_0%,#38bdf8_54%,#818cf8_100%)] text-white">
+	                            <Play size={17} strokeWidth={2.2} fill="currentColor" aria-hidden="true" />
+	                          </span>
+	                          <span className="min-w-0 flex-1">
+	                            <span className="block text-[10px] font-semibold uppercase tracking-[0.13em] text-white/60">
+	                              Stáhnout na
+	                            </span>
+	                            <span className="block text-sm font-bold text-white">
+	                              Google Play
+	                            </span>
+	                          </span>
+	                          <ExternalLink
+	                            size={14}
+	                            strokeWidth={2}
+	                            className="text-white/50 transition group-hover:text-white"
+	                            aria-hidden="true"
+	                          />
+	                        </a>
+	                      </div>
+	                    </div>
 
-                    {mfaEnabled && !mfaEnrollmentSecret && (
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        className={fieldClass}
-                        placeholder="Aktuální 2FA kód (pro vypnutí)"
-                        value={mfaReauthCode}
-                        onChange={(e) =>
-                          setMfaReauthCode(e.target.value.replace(/\D/g, "").slice(0, 8))
-                        }
-                      />
-                    )}
+		                    <div className="space-y-3 px-4 py-4 sm:px-5 sm:py-5">
+		                      {!mfaEnabled && !mfaEnrollmentSecret && (
+		                        <>
+		                          <input
+		                            type="password"
+		                            autoComplete="current-password"
+		                            className={fieldClass}
+		                            placeholder="Aktuální heslo pro potvrzení"
+		                            value={mfaPassword}
+		                            onChange={(e) => setMfaPassword(e.target.value)}
+		                          />
+		                          <button
+		                            type="button"
+		                            onClick={() => void handleStartMfaEnrollment()}
+		                            disabled={mfaBusy}
+		                            className="inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl border border-slate-950 bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(15,23,42,0.22)] transition hover:-translate-y-0.5 hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+		                          >
+		                            {mfaBusy ? "Spouštím 2FA…" : "Zapnout 2FA"}
+		                          </button>
+		                        </>
+		                      )}
 
-                    {!mfaEnabled && !mfaEnrollmentSecret && (
-                      <button
-                        type="button"
-                        onClick={() => void handleStartMfaEnrollment()}
-                        disabled={mfaBusy}
-                        className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {mfaBusy ? "Spouštím 2FA…" : "Zapnout 2FA"}
-                      </button>
-                    )}
+	                      {mfaEnrollmentSecret && (
+	                        <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3">
+	                          <div className="flex items-start gap-2 text-xs leading-relaxed text-slate-700">
+	                            <QrCodeIcon
+	                              size={16}
+	                              strokeWidth={2}
+	                              className="mt-0.5 shrink-0 text-emerald-700"
+	                              aria-hidden="true"
+	                            />
+	                            <span>
+	                              V Microsoft Authenticator zvol Přidat účet a naskenuj QR kód.
+	                            </span>
+	                          </div>
 
-                    {mfaEnrollmentSecret && (
-                      <div className="space-y-3 rounded-xl border border-slate-300 bg-white p-3">
-                        <p className="text-xs text-slate-600">
-                          V Microsoft Authenticator zvol Přidat účet a naskenuj QR kód.
-                        </p>
+	                          <div className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-200 bg-white px-3 py-3">
+	                            {mfaQrCodeLoading && (
+	                              <p className="text-xs text-slate-500">Generuji QR kód…</p>
+	                            )}
+	                            {!mfaQrCodeLoading && mfaQrCodeDataUrl && (
+	                              <Image
+	                                src={mfaQrCodeDataUrl}
+	                                alt="QR kód pro Microsoft Authenticator"
+	                                width={220}
+	                                height={220}
+	                                unoptimized
+	                                className="rounded-xl border border-slate-200 bg-white p-1 shadow-sm"
+	                              />
+	                            )}
+	                            {mfaQrCodeError && (
+	                              <p className="text-xs text-rose-700">{mfaQrCodeError}</p>
+	                            )}
+	                            <p className="text-center text-[11px] text-slate-500">
+	                              Pokud skenování nefunguje, použij setup key níže.
+	                            </p>
+	                          </div>
 
-                        <div className="flex flex-col items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                          {mfaQrCodeLoading && (
-                            <p className="text-xs text-slate-500">Generuji QR kód…</p>
-                          )}
-                          {!mfaQrCodeLoading && mfaQrCodeDataUrl && (
-                            <Image
-                              src={mfaQrCodeDataUrl}
-                              alt="QR kód pro Microsoft Authenticator"
-                              width={220}
-                              height={220}
-                              unoptimized
-                              className="rounded-lg border border-slate-300 bg-white p-1"
-                            />
-                          )}
-                          {mfaQrCodeError && (
-                            <p className="text-xs text-rose-700">{mfaQrCodeError}</p>
-                          )}
-                          <p className="text-[11px] text-slate-500">
-                            Pokud skenování nefunguje, použij setup key níže.
-                          </p>
-                        </div>
+	                          <div className="rounded-2xl border border-emerald-200 bg-white px-3 py-2">
+	                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+	                              Setup key
+	                            </div>
+	                            <div className="mt-1 break-all text-xs font-semibold text-slate-900">
+	                              {mfaEnrollmentSecret.secretKey}
+	                            </div>
+	                          </div>
 
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                          <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">
-                            Setup key
-                          </div>
-                          <div className="mt-1 break-all text-xs font-semibold text-slate-900">
-                            {mfaEnrollmentSecret.secretKey}
-                          </div>
-                        </div>
+	                          <details className="rounded-2xl border border-emerald-200 bg-white px-3 py-2">
+	                            <summary className="cursor-pointer text-[11px] font-semibold text-slate-700">
+	                              Zobrazit QR URI (pokročilé)
+	                            </summary>
+	                            <p className="mt-2 break-all text-[10px] text-slate-600">
+	                              {mfaQrCodeUri}
+	                            </p>
+	                          </details>
 
-                        <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                          <summary className="cursor-pointer text-[11px] font-semibold text-slate-700">
-                            Zobrazit QR URI (pokročilé)
-                          </summary>
-                          <p className="mt-2 break-all text-[10px] text-slate-600">
-                            {mfaQrCodeUri}
-                          </p>
-                        </details>
+	                          <input
+	                            type="text"
+	                            inputMode="numeric"
+	                            autoComplete="one-time-code"
+	                            className={fieldClass}
+	                            placeholder="6místný kód z aplikace"
+	                            value={mfaEnrollmentCode}
+	                            onChange={(e) =>
+	                              setMfaEnrollmentCode(
+	                                e.target.value.replace(/\D/g, "").slice(0, 8)
+	                              )
+	                            }
+	                          />
 
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          className={fieldClass}
-                          placeholder="6místný kód z aplikace"
-                          value={mfaEnrollmentCode}
-                          onChange={(e) =>
-                            setMfaEnrollmentCode(
-                              e.target.value.replace(/\D/g, "").slice(0, 8)
-                            )
-                          }
-                        />
+	                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+	                            <button
+	                              type="button"
+	                              onClick={() => void handleConfirmMfaEnrollment()}
+	                              disabled={mfaBusy}
+	                              className="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+	                            >
+	                              {mfaBusy ? "Potvrzuji…" : "Potvrdit a zapnout"}
+	                            </button>
+	                            <button
+	                              type="button"
+	                              onClick={() => {
+	                                clearMfaDraft();
+	                                setMfaStatus(null);
+	                              }}
+	                              className="inline-flex min-h-[36px] items-center justify-center rounded-xl px-3 text-xs font-semibold text-slate-500 transition hover:bg-white hover:text-slate-900"
+	                            >
+	                              Zrušit
+	                            </button>
+	                          </div>
+	                        </div>
+	                      )}
 
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void handleConfirmMfaEnrollment()}
-                            disabled={mfaBusy}
-                            className="inline-flex items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {mfaBusy ? "Potvrzuji…" : "Potvrdit a zapnout"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              clearMfaDraft();
-                              setMfaStatus(null);
-                            }}
-                            className="text-xs text-slate-500 hover:text-slate-900"
-                          >
-                            Zrušit
-                          </button>
-                        </div>
-                      </div>
-                    )}
+		                      {mfaEnabled && !mfaEnrollmentSecret && (
+		                        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+		                          {!mfaDisableConfirmOpen ? (
+		                            <button
+		                              type="button"
+		                              onClick={() => {
+		                                setMfaDisableConfirmOpen(true);
+		                                setMfaPassword("");
+		                                setMfaReauthCode("");
+		                                setMfaStatus(null);
+		                              }}
+		                              disabled={mfaBusy}
+		                              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+		                            >
+		                              Vypnout 2FA
+		                            </button>
+		                          ) : (
+		                            <div className="space-y-3 rounded-2xl border border-rose-200 bg-white px-3 py-3">
+		                              <p className="text-[11px] text-slate-500">
+		                                {mfaTotpLabel
+		                                  ? `Aktivní faktor: ${mfaTotpLabel}`
+		                                  : "Aktivní faktor: Microsoft Authenticator"}
+		                              </p>
+		                              <p className="text-xs leading-relaxed text-slate-600">
+		                                Pro vypnutí potvrď změnu aktuálním heslem a kódem z aplikace.
+		                              </p>
+		                              <input
+		                                type="password"
+		                                autoComplete="current-password"
+		                                className={fieldClass}
+		                                placeholder="Aktuální heslo pro potvrzení"
+		                                value={mfaPassword}
+		                                onChange={(e) => setMfaPassword(e.target.value)}
+		                              />
+		                              <input
+		                                type="text"
+		                                inputMode="numeric"
+		                                autoComplete="one-time-code"
+		                                className={fieldClass}
+		                                placeholder="Aktuální 2FA kód"
+		                                value={mfaReauthCode}
+		                                onChange={(e) =>
+		                                  setMfaReauthCode(
+		                                    e.target.value.replace(/\D/g, "").slice(0, 8)
+		                                  )
+		                                }
+		                              />
+		                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+		                                <button
+		                                  type="button"
+		                                  onClick={() => void handleDisableMfa()}
+		                                  disabled={mfaBusy}
+		                                  className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-2xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+		                                >
+		                                  {mfaBusy ? "Vypínám 2FA…" : "Potvrdit vypnutí"}
+		                                </button>
+		                                <button
+		                                  type="button"
+		                                  onClick={() => {
+		                                    setMfaDisableConfirmOpen(false);
+		                                    setMfaPassword("");
+		                                    setMfaReauthCode("");
+		                                    setMfaStatus(null);
+		                                  }}
+		                                  disabled={mfaBusy}
+		                                  className="inline-flex min-h-[40px] items-center justify-center rounded-xl px-3 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+		                                >
+		                                  Zrušit
+		                                </button>
+		                              </div>
+		                            </div>
+		                          )}
+		                        </div>
+		                      )}
 
-                    {mfaEnabled && !mfaEnrollmentSecret && (
-                      <div className="space-y-2">
-                        <p className="text-[11px] text-slate-500">
-                          {mfaTotpLabel
-                            ? `Aktivní faktor: ${mfaTotpLabel}`
-                            : "Aktivní faktor: Microsoft Authenticator"}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => void handleDisableMfa()}
-                          disabled={mfaBusy}
-                          className="inline-flex w-full items-center justify-center rounded-2xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {mfaBusy ? "Vypínám 2FA…" : "Vypnout 2FA"}
-                        </button>
-                      </div>
-                    )}
-
-                    {mfaStatus && (
-                      <div
-                        className={`text-xs ${
-                          mfaStatus.type === "success"
-                            ? "text-emerald-700"
-                            : mfaStatus.type === "info"
-                              ? "text-slate-700"
-                              : "text-rose-700"
-                        }`}
-                      >
-                        {mfaStatus.message}
-                      </div>
-                    )}
-                  </div>
+	                      {mfaStatus && (
+	                        <div
+	                          className={`rounded-2xl border px-3 py-2 text-xs ${
+	                            mfaStatus.type === "success"
+	                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+	                              : mfaStatus.type === "info"
+	                                ? "border-slate-200 bg-slate-50 text-slate-700"
+	                                : "border-rose-200 bg-rose-50 text-rose-700"
+	                          }`}
+	                        >
+	                          {mfaStatus.message}
+	                        </div>
+	                      )}
+	                    </div>
+	                  </div>
                 </div>
               </div>
             </section>
