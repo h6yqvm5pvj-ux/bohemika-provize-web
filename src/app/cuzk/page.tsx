@@ -1679,6 +1679,12 @@ export default function CuzkPage() {
             animation: none !important;
           }
 
+          :global(:root[data-motion="off"]) .cuzk-reveal {
+            opacity: 1 !important;
+            transform: none !important;
+            filter: none !important;
+          }
+
           @media (prefers-reduced-motion: reduce) {
             .cuzk-shell::before,
             .cuzk-shell::after,
@@ -1686,6 +1692,12 @@ export default function CuzkPage() {
             .cuzk-glow,
             .cuzk-float {
               animation: none !important;
+            }
+
+            .cuzk-reveal {
+              opacity: 1 !important;
+              transform: none !important;
+              filter: none !important;
             }
           }
         `}</style>

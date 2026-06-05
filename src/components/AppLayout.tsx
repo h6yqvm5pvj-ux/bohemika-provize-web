@@ -85,6 +85,23 @@ const hasCareerTimelineConfigured = (data: Record<string, unknown>): boolean => 
 };
 
 const PROFILE_CACHE_MAX_AGE_MS = 60 * 1000;
+const AUTH_READY_TIMEOUT_MS = 12_000;
+
+const hasTeamCacheKey = (email: string): string =>
+  `app.hasTeam:${email.trim().toLowerCase()}`;
+
+const readCachedHasTeam = (email?: string | null): boolean | null => {
+  if (typeof window === "undefined" || !email) return null;
+  const cached = window.sessionStorage.getItem(hasTeamCacheKey(email));
+  if (cached === "0") return false;
+  if (cached === "1") return true;
+  return null;
+};
+
+const writeCachedHasTeam = (email: string | null | undefined, value: boolean): void => {
+  if (typeof window === "undefined" || !email) return;
+  window.sessionStorage.setItem(hasTeamCacheKey(email), value ? "1" : "0");
+};
 
 const formatIsoDayCz = (value: string | null): string => {
   if (!value) return "—";
@@ -122,16 +139,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     useState<EvaluatedSubscriptionAccess | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [authReady, setAuthReady] = useState(false);
+  const [authInitTimedOut, setAuthInitTimedOut] = useState(false);
   const [needsCareerTimelineSetup, setNeedsCareerTimelineSetup] = useState(false);
   const [showCareerTimelinePrompt, setShowCareerTimelinePrompt] = useState(false);
   const [accountType, setAccountType] = useState<AccountType>("advisor");
-  const [hasTeam, setHasTeam] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const cached = window.sessionStorage.getItem("app.hasTeam");
-    if (cached === "0") return false;
-    if (cached === "1") return true;
-    return true; // defaultně ukážeme, ať nebliká
-  });
+  const [hasTeam, setHasTeam] = useState<boolean>(true);
   const [hasTipsters, setHasTipsters] = useState(false);
 
   // Auth listener
@@ -139,23 +151,26 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     let resolved = false;
     const readyFallbackTimer = window.setTimeout(() => {
       if (resolved) return;
-      console.warn("Auth ready timeout in AppLayout; falling back to guest redirect.");
-      setUser(null);
-      setSubscriptionAccessState("none");
-      setSubscriptionBlockReason("none");
-      setSubscriptionEvaluation(null);
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        resolved = true;
+        setAuthInitTimedOut(false);
+        setUser(currentUser);
+        setLoadingProfile(true);
+        setHasTeam(readCachedHasTeam(currentUser.email) ?? true);
+        setAuthReady(true);
+        return;
+      }
+
+      console.warn("Auth ready timeout in AppLayout; waiting without guest redirect.");
+      setAuthInitTimedOut(true);
       setLoadingProfile(false);
-      setNeedsCareerTimelineSetup(false);
-      setShowCareerTimelinePrompt(false);
-      setAccountType("advisor");
-      setHasTeam(false);
-      setHasTipsters(false);
-      setAuthReady(true);
-    }, 5000);
+    }, AUTH_READY_TIMEOUT_MS);
 
     const unsub = onAuthStateChanged(auth, (u) => {
       resolved = true;
       window.clearTimeout(readyFallbackTimer);
+      setAuthInitTimedOut(false);
       setUser(u);
       if (!u) {
         setSubscriptionAccessState("none");
@@ -169,6 +184,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         setHasTipsters(false);
       } else {
         setLoadingProfile(true);
+        setHasTeam(readCachedHasTeam(u.email) ?? true);
       }
       setAuthReady(true);
     });
@@ -309,10 +325,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const hasTipsterAccounts = payload?.hasTipsters === true;
     setHasTeam(has);
     setHasTipsters(hasTipsterAccounts);
-    if (typeof window !== "undefined" && currentUser.email) {
-      const cacheKey = `app.hasTeam:${currentUser.email.toLowerCase()}`;
-      window.sessionStorage.setItem(cacheKey, has ? "1" : "0");
-    }
+    writeCachedHasTeam(currentUser.email, has);
   }, []);
 
   const loadSubscriptionProfileForUser = useCallback(async (
@@ -576,7 +589,21 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   if (!authReady) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-white text-slate-900">
-        <div className="text-sm text-slate-700">Načítám přihlášení…</div>
+        <div className="max-w-sm px-6 text-center">
+          <div className="text-sm text-slate-700">
+            {authInitTimedOut
+              ? "Přihlášení se načítá déle než obvykle."
+              : "Načítám přihlášení…"}
+          </div>
+          {authInitTimedOut ? (
+            <a
+              href="/login"
+              className="mt-4 inline-flex rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-50"
+            >
+              Přejít na přihlášení
+            </a>
+          ) : null}
+        </div>
       </main>
     );
   }
