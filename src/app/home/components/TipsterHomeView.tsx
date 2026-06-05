@@ -1138,21 +1138,21 @@ export function TipsterHomeView({
   return (
     <div className="min-h-screen w-full overflow-hidden bg-[radial-gradient(circle_at_8%_0%,rgba(45,212,191,0.16),transparent_28%),radial-gradient(circle_at_90%_12%,rgba(168,85,247,0.16),transparent_30%),linear-gradient(180deg,#f8fafc_0%,#eef4f8_48%,#f8fafc_100%)] px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
       <div className="mx-auto w-full max-w-6xl space-y-6 font-sans text-slate-900">
-        <section className="relative overflow-hidden rounded-[36px] border border-white/70 bg-[#08111f] p-5 text-white shadow-[0_28px_80px_rgba(15,23,42,0.2)] sm:p-7 lg:p-8">
+        <section className="tipster-hero-dark relative overflow-hidden rounded-[36px] border border-white/70 bg-[#08111f] p-5 text-[#f8fafc] shadow-[0_28px_80px_rgba(15,23,42,0.2)] sm:p-7 lg:p-8">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_20%,rgba(45,212,191,0.28),transparent_34%),radial-gradient(circle_at_78%_14%,rgba(168,85,247,0.34),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_44%)]" />
           <div className="absolute -bottom-24 -right-20 h-64 w-64 rounded-full bg-emerald-300/20 blur-3xl" />
           <div className="relative grid gap-7 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200/20 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-emerald-100">
+              <div className="tipster-hero-kicker inline-flex items-center gap-2 rounded-full border border-emerald-200/20 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-emerald-100">
                 <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                 Tipařský účet
               </div>
-              <h1 className="mt-5 max-w-3xl text-4xl font-black leading-[0.98] tracking-[-0.05em] text-white sm:text-6xl">
+              <h1 className="tipster-hero-title mt-5 max-w-3xl text-4xl font-black leading-[0.98] tracking-[-0.05em] text-[#f8fafc] sm:text-6xl">
                 Tip na klienta, který se neztratí.
               </h1>
-              <p className="mt-5 max-w-2xl text-base leading-7 text-slate-200/82">
-                Přihlášen jako <span className="font-bold text-white">{displayName}</span>. Tip odejde příjemci{" "}
-                <span className="font-bold text-emerald-100">{recipientEmail || "není nastaven"}</span>
+              <p className="tipster-hero-copy mt-5 max-w-2xl text-base leading-7 text-slate-100">
+                Přihlášen jako <span className="tipster-hero-strong font-bold text-[#f8fafc]">{displayName}</span>. Tip odejde příjemci{" "}
+                <span className="tipster-hero-accent font-bold text-emerald-50">{recipientEmail || "není nastaven"}</span>
                 {" "}a v detailu pak uvidíš stav zpracování.
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -1167,37 +1167,25 @@ export function TipsterHomeView({
                 </button>
                 <Link
                   href="/tipy"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/[0.15] bg-white/[0.08] px-5 py-3 text-sm font-bold text-white transition hover:bg-white/[0.12]"
+                  className="tipster-hero-secondary-button inline-flex items-center justify-center gap-2 rounded-2xl border border-white/25 bg-white/[0.12] px-5 py-3 text-sm font-bold text-slate-50 transition hover:bg-white/[0.18]"
                 >
                   Moje tipy
                   <ChevronRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
-              </div>
-              <div className="mt-7 grid gap-2 sm:grid-cols-3">
-                {[
-                  ["20 MB", "max na přílohu"],
-                  ["ARES", "rychlé firmy"],
-                  ["4", "typy produktů"],
-                ].map(([value, label]) => (
-                  <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3">
-                    <p className="text-2xl font-black tracking-tight text-white">{value}</p>
-                    <p className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-300">{label}</p>
-                  </div>
-                ))}
               </div>
             </div>
 
             <div className="rounded-[30px] border border-white/[0.12] bg-white/[0.09] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-100/80">
+                  <p className="tipster-hero-kicker text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-100/80">
                     Rychlý start
                   </p>
-                  <h2 className="mt-1 text-2xl font-black tracking-tight text-white">
+                  <h2 className="tipster-hero-panel-title mt-1 text-2xl font-black tracking-tight text-[#f8fafc]">
                     Vyber typ tipu
                   </h2>
                 </div>
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-emerald-100">
+                <span className="tipster-hero-card-icon inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-emerald-100">
                   <ClipboardCheck className="h-5 w-5" aria-hidden="true" />
                 </span>
               </div>
@@ -1210,16 +1198,16 @@ export function TipsterHomeView({
                       key={item.id}
                       type="button"
                       onClick={() => startTip(item.id)}
-                      className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.07] p-3 text-left transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.11]"
+                      className="group overflow-hidden rounded-2xl border border-white/20 bg-white/[0.12] p-3 text-left transition hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/[0.16]"
                     >
                       <div className={`h-1.5 rounded-full bg-gradient-to-r ${meta.accent}`} />
                       <div className="mt-3 flex items-start gap-3">
-                        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white">
+                        <span className="tipster-hero-card-icon inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-slate-50">
                           <Icon className="h-5 w-5" aria-hidden="true" />
                         </span>
                         <span className="min-w-0">
-                          <span className="block text-sm font-black text-white">{meta.title}</span>
-                          <span className="mt-1 block text-xs leading-5 text-slate-300">{meta.description}</span>
+                          <span className="tipster-hero-card-title block text-sm font-black text-[#f8fafc]">{meta.title}</span>
+                          <span className="tipster-hero-card-description mt-1 block text-xs leading-5 text-slate-100">{meta.description}</span>
                         </span>
                       </div>
                     </button>

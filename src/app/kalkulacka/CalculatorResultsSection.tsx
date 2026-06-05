@@ -436,7 +436,7 @@ export function CalculatorResultsSection({
             onClick={onSaveContract}
             disabled={!canSaveContract || saving}
             aria-busy={saving}
-            className="group relative inline-flex min-w-[168px] items-center justify-center gap-2 overflow-hidden rounded-full border border-violet-100/60 bg-violet-300/42 px-7 py-2.5 text-sm font-semibold text-violet-50 shadow-[0_14px_34px_rgba(88,28,135,0.34)] transition hover:-translate-y-0.5 hover:border-violet-100/80 hover:bg-violet-300/52 hover:shadow-[0_18px_42px_rgba(88,28,135,0.4)] active:translate-y-0 disabled:cursor-not-allowed disabled:border-violet-100/65 disabled:bg-violet-300/44 disabled:opacity-80 disabled:hover:translate-y-0"
+            className="group relative inline-flex min-w-[168px] items-center justify-center gap-2 overflow-hidden rounded-full border border-[#111827] bg-[#111827] px-7 py-2.5 text-sm font-black text-[#f8fafc] shadow-[0_16px_34px_rgba(15,23,42,0.26)] transition hover:-translate-y-0.5 hover:border-[#1f2937] hover:bg-[#1f2937] hover:shadow-[0_20px_44px_rgba(15,23,42,0.34)] active:translate-y-0 disabled:cursor-not-allowed disabled:border-[#334155] disabled:bg-[#334155] disabled:text-[#f8fafc] disabled:opacity-100 disabled:shadow-[0_12px_26px_rgba(15,23,42,0.2)] disabled:hover:translate-y-0"
           >
             <span className="pointer-events-none absolute inset-0 -translate-x-[115%] bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.34)_45%,transparent_78%)] transition-transform duration-500 ease-out group-hover:translate-x-[120%]" aria-hidden="true" />
             <span className="relative z-10 inline-flex h-5 w-5 items-center justify-center" aria-hidden="true">
@@ -451,7 +451,7 @@ export function CalculatorResultsSection({
           {lastSavedContractHref && (
             <Link
               href={lastSavedContractHref}
-              className="inline-flex items-center gap-1.5 rounded-full border border-violet-100/45 bg-violet-300/20 px-4 py-2 text-sm font-semibold text-violet-50 transition hover:border-violet-100/70 hover:bg-violet-300/30"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#111827] bg-[#111827] px-4 py-2 text-sm font-black text-[#f8fafc] shadow-[0_14px_30px_rgba(15,23,42,0.24)] transition hover:-translate-y-0.5 hover:border-[#1f2937] hover:bg-[#1f2937] hover:shadow-[0_18px_38px_rgba(15,23,42,0.3)]"
             >
               <FileText size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
               Zobrazit smlouvu

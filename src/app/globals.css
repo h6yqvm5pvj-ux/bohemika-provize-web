@@ -502,6 +502,27 @@ body {
     color: #f8fafc !important;
   }
 
+  /* Tipařský profil má vlastní tmavý hero blok i ve světlém režimu. */
+  body.simple-bg.simple-bg-white .app-content .tipster-hero-dark,
+  body.simple-bg.simple-bg-white .app-content .tipster-hero-title,
+  body.simple-bg.simple-bg-white .app-content .tipster-hero-panel-title,
+  body.simple-bg.simple-bg-white .app-content .tipster-hero-card-title,
+  body.simple-bg.simple-bg-white .app-content .tipster-hero-strong,
+  body.simple-bg.simple-bg-white .app-content .tipster-hero-secondary-button,
+  body.simple-bg.simple-bg-white .app-content .tipster-hero-card-icon {
+    color: #f8fafc !important;
+  }
+
+  body.simple-bg.simple-bg-white .app-content .tipster-hero-copy,
+  body.simple-bg.simple-bg-white .app-content .tipster-hero-card-description {
+    color: #e2e8f0 !important;
+  }
+
+  body.simple-bg.simple-bg-white .app-content .tipster-hero-kicker,
+  body.simple-bg.simple-bg-white .app-content .tipster-hero-accent {
+    color: #d1fae5 !important;
+  }
+
   /* Online vizitka studio: náhled musí zůstat věrný veřejné (tmavé) variantě */
   body.simple-bg.simple-bg-white .app-content .online-card-studio-preview .text-white,
   body.simple-bg.simple-bg-white .app-content .online-card-studio-preview .text-white\/95,
