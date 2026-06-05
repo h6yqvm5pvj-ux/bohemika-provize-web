@@ -7,12 +7,15 @@ import {
   Building2,
   CalendarDays,
   Car,
+  CheckSquare,
   Home,
   Package,
   Paperclip,
   RefreshCw,
   Search,
+  Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 
 import { auth } from "@/app/firebase";
@@ -65,6 +68,15 @@ type TipStatusPatchResponse = {
   ok?: boolean;
   id?: string;
   status?: TipLifecycleStatus;
+  error?: string;
+};
+
+type TipsBulkDeleteResponse = {
+  ok?: boolean;
+  deletedIds?: string[];
+  skippedIds?: string[];
+  deletedCount?: number;
+  skippedCount?: number;
   error?: string;
 };
 
@@ -195,12 +207,18 @@ function TipCard({
   tip,
   mode,
   updating,
+  selected,
+  selectionDisabled,
+  onToggleSelected,
   onSetStatus,
   onOpen,
 }: {
   tip: TipsterTip;
   mode: AccountType;
   updating: boolean;
+  selected: boolean;
+  selectionDisabled: boolean;
+  onToggleSelected: () => void;
   onSetStatus?: (id: string, status: TipLifecycleStatus) => void;
   onOpen: () => void;
 }) {
@@ -222,7 +240,11 @@ function TipCard({
         event.preventDefault();
         onOpen();
       }}
-      className="group relative isolate cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 font-mono shadow-[0_8px_20px_rgba(15,23,42,0.05)] outline-none transition hover:border-slate-300 hover:bg-slate-50 focus-visible:border-slate-900 focus-visible:ring-2 focus-visible:ring-slate-300"
+      className={`group relative isolate cursor-pointer overflow-hidden rounded-2xl border px-4 py-3 font-mono shadow-[0_8px_20px_rgba(15,23,42,0.05)] outline-none transition focus-visible:border-slate-900 focus-visible:ring-2 focus-visible:ring-slate-300 ${
+        selected
+          ? "border-slate-900 bg-slate-50 ring-2 ring-slate-900/10"
+          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+      }`}
     >
       <div
         aria-hidden="true"
@@ -236,6 +258,25 @@ function TipCard({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_190px] sm:gap-4">
         <div className="relative z-[1] min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            <label
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] transition ${
+                selected
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : "border-slate-300 bg-white text-slate-700 hover:border-slate-500"
+              } ${selectionDisabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                checked={selected}
+                disabled={selectionDisabled}
+                onChange={onToggleSelected}
+                className="h-3.5 w-3.5 rounded border-slate-300 accent-slate-900"
+                aria-label={`Označit tip ${tip.productLabel}`}
+              />
+              {selected ? "Vybráno" : "Označit"}
+            </label>
             <TipStatusBadge status={tipStatus} />
             <div className="min-w-0 text-[1.5rem] leading-tight font-semibold text-slate-900 sm:text-[1.75rem]">
               {tip.productLabel}
@@ -342,10 +383,12 @@ function TipsPageContent() {
     new: 0,
     contracted: 0,
   });
-  const [statusFilter, setStatusFilter] = useState<TipFilterStatus>("all");
+  const [statusFilter, setStatusFilter] = useState<TipFilterStatus>("new");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
 
@@ -481,6 +524,86 @@ function TipsPageContent() {
     });
   }, [items, searchText, statusFilter]);
 
+  const visibleItemIds = useMemo(() => filteredItems.map((tip) => tip.id), [filteredItems]);
+  const selectedVisibleCount = useMemo(
+    () => visibleItemIds.filter((id) => selectedIds.has(id)).length,
+    [selectedIds, visibleItemIds]
+  );
+  const allVisibleSelected = visibleItemIds.length > 0 && selectedVisibleCount === visibleItemIds.length;
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visibleIds = new Set(visibleItemIds);
+      const next = new Set(Array.from(prev).filter((id) => visibleIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visibleItemIds]);
+
+  const toggleTipSelected = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleToggleAllVisible = useCallback(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleItemIds.forEach((id) => next.delete(id));
+      } else {
+        visibleItemIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }, [allVisibleSelected, visibleItemIds]);
+
+  const clearSelectedTips = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkDeleteSelected = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    const ids = Array.from(selectedIds);
+    if (!currentUser || ids.length === 0) return;
+
+    const confirmed = window.confirm(
+      `Opravdu chceš smazat vybrané tipy (${ids.length})? Tuto akci nelze vrátit.`
+    );
+    if (!confirmed) return;
+
+    setBulkDeleting(true);
+    setError(null);
+    try {
+      const payload = await fetchAuthedJsonOrThrow<TipsBulkDeleteResponse>(
+        currentUser,
+        "/api/tips/bulk-delete",
+        {
+          method: "DELETE",
+          body: JSON.stringify({ ids }),
+        }
+      );
+      const deletedIds = Array.isArray(payload.deletedIds) ? payload.deletedIds : [];
+      if (deletedIds.length === 0) {
+        throw new Error("Vybrané tipy nebyly nalezené nebo je nešlo smazat.");
+      }
+      const deletedIdSet = new Set(deletedIds);
+      setItems((prev) => prev.filter((tip) => !deletedIdSet.has(tip.id)));
+      setSelectedIds(new Set());
+      await loadTips("refresh");
+      if ((payload.skippedCount ?? 0) > 0) {
+        setError(`Smazáno ${deletedIds.length}, ${payload.skippedCount} tipů přeskočeno.`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Vybrané tipy se nepodařilo smazat.");
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [loadTips, selectedIds]);
+
   const isAdvisorMode = accountType === "advisor";
   const hasAnyTips = counts.all > 0;
   const hasSearchQuery = normalize(searchText).length > 0;
@@ -561,6 +684,46 @@ function TipsPageContent() {
               {filteredItems.length} {filteredItems.length === 1 ? "tip" : "tipů"}
             </div>
           </div>
+
+          {filteredItems.length > 0 ? (
+            <div className="mt-2 flex flex-col gap-2 border-t border-slate-200 pt-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleAllVisible}
+                  disabled={bulkDeleting}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 transition hover:border-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <CheckSquare className="h-4 w-4" aria-hidden="true" />
+                  {allVisibleSelected ? "Zrušit výběr zobrazených" : "Označit zobrazené"}
+                </button>
+                <span className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                  Vybráno {selectedIds.size}
+                </span>
+                {selectedIds.size > 0 ? (
+                  <button
+                    type="button"
+                    onClick={clearSelectedTips}
+                    disabled={bulkDeleting}
+                    className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    Zrušit
+                  </button>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleBulkDeleteSelected}
+                disabled={selectedIds.size === 0 || bulkDeleting}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-700 bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-[0_10px_20px_rgba(190,18,60,0.22)] transition hover:-translate-y-0.5 hover:bg-rose-700 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none disabled:hover:translate-y-0"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                {bulkDeleting ? "Mažu…" : `Smazat vybrané${selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}`}
+              </button>
+            </div>
+          ) : null}
         </section>
 
         {error ? (
@@ -604,6 +767,9 @@ function TipsPageContent() {
                 tip={tip}
                 mode={accountType}
                 updating={updatingId === tip.id}
+                selected={selectedIds.has(tip.id)}
+                selectionDisabled={bulkDeleting}
+                onToggleSelected={() => toggleTipSelected(tip.id)}
                 onSetStatus={handleSetStatus}
                 onOpen={() => openTipDetail(tip.id)}
               />

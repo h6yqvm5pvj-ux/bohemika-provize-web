@@ -2176,43 +2176,47 @@ function ContractsPageContent() {
                 const institutionLabel = institutionLabelForProduct(c.productKey as Product | undefined);
                 const displayProductName = productCardLabel(c.productKey as Product | undefined);
 
-                const CardContent = (
-                  <article
-                    className={`relative isolate overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 font-mono shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:border-slate-300 hover:bg-slate-50 ${
-                      isSelected ? "border-emerald-600 ring-2 ring-emerald-500/40" : ""
-                    }`}
-                    style={{
-                      contentVisibility: "auto",
-                      containIntrinsicSize: "340px",
-                    }}
-                  >
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(148,163,184,0),rgba(100,116,139,0.45),rgba(30,41,59,0.72),rgba(100,116,139,0.45),rgba(148,163,184,0))]"
-                  />
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-10 top-[2px] z-[1] h-px rounded-full bg-[linear-gradient(90deg,rgba(148,163,184,0),rgba(226,232,240,0.88),rgba(148,163,184,0))]"
-                  />
-                  {selectMode && (
-                    <div className="absolute right-3 top-3 z-10">
-                      <span
-                        className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${
-                          isSelected
-                            ? "border-emerald-600 bg-emerald-600 text-white"
-                            : "border-slate-300 bg-white text-slate-700"
-                        }`}
-                      >
-                        ✓
+                  const CardContent = (
+                    <article
+                      className={`relative isolate overflow-hidden rounded-[26px] border border-[#653493] bg-[#150e1f] px-4 py-4 font-mono shadow-[0_18px_34px_rgba(20,8,32,0.38)] ring-1 ring-[#7a35a7]/22 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#9756d1] hover:shadow-[0_24px_44px_rgba(20,8,34,0.5)] ${
+                        isSelected ? "border-[#c084fc] ring-2 ring-[#b967ff]/45" : ""
+                      }`}
+                      style={{
+                        contentVisibility: "auto",
+                        containIntrinsicSize: "340px",
+                      }}
+                    >
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.11)_0%,rgba(190,92,255,0)_40%,rgba(164,82,244,0.11)_100%)]" />
+                    <div className="pointer-events-none absolute -top-16 left-12 h-56 w-px rotate-[34deg] bg-[#9d61ca]/16" />
+                    <div className="pointer-events-none absolute -right-14 top-8 h-36 w-36 rounded-full bg-[#ab66ff]/22 blur-3xl" />
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(192,132,252,0.74),rgba(168,85,247,0))]"
+                    />
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-x-10 top-[2px] z-[1] h-px rounded-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(250,245,255,0.62),rgba(168,85,247,0))]"
+                    />
+                    {selectMode && (
+                      <div className="absolute right-3 top-3 z-10">
+                        <span
+                          className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${
+                            isSelected
+                              ? "border-[#d8b4fe] bg-[linear-gradient(135deg,#b967ff_0%,#9350ea_100%)] text-[#fbf7ff] shadow-[0_10px_20px_rgba(168,79,240,0.36)]"
+                              : "border-[#9a67d0]/80 bg-[#2e1c43]/92 text-[#d8bcf3]"
+                          }`}
+                        >
+                          ✓
                       </span>
                     </div>
                   )}
-                  {!selectMode && (
-                    <div
-                      className="pointer-events-none absolute right-3 top-3 z-[2] inline-flex items-center gap-1 rounded-full border border-slate-300/90 bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-600 opacity-0 shadow-sm transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-                      aria-hidden="true"
-                    >
-                      <span>Detail</span>
+                    {!selectMode && (
+                      <div
+                        className="pointer-events-none absolute right-3 top-3 z-[2] inline-flex items-center gap-1 rounded-full border border-[#9a67d0]/80 bg-[#2e1c43]/92 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.11em] text-[#d8bcf3] opacity-0 shadow-[0_10px_20px_rgba(20,8,34,0.3)] transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                        aria-hidden="true"
+                      >
+                        <span>Detail</span>
                       <span className="text-[11px]">↗</span>
                     </div>
                   )}
@@ -2220,34 +2224,34 @@ function ContractsPageContent() {
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_190px] sm:gap-4">
                     <div className="relative z-[1] min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        {institutionLabel ? (
-                          <span className="inline-flex items-center rounded-full border border-slate-300/85 bg-white/85 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-600 backdrop-blur-[1px]">
-                            {institutionLabel}
-                          </span>
-                        ) : null}
-                        <div className="min-w-0 text-[1.65rem] leading-tight font-semibold text-slate-900 sm:text-[1.95rem]">
-                          {displayProductName}
-                        </div>
-                        {isEndorsement && (
-                          <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
-                            Dodatek
-                          </span>
-                        )}
-                        {isRefreshContract && (
-                          <span className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-800">
-                            Refresh
-                          </span>
-                        )}
-                        {groupedEndorsementCount > 0 && (
-                          <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-                            {groupedEndorsementCount}× změna
-                          </span>
-                        )}
+                          {institutionLabel ? (
+                            <span className="inline-flex items-center rounded-[9px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#fbf7ff] shadow-[0_10px_20px_rgba(159,72,237,0.36)]">
+                              {institutionLabel}
+                            </span>
+                          ) : null}
+                          <div className="min-w-0 text-[1.65rem] leading-tight font-semibold text-[#fbf7ff] sm:text-[1.95rem]">
+                            {displayProductName}
+                          </div>
+                          {isEndorsement && (
+                            <span className="inline-flex items-center rounded-full border border-sky-300/45 bg-sky-300/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-100">
+                              Dodatek
+                            </span>
+                          )}
+                          {isRefreshContract && (
+                            <span className="inline-flex items-center rounded-full border border-indigo-300/45 bg-indigo-300/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-100">
+                              Refresh
+                            </span>
+                          )}
+                          {groupedEndorsementCount > 0 && (
+                            <span className="inline-flex items-center rounded-full border border-[#9a67d0]/70 bg-[#2e1c43]/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#d8bcf3]">
+                              {groupedEndorsementCount}× změna
+                            </span>
+                          )}
                       </div>
 
                       {anniversaryInfo.soon && (
-                        <div
-                          className="mt-2 text-xs font-semibold text-rose-600"
+                          <div
+                            className="mt-2 text-xs font-semibold text-rose-200"
                           title={
                             anniversaryInfo.next
                               ? `${
@@ -2270,52 +2274,52 @@ function ContractsPageContent() {
                         </div>
                       )}
 
-                      <div className="mt-3 grid grid-cols-1 gap-1.5 text-[15px] leading-tight text-slate-700">
-                        <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500">
-                            Číslo smlouvy
-                          </span>
-                          <span className="font-medium text-slate-900">{c.contractNumber ?? "—"}</span>
-                        </p>
-                        {c.clientName && (
+                        <div className="mt-3 grid grid-cols-1 gap-1.5 text-[15px] leading-tight text-[#d8bcf3]">
                           <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                            <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500">
-                              Klient
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
+                              Číslo smlouvy
                             </span>
-                            <span className="text-base font-semibold text-slate-900">{c.clientName}</span>
+                            <span className="font-medium text-[#fbf7ff]">{c.contractNumber ?? "—"}</span>
                           </p>
-                        )}
-                        <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500">
-                            Datum sjednání
-                          </span>
-                          <span className="text-slate-900">{signedStr}</span>
-                        </p>
-                        {adviserName && (
+                          {c.clientName && (
+                            <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
+                                Klient
+                              </span>
+                              <span className="text-base font-semibold text-[#fbf7ff]">{c.clientName}</span>
+                            </p>
+                          )}
                           <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                            <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500">
-                              Sjednal
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
+                              Datum sjednání
                             </span>
-                            <span className="text-slate-900">{adviserName}</span>
+                            <span className="text-[#fbf7ff]">{signedStr}</span>
                           </p>
-                        )}
-                        {groupedEntryCount > 1 && (
-                          <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                            <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500">
-                              Verzí v kartě
-                            </span>
-                            <span className="text-slate-900">{groupedEntryCount}</span>
-                          </p>
-                        )}
-                        {isEndorsement && premiumDelta != null && (
-                          <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                            <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500">
-                              Změna pojistného
-                            </span>
-                            <span
-                              className={
-                                premiumDelta >= 0 ? "text-emerald-700" : "text-rose-700"
-                              }
+                          {adviserName && (
+                            <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
+                                Sjednal
+                              </span>
+                              <span className="text-[#fbf7ff]">{adviserName}</span>
+                            </p>
+                          )}
+                          {groupedEntryCount > 1 && (
+                            <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
+                                Verzí v kartě
+                              </span>
+                              <span className="text-[#fbf7ff]">{groupedEntryCount}</span>
+                            </p>
+                          )}
+                          {isEndorsement && premiumDelta != null && (
+                            <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
+                                Změna pojistného
+                              </span>
+                              <span
+                                className={
+                                  premiumDelta >= 0 ? "text-emerald-200" : "text-rose-200"
+                                }
                             >
                               {premiumDelta >= 0 ? "+" : "−"}
                               {formatMoney(Math.abs(premiumDelta))}
@@ -2325,25 +2329,25 @@ function ContractsPageContent() {
                       </div>
                     </div>
 
-                    <div className="border-t border-slate-200 pt-3 sm:border-l sm:border-t-0 sm:border-slate-200 sm:pl-5 sm:pt-0">
-                      <div className="flex items-end justify-between gap-3 sm:h-full sm:flex-col sm:items-end sm:justify-between">
-                        <div className="text-right">
-                          <span className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                            {isEndorsement ? "Nové pojistné" : "Pojistné"}
-                          </span>
-                          <div className="mt-1 whitespace-nowrap text-4xl leading-none font-semibold tracking-tight text-slate-900">
-                            {formatMoney(premiumDisplay.amount)}
-                          </div>
-                          {premiumDisplay.cadenceLabel && (
-                            <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                              {premiumDisplay.cadenceLabel}
+                      <div className="relative z-[1] border-t-2 border-[#a855f7]/75 pt-3 sm:border-l-2 sm:border-t-0 sm:pl-5 sm:pt-0">
+                        <div className="flex items-end justify-between gap-3 sm:h-full sm:flex-col sm:items-end sm:justify-between">
+                          <div className="text-right">
+                            <span className="text-[11px] font-black uppercase tracking-[0.14em] text-[#f3e8ff] drop-shadow-[0_2px_8px_rgba(243,232,255,0.18)]">
+                              {isEndorsement ? "Nové pojistné" : "Pojistné"}
+                            </span>
+                            <div className="mt-1 whitespace-nowrap text-4xl leading-none font-black tracking-tight text-[#fbf7ff] drop-shadow-[0_8px_18px_rgba(168,85,247,0.2)]">
+                              {formatMoney(premiumDisplay.amount)}
                             </div>
-                          )}
-                          {isEndorsement && premiumDelta != null && (
-                            <div
-                              className={`mt-1 text-[11px] uppercase tracking-[0.12em] ${
-                                premiumDelta >= 0 ? "text-emerald-700" : "text-rose-700"
-                              }`}
+                            {premiumDisplay.cadenceLabel && (
+                              <div className="mt-1 text-[11px] font-black uppercase tracking-[0.14em] text-[#f3e8ff] drop-shadow-[0_2px_8px_rgba(243,232,255,0.18)]">
+                                {premiumDisplay.cadenceLabel}
+                              </div>
+                            )}
+                            {isEndorsement && premiumDelta != null && (
+                              <div
+                                className={`mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                                  premiumDelta >= 0 ? "text-emerald-200" : "text-rose-200"
+                                }`}
                             >
                               {premiumDelta >= 0 ? "Navýšení" : "Ponížení"}{" "}
                               {formatMoney(Math.abs(premiumDelta))}
@@ -2355,9 +2359,10 @@ function ContractsPageContent() {
                             ? {
                                 label: "Storno",
                                 wrapper:
-                                  "border-amber-200/90 bg-[linear-gradient(135deg,#fffbeb_0%,#fef3c7_100%)] text-amber-900 shadow-[0_10px_24px_rgba(217,119,6,0.14)]",
+                                  "border-amber-200/75 bg-amber-300/24 text-amber-50 shadow-[0_10px_24px_rgba(217,119,6,0.28)] ring-1 ring-amber-100/20",
+                                style: undefined,
                                 iconWrap:
-                                  "border-amber-700/70 bg-[linear-gradient(135deg,#f59e0b_0%,#d97706_100%)] text-white shadow-[0_8px_16px_rgba(217,119,6,0.28)]",
+                                  "border-amber-500/80 bg-[linear-gradient(135deg,#fbbf24_0%,#d97706_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(217,119,6,0.34)]",
                                 icon: (
                                   <CalendarDays
                                     size={12}
@@ -2368,12 +2373,13 @@ function ContractsPageContent() {
                                 ),
                               }
                             : isDozita
-                            ? {
-                                label: "Dožitá",
-                                wrapper:
-                                  "border-sky-200/90 bg-[linear-gradient(135deg,#f0f9ff_0%,#dbeafe_100%)] text-sky-900 shadow-[0_10px_24px_rgba(14,116,144,0.14)]",
-                                iconWrap:
-                                  "border-sky-700/70 bg-[linear-gradient(135deg,#0ea5e9_0%,#0369a1_100%)] text-white shadow-[0_8px_16px_rgba(3,105,161,0.28)]",
+                              ? {
+                                  label: "Dožitá",
+                                  wrapper:
+                                    "border-sky-200/75 bg-sky-300/24 text-sky-50 shadow-[0_10px_24px_rgba(14,116,144,0.28)] ring-1 ring-sky-100/20",
+                                  style: undefined,
+                                  iconWrap:
+                                    "border-sky-500/80 bg-[linear-gradient(135deg,#38bdf8_0%,#0369a1_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(3,105,161,0.34)]",
                                 icon: (
                                   <CalendarDays
                                     size={12}
@@ -2384,12 +2390,17 @@ function ContractsPageContent() {
                                 ),
                               }
                             : c.paid
-                            ? {
-                                label: "Zaplaceno",
+                              ? {
+                                  label: "Zaplaceno",
                                 wrapper:
-                                  "border-emerald-200/90 bg-[linear-gradient(135deg,#ecfdf5_0%,#d1fae5_100%)] text-emerald-900 shadow-[0_10px_24px_rgba(5,150,105,0.14)]",
-                                iconWrap:
-                                  "border-emerald-700/70 bg-[linear-gradient(135deg,#22c55e_0%,#059669_100%)] text-white shadow-[0_8px_16px_rgba(5,150,105,0.28)]",
+                                  "border-emerald-200 bg-[linear-gradient(135deg,#dcfce7_0%,#bbf7d0_100%)] text-emerald-950 shadow-[0_12px_28px_rgba(16,185,129,0.34)] ring-1 ring-white/55",
+                                  style: {
+                                    background: "linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%)",
+                                    borderColor: "#bbf7d0",
+                                    color: "#052e16",
+                                  },
+                                  iconWrap:
+                                    "border-emerald-500/80 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(5,150,105,0.34)]",
                                 icon: (
                                   <span
                                     className="text-[13px] font-black leading-none"
@@ -2399,12 +2410,17 @@ function ContractsPageContent() {
                                   </span>
                                 ),
                               }
-                            : {
-                                label: "Nezaplaceno",
-                                wrapper:
-                                  "border-rose-200/90 bg-[linear-gradient(135deg,#fff1f2_0%,#ffe4e6_100%)] text-rose-900 shadow-[0_10px_24px_rgba(225,29,72,0.14)]",
-                                iconWrap:
-                                  "border-rose-700/70 bg-[linear-gradient(135deg,#f43f5e_0%,#e11d48_100%)] text-white shadow-[0_8px_16px_rgba(225,29,72,0.28)]",
+                              : {
+                                  label: "Nezaplaceno",
+                                  wrapper:
+                                  "border-rose-200 bg-[linear-gradient(135deg,#ffe4e6_0%,#fecdd3_100%)] text-rose-950 shadow-[0_12px_28px_rgba(225,29,72,0.34)] ring-1 ring-white/55",
+                                  style: {
+                                    background: "linear-gradient(135deg,#ffe4e6 0%,#fecdd3 100%)",
+                                    borderColor: "#fecdd3",
+                                    color: "#4c0519",
+                                  },
+                                  iconWrap:
+                                    "border-rose-500/80 bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(225,29,72,0.34)]",
                                 icon: (
                                   <span
                                     className="text-[13px] font-black leading-none"
@@ -2418,9 +2434,10 @@ function ContractsPageContent() {
                           return (
                             <span
                               className={`inline-flex items-center gap-2 rounded-full border px-1.5 py-1 pr-2.5 text-[12px] font-semibold leading-none tracking-[0.01em] ${statusBadge.wrapper}`}
+                              style={statusBadge.style}
                             >
                               <span
-                                className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ring-1 ring-white/45 ${statusBadge.iconWrap}`}
+                                className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ring-1 ring-[#fbf7ff]/45 ${statusBadge.iconWrap}`}
                               >
                                 {statusBadge.icon}
                               </span>
