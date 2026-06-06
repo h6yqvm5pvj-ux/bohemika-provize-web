@@ -97,32 +97,9 @@ const parseFields = (value: unknown) => {
     .filter((entry): entry is { label: string; value: string } => entry !== null);
 };
 
-const parseAttachments = (value: unknown) => {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((entry) => {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
-      const row = entry as Record<string, unknown>;
-      const name = normalizeText(row.name);
-      const url = normalizeText(row.url);
-      if (!name || !url) return null;
-      const id = normalizeText(row.id) || `${name}-${url}`;
-      const contentType = normalizeText(row.contentType) || "application/octet-stream";
-      const sizeBytes =
-        typeof row.sizeBytes === "number" && Number.isFinite(row.sizeBytes)
-          ? Math.max(0, Math.round(row.sizeBytes))
-          : 0;
-      return { id, name, url, contentType, sizeBytes };
-    })
-    .filter(
-      (entry): entry is {
-        id: string;
-        name: string;
-        url: string;
-        contentType: string;
-        sizeBytes: number;
-      } => entry !== null
-    );
+const countRawAttachments = (value: unknown): number => {
+  if (!Array.isArray(value)) return 0;
+  return value.filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry)).length;
 };
 
 const normalizeTipStatus = (value: unknown): "pending" | "contracted" | "failed" => {
@@ -135,6 +112,10 @@ const parseTipDoc = (
   docSnap: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
 ) => {
   const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+  const attachmentCount =
+    typeof data.attachmentCount === "number" && Number.isFinite(data.attachmentCount)
+      ? Math.max(0, Math.round(data.attachmentCount))
+      : countRawAttachments(data.attachments);
   const createdAtMs =
     (typeof data.createdAtMs === "number" && Number.isFinite(data.createdAtMs)
       ? Math.round(data.createdAtMs)
@@ -152,11 +133,8 @@ const parseTipDoc = (
     tipsterName: normalizeText(data.tipsterName),
     messageText: normalizeText(data.messageText),
     fields: parseFields(data.fields),
-    attachments: parseAttachments(data.attachments),
-    attachmentCount:
-      typeof data.attachmentCount === "number" && Number.isFinite(data.attachmentCount)
-        ? Math.max(0, Math.round(data.attachmentCount))
-        : parseAttachments(data.attachments).length,
+    attachments: [],
+    attachmentCount,
     mailboxMessageId: normalizeText(data.mailboxMessageId),
     recipientMailboxId: normalizeText(data.recipientMailboxId),
     senderMailboxId: normalizeText(data.senderMailboxId),

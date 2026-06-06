@@ -349,7 +349,7 @@ type SettingsTab =
   | "requests";
 
 const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
-  { id: "account", label: "Účet" },
+  { id: "account", label: "Zabezpečení" },
   { id: "subscription", label: "Předplatné" },
   { id: "career", label: "Kariéra" },
   { id: "notifications", label: "Notifikace" },
@@ -4619,49 +4619,82 @@ export default function SettingsPage() {
             </section>
             )}
 
-            {/* Účet */}
+            {/* Zabezpečení */}
             {activeTab === "account" && !timelineSetupRequired && (
-            <section className={`space-y-4 ${panelClass}`}>
-              <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
-              <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-                <UserRound size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                <span>Účet</span>
-              </h2>
-
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 text-sm">
+            <section className={`space-y-5 ${panelClass}`}>
+              <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#164e63_52%,#10b981_100%)]" />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
-                    <AtSign size={12} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
-                    <span>E-mail účtu</span>
-                  </div>
-                  <div className="mt-1 font-medium text-slate-900">
-                    {userEmail}
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Odhlásit se můžeš kdykoliv pomocí tlačítka v levém panelu
-                    dole.
+                  <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
+                    <ShieldCheck size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                    <span>Zabezpečení</span>
+                  </h2>
+                  <p className="mt-1 max-w-2xl text-sm text-slate-500">
+                    Přihlašovací údaje, heslo a druhý faktor pro tento účet.
                   </p>
                 </div>
+                <span
+                  className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] ${
+                    mfaEnabled
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-amber-200 bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      mfaEnabled ? "bg-emerald-500" : "bg-amber-500"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  2FA {mfaEnabled ? "zapnuto" : "vypnuto"}
+                </span>
+              </div>
 
-                <div className="w-full sm:max-w-md space-y-3">
-                  <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
-                    <KeyRound size={12} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
-                    <span>Změna hesla</span>
+              <div className="space-y-4">
+                <div className="grid gap-4 xl:grid-cols-[minmax(280px,0.82fr)_minmax(420px,1.18fr)]">
+                  <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
+                        <AtSign size={20} strokeWidth={2} aria-hidden="true" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          E-mail účtu
+                        </div>
+                        <div className="mt-1 break-all text-base font-bold text-slate-950">
+                          {userEmail}
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                          Odhlášení najdeš dole v levém panelu.
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
-                  {!showPasswordForm && (
-                    <button
-                      type="button"
-                      onClick={() => setShowPasswordForm(true)}
-                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black"
-                    >
-                      <KeyRound size={15} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                      Změnit heslo
-                    </button>
-                  )}
+                  <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
+                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        <KeyRound size={12} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
+                        <span>Změna hesla</span>
+                      </div>
+                      {!showPasswordForm && (
+                        <span className="text-xs text-slate-500">Ověření původním heslem</span>
+                      )}
+                    </div>
 
-                  {showPasswordForm && (
-                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    {!showPasswordForm && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswordForm(true)}
+                        className="inline-flex min-h-[48px] w-full items-center justify-center gap-1.5 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(15,23,42,0.18)] transition hover:bg-black"
+                      >
+                        <KeyRound size={15} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                        Změnit heslo
+                      </button>
+                    )}
+
+                    {showPasswordForm && (
+                      <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                       <input
                         type="password"
                         autoComplete="current-password"
@@ -4722,6 +4755,8 @@ export default function SettingsPage() {
                       )}
                     </div>
                   )}
+                  </div>
+                </div>
 
 	                  <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
 		                    <div className="mfa-security-hero bg-[linear-gradient(135deg,#0f172a_0%,#164e63_58%,#047857_100%)] px-4 py-4 text-white sm:px-5 sm:py-5">
@@ -5015,11 +5050,10 @@ export default function SettingsPage() {
 	                          {mfaStatus.message}
 	                        </div>
 	                      )}
-	                    </div>
-	                  </div>
-                </div>
-              </div>
-            </section>
+		                    </div>
+		                  </div>
+	                </div>
+	            </section>
             )}
 
           </>

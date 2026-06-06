@@ -134,16 +134,37 @@ const parseMessageFields = (textRaw: string) => {
   });
 };
 
-const parseAttachments = (value: unknown) => {
+const buildMailboxAttachmentApiUrl = (messageId: string, attachmentId: string): string => {
+  const params = new URLSearchParams({
+    messageId,
+    attachmentId,
+  });
+  return `/api/mailbox/attachment?${params.toString()}`;
+};
+
+const countRawAttachments = (value: unknown): number => {
+  if (!Array.isArray(value)) return 0;
+  return value.filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry)).length;
+};
+
+const parseAttachments = (value: unknown, messageId: string) => {
   if (!Array.isArray(value)) return [];
   return value
     .map((entry) => {
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
       const row = entry as Record<string, unknown>;
       const name = normalizeText(row.name);
-      const url = normalizeText(row.url);
-      if (!name || !url) return null;
-      const id = normalizeText(row.id) || `${name}-${url}`;
+      const sourceUrl = normalizeText(row.url);
+      const storedId = normalizeText(row.id);
+      if (!name || (!storedId && !sourceUrl)) return null;
+      const id = storedId || `${name}-${sourceUrl}`;
+      const url =
+        messageId && id
+          ? buildMailboxAttachmentApiUrl(messageId, id)
+          : sourceUrl.startsWith("/api/")
+            ? sourceUrl
+            : "";
+      if (!url) return null;
       const contentType = normalizeText(row.contentType) || "application/octet-stream";
       const sizeBytes =
         typeof row.sizeBytes === "number" && Number.isFinite(row.sizeBytes)
@@ -255,7 +276,10 @@ const parseTipsterTipDoc = (
   docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
 ) => {
   const data = (docSnap.data() ?? {}) as Record<string, unknown>;
-  const attachments = parseAttachments(data.attachments);
+  const attachmentCount =
+    typeof data.attachmentCount === "number" && Number.isFinite(data.attachmentCount)
+      ? Math.max(0, Math.round(data.attachmentCount))
+      : countRawAttachments(data.attachments);
   const createdAtMs =
     (typeof data.createdAtMs === "number" && Number.isFinite(data.createdAtMs)
       ? Math.round(data.createdAtMs)
@@ -273,11 +297,8 @@ const parseTipsterTipDoc = (
     tipsterName: normalizeText(data.tipsterName),
     messageText: normalizeText(data.messageText),
     fields: parseFields(data.fields),
-    attachments,
-    attachmentCount:
-      typeof data.attachmentCount === "number" && Number.isFinite(data.attachmentCount)
-        ? Math.max(0, Math.round(data.attachmentCount))
-        : attachments.length,
+    attachments: [],
+    attachmentCount,
     mailboxMessageId: normalizeText(data.mailboxMessageId),
     recipientMailboxId: normalizeText(data.recipientMailboxId),
     senderMailboxId: normalizeText(data.senderMailboxId),
@@ -302,7 +323,8 @@ const parseAdvisorTipDoc = (
       : {};
   const messageText = normalizeText(metadata.messageText) || normalizeText(data.body);
   const fields = parseMessageFields(messageText);
-  const attachments = parseAttachments(metadata.attachments);
+  const mailboxMessageId = normalizeText(metadata.messageId);
+  const attachments = parseAttachments(metadata.attachments, mailboxMessageId);
   const productLabel =
     normalizeText(metadata.tipProductLabel) ||
     fields.find((field) => field.label.toLowerCase() === "produkt")?.value ||
@@ -330,7 +352,7 @@ const parseAdvisorTipDoc = (
       typeof metadata.attachmentCount === "number" && Number.isFinite(metadata.attachmentCount)
         ? Math.max(0, Math.round(metadata.attachmentCount))
         : attachments.length,
-    mailboxMessageId: normalizeText(metadata.messageId),
+    mailboxMessageId,
     recipientMailboxId: docSnap.id,
     senderMailboxId: "",
     linkedContractOwnerEmail: normalizeEmail(statusData.linkedContractOwnerEmail),

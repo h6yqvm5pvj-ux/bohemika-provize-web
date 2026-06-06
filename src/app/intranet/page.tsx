@@ -65,7 +65,7 @@ type WallAttachment = {
   contentType: string;
   sizeBytes: number;
   isImage: boolean;
-  path: string;
+  path?: string;
 };
 
 type WallComment = {
@@ -672,6 +672,29 @@ export default function IntranetPage() {
     }
   };
 
+  const handleOpenAttachment = async (attachment: WallAttachment) => {
+    if (!user) return;
+    setPostsError(null);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(attachment.url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || "Přílohu se nepodařilo načíst.");
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error) {
+      setPostsError(error instanceof Error ? error.message : "Přílohu se nepodařilo otevřít.");
+    }
+  };
+
   const handleCreateComment = async (postId: string, parentCommentId?: string) => {
     if (!user) return;
     const isReply = !!parentCommentId;
@@ -1109,11 +1132,10 @@ export default function IntranetPage() {
                                 key={attachment.id}
                                 className="rounded-xl border border-slate-200 bg-white/95 p-2"
                               >
-                                <a
-                                  href={attachment.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 underline-offset-2 hover:underline"
+                                <button
+                                  type="button"
+                                  onClick={() => void handleOpenAttachment(attachment)}
+                                  className="inline-flex items-center gap-2 text-left text-xs font-semibold text-slate-700 underline-offset-2 hover:underline"
                                 >
                                   {attachment.isImage ? (
                                     <ImageIcon className="h-3.5 w-3.5" />
@@ -1121,19 +1143,19 @@ export default function IntranetPage() {
                                     <Paperclip className="h-3.5 w-3.5" />
                                   )}
                                   {attachment.name}
-                                </a>
+                                </button>
                                 <div className="mt-0.5 text-[11px] text-slate-500">
                                   {attachment.contentType} • {formatBytes(attachment.sizeBytes)}
                                 </div>
                                 {attachment.isImage ? (
-                                  <a href={attachment.url} target="_blank" rel="noreferrer">
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
-                                      src={attachment.url}
-                                      alt={attachment.name}
-                                      className="mt-2 max-h-80 w-full rounded-xl border border-slate-200 object-cover"
-                                    />
-                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleOpenAttachment(attachment)}
+                                    className="mt-2 flex min-h-28 w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-xs font-semibold text-slate-600 transition hover:border-slate-400 hover:bg-slate-100"
+                                  >
+                                    <ImageIcon className="mr-2 h-4 w-4" />
+                                    Otevřít obrázek
+                                  </button>
                                 ) : null}
                               </div>
                             ))}

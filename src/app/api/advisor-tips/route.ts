@@ -1,7 +1,10 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
+import {
+  requireAdvisorAuthedRateLimited,
+  withRateLimitHeaders,
+} from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 
 export const runtime = "nodejs";
@@ -94,16 +97,32 @@ const parseMessageFields = (textRaw: string) => {
   });
 };
 
-const parseAttachments = (value: unknown) => {
+const buildMailboxAttachmentApiUrl = (messageId: string, attachmentId: string): string => {
+  const params = new URLSearchParams({
+    messageId,
+    attachmentId,
+  });
+  return `/api/mailbox/attachment?${params.toString()}`;
+};
+
+const parseAttachments = (value: unknown, messageId: string) => {
   if (!Array.isArray(value)) return [];
   return value
     .map((entry) => {
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
       const row = entry as Record<string, unknown>;
       const name = normalizeText(row.name);
-      const url = normalizeText(row.url);
-      if (!name || !url) return null;
-      const id = normalizeText(row.id) || `${name}-${url}`;
+      const sourceUrl = normalizeText(row.url);
+      const storedId = normalizeText(row.id);
+      if (!name || (!storedId && !sourceUrl)) return null;
+      const id = storedId || `${name}-${sourceUrl}`;
+      const url =
+        messageId && id
+          ? buildMailboxAttachmentApiUrl(messageId, id)
+          : sourceUrl.startsWith("/api/")
+            ? sourceUrl
+            : "";
+      if (!url) return null;
       const contentType = normalizeText(row.contentType) || "application/octet-stream";
       const sizeBytes =
         typeof row.sizeBytes === "number" && Number.isFinite(row.sizeBytes)
@@ -146,7 +165,7 @@ const statusMatchesFilter = (status: TipStatus, filter: TipFilterStatus): boolea
 };
 
 export async function GET(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:advisor-tips:get",
     limit: ADVISOR_TIPS_GET_RATE_LIMIT,
     windowMs: ADVISOR_TIPS_GET_RATE_LIMIT_WINDOW_MS,
@@ -212,6 +231,8 @@ export async function GET(req: NextRequest) {
           ? Math.round(data.createdAtMs)
           : null) ?? toMillis(data.createdAt);
       const status = statusById.get(docSnap.id) ?? "pending";
+      const mailboxMessageId = normalizeText(metadata.messageId);
+      const attachments = parseAttachments(metadata.attachments, mailboxMessageId);
 
       return {
         id: docSnap.id,
@@ -225,12 +246,12 @@ export async function GET(req: NextRequest) {
         tipsterName: normalizeText(metadata.senderName),
         messageText,
         fields,
-        attachments: parseAttachments(metadata.attachments),
+        attachments,
         attachmentCount:
           typeof metadata.attachmentCount === "number" && Number.isFinite(metadata.attachmentCount)
             ? Math.max(0, Math.round(metadata.attachmentCount))
-            : parseAttachments(metadata.attachments).length,
-        mailboxMessageId: normalizeText(metadata.messageId),
+            : attachments.length,
+        mailboxMessageId,
         recipientMailboxId: docSnap.id,
         senderMailboxId: "",
         createdAtMs,
@@ -266,7 +287,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:advisor-tips:patch",
     limit: ADVISOR_TIPS_PATCH_RATE_LIMIT,
     windowMs: ADVISOR_TIPS_PATCH_RATE_LIMIT_WINDOW_MS,

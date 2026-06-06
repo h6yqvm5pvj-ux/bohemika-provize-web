@@ -1,7 +1,10 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
+import {
+  requireAdvisorAuthedRateLimited,
+  withRateLimitHeaders,
+} from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 
 export const runtime = "nodejs";
@@ -79,6 +82,40 @@ const parseIds = (value: unknown): string[] => {
   return [...out].slice(0, MAILBOX_MARK_MAX_IDS);
 };
 
+const buildMailboxAttachmentApiUrl = (messageId: string, attachmentId: string): string => {
+  const params = new URLSearchParams({
+    messageId,
+    attachmentId,
+  });
+  return `/api/mailbox/attachment?${params.toString()}`;
+};
+
+const normalizeAttachmentUrls = (
+  metadata: Record<string, unknown> | null,
+  messageId: string
+): Record<string, unknown> | null => {
+  if (!metadata || !Array.isArray(metadata.attachments)) return metadata;
+  const attachments = metadata.attachments.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+    const row = entry as Record<string, unknown>;
+    const attachmentId = normalizeText(row.id);
+    if (!attachmentId) return row;
+    const safeRow: Record<string, unknown> = {
+      ...row,
+      url: buildMailboxAttachmentApiUrl(messageId, attachmentId),
+    };
+    delete safeRow.path;
+    delete safeRow.bucketName;
+    return {
+      ...safeRow,
+    };
+  });
+  return {
+    ...metadata,
+    attachments,
+  };
+};
+
 const parseMailboxDoc = (
   docSnap: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
 ) => {
@@ -97,6 +134,8 @@ const parseMailboxDoc = (
     metadataRaw && typeof metadataRaw === "object" && !Array.isArray(metadataRaw)
       ? (metadataRaw as Record<string, unknown>)
       : null;
+  const metadataMessageId = normalizeText(metadata?.messageId);
+  const normalizedMetadata = normalizeAttachmentUrls(metadata, metadataMessageId || docSnap.id);
 
   return {
     id: docSnap.id,
@@ -107,7 +146,7 @@ const parseMailboxDoc = (
     read: data.read === true,
     createdAtMs,
     readAtMs,
-    metadata,
+    metadata: normalizedMetadata,
   };
 };
 
@@ -120,7 +159,7 @@ const getUnreadCount = async (email: string): Promise<number> => {
 };
 
 export async function GET(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:mailbox:get",
     limit: MAILBOX_GET_RATE_LIMIT,
     windowMs: MAILBOX_GET_RATE_LIMIT_WINDOW_MS,
@@ -174,7 +213,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:mailbox:patch",
     limit: MAILBOX_PATCH_RATE_LIMIT,
     windowMs: MAILBOX_PATCH_RATE_LIMIT_WINDOW_MS,
@@ -275,7 +314,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:mailbox:delete",
     limit: MAILBOX_DELETE_RATE_LIMIT,
     windowMs: MAILBOX_DELETE_RATE_LIMIT_WINDOW_MS,

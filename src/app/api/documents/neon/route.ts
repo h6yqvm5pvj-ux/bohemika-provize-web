@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
-  requireAuthedRateLimited,
+  requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 
@@ -60,7 +60,7 @@ function contentDisposition(fileName: string, shouldDownload: boolean): string {
 }
 
 export async function GET(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:documents:neon:get",
     limit: NEON_DOCUMENT_RATE_LIMIT,
     windowMs: NEON_DOCUMENT_RATE_LIMIT_WINDOW_MS,

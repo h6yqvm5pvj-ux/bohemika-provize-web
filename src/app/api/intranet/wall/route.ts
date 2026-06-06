@@ -7,7 +7,7 @@ import { collectPushTokens } from "@/lib/server/pushTokens";
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
 import { writeMailboxEntries } from "@/lib/server/mailbox";
 import {
-  requireAuthedRateLimited,
+  requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 import {
@@ -53,7 +53,8 @@ type WallAttachment = {
   contentType: string;
   sizeBytes: number;
   isImage: boolean;
-  path: string;
+  path?: string;
+  bucketName?: string;
 };
 
 type WallAuthor = {
@@ -189,7 +190,7 @@ const parseSection = (value: unknown): IntranetSectionKey | null => {
 const parseAttachments = (value: unknown): WallAttachment[] => {
   if (!Array.isArray(value)) return [];
   return value
-    .map((row) => {
+    .map((row): WallAttachment | null => {
       if (!row || typeof row !== "object") return null;
       const item = row as Record<string, unknown>;
       const id = normalizeText(item.id);
@@ -197,6 +198,7 @@ const parseAttachments = (value: unknown): WallAttachment[] => {
       const url = normalizeText(item.url);
       const contentType = normalizeText(item.contentType) || "application/octet-stream";
       const path = normalizeText(item.path);
+      const bucketName = normalizeText(item.bucketName);
       const sizeRaw = Number(item.sizeBytes);
       const sizeBytes = Number.isFinite(sizeRaw) && sizeRaw >= 0 ? Math.floor(sizeRaw) : 0;
       const isImage = item.isImage === true;
@@ -209,8 +211,9 @@ const parseAttachments = (value: unknown): WallAttachment[] => {
         contentType,
         sizeBytes,
         isImage,
-        path,
-      } satisfies WallAttachment;
+        path: path || undefined,
+        bucketName: bucketName || undefined,
+      };
     })
     .filter((item): item is WallAttachment => item !== null);
 };
@@ -464,10 +467,12 @@ async function resolveDisplayName({
   return nameFromEmail(email);
 }
 
-function buildStorageDownloadUrl(bucketName: string, objectPath: string, token: string): string {
-  return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(
-    objectPath
-  )}?alt=media&token=${encodeURIComponent(token)}`;
+function buildAttachmentApiUrl(postId: string, attachmentId: string): string {
+  const params = new URLSearchParams({
+    postId,
+    attachmentId,
+  });
+  return `/api/intranet/wall/attachment?${params.toString()}`;
 }
 
 function normalizeBucketName(value: string): string {
@@ -542,7 +547,7 @@ async function uploadAttachmentsToBucket({
     const contentType = normalizeText(file.type) || "application/octet-stream";
     const originalName = sanitizeFileName(normalizeText(file.name) || "priloha");
     const objectPath = `${uploadPrefix}/${Date.now()}-${index}-${originalName}`;
-    const downloadToken = randomUUID();
+    const attachmentId = randomUUID();
     const storageFile = bucket.file(objectPath);
     const bytes = Buffer.from(await file.arrayBuffer());
 
@@ -551,7 +556,6 @@ async function uploadAttachmentsToBucket({
       contentType,
       metadata: {
         metadata: {
-          firebaseStorageDownloadTokens: downloadToken,
           originalName,
           uploadedBy: uploaderEmail,
         },
@@ -559,13 +563,14 @@ async function uploadAttachmentsToBucket({
     });
 
     attachments.push({
-      id: randomUUID(),
+      id: attachmentId,
       name: normalizeText(file.name) || originalName,
-      url: buildStorageDownloadUrl(bucket.name, objectPath, downloadToken),
+      url: buildAttachmentApiUrl(postId, attachmentId),
       contentType,
       sizeBytes: file.size,
       isImage: contentType.startsWith("image/") && contentType !== "image/svg+xml",
       path: objectPath,
+      bucketName: bucket.name,
     });
   }
 
@@ -758,7 +763,16 @@ function mapPostFromDoc(
     ? Math.max(0, Math.floor(likeCountRaw))
     : likedByEmails.length;
   const likedByMe = viewerEmail ? likedByEmails.includes(viewerEmail) : false;
-  const attachments = parseAttachments(raw.attachments);
+  const attachments = parseAttachments(raw.attachments).map(
+    ({ id, name, contentType, sizeBytes, isImage }) => ({
+      id,
+      name,
+      url: buildAttachmentApiUrl(docId, id),
+      contentType,
+      sizeBytes,
+      isImage,
+    })
+  );
 
   return {
     id: docId,
@@ -778,7 +792,7 @@ function mapPostFromDoc(
 }
 
 export async function GET(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:intranet-wall:get",
     limit: GET_RATE_LIMIT,
     windowMs: GET_RATE_LIMIT_WINDOW_MS,
@@ -855,7 +869,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:intranet-wall:post",
     limit: POST_RATE_LIMIT,
     windowMs: POST_RATE_LIMIT_WINDOW_MS,

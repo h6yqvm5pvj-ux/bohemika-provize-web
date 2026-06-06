@@ -3,7 +3,7 @@ import { getStorage } from "firebase-admin/storage";
 
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import {
-  requireAuthedRateLimited,
+  requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 
@@ -22,6 +22,7 @@ type RouteParams = {
 type StoredAttachment = {
   path: string;
   url: string;
+  bucketName?: string;
 };
 
 const normalizeText = (value: unknown): string =>
@@ -52,13 +53,14 @@ const isBucketMissingError = (error: unknown): boolean => {
 const parseAttachments = (value: unknown): StoredAttachment[] => {
   if (!Array.isArray(value)) return [];
   return value
-    .map((item) => {
+    .map((item): StoredAttachment | null => {
       if (!item || typeof item !== "object") return null;
       const row = item as Record<string, unknown>;
       const path = normalizeText(row.path);
       const url = normalizeText(row.url);
+      const bucketName = normalizeText(row.bucketName);
       if (!path) return null;
-      return { path, url };
+      return { path, url, bucketName: bucketName || undefined };
     })
     .filter((row): row is StoredAttachment => row !== null);
 };
@@ -86,7 +88,10 @@ const resolveStorageBucketCandidates = (attachments: StoredAttachment[]): string
     }
   };
 
-  attachments.forEach((attachment) => append(bucketFromDownloadUrl(attachment.url)));
+  attachments.forEach((attachment) => {
+    append(attachment.bucketName);
+    append(bucketFromDownloadUrl(attachment.url));
+  });
 
   append(process.env.FIREBASE_STORAGE_BUCKET);
   append(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET);
@@ -147,7 +152,7 @@ export async function DELETE(
   req: NextRequest,
   context: { params: Promise<RouteParams> }
 ) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:intranet-wall:delete",
     limit: DELETE_RATE_LIMIT,
     windowMs: DELETE_RATE_LIMIT_WINDOW_MS,

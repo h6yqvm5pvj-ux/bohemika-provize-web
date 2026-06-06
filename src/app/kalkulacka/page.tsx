@@ -64,6 +64,7 @@ import { parseSlaviaAutoPdf } from "../lib/parseSlaviaAutoPdf";
 import { parseNeonPdf } from "../lib/parseNeonPdf";
 import { parseFlexiPdf } from "../lib/parseFlexiPdf";
 import { parseDomexPdf } from "../lib/parseDomexPdf";
+import { parseCppHafanPdf } from "../lib/parseCppHafanPdf";
 import { parseComfortPdf } from "../lib/parseComfortPdf";
 import { parseMaxCizinKomplexPdf } from "../lib/parseMaxCizinKomplexPdf";
 import { parseKooperativaAutoPdf } from "../lib/parseKooperativaAutoPdf";
@@ -645,6 +646,7 @@ const PDF_AUTOMATED_PRODUCTS = new Set<Product>([
   "neon",
   "flexi",
   "domex",
+  "cpphafan",
   "maxcizinkomplex",
   "comfortcc",
 ]);
@@ -2307,6 +2309,7 @@ export default function CalculatorPage() {
         | Awaited<ReturnType<typeof parseNeonPdf>>
         | Awaited<ReturnType<typeof parseFlexiPdf>>
         | Awaited<ReturnType<typeof parseDomexPdf>>
+        | Awaited<ReturnType<typeof parseCppHafanPdf>>
         | Awaited<ReturnType<typeof parseMaxCizinKomplexPdf>>
         | Awaited<ReturnType<typeof parseComfortPdf>>
         | Awaited<ReturnType<typeof parseKooperativaAutoPdf>>
@@ -2335,6 +2338,8 @@ export default function CalculatorPage() {
         parsed = await parseFlexiPdf(file);
       } else if (importProduct === "domex") {
         parsed = await parseDomexPdf(file);
+      } else if (importProduct === "cpphafan") {
+        parsed = await parseCppHafanPdf(file);
       } else if (importProduct === "maxcizinkomplex") {
         parsed = await parseMaxCizinKomplexPdf(file);
       } else if (importProduct === "comfortcc") {

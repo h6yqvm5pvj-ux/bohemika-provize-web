@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { adminAuth } from "@/lib/server/firebaseAdmin";
+import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import {
   applyRateLimitHeaders,
   consumeRateLimit,
@@ -16,6 +16,11 @@ export type AuthedRateLimitContext = {
   rateLimit: RateLimitResult;
 };
 
+export type AdvisorAuthedRateLimitContext = AuthedRateLimitContext & {
+  accountType: "advisor";
+  profileDocId: string;
+};
+
 export type IpRateLimitContext = {
   key: string;
   rateLimit: RateLimitResult;
@@ -23,6 +28,77 @@ export type IpRateLimitContext = {
 
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const resolveAccountType = (data: Record<string, unknown> | null): "advisor" | "tipster" => {
+  const raw =
+    typeof data?.accountType === "string"
+      ? data.accountType
+      : typeof data?.userRole === "string"
+        ? data.userRole
+        : "";
+  return raw.trim().toLowerCase() === "tipster" ? "tipster" : "advisor";
+};
+
+async function loadUserProfileForAuth({
+  email,
+  uid,
+}: {
+  email: string;
+  uid: string;
+}): Promise<{ docId: string; data: Record<string, unknown> } | null> {
+  if (!adminDb) return null;
+  const db = adminDb;
+  const usersCol = db.collection("users");
+  const loadPrivateProfile = async (profileEmail: string) => {
+    if (!profileEmail) return {};
+    const privateSnap = await db.collection("usersPrivate").doc(profileEmail).get();
+    return (privateSnap.data() ?? {}) as Record<string, unknown>;
+  };
+
+  const directSnap = email ? await usersCol.doc(email).get() : null;
+  if (directSnap?.exists) {
+    const data = (directSnap.data() ?? {}) as Record<string, unknown>;
+    return {
+      docId: directSnap.id,
+      data: {
+        ...data,
+        ...(await loadPrivateProfile(normalizeEmail(data.email) || email)),
+      },
+    };
+  }
+
+  if (email) {
+    const byEmailSnap = await usersCol.where("email", "==", email).limit(1).get();
+    if (!byEmailSnap.empty) {
+      const doc = byEmailSnap.docs[0]!;
+      const data = (doc.data() ?? {}) as Record<string, unknown>;
+      return {
+        docId: doc.id,
+        data: {
+          ...data,
+          ...(await loadPrivateProfile(normalizeEmail(data.email) || email)),
+        },
+      };
+    }
+  }
+
+  if (uid) {
+    const byUidSnap = await usersCol.where("userId", "==", uid).limit(1).get();
+    if (!byUidSnap.empty) {
+      const doc = byUidSnap.docs[0]!;
+      const data = (doc.data() ?? {}) as Record<string, unknown>;
+      return {
+        docId: doc.id,
+        data: {
+          ...data,
+          ...(await loadPrivateProfile(normalizeEmail(data.email) || email)),
+        },
+      };
+    }
+  }
+
+  return null;
+}
 
 export function readBearerToken(req: NextRequest): string {
   const authHeader = req.headers.get("authorization") ?? "";
@@ -122,6 +198,77 @@ export async function requireAuthedRateLimited(
 export function withRateLimitHeaders(response: NextResponse, ctx: AuthedRateLimitContext): NextResponse {
   applyRateLimitHeaders(response.headers, ctx.rateLimit);
   return response;
+}
+
+export async function requireAdvisorAuthedRateLimited(
+  req: NextRequest,
+  {
+    namespace,
+    limit,
+    windowMs,
+  }: {
+    namespace: string;
+    limit: number;
+    windowMs: number;
+  }
+): Promise<
+  | { ok: true; ctx: AdvisorAuthedRateLimitContext }
+  | { ok: false; response: NextResponse }
+> {
+  const guard = await requireAuthedRateLimited(req, { namespace, limit, windowMs });
+  if (!guard.ok) return guard;
+
+  if (!adminDb) {
+    return {
+      ok: false,
+      response: withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: "Server není správně nakonfigurován (Firestore)." },
+          { status: 500 }
+        ),
+        guard.ctx
+      ),
+    };
+  }
+
+  const profile = await loadUserProfileForAuth({
+    email: guard.ctx.email,
+    uid: guard.ctx.uid,
+  });
+  if (!profile) {
+    return {
+      ok: false,
+      response: withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: "Uživatel nemá interní profil v systému." },
+          { status: 403 }
+        ),
+        guard.ctx
+      ),
+    };
+  }
+
+  if (resolveAccountType(profile.data) === "tipster") {
+    return {
+      ok: false,
+      response: withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: "Tipařské účty nemají přístup k dokumentům." },
+          { status: 403 }
+        ),
+        guard.ctx
+      ),
+    };
+  }
+
+  return {
+    ok: true,
+    ctx: {
+      ...guard.ctx,
+      accountType: "advisor",
+      profileDocId: profile.docId,
+    },
+  };
 }
 
 export async function requireIpRateLimited(

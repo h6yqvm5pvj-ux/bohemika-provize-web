@@ -6,7 +6,7 @@ import { writeMailboxEntries } from "@/lib/server/mailbox";
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 import {
-  requireAuthedRateLimited,
+  requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 
@@ -234,7 +234,7 @@ export async function POST(
   req: NextRequest,
   context: { params: Promise<RouteParams> }
 ) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:intranet-wall:comment",
     limit: COMMENT_RATE_LIMIT,
     windowMs: COMMENT_RATE_LIMIT_WINDOW_MS,

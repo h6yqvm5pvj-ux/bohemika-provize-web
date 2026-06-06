@@ -70,6 +70,8 @@ export default function PostaPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [previewItem, setPreviewItem] = useState<MailboxItem | null>(null);
+  const [previewAttachmentBlobUrls, setPreviewAttachmentBlobUrls] = useState<Record<string, string>>({});
+  const previewAttachmentBlobUrlsRef = useRef<string[]>([]);
   const [sharedExportPreviewHtml, setSharedExportPreviewHtml] = useState<string | null>(null);
   const [sharedExportPreviewLoading, setSharedExportPreviewLoading] = useState(false);
   const [composeModalOpen, setComposeModalOpen] = useState(false);
@@ -229,13 +231,100 @@ export default function PostaPage() {
     setSelectedIds((prev) => prev.filter((id) => items.some((item) => item.id === id)));
   }, [items]);
 
-  const mailboxPreviewHtml = useMemo(() => {
+  const previewItemWithBlobAttachments = useMemo<MailboxItem | null>(() => {
     if (!previewItem) return null;
-    if (previewItem.type === "production_export_share" && sharedExportPreviewHtml) {
+    if (previewItem.type !== "direct_message") return previewItem;
+    const metadata = previewItem.metadata ?? {};
+    if (!Array.isArray(metadata.attachments)) return previewItem;
+    const attachments = metadata.attachments.map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+      const row = entry as Record<string, unknown>;
+      const id = typeof row.id === "string" ? row.id.trim() : "";
+      const blobUrl = id ? previewAttachmentBlobUrls[id] : "";
+      return blobUrl
+        ? {
+            ...row,
+            url: blobUrl,
+          }
+        : row;
+    });
+    return {
+      ...previewItem,
+      metadata: {
+        ...metadata,
+        attachments,
+      },
+    };
+  }, [previewAttachmentBlobUrls, previewItem]);
+
+  const mailboxPreviewHtml = useMemo(() => {
+    if (!previewItemWithBlobAttachments) return null;
+    if (previewItemWithBlobAttachments.type === "production_export_share" && sharedExportPreviewHtml) {
       return sharedExportPreviewHtml;
     }
-    return buildMailboxPreviewHtml(previewItem);
-  }, [previewItem, sharedExportPreviewHtml]);
+    return buildMailboxPreviewHtml(previewItemWithBlobAttachments);
+  }, [previewItemWithBlobAttachments, sharedExportPreviewHtml]);
+
+  useEffect(() => {
+    previewAttachmentBlobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    previewAttachmentBlobUrlsRef.current = [];
+    setPreviewAttachmentBlobUrls({});
+
+    if (!previewItem || previewItem.type !== "direct_message" || !user) return undefined;
+    const attachments = parseMailboxAttachments(previewItem).filter((attachment) =>
+      attachment.url.startsWith("/api/")
+    );
+    if (attachments.length === 0) return undefined;
+
+    let cancelled = false;
+    const createdUrls: string[] = [];
+
+    void (async () => {
+      try {
+        const token = await user.getIdToken();
+        const entries = await Promise.all(
+          attachments.map(async (attachment) => {
+            const response = await fetch(attachment.url, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+            if (!response.ok) return null;
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            createdUrls.push(objectUrl);
+            return [attachment.id, objectUrl] as const;
+          })
+        );
+        if (cancelled) {
+          createdUrls.forEach((url) => URL.revokeObjectURL(url));
+          return;
+        }
+
+        const nextUrls: Record<string, string> = {};
+        entries.forEach((entry) => {
+          if (!entry) return;
+          nextUrls[entry[0]] = entry[1];
+        });
+        previewAttachmentBlobUrlsRef.current = createdUrls;
+        setPreviewAttachmentBlobUrls(nextUrls);
+      } catch {
+        if (!cancelled) {
+          createdUrls.forEach((url) => URL.revokeObjectURL(url));
+          previewAttachmentBlobUrlsRef.current = [];
+          setPreviewAttachmentBlobUrls({});
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      createdUrls.forEach((url) => URL.revokeObjectURL(url));
+      if (previewAttachmentBlobUrlsRef.current === createdUrls) {
+        previewAttachmentBlobUrlsRef.current = [];
+      }
+    };
+  }, [previewItem, user]);
 
   const quickReplyRecipient = useMemo<RecipientOption | null>(() => {
     if (!previewItem || previewItem.type !== "direct_message" || isSentMailboxItem(previewItem)) return null;
@@ -257,6 +346,9 @@ export default function PostaPage() {
   );
 
   const closePreviewModal = () => {
+    previewAttachmentBlobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    previewAttachmentBlobUrlsRef.current = [];
+    setPreviewAttachmentBlobUrls({});
     setPreviewItem(null);
     setSharedExportPreviewHtml(null);
     setSharedExportPreviewLoading(false);

@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
+import {
+  requireAdvisorAuthedRateLimited,
+  withRateLimitHeaders,
+} from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 
 export const runtime = "nodejs";
@@ -112,7 +115,7 @@ const fieldValue = (fields: Array<{ label: string; value: string }>, labels: str
 };
 
 export async function GET(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:advisor-tips-by-user:get",
     limit: ADVISOR_TIPS_BY_USER_RATE_LIMIT,
     windowMs: ADVISOR_TIPS_BY_USER_RATE_LIMIT_WINDOW_MS,

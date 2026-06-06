@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -19,6 +19,7 @@ import {
   Gauge,
   Home,
   IdCard,
+  ImageIcon,
   Mail,
   Package,
   Phone,
@@ -47,6 +48,10 @@ type TipAttachment = {
   url: string;
   contentType: string;
   sizeBytes: number;
+};
+
+type PreviewAttachment = TipAttachment & {
+  objectUrl: string;
 };
 
 type LinkedContractSummary = {
@@ -349,12 +354,13 @@ function DetailField({
 function AttachmentCard({
   attachment,
   onOpen,
+  onDownload,
 }: {
   attachment: TipAttachment;
   onOpen: (attachment: TipAttachment) => void;
+  onDownload: (attachment: TipAttachment) => void;
 }) {
   const isImage = isImageAttachment(attachment);
-  const imageUrl = attachment.url.replace(/"/g, "%22");
 
   return (
     <article
@@ -369,12 +375,9 @@ function AttachmentCard({
       className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_32px_rgba(15,23,42,0.1)]"
     >
       {isImage ? (
-        <div
-          className="h-44 bg-slate-100 bg-cover bg-center"
-          style={{
-            backgroundImage: `linear-gradient(180deg,rgba(15,23,42,0.04),rgba(15,23,42,0.18)),url(\"${imageUrl}\")`,
-          }}
-        />
+        <div className="flex h-44 items-center justify-center bg-slate-100 text-slate-500">
+          <ImageIcon className="h-12 w-12" />
+        </div>
       ) : (
         <div className="flex h-44 items-center justify-center bg-slate-100 text-slate-500">
           <FileText className="h-12 w-12" />
@@ -385,15 +388,18 @@ function AttachmentCard({
           <p className="truncate text-sm font-semibold text-slate-950">{attachment.name}</p>
           <p className="mt-1 text-xs text-slate-500">{formatFileSize(attachment.sizeBytes)}</p>
         </div>
-        <a
-          href={attachment.url}
-          download={attachment.name}
-          onClick={(event) => event.stopPropagation()}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDownload(attachment);
+          }}
+          onKeyDown={(event) => event.stopPropagation()}
           className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition group-hover:border-slate-900 group-hover:bg-slate-900 group-hover:text-white"
           aria-label={`Stáhnout ${attachment.name}`}
         >
           <Download className="h-4 w-4" />
-        </a>
+        </button>
       </div>
     </article>
   );
@@ -402,9 +408,11 @@ function AttachmentCard({
 function AttachmentPreviewModal({
   attachment,
   onClose,
+  onDownload,
 }: {
-  attachment: TipAttachment;
+  attachment: PreviewAttachment;
   onClose: () => void;
+  onDownload: (attachment: TipAttachment) => void;
 }) {
   const isImage = isImageAttachment(attachment);
 
@@ -430,14 +438,14 @@ function AttachmentPreviewModal({
             </h2>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <a
-              href={attachment.url}
-              download={attachment.name}
+            <button
+              type="button"
+              onClick={() => onDownload(attachment)}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-4 text-sm font-bold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
             >
               <Download className="h-4 w-4" />
               Stáhnout
-            </a>
+            </button>
             <button
               type="button"
               onClick={onClose}
@@ -453,13 +461,13 @@ function AttachmentPreviewModal({
           {isImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={attachment.url}
+              src={attachment.objectUrl}
               alt={attachment.name}
               className="mx-auto max-h-[78vh] w-full object-contain"
             />
           ) : (
             <iframe
-              src={attachment.url}
+              src={attachment.objectUrl}
               title={attachment.name}
               className="h-[78vh] w-full bg-white"
             />
@@ -542,7 +550,8 @@ function TipDetailContent() {
   const [savingStatus, setSavingStatus] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [previewAttachment, setPreviewAttachment] = useState<TipAttachment | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<PreviewAttachment | null>(null);
+  const previewAttachmentObjectUrlRef = useRef("");
   const [aresModalIco, setAresModalIco] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -632,6 +641,84 @@ function TipDetailContent() {
       window.removeEventListener("keydown", onEscape);
     };
   }, [aresModalIco]);
+
+  const revokePreviewAttachmentObjectUrl = useCallback(() => {
+    if (!previewAttachmentObjectUrlRef.current) return;
+    URL.revokeObjectURL(previewAttachmentObjectUrlRef.current);
+    previewAttachmentObjectUrlRef.current = "";
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      revokePreviewAttachmentObjectUrl();
+    };
+  }, [revokePreviewAttachmentObjectUrl]);
+
+  const closeAttachmentPreview = useCallback(() => {
+    revokePreviewAttachmentObjectUrl();
+    setPreviewAttachment(null);
+  }, [revokePreviewAttachmentObjectUrl]);
+
+  const fetchAttachmentBlob = useCallback(async (attachment: TipAttachment): Promise<Blob> => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error("Pro otevření přílohy je potřeba přihlášení.");
+    }
+    const token = await currentUser.getIdToken();
+    const response = await fetch(attachment.url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const message =
+        payload && typeof payload.error === "string"
+          ? payload.error
+          : "Přílohu se nepodařilo načíst.";
+      throw new Error(message);
+    }
+    return response.blob();
+  }, []);
+
+  const handleOpenAttachment = useCallback(
+    async (attachment: TipAttachment) => {
+      setError(null);
+      try {
+        const blob = await fetchAttachmentBlob(attachment);
+        const objectUrl = URL.createObjectURL(blob);
+        revokePreviewAttachmentObjectUrl();
+        previewAttachmentObjectUrlRef.current = objectUrl;
+        setPreviewAttachment({
+          ...attachment,
+          objectUrl,
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Přílohu se nepodařilo otevřít.");
+      }
+    },
+    [fetchAttachmentBlob, revokePreviewAttachmentObjectUrl]
+  );
+
+  const handleDownloadAttachment = useCallback(
+    async (attachment: TipAttachment) => {
+      setError(null);
+      try {
+        const blob = await fetchAttachmentBlob(attachment);
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = attachment.name || "priloha";
+        document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Přílohu se nepodařilo stáhnout.");
+      }
+    },
+    [fetchAttachmentBlob]
+  );
 
   const handleRefresh = () => {
     if (!user) return;
@@ -911,7 +998,8 @@ function TipDetailContent() {
                       <AttachmentCard
                         key={attachment.id}
                         attachment={attachment}
-                        onOpen={setPreviewAttachment}
+                        onOpen={handleOpenAttachment}
+                        onDownload={handleDownloadAttachment}
                       />
                     ))}
                   </div>
@@ -926,7 +1014,8 @@ function TipDetailContent() {
             {previewAttachment ? (
               <AttachmentPreviewModal
                 attachment={previewAttachment}
-                onClose={() => setPreviewAttachment(null)}
+                onClose={closeAttachmentPreview}
+                onDownload={handleDownloadAttachment}
               />
             ) : null}
 

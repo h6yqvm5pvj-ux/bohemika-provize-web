@@ -34,9 +34,10 @@ type MailboxAttachment = {
   contentType: string;
   sizeBytes: number;
   path: string;
+  bucketName?: string;
 };
 
-type PublicMailboxAttachment = Omit<MailboxAttachment, "path">;
+type PublicMailboxAttachment = Omit<MailboxAttachment, "path" | "bucketName">;
 
 type TipSnapshotField = {
   label: string;
@@ -210,10 +211,13 @@ const isBucketMissingError = (error: unknown): boolean => {
   return message.includes("bucket") && message.includes("does not exist");
 };
 
-const buildStorageDownloadUrl = (bucketName: string, objectPath: string, token: string): string =>
-  `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(
-    objectPath
-  )}?alt=media&token=${encodeURIComponent(token)}`;
+const buildMailboxAttachmentApiUrl = (messageId: string, attachmentId: string): string => {
+  const params = new URLSearchParams({
+    messageId,
+    attachmentId,
+  });
+  return `/api/mailbox/attachment?${params.toString()}`;
+};
 
 const uploadAttachmentsToBucket = async ({
   bucketName,
@@ -236,7 +240,7 @@ const uploadAttachmentsToBucket = async ({
     const contentType = normalizeText(file.type) || "application/octet-stream";
     const originalName = sanitizeFileName(normalizeText(file.name) || "priloha");
     const objectPath = `${uploadPrefix}/${Date.now()}-${index}-${originalName}`;
-    const downloadToken = randomUUID();
+    const attachmentId = randomUUID();
     const bytes = Buffer.from(await file.arrayBuffer());
 
     await bucket.file(objectPath).save(bytes, {
@@ -244,7 +248,6 @@ const uploadAttachmentsToBucket = async ({
       contentType,
       metadata: {
         metadata: {
-          firebaseStorageDownloadTokens: downloadToken,
           originalName,
           uploadedBy: uploaderEmail,
         },
@@ -252,12 +255,13 @@ const uploadAttachmentsToBucket = async ({
     });
 
     attachments.push({
-      id: randomUUID(),
+      id: attachmentId,
       name: normalizeText(file.name) || originalName,
-      url: buildStorageDownloadUrl(bucket.name, objectPath, downloadToken),
+      url: buildMailboxAttachmentApiUrl(messageId, attachmentId),
       contentType,
       sizeBytes: file.size,
       path: objectPath,
+      bucketName: bucket.name,
     });
   }
 
