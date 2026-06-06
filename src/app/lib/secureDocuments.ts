@@ -13,7 +13,10 @@ export type SecureDocumentId =
   | "koop-vypoved"
   | "max-denni-cpp"
   | "koop-prijem"
-  | "metlife-vypoved";
+  | "metlife-vypoved"
+  | "metlife-zivot"
+  | "nn-zivot-vypoved"
+  | "maxima-nezivot-vypoved";
 
 export const SECURE_DOCUMENT_FILE_NAMES: Record<SecureDocumentId, string> = {
   "cpp-storno-dohodou": "zpneonstornodohodou.pdf",
@@ -24,6 +27,9 @@ export const SECURE_DOCUMENT_FILE_NAMES: Record<SecureDocumentId, string> = {
   "max-denni-cpp": "maxdenni.jpg",
   "koop-prijem": "koopprijem.jpg",
   "metlife-vypoved": "metlifevypoved.pdf",
+  "metlife-zivot": "metlifezivot.pdf",
+  "nn-zivot-vypoved": "nnvypoved.pdf",
+  "maxima-nezivot-vypoved": "maximavypoved.pdf",
 };
 
 type SecureDocumentState = {

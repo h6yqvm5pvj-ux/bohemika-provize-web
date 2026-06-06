@@ -140,6 +140,10 @@ const CPP_AGREEMENT_DOCUMENT_ID: SecureDocumentId = "cpp-storno-dohodou";
 const CPP_STANDARD_TERMINATION_DOCUMENT_ID: SecureDocumentId = "cpp-vypoved-zp";
 const GENERALI_NON_LIFE_DOCUMENT_ID: SecureDocumentId = "generali-nezivot";
 const KOOPERATIVA_TERMINATION_DOCUMENT_ID: SecureDocumentId = "koop-vypoved";
+const METLIFE_LIFE_TERMINATION_DOCUMENT_ID: SecureDocumentId = "metlife-zivot";
+const NN_LIFE_TERMINATION_DOCUMENT_ID: SecureDocumentId = "nn-zivot-vypoved";
+const MAXIMA_NON_LIFE_TERMINATION_DOCUMENT_ID: SecureDocumentId =
+  "maxima-nezivot-vypoved";
 const GENERALI_UPLOAD_URL = "https://www.generaliceska.cz/napiste-nam";
 const AGREEMENT_PAGE_COUNT = 3;
 const STANDARD_TERMINATION_PAGE_COUNT = 2;
@@ -429,6 +433,30 @@ const KOOPERATIVA_TERMINATION_PDF_CONFIG: FillablePdfPreviewConfig = {
   description: "PDF obsahuje vlastní formulářová pole. Údaje doplň přímo do náhledu nebo otevři dokument v nové kartě.",
 };
 
+const METLIFE_LIFE_TERMINATION_PDF_CONFIG: FillablePdfPreviewConfig = {
+  id: "metlife-life-termination",
+  documentId: METLIFE_LIFE_TERMINATION_DOCUMENT_ID,
+  eyebrow: "MetLife životní pojištění",
+  title: "Náhled a doplnění PDF",
+  description: "PDF obsahuje vlastní formulářová pole. Údaje doplň přímo do náhledu nebo otevři dokument v nové kartě.",
+};
+
+const NN_LIFE_TERMINATION_PDF_CONFIG: FillablePdfPreviewConfig = {
+  id: "nn-life-termination",
+  documentId: NN_LIFE_TERMINATION_DOCUMENT_ID,
+  eyebrow: "NN životní pojištění",
+  title: "Náhled a doplnění PDF",
+  description: "PDF obsahuje vlastní formulářová pole. Údaje doplň přímo do náhledu nebo otevři dokument v nové kartě.",
+};
+
+const MAXIMA_NON_LIFE_TERMINATION_PDF_CONFIG: FillablePdfPreviewConfig = {
+  id: "maxima-non-life-termination",
+  documentId: MAXIMA_NON_LIFE_TERMINATION_DOCUMENT_ID,
+  eyebrow: "Maxima neživotní pojištění",
+  title: "Náhled a doplnění PDF",
+  description: "PDF obsahuje vlastní formulářová pole. Údaje doplň přímo do náhledu nebo otevři dokument v nové kartě.",
+};
+
 function createEmptyPdfFields(fieldDefs: readonly PdfFieldDef[]) {
   return Object.fromEntries(fieldDefs.map((field) => [field.key, ""]));
 }
@@ -474,6 +502,18 @@ export default function ContractTerminationPage() {
     completed &&
     insurer === "Kooperativa" &&
     (insuranceType === "life" || insuranceType === "nonLife");
+  const showMetLifeLifeDocument =
+    completed &&
+    insuranceType === "life" &&
+    insurer === "MetLife" &&
+    (reason === "anniversary" || reason === "twoMonths");
+  const showNnLifeDocument =
+    completed &&
+    insuranceType === "life" &&
+    insurer === "NN" &&
+    (reason === "anniversary" || reason === "twoMonths");
+  const showMaximaNonLifeDocument =
+    completed && insuranceType === "nonLife" && insurer === "Maxima";
   const activePdfConfig = showCppAgreementDocument
     ? CPP_AGREEMENT_PDF_CONFIG
     : showCppStandardTerminationDocument
@@ -483,6 +523,12 @@ export default function ContractTerminationPage() {
     ? GENERALI_NON_LIFE_PDF_CONFIG
     : showKooperativaDocument
       ? KOOPERATIVA_TERMINATION_PDF_CONFIG
+      : showMetLifeLifeDocument
+        ? METLIFE_LIFE_TERMINATION_PDF_CONFIG
+        : showNnLifeDocument
+          ? NN_LIFE_TERMINATION_PDF_CONFIG
+          : showMaximaNonLifeDocument
+            ? MAXIMA_NON_LIFE_TERMINATION_PDF_CONFIG
       : null;
   const activeDocument = activePdfConfig ?? activeFillablePdfConfig;
 

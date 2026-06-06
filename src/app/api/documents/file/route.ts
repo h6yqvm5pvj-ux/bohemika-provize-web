@@ -50,6 +50,18 @@ const DOCUMENTS: Record<string, DocumentMeta> = {
     fileName: "metlifevypoved.pdf",
     contentType: "application/pdf",
   },
+  "metlife-zivot": {
+    fileName: "metlifezivot.pdf",
+    contentType: "application/pdf",
+  },
+  "nn-zivot-vypoved": {
+    fileName: "nnvypoved.pdf",
+    contentType: "application/pdf",
+  },
+  "maxima-nezivot-vypoved": {
+    fileName: "maximavypoved.pdf",
+    contentType: "application/pdf",
+  },
 };
 
 const normalizeDocumentId = (value: string | null): string =>
