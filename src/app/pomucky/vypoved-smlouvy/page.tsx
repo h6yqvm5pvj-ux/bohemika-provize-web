@@ -475,20 +475,20 @@ export default function ContractTerminationPage() {
 
   const formSteps = useMemo<Array<{ id: StepId; label: string }>>(
     () => [
-      { id: "type", label: "Typ pojištění" },
-      ...(insuranceType === "life" ? [{ id: "reason" as const, label: "Důvod" }] : []),
       { id: "insurer", label: "Pojišťovna" },
+      { id: "type", label: "Typ pojištění" },
+      ...(insuranceType === "life" ? [{ id: "reason" as const, label: "Varianta" }] : []),
     ],
     [insuranceType]
   );
 
-  const currentStep = formSteps[step]?.id ?? "type";
+  const currentStep = formSteps[step]?.id ?? "insurer";
   const lastStep = formSteps.length - 1;
   const selectedInsuranceType = INSURANCE_TYPES.find((item) => item.id === insuranceType);
   const selectedReason = LIFE_TERMINATION_REASONS.find((item) => item.id === reason);
-  const availableInsurers = reason === "agreement"
-    ? INSURERS.filter((item) => item.label === "ČPP")
-    : INSURERS;
+  const availableReasons = insurer === "ČPP"
+    ? LIFE_TERMINATION_REASONS
+    : LIFE_TERMINATION_REASONS.filter((item) => item.id !== "agreement");
   const showCppAgreementDocument =
     completed && insuranceType === "life" && reason === "agreement" && insurer === "ČPP";
   const showCppStandardTerminationDocument =
@@ -533,6 +533,11 @@ export default function ContractTerminationPage() {
   const activeDocument = activePdfConfig ?? activeFillablePdfConfig;
 
   const validateCurrentStep = () => {
+    if (currentStep === "insurer" && !insurer) {
+      setFormError("Vyber pojišťovnu.");
+      return false;
+    }
+
     if (currentStep === "type" && !insuranceType) {
       setFormError("Vyber typ pojištění.");
       return false;
@@ -543,12 +548,7 @@ export default function ContractTerminationPage() {
       return false;
     }
 
-    if (currentStep === "insurer" && !insurer) {
-      setFormError("Vyber pojišťovnu.");
-      return false;
-    }
-
-    if (currentStep === "insurer" && reason === "agreement" && insurer !== "ČPP") {
+    if (currentStep === "reason" && reason === "agreement" && insurer !== "ČPP") {
       setFormError("Výpověď dohodou je zatím dostupná pouze pro ČPP.");
       return false;
     }
@@ -685,10 +685,10 @@ export default function ContractTerminationPage() {
             {currentStep === "reason" ? (
               <div className="space-y-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-                  Důvod výpovědi
+                  Varianta výpovědi
                 </p>
                 <div className="grid gap-3">
-                  {LIFE_TERMINATION_REASONS.map((item) => {
+                  {availableReasons.map((item) => {
                     const selected = reason === item.id;
 
                     return (
@@ -697,9 +697,6 @@ export default function ContractTerminationPage() {
                         type="button"
                         onClick={() => {
                           setReason(item.id);
-                          if (item.id === "agreement") {
-                            setInsurer("ČPP");
-                          }
                           setCompleted(false);
                           setFormError(null);
                         }}
@@ -731,13 +728,8 @@ export default function ContractTerminationPage() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
                   Pojišťovna
                 </p>
-                {reason === "agreement" ? (
-                  <p className="text-sm font-medium text-violet-100/78">
-                    U výpovědi dohodou je dostupná pouze ČPP.
-                  </p>
-                ) : null}
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                  {availableInsurers.map((item) => {
+                  {INSURERS.map((item) => {
                     const selected = insurer === item.label;
 
                     return (
@@ -746,6 +738,9 @@ export default function ContractTerminationPage() {
                         type="button"
                         onClick={() => {
                           setInsurer(item.label);
+                          if (item.label !== "ČPP" && reason === "agreement") {
+                            setReason(null);
+                          }
                           setCompleted(false);
                           setFormError(null);
                         }}
@@ -784,6 +779,12 @@ export default function ContractTerminationPage() {
             <div className="grid gap-2 text-xs text-violet-100/75 sm:grid-cols-3">
               <div>
                 <span className="block font-semibold uppercase tracking-[0.14em] text-violet-200/80">
+                  Pojišťovna
+                </span>
+                <span className="mt-1 block text-sm text-[#f8fafc]">{insurer ?? "Nevybráno"}</span>
+              </div>
+              <div>
+                <span className="block font-semibold uppercase tracking-[0.14em] text-violet-200/80">
                   Typ
                 </span>
                 <span className="mt-1 block text-sm text-[#f8fafc]">
@@ -792,17 +793,11 @@ export default function ContractTerminationPage() {
               </div>
               <div>
                 <span className="block font-semibold uppercase tracking-[0.14em] text-violet-200/80">
-                  Důvod
+                  Varianta
                 </span>
                 <span className="mt-1 block text-sm text-[#f8fafc]">
                   {insuranceType === "life" ? selectedReason?.label ?? "Nevybráno" : "Nevyžadováno"}
                 </span>
-              </div>
-              <div>
-                <span className="block font-semibold uppercase tracking-[0.14em] text-violet-200/80">
-                  Pojišťovna
-                </span>
-                <span className="mt-1 block text-sm text-[#f8fafc]">{insurer ?? "Nevybráno"}</span>
               </div>
             </div>
           </div>
