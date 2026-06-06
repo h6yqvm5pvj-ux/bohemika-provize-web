@@ -2,6 +2,7 @@
 "use client";
 
 import Image from "next/image";
+import type { User as FirebaseUser } from "firebase/auth";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -23,11 +24,23 @@ import {
   type SecureDocumentId,
   useSecureDocumentBlob,
 } from "@/app/lib/secureDocuments";
+import { auth } from "@/app/firebase-auth";
+import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import SplitTitle from "../plan-produkce/SplitTitle";
 
 type InsuranceType = "life" | "nonLife";
-type TerminationReason = "anniversary" | "twoMonths" | "agreement";
+type TerminationReason =
+  | "anniversary"
+  | "twoMonths"
+  | "agreement"
+  | "periodEnd"
+  | "postClaim"
+  | "otherReason";
 type StepId = "type" | "reason" | "insurer";
+type TerminationReasonOption = {
+  id: TerminationReason;
+  label: string;
+};
 type PdfFieldDef = {
   key: string;
   label: string;
@@ -68,6 +81,18 @@ type FillablePdfPreviewConfig = {
   title: string;
   description: string;
 };
+type OnlineFormConfig = {
+  id: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  url: string;
+  buttonLabel: string;
+  calculator?:
+    | "sixWeeksBeforePeriodEnd"
+    | "eightDaysAfterDelivery"
+    | "thirtyDaysAfterClaimDelivery";
+};
 type GeneratedPdfPage = {
   width: number;
   height: number;
@@ -103,10 +128,7 @@ const INSURANCE_TYPES: Array<{
   },
 ];
 
-const LIFE_TERMINATION_REASONS: Array<{
-  id: TerminationReason;
-  label: string;
-}> = [
+const LIFE_TERMINATION_REASONS: TerminationReasonOption[] = [
   {
     id: "anniversary",
     label: "K výročnímu dni s 6 týdenní výpovědní lhůtou",
@@ -118,6 +140,25 @@ const LIFE_TERMINATION_REASONS: Array<{
   {
     id: "agreement",
     label: "Dohodou (Pouze ČPP)",
+  },
+];
+
+const CSOB_NON_LIFE_TERMINATION_REASONS: TerminationReasonOption[] = [
+  {
+    id: "periodEnd",
+    label: "Ke konci pojistného období",
+  },
+  {
+    id: "twoMonths",
+    label: "Do dvou měsíců od uzavření smlouvy",
+  },
+  {
+    id: "postClaim",
+    label: "Po pojistné události",
+  },
+  {
+    id: "otherReason",
+    label: "Vypovědět smlouvu z jiného důvodu",
   },
 ];
 
@@ -136,6 +177,23 @@ const INSURERS = [
 
 type InsurerLabel = (typeof INSURERS)[number]["label"];
 
+const getAvailableReasons = (
+  insuranceType: InsuranceType | null,
+  insurer: InsurerLabel | null
+): TerminationReasonOption[] => {
+  if (insuranceType === "life") {
+    return insurer === "ČPP"
+      ? LIFE_TERMINATION_REASONS
+      : LIFE_TERMINATION_REASONS.filter((item) => item.id !== "agreement");
+  }
+
+  if (insuranceType === "nonLife" && insurer === "ČSOB") {
+    return CSOB_NON_LIFE_TERMINATION_REASONS;
+  }
+
+  return [];
+};
+
 const CPP_AGREEMENT_DOCUMENT_ID: SecureDocumentId = "cpp-storno-dohodou";
 const CPP_STANDARD_TERMINATION_DOCUMENT_ID: SecureDocumentId = "cpp-vypoved-zp";
 const GENERALI_NON_LIFE_DOCUMENT_ID: SecureDocumentId = "generali-nezivot";
@@ -147,6 +205,7 @@ const MAXIMA_NON_LIFE_TERMINATION_DOCUMENT_ID: SecureDocumentId =
 const GENERALI_UPLOAD_URL = "https://www.generaliceska.cz/napiste-nam";
 const AGREEMENT_PAGE_COUNT = 3;
 const STANDARD_TERMINATION_PAGE_COUNT = 2;
+const DEFAULT_AGENT_COMPANY = "Bohemika a.s.";
 
 const CPP_AGREEMENT_PRINT_RULES = [
   "Storno dohodou může být akceptováno s datem účinnosti až 1 měsíc zpětně, doporučuji ponechat pravidlo vždy k výročnímu dni počátku pojištění.",
@@ -457,12 +516,878 @@ const MAXIMA_NON_LIFE_TERMINATION_PDF_CONFIG: FillablePdfPreviewConfig = {
   description: "PDF obsahuje vlastní formulářová pole. Údaje doplň přímo do náhledu nebo otevři dokument v nové kartě.",
 };
 
+const CSOB_PERIOD_END_ONLINE_FORM_CONFIG: OnlineFormConfig = {
+  id: "csob-period-end-online-form",
+  eyebrow: "ČSOB neživotní pojištění",
+  title: "Smlouvu můžete ukončit ke konci pojistného období.",
+  description:
+    "Výpověď musí být doručena do pojišťovny nejpozději šest týdnů před koncem pojistného období. Pokud tuto lhůtu nedodržíte, pojištění zanikne až ke konci následujícího pojistného období. ČSOB ve formuláři nevyžaduje fyzicky podepsanou žádost klientem. Online žádost musí být hlášena jménem klienta!",
+  url: "https://www.csobpoj.cz/jak-na-smlouvy/vypovedi/formular-ke-konci-pojistneho-obdobi",
+  buttonLabel: "Otevřít formulář ČSOB",
+  calculator: "sixWeeksBeforePeriodEnd",
+};
+
+const CSOB_TWO_MONTHS_ONLINE_FORM_CONFIG: OnlineFormConfig = {
+  id: "csob-two-months-online-form",
+  eyebrow: "ČSOB neživotní pojištění",
+  title:
+    "Bez udání důvodů můžete pojistnou smlouvu vypovědět do dvou měsíců od jejího uzavření.",
+  description:
+    "Výpověď k nám musí být doručena nejpozději poslední den této lhůty. Pojištění následně zanikne po osmi dnech od doručení výpovědi. ČSOB ve formuláři nevyžaduje fyzicky podepsanou žádost klientem. Online žádost musí být hlášena jménem klienta!",
+  url: "https://www.csobpoj.cz/jak-na-smlouvy/vypovedi/formular-vypoved-do-2-mesicu-od-uzavreni",
+  buttonLabel: "Otevřít formulář ČSOB",
+  calculator: "eightDaysAfterDelivery",
+};
+
+const CSOB_POST_CLAIM_ONLINE_FORM_CONFIG: OnlineFormConfig = {
+  id: "csob-post-claim-online-form",
+  eyebrow: "ČSOB neživotní pojištění",
+  title:
+    "Pojistnou smlouvu můžete vypovědět do tří měsíců ode dne oznámení vzniku pojistné události.",
+  description:
+    "Pojistná smlouva následně zanikne po 30 dnech od doručení výpovědi. ČSOB ve formuláři nevyžaduje fyzicky podepsanou žádost klientem. Online žádost musí být hlášena jménem klienta!",
+  url: "https://www.csobpoj.cz/jak-na-smlouvy/vypovedi/formular-po-skode",
+  buttonLabel: "Otevřít formulář ČSOB",
+  calculator: "thirtyDaysAfterClaimDelivery",
+};
+
+const CSOB_OTHER_REASON_ONLINE_FORM_CONFIG: OnlineFormConfig = {
+  id: "csob-other-reason-online-form",
+  eyebrow: "ČSOB neživotní pojištění",
+  title:
+    "Rádi byste vypověděli smlouvu z jiného důvodu, než které jsou uvedeny výše?",
+  description:
+    "Datum ukončení pojistné smlouvy bude následně posouzeno dle informací, které uvedete ve formuláři. ČSOB ve formuláři nevyžaduje fyzicky podepsanou žádost klientem. Online žádost musí být hlášena jménem klienta!",
+  url: "https://www.csobpoj.cz/jak-na-smlouvy/vypovedi/formular-vypoved-z-jineho-duvodu",
+  buttonLabel: "Otevřít formulář ČSOB",
+};
+
 function createEmptyPdfFields(fieldDefs: readonly PdfFieldDef[]) {
   return Object.fromEntries(fieldDefs.map((field) => [field.key, ""]));
 }
 
 function createEmptyPdfCheckboxes(checkboxDefs: readonly PdfCheckboxDef[]) {
   return Object.fromEntries(checkboxDefs.map((field) => [field.key, false]));
+}
+
+const nameFromEmail = (email: string | null | undefined): string => {
+  const localPart = (email ?? "").split("@")[0]?.trim();
+  if (!localPart) return "";
+
+  const words = localPart.split(/[._-]+/).filter(Boolean);
+  if (!words.length) return localPart;
+
+  return words
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+};
+
+const displayNameFromUser = (user: FirebaseUser | null): string => {
+  const displayName = user?.displayName?.trim();
+  if (displayName) return displayName;
+
+  return nameFromEmail(user?.email);
+};
+
+const profileNameFromPayload = (
+  profile: Record<string, unknown> | null | undefined
+): string => {
+  const candidates = [profile?.fullName, profile?.name, profile?.displayName];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return "";
+};
+
+const profileAgencyNumberFromPayload = (
+  profile: Record<string, unknown> | null | undefined
+): string => {
+  const agencyNumber = profile?.agencyNumber;
+  return typeof agencyNumber === "string" ? agencyNumber.trim() : "";
+};
+
+const profilePhoneNumberFromPayload = (
+  profile: Record<string, unknown> | null | undefined
+): string => {
+  const phoneNumber = profile?.phoneNumber;
+  return typeof phoneNumber === "string" ? phoneNumber.trim() : "";
+};
+
+const createDefaultPdfFields = (
+  fieldDefs: readonly PdfFieldDef[],
+  agentName = "",
+  agentNumber = "",
+  agentPhone = ""
+) => {
+  const fields = createEmptyPdfFields(fieldDefs);
+  if ("agentName" in fields) fields.agentName = agentName;
+  if ("agentNumber" in fields) fields.agentNumber = agentNumber;
+  if ("agentPhone" in fields) fields.agentPhone = agentPhone;
+  if ("agentCompany" in fields) fields.agentCompany = DEFAULT_AGENT_COMPANY;
+  return fields;
+};
+
+const KOOPERATIVA_FIELD_LABEL_OVERRIDES: Record<string, string> = {
+  F3: "Jméno a příjmení poradce",
+  F5: "Email poradce",
+  F6: "Tel. číslo poradce",
+};
+
+const getFillableFieldDisplayLabel = (
+  config: FillablePdfPreviewConfig,
+  fieldLabel: string
+): string => {
+  if (config.id !== KOOPERATIVA_TERMINATION_PDF_CONFIG.id) return fieldLabel;
+  return KOOPERATIVA_FIELD_LABEL_OVERRIDES[fieldLabel] ?? fieldLabel;
+};
+
+const getKooperativaFieldDefaults = (
+  config: FillablePdfPreviewConfig,
+  advisorName: string,
+  advisorEmail: string,
+  advisorPhone: string
+): Record<string, string> => {
+  if (config.id !== KOOPERATIVA_TERMINATION_PDF_CONFIG.id) return {};
+
+  return {
+    F3: advisorName,
+    F5: advisorEmail,
+    F6: advisorPhone,
+  };
+};
+
+const createDefaultFillablePdfFields = (
+  fieldDefs: readonly GeneratedPdfField[],
+  defaultsByLabel: Record<string, string>
+): Record<string, string> =>
+  Object.fromEntries(
+    fieldDefs.map((field) => [field.key, defaultsByLabel[field.label] ?? ""])
+  );
+
+const applyFillablePdfDefaults = (
+  currentFields: Record<string, string>,
+  fieldDefs: readonly GeneratedPdfField[],
+  defaultsByLabel: Record<string, string>
+): Record<string, string> => {
+  const nextFields = { ...currentFields };
+
+  fieldDefs.forEach((field) => {
+    const defaultValue = defaultsByLabel[field.label]?.trim();
+    if (!defaultValue) return;
+    if (nextFields[field.key]?.trim()) return;
+    nextFields[field.key] = defaultValue;
+  });
+
+  return nextFields;
+};
+
+const formatDateCz = (date: Date): string =>
+  new Intl.DateTimeFormat("cs-CZ", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+
+const createLocalDate = (year: number, monthIndex: number, day: number): Date =>
+  new Date(year, monthIndex, day, 12, 0, 0, 0);
+
+const normalizeLocalDate = (date: Date): Date =>
+  createLocalDate(date.getFullYear(), date.getMonth(), date.getDate());
+
+const addDays = (date: Date, days: number): Date => {
+  const next = normalizeLocalDate(date);
+  next.setDate(next.getDate() + days);
+  return normalizeLocalDate(next);
+};
+
+const daysInMonth = (year: number, monthIndex: number): number =>
+  new Date(year, monthIndex + 1, 0).getDate();
+
+const addCalendarMonths = (date: Date, months: number): Date => {
+  const normalized = normalizeLocalDate(date);
+  const targetMonth = createLocalDate(
+    normalized.getFullYear(),
+    normalized.getMonth() + months,
+    1
+  );
+  const targetDay = Math.min(
+    normalized.getDate(),
+    daysInMonth(targetMonth.getFullYear(), targetMonth.getMonth())
+  );
+  return createLocalDate(
+    targetMonth.getFullYear(),
+    targetMonth.getMonth(),
+    targetDay
+  );
+};
+
+const parseDateInput = (value: string): Date | null => {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!year || !month || !day) return null;
+
+  const parsed = createLocalDate(year, month - 1, day);
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return parsed;
+};
+
+const anniversaryInYear = (policyStartDate: Date, year: number): Date => {
+  const monthIndex = policyStartDate.getMonth();
+  const day = Math.min(
+    policyStartDate.getDate(),
+    daysInMonth(year, monthIndex)
+  );
+  return createLocalDate(year, monthIndex, day);
+};
+
+const policyPeriodEndForAnniversaryYear = (
+  policyStartDate: Date,
+  anniversaryYear: number
+): Date => addDays(anniversaryInYear(policyStartDate, anniversaryYear), -1);
+
+const getPeriodEndDeadline = (
+  policyStartDate: Date,
+  todayRaw = new Date()
+) => {
+  const today = normalizeLocalDate(todayRaw);
+  let anniversaryYear = Math.max(
+    today.getFullYear(),
+    policyStartDate.getFullYear() + 1
+  );
+  let periodEnd = policyPeriodEndForAnniversaryYear(
+    policyStartDate,
+    anniversaryYear
+  );
+
+  while (periodEnd < today || periodEnd < policyStartDate) {
+    anniversaryYear += 1;
+    periodEnd = policyPeriodEndForAnniversaryYear(
+      policyStartDate,
+      anniversaryYear
+    );
+  }
+
+  const deadline = addDays(periodEnd, -42);
+  const isDeadlineOpen = deadline >= today;
+  const nextPeriodEnd = policyPeriodEndForAnniversaryYear(
+    policyStartDate,
+    anniversaryYear + 1
+  );
+  const nextDeadline = addDays(nextPeriodEnd, -42);
+
+  return {
+    today,
+    periodEnd,
+    deadline,
+    isDeadlineOpen,
+    nextPeriodEnd,
+    nextDeadline,
+  };
+};
+
+const monthlyAnniversaryOnOrAfter = (
+  policyStartDate: Date,
+  minimumDate: Date
+): Date => {
+  let year = minimumDate.getFullYear();
+  let monthIndex = minimumDate.getMonth();
+  let candidate = createLocalDate(
+    year,
+    monthIndex,
+    Math.min(policyStartDate.getDate(), daysInMonth(year, monthIndex))
+  );
+
+  while (candidate < minimumDate || candidate < policyStartDate) {
+    monthIndex += 1;
+    const month = createLocalDate(year, monthIndex, 1);
+    year = month.getFullYear();
+    monthIndex = month.getMonth();
+    candidate = createLocalDate(
+      year,
+      monthIndex,
+      Math.min(policyStartDate.getDate(), daysInMonth(year, monthIndex))
+    );
+  }
+
+  return candidate;
+};
+
+const getMonthlyAnniversaryTermination = (
+  policyStartDate: Date,
+  deliveryDate: Date
+) => {
+  const earliestTerminationDate = addDays(deliveryDate, 42);
+  const terminationDate = monthlyAnniversaryOnOrAfter(
+    policyStartDate,
+    earliestTerminationDate
+  );
+
+  return {
+    earliestTerminationDate,
+    terminationDate,
+    deliveryDeadline: addDays(terminationDate, -42),
+  };
+};
+
+function PeriodEndDeadlineBox() {
+  const [policyStartDateText, setPolicyStartDateText] = useState("");
+  const policyStartDate = parseDateInput(policyStartDateText);
+  const deadlineInfo = policyStartDate
+    ? getPeriodEndDeadline(policyStartDate)
+    : null;
+
+  return (
+    <div className="mx-auto mt-6 w-full max-w-3xl rounded-3xl border border-violet-200 bg-[linear-gradient(180deg,#fbfaff_0%,#f6f3ff_100%)] p-4 text-center shadow-[0_18px_44px_rgba(88,28,135,0.10)] sm:p-5">
+      <div className="mx-auto max-w-2xl">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+          Kontrola lhůty
+        </p>
+        <h3 className="mt-1 text-xl font-extrabold tracking-[-0.02em] text-slate-950">
+          Stihnu výpověď včas?
+        </h3>
+        <p className="mt-1 text-xs font-medium leading-5 text-slate-600">
+          Zadej datum počátku smlouvy. Výpočet bere dnešní datum a roční pojistné období podle výročí počátku smlouvy.
+        </p>
+      </div>
+
+      <div className="mx-auto mt-4 flex max-w-sm flex-col items-center gap-2">
+        <label
+          className="text-sm font-semibold text-slate-900"
+          htmlFor="csob-policy-start-date"
+        >
+          Datum počátku smlouvy
+        </label>
+        <input
+          id="csob-policy-start-date"
+          type="date"
+          value={policyStartDateText}
+          onChange={(event) => setPolicyStartDateText(event.target.value)}
+          className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-center text-base font-bold text-slate-950 shadow-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+        />
+      </div>
+
+      {deadlineInfo ? (
+        <div className="mt-5 rounded-2xl border border-white/80 bg-white p-4 text-sm text-slate-700 shadow-[0_16px_34px_rgba(15,23,42,0.10)]">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl bg-slate-50 px-3 py-3">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Dnes
+              </span>
+              <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                {formatDateCz(deadlineInfo.today)}
+              </span>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-3 py-3">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Nejbližší konec období
+              </span>
+              <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                {formatDateCz(deadlineInfo.periodEnd)}
+              </span>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-3 py-3">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Doručit nejpozději
+              </span>
+              <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                {formatDateCz(deadlineInfo.deadline)}
+              </span>
+            </div>
+          </div>
+
+          <p
+            className={`mt-3 rounded-xl px-3 py-2 text-sm font-semibold ${
+              deadlineInfo.isDeadlineOpen
+                ? "bg-emerald-50 text-emerald-800"
+                : "bg-amber-50 text-amber-800"
+            }`}
+          >
+            {deadlineInfo.isDeadlineOpen
+              ? `Lhůtu pro nejbližší konec období stíháte. Výpověď musí být doručena nejpozději ${formatDateCz(
+                  deadlineInfo.deadline
+                )}.`
+              : `Pro nejbližší konec období už je po lhůtě. Nejbližší další možnost je konec období ${formatDateCz(
+                  deadlineInfo.nextPeriodEnd
+                )}, výpověď musí být doručena nejpozději ${formatDateCz(
+                  deadlineInfo.nextDeadline
+                )}.`}
+          </p>
+        </div>
+      ) : (
+        <p className="mx-auto mt-4 max-w-xl rounded-2xl border border-white/80 bg-white px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm">
+          Po zadání data se zobrazí nejzazší termín doručení výpovědi.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function DeliveryTerminationDateBox() {
+  const [contractSignedDateText, setContractSignedDateText] = useState("");
+  const [deliveryDateText, setDeliveryDateText] = useState("");
+  const contractSignedDate = parseDateInput(contractSignedDateText);
+  const deliveryDate = parseDateInput(deliveryDateText);
+  const today = normalizeLocalDate(new Date());
+  const deliveryDeadline = contractSignedDate
+    ? addCalendarMonths(contractSignedDate, 2)
+    : null;
+  const terminationDate = deliveryDate ? addDays(deliveryDate, 8) : null;
+  const isDeadlineOpen = deliveryDeadline ? deliveryDeadline >= today : false;
+  const isDeliveryBeforeContract =
+    Boolean(contractSignedDate && deliveryDate) &&
+    deliveryDate! < contractSignedDate!;
+  const isDeliveryWithinTwoMonths =
+    Boolean(deliveryDate && deliveryDeadline) &&
+    !isDeliveryBeforeContract &&
+    deliveryDate! <= deliveryDeadline!;
+
+  return (
+    <div className="mx-auto mt-6 w-full max-w-3xl rounded-3xl border border-violet-200 bg-[linear-gradient(180deg,#fbfaff_0%,#f6f3ff_100%)] p-4 text-center shadow-[0_18px_44px_rgba(88,28,135,0.10)] sm:p-5">
+      <div className="mx-auto max-w-2xl">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+          Kontrola lhůty
+        </p>
+        <h3 className="mt-1 text-xl font-extrabold tracking-[-0.02em] text-slate-950">
+          Stihnu výpověď do 2 měsíců?
+        </h3>
+        <p className="mt-1 text-xs font-medium leading-5 text-slate-600">
+          Zadej datum sjednání smlouvy a datum doručení výpovědi. Výpověď musí být doručena do dvou měsíců a pojištění zanikne po osmi dnech od doručení.
+        </p>
+      </div>
+
+      <div className="mx-auto mt-4 grid max-w-2xl gap-3 sm:grid-cols-2">
+        <div className="flex flex-col items-center gap-2">
+          <label
+            className="text-sm font-semibold text-slate-900"
+            htmlFor="csob-contract-signed-date"
+          >
+            Datum sjednání smlouvy
+          </label>
+          <input
+            id="csob-contract-signed-date"
+            type="date"
+            value={contractSignedDateText}
+            onChange={(event) => setContractSignedDateText(event.target.value)}
+            className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-center text-base font-bold text-slate-950 shadow-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+          />
+        </div>
+        <div className="flex flex-col items-center gap-2">
+          <label
+            className="text-sm font-semibold text-slate-900"
+            htmlFor="csob-delivery-date"
+          >
+            Datum doručení výpovědi
+          </label>
+          <input
+            id="csob-delivery-date"
+            type="date"
+            value={deliveryDateText}
+            onChange={(event) => setDeliveryDateText(event.target.value)}
+            className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-center text-base font-bold text-slate-950 shadow-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+          />
+        </div>
+      </div>
+
+      {contractSignedDate && deliveryDeadline ? (
+        <div className="mt-5 rounded-2xl border border-white/80 bg-white p-4 text-sm text-slate-700 shadow-[0_16px_34px_rgba(15,23,42,0.10)]">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl bg-slate-50 px-3 py-3">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Dnes
+              </span>
+              <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                {formatDateCz(today)}
+              </span>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-3 py-3">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Doručit nejpozději
+              </span>
+              <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                {formatDateCz(deliveryDeadline)}
+              </span>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-3 py-3">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Zánik pojištění
+              </span>
+              <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                {terminationDate ? formatDateCz(terminationDate) : "Doplň doručení"}
+              </span>
+            </div>
+          </div>
+
+          <p
+            className={`mt-3 rounded-xl px-3 py-2 text-sm font-semibold ${
+              isDeliveryBeforeContract || (deliveryDate && !isDeliveryWithinTwoMonths)
+                ? "bg-amber-50 text-amber-800"
+                : isDeadlineOpen
+                  ? "bg-emerald-50 text-emerald-800"
+                  : "bg-amber-50 text-amber-800"
+            }`}
+          >
+            {isDeliveryBeforeContract
+              ? "Datum doručení je před datem sjednání smlouvy. Zkontroluj zadaná data."
+              : deliveryDate && terminationDate
+                ? isDeliveryWithinTwoMonths
+                  ? `Výpověď je v dvouměsíční lhůtě. Pojištění bude ukončeno k ${formatDateCz(
+                      terminationDate
+                    )}.`
+                  : `Výpověď je po dvouměsíční lhůtě. Nejpozdější doručení bylo ${formatDateCz(
+                      deliveryDeadline
+                    )}.`
+                : isDeadlineOpen
+                  ? `Lhůta podle dnešního data běží. Výpověď musí být doručena nejpozději ${formatDateCz(
+                      deliveryDeadline
+                    )}.`
+                  : `Dvouměsíční lhůta už podle dnešního data uplynula. Nejpozdější doručení bylo ${formatDateCz(
+                      deliveryDeadline
+                    )}.`}
+          </p>
+        </div>
+      ) : (
+        <p className="mx-auto mt-4 max-w-xl rounded-2xl border border-white/80 bg-white px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm">
+          Po zadání data sjednání se zobrazí poslední den pro doručení výpovědi.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ClaimTerminationDateBox() {
+  const [claimNoticeDateText, setClaimNoticeDateText] = useState("");
+  const [deliveryDateText, setDeliveryDateText] = useState("");
+  const claimNoticeDate = parseDateInput(claimNoticeDateText);
+  const deliveryDate = parseDateInput(deliveryDateText);
+  const today = normalizeLocalDate(new Date());
+  const deliveryDeadline = claimNoticeDate
+    ? addCalendarMonths(claimNoticeDate, 3)
+    : null;
+  const terminationDate = deliveryDate ? addDays(deliveryDate, 30) : null;
+  const isDeadlineOpen = deliveryDeadline ? deliveryDeadline >= today : false;
+  const isDeliveryBeforeNotice =
+    Boolean(claimNoticeDate && deliveryDate) && deliveryDate! < claimNoticeDate!;
+  const isDeliveryWithinThreeMonths =
+    Boolean(deliveryDate && deliveryDeadline) &&
+    !isDeliveryBeforeNotice &&
+    deliveryDate! <= deliveryDeadline!;
+
+  return (
+    <div className="mx-auto mt-6 w-full max-w-3xl rounded-3xl border border-violet-200 bg-[linear-gradient(180deg,#fbfaff_0%,#f6f3ff_100%)] p-4 text-center shadow-[0_18px_44px_rgba(88,28,135,0.10)] sm:p-5">
+      <div className="mx-auto max-w-2xl">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+          Kontrola lhůty
+        </p>
+        <h3 className="mt-1 text-xl font-extrabold tracking-[-0.02em] text-slate-950">
+          Stihnu výpověď po pojistné události?
+        </h3>
+        <p className="mt-1 text-xs font-medium leading-5 text-slate-600">
+          Zadej datum oznámení pojistné události a datum doručení výpovědi. Výpověď musí být doručena do tří měsíců a smlouva zanikne po 30 dnech od doručení.
+        </p>
+      </div>
+
+      <div className="mx-auto mt-4 grid max-w-2xl gap-3 sm:grid-cols-2">
+        <div className="flex flex-col items-center gap-2">
+          <label
+            className="text-sm font-semibold text-slate-900"
+            htmlFor="csob-claim-notice-date"
+          >
+            Datum oznámení pojistné události
+          </label>
+          <input
+            id="csob-claim-notice-date"
+            type="date"
+            value={claimNoticeDateText}
+            onChange={(event) => setClaimNoticeDateText(event.target.value)}
+            className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-center text-base font-bold text-slate-950 shadow-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+          />
+        </div>
+        <div className="flex flex-col items-center gap-2">
+          <label
+            className="text-sm font-semibold text-slate-900"
+            htmlFor="csob-claim-delivery-date"
+          >
+            Datum doručení výpovědi
+          </label>
+          <input
+            id="csob-claim-delivery-date"
+            type="date"
+            value={deliveryDateText}
+            onChange={(event) => setDeliveryDateText(event.target.value)}
+            className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-center text-base font-bold text-slate-950 shadow-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+          />
+        </div>
+      </div>
+
+      {claimNoticeDate && deliveryDeadline ? (
+        <div className="mt-5 rounded-2xl border border-white/80 bg-white p-4 text-sm text-slate-700 shadow-[0_16px_34px_rgba(15,23,42,0.10)]">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl bg-slate-50 px-3 py-3">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Dnes
+              </span>
+              <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                {formatDateCz(today)}
+              </span>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-3 py-3">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Doručit nejpozději
+              </span>
+              <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                {formatDateCz(deliveryDeadline)}
+              </span>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-3 py-3">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Zánik smlouvy
+              </span>
+              <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                {terminationDate ? formatDateCz(terminationDate) : "Doplň doručení"}
+              </span>
+            </div>
+          </div>
+
+          <p
+            className={`mt-3 rounded-xl px-3 py-2 text-sm font-semibold ${
+              isDeliveryBeforeNotice ||
+              (deliveryDate && !isDeliveryWithinThreeMonths)
+                ? "bg-amber-50 text-amber-800"
+                : isDeadlineOpen
+                  ? "bg-emerald-50 text-emerald-800"
+                  : "bg-amber-50 text-amber-800"
+            }`}
+          >
+            {isDeliveryBeforeNotice
+              ? "Datum doručení je před datem oznámení pojistné události. Zkontroluj zadaná data."
+              : deliveryDate && terminationDate
+                ? isDeliveryWithinThreeMonths
+                  ? `Výpověď je v tříměsíční lhůtě. Smlouva bude ukončena k ${formatDateCz(
+                      terminationDate
+                    )}.`
+                  : `Výpověď je po tříměsíční lhůtě. Nejpozdější doručení bylo ${formatDateCz(
+                      deliveryDeadline
+                    )}.`
+                : isDeadlineOpen
+                  ? `Lhůta podle dnešního data běží. Výpověď musí být doručena nejpozději ${formatDateCz(
+                      deliveryDeadline
+                    )}.`
+                  : `Tříměsíční lhůta už podle dnešního data uplynula. Nejpozdější doručení bylo ${formatDateCz(
+                      deliveryDeadline
+                    )}.`}
+          </p>
+        </div>
+      ) : (
+        <p className="mx-auto mt-4 max-w-xl rounded-2xl border border-white/80 bg-white px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm">
+          Po zadání data oznámení pojistné události se zobrazí poslední den pro doručení výpovědi.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CppMonthlyAnniversaryCalculatorModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  const [policyStartDateText, setPolicyStartDateText] = useState("");
+  const [deliveryDateText, setDeliveryDateText] = useState("");
+  const policyStartDate = parseDateInput(policyStartDateText);
+  const deliveryDate = parseDateInput(deliveryDateText);
+  const isDeliveryBeforeStart =
+    Boolean(policyStartDate && deliveryDate) && deliveryDate! < policyStartDate!;
+  const terminationInfo =
+    policyStartDate && deliveryDate && !isDeliveryBeforeStart
+      ? getMonthlyAnniversaryTermination(policyStartDate, deliveryDate)
+      : null;
+
+  return (
+    <div className="agreement-no-print fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/62 px-3 py-4 backdrop-blur-[2.5px] sm:px-6 sm:py-6">
+      <div className="w-full max-w-4xl rounded-[30px] border border-slate-200 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_55%,#f5f0ff_100%)] p-4 shadow-[0_30px_80px_rgba(15,23,42,0.35)] sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-800">
+              ČPP životní pojištění
+            </span>
+            <h3 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
+              Kdy bude smlouva ukončena?
+            </h3>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+              U životního pojištění ČPP je výročí každý měsíc podle dne počátku smlouvy. Výpověď musí být doručena nejpozději 6 týdnů před daným měsíčním výročím.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+            aria-label="Zavřít výpočet ukončení smlouvy"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-6 rounded-3xl border border-violet-200 bg-[linear-gradient(180deg,#fbfaff_0%,#f6f3ff_100%)] p-4 text-center shadow-[0_18px_44px_rgba(88,28,135,0.10)] sm:p-5">
+          <div className="mx-auto max-w-2xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+              Měsíční výročí
+            </p>
+            <h4 className="mt-1 text-xl font-extrabold tracking-[-0.02em] text-slate-950">
+              Výpočet ukončení k výročnímu dni
+            </h4>
+            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">
+              Zadej datum počátku smlouvy a datum doručení výpovědi. Systém najde nejbližší měsíční výročí, které splní šestitýdenní lhůtu.
+            </p>
+          </div>
+
+          <div className="mx-auto mt-4 grid max-w-2xl gap-3 sm:grid-cols-2">
+            <div className="flex flex-col items-center gap-2">
+              <label
+                className="text-sm font-semibold text-slate-900"
+                htmlFor="cpp-policy-start-date"
+              >
+                Datum počátku smlouvy
+              </label>
+              <input
+                id="cpp-policy-start-date"
+                type="date"
+                value={policyStartDateText}
+                onChange={(event) => setPolicyStartDateText(event.target.value)}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-center text-base font-bold text-slate-950 shadow-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              />
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <label
+                className="text-sm font-semibold text-slate-900"
+                htmlFor="cpp-delivery-date"
+              >
+                Datum doručení výpovědi
+              </label>
+              <input
+                id="cpp-delivery-date"
+                type="date"
+                value={deliveryDateText}
+                onChange={(event) => setDeliveryDateText(event.target.value)}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-center text-base font-bold text-slate-950 shadow-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              />
+            </div>
+          </div>
+
+          {terminationInfo && deliveryDate ? (
+            <div className="mt-5 rounded-2xl border border-white/80 bg-white p-4 text-sm text-slate-700 shadow-[0_16px_34px_rgba(15,23,42,0.10)]">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl bg-slate-50 px-3 py-3">
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Doručeno
+                  </span>
+                  <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                    {formatDateCz(deliveryDate)}
+                  </span>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-3 py-3">
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Doručit nejpozději
+                  </span>
+                  <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                    {formatDateCz(terminationInfo.deliveryDeadline)}
+                  </span>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-3 py-3">
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Ukončení smlouvy
+                  </span>
+                  <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                    {formatDateCz(terminationInfo.terminationDate)}
+                  </span>
+                </div>
+              </div>
+
+              <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+                Smlouva bude ukončena k {formatDateCz(terminationInfo.terminationDate)}. Jde o nejbližší měsíční výročí, které je alespoň 6 týdnů po doručení výpovědi.
+              </p>
+            </div>
+          ) : (
+            <p
+              className={`mx-auto mt-4 max-w-xl rounded-2xl border border-white/80 bg-white px-4 py-3 text-sm font-semibold shadow-sm ${
+                isDeliveryBeforeStart ? "text-amber-800" : "text-slate-600"
+              }`}
+            >
+              {isDeliveryBeforeStart
+                ? "Datum doručení je před datem počátku smlouvy. Zkontroluj zadaná data."
+                : "Po zadání obou dat se zobrazí den ukončení smlouvy."}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+          >
+            Zavřít
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OnlineFormPanel({ config }: { config: OnlineFormConfig }) {
+  return (
+    <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] sm:p-5 vizitka-anim-up">
+      <div className="space-y-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+              {config.eyebrow}
+            </p>
+            <h2 className="mt-1 max-w-3xl text-2xl font-bold tracking-[-0.02em] text-slate-950">
+              {config.title}
+            </h2>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-700">
+              {config.description}
+            </p>
+          </div>
+
+          <a
+            href={config.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-violet-300/40 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110"
+          >
+            <ExternalLink className="h-4 w-4" />
+            {config.buttonLabel}
+          </a>
+        </div>
+
+        {config.calculator === "sixWeeksBeforePeriodEnd" ? (
+          <PeriodEndDeadlineBox />
+        ) : null}
+        {config.calculator === "eightDaysAfterDelivery" ? (
+          <DeliveryTerminationDateBox />
+        ) : null}
+        {config.calculator === "thirtyDaysAfterClaimDelivery" ? (
+          <ClaimTerminationDateBox />
+        ) : null}
+      </div>
+    </section>
+  );
 }
 
 export default function ContractTerminationPage() {
@@ -472,23 +1397,22 @@ export default function ContractTerminationPage() {
   const [insurer, setInsurer] = useState<InsurerLabel | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [completed, setCompleted] = useState(false);
+  const availableReasons = getAvailableReasons(insuranceType, insurer);
+  const requiresReasonStep = availableReasons.length > 0;
 
   const formSteps = useMemo<Array<{ id: StepId; label: string }>>(
     () => [
       { id: "insurer", label: "Pojišťovna" },
       { id: "type", label: "Typ pojištění" },
-      ...(insuranceType === "life" ? [{ id: "reason" as const, label: "Varianta" }] : []),
+      ...(requiresReasonStep ? [{ id: "reason" as const, label: "Varianta" }] : []),
     ],
-    [insuranceType]
+    [requiresReasonStep]
   );
 
   const currentStep = formSteps[step]?.id ?? "insurer";
   const lastStep = formSteps.length - 1;
   const selectedInsuranceType = INSURANCE_TYPES.find((item) => item.id === insuranceType);
-  const selectedReason = LIFE_TERMINATION_REASONS.find((item) => item.id === reason);
-  const availableReasons = insurer === "ČPP"
-    ? LIFE_TERMINATION_REASONS
-    : LIFE_TERMINATION_REASONS.filter((item) => item.id !== "agreement");
+  const selectedReason = availableReasons.find((item) => item.id === reason);
   const showCppAgreementDocument =
     completed && insuranceType === "life" && reason === "agreement" && insurer === "ČPP";
   const showCppStandardTerminationDocument =
@@ -496,6 +1420,8 @@ export default function ContractTerminationPage() {
     insuranceType === "life" &&
     insurer === "ČPP" &&
     (reason === "anniversary" || reason === "twoMonths");
+  const showCppMonthlyAnniversaryCalculator =
+    showCppStandardTerminationDocument && reason === "anniversary";
   const showGeneraliNonLifeDocument =
     completed && insuranceType === "nonLife" && insurer === "Generali";
   const showKooperativaDocument =
@@ -514,6 +1440,26 @@ export default function ContractTerminationPage() {
     (reason === "anniversary" || reason === "twoMonths");
   const showMaximaNonLifeDocument =
     completed && insuranceType === "nonLife" && insurer === "Maxima";
+  const showCsobPeriodEndOnlineForm =
+    completed &&
+    insuranceType === "nonLife" &&
+    insurer === "ČSOB" &&
+    reason === "periodEnd";
+  const showCsobTwoMonthsOnlineForm =
+    completed &&
+    insuranceType === "nonLife" &&
+    insurer === "ČSOB" &&
+    reason === "twoMonths";
+  const showCsobPostClaimOnlineForm =
+    completed &&
+    insuranceType === "nonLife" &&
+    insurer === "ČSOB" &&
+    reason === "postClaim";
+  const showCsobOtherReasonOnlineForm =
+    completed &&
+    insuranceType === "nonLife" &&
+    insurer === "ČSOB" &&
+    reason === "otherReason";
   const activePdfConfig = showCppAgreementDocument
     ? CPP_AGREEMENT_PDF_CONFIG
     : showCppStandardTerminationDocument
@@ -530,7 +1476,16 @@ export default function ContractTerminationPage() {
           : showMaximaNonLifeDocument
             ? MAXIMA_NON_LIFE_TERMINATION_PDF_CONFIG
       : null;
-  const activeDocument = activePdfConfig ?? activeFillablePdfConfig;
+  const activeOnlineFormConfig = showCsobPeriodEndOnlineForm
+    ? CSOB_PERIOD_END_ONLINE_FORM_CONFIG
+    : showCsobTwoMonthsOnlineForm
+      ? CSOB_TWO_MONTHS_ONLINE_FORM_CONFIG
+      : showCsobPostClaimOnlineForm
+        ? CSOB_POST_CLAIM_ONLINE_FORM_CONFIG
+        : showCsobOtherReasonOnlineForm
+          ? CSOB_OTHER_REASON_ONLINE_FORM_CONFIG
+    : null;
+  const activeDocument = activePdfConfig ?? activeFillablePdfConfig ?? activeOnlineFormConfig;
 
   const validateCurrentStep = () => {
     if (currentStep === "insurer" && !insurer) {
@@ -544,7 +1499,16 @@ export default function ContractTerminationPage() {
     }
 
     if (currentStep === "reason" && !reason) {
-      setFormError("Vyber důvod výpovědi.");
+      setFormError("Vyber variantu výpovědi.");
+      return false;
+    }
+
+    if (
+      currentStep === "reason" &&
+      reason &&
+      !availableReasons.some((item) => item.id === reason)
+    ) {
+      setFormError("Vybraná varianta není pro tuto kombinaci dostupná.");
       return false;
     }
 
@@ -577,7 +1541,27 @@ export default function ContractTerminationPage() {
   return (
     <AppLayout active="tools">
       <div className="w-full max-w-5xl space-y-6 px-2 pb-10 sm:px-3">
-        <SplitTitle text="Výpověď smlouvy" />
+        {activeDocument ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <SplitTitle
+              text="Výpověď smlouvy"
+              className="!text-3xl sm:!text-4xl"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setCompleted(false);
+                setFormError(null);
+              }}
+              className="inline-flex items-center justify-center gap-2 self-start rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-[0_10px_26px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:bg-slate-50 sm:self-auto"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Zpět na výběr
+            </button>
+          </div>
+        ) : (
+          <SplitTitle text="Výpověď smlouvy" />
+        )}
 
         {!activeDocument ? (
           <section className="relative overflow-hidden rounded-[28px] border border-violet-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(167,139,250,0.24),transparent_34%),linear-gradient(155deg,#160c2a_0%,#100b21_100%)] p-4 text-[#f8fafc] shadow-[0_34px_90px_rgba(7,6,25,0.7),inset_0_1px_0_rgba(196,181,253,0.2)] sm:p-6 vizitka-anim-up">
@@ -650,7 +1634,14 @@ export default function ContractTerminationPage() {
                         type="button"
                         onClick={() => {
                           setInsuranceType(item.id);
-                          setReason(item.id === "life" ? reason : null);
+                          if (
+                            reason &&
+                            !getAvailableReasons(item.id, insurer).some(
+                              (option) => option.id === reason
+                            )
+                          ) {
+                            setReason(null);
+                          }
                           setCompleted(false);
                           setFormError(null);
                         }}
@@ -738,7 +1729,12 @@ export default function ContractTerminationPage() {
                         type="button"
                         onClick={() => {
                           setInsurer(item.label);
-                          if (item.label !== "ČPP" && reason === "agreement") {
+                          if (
+                            reason &&
+                            !getAvailableReasons(insuranceType, item.label).some(
+                              (option) => option.id === reason
+                            )
+                          ) {
                             setReason(null);
                           }
                           setCompleted(false);
@@ -796,7 +1792,7 @@ export default function ContractTerminationPage() {
                   Varianta
                 </span>
                 <span className="mt-1 block text-sm text-[#f8fafc]">
-                  {insuranceType === "life" ? selectedReason?.label ?? "Nevybráno" : "Nevyžadováno"}
+                  {requiresReasonStep ? selectedReason?.label ?? "Nevybráno" : "Nevyžadováno"}
                 </span>
               </div>
             </div>
@@ -836,25 +1832,20 @@ export default function ContractTerminationPage() {
             </div>
           </div>
           </section>
-        ) : (
-          <div className="flex justify-start">
-            <button
-              type="button"
-              onClick={() => {
-                setCompleted(false);
-                setFormError(null);
-              }}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-[0_10px_26px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:bg-slate-50"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Zpět na výběr
-            </button>
-          </div>
-        )}
+        ) : null}
 
-        {activePdfConfig ? <LifeInsurancePdfPreview key={activePdfConfig.id} config={activePdfConfig} /> : null}
+        {activePdfConfig ? (
+          <LifeInsurancePdfPreview
+            key={activePdfConfig.id}
+            config={activePdfConfig}
+            showMonthlyAnniversaryCalculator={showCppMonthlyAnniversaryCalculator}
+          />
+        ) : null}
         {activeFillablePdfConfig ? (
           <FillablePdfPreview key={activeFillablePdfConfig.id} config={activeFillablePdfConfig} />
+        ) : null}
+        {activeOnlineFormConfig ? (
+          <OnlineFormPanel key={activeOnlineFormConfig.id} config={activeOnlineFormConfig} />
         ) : null}
       </div>
     </AppLayout>
@@ -863,6 +1854,12 @@ export default function ContractTerminationPage() {
 
 function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
   const documentFile = useSecureDocumentBlob(config.documentId);
+  const isKooperativaPdf = config.id === KOOPERATIVA_TERMINATION_PDF_CONFIG.id;
+  const [advisorName, setAdvisorName] = useState(() =>
+    displayNameFromUser(auth.currentUser)
+  );
+  const [advisorEmail] = useState(() => auth.currentUser?.email?.trim() ?? "");
+  const [advisorPhone, setAdvisorPhone] = useState("");
   const [fields, setFields] = useState<Record<string, string>>({});
   const [checkboxes, setCheckboxes] = useState<Record<string, boolean>>({});
   const [generatedFields, setGeneratedFields] = useState<GeneratedPdfField[]>([]);
@@ -870,6 +1867,47 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
   const [pages, setPages] = useState<GeneratedPdfPage[]>([]);
   const [renderStatus, setRenderStatus] = useState<"loading" | "ready" | "error">("loading");
   const canvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
+
+  useEffect(() => {
+    if (!isKooperativaPdf) return;
+
+    let cancelled = false;
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    const fallbackName = displayNameFromUser(currentUser);
+    getUserProfileCached(currentUser)
+      .then((payload) => {
+        if (cancelled) return;
+        const profileName = profileNameFromPayload(payload.profile);
+        const profilePhoneNumber = profilePhoneNumberFromPayload(payload.profile);
+        const nextAdvisorName = profileName || fallbackName;
+        if (nextAdvisorName) setAdvisorName(nextAdvisorName);
+        if (profilePhoneNumber) setAdvisorPhone(profilePhoneNumber);
+      })
+      .catch((error) => {
+        console.warn(
+          "Telefon uživatele pro Kooperativa PDF se nepodařilo načíst.",
+          error
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isKooperativaPdf]);
+
+  useEffect(() => {
+    if (!isKooperativaPdf || !generatedFields.length) return;
+
+    const defaults = getKooperativaFieldDefaults(
+      config,
+      advisorName,
+      advisorEmail,
+      advisorPhone
+    );
+    setFields((prev) => applyFillablePdfDefaults(prev, generatedFields, defaults));
+  }, [advisorEmail, advisorName, advisorPhone, config, generatedFields, isKooperativaPdf]);
 
   useEffect(() => {
     let cancelled = false;
@@ -941,10 +1979,16 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
         }
 
         if (!cancelled) {
+          const defaults = getKooperativaFieldDefaults(
+            config,
+            "",
+            advisorEmail,
+            ""
+          );
           setPages(nextPages);
           setGeneratedFields(nextFields);
           setGeneratedCheckboxes(nextCheckboxes);
-          setFields(Object.fromEntries(nextFields.map((field) => [field.key, ""])));
+          setFields(createDefaultFillablePdfFields(nextFields, defaults));
           setCheckboxes(Object.fromEntries(nextCheckboxes.map((field) => [field.key, false])));
         }
 
@@ -977,10 +2021,16 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
     return () => {
       cancelled = true;
     };
-  }, [documentFile.blob, documentFile.error]);
+  }, [advisorEmail, config, documentFile.blob, documentFile.error]);
 
   const resetPdf = () => {
-    setFields(Object.fromEntries(generatedFields.map((field) => [field.key, ""])));
+    const defaults = getKooperativaFieldDefaults(
+      config,
+      advisorName,
+      advisorEmail,
+      advisorPhone
+    );
+    setFields(createDefaultFillablePdfFields(generatedFields, defaults));
     setCheckboxes(Object.fromEntries(generatedCheckboxes.map((field) => [field.key, false])));
   };
 
@@ -1197,8 +2247,8 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
             {generatedFields.filter((field) => field.page === pageIndex).map((field) => (
               <input
                 key={field.key}
-                aria-label={field.label}
-                title={field.label}
+                aria-label={getFillableFieldDisplayLabel(config, field.label)}
+                title={getFillableFieldDisplayLabel(config, field.label)}
                 value={fields[field.key] ?? ""}
                 onChange={(event) => updateField(field.key, event.target.value)}
                 className="generali-field absolute rounded-[3px] border border-blue-500/25 bg-blue-50/35 px-1 font-semibold text-slate-900 outline-none transition focus:border-blue-600 focus:bg-blue-50 focus:ring-2 focus:ring-blue-500/20"
@@ -1243,17 +2293,89 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
   );
 }
 
-function LifeInsurancePdfPreview({ config }: { config: PdfPreviewConfig }) {
+function LifeInsurancePdfPreview({
+  config,
+  showMonthlyAnniversaryCalculator = false,
+}: {
+  config: PdfPreviewConfig;
+  showMonthlyAnniversaryCalculator?: boolean;
+}) {
   const documentFile = useSecureDocumentBlob(config.documentId);
-  const [fields, setFields] = useState<Record<string, string>>(() => createEmptyPdfFields(config.fields));
+  const [agentName, setAgentName] = useState(() =>
+    displayNameFromUser(auth.currentUser)
+  );
+  const [agentNumber, setAgentNumber] = useState("");
+  const [agentPhone, setAgentPhone] = useState("");
+  const [fields, setFields] = useState<Record<string, string>>(() =>
+    createDefaultPdfFields(config.fields, displayNameFromUser(auth.currentUser))
+  );
   const [checkboxes, setCheckboxes] = useState<Record<string, boolean>>(() => createEmptyPdfCheckboxes(config.checkboxes));
   const [renderStatus, setRenderStatus] = useState<"loading" | "ready" | "error">("loading");
   const [showPrintInstructions, setShowPrintInstructions] = useState(false);
+  const [showTerminationCalculator, setShowTerminationCalculator] =
+    useState(false);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const canvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
 
   useEffect(() => {
     setPortalRoot(document.body);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    const fallbackName = displayNameFromUser(currentUser);
+    if (fallbackName) {
+      setAgentName((prev) => prev || fallbackName);
+        setFields((prev) => ({
+          ...prev,
+          agentName: prev.agentName?.trim() ? prev.agentName : fallbackName,
+          agentNumber: prev.agentNumber ?? "",
+          agentPhone: prev.agentPhone ?? "",
+          agentCompany: prev.agentCompany?.trim()
+            ? prev.agentCompany
+            : DEFAULT_AGENT_COMPANY,
+      }));
+    }
+
+    getUserProfileCached(currentUser)
+      .then((payload) => {
+        if (cancelled) return;
+        const profileName = profileNameFromPayload(payload.profile);
+        const profileAgencyNumber = profileAgencyNumberFromPayload(payload.profile);
+        const profilePhoneNumber = profilePhoneNumberFromPayload(payload.profile);
+        const nextAgentName = profileName || fallbackName;
+
+        if (nextAgentName) setAgentName(nextAgentName);
+        if (profileAgencyNumber) setAgentNumber(profileAgencyNumber);
+        if (profilePhoneNumber) setAgentPhone(profilePhoneNumber);
+        setFields((prev) => ({
+          ...prev,
+          agentName:
+            nextAgentName &&
+            (!prev.agentName?.trim() || prev.agentName.trim() === fallbackName)
+              ? nextAgentName
+              : prev.agentName,
+          agentNumber: prev.agentNumber?.trim()
+            ? prev.agentNumber
+            : profileAgencyNumber,
+          agentPhone: prev.agentPhone?.trim()
+            ? prev.agentPhone
+            : profilePhoneNumber,
+          agentCompany: prev.agentCompany?.trim()
+            ? prev.agentCompany
+            : DEFAULT_AGENT_COMPANY,
+        }));
+      })
+      .catch((error) => {
+        console.warn("Jméno uživatele pro ČPP PDF se nepodařilo načíst.", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -1313,7 +2435,9 @@ function LifeInsurancePdfPreview({ config }: { config: PdfPreviewConfig }) {
   };
 
   const resetFields = () => {
-    setFields(createEmptyPdfFields(config.fields));
+    setFields(
+      createDefaultPdfFields(config.fields, agentName, agentNumber, agentPhone)
+    );
     setCheckboxes(createEmptyPdfCheckboxes(config.checkboxes));
   };
 
@@ -1460,6 +2584,16 @@ function LifeInsurancePdfPreview({ config }: { config: PdfPreviewConfig }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {showMonthlyAnniversaryCalculator ? (
+            <button
+              type="button"
+              onClick={() => setShowTerminationCalculator(true)}
+              className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Kdy bude smlouva ukončena?
+            </button>
+          ) : null}
           <a
             href={documentFile.url ?? "#"}
             target="_blank"
@@ -1561,6 +2695,15 @@ function LifeInsurancePdfPreview({ config }: { config: PdfPreviewConfig }) {
                 </div>
               </div>
             </div>,
+            portalRoot
+          )
+        : null}
+
+      {showTerminationCalculator && portalRoot
+        ? createPortal(
+            <CppMonthlyAnniversaryCalculatorModal
+              onClose={() => setShowTerminationCalculator(false)}
+            />,
             portalRoot
           )
         : null}
