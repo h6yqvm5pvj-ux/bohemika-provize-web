@@ -66,6 +66,7 @@ type UserRequestStatus = "pending" | "needsInfo" | "accepted" | "rejected";
 
 type UserCreationRequestDraft = {
   fullName: string | null;
+  agencyNumber: string | null;
   managerEmail: string | null;
   position: Position;
   commissionMode: CommissionMode;
@@ -349,6 +350,8 @@ const ACCOUNT_TYPES: { id: NewUserAccountType; label: string; description: strin
   },
 ];
 
+const NEW_USER_AGENCY_NUMBER_MAX_LEN = 80;
+
 type CreateUserResponse = {
   ok?: boolean;
   email?: string;
@@ -462,6 +465,7 @@ export default function AdminRequestsPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserFullName, setNewUserFullName] = useState("");
+  const [newUserAgencyNumber, setNewUserAgencyNumber] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserManagerEmail, setNewUserManagerEmail] = useState("");
   const [newUserPosition, setNewUserPosition] = useState<Position>("poradce1");
@@ -657,6 +661,7 @@ export default function AdminRequestsPage() {
         request.requesterEmail,
         request.requestedCorporateEmail ?? "",
         request.requestedUserDraft?.fullName ?? "",
+        request.requestedUserDraft?.agencyNumber ?? "",
         request.requestedUserDraft?.managerEmail ?? "",
         userRequestSubjectLabel[request.subject],
         request.message,
@@ -895,8 +900,16 @@ export default function AdminRequestsPage() {
 
     const email = normalizeEmail(newUserEmail);
     const managerEmail = normalizeEmail(newUserManagerEmail);
+    const agencyNumber = newUserAgencyNumber.trim();
     if (!email) {
       setCreateUserStatus({ type: "error", message: "Vyplň e-mail nového uživatele." });
+      return;
+    }
+    if (agencyNumber.length > NEW_USER_AGENCY_NUMBER_MAX_LEN) {
+      setCreateUserStatus({
+        type: "error",
+        message: `Agenturní číslo může mít maximálně ${NEW_USER_AGENCY_NUMBER_MAX_LEN} znaků.`,
+      });
       return;
     }
     if (newUserPassword.length < 8) {
@@ -936,6 +949,7 @@ export default function AdminRequestsPage() {
             email,
             password: newUserPassword,
             fullName: newUserFullName,
+            agencyNumber,
             accountType: newUserAccountType,
             managerEmail: newUserAccountType === "advisor" ? managerEmail : "",
             tipRecipientEmail:
@@ -952,6 +966,7 @@ export default function AdminRequestsPage() {
       });
       setNewUserEmail("");
       setNewUserFullName("");
+      setNewUserAgencyNumber("");
       setNewUserPosition("poradce1");
       setNewUserMode("standard");
       setNewUserAccountType("advisor");
@@ -972,6 +987,7 @@ export default function AdminRequestsPage() {
     isAllowedAdmin,
     newUserEmail,
     newUserFullName,
+    newUserAgencyNumber,
     newUserAccountType,
     newUserManagerEmail,
     newUserMode,
@@ -1537,6 +1553,14 @@ export default function AdminRequestsPage() {
                                   </span>
                                 </div>
                               ) : null}
+                              {request.requestedUserDraft?.agencyNumber ? (
+                                <div>
+                                  Agenturní číslo:{" "}
+                                  <span className="font-medium text-slate-900">
+                                    {request.requestedUserDraft.agencyNumber}
+                                  </span>
+                                </div>
+                              ) : null}
                               <div>
                                 Pozice:{" "}
                                 <span className="font-medium text-slate-900">
@@ -1751,6 +1775,22 @@ export default function AdminRequestsPage() {
                   value={newUserFullName}
                   onChange={(event) => setNewUserFullName(event.target.value)}
                   placeholder="Jméno Příjmení"
+                />
+              </div>
+
+              <div className="space-y-1.5 lg:col-span-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  Agenturní číslo
+                </label>
+                <input
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  className={fieldClass}
+                  value={newUserAgencyNumber}
+                  onChange={(event) => setNewUserAgencyNumber(event.target.value)}
+                  placeholder="Volitelné agenturní číslo"
+                  maxLength={NEW_USER_AGENCY_NUMBER_MAX_LEN}
                 />
               </div>
 

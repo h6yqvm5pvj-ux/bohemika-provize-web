@@ -33,6 +33,7 @@ const USER_REQUEST_FEEDBACK_MAX_LEN = 1200;
 const USER_REQUEST_CORPORATE_EMAIL_MAX_LEN = 180;
 const USER_REQUEST_MANAGER_EMAIL_MAX_LEN = 180;
 const USER_REQUEST_FULL_NAME_MAX_LEN = 120;
+const USER_REQUEST_AGENCY_NUMBER_MAX_LEN = 80;
 const USER_REQUEST_TEMP_PASSWORD_MIN_LEN = 8;
 const USER_REQUEST_TEMP_PASSWORD_MAX_LEN = 128;
 const NEW_USER_TRIAL_DAYS = 2;
@@ -43,6 +44,7 @@ type UserRequestStatus = "pending" | "needsInfo" | "accepted" | "rejected";
 
 type UserCreationRequestDraft = {
   fullName: string | null;
+  agencyNumber: string | null;
   managerEmail: string | null;
   position: Position;
   commissionMode: CommissionMode;
@@ -176,6 +178,7 @@ type CreateUserFromRequestParams = {
   requestId: string;
   requestedCorporateEmail: string;
   fullName: string | null;
+  agencyNumber: string | null;
   managerEmail: string | null;
   position: Position;
   commissionMode: CommissionMode;
@@ -252,6 +255,9 @@ async function createUserFromRequest(
       publicProfile.name = params.fullName;
       publicProfile.fullName = params.fullName;
     }
+    if (params.agencyNumber) {
+      publicProfile.agencyNumber = params.agencyNumber;
+    }
 
     const privateProfile = {
       subscriptionStatus: "active",
@@ -308,6 +314,7 @@ const parseRequestDoc = (
   const message = normalizeText(data.message);
   const feedback = normalizeText(data.feedback);
   const requestedFullName = normalizeText(data.requestedFullName);
+  const requestedAgencyNumber = normalizeText(data.requestedAgencyNumber);
   const requestedManagerEmail = normalizeEmail(data.requestedManagerEmail);
   const requestedPosition = parsePosition(data.requestedPosition);
   const requestedCommissionMode = parseCommissionMode(data.requestedCommissionMode);
@@ -332,6 +339,7 @@ const parseRequestDoc = (
       subject === "userCreation"
         ? {
             fullName: requestedFullName || null,
+            agencyNumber: requestedAgencyNumber || null,
             managerEmail: requestedManagerEmail || null,
             position: requestedPosition,
             commissionMode: requestedCommissionMode,
@@ -401,6 +409,13 @@ function parseCreatePayload(raw: unknown):
     };
   }
 
+  const requestedAgencyNumber = normalizeText(row.requestedAgencyNumber);
+  if (requestedAgencyNumber.length > USER_REQUEST_AGENCY_NUMBER_MAX_LEN) {
+    return {
+      error: `Agenturní číslo může mít maximálně ${USER_REQUEST_AGENCY_NUMBER_MAX_LEN} znaků.`,
+    };
+  }
+
   const requestedManagerEmail = normalizeEmail(row.requestedManagerEmail);
   if (subject === "userCreation" && !requestedManagerEmail) {
     return { error: "Pro založení uživatele vyplň e-mail přímého nadřízeného." };
@@ -439,6 +454,7 @@ function parseCreatePayload(raw: unknown):
       subject === "userCreation"
         ? {
             fullName: requestedFullName || null,
+            agencyNumber: requestedAgencyNumber || null,
             managerEmail: requestedManagerEmail || null,
             position: requestedPosition,
             commissionMode: requestedCommissionMode,
@@ -610,6 +626,7 @@ export async function POST(req: NextRequest) {
     subject: parsed.subject,
     requestedCorporateEmail: parsed.requestedCorporateEmail,
     requestedFullName: parsed.requestedUserDraft?.fullName ?? null,
+    requestedAgencyNumber: parsed.requestedUserDraft?.agencyNumber ?? null,
     requestedManagerEmail: parsed.requestedUserDraft?.managerEmail ?? null,
     requestedPosition: parsed.requestedUserDraft?.position ?? null,
     requestedCommissionMode: parsed.requestedUserDraft?.commissionMode ?? null,
@@ -728,6 +745,7 @@ export async function PATCH(req: NextRequest) {
         requestId: existingRequest.id,
         requestedCorporateEmail,
         fullName: existingRequest.requestedUserDraft?.fullName ?? null,
+        agencyNumber: existingRequest.requestedUserDraft?.agencyNumber ?? null,
         managerEmail: existingRequest.requestedUserDraft?.managerEmail ?? null,
         position: existingRequest.requestedUserDraft?.position ?? "poradce1",
         commissionMode: existingRequest.requestedUserDraft?.commissionMode ?? "standard",
@@ -859,6 +877,7 @@ export async function PUT(req: NextRequest) {
         subject: parsed.subject,
         requestedCorporateEmail: parsed.requestedCorporateEmail,
         requestedFullName: parsed.requestedUserDraft?.fullName ?? null,
+        requestedAgencyNumber: parsed.requestedUserDraft?.agencyNumber ?? null,
         requestedManagerEmail: parsed.requestedUserDraft?.managerEmail ?? null,
         requestedPosition: parsed.requestedUserDraft?.position ?? null,
         requestedCommissionMode: parsed.requestedUserDraft?.commissionMode ?? null,

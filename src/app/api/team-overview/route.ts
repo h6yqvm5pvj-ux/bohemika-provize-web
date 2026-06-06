@@ -45,6 +45,7 @@ const CONTRACT_REFS_COLLECTION = "contractRefs";
 const FIRESTORE_IN_LIMIT = 10;
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_TIMELINE_ROWS = 150;
+const AGENCY_NUMBER_MAX_LEN = 80;
 const TRANSFER_BATCH_LIMIT = 360;
 const END_COLLAB_REQUESTS_COLLECTION = "endCollaborationRequests";
 const END_COLLAB_DECISION_REASON_MAX_LEN = 400;
@@ -640,6 +641,10 @@ function candidateFromDoc(
     tipRecipientEmail,
     teamParentEmail,
     docId: String(docSnap.id ?? email),
+    agencyNumber:
+      typeof data.agencyNumber === "string"
+        ? data.agencyNumber.trim() || null
+        : null,
     lastActiveTs: (() => {
       const ts = toDate(data.lastActive)?.getTime();
       return Number.isFinite(ts) ? Number(ts) : null;
@@ -740,6 +745,7 @@ async function loadTeamContext(
       tipRecipientEmail: null,
       teamParentEmail: null,
       docId: ownEmail,
+      agencyNumber: null,
       lastActiveTs: null,
       adminFunction: false,
     };
@@ -849,6 +855,7 @@ async function loadTeamContext(
           tipRecipientEmail: null,
           teamParentEmail: null,
           docId: cursor,
+          agencyNumber: null,
           lastActiveTs: null,
           adminFunction: false,
         });
@@ -1739,6 +1746,7 @@ async function endCollaborationAndTransfer({
 type ParsedUpdatePatchPayload = {
   action: "update";
   targetEmail: string;
+  agencyNumber?: string;
   positionTimeline?: Array<{
     id: string;
     position: Position;
@@ -1855,7 +1863,20 @@ function parsePatchPayload(
     output.positionTimeline = timeline;
   }
 
-  if (output.positionTimeline == null) {
+  if (body.agencyNumber != null) {
+    if (typeof body.agencyNumber !== "string") {
+      return { error: "Agenturní číslo musí být text." };
+    }
+    const agencyNumber = body.agencyNumber.trim();
+    if (agencyNumber.length > AGENCY_NUMBER_MAX_LEN) {
+      return {
+        error: `Agenturní číslo může mít maximálně ${AGENCY_NUMBER_MAX_LEN} znaků.`,
+      };
+    }
+    output.agencyNumber = agencyNumber;
+  }
+
+  if (output.positionTimeline == null && output.agencyNumber == null) {
     return { error: "Není co uložit." };
   }
 
@@ -2495,7 +2516,11 @@ export async function PATCH(req: NextRequest) {
     }
 
     const patch: Record<string, unknown> = {};
-    const updated: Array<"position" | "positionTimeline"> = [];
+    const updated: Array<"position" | "positionTimeline" | "agencyNumber"> = [];
+    if (parsed.agencyNumber != null) {
+      patch.agencyNumber = parsed.agencyNumber;
+      updated.push("agencyNumber");
+    }
     if (parsed.positionTimeline != null) {
       patch.positionTimeline = parsed.positionTimeline;
       patch.position =
@@ -2632,6 +2657,7 @@ export async function GET(req: NextRequest) {
           tipRecipientEmail: member.tipRecipientEmail,
           teamParentEmail: member.teamParentEmail,
           docId: member.docId,
+          agencyNumber: member.agencyNumber,
         })),
 	        lastActive: Object.fromEntries(
 	          context.members.map((member) => [member.email, member.lastActiveTs ?? null])
@@ -2729,6 +2755,7 @@ export async function GET(req: NextRequest) {
         tipRecipientEmail: member.tipRecipientEmail,
         teamParentEmail: member.teamParentEmail,
         docId: member.docId,
+        agencyNumber: member.agencyNumber,
       })),
       lastActive: Object.fromEntries(
         context.members.map((member) => [member.email, member.lastActiveTs ?? null])

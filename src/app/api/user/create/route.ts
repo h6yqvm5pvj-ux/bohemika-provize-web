@@ -21,6 +21,7 @@ const CREATE_USER_RATE_LIMIT = 20;
 const CREATE_USER_WINDOW_MS = 10 * 60_000;
 const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
 const NEW_USER_TRIAL_DAYS = 2;
+const AGENCY_NUMBER_MAX_LEN = 80;
 
 const POSITION_VALUES: Position[] = [
   "poradce1",
@@ -57,6 +58,7 @@ type ParsedCreateUser = {
   email: string;
   password: string;
   fullName: string | null;
+  agencyNumber: string | null;
   managerEmail: string | null;
   tipRecipientEmail: string | null;
   position: Position;
@@ -154,6 +156,12 @@ function parseCreateUserPayload(body: unknown): ParsedCreateUser | { error: stri
   }
   const fullName = fullNameRaw || null;
 
+  const agencyNumberRaw = normalizeOptionalText(body.agencyNumber, AGENCY_NUMBER_MAX_LEN);
+  if (agencyNumberRaw == null) {
+    return { error: `Agenturní číslo může mít maximálně ${AGENCY_NUMBER_MAX_LEN} znaků.` };
+  }
+  const agencyNumber = agencyNumberRaw || null;
+
   const accountTypeRaw =
     typeof body.accountType === "string" ? body.accountType.trim() : "advisor";
   if (!ACCOUNT_TYPE_SET.has(accountTypeRaw as UserAccountType)) {
@@ -208,6 +216,7 @@ function parseCreateUserPayload(body: unknown): ParsedCreateUser | { error: stri
     email,
     password,
     fullName,
+    agencyNumber,
     managerEmail,
     tipRecipientEmail,
     position: positionRaw as Position,
@@ -375,6 +384,9 @@ export async function POST(req: NextRequest) {
     if (parsed.fullName) {
       publicProfile.name = parsed.fullName;
       publicProfile.fullName = parsed.fullName;
+    }
+    if (parsed.agencyNumber) {
+      publicProfile.agencyNumber = parsed.agencyNumber;
     }
 
     const privateProfile: Record<string, unknown> = {

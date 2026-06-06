@@ -7,6 +7,7 @@ import {
   BarChart3,
   Check,
   Copy,
+  Hash,
   LoaderCircle,
   Mail,
   MessageSquare,
@@ -43,6 +44,7 @@ type Member = {
   managerEmail?: string | null;
   tipRecipientEmail?: string | null;
   teamParentEmail?: string | null;
+  agencyNumber?: string | null;
   docId?: string;
 };
 
@@ -310,6 +312,7 @@ type TeamOverviewApiSuccess = {
     managerEmail?: string | null;
     tipRecipientEmail?: string | null;
     teamParentEmail?: string | null;
+    agencyNumber?: string | null;
     docId?: string | null;
   }>;
   lastActive?: Record<string, number | null>;
@@ -330,6 +333,7 @@ type TeamOverviewEndCollaborationSuccess = {
     | "collaborationPreview"
     | "position"
     | "positionTimeline"
+    | "agencyNumber"
     | "collaborationRequestQueued"
     | "collaborationRequestApproved"
     | "collaborationRequestRejected"
@@ -360,6 +364,12 @@ type TeamOverviewPositionTimelineReadSuccess = {
   positionTimeline?: unknown;
 };
 
+type TeamOverviewUpdateSuccess = {
+  ok: true;
+  targetEmail: string;
+  updated?: Array<"agencyNumber" | "position" | "positionTimeline">;
+};
+
 const TEAM_CACHE_TTL_MS = 60 * 1000;
 const TEAM_MIN_LOADING_MS = 1800;
 const teamDataCache: Record<string, { ts: number; payload: TeamCachePayload }> = {};
@@ -375,6 +385,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 
 const MEMBER_LIST_ESTIMATED_ROW_HEIGHT = 76;
 const MEMBER_LIST_OVERSCAN = 6;
+const AGENCY_NUMBER_MAX_LEN = 80;
 
 function teamRevealStyle(delayMs: number): CSSProperties {
   return {
@@ -407,6 +418,12 @@ export default function TeamPage() {
   const [careerTimelineError, setCareerTimelineError] = useState<string | null>(null);
   const [careerTimelineSaved, setCareerTimelineSaved] = useState(false);
   const [careerTimelineEditing, setCareerTimelineEditing] = useState(false);
+  const [agencyNumberDraft, setAgencyNumberDraft] = useState("");
+  const [agencyNumberSaving, setAgencyNumberSaving] = useState(false);
+  const [agencyNumberStatus, setAgencyNumberStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [endCollaborationModalOpen, setEndCollaborationModalOpen] = useState(false);
   const [endCollaborationConfirmEmail, setEndCollaborationConfirmEmail] = useState("");
@@ -432,6 +449,7 @@ export default function TeamPage() {
   const copyEmailTimerRef = useRef<number | null>(null);
   const careerSaveTimerRef = useRef<number | null>(null);
   const endCollaborationTimerRef = useRef<number | null>(null);
+  const agencyNumberSelectedEmailRef = useRef<string | null>(null);
   const membersListRef = useRef<HTMLDivElement | null>(null);
   const [membersScrollTop, setMembersScrollTop] = useState(0);
   const [membersViewportHeight, setMembersViewportHeight] = useState(0);
@@ -558,6 +576,7 @@ export default function TeamPage() {
             (raw.teamParentEmail ?? "").trim().toLowerCase() ||
             (accountType === "tipster" ? tipRecipientEmail : managerEmail) ||
             null;
+          const agencyNumber = (raw.agencyNumber ?? "").trim() || null;
           membersByEmail.set(email, {
             email,
             name: (raw.name ?? "").trim() || nameFromEmail(email),
@@ -566,6 +585,7 @@ export default function TeamPage() {
             managerEmail,
             tipRecipientEmail,
             teamParentEmail,
+            agencyNumber,
             docId: (raw.docId ?? "").trim() || email,
           });
         });
@@ -579,6 +599,7 @@ export default function TeamPage() {
             managerEmail: null,
             tipRecipientEmail: null,
             teamParentEmail: null,
+            agencyNumber: null,
             docId: userEmail,
           });
         }
@@ -712,6 +733,7 @@ export default function TeamPage() {
       return (
         m.name.toLowerCase().includes(term) ||
         m.email.toLowerCase().includes(term) ||
+        (m.agencyNumber ?? "").toLowerCase().includes(term) ||
         memberRoleLabel(m).toLowerCase().includes(term)
       );
     });
@@ -888,6 +910,7 @@ export default function TeamPage() {
   }, []);
 
   const selected = members.find((m) => m.email === selectedEmail) ?? null;
+  const selectedAgencyNumber = selected?.agencyNumber?.trim() ?? "";
   const selectedIsTipster = selected?.accountType === "tipster";
   const showMonthlyPremiumInProduction = productionCategory === "life";
   const productionGridColsClass = showMonthlyPremiumInProduction
@@ -992,11 +1015,21 @@ export default function TeamPage() {
   );
   const canEditSelectedCareer =
     isSelectedSubordinate && selected?.accountType !== "tipster";
+  const canFillSelectedAgencyNumber = isSelectedSubordinate && !selectedAgencyNumber;
   const canEndSelectedCollaboration =
     canManagePositions &&
     isSelectedSubordinate &&
     selected?.accountType !== "tipster" &&
     Boolean((selected?.managerEmail ?? "").trim());
+
+  useEffect(() => {
+    const currentSelectedEmail = selected?.email ?? null;
+    if (agencyNumberSelectedEmailRef.current === currentSelectedEmail) return;
+    agencyNumberSelectedEmailRef.current = currentSelectedEmail;
+    setAgencyNumberDraft(selectedAgencyNumber);
+    setAgencyNumberStatus(null);
+    setAgencyNumberSaving(false);
+  }, [selected?.email, selectedAgencyNumber]);
 
   useEffect(() => {
     const loadSelectedCareerTimeline = async () => {
@@ -1121,6 +1154,98 @@ export default function TeamPage() {
   const canSendTeamMessage = showManagerTeamTools && hasTeamListMembers;
   const showTeamSidebar = showManagerTeamTools || hasTeamListMembers;
   const teamListTitle = showManagerTeamTools ? "Podřízení" : "Tipaři";
+
+  const saveSelectedAgencyNumber = async () => {
+    if (!selected) return;
+    if (!canFillSelectedAgencyNumber) {
+      setAgencyNumberStatus({
+        type: "error",
+        message: "Agenturní číslo lze tady doplnit jen podřízenému, který ho ještě nemá.",
+      });
+      return;
+    }
+
+    const nextAgencyNumber = agencyNumberDraft.trim();
+    if (!nextAgencyNumber) {
+      setAgencyNumberStatus({
+        type: "error",
+        message: "Vyplň agenturní číslo.",
+      });
+      return;
+    }
+    if (nextAgencyNumber.length > AGENCY_NUMBER_MAX_LEN) {
+      setAgencyNumberStatus({
+        type: "error",
+        message: `Agenturní číslo může mít maximálně ${AGENCY_NUMBER_MAX_LEN} znaků.`,
+      });
+      return;
+    }
+
+    setAgencyNumberSaving(true);
+    setAgencyNumberStatus(null);
+
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Nejsi přihlášený.");
+
+      await fetchAuthedJsonOrThrow<TeamOverviewUpdateSuccess>(
+        currentUser,
+        "/api/team-overview",
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            action: "update",
+            targetEmail: selected.email,
+            agencyNumber: nextAgencyNumber,
+          }),
+        }
+      );
+
+      setMembers((prev) =>
+        prev.map((member) =>
+          member.email === selected.email
+            ? {
+                ...member,
+                agencyNumber: nextAgencyNumber,
+              }
+            : member
+        )
+      );
+      if (cacheKey && teamDataCache[cacheKey]) {
+        teamDataCache[cacheKey] = {
+          ...teamDataCache[cacheKey],
+          payload: {
+            ...teamDataCache[cacheKey].payload,
+            members: teamDataCache[cacheKey].payload.members.map((member) =>
+              member.email === selected.email
+                ? {
+                    ...member,
+                    agencyNumber: nextAgencyNumber,
+                  }
+                : member
+            ),
+          },
+        };
+      }
+      setAgencyNumberDraft(nextAgencyNumber);
+      setAgencyNumberStatus({
+        type: "success",
+        message: "Agenturní číslo bylo uloženo.",
+      });
+    } catch (e: any) {
+      if (typeof e?.message === "string" && e.message.trim()) {
+        setAgencyNumberStatus({ type: "error", message: e.message.trim() });
+      } else {
+        console.error("Chyba při ukládání agenturního čísla:", e);
+        setAgencyNumberStatus({
+          type: "error",
+          message: "Agenturní číslo se nepodařilo uložit.",
+        });
+      }
+    } finally {
+      setAgencyNumberSaving(false);
+    }
+  };
 
   const loadEndCollaborationPreview = async (member: Member) => {
     setEndCollaborationPreviewLoading(true);
@@ -1747,6 +1872,12 @@ export default function TeamPage() {
                                     <span className={`h-1.5 w-1.5 rounded-full ${last.dotClassName}`} />
                                     {last.statusLabel}
                                   </span>
+                                  {m.agencyNumber ? (
+                                    <span className="inline-flex max-w-full items-center justify-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                                      <Hash size={10} strokeWidth={2} aria-hidden="true" className="shrink-0" />
+                                      <span className="max-w-[150px] truncate">{m.agencyNumber}</span>
+                                    </span>
+                                  ) : null}
                                 </div>
                               </div>
                             </div>
@@ -1783,6 +1914,61 @@ export default function TeamPage() {
                             </div>
                           </div>
                           <p className="text-sm text-slate-500 mt-1">{selected.email}</p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span
+                              className={[
+                                "inline-flex max-w-full items-start gap-2 rounded-2xl border px-3 py-1.5 text-xs font-semibold",
+                                selectedAgencyNumber
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                  : "border-slate-300 bg-slate-50 text-slate-600",
+                              ].join(" ")}
+                            >
+                              <Hash size={13} strokeWidth={2} aria-hidden="true" className="mt-0.5 shrink-0" />
+                              <span className="min-w-0 break-all">
+                                Agenturní číslo: {selectedAgencyNumber || "Nevyplněno"}
+                              </span>
+                            </span>
+                          </div>
+                          {canFillSelectedAgencyNumber ? (
+                            <div className="mt-3 max-w-2xl rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.05)]">
+                              <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Doplnit agenturní číslo
+                              </label>
+                              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                                <input
+                                  type="text"
+                                  value={agencyNumberDraft}
+                                  onChange={(event) => {
+                                    setAgencyNumberDraft(event.target.value);
+                                    setAgencyNumberStatus(null);
+                                  }}
+                                  maxLength={AGENCY_NUMBER_MAX_LEN}
+                                  placeholder="Agenturní číslo"
+                                  className="ui-input ui-focus min-h-[40px] flex-1 rounded-xl border-slate-300 px-3 py-2 text-sm"
+                                  disabled={agencyNumberSaving}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void saveSelectedAgencyNumber()}
+                                  disabled={agencyNumberSaving}
+                                  className="ui-btn-primary ui-focus inline-flex min-h-[40px] items-center justify-center rounded-xl px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {agencyNumberSaving ? "Ukládám..." : "Uložit"}
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                          {agencyNumberStatus ? (
+                            <div
+                              className={`mt-2 text-sm font-semibold ${
+                                agencyNumberStatus.type === "success"
+                                  ? "text-emerald-700"
+                                  : "text-rose-700"
+                              }`}
+                            >
+                              {agencyNumberStatus.message}
+                            </div>
+                          ) : null}
                           <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                             <div className="flex flex-wrap gap-2">
                               <button
@@ -2025,6 +2211,19 @@ export default function TeamPage() {
 	                                  <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-500">
 	                                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold">
 	                                      {memberRoleLabel(sub)}
+	                                    </span>
+	                                    <span
+	                                      className={[
+	                                        "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 font-semibold",
+	                                        sub.agencyNumber
+	                                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+	                                          : "border-slate-200 bg-slate-50 text-slate-500",
+	                                      ].join(" ")}
+	                                    >
+	                                      <Hash size={11} strokeWidth={2} aria-hidden="true" className="shrink-0" />
+	                                      <span className="min-w-0 break-all">
+	                                        {sub.agencyNumber || "Bez agenturního čísla"}
+	                                      </span>
 	                                    </span>
 	                                    {sub.depth > 1 ? (
 	                                      <span>{sub.depth}. úroveň</span>

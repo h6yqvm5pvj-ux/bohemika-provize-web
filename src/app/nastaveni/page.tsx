@@ -11,6 +11,7 @@ import {
   Calculator,
   CalendarDays,
   CarFront,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
@@ -340,6 +341,7 @@ const SETTINGS_KEYS = {
 };
 
 type SettingsTab =
+  | "profile"
   | "account"
   | "subscription"
   | "career"
@@ -349,6 +351,7 @@ type SettingsTab =
   | "requests";
 
 const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
+  { id: "profile", label: "Profil" },
   { id: "account", label: "Zabezpečení" },
   { id: "subscription", label: "Předplatné" },
   { id: "career", label: "Kariéra" },
@@ -718,9 +721,11 @@ type OnlineCardOfficePhotoUploadResponse = {
 type UserRequestSubject = "userCreation" | "other";
 type UserRequestPriority = "normal" | "urgent";
 type UserRequestStatus = "pending" | "needsInfo" | "accepted" | "rejected";
+type UserRequestsView = "create" | "history";
 
 type UserCreationRequestDraft = {
   fullName: string | null;
+  agencyNumber: string | null;
   managerEmail: string | null;
   position: Position;
   commissionMode: CommissionMode;
@@ -772,6 +777,9 @@ const USER_REQUEST_MESSAGE_MAX_LEN = 2500;
 const USER_REQUEST_CORPORATE_EMAIL_MAX_LEN = 180;
 const USER_REQUEST_MANAGER_EMAIL_MAX_LEN = 180;
 const USER_REQUEST_FULL_NAME_MAX_LEN = 120;
+const USER_REQUEST_AGENCY_NUMBER_MAX_LEN = 80;
+const AGENCY_NUMBER_MAX_LEN = 80;
+const PHONE_NUMBER_MAX_LEN = 40;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -800,6 +808,12 @@ const USER_REQUEST_STATUS_CLASS: Record<UserRequestStatus, string> = {
   accepted: "border-emerald-300 bg-emerald-50 text-emerald-700",
   rejected: "border-rose-300 bg-rose-50 text-rose-700",
 };
+
+const USER_REQUEST_STEPS = [
+  { id: "type", label: "Typ" },
+  { id: "details", label: "Údaje" },
+  { id: "message", label: "Odeslání" },
+] as const;
 
 const USER_REQUEST_SLA_NORMAL_MS = 72 * 60 * 60 * 1000;
 const USER_REQUEST_SLA_URGENT_MS = 8 * 60 * 60 * 1000;
@@ -910,6 +924,10 @@ export default function SettingsPage() {
 
   const [position, setPosition] = useState<Position>("manazer7");
   const [mode, setMode] = useState<CommissionMode>("accelerated");
+  const [agencyNumber, setAgencyNumber] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileStatus, setProfileStatus] = useState<InlineStatus | null>(null);
   const [, setMonthlyGoal] = useState<number>(0);
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -962,7 +980,7 @@ export default function SettingsPage() {
   const [timelineSaveFlashVisible, setTimelineSaveFlashVisible] = useState(false);
   const [positionTimelineLocked, setPositionTimelineLocked] = useState(false);
   const [timelineSetupRequired, setTimelineSetupRequired] = useState(false);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("career");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
   const [subscriptionSnapshot, setSubscriptionSnapshot] = useState<{
@@ -975,6 +993,9 @@ export default function SettingsPage() {
   } | null>(null);
   const [subscriptionPayments, setSubscriptionPayments] = useState<SubscriptionPaymentRow[]>([]);
   const [showCareerTimelineHelp, setShowCareerTimelineHelp] = useState(false);
+  const [userRequestsView, setUserRequestsView] =
+    useState<UserRequestsView>("create");
+  const [userRequestStep, setUserRequestStep] = useState(0);
   const [userRequests, setUserRequests] = useState<UserRequestPayload[]>([]);
   const [userRequestsLoading, setUserRequestsLoading] = useState(false);
   const [userRequestsError, setUserRequestsError] = useState<string | null>(null);
@@ -982,6 +1003,7 @@ export default function SettingsPage() {
     useState<UserRequestSubject>("userCreation");
   const [userRequestCorporateEmail, setUserRequestCorporateEmail] = useState("");
   const [userRequestFullName, setUserRequestFullName] = useState("");
+  const [userRequestAgencyNumber, setUserRequestAgencyNumber] = useState("");
   const [userRequestManagerEmail, setUserRequestManagerEmail] = useState("");
   const [userRequestMode, setUserRequestMode] = useState<CommissionMode>("standard");
   const [userRequestPriority, setUserRequestPriority] =
@@ -1220,6 +1242,10 @@ export default function SettingsPage() {
             if (stored) setMode(stored);
           }
 
+          setAgencyNumber(typeof data.agencyNumber === "string" ? data.agencyNumber.trim() : "");
+          setPhoneNumber(typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "");
+          setProfileStatus(null);
+
           if (typeof data.monthlyGoal === "number") {
             setMonthlyGoal(data.monthlyGoal);
             if (typeof window !== "undefined") {
@@ -1287,6 +1313,9 @@ export default function SettingsPage() {
           setPositionTimelineDraft([]);
           setPositionTimelineLocked(false);
           setTimelineSetupRequired(true);
+          setAgencyNumber("");
+          setPhoneNumber("");
+          setProfileStatus(null);
           setOnlineCardDraft(defaultOnlineCardFromUser(email, {}));
           setOnlineCardStatus(null);
           if (typeof window !== "undefined") {
@@ -1620,6 +1649,46 @@ export default function SettingsPage() {
       window.localStorage.setItem(SETTINGS_KEYS.mode, value);
     }
     await saveUserFields({ commissionMode: value });
+  };
+
+  const handleSaveProfile = async () => {
+    const nextAgencyNumber = agencyNumber.trim();
+    const nextPhoneNumber = phoneNumber.trim();
+    if (nextAgencyNumber.length > AGENCY_NUMBER_MAX_LEN) {
+      setProfileStatus({
+        type: "error",
+        message: `Agenturní číslo může mít maximálně ${AGENCY_NUMBER_MAX_LEN} znaků.`,
+      });
+      return;
+    }
+    if (nextPhoneNumber.length > PHONE_NUMBER_MAX_LEN) {
+      setProfileStatus({
+        type: "error",
+        message: `Telefonní číslo může mít maximálně ${PHONE_NUMBER_MAX_LEN} znaků.`,
+      });
+      return;
+    }
+
+    setProfileSaving(true);
+    setProfileStatus(null);
+    try {
+      const saved = await saveUserFields({
+        agencyNumber: nextAgencyNumber,
+        phoneNumber: nextPhoneNumber,
+      });
+      if (!saved.ok) {
+        setProfileStatus({ type: "error", message: saved.error });
+        return;
+      }
+      setAgencyNumber(nextAgencyNumber);
+      setPhoneNumber(nextPhoneNumber);
+      setProfileStatus({
+        type: "success",
+        message: "Profil byl uložen.",
+      });
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
   const updateOnlineCardDraft = (patch: Partial<OnlineCardDraft>) => {
@@ -1985,11 +2054,13 @@ export default function SettingsPage() {
     setUserRequestMessage("");
     setUserRequestCorporateEmail("");
     setUserRequestFullName("");
+    setUserRequestAgencyNumber("");
     setUserRequestManagerEmail("");
     setUserRequestMode("standard");
     setUserRequestSubject("userCreation");
     setUserRequestPriority("normal");
     setEditingUserRequestId(null);
+    setUserRequestStep(0);
   }, []);
 
   const loadUserRequests = useCallback(async () => {
@@ -2028,6 +2099,7 @@ export default function SettingsPage() {
     const requestedCorporateEmail = normalizeEmail(userRequestCorporateEmail);
     const requestedManagerEmail = normalizeEmail(userRequestManagerEmail);
     const requestedFullName = userRequestFullName.trim();
+    const requestedAgencyNumber = userRequestAgencyNumber.trim();
     const isEditingReturnedRequest = Boolean(editingUserRequestId);
     if (userRequestSubject === "userCreation") {
       if (!requestedCorporateEmail) {
@@ -2062,6 +2134,13 @@ export default function SettingsPage() {
         setUserRequestStatus({
           type: "error",
           message: `Jméno může mít maximálně ${USER_REQUEST_FULL_NAME_MAX_LEN} znaků.`,
+        });
+        return;
+      }
+      if (requestedAgencyNumber.length > USER_REQUEST_AGENCY_NUMBER_MAX_LEN) {
+        setUserRequestStatus({
+          type: "error",
+          message: `Agenturní číslo může mít maximálně ${USER_REQUEST_AGENCY_NUMBER_MAX_LEN} znaků.`,
         });
         return;
       }
@@ -2130,6 +2209,8 @@ export default function SettingsPage() {
               userRequestSubject === "userCreation" ? requestedCorporateEmail : null,
             requestedFullName:
               userRequestSubject === "userCreation" ? requestedFullName || null : null,
+            requestedAgencyNumber:
+              userRequestSubject === "userCreation" ? requestedAgencyNumber || null : null,
             requestedManagerEmail:
               userRequestSubject === "userCreation" ? requestedManagerEmail || null : null,
             requestedPosition:
@@ -2155,6 +2236,7 @@ export default function SettingsPage() {
       }
 
       resetUserRequestForm();
+      setUserRequestsView("history");
       setUserRequestStatus({
         type: "success",
         message: isEditingReturnedRequest
@@ -2182,10 +2264,13 @@ export default function SettingsPage() {
     setUserRequestSubject(request.subject);
     setUserRequestCorporateEmail(request.requestedCorporateEmail ?? "");
     setUserRequestFullName(request.requestedUserDraft?.fullName ?? "");
+    setUserRequestAgencyNumber(request.requestedUserDraft?.agencyNumber ?? "");
     setUserRequestManagerEmail(request.requestedUserDraft?.managerEmail ?? "");
     setUserRequestMode(request.requestedUserDraft?.commissionMode ?? "standard");
     setUserRequestPriority(request.priority);
     setUserRequestMessage(request.message);
+    setUserRequestsView("create");
+    setUserRequestStep(1);
     setUserRequestStatus({
       type: "info",
       message: "Žádost je vrácená k doplnění. Uprav ji a odešli znovu.",
@@ -2562,6 +2647,12 @@ export default function SettingsPage() {
 
   const userEmail = user.email ?? "Neznámý e-mail";
   const normalizedUserEmail = normalizeEmail(user.email);
+  const profileDisplayName = normalizedUserEmail
+    ? nameFromEmail(normalizedUserEmail)
+    : "Profil uživatele";
+  const profileInitial = profileDisplayName.trim().charAt(0).toUpperCase() || "P";
+  const profileAgencyNumberFilled = agencyNumber.trim().length > 0;
+  const profilePhoneFilled = phoneNumber.trim().length > 0;
   const mfaIssuer = "Bohemka.App";
   const mfaAccountName = normalizedUserEmail || userEmail;
   const mfaQrCodeUri = mfaEnrollmentSecret
@@ -2587,6 +2678,7 @@ export default function SettingsPage() {
   const normalizedRequestCorporateEmail = normalizeEmail(userRequestCorporateEmail);
   const normalizedRequestManagerEmail = normalizeEmail(userRequestManagerEmail);
   const requestFullNameLength = userRequestFullName.trim().length;
+  const requestAgencyNumberLength = userRequestAgencyNumber.trim().length;
   const requestCorporateEmailValid =
     !requestNeedsCorporateEmail ||
     (normalizedRequestCorporateEmail.length > 0 &&
@@ -2601,12 +2693,67 @@ export default function SettingsPage() {
   const requestFullNameValid =
     !requestNeedsCorporateEmail ||
     (requestFullNameLength > 0 && requestFullNameLength <= USER_REQUEST_FULL_NAME_MAX_LEN);
+  const requestAgencyNumberValid =
+    !requestNeedsCorporateEmail ||
+    requestAgencyNumberLength <= USER_REQUEST_AGENCY_NUMBER_MAX_LEN;
   const canSubmitUserRequest =
     requestMessageLength >= USER_REQUEST_MESSAGE_MIN_LEN &&
     requestMessageLength <= USER_REQUEST_MESSAGE_MAX_LEN &&
     requestCorporateEmailValid &&
     requestManagerEmailValid &&
-    requestFullNameValid;
+    requestFullNameValid &&
+    requestAgencyNumberValid;
+  const currentUserRequestStep = Math.min(
+    Math.max(userRequestStep, 0),
+    USER_REQUEST_STEPS.length - 1
+  );
+  const currentUserRequestStepId =
+    USER_REQUEST_STEPS[currentUserRequestStep]?.id ?? "type";
+  const otherRequestMessageValid =
+    requestNeedsCorporateEmail ||
+    (requestMessageLength >= USER_REQUEST_MESSAGE_MIN_LEN &&
+      requestMessageLength <= USER_REQUEST_MESSAGE_MAX_LEN);
+  const requestDetailsStepValid =
+    requestNeedsCorporateEmail
+      ? requestCorporateEmailValid &&
+        requestManagerEmailValid &&
+        requestFullNameValid &&
+        requestAgencyNumberValid
+      : otherRequestMessageValid;
+  const requestCurrentStepCanContinue =
+    currentUserRequestStepId === "details"
+      ? requestDetailsStepValid
+      : currentUserRequestStepId === "message"
+        ? canSubmitUserRequest
+        : true;
+  const requestStepperProgress =
+    ((currentUserRequestStep + 1) / USER_REQUEST_STEPS.length) * 100;
+  const goToPreviousUserRequestStep = () => {
+    setUserRequestStatus(null);
+    setUserRequestStep((prev) => Math.max(0, prev - 1));
+  };
+  const goToNextUserRequestStep = () => {
+    if (currentUserRequestStepId === "details" && !requestDetailsStepValid) {
+      setUserRequestStatus({
+        type: "error",
+        message: requestNeedsCorporateEmail
+          ? "Nejdřív vyplň platné údaje žádosti."
+          : `Popis žádosti musí mít alespoň ${USER_REQUEST_MESSAGE_MIN_LEN} znaků.`,
+      });
+      return;
+    }
+    if (currentUserRequestStepId === "message" && !canSubmitUserRequest) {
+      setUserRequestStatus({
+        type: "error",
+        message: `Popis žádosti musí mít alespoň ${USER_REQUEST_MESSAGE_MIN_LEN} znaků.`,
+      });
+      return;
+    }
+    setUserRequestStatus(null);
+    setUserRequestStep((prev) =>
+      Math.min(USER_REQUEST_STEPS.length - 1, prev + 1)
+    );
+  };
   const onlineCardSlugNormalized = resolveOnlineCardAutoSlug({
     fullName: onlineCardDraft.fullName,
     email: onlineCardDraft.email,
@@ -3043,8 +3190,157 @@ export default function SettingsPage() {
                       Zrychlený / běžný režim se používá u životního pojištění.
                     </p>
                   </div>
+
                 </div>
 
+              </section>
+              )}
+
+              {activeTab === "profile" && !timelineSetupRequired && (
+              <section className="relative overflow-hidden rounded-[26px] border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_64%,#eef2f7_100%)] shadow-[0_24px_54px_rgba(15,23,42,0.10)] lg:col-span-2">
+                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#10b981_0%,#0f172a_50%,#38bdf8_100%)]" />
+
+                <div className="grid gap-0 xl:grid-cols-[minmax(260px,0.76fr)_minmax(0,1.24fr)]">
+                  <div className="relative overflow-hidden bg-slate-950 px-5 py-5 text-white sm:px-6 sm:py-6">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/18 bg-white text-xl font-bold text-slate-950 shadow-[0_16px_32px_rgba(0,0,0,0.24)]">
+                        {profileInitial}
+                      </div>
+                      <div className="min-w-0 space-y-1">
+                        <h2 className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200">
+                          <UserRound size={14} strokeWidth={2} aria-hidden="true" />
+                          <span>Profil</span>
+                        </h2>
+                        <div className="break-words text-2xl font-bold leading-tight text-white">
+                          {profileDisplayName}
+                        </div>
+                        <div className="break-all text-sm font-semibold text-slate-300">
+                          {userEmail}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                      <div className="flex items-center gap-2 rounded-2xl border border-white/12 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-slate-100">
+                        <Landmark size={14} strokeWidth={2} className="shrink-0 text-emerald-200" aria-hidden="true" />
+                        <span>{profileAgencyNumberFilled ? "Agenturní číslo vyplněno" : "Chybí agenturní číslo"}</span>
+                      </div>
+                      <div className="flex items-center gap-2 rounded-2xl border border-white/12 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-slate-100">
+                        <PhoneCall size={14} strokeWidth={2} className="shrink-0 text-sky-200" aria-hidden="true" />
+                        <span>{profilePhoneFilled ? "Telefon uložen" : "Chybí telefon"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <form
+                    className="space-y-5 px-5 py-5 sm:px-6 sm:py-6"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void handleSaveProfile();
+                    }}
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
+                          Kontaktní údaje
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Údaje uložené u profilu uživatele.
+                        </p>
+                      </div>
+                      {profileStatus ? (
+                        <p
+                          className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                            profileStatus.type === "success"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : profileStatus.type === "info"
+                                ? "border-slate-200 bg-slate-50 text-slate-700"
+                                : "border-rose-200 bg-rose-50 text-rose-700"
+                          }`}
+                        >
+                          {profileStatus.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                          E-mail
+                        </label>
+                        <div className="flex min-h-[48px] items-center gap-2 rounded-2xl border border-slate-300 bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+                          <Mail size={15} strokeWidth={2} className="shrink-0 text-slate-500" aria-hidden="true" />
+                          <span className="min-w-0 break-all">{userEmail}</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                          Agenturní číslo
+                        </label>
+                        <div className="relative">
+                          <Landmark
+                            size={15}
+                            strokeWidth={2}
+                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                            aria-hidden="true"
+                          />
+                          <input
+                            type="text"
+                            inputMode="text"
+                            className={`${fieldClass} min-h-[48px] pl-9`}
+                            value={agencyNumber}
+                            onChange={(event) => {
+                              setAgencyNumber(event.target.value);
+                              setProfileStatus(null);
+                            }}
+                            placeholder="Doplň agenturní číslo"
+                            maxLength={AGENCY_NUMBER_MAX_LEN}
+                            disabled={profileSaving}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 lg:col-span-2">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                          Tel. číslo
+                        </label>
+                        <div className="relative">
+                          <PhoneCall
+                            size={15}
+                            strokeWidth={2}
+                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                            aria-hidden="true"
+                          />
+                          <input
+                            type="tel"
+                            inputMode="tel"
+                            className={`${fieldClass} min-h-[48px] pl-9 pr-4`}
+                            value={phoneNumber}
+                            onChange={(event) => {
+                              setPhoneNumber(event.target.value);
+                              setProfileStatus(null);
+                            }}
+                            placeholder="+420 777 123 456"
+                            maxLength={PHONE_NUMBER_MAX_LEN}
+                            disabled={profileSaving}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end border-t border-slate-200 pt-4">
+                      <button
+                        type="submit"
+                        disabled={profileSaving}
+                        className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-950 bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(15,23,42,0.22)] transition hover:-translate-y-0.5 hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:w-auto sm:min-w-[170px]"
+                      >
+                        <ShieldCheck size={16} strokeWidth={2} aria-hidden="true" />
+                        {profileSaving ? "Ukládám..." : "Uložit profil"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </section>
               )}
 
@@ -3884,9 +4180,88 @@ export default function SettingsPage() {
 
               {activeTab === "requests" && !timelineSetupRequired && (
               <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
-                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#7c3aed_0%,#a855f7_52%,#c084fc_100%)]" />
+                <div className="grid gap-3 md:grid-cols-2">
+                  {([
+                    {
+                      id: "create",
+                      title: "Vytvořit žádost",
+                      subtitle: "Nová žádost krok za krokem",
+                      icon: ShieldCheck,
+                    },
+                    {
+                      id: "history",
+                      title: "Podané žádosti",
+                      subtitle: `${userRequests.length} záznamů v historii`,
+                      icon: Clock3,
+                    },
+                  ] as const).map((item) => {
+                    const active = userRequestsView === item.id;
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setUserRequestsView(item.id);
+                          setUserRequestStatus(null);
+                          if (item.id === "history") void loadUserRequests();
+                        }}
+                        className={`group relative overflow-hidden rounded-[26px] border px-4 py-4 text-left transition ${
+                          active
+                            ? "border-violet-300 bg-[linear-gradient(135deg,#4c1d95_0%,#7c3aed_54%,#a855f7_100%)] text-white shadow-[0_22px_46px_rgba(124,58,237,0.34)]"
+                            : "border-violet-200 bg-[linear-gradient(135deg,#faf5ff_0%,#f5f3ff_100%)] text-slate-900 hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-[0_18px_34px_rgba(124,58,237,0.16)]"
+                        }`}
+                      >
+                        <span className="relative z-10 flex items-center gap-3">
+                          <span
+                            className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${
+                              active
+                                ? "border-white/25 bg-white/14 text-white"
+                                : "border-violet-200 bg-white text-violet-700"
+                            }`}
+                          >
+                            <Icon size={20} strokeWidth={2.2} aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-base font-bold leading-tight">
+                              {item.title}
+                            </span>
+                            <span
+                              className={`mt-0.5 block text-xs font-semibold ${
+                                active ? "text-violet-100" : "text-violet-700"
+                              }`}
+                            >
+                              {item.subtitle}
+                            </span>
+                          </span>
+                        </span>
+                        <span
+                          className={`pointer-events-none absolute right-3 top-3 h-16 w-16 rounded-full blur-2xl ${
+                            active ? "bg-white/18" : "bg-violet-300/25"
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {userRequestStatus && userRequestsView === "history" ? (
+                  <div
+                    className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
+                      userRequestStatus.type === "success"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : userRequestStatus.type === "info"
+                          ? "border-slate-200 bg-slate-50 text-slate-700"
+                          : "border-rose-200 bg-rose-50 text-rose-700"
+                    }`}
+                  >
+                    {userRequestStatus.message}
+                  </div>
+                ) : null}
+
+                {userRequestsView === "create" ? (
+                  <div className="space-y-4 rounded-[26px] border border-violet-200 bg-[linear-gradient(180deg,#ffffff_0%,#faf5ff_100%)] px-4 py-4 shadow-[0_18px_42px_rgba(88,28,135,0.10)] sm:px-5 sm:py-5">
                     <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
                       <ShieldCheck size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
                       <span>Nová žádost</span>
@@ -3904,29 +4279,142 @@ export default function SettingsPage() {
                         >
                           Zrušit úpravu
                         </button>
+	                      </div>
+	                    ) : null}
+
+                    <div className="rounded-[22px] border border-violet-200 bg-slate-950 px-3 py-3 shadow-[0_16px_36px_rgba(15,23,42,0.18)]">
+                      <div
+                        className="grid gap-2"
+                        style={{
+                          gridTemplateColumns: `repeat(${USER_REQUEST_STEPS.length}, minmax(0, 1fr))`,
+                        }}
+                      >
+                        {USER_REQUEST_STEPS.map((stepItem, index) => {
+                          const stepDone = currentUserRequestStep > index;
+                          const stepActive = currentUserRequestStep === index;
+                          return (
+                            <div key={stepItem.id} className="flex flex-col items-center gap-1 text-center">
+                              <span
+                                className={`inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition ${
+                                  stepDone
+                                    ? "border-emerald-300/70 bg-emerald-400/25 text-emerald-100"
+                                    : stepActive
+                                      ? "border-violet-200/80 bg-violet-400/35 text-white"
+                                      : "border-white/20 bg-white/[0.04] text-violet-200/65"
+                                }`}
+                              >
+                                {stepDone ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
+                              </span>
+                              <span
+                                className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                                  stepActive || stepDone ? "text-white" : "text-violet-200/60"
+                                }`}
+                              >
+                                {stepItem.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-[linear-gradient(90deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] transition-[width] duration-300"
+                          style={{ width: `${requestStepperProgress}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {userRequestStatus && currentUserRequestStepId !== "message" ? (
+                      <p
+                        className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${
+                          userRequestStatus.type === "success"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : userRequestStatus.type === "info"
+                              ? "border-sky-200 bg-sky-50 text-sky-800"
+                              : "border-rose-200 bg-rose-50 text-rose-700"
+                        }`}
+                      >
+                        {userRequestStatus.message}
+                      </p>
+                    ) : null}
+
+                    {currentUserRequestStepId === "type" ? (
+                      <div className="space-y-3 rounded-2xl border border-violet-100 bg-white px-3 py-3">
+                        <div className="space-y-2">
+                          <div className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                            Předmět
+                          </div>
+                          <div
+                            className="grid grid-cols-1 gap-3 md:grid-cols-2"
+                            role="radiogroup"
+                            aria-label="Předmět žádosti"
+                          >
+                            {([
+                              {
+                                id: "userCreation",
+                                label: USER_REQUEST_SUBJECT_LABEL.userCreation,
+                                description: "Založení účtu pro nového poradce nebo tipaře.",
+                                icon: UsersRound,
+                              },
+                              {
+                                id: "other",
+                                label: USER_REQUEST_SUBJECT_LABEL.other,
+                                description: "Jiný požadavek pro administraci aplikace.",
+                                icon: FileText,
+                              },
+                            ] as const).map((option) => {
+                              const selected = userRequestSubject === option.id;
+                              const Icon = option.icon;
+                              return (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setUserRequestSubject(option.id);
+                                    setUserRequestStatus(null);
+                                  }}
+                                  role="radio"
+                                  aria-checked={selected}
+                                  className={`group flex min-h-[118px] items-start gap-3 rounded-[22px] border px-4 py-4 text-left transition ${
+                                    selected
+                                      ? "border-violet-400 bg-[linear-gradient(135deg,#ede9fe_0%,#f5f3ff_100%)] text-slate-950 shadow-[0_16px_34px_rgba(124,58,237,0.18)]"
+                                      : "border-slate-200 bg-white text-slate-800 hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/50 hover:shadow-[0_12px_24px_rgba(88,28,135,0.10)]"
+                                  }`}
+                                >
+                                  <span
+                                    className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${
+                                      selected
+                                        ? "border-violet-300 bg-violet-600 text-white"
+                                        : "border-slate-200 bg-slate-50 text-violet-700 group-hover:border-violet-200 group-hover:bg-white"
+                                    }`}
+                                  >
+                                    <Icon size={20} strokeWidth={2.2} aria-hidden="true" />
+                                  </span>
+                                  <span className="min-w-0">
+                                    <span className="flex items-center gap-2 text-base font-bold leading-tight">
+                                      {option.label}
+                                      {selected ? (
+                                        <CheckCircle2
+                                          size={16}
+                                          strokeWidth={2.2}
+                                          className="shrink-0 text-violet-700"
+                                          aria-hidden="true"
+                                        />
+                                      ) : null}
+                                    </span>
+                                    <span className="mt-1 block text-sm leading-relaxed text-slate-500">
+                                      {option.description}
+                                    </span>
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
                     ) : null}
 
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                        Předmět
-                      </label>
-                      <select
-                        className={fieldClass}
-                        value={userRequestSubject}
-                        onChange={(e) => {
-                          setUserRequestSubject(e.target.value as UserRequestSubject);
-                          setUserRequestStatus(null);
-                        }}
-                      >
-                        <option value="userCreation">
-                          {USER_REQUEST_SUBJECT_LABEL.userCreation}
-                        </option>
-                        <option value="other">{USER_REQUEST_SUBJECT_LABEL.other}</option>
-                      </select>
-                    </div>
-
-                    {userRequestSubject === "userCreation" && (
+                    {currentUserRequestStepId === "details" && userRequestSubject === "userCreation" && (
                       <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
                         <div className="space-y-1.5">
                           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
@@ -3959,6 +4447,24 @@ export default function SettingsPage() {
                             }}
                             placeholder="Jméno Příjmení"
                             maxLength={USER_REQUEST_FULL_NAME_MAX_LEN}
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                            Agenturní číslo
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="text"
+                            className={fieldClass}
+                            value={userRequestAgencyNumber}
+                            onChange={(e) => {
+                              setUserRequestAgencyNumber(e.target.value);
+                              setUserRequestStatus(null);
+                            }}
+                            placeholder="Volitelné agenturní číslo"
+                            maxLength={USER_REQUEST_AGENCY_NUMBER_MAX_LEN}
                           />
                         </div>
 
@@ -4032,12 +4538,35 @@ export default function SettingsPage() {
                         <p className="text-[11px] text-slate-500">
                           Heslo nenastavuješ. Po schválení žádosti ho nastaví admin.
                         </p>
-                      </div>
-                    )}
+	                      </div>
+	                    )}
 
-                    <div className="space-y-1.5">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                        Priorita
+                    {currentUserRequestStepId === "details" && userRequestSubject !== "userCreation" ? (
+                      <div className="space-y-2 rounded-2xl border border-violet-100 bg-white px-3 py-3">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                          Text žádosti
+                        </label>
+                        <textarea
+                          className={`${fieldClass} min-h-[160px] resize-y`}
+                          value={userRequestMessage}
+                          onChange={(e) => {
+                            setUserRequestMessage(e.target.value);
+                            setUserRequestStatus(null);
+                          }}
+                          placeholder="Napiš, co potřebuješ vyřešit."
+                          maxLength={USER_REQUEST_MESSAGE_MAX_LEN}
+                        />
+                        <p className="text-[11px] text-slate-500">
+                          {requestMessageLength}/{USER_REQUEST_MESSAGE_MAX_LEN} znaků (minimum{" "}
+                          {USER_REQUEST_MESSAGE_MIN_LEN}).
+                        </p>
+                      </div>
+                    ) : null}
+
+                    {currentUserRequestStepId === "type" ? (
+	                    <div className="space-y-1.5">
+	                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+	                        Priorita
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {(["normal", "urgent"] as UserRequestPriority[]).map((priority) => {
@@ -4056,13 +4585,15 @@ export default function SettingsPage() {
                               {USER_REQUEST_PRIORITY_LABEL[priority]}
                             </button>
                           );
-                        })}
-                      </div>
-                    </div>
+	                        })}
+	                      </div>
+	                    </div>
+                    ) : null}
 
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                        Popis žádosti
+                    {currentUserRequestStepId === "message" && userRequestSubject === "userCreation" ? (
+	                    <div className="space-y-1.5">
+	                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+	                        Popis žádosti
                       </label>
                       <textarea
                         className={`${fieldClass} min-h-[120px] resize-y`}
@@ -4076,12 +4607,25 @@ export default function SettingsPage() {
                       />
                       <p className="text-[11px] text-slate-500">
                         {requestMessageLength}/{USER_REQUEST_MESSAGE_MAX_LEN} znaků (minimum{" "}
-                        {USER_REQUEST_MESSAGE_MIN_LEN}).
-                      </p>
-                    </div>
+	                        {USER_REQUEST_MESSAGE_MIN_LEN}).
+	                      </p>
+	                    </div>
+                    ) : null}
 
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      {userRequestStatus && (
+                    {currentUserRequestStepId === "message" && userRequestSubject !== "userCreation" ? (
+                      <div className="space-y-2 rounded-2xl border border-violet-100 bg-white px-3 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                          Kontrola textu
+                        </div>
+                        <p className="whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm leading-relaxed text-slate-700">
+                          {userRequestMessage.trim()}
+                        </p>
+                      </div>
+                    ) : null}
+
+	                    {currentUserRequestStepId === "message" ? (
+		                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+	                      {userRequestStatus && (
                         <p
                           className={`text-xs ${
                             userRequestStatus.type === "success"
@@ -4106,12 +4650,44 @@ export default function SettingsPage() {
                             : "Odesílám..."
                           : editingUserRequestId
                             ? "Uložit a odeslat znovu"
-                            : "Odeslat"}
-                      </button>
-                    </div>
-                  </div>
+	                            : "Odeslat"}
+	                      </button>
+		                    </div>
+                    ) : null}
 
-                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-violet-100 pt-3">
+                      <p className="text-xs font-semibold text-violet-700">
+                        Krok {currentUserRequestStep + 1} / {USER_REQUEST_STEPS.length}
+                      </p>
+                      <div className="ml-auto flex items-center gap-2">
+                        {currentUserRequestStep > 0 ? (
+                          <button
+                            type="button"
+                            onClick={goToPreviousUserRequestStep}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-white px-4 py-2 text-sm font-semibold text-violet-800 transition hover:bg-violet-50"
+                          >
+                            <ChevronLeft size={15} strokeWidth={2.2} aria-hidden="true" />
+                            Zpět
+                          </button>
+                        ) : null}
+                        {currentUserRequestStep < USER_REQUEST_STEPS.length - 1 ? (
+                          <button
+                            type="button"
+                            onClick={goToNextUserRequestStep}
+                            disabled={!requestCurrentStepCanContinue}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            Pokračovat
+                            <ChevronRight size={15} strokeWidth={2.2} aria-hidden="true" />
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+	                  </div>
+                ) : null}
+
+                {userRequestsView === "history" ? (
+	                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
                         Podané žádosti
@@ -4236,6 +4812,12 @@ export default function SettingsPage() {
                                       <dd>{request.requestedUserDraft.fullName}</dd>
                                     </div>
                                   ) : null}
+                                  {request.requestedUserDraft.agencyNumber ? (
+                                    <div className="flex flex-wrap items-baseline gap-1">
+                                      <dt className="font-semibold text-slate-600">Agenturní číslo:</dt>
+                                      <dd>{request.requestedUserDraft.agencyNumber}</dd>
+                                    </div>
+                                  ) : null}
                                   {request.requestedUserDraft.managerEmail ? (
                                     <div className="flex flex-wrap items-baseline gap-1">
                                       <dt className="font-semibold text-slate-600">Nadřízený:</dt>
@@ -4274,10 +4856,10 @@ export default function SettingsPage() {
                           </article>
                         );
                       })}
-                    </div>
-                  </div>
-                </div>
-              </section>
+	                    </div>
+	                  </div>
+                ) : null}
+	              </section>
               )}
             </div>
 

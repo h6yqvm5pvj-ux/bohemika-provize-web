@@ -86,8 +86,12 @@ const ONLINE_CARD_ICO_MAX_LEN = 8;
 const ONLINE_CARD_OFFICE_MAX_LEN = 160;
 const ONLINE_CARD_OFFICE_PHOTOS_MAX = 3;
 const ONLINE_CARD_OFFICE_PHOTO_URL_MAX_LEN = 1_200;
+const AGENCY_NUMBER_MAX_LEN = 80;
+const PHONE_NUMBER_MAX_LEN = 40;
 const ALLOWED_PATCH_KEYS = new Set([
   "commissionMode",
+  "agencyNumber",
+  "phoneNumber",
   "monthlyGoal",
   "notifyMinutes",
   "backgroundColor",
@@ -790,6 +794,22 @@ function buildPatchFromBody(
       return { error: "Pole commissionMode má neplatnou hodnotu." };
     }
     patch.commissionMode = value;
+  }
+
+  if (body.agencyNumber != null) {
+    const value = normalizeOptionalText(body.agencyNumber, AGENCY_NUMBER_MAX_LEN);
+    if (value == null) {
+      return { error: `Agenturní číslo může mít maximálně ${AGENCY_NUMBER_MAX_LEN} znaků.` };
+    }
+    patch.agencyNumber = value;
+  }
+
+  if (body.phoneNumber != null) {
+    const value = normalizeOptionalText(body.phoneNumber, PHONE_NUMBER_MAX_LEN);
+    if (value == null) {
+      return { error: `Telefonní číslo může mít maximálně ${PHONE_NUMBER_MAX_LEN} znaků.` };
+    }
+    patch.phoneNumber = value;
   }
 
   if (body.monthlyGoal != null) {

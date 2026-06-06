@@ -12,6 +12,7 @@ export type TeamMember = {
   tipRecipientEmail: string | null;
   teamParentEmail: string | null;
   docId: string;
+  agencyNumber: string | null;
   lastActiveTs: number | null;
   adminFunction: boolean;
 };
@@ -60,6 +61,7 @@ export type TeamOverviewSuccess = {
     tipRecipientEmail: string | null;
     teamParentEmail: string | null;
     docId: string;
+    agencyNumber: string | null;
   }>;
   lastActive: Record<string, number | null>;
   contractCounts: Record<string, ContractStats>;
@@ -107,6 +109,7 @@ export type TeamOverviewPatchSuccess = {
   updated: Array<
     | "position"
     | "positionTimeline"
+    | "agencyNumber"
     | "collaborationEnded"
     | "collaborationPreview"
     | "positionTimelineRead"
