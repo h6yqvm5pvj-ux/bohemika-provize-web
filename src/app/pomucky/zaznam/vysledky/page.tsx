@@ -1,8 +1,15 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  Check,
+  ClipboardCopy,
+  Info,
+  Sparkles,
+} from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import {
   PRODUCT_CAPABILITIES,
@@ -310,6 +317,15 @@ function describeBenefit(benefit: SelectedBenefit): string | null {
   }
 }
 
+function shouldMentionCppAccidentPlus(selected: SelectedBenefit[]): boolean {
+  return selected.some((benefit) => {
+    if (benefit.key === "permanentInjury") return true;
+    if (benefit.key === "dailyAllowance") return true;
+    if (benefit.key === "sickLeave") return benefit.accident;
+    return false;
+  });
+}
+
 function buildRecommendation(
   productKey: ProductKey,
   selected: SelectedBenefit[]
@@ -348,6 +364,9 @@ function buildRecommendation(
   });
 
   if (texts.length === 0) return null;
+  if (productKey === "cppNeon" && shouldMentionCppAccidentPlus(selected)) {
+    texts.unshift("Úraz PLUS");
+  }
   return `Pojišťovna umožňuje pojistit rizika: ${texts.join(", ")}.`;
 }
 
@@ -365,6 +384,8 @@ function joinWithAnd(items: string[]): string {
 const MANDATORY_IMPACT_TEXTS: string[] = [
   "Klient byl seznámen s rozsahem krytí, výší pojistných částek a pojistného, s hlavními výlukami/čekacími dobami a principem likvidace pojistné události dle pojistných podmínek, doporučení pravidelné aktualizace smlouvy a nutnosti hlásit změny jako například změna povolání.",
 ];
+const BASE_ADDITIONAL_REQUIREMENT_TEXT =
+  "Klient vyžadoval vysvětlení pojmů, které jsou uvedeny v pojistných podmínkách k požadovanému typu pojištění.";
 const EXISTING_CONTRACT_EXTRA_TEXT =
   "Protože jsi zvolil, že klient má již smlouvu se stejným pojistným zájmem, uveď, že klient má již uzavřenou smlouvu / smlouvy životního pojištění u pojišťovny ______ a co s nimi má v plánu. Např.: Klient má již uzavřenou smlouvu ŽP u pojišťovny Kooperativa a.s., klient ji chce vypovědět.";
 const IMPACT_HEADING_PREFIX = "[[heading]]:";
@@ -402,6 +423,204 @@ const TERMINATION_DUE_TO_NEW_CONTRACT_IMPACT_LINES: string[] = [
   "na základě porovnání modelací klient vyhodnotil novou variantu jako odpovídající jeho aktuálním potřebám.",
 ];
 
+type CopyHandler = (text: string) => void;
+
+function formatLineNumber(index: number): string {
+  return String(index).padStart(2, "0");
+}
+
+function formatTextCount(count: number): string {
+  if (count === 1) return "1 text";
+  if (count > 1 && count < 5) return `${count} texty`;
+  return `${count} textů`;
+}
+
+function normalizeImpactLineForCopy(line: string): string {
+  return line.startsWith(IMPACT_HEADING_PREFIX)
+    ? line.slice(IMPACT_HEADING_PREFIX.length)
+    : line;
+}
+
+function CopyAction({
+  text,
+  copiedText,
+  onCopy,
+  variant = "light",
+  label = "Kopírovat",
+}: {
+  text: string;
+  copiedText: string | null;
+  onCopy: CopyHandler;
+  variant?: "light" | "dark";
+  label?: string;
+}) {
+  const copied = copiedText === text;
+  const variantClass =
+    variant === "dark"
+      ? "border-violet-300/45 bg-white/[0.08] text-violet-50 hover:border-violet-200/70 hover:bg-white/[0.14]"
+      : "border-violet-200 bg-violet-50 text-violet-900 hover:border-violet-400 hover:bg-violet-100";
+
+  return (
+    <button
+      type="button"
+      onClick={() => onCopy(text)}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${variantClass}`}
+    >
+      {copied ? (
+        <Check className="h-3.5 w-3.5" />
+      ) : (
+        <ClipboardCopy className="h-3.5 w-3.5" />
+      )}
+      <span>{copied ? "Zkopírováno" : label}</span>
+    </button>
+  );
+}
+
+function ResultSection({
+  eyebrow,
+  title,
+  description,
+  countLabel,
+  copyText,
+  copiedText,
+  onCopy,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+  countLabel?: string;
+  copyText?: string;
+  copiedText: string | null;
+  onCopy: CopyHandler;
+  children: ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[28px] border border-violet-200/75 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_100%)] shadow-[0_18px_44px_rgba(42,20,72,0.12)]">
+      <div className="border-b border-violet-100/80 px-4 py-4 sm:px-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-700">
+              {eyebrow}
+            </p>
+            <h2 className="mt-1 text-lg font-semibold leading-tight text-slate-950 sm:text-xl">
+              {title}
+            </h2>
+            {description ? (
+              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-600">
+                {description}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {countLabel ? (
+              <span className="inline-flex items-center rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-900">
+                {countLabel}
+              </span>
+            ) : null}
+            {copyText ? (
+              <CopyAction
+                text={copyText}
+                copiedText={copiedText}
+                onCopy={onCopy}
+                label="Kopírovat vše"
+              />
+            ) : null}
+          </div>
+        </div>
+      </div>
+      <div className="space-y-3 px-4 py-4 sm:px-5">{children}</div>
+    </section>
+  );
+}
+
+function ResultTextRow({
+  index,
+  text,
+  copiedText,
+  onCopy,
+  copyable = true,
+}: {
+  index: number;
+  text: string;
+  copiedText: string | null;
+  onCopy: CopyHandler;
+  copyable?: boolean;
+}) {
+  return (
+    <article className="grid gap-3 rounded-[22px] border border-violet-200/70 bg-white/95 p-3 shadow-[0_8px_22px_rgba(42,20,72,0.08)] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start">
+      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-[11px] font-black text-violet-900">
+        {formatLineNumber(index)}
+      </span>
+      <p className="text-sm leading-relaxed text-slate-800">{text}</p>
+      {copyable ? (
+        <CopyAction text={text} copiedText={copiedText} onCopy={onCopy} />
+      ) : (
+        <span className="inline-flex w-fit items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-900">
+          doplnit ručně
+        </span>
+      )}
+    </article>
+  );
+}
+
+function ImpactSubheading({ text }: { text: string }) {
+  return (
+    <div className="rounded-[20px] border border-violet-300/45 bg-[linear-gradient(135deg,#ede9fe_0%,#faf5ff_100%)] px-4 py-3 text-sm font-semibold text-violet-950 shadow-[0_8px_20px_rgba(88,28,135,0.1)]">
+      {text}
+    </div>
+  );
+}
+
+function ProductRecommendationCard({
+  label,
+  text,
+  copiedText,
+  onCopy,
+}: {
+  label: string;
+  text: string | null;
+  copiedText: string | null;
+  onCopy: CopyHandler;
+}) {
+  return (
+    <section className="relative isolate flex min-h-[230px] flex-col overflow-hidden rounded-[26px] border border-[#653493] bg-[#150e1f] px-4 py-5 shadow-[0_18px_34px_rgba(20,8,32,0.38)] ring-1 ring-[#7a35a7]/22">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(192,132,252,0.74),rgba(168,85,247,0))]"
+      />
+      <div className="relative z-[1] flex h-full flex-col">
+        <span className="inline-flex w-fit items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#1d1138] shadow-[0_10px_24px_rgba(168,85,247,0.38)]">
+          Produkt
+        </span>
+        <h3 className="mt-3 text-lg font-semibold leading-tight text-[#fbf7ff]">
+          {label}
+        </h3>
+        {text ? (
+          <>
+            <p className="mt-3 flex-1 text-sm leading-relaxed text-violet-100/82">
+              {text}
+            </p>
+            <div className="mt-5">
+              <CopyAction
+                text={text}
+                copiedText={copiedText}
+                onCopy={onCopy}
+                variant="dark"
+              />
+            </div>
+          </>
+        ) : (
+          <p className="mt-3 flex-1 text-sm leading-relaxed text-violet-100/62">
+            Doplníme po zadání parametrů této pojišťovny.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function RecordResultsPage() {
   const router = useRouter();
   const [lines, setLines] = useState<string[] | null>(null);
@@ -428,6 +647,8 @@ export default function RecordResultsPage() {
     const raw = window.localStorage.getItem("lifeRecordResultInput");
     if (!raw) {
       setLines([...MANDATORY_IMPACT_TEXTS]);
+      setAdditional([]);
+      setProductRecs([]);
       return;
     }
 
@@ -586,202 +807,204 @@ export default function RecordResultsPage() {
     }
   }, []);
 
+  const additionalLines = additional ?? [];
+  const additionalCount = 1 + additionalLines.length;
+  const additionalCopyText =
+    additional === null
+      ? undefined
+      : [BASE_ADDITIONAL_REQUIREMENT_TEXT, ...additionalLines].join("\n");
+  const impactTextCount =
+    lines?.filter((line) => !line.startsWith(IMPACT_HEADING_PREFIX)).length ?? 0;
+  const impactCopyText =
+    lines && lines.length > 0
+      ? lines.map(normalizeImpactLineForCopy).join("\n")
+      : undefined;
+  const productTextCount = productRecs.filter(({ text }) => Boolean(text)).length;
+  let impactRowIndex = 0;
+
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-4xl space-y-6">
-        <header>
-          <button
-            type="button"
-            onClick={() => router.push("/pomucky/zaznam")}
-            className="mb-3 inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-medium text-slate-900 transition hover:border-slate-500 hover:bg-slate-200"
-          >
-            Zpět
-          </button>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
-            Doporučení do dopadů
-          </h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Texty, které můžeš využít v části „Dopady na klienta“ v záznamu
-            z jednání. Další pravidla budeme postupně doplňovat.
-          </p>
+      <div className="w-full max-w-5xl space-y-6">
+        <header className="relative isolate overflow-hidden rounded-[32px] border border-[#653493] bg-[#150e1f] px-5 py-5 text-white shadow-[0_24px_64px_rgba(20,8,32,0.42)] ring-1 ring-[#7a35a7]/22 sm:px-7 sm:py-6">
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.58)_0%,rgba(29,18,45,0.82)_44%,rgba(18,12,27,0.99)_100%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.13)_0%,rgba(190,92,255,0)_42%,rgba(99,102,241,0.12)_100%)]" />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-10 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(192,132,252,0.74),rgba(168,85,247,0))]"
+          />
+          <div className="relative z-[1]">
+            <button
+              type="button"
+              onClick={() => router.push("/pomucky/zaznam")}
+              className="inline-flex items-center gap-2 rounded-full border border-violet-300/45 bg-white/[0.08] px-3 py-1.5 text-xs font-semibold text-violet-50 transition hover:border-violet-200/70 hover:bg-white/[0.14]"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Zpět na záznam
+            </button>
+            <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
+              <div>
+                <p className="inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.06] px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-violet-100">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Výstup pro jednání
+                </p>
+                <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#fbf7ff] sm:text-4xl">
+                  Doporučení do dopadů
+                </h1>
+                <p className="mt-2 max-w-3xl text-sm leading-relaxed text-violet-100/78 sm:text-base">
+                  Texty připravené pro část „Dopady na klienta“. Kopíruj celé
+                  sekce nebo jednotlivé věty podle toho, co chceš do záznamu
+                  vložit.
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-2xl border border-violet-300/25 bg-white/[0.06] px-3 py-3">
+                  <div className="text-2xl font-black text-[#fbf7ff]">
+                    {additional === null ? "…" : additionalCount}
+                  </div>
+                  <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-100/70">
+                    Cíle
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-violet-300/25 bg-white/[0.06] px-3 py-3">
+                  <div className="text-2xl font-black text-[#fbf7ff]">
+                    {lines === null ? "…" : impactTextCount}
+                  </div>
+                  <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-100/70">
+                    Dopady
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-violet-300/25 bg-white/[0.06] px-3 py-3">
+                  <div className="text-2xl font-black text-[#fbf7ff]">
+                    {productTextCount}
+                  </div>
+                  <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-100/70">
+                    Produkty
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </header>
 
-        <div className="space-y-3">
-          <div className="text-lg font-semibold text-slate-900">
-            Další požadavky, potřeby a cíle zákazníka
-          </div>
-          <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3 text-sm text-slate-900">
-            <div className="flex items-start gap-3 leading-relaxed">
-              <button
-                type="button"
-                onClick={() =>
-                  handleCopy(
-                    "Klient vyžadoval vysvětlení pojmů, které jsou uvedeny v pojistných podmínkách k požadovanému typu pojištění."
-                  )
-                }
-                className="mt-[1px] inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-900 transition hover:border-emerald-300/60 hover:text-emerald-800"
-              >
-                {copiedText ===
-                "Klient vyžadoval vysvětlení pojmů, které jsou uvedeny v pojistných podmínkách k požadovanému typu pojištění."
-                  ? "Zkopírováno"
-                  : "Kopírovat"}
-              </button>
-              <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
-              <span className="flex-1">
-                Klient vyžadoval vysvětlení pojmů, které jsou uvedeny v
-                pojistných podmínkách k požadovanému typu pojištění.
-              </span>
-            </div>
-            {additional === null ? (
-              <p className="text-sm text-slate-600">Načítám…</p>
-            ) : (
-              <div className="space-y-2 text-sm text-slate-900">
-                {additional.map((line, idx) => {
-                  const showCopyButton =
-                    line !== EXISTING_CONTRACT_EXTRA_TEXT;
-                  const copySlotClass =
-                    "mt-[1px] inline-flex min-w-[78px] items-center justify-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-900";
-                  return (
-                    <div
-                      key={idx}
-                      className="flex items-start gap-3 leading-relaxed"
-                    >
-                      {showCopyButton && (
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(line)}
-                          className={`${copySlotClass} transition hover:border-emerald-300/60 hover:text-emerald-800`}
-                        >
-                          {copiedText === line ? "Zkopírováno" : "Kopírovat"}
-                        </button>
-                      )}
-                      {!showCopyButton && (
-                        <span
-                          aria-hidden="true"
-                          className={`${copySlotClass} invisible`}
-                        >
-                          Kopírovat
-                        </span>
-                      )}
-                      <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
-                      <span className="flex-1">{line}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        </div>
+        <ResultSection
+          eyebrow="Část 1"
+          title="Další požadavky, potřeby a cíle zákazníka"
+          description="Krátké texty pro úvodní část záznamu. Položky označené jako ruční doplnění obsahují proměnné údaje."
+          countLabel={additional === null ? "Načítám" : formatTextCount(additionalCount)}
+          copyText={additionalCopyText}
+          copiedText={copiedText}
+          onCopy={handleCopy}
+        >
+          <ResultTextRow
+            index={1}
+            text={BASE_ADDITIONAL_REQUIREMENT_TEXT}
+            copiedText={copiedText}
+            onCopy={handleCopy}
+          />
+          {additional === null ? (
+            <p className="rounded-2xl border border-violet-100 bg-white/80 px-4 py-3 text-sm text-slate-600">
+              Načítám…
+            </p>
+          ) : (
+            additional.map((line, idx) => (
+              <ResultTextRow
+                key={idx}
+                index={idx + 2}
+                text={line}
+                copiedText={copiedText}
+                onCopy={handleCopy}
+                copyable={line !== EXISTING_CONTRACT_EXTRA_TEXT}
+              />
+            ))
+          )}
+        </ResultSection>
 
-        <div className="space-y-3">
-          <div className="text-lg font-semibold text-slate-900">
-            Popis dopadů sjednání pojištění/změny pojištění
-          </div>
-          <section className="rounded-3xl border border-slate-900 bg-white  px-5 py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
-            {lines === null ? (
-              <p className="text-sm text-slate-600">Načítám doporučení…</p>
-            ) : lines.length === 0 ? (
-              <p className="text-sm text-slate-600">
-                Zatím tu nemám žádná konkrétní doporučení. Vyplň nejdřív krytí
-                na stránce „Záznam z jednání – Život“ a znovu klikni na{" "}
-                <strong>Výsledky</strong>.
+        <ResultSection
+          eyebrow="Část 2"
+          title="Popis dopadů sjednání pojištění/změny pojištění"
+          description="Hlavní sada vět do pole dopadů. Nadpisy oddělují zvláštní situace jako refresh, změnu nebo ukončení starší smlouvy."
+          countLabel={lines === null ? "Načítám" : formatTextCount(impactTextCount)}
+          copyText={impactCopyText}
+          copiedText={copiedText}
+          onCopy={handleCopy}
+        >
+          {lines === null ? (
+            <p className="rounded-2xl border border-violet-100 bg-white/80 px-4 py-3 text-sm text-slate-600">
+              Načítám doporučení…
+            </p>
+          ) : lines.length === 0 ? (
+            <p className="rounded-2xl border border-violet-100 bg-white/80 px-4 py-3 text-sm text-slate-600">
+              Zatím tu nemám žádná konkrétní doporučení. Vyplň nejdřív krytí na
+              stránce „Záznam z jednání – Život“ a znovu klikni na{" "}
+              <strong>Výsledky</strong>.
+            </p>
+          ) : (
+            lines.map((line, idx) => {
+              const isHeading = line.startsWith(IMPACT_HEADING_PREFIX);
+              if (isHeading) {
+                return (
+                  <ImpactSubheading
+                    key={idx}
+                    text={line.slice(IMPACT_HEADING_PREFIX.length)}
+                  />
+                );
+              }
+              impactRowIndex += 1;
+              return (
+                <ResultTextRow
+                  key={idx}
+                  index={impactRowIndex}
+                  text={line}
+                  copiedText={copiedText}
+                  onCopy={handleCopy}
+                />
+              );
+            })
+          )}
+        </ResultSection>
+
+        <section className="space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-700">
+                Část 3
               </p>
-            ) : (
-              <ul className="space-y-3 text-sm text-slate-900">
-                {lines.map((line, idx) => {
-                  const isHeading = line.startsWith(IMPACT_HEADING_PREFIX);
-                  if (isHeading) {
-                    return (
-                      <li key={idx} className="pt-1 text-base font-semibold text-slate-900">
-                        {line.slice(IMPACT_HEADING_PREFIX.length)}
-                      </li>
-                    );
-                  }
-                  return (
-                    <li
-                      key={idx}
-                      className="flex items-start gap-3 leading-relaxed"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(line)}
-                        className="mt-[1px] inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-900 transition hover:border-emerald-300/60 hover:text-emerald-800"
-                      >
-                        {copiedText === line ? "Zkopírováno" : "Kopírovat"}
-                      </button>
-                      <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
-                      <span className="flex-1">{line}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-        </div>
-
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <div className="text-lg font-semibold text-slate-900">
-              Doporučení pojistného produktu
+              <h2 className="mt-1 text-lg font-semibold text-slate-950 sm:text-xl">
+                Doporučení pojistného produktu
+              </h2>
             </div>
             <button
               type="button"
               onClick={() => setShowProductInfo((v) => !v)}
-              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-slate-100 text-[11px] text-slate-800 hover:border-emerald-300/60 hover:text-emerald-800 transition"
+              className="inline-flex w-fit items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-900 transition hover:border-violet-400 hover:bg-violet-100"
               aria-label="Zobrazit vysvětlení doporučení pojistného produktu"
             >
-              i
+              <Info className="h-3.5 w-3.5" />
+              Jak použít
             </button>
           </div>
           {showProductInfo && (
-            <div className="relative">
-              <div className="absolute -left-4 top-1 h-3 w-3 rotate-45 bg-white border-l border-t border-slate-900 blur-[0.5px]" />
-              <div className="rounded-2xl border border-slate-900 bg-white  px-4 py-3 text-sm text-slate-900 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
-                <span className="font-medium text-slate-900">
-                  Doporučení pojistného produktu
-                </span>{" "}
-                – Vždy by jsi měl/a doporučit 2-3 produkty.{" "}
-                <span className="font-medium text-slate-900">Důvody, na kterých je doporučení založeno:</span>{" "}
-                Zde vypiš, co doporučená pojišťovna umožnuje pojistit z rizik který klient požaduje.
-              </div>
+            <div className="rounded-2xl border border-violet-200 bg-white px-4 py-3 text-sm leading-relaxed text-slate-700 shadow-[0_8px_24px_rgba(42,20,72,0.1)]">
+              <span className="font-semibold text-slate-950">
+                Doporučení pojistného produktu:
+              </span>{" "}
+              doporuč 2-3 produkty a u každého uveď, jaká požadovaná rizika
+              umí pojišťovna pokrýt.
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {productRecs.map(({ label, text }) => (
-              <section
+              <ProductRecommendationCard
                 key={label}
-                className="flex h-full flex-col rounded-3xl border border-slate-900 bg-white  px-4 py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)]"
-              >
-                <div className="text-base font-semibold text-slate-900">
-                  {label}
-                </div>
-                {text ? (
-                  <>
-                    <div className="mt-2 text-sm text-slate-800 leading-relaxed flex-1">
-                      {text}
-                    </div>
-                    <div className="mt-4 flex justify-center">
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(text)}
-                        className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-[6px] text-[11px] font-medium text-slate-900 transition hover:border-emerald-300/60 hover:text-emerald-800"
-                      >
-                        {copiedText === text ? "Zkopírováno" : "Kopírovat"}
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="mt-2 text-sm text-slate-800 leading-relaxed flex-1">
-                    <span className="text-slate-500">
-                      Doplníme po zadání parametrů této pojišťovny.
-                    </span>
-                  </div>
-                )}
-              </section>
+                label={label}
+                text={text}
+                copiedText={copiedText}
+                onCopy={handleCopy}
+              />
             ))}
           </div>
-        </div>
+        </section>
       </div>
     </AppLayout>
   );
