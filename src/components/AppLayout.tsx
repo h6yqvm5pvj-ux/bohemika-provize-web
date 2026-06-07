@@ -6,10 +6,17 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { auth } from "../app/firebase-auth";
 import {
+  EmailAuthProvider,
+  FactorId,
+  multiFactor,
   onAuthStateChanged,
+  reauthenticateWithCredential,
   signOut,
+  TotpMultiFactorGenerator,
+  type TotpSecret,
   type User as FirebaseUser,
 } from "firebase/auth";
+import QRCode from "qrcode";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
@@ -26,6 +33,7 @@ import {
   Lightbulb,
   Loader2,
   PhoneCall,
+  QrCode,
   Plus,
   Settings,
   ShieldCheck,
@@ -70,7 +78,7 @@ interface AppLayoutProps {
 type SubscriptionAccessUiState = "none" | "active" | "grace" | "blocked";
 type SubscriptionBlockReason = "none" | "unpaid" | "expired";
 type AccountType = "advisor" | "tipster";
-type AccountSetupStepId = "phone" | "career";
+type AccountSetupStepId = "phone" | "career" | "security";
 
 type AccountSetupTimelineItem = {
   id: string;
@@ -105,7 +113,10 @@ const PHONE_NUMBER_MAX_LEN = 40;
 const ACCOUNT_SETUP_STEPS: { id: AccountSetupStepId; label: string }[] = [
   { id: "phone", label: "Telefon" },
   { id: "career", label: "Kariéra" },
+  { id: "security", label: "2FA" },
 ];
+const MFA_ISSUER = "Bohemka.App";
+const MFA_FACTOR_LABEL = "Microsoft Authenticator";
 
 const resolveAccountType = (data: Record<string, unknown>): AccountType => {
   const raw =
@@ -173,6 +184,33 @@ const parsePositionTimeline = (value: unknown): AccountSetupTimelineItem[] => {
   });
 
   return rows;
+};
+
+const resolveAccountSetupMfaErrorMessage = (error: unknown, fallback: string): string => {
+  const code = (error as { code?: string })?.code;
+  if (
+    code === "auth/wrong-password" ||
+    code === "auth/invalid-credential" ||
+    code === "auth/invalid-login-credentials"
+  ) {
+    return "Aktuální heslo není správné.";
+  }
+  if (code === "auth/invalid-verification-code") {
+    return "Neplatný 2FA kód. Zadej aktuální kód z aplikace.";
+  }
+  if (code === "auth/code-expired") {
+    return "2FA kód vypršel. Zadej nový aktuální kód.";
+  }
+  if (code === "auth/requires-recent-login") {
+    return "Pro tuto změnu je potřeba znovu ověřit heslo.";
+  }
+  if (code === "auth/too-many-requests") {
+    return "Příliš mnoho pokusů. Zkus to prosím později.";
+  }
+  if (code === "auth/operation-not-allowed") {
+    return "TOTP MFA není zapnuté ve Firebase Console (Authentication > Multi-factor).";
+  }
+  return fallback;
 };
 
 const PROFILE_CACHE_MAX_AGE_MS = 60 * 1000;
@@ -244,6 +282,15 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [accountSetupError, setAccountSetupError] = useState<string | null>(null);
   const [accountSetupDefaultPosition, setAccountSetupDefaultPosition] =
     useState<Position>("poradce1");
+  const [accountSetupMfaReady, setAccountSetupMfaReady] = useState(false);
+  const [accountSetupMfaEnabled, setAccountSetupMfaEnabled] = useState(false);
+  const [accountSetupMfaPassword, setAccountSetupMfaPassword] = useState("");
+  const [accountSetupMfaSecret, setAccountSetupMfaSecret] = useState<TotpSecret | null>(null);
+  const [accountSetupMfaCode, setAccountSetupMfaCode] = useState("");
+  const [accountSetupMfaQrDataUrl, setAccountSetupMfaQrDataUrl] = useState("");
+  const [accountSetupMfaQrLoading, setAccountSetupMfaQrLoading] = useState(false);
+  const [accountSetupMfaQrError, setAccountSetupMfaQrError] = useState<string | null>(null);
+  const [accountSetupMfaSaving, setAccountSetupMfaSaving] = useState(false);
   const [accountType, setAccountType] = useState<AccountType>("advisor");
   const [hasTeam, setHasTeam] = useState<boolean>(true);
   const [hasTipsters, setHasTipsters] = useState(false);
@@ -286,6 +333,15 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         setAccountSetupPhone("");
         setAccountSetupTimelineDraft([]);
         setAccountSetupError(null);
+        setAccountSetupMfaReady(false);
+        setAccountSetupMfaEnabled(false);
+        setAccountSetupMfaPassword("");
+        setAccountSetupMfaSecret(null);
+        setAccountSetupMfaCode("");
+        setAccountSetupMfaQrDataUrl("");
+        setAccountSetupMfaQrLoading(false);
+        setAccountSetupMfaQrError(null);
+        setAccountSetupMfaSaving(false);
         setAccountType("advisor");
         setHasTeam(false);
         setHasTipsters(false);
@@ -517,10 +573,101 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     };
   }, [user, loadSubscriptionProfileForUser]);
 
+  const clearAccountSetupMfaDraft = useCallback(() => {
+    setAccountSetupMfaSecret(null);
+    setAccountSetupMfaCode("");
+    setAccountSetupMfaQrDataUrl("");
+    setAccountSetupMfaQrLoading(false);
+    setAccountSetupMfaQrError(null);
+  }, []);
+
+  const syncAccountSetupMfaState = useCallback(async (targetUser: FirebaseUser) => {
+    await targetUser.reload();
+    const activeUser = auth.currentUser ?? targetUser;
+    const totpFactor =
+      multiFactor(activeUser).enrolledFactors.find(
+        (factor) => factor.factorId === FactorId.TOTP
+      ) ?? null;
+    setAccountSetupMfaEnabled(Boolean(totpFactor));
+    return Boolean(totpFactor);
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setAccountSetupMfaReady(false);
+      setAccountSetupMfaEnabled(false);
+      setAccountSetupMfaPassword("");
+      setAccountSetupMfaSaving(false);
+      clearAccountSetupMfaDraft();
+      return;
+    }
+
+    let cancelled = false;
+    setAccountSetupMfaReady(false);
+
+    void syncAccountSetupMfaState(user)
+      .catch((error) => {
+        console.warn("Chyba při načítání stavu 2FA:", error);
+        if (!cancelled) {
+          setAccountSetupMfaEnabled(false);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAccountSetupMfaReady(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearAccountSetupMfaDraft, syncAccountSetupMfaState, user]);
+
+  useEffect(() => {
+    if (!accountSetupMfaSecret) {
+      setAccountSetupMfaQrDataUrl("");
+      setAccountSetupMfaQrLoading(false);
+      setAccountSetupMfaQrError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const accountName = user?.email?.trim().toLowerCase() || user?.email || "bohemika-user";
+    const qrUri = accountSetupMfaSecret.generateQrCodeUrl(accountName, MFA_ISSUER);
+    setAccountSetupMfaQrLoading(true);
+    setAccountSetupMfaQrError(null);
+
+    void QRCode.toDataURL(qrUri, {
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: "M",
+    })
+      .then((dataUrl) => {
+        if (!cancelled) {
+          setAccountSetupMfaQrDataUrl(dataUrl);
+        }
+      })
+      .catch((error) => {
+        console.error("Chyba při generování QR kódu pro onboarding 2FA:", error);
+        if (!cancelled) {
+          setAccountSetupMfaQrError("QR kód se nepodařilo vygenerovat.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAccountSetupMfaQrLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountSetupMfaSecret, user]);
+
   useEffect(() => {
     if (!user) return;
-    if (loadingProfile || subscriptionAccessState === "blocked") return;
-    if (!needsCareerTimelineSetup) {
+    if (loadingProfile || !accountSetupMfaReady || subscriptionAccessState === "blocked") return;
+    if (!needsCareerTimelineSetup && accountSetupMfaEnabled) {
       if (!accountSetupCompleted) {
         setShowAccountSetupWizard(false);
       }
@@ -529,6 +676,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     setShowAccountSetupWizard(true);
   }, [
     accountSetupCompleted,
+    accountSetupMfaEnabled,
+    accountSetupMfaReady,
     user,
     loadingProfile,
     subscriptionAccessState,
@@ -546,6 +695,31 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       },
     ]);
   }, [accountSetupDefaultPosition, accountSetupTimelineDraft.length, showAccountSetupWizard]);
+
+  useEffect(() => {
+    if (!showAccountSetupWizard || accountSetupCompleted) return;
+    const phoneStepIndex = ACCOUNT_SETUP_STEPS.findIndex((step) => step.id === "phone");
+    const careerStepIndex = ACCOUNT_SETUP_STEPS.findIndex((step) => step.id === "career");
+    const securityStepIndex = ACCOUNT_SETUP_STEPS.findIndex((step) => step.id === "security");
+
+    if (!accountSetupPhone.trim()) {
+      setAccountSetupStep(phoneStepIndex);
+      return;
+    }
+    if (needsCareerTimelineSetup) {
+      setAccountSetupStep(careerStepIndex);
+      return;
+    }
+    if (!accountSetupMfaEnabled) {
+      setAccountSetupStep(securityStepIndex);
+    }
+  }, [
+    accountSetupCompleted,
+    accountSetupMfaEnabled,
+    accountSetupPhone,
+    needsCareerTimelineSetup,
+    showAccountSetupWizard,
+  ]);
 
   useEffect(() => {
     if (!accountSetupCompleted) return;
@@ -836,7 +1010,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         }))
       );
       setNeedsCareerTimelineSetup(false);
-      setAccountSetupCompleted(true);
+      if (accountSetupMfaEnabled) {
+        setAccountSetupCompleted(true);
+      } else {
+        const securityStepIndex = ACCOUNT_SETUP_STEPS.findIndex((step) => step.id === "security");
+        setAccountSetupStep(securityStepIndex);
+      }
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("app:refresh-user-profile"));
       }
@@ -848,6 +1027,95 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setAccountSetupError(message);
     } finally {
       setAccountSetupTimelineSaving(false);
+    }
+  };
+
+  const startAccountSetupMfaEnrollment = async () => {
+    if (!user) {
+      setAccountSetupError("Nejsi přihlášený.");
+      return;
+    }
+
+    const activeUserEmail = (auth.currentUser ?? user).email?.trim();
+    if (!activeUserEmail) {
+      setAccountSetupError("Pro nastavení 2FA musí mít účet e-mail.");
+      return;
+    }
+
+    const currentPassword = accountSetupMfaPassword;
+    if (!currentPassword) {
+      setAccountSetupError("Zadej aktuální heslo k účtu.");
+      return;
+    }
+
+    setAccountSetupMfaSaving(true);
+    setAccountSetupError(null);
+    try {
+      await user.reload();
+      const activeUser = auth.currentUser ?? user;
+      const totpAlreadyEnabled = multiFactor(activeUser).enrolledFactors.some(
+        (factor) => factor.factorId === FactorId.TOTP
+      );
+      if (totpAlreadyEnabled) {
+        setAccountSetupMfaEnabled(true);
+        clearAccountSetupMfaDraft();
+        setAccountSetupMfaPassword("");
+        setAccountSetupCompleted(true);
+        return;
+      }
+
+      const credential = EmailAuthProvider.credential(activeUserEmail, currentPassword);
+      await reauthenticateWithCredential(activeUser, credential);
+      const session = await multiFactor(activeUser).getSession();
+      const secret = await TotpMultiFactorGenerator.generateSecret(session);
+      setAccountSetupMfaSecret(secret);
+      setAccountSetupMfaCode("");
+    } catch (error) {
+      setAccountSetupError(
+        resolveAccountSetupMfaErrorMessage(
+          error,
+          "Nepodařilo se spustit nastavení 2FA."
+        )
+      );
+    } finally {
+      setAccountSetupMfaSaving(false);
+    }
+  };
+
+  const confirmAccountSetupMfaEnrollment = async () => {
+    if (!user || !accountSetupMfaSecret) {
+      setAccountSetupError("Nejprve spusť nastavení 2FA.");
+      return;
+    }
+
+    const verificationCode = accountSetupMfaCode.replace(/\D+/g, "").slice(0, 8);
+    if (verificationCode.length < 6) {
+      setAccountSetupError("Zadej aktuální 6místný kód z aplikace.");
+      return;
+    }
+
+    setAccountSetupMfaSaving(true);
+    setAccountSetupError(null);
+    try {
+      const activeUser = auth.currentUser ?? user;
+      const assertion = TotpMultiFactorGenerator.assertionForEnrollment(
+        accountSetupMfaSecret,
+        verificationCode
+      );
+      await multiFactor(activeUser).enroll(assertion, MFA_FACTOR_LABEL);
+      await syncAccountSetupMfaState(activeUser);
+      setAccountSetupMfaPassword("");
+      clearAccountSetupMfaDraft();
+      setAccountSetupCompleted(true);
+    } catch (error) {
+      setAccountSetupError(
+        resolveAccountSetupMfaErrorMessage(
+          error,
+          "2FA se nepodařilo dokončit. Zkus to prosím znovu."
+        )
+      );
+    } finally {
+      setAccountSetupMfaSaving(false);
     }
   };
 
@@ -946,8 +1214,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     !!user &&
     !isTipsterAccount &&
     !loadingProfile &&
+    accountSetupMfaReady &&
     subscriptionAccessState !== "blocked" &&
-    needsCareerTimelineSetup;
+    (needsCareerTimelineSetup || !accountSetupMfaEnabled);
   const isAdminRequestsUser = isAdminPanelEmail(user?.email);
   const shellFontClass = "font-mono";
   const accountSetupCurrentStep =
@@ -956,9 +1225,28 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const accountSetupProgress = accountSetupCompleted
     ? 100
     : ((accountSetupStep + 1) / ACCOUNT_SETUP_STEPS.length) * 100;
-  const accountSetupBusy = accountSetupPhoneSaving || accountSetupTimelineSaving;
+  const accountSetupBusy =
+    accountSetupPhoneSaving || accountSetupTimelineSaving || accountSetupMfaSaving;
   const accountSetupFieldClass =
     "w-full rounded-2xl border border-white/18 bg-white/[0.06] px-3 py-2.5 text-sm font-semibold text-white outline-none transition placeholder:text-violet-100/38 focus:border-violet-200/70 focus:bg-white/[0.09] focus:ring-2 focus:ring-violet-200/20";
+  const accountSetupPrimaryLabel =
+    accountSetupCurrentStep === "phone"
+      ? accountSetupPhoneSaving
+        ? "Ukládám"
+        : "Pokračovat"
+      : accountSetupCurrentStep === "career"
+        ? accountSetupTimelineSaving
+          ? "Ukládám"
+          : "Pokračovat"
+        : accountSetupMfaEnabled
+          ? "Dokončit"
+          : accountSetupMfaSecret
+            ? accountSetupMfaSaving
+              ? "Potvrzuji"
+              : "Potvrdit 2FA"
+            : accountSetupMfaSaving
+              ? "Spouštím 2FA"
+              : "Zapnout 2FA";
 
   // Pokud auth není připravené, nerenderuj obsah (zamezení blikání nechráněného UI)
   if (!authReady) {
@@ -1020,8 +1308,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                     Účet úspěšně otevřen
                   </h2>
                   <p className="mt-3 max-w-md text-sm leading-relaxed text-violet-100/72">
-                    Telefon a kariéra jsou uložené. Aplikace je připravená na přesné výpočty
-                    a předvyplnění pozice.
+                    Telefon, kariéra a 2FA jsou nastavené. Aplikace je připravená na přesné
+                    výpočty a předvyplnění pozice.
                   </p>
                 </div>
               ) : (
@@ -1274,6 +1562,137 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                         </button>
                       </div>
                     ) : null}
+
+                    {accountSetupCurrentStep === "security" ? (
+                      <div className="space-y-4">
+                        <div className="flex items-start gap-3">
+                          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-300/45 bg-emerald-400/14 text-emerald-100">
+                            <ShieldCheck className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
+                              Zabezpečení účtu
+                            </p>
+                            <h3 className="mt-1 text-base font-semibold text-white">Zapnutí 2FA</h3>
+                            <p className="mt-1 text-sm leading-relaxed text-violet-100/66">
+                              Dvoufázové ověření nastav přes Microsoft Authenticator nebo jinou
+                              aplikaci pro jednorázové kódy.
+                            </p>
+                          </div>
+                        </div>
+
+                        {accountSetupMfaEnabled ? (
+                          <div className="flex items-start gap-3 rounded-2xl border border-emerald-300/30 bg-emerald-400/12 px-3 py-3 text-sm text-emerald-50/90">
+                            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-100" aria-hidden="true" />
+                            <div>
+                              <p className="font-semibold text-white">2FA je zapnuté</p>
+                              <p className="mt-0.5 text-emerald-50/74">
+                                Účet je zabezpečený a můžeš dokončit nastavení.
+                              </p>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {!accountSetupMfaEnabled && !accountSetupMfaSecret ? (
+                          <div className="rounded-2xl border border-white/14 bg-white/[0.05] px-3 py-3">
+                            <p className="text-sm leading-relaxed text-violet-100/68">
+                              Nejdřív potvrď aktuální heslo. Potom se zobrazí QR kód pro
+                              přidání účtu do aplikace s ověřovacími kódy.
+                            </p>
+                            <label className="mt-3 block space-y-2">
+                              <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">
+                                Aktuální heslo
+                              </span>
+                              <input
+                                type="password"
+                                autoComplete="current-password"
+                                value={accountSetupMfaPassword}
+                                onChange={(event) => {
+                                  setAccountSetupMfaPassword(event.target.value);
+                                  setAccountSetupError(null);
+                                }}
+                                placeholder="Aktuální heslo"
+                                disabled={accountSetupMfaSaving}
+                                className={accountSetupFieldClass}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+
+                        {!accountSetupMfaEnabled && accountSetupMfaSecret ? (
+                          <div className="space-y-3 rounded-2xl border border-white/14 bg-white/[0.05] px-3 py-3">
+                            <div className="flex items-start gap-3">
+                              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-violet-200/28 bg-violet-300/12 text-violet-100">
+                                <QrCode className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-white">Naskenuj QR kód</p>
+                                <p className="mt-1 text-sm leading-relaxed text-violet-100/66">
+                                  Po přidání účtu opiš aktuální kód z aplikace.
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)] md:items-start">
+                              <div className="flex h-[220px] w-[220px] items-center justify-center overflow-hidden rounded-2xl border border-white/14 bg-white p-2">
+                                {accountSetupMfaQrLoading ? (
+                                  <Loader2 className="h-7 w-7 animate-spin text-slate-500" aria-hidden="true" />
+                                ) : accountSetupMfaQrDataUrl ? (
+                                  <Image
+                                    src={accountSetupMfaQrDataUrl}
+                                    alt="QR kód pro nastavení 2FA"
+                                    width={220}
+                                    height={220}
+                                    unoptimized
+                                    className="h-full w-full object-contain"
+                                  />
+                                ) : (
+                                  <QrCode className="h-10 w-10 text-slate-400" aria-hidden="true" />
+                                )}
+                              </div>
+
+                              <div className="min-w-0 space-y-3">
+                                {accountSetupMfaQrError ? (
+                                  <p className="rounded-2xl border border-amber-200/35 bg-amber-300/12 px-3 py-2 text-xs font-semibold text-amber-100">
+                                    {accountSetupMfaQrError}
+                                  </p>
+                                ) : null}
+
+                                <div className="rounded-2xl border border-white/12 bg-slate-950/35 px-3 py-2">
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-200/62">
+                                    Ruční klíč
+                                  </p>
+                                  <p className="mt-1 break-all font-mono text-xs font-semibold text-violet-50">
+                                    {accountSetupMfaSecret.secretKey}
+                                  </p>
+                                </div>
+
+                                <label className="block space-y-2">
+                                  <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">
+                                    2FA kód
+                                  </span>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    autoComplete="one-time-code"
+                                    value={accountSetupMfaCode}
+                                    onChange={(event) => {
+                                      setAccountSetupMfaCode(
+                                        event.target.value.replace(/\D+/g, "").slice(0, 8)
+                                      );
+                                      setAccountSetupError(null);
+                                    }}
+                                    placeholder="123456"
+                                    disabled={accountSetupMfaSaving}
+                                    className={accountSetupFieldClass}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
 
                   {accountSetupError ? (
@@ -1315,7 +1734,19 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                             void saveAccountSetupPhone();
                             return;
                           }
-                          void saveAccountSetupCareer();
+                          if (accountSetupCurrentStep === "career") {
+                            void saveAccountSetupCareer();
+                            return;
+                          }
+                          if (accountSetupMfaEnabled) {
+                            setAccountSetupCompleted(true);
+                            return;
+                          }
+                          if (accountSetupMfaSecret) {
+                            void confirmAccountSetupMfaEnrollment();
+                            return;
+                          }
+                          void startAccountSetupMfaEnrollment();
                         }}
                         disabled={accountSetupBusy}
                         className="inline-flex min-w-[154px] items-center justify-center gap-2 rounded-full border border-emerald-300/25 bg-[linear-gradient(120deg,#059669_0%,#10b981_55%,#34d399_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(16,185,129,0.32)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1327,13 +1758,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                         ) : (
                           <Sparkles className="h-4 w-4" aria-hidden="true" />
                         )}
-                        {accountSetupCurrentStep === "phone"
-                          ? accountSetupPhoneSaving
-                            ? "Ukládám"
-                            : "Pokračovat"
-                          : accountSetupTimelineSaving
-                            ? "Otevírám účet"
-                            : "Otevřít účet"}
+                        {accountSetupPrimaryLabel}
                       </button>
                     </div>
                   </div>

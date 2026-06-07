@@ -2393,7 +2393,6 @@ type BenefitCardProps = {
 
 function BenefitCard({
   title,
-  subtitle,
   enabled,
   onToggle,
   children,
@@ -2422,10 +2421,10 @@ function BenefitCard({
       <button
         type="button"
         onClick={onToggle}
-        className="group relative z-[1] flex w-full items-start gap-3 text-left"
+        className="group relative z-[1] flex w-full items-center gap-3 text-left"
       >
         <div
-          className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border text-sm font-bold ring-1 transition ${
+          className={`flex h-8 w-8 items-center justify-center rounded-full border text-sm font-bold ring-1 transition ${
             enabled
               ? "border-[#d8b4fe] bg-[linear-gradient(135deg,#b967ff_0%,#9350ea_100%)] text-[#fbf7ff] shadow-[0_10px_20px_rgba(168,79,240,0.36)] ring-[#fbf7ff]/35"
               : "border-[#9a67d0]/80 bg-[#2e1c43]/92 text-transparent ring-[#d8bcf3]/20 group-hover:border-[#c084fc]/80"
@@ -2434,7 +2433,7 @@ function BenefitCard({
           {enabled ? "✓" : ""}
         </div>
         <div
-          className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border transition ${
+          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border transition ${
             enabled
               ? "border-[#c084fc]/70 bg-white/[0.08] text-[#f3e8ff] shadow-[0_10px_20px_rgba(168,85,247,0.18)]"
               : "border-[#9a67d0]/55 bg-white/[0.04] text-[#d8bcf3]/75 group-hover:border-[#c084fc]/80 group-hover:text-[#fbf7ff]"
@@ -2446,9 +2445,6 @@ function BenefitCard({
           <h3 className="text-sm font-semibold leading-tight text-[#fbf7ff] sm:text-base">
             {title}
           </h3>
-          {subtitle ? (
-            <p className="mt-1 text-xs leading-relaxed text-[#d8bcf3]/78">{subtitle}</p>
-          ) : null}
         </div>
         {enabled ? (
           <span className="inline-flex shrink-0 rounded-full border border-[#d8b4fe]/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-[#fbf7ff] shadow-[0_10px_22px_rgba(82,25,147,0.32)]">
@@ -2510,7 +2506,7 @@ function ChipButton({ active, children, onClick }: ChipButtonProps) {
       onClick={onClick}
       className={`whitespace-nowrap rounded-full px-3.5 py-1.5 font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/35 ${
         active
-          ? "bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] text-white shadow-[0_7px_14px_rgba(109,40,217,0.28)]"
+          ? "bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] !text-white shadow-[0_7px_14px_rgba(109,40,217,0.28)]"
           : "text-violet-900 hover:bg-white hover:text-violet-950 hover:shadow-[0_5px_12px_rgba(88,28,135,0.14)]"
       }`}
     >
