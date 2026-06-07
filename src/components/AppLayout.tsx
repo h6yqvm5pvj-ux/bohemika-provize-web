@@ -13,16 +13,24 @@ import {
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
-  ArrowRight,
   Building2,
   BriefcaseBusiness,
   Calculator,
   CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
   FileText,
   Home,
   Lightbulb,
+  Loader2,
+  PhoneCall,
+  Plus,
   Settings,
   ShieldCheck,
+  Sparkles,
+  Trash2,
   UsersRound,
   Wrench,
 } from "lucide-react";
@@ -40,6 +48,7 @@ import {
   evaluateSubscriptionFromProfile,
   type EvaluatedSubscriptionAccess,
 } from "@/lib/subscriptionAccess";
+import type { Position } from "@/app/types/domain";
 
 type ActivePage =
   | "home"
@@ -61,6 +70,42 @@ interface AppLayoutProps {
 type SubscriptionAccessUiState = "none" | "active" | "grace" | "blocked";
 type SubscriptionBlockReason = "none" | "unpaid" | "expired";
 type AccountType = "advisor" | "tipster";
+type AccountSetupStepId = "phone" | "career";
+
+type AccountSetupTimelineItem = {
+  id: string;
+  position: Position;
+  validFrom: string;
+  validTo: string;
+};
+
+const POSITIONS: { id: Position; label: string }[] = [
+  { id: "poradce1", label: "Poradce 1" },
+  { id: "poradce2", label: "Poradce 2" },
+  { id: "poradce3", label: "Poradce 3" },
+  { id: "poradce4", label: "Poradce 4" },
+  { id: "poradce5", label: "Poradce 5" },
+  { id: "poradce6", label: "Poradce 6" },
+  { id: "poradce7", label: "Poradce 7" },
+  { id: "poradce8", label: "Poradce 8" },
+  { id: "poradce9", label: "Poradce 9" },
+  { id: "poradce10", label: "Poradce 10" },
+  { id: "manazer4", label: "Manažer 4" },
+  { id: "manazer5", label: "Manažer 5" },
+  { id: "manazer6", label: "Manažer 6" },
+  { id: "manazer7", label: "Manažer 7" },
+  { id: "manazer8", label: "Manažer 8" },
+  { id: "manazer9", label: "Manažer 9" },
+  { id: "manazer10", label: "Manažer 10" },
+];
+
+const POSITION_SET = new Set<Position>(POSITIONS.map((item) => item.id));
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PHONE_NUMBER_MAX_LEN = 40;
+const ACCOUNT_SETUP_STEPS: { id: AccountSetupStepId; label: string }[] = [
+  { id: "phone", label: "Telefon" },
+  { id: "career", label: "Kariéra" },
+];
 
 const resolveAccountType = (data: Record<string, unknown>): AccountType => {
   const raw =
@@ -72,16 +117,62 @@ const resolveAccountType = (data: Record<string, unknown>): AccountType => {
   return raw.trim().toLowerCase() === "tipster" ? "tipster" : "advisor";
 };
 
-const hasCareerTimelineConfigured = (data: Record<string, unknown>): boolean => {
-  const raw = data.positionTimeline;
-  if (!Array.isArray(raw)) return false;
-  return raw.some((item) => {
-    if (!item || typeof item !== "object") return false;
-    const row = item as Record<string, unknown>;
-    const position = typeof row.position === "string" ? row.position.trim() : "";
+const createTimelineRowId = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `row_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+};
+
+const isIsoDay = (value: string): boolean => {
+  if (!ISO_DAY_RE.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return false;
+  return date.toISOString().slice(0, 10) === value;
+};
+
+const hasInvalidRangeOrder = (validFrom: string, validTo: string): boolean => {
+  if (!validFrom || !validTo) return false;
+  if (!isIsoDay(validFrom) || !isIsoDay(validTo)) return false;
+  return validTo < validFrom;
+};
+
+const parsePositionTimeline = (value: unknown): AccountSetupTimelineItem[] => {
+  if (!Array.isArray(value)) return [];
+  const rows: AccountSetupTimelineItem[] = [];
+
+  value.forEach((raw) => {
+    if (!raw || typeof raw !== "object") return;
+    const row = raw as Record<string, unknown>;
+    const position = row.position as Position;
     const validFrom = typeof row.validFrom === "string" ? row.validFrom.trim() : "";
-    return position.length > 0 && validFrom.length > 0;
+    const validToRaw = typeof row.validTo === "string" ? row.validTo.trim() : "";
+    const validTo = validToRaw || "";
+
+    if (!POSITION_SET.has(position)) return;
+    if (!isIsoDay(validFrom)) return;
+    if (validTo && !isIsoDay(validTo)) return;
+    if (validTo && validTo < validFrom) return;
+
+    rows.push({
+      id:
+        typeof row.id === "string" && row.id.trim().length > 0
+          ? row.id.trim()
+          : createTimelineRowId(),
+      position,
+      validFrom,
+      validTo,
+    });
   });
+
+  rows.sort((a, b) => {
+    if (a.validFrom !== b.validFrom) return a.validFrom.localeCompare(b.validFrom);
+    const aTo = a.validTo || "9999-12-31";
+    const bTo = b.validTo || "9999-12-31";
+    return aTo.localeCompare(bTo);
+  });
+
+  return rows;
 };
 
 const PROFILE_CACHE_MAX_AGE_MS = 60 * 1000;
@@ -141,7 +232,18 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [authReady, setAuthReady] = useState(false);
   const [authInitTimedOut, setAuthInitTimedOut] = useState(false);
   const [needsCareerTimelineSetup, setNeedsCareerTimelineSetup] = useState(false);
-  const [showCareerTimelinePrompt, setShowCareerTimelinePrompt] = useState(false);
+  const [showAccountSetupWizard, setShowAccountSetupWizard] = useState(false);
+  const [accountSetupStep, setAccountSetupStep] = useState(0);
+  const [accountSetupCompleted, setAccountSetupCompleted] = useState(false);
+  const [accountSetupPhone, setAccountSetupPhone] = useState("");
+  const [accountSetupPhoneSaving, setAccountSetupPhoneSaving] = useState(false);
+  const [accountSetupTimelineDraft, setAccountSetupTimelineDraft] = useState<
+    AccountSetupTimelineItem[]
+  >([]);
+  const [accountSetupTimelineSaving, setAccountSetupTimelineSaving] = useState(false);
+  const [accountSetupError, setAccountSetupError] = useState<string | null>(null);
+  const [accountSetupDefaultPosition, setAccountSetupDefaultPosition] =
+    useState<Position>("poradce1");
   const [accountType, setAccountType] = useState<AccountType>("advisor");
   const [hasTeam, setHasTeam] = useState<boolean>(true);
   const [hasTipsters, setHasTipsters] = useState(false);
@@ -178,7 +280,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         setSubscriptionEvaluation(null);
         setLoadingProfile(false);
         setNeedsCareerTimelineSetup(false);
-        setShowCareerTimelinePrompt(false);
+        setShowAccountSetupWizard(false);
+        setAccountSetupCompleted(false);
+        setAccountSetupStep(0);
+        setAccountSetupPhone("");
+        setAccountSetupTimelineDraft([]);
+        setAccountSetupError(null);
         setAccountType("advisor");
         setHasTeam(false);
         setHasTipsters(false);
@@ -306,7 +413,19 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const data = (payload?.profile ?? {}) as Record<string, unknown>;
     const nextAccountType = resolveAccountType(data);
     const evaluation = evaluateSubscriptionFromProfile(data);
+    const parsedTimeline = parsePositionTimeline(data.positionTimeline);
+    const nextPhoneNumber =
+      typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "";
+    const rawCurrentPosition =
+      typeof data.position === "string" ? data.position.trim() : "";
+    const lastTimelinePosition = parsedTimeline[parsedTimeline.length - 1]?.position;
+    const nextDefaultPosition = POSITION_SET.has(rawCurrentPosition as Position)
+      ? (rawCurrentPosition as Position)
+      : lastTimelinePosition ?? "poradce1";
     setAccountType(nextAccountType);
+    setAccountSetupPhone(nextPhoneNumber);
+    setAccountSetupDefaultPosition(nextDefaultPosition);
+    setAccountSetupTimelineDraft(parsedTimeline);
     setSubscriptionEvaluation(evaluation);
     setSubscriptionAccessState(
       evaluation.state === "blocked" ? "blocked" : evaluation.state
@@ -319,7 +438,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           : "none"
     );
     setNeedsCareerTimelineSetup(
-      nextAccountType !== "tipster" && !hasCareerTimelineConfigured(data)
+      nextAccountType !== "tipster" && parsedTimeline.length === 0
     );
     const has = payload?.hasTeam === true;
     const hasTipsterAccounts = payload?.hasTipsters === true;
@@ -402,15 +521,42 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     if (!user) return;
     if (loadingProfile || subscriptionAccessState === "blocked") return;
     if (!needsCareerTimelineSetup) {
-      setShowCareerTimelinePrompt(false);
+      if (!accountSetupCompleted) {
+        setShowAccountSetupWizard(false);
+      }
       return;
     }
-    if (pathname === "/nastaveni") {
-      setShowCareerTimelinePrompt(false);
-      return;
-    }
-    setShowCareerTimelinePrompt(true);
-  }, [user, loadingProfile, subscriptionAccessState, needsCareerTimelineSetup, pathname]);
+    setShowAccountSetupWizard(true);
+  }, [
+    accountSetupCompleted,
+    user,
+    loadingProfile,
+    subscriptionAccessState,
+    needsCareerTimelineSetup,
+  ]);
+
+  useEffect(() => {
+    if (!showAccountSetupWizard || accountSetupTimelineDraft.length > 0) return;
+    setAccountSetupTimelineDraft([
+      {
+        id: createTimelineRowId(),
+        position: accountSetupDefaultPosition,
+        validFrom: "",
+        validTo: "",
+      },
+    ]);
+  }, [accountSetupDefaultPosition, accountSetupTimelineDraft.length, showAccountSetupWizard]);
+
+  useEffect(() => {
+    if (!accountSetupCompleted) return;
+    const timeoutId = window.setTimeout(() => {
+      setShowAccountSetupWizard(false);
+      setAccountSetupCompleted(false);
+      setAccountSetupStep(0);
+      setAccountSetupError(null);
+    }, 2200);
+    return () => window.clearTimeout(timeoutId);
+  }, [accountSetupCompleted]);
 
   useEffect(() => {
     if (!user || loadingProfile || accountType !== "tipster") return;
@@ -418,11 +564,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       router.replace("/");
     }
   }, [accountType, isTipsterAllowedRoute, loadingProfile, router, user]);
-
-  const handleCareerTimelineSetup = () => {
-    setShowCareerTimelinePrompt(false);
-    router.push("/nastaveni#timeline-kariery");
-  };
 
   // Zapsat lastActive do Firestore při přihlášení + periodické obnovení
   useEffect(() => {
@@ -483,6 +624,231 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   // Ruční reload z paywallu
   const handleReloadSubscription = async () => {
     await loadSubscriptionProfileForUser(user, { force: true });
+  };
+
+  const saveAccountSetupPhone = async () => {
+    if (!user) {
+      setAccountSetupError("Nejsi přihlášený.");
+      return;
+    }
+
+    const nextPhoneNumber = accountSetupPhone.trim();
+    const digitCount = nextPhoneNumber.replace(/\D+/g, "").length;
+    if (!nextPhoneNumber) {
+      setAccountSetupError("Vyplň telefonní číslo.");
+      return;
+    }
+    if (digitCount < 6) {
+      setAccountSetupError("Telefonní číslo je příliš krátké.");
+      return;
+    }
+    if (nextPhoneNumber.length > PHONE_NUMBER_MAX_LEN) {
+      setAccountSetupError(
+        `Telefonní číslo může mít maximálně ${PHONE_NUMBER_MAX_LEN} znaků.`
+      );
+      return;
+    }
+
+    setAccountSetupPhoneSaving(true);
+    setAccountSetupError(null);
+    try {
+      await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ phoneNumber: nextPhoneNumber }),
+      });
+      userProfileCache.invalidateUserProfileCache(user.email);
+      setAccountSetupPhone(nextPhoneNumber);
+      setAccountSetupStep(1);
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.trim().length > 0
+          ? err.message.trim()
+          : "Telefonní číslo se nepodařilo uložit.";
+      setAccountSetupError(message);
+    } finally {
+      setAccountSetupPhoneSaving(false);
+    }
+  };
+
+  const addAccountSetupTimelineRow = () => {
+    setAccountSetupError(null);
+    setAccountSetupTimelineDraft((prev) => [
+      ...prev,
+      {
+        id: createTimelineRowId(),
+        position: prev[prev.length - 1]?.position ?? accountSetupDefaultPosition,
+        validFrom: "",
+        validTo: "",
+      },
+    ]);
+  };
+
+  const updateAccountSetupTimelineRow = (
+    rowId: string,
+    patch: Partial<AccountSetupTimelineItem>
+  ) => {
+    setAccountSetupError(null);
+    setAccountSetupTimelineDraft((prev) =>
+      prev.map((row) => (row.id === rowId ? { ...row, ...patch } : row))
+    );
+  };
+
+  const removeAccountSetupTimelineRow = (rowId: string) => {
+    setAccountSetupError(null);
+    setAccountSetupTimelineDraft((prev) => {
+      const next = prev.filter((row) => row.id !== rowId);
+      return next.length > 0
+        ? next
+        : [
+            {
+              id: createTimelineRowId(),
+              position: accountSetupDefaultPosition,
+              validFrom: "",
+              validTo: "",
+            },
+          ];
+    });
+  };
+
+  const buildAccountSetupTimelinePayload = ():
+    | {
+        ok: true;
+        payload: Array<{
+          id: string;
+          position: Position;
+          validFrom: string;
+          validTo: string | null;
+        }>;
+      }
+    | { ok: false; error: string } => {
+    const normalized = accountSetupTimelineDraft
+      .map((row) => ({
+        ...row,
+        validFrom: row.validFrom.trim(),
+        validTo: row.validTo.trim(),
+      }))
+      .filter(
+        (row) => row.position || row.validFrom.length > 0 || row.validTo.length > 0
+      );
+
+    if (normalized.length === 0) {
+      return { ok: false, error: "Přidej aspoň jednu pozici do kariéry." };
+    }
+
+    for (let i = 0; i < normalized.length; i += 1) {
+      const row = normalized[i];
+      const rowNo = i + 1;
+      if (!POSITION_SET.has(row.position)) {
+        return { ok: false, error: `Řádek ${rowNo}: vyber platnou pozici.` };
+      }
+      if (!row.validFrom) {
+        return { ok: false, error: `Řádek ${rowNo}: vyplň datum OD.` };
+      }
+      if (!isIsoDay(row.validFrom)) {
+        return { ok: false, error: `Řádek ${rowNo}: datum OD musí být platné.` };
+      }
+      if (row.validTo && !isIsoDay(row.validTo)) {
+        return { ok: false, error: `Řádek ${rowNo}: datum DO musí být platné.` };
+      }
+      if (hasInvalidRangeOrder(row.validFrom, row.validTo)) {
+        return {
+          ok: false,
+          error: `Řádek ${rowNo}: datum DO nemůže být dřív než datum OD.`,
+        };
+      }
+    }
+
+    const sorted = [...normalized].sort((a, b) => {
+      if (a.validFrom !== b.validFrom) return a.validFrom.localeCompare(b.validFrom);
+      const aTo = a.validTo || "9999-12-31";
+      const bTo = b.validTo || "9999-12-31";
+      return aTo.localeCompare(bTo);
+    });
+
+    const openEndedIndexes = sorted
+      .map((row, index) => (!row.validTo ? index : -1))
+      .filter((index) => index >= 0);
+    if (openEndedIndexes.length > 1) {
+      return {
+        ok: false,
+        error: "Současnost (prázdné datum DO) může být jen u jedné poslední pozice.",
+      };
+    }
+    if (openEndedIndexes.length === 1 && openEndedIndexes[0] !== sorted.length - 1) {
+      return {
+        ok: false,
+        error: "Současnost (prázdné datum DO) je povolena jen u poslední aktuální pozice.",
+      };
+    }
+
+    for (let i = 1; i < sorted.length; i += 1) {
+      const prev = sorted[i - 1];
+      const current = sorted[i];
+      const prevTo = prev.validTo || "9999-12-31";
+      if (prevTo > current.validFrom) {
+        return {
+          ok: false,
+          error: `Rozsahy se překrývají mezi řádky ${i} a ${i + 1}. Uprav datum OD/DO.`,
+        };
+      }
+    }
+
+    return {
+      ok: true,
+      payload: sorted.map((row) => ({
+        id: row.id,
+        position: row.position,
+        validFrom: row.validFrom,
+        validTo: row.validTo || null,
+      })),
+    };
+  };
+
+  const saveAccountSetupCareer = async () => {
+    if (!user) {
+      setAccountSetupError("Nejsi přihlášený.");
+      return;
+    }
+
+    const timeline = buildAccountSetupTimelinePayload();
+    if (!timeline.ok) {
+      setAccountSetupError(timeline.error);
+      return;
+    }
+
+    setAccountSetupTimelineSaving(true);
+    setAccountSetupError(null);
+    try {
+      await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
+          phoneNumber: accountSetupPhone.trim(),
+          positionTimeline: timeline.payload,
+        }),
+      });
+      userProfileCache.invalidateUserProfileCache(user.email);
+      setAccountSetupTimelineDraft(
+        timeline.payload.map((row) => ({
+          id: row.id,
+          position: row.position,
+          validFrom: row.validFrom,
+          validTo: row.validTo ?? "",
+        }))
+      );
+      setNeedsCareerTimelineSetup(false);
+      setAccountSetupCompleted(true);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("app:refresh-user-profile"));
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.trim().length > 0
+          ? err.message.trim()
+          : "Historii kariéry se nepodařilo uložit.";
+      setAccountSetupError(message);
+    } finally {
+      setAccountSetupTimelineSaving(false);
+    }
   };
 
   const navItemBase =
@@ -584,6 +950,15 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     needsCareerTimelineSetup;
   const isAdminRequestsUser = isAdminPanelEmail(user?.email);
   const shellFontClass = "font-mono";
+  const accountSetupCurrentStep =
+    ACCOUNT_SETUP_STEPS[accountSetupStep]?.id ?? "phone";
+  const accountSetupLastStep = ACCOUNT_SETUP_STEPS.length - 1;
+  const accountSetupProgress = accountSetupCompleted
+    ? 100
+    : ((accountSetupStep + 1) / ACCOUNT_SETUP_STEPS.length) * 100;
+  const accountSetupBusy = accountSetupPhoneSaving || accountSetupTimelineSaving;
+  const accountSetupFieldClass =
+    "w-full rounded-2xl border border-white/18 bg-white/[0.06] px-3 py-2.5 text-sm font-semibold text-white outline-none transition placeholder:text-violet-100/38 focus:border-violet-200/70 focus:bg-white/[0.09] focus:ring-2 focus:ring-violet-200/20";
 
   // Pokud auth není připravené, nerenderuj obsah (zamezení blikání nechráněného UI)
   if (!authReady) {
@@ -623,28 +998,348 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       />
 
       <div className="relative flex min-h-screen">
-        {showCareerTimelinePrompt && !showPaywall && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 px-4">
-            <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.35)] sm:p-7">
-              <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-300 bg-emerald-50 text-emerald-700">
-                <BriefcaseBusiness size={22} strokeWidth={2.1} aria-hidden="true" />
-              </div>
-              <h2 className="text-xl font-semibold text-slate-900">
-                Nutnost vyplnit historii kariéry
-              </h2>
-              <p className="mt-2 text-sm leading-relaxed text-slate-700">
-                Pro správné předvyplnění pozice a přesné výpočty je potřeba doplnit Historii
-                kariéry. Pokračuj kliknutím na tlačítko níže.
-              </p>
-              <button
-                type="button"
-                onClick={handleCareerTimelineSetup}
-                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
-              >
-                Nastavit kariéru
-                <ArrowRight size={16} strokeWidth={2.2} aria-hidden="true" />
-              </button>
-            </div>
+        {showAccountSetupWizard && !showPaywall && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-3 py-4 backdrop-blur-sm sm:px-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Nastavení účtu"
+          >
+            <section className="vizitka-anim-up max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-[28px] border border-violet-300/25 bg-[linear-gradient(155deg,#160c2a_0%,#100b21_100%)] p-4 text-[#f8fafc] shadow-[0_34px_90px_rgba(7,6,25,0.72),inset_0_1px_0_rgba(196,181,253,0.2)] sm:p-6">
+              {accountSetupCompleted ? (
+                <div className="flex min-h-[360px] flex-col items-center justify-center py-8 text-center">
+                  <div className="relative mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-emerald-300/55 bg-emerald-400/18 text-emerald-100 shadow-[0_0_42px_rgba(52,211,153,0.28)]">
+                    <span className="absolute inset-0 rounded-full border border-emerald-300/45 motion-safe:animate-ping" />
+                    <span className="absolute inset-3 rounded-full bg-emerald-300/14 motion-safe:animate-pulse" />
+                    <CheckCircle2 className="relative h-12 w-12" strokeWidth={2.4} />
+                  </div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-200/85">
+                    Hotovo
+                  </p>
+                  <h2 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-white sm:text-3xl">
+                    Účet úspěšně otevřen
+                  </h2>
+                  <p className="mt-3 max-w-md text-sm leading-relaxed text-violet-100/72">
+                    Telefon a kariéra jsou uložené. Aplikace je připravená na přesné výpočty
+                    a předvyplnění pozice.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/80">
+                        Vítej v aplikaci!
+                      </p>
+                      <h2 className="mt-2 text-xl font-bold tracking-[-0.02em] text-white sm:text-2xl">
+                        Nejprve je potřeba nastavit účet pro hladký chod.
+                      </h2>
+                    </div>
+                    <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-white/14 bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-violet-100/75">
+                      Krok {accountSetupStep + 1} / {ACCOUNT_SETUP_STEPS.length}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 rounded-2xl border border-white/14 bg-white/[0.04] px-3 py-3">
+                    <div
+                      className="grid gap-2"
+                      style={{
+                        gridTemplateColumns: `repeat(${ACCOUNT_SETUP_STEPS.length}, minmax(0, 1fr))`,
+                      }}
+                    >
+                      {ACCOUNT_SETUP_STEPS.map((stepItem, index) => {
+                        const stepDone = accountSetupStep > index || accountSetupCompleted;
+                        const stepActive = accountSetupStep === index && !accountSetupCompleted;
+
+                        return (
+                          <div key={stepItem.id} className="flex flex-col items-center gap-1 text-center">
+                            <span
+                              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold transition ${
+                                stepDone
+                                  ? "border-emerald-300/70 bg-emerald-400/25 text-emerald-100"
+                                  : stepActive
+                                    ? "border-violet-200/70 bg-violet-400/30 text-[#f8fafc]"
+                                    : "border-white/20 bg-white/[0.03] text-violet-200/70"
+                              }`}
+                            >
+                              {stepDone ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
+                            </span>
+                            <span
+                              className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                                stepActive || stepDone ? "text-[#f4f0ff]" : "text-violet-200/60"
+                              }`}
+                            >
+                              {stepItem.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 h-1.5 rounded-full bg-white/10">
+                      <div
+                        className="h-full rounded-full bg-[linear-gradient(90deg,#10b981_0%,#22c55e_55%,#86efac_100%)] transition-[width] duration-300"
+                        style={{ width: `${accountSetupProgress}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    {accountSetupCurrentStep === "phone" ? (
+                      <div className="space-y-4">
+                        <div className="flex items-start gap-3">
+                          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-300/45 bg-emerald-400/14 text-emerald-100">
+                            <PhoneCall className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
+                              Kontaktní údaj
+                            </p>
+                            <h3 className="mt-1 text-base font-semibold text-white">Tel. číslo</h3>
+                            <p className="mt-1 text-sm leading-relaxed text-violet-100/66">
+                              Telefon se uloží do profilu a použije se tam, kde aplikace pracuje
+                              s kontaktními údaji.
+                            </p>
+                          </div>
+                        </div>
+
+                        <label className="block space-y-2">
+                          <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">
+                            Tel. číslo
+                          </span>
+                          <input
+                            type="tel"
+                            inputMode="tel"
+                            value={accountSetupPhone}
+                            onChange={(event) => {
+                              setAccountSetupPhone(event.target.value.slice(0, PHONE_NUMBER_MAX_LEN));
+                              setAccountSetupError(null);
+                            }}
+                            placeholder="777 123 456"
+                            maxLength={PHONE_NUMBER_MAX_LEN}
+                            disabled={accountSetupPhoneSaving}
+                            className={accountSetupFieldClass}
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+
+                    {accountSetupCurrentStep === "career" ? (
+                      <div className="space-y-4">
+                        <div className="flex items-start gap-3">
+                          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-300/45 bg-emerald-400/14 text-emerald-100">
+                            <BriefcaseBusiness className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
+                              Historie kariéry
+                            </p>
+                            <h3 className="mt-1 text-base font-semibold text-white">Nastavení kariéry</h3>
+                            <p className="mt-1 text-sm leading-relaxed text-violet-100/66">
+                              Pozice podle období se používají pro předvyplnění kalkulačky
+                              a přesné provizní výpočty.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-emerald-300/25 bg-emerald-400/10 px-3 py-3 text-sm leading-relaxed text-emerald-50/88">
+                          Historii kariéry najdeš v Maxxu pod odkazem{" "}
+                          <a
+                            href="https://sjednatel.bohemiaservis.cz/broker-card"
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="inline-flex items-center gap-1 rounded-full border border-emerald-200/40 bg-emerald-300/18 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-white no-underline transition hover:bg-emerald-300/28"
+                          >
+                            KLIKNI ZDE
+                            <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+                          </a>
+                          , záložka Kariéra. Řádky zadávej od nejstarší pozice po aktuální.
+                          Datumy zadávej totožné.
+                        </div>
+
+                        <div className="space-y-2.5">
+                          {accountSetupTimelineDraft.map((row, rowIndex) => {
+                            const rowRangeError = hasInvalidRangeOrder(
+                              row.validFrom.trim(),
+                              row.validTo.trim()
+                            );
+                            const isLastDraftRow = rowIndex === accountSetupTimelineDraft.length - 1;
+                            const rowOpenEndedNotLast = !row.validTo.trim() && !isLastDraftRow;
+
+                            return (
+                              <div
+                                key={row.id}
+                                className={`rounded-2xl border bg-white/[0.05] px-3 py-3 shadow-[0_10px_24px_rgba(7,6,25,0.22)] ${
+                                  rowRangeError || rowOpenEndedNotLast
+                                    ? "border-rose-300/65"
+                                    : "border-white/14"
+                                }`}
+                              >
+                                <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_150px_150px_auto]">
+                                  <label className="space-y-1.5">
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-200/66">
+                                      Pozice
+                                    </span>
+                                    <select
+                                      value={row.position}
+                                      onChange={(event) =>
+                                        updateAccountSetupTimelineRow(row.id, {
+                                          position: event.target.value as Position,
+                                        })
+                                      }
+                                      disabled={accountSetupTimelineSaving}
+                                      className={`${accountSetupFieldClass} [color-scheme:dark]`}
+                                    >
+                                      {POSITIONS.map((positionItem) => (
+                                        <option key={positionItem.id} value={positionItem.id}>
+                                          {positionItem.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-200/66">
+                                      Platí od
+                                    </span>
+                                    <input
+                                      type="date"
+                                      value={row.validFrom}
+                                      onChange={(event) =>
+                                        updateAccountSetupTimelineRow(row.id, {
+                                          validFrom: event.target.value,
+                                        })
+                                      }
+                                      disabled={accountSetupTimelineSaving}
+                                      className={`${accountSetupFieldClass} [color-scheme:dark]`}
+                                    />
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-200/66">
+                                      Platí do
+                                    </span>
+                                    <input
+                                      type="date"
+                                      value={row.validTo}
+                                      onChange={(event) =>
+                                        updateAccountSetupTimelineRow(row.id, {
+                                          validTo: event.target.value,
+                                        })
+                                      }
+                                      disabled={accountSetupTimelineSaving}
+                                      className={`${accountSetupFieldClass} [color-scheme:dark]`}
+                                    />
+                                  </label>
+                                  <div className="flex items-end">
+                                    <button
+                                      type="button"
+                                      onClick={() => removeAccountSetupTimelineRow(row.id)}
+                                      disabled={accountSetupTimelineSaving}
+                                      className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-2xl border border-white/18 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-violet-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-55 md:w-auto"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+                                      Smazat
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {rowRangeError ? (
+                                  <p className="mt-2 text-xs font-medium text-rose-100">
+                                    Datum DO nemůže být dřív než datum OD.
+                                  </p>
+                                ) : null}
+                                {rowOpenEndedNotLast ? (
+                                  <p className="mt-2 text-xs font-medium text-rose-100">
+                                    Současnost (prázdné DO) může být jen u posledního řádku.
+                                  </p>
+                                ) : null}
+                                {isLastDraftRow && !row.validTo.trim() ? (
+                                  <div className="mt-2">
+                                    <span className="rounded-full border border-emerald-300/40 bg-emerald-400/14 px-2.5 py-1 text-[11px] font-semibold text-emerald-100">
+                                      Poslední pozice běží do současnosti
+                                    </span>
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={addAccountSetupTimelineRow}
+                          disabled={accountSetupTimelineSaving}
+                          className="inline-flex items-center gap-2 rounded-full border border-white/18 bg-white/[0.05] px-3 py-2 text-xs font-semibold text-violet-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-55"
+                        >
+                          <Plus className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                          Přidat pozici
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {accountSetupError ? (
+                    <p className="mt-4 rounded-2xl border border-rose-300/45 bg-rose-400/15 px-3 py-2 text-xs font-semibold text-rose-100">
+                      {accountSetupError}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-4">
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      disabled={accountSetupBusy}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/14 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-violet-100/72 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-55"
+                    >
+                      Odhlásit se
+                    </button>
+
+                    <div className="ml-auto flex items-center gap-2">
+                      {accountSetupStep > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAccountSetupError(null);
+                            setAccountSetupStep((prev) => Math.max(prev - 1, 0));
+                          }}
+                          disabled={accountSetupBusy}
+                          className="inline-flex items-center gap-2 rounded-full border border-white/22 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-55"
+                        >
+                          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                          Zpět
+                        </button>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (accountSetupCurrentStep === "phone") {
+                            void saveAccountSetupPhone();
+                            return;
+                          }
+                          void saveAccountSetupCareer();
+                        }}
+                        disabled={accountSetupBusy}
+                        className="inline-flex min-w-[154px] items-center justify-center gap-2 rounded-full border border-emerald-300/25 bg-[linear-gradient(120deg,#059669_0%,#10b981_55%,#34d399_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(16,185,129,0.32)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {accountSetupBusy ? (
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : accountSetupStep < accountSetupLastStep ? (
+                          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <Sparkles className="h-4 w-4" aria-hidden="true" />
+                        )}
+                        {accountSetupCurrentStep === "phone"
+                          ? accountSetupPhoneSaving
+                            ? "Ukládám"
+                            : "Pokračovat"
+                          : accountSetupTimelineSaving
+                            ? "Otevírám účet"
+                            : "Otevřít účet"}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </section>
           </div>
         )}
 

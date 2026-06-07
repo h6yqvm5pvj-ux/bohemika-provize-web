@@ -1343,7 +1343,7 @@ export default function HomePage() {
               ) : null}
             </Link>
 
-            <div className="relative z-[120]">
+            <div className="relative z-30">
               <button
                 type="button"
                 onClick={() => setWidgetPanelOpen((prev) => !prev)}
@@ -1355,7 +1355,7 @@ export default function HomePage() {
               </button>
 
               {widgetPanelOpen && (
-                <div className="absolute right-0 z-[130] mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                <div className="absolute right-0 z-40 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
                   <div className="flex items-center justify-between gap-2 pb-2">
                     <div className="text-sm font-semibold text-slate-900">
                       Přizpůsobení domova

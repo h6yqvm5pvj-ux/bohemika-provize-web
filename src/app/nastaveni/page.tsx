@@ -3319,7 +3319,7 @@ export default function SettingsPage() {
                               setPhoneNumber(event.target.value);
                               setProfileStatus(null);
                             }}
-                            placeholder="+420 777 123 456"
+                            placeholder="777 123 456"
                             maxLength={PHONE_NUMBER_MAX_LEN}
                             disabled={profileSaving}
                           />
