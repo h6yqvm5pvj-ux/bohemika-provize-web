@@ -101,6 +101,8 @@ const ALLOWED_PATCH_KEYS = new Set([
   "tipsterCommissionPercent",
   "notificationSettings",
   "positionTimeline",
+  "accountSetupCompletedAt",
+  "mfaSetupGraceStartedAt",
   "homeLayout",
   "homeWidgets",
   "homePerformanceMode",
@@ -120,6 +122,15 @@ const normalizeOptionalText = (value: unknown, maxLen: number): string | null =>
   if (!trimmed) return "";
   if (trimmed.length > maxLen) return null;
   return trimmed;
+};
+
+const normalizeIsoDateTime = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -877,6 +888,18 @@ function buildPatchFromBody(
     if (!value) return { error: "Pole positionTimeline má neplatný formát." };
     patch.positionTimeline = value;
     patch.position = resolveCurrentPositionFromTimeline(value) ?? FieldValue.delete();
+  }
+
+  if (body.accountSetupCompletedAt != null) {
+    const value = normalizeIsoDateTime(body.accountSetupCompletedAt);
+    if (!value) return { error: "Pole accountSetupCompletedAt má neplatný formát." };
+    patch.accountSetupCompletedAt = value;
+  }
+
+  if (body.mfaSetupGraceStartedAt != null) {
+    const value = normalizeIsoDateTime(body.mfaSetupGraceStartedAt);
+    if (!value) return { error: "Pole mfaSetupGraceStartedAt má neplatný formát." };
+    patch.mfaSetupGraceStartedAt = value;
   }
 
   if (body.homeLayout != null) {

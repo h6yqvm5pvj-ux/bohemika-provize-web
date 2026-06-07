@@ -19,6 +19,7 @@ import {
 import QRCode from "qrcode";
 import type { LucideIcon } from "lucide-react";
 import {
+  Apple,
   ArrowLeft,
   Building2,
   BriefcaseBusiness,
@@ -33,8 +34,9 @@ import {
   Lightbulb,
   Loader2,
   PhoneCall,
-  QrCode,
+  Play,
   Plus,
+  QrCode,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -117,6 +119,11 @@ const ACCOUNT_SETUP_STEPS: { id: AccountSetupStepId; label: string }[] = [
 ];
 const MFA_ISSUER = "Bohemka.App";
 const MFA_FACTOR_LABEL = "Microsoft Authenticator";
+const MFA_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
+const MICROSOFT_AUTHENTICATOR_APP_STORE_URL =
+  "https://apps.apple.com/cz/app/microsoft-authenticator/id983156458";
+const MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL =
+  "https://play.google.com/store/apps/details?id=com.azure.authenticator";
 
 const resolveAccountType = (data: Record<string, unknown>): AccountType => {
   const raw =
@@ -239,6 +246,21 @@ const formatIsoDayCz = (value: string | null): string => {
   return date.toLocaleDateString("cs-CZ", { timeZone: "Europe/Prague" });
 };
 
+const normalizeIsoDateTime = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+};
+
+const parseIsoDateTimeMs = (value: string | null): number | null => {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? null : ms;
+};
+
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -252,6 +274,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const contentOverflowClass =
     active === "tools" || active === "cashflow" ? "overflow-visible" : "overflow-x-clip";
   const lastActiveUpdateRef = useRef(0);
+  const accountSetupMfaGraceStartInFlightRef = useRef(false);
   const isFullBleedPage =
     pathname?.startsWith("/pomucky/zlato") ||
     pathname === "/" ||
@@ -291,6 +314,14 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [accountSetupMfaQrLoading, setAccountSetupMfaQrLoading] = useState(false);
   const [accountSetupMfaQrError, setAccountSetupMfaQrError] = useState<string | null>(null);
   const [accountSetupMfaSaving, setAccountSetupMfaSaving] = useState(false);
+  const [accountSetupCompletionSaving, setAccountSetupCompletionSaving] = useState(false);
+  const [accountSetupCompletedAt, setAccountSetupCompletedAt] = useState<string | null>(null);
+  const [accountSetupMfaGraceStartedAt, setAccountSetupMfaGraceStartedAt] =
+    useState<string | null>(null);
+  const [accountSetupSecurityHardRequired, setAccountSetupSecurityHardRequired] =
+    useState(false);
+  const [accountSetupWizardManuallyOpened, setAccountSetupWizardManuallyOpened] =
+    useState(false);
   const [accountType, setAccountType] = useState<AccountType>("advisor");
   const [hasTeam, setHasTeam] = useState<boolean>(true);
   const [hasTipsters, setHasTipsters] = useState(false);
@@ -342,6 +373,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         setAccountSetupMfaQrLoading(false);
         setAccountSetupMfaQrError(null);
         setAccountSetupMfaSaving(false);
+        setAccountSetupCompletionSaving(false);
+        setAccountSetupCompletedAt(null);
+        setAccountSetupMfaGraceStartedAt(null);
+        setAccountSetupSecurityHardRequired(false);
+        setAccountSetupWizardManuallyOpened(false);
         setAccountType("advisor");
         setHasTeam(false);
         setHasTipsters(false);
@@ -472,6 +508,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const parsedTimeline = parsePositionTimeline(data.positionTimeline);
     const nextPhoneNumber =
       typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "";
+    const nextAccountSetupCompletedAt = normalizeIsoDateTime(data.accountSetupCompletedAt);
+    const nextMfaGraceStartedAt = normalizeIsoDateTime(data.mfaSetupGraceStartedAt);
     const rawCurrentPosition =
       typeof data.position === "string" ? data.position.trim() : "";
     const lastTimelinePosition = parsedTimeline[parsedTimeline.length - 1]?.position;
@@ -480,8 +518,13 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       : lastTimelinePosition ?? "poradce1";
     setAccountType(nextAccountType);
     setAccountSetupPhone(nextPhoneNumber);
+    setAccountSetupCompletedAt(nextAccountSetupCompletedAt);
+    setAccountSetupMfaGraceStartedAt(nextMfaGraceStartedAt);
     setAccountSetupDefaultPosition(nextDefaultPosition);
     setAccountSetupTimelineDraft(parsedTimeline);
+    setAccountSetupSecurityHardRequired((prev) =>
+      prev || (nextAccountType !== "tipster" && parsedTimeline.length === 0)
+    );
     setSubscriptionEvaluation(evaluation);
     setSubscriptionAccessState(
       evaluation.state === "blocked" ? "blocked" : evaluation.state
@@ -515,6 +558,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setNeedsCareerTimelineSetup(false);
       setLoadingProfile(false);
       setAccountType("advisor");
+      setAccountSetupCompletedAt(null);
+      setAccountSetupMfaGraceStartedAt(null);
+      setAccountSetupSecurityHardRequired(false);
+      setAccountSetupWizardManuallyOpened(false);
       setHasTeam(false);
       setHasTipsters(false);
       return;
@@ -547,6 +594,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setSubscriptionEvaluation(null);
       setNeedsCareerTimelineSetup(false);
       setAccountType("advisor");
+      setAccountSetupCompletedAt(null);
+      setAccountSetupMfaGraceStartedAt(null);
+      setAccountSetupSecurityHardRequired(false);
+      setAccountSetupWizardManuallyOpened(false);
       setHasTeam(false);
       setHasTipsters(false);
     } finally {
@@ -667,8 +718,68 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   useEffect(() => {
     if (!user) return;
     if (loadingProfile || !accountSetupMfaReady || subscriptionAccessState === "blocked") return;
-    if (!needsCareerTimelineSetup && accountSetupMfaEnabled) {
-      if (!accountSetupCompleted) {
+    if (accountType === "tipster" || accountSetupMfaEnabled) return;
+    if (needsCareerTimelineSetup || accountSetupSecurityHardRequired) return;
+    if (accountSetupCompletedAt || accountSetupMfaGraceStartedAt) return;
+    if (accountSetupMfaGraceStartInFlightRef.current) return;
+
+    const startedAt = new Date().toISOString();
+    accountSetupMfaGraceStartInFlightRef.current = true;
+    setAccountSetupMfaGraceStartedAt(startedAt);
+
+    void fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ mfaSetupGraceStartedAt: startedAt }),
+    })
+      .then(() => {
+        userProfileCache.invalidateUserProfileCache(user.email);
+      })
+      .catch((error) => {
+        console.warn("Nepodařilo se uložit start 2FA grace lhůty:", error);
+        setAccountSetupMfaGraceStartedAt(null);
+      })
+      .finally(() => {
+        accountSetupMfaGraceStartInFlightRef.current = false;
+      });
+  }, [
+    accountSetupCompletedAt,
+    accountSetupMfaEnabled,
+    accountSetupMfaGraceStartedAt,
+    accountSetupMfaReady,
+    accountSetupSecurityHardRequired,
+    accountType,
+    loadingProfile,
+    needsCareerTimelineSetup,
+    subscriptionAccessState,
+    user,
+  ]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (loadingProfile || !accountSetupMfaReady || subscriptionAccessState === "blocked") return;
+    if (accountType === "tipster") {
+      setShowAccountSetupWizard(false);
+      return;
+    }
+    const graceStartMs = parseIsoDateTimeMs(accountSetupMfaGraceStartedAt);
+    const mfaGraceEligible =
+      !needsCareerTimelineSetup &&
+      !accountSetupSecurityHardRequired &&
+      !accountSetupCompletedAt &&
+      !accountSetupMfaEnabled;
+    const mfaGracePending = mfaGraceEligible && !accountSetupMfaGraceStartedAt;
+    const mfaGraceActive =
+      mfaGraceEligible &&
+      graceStartMs != null &&
+      Date.now() - graceStartMs < MFA_GRACE_PERIOD_MS;
+    const mfaHardRequired =
+      !accountSetupMfaEnabled && !mfaGracePending && !mfaGraceActive;
+    const setupRequired = needsCareerTimelineSetup || mfaHardRequired;
+
+    if (!setupRequired) {
+      if (accountSetupWizardManuallyOpened && mfaGraceEligible) {
+        setShowAccountSetupWizard(true);
+      } else if (!accountSetupCompleted) {
         setShowAccountSetupWizard(false);
       }
       return;
@@ -676,8 +787,13 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     setShowAccountSetupWizard(true);
   }, [
     accountSetupCompleted,
+    accountSetupCompletedAt,
     accountSetupMfaEnabled,
+    accountSetupMfaGraceStartedAt,
     accountSetupMfaReady,
+    accountSetupSecurityHardRequired,
+    accountSetupWizardManuallyOpened,
+    accountType,
     user,
     loadingProfile,
     subscriptionAccessState,
@@ -728,6 +844,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setAccountSetupCompleted(false);
       setAccountSetupStep(0);
       setAccountSetupError(null);
+      setAccountSetupWizardManuallyOpened(false);
     }, 2200);
     return () => window.clearTimeout(timeoutId);
   }, [accountSetupCompleted]);
@@ -798,6 +915,38 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   // Ruční reload z paywallu
   const handleReloadSubscription = async () => {
     await loadSubscriptionProfileForUser(user, { force: true });
+  };
+
+  const markAccountSetupCompleted = async () => {
+    if (!user) {
+      setAccountSetupError("Nejsi přihlášený.");
+      return;
+    }
+
+    const completedAt = new Date().toISOString();
+    setAccountSetupCompletionSaving(true);
+    setAccountSetupError(null);
+    try {
+      await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ accountSetupCompletedAt: completedAt }),
+      });
+      userProfileCache.invalidateUserProfileCache(user.email);
+      setAccountSetupCompletedAt(completedAt);
+      setAccountSetupWizardManuallyOpened(false);
+      setAccountSetupCompleted(true);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("app:refresh-user-profile"));
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.trim().length > 0
+          ? err.message.trim()
+          : "Dokončení nastavení účtu se nepodařilo uložit.";
+      setAccountSetupError(message);
+    } finally {
+      setAccountSetupCompletionSaving(false);
+    }
   };
 
   const saveAccountSetupPhone = async () => {
@@ -1011,7 +1160,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       );
       setNeedsCareerTimelineSetup(false);
       if (accountSetupMfaEnabled) {
-        setAccountSetupCompleted(true);
+        await markAccountSetupCompleted();
       } else {
         const securityStepIndex = ACCOUNT_SETUP_STEPS.findIndex((step) => step.id === "security");
         setAccountSetupStep(securityStepIndex);
@@ -1060,7 +1209,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         setAccountSetupMfaEnabled(true);
         clearAccountSetupMfaDraft();
         setAccountSetupMfaPassword("");
-        setAccountSetupCompleted(true);
+        await markAccountSetupCompleted();
         return;
       }
 
@@ -1106,7 +1255,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       await syncAccountSetupMfaState(activeUser);
       setAccountSetupMfaPassword("");
       clearAccountSetupMfaDraft();
-      setAccountSetupCompleted(true);
+      await markAccountSetupCompleted();
     } catch (error) {
       setAccountSetupError(
         resolveAccountSetupMfaErrorMessage(
@@ -1210,13 +1359,53 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     subscriptionAccessState === "blocked" &&
     !loadingProfile;
   const tipsterRestrictedRoute = isTipsterAccount && !isTipsterAllowedRoute;
+  const accountSetupMfaGraceStartMs = parseIsoDateTimeMs(accountSetupMfaGraceStartedAt);
+  const accountSetupMfaGraceDeadlineMs =
+    accountSetupMfaGraceStartMs == null
+      ? null
+      : accountSetupMfaGraceStartMs + MFA_GRACE_PERIOD_MS;
+  const accountSetupMfaGraceEligible =
+    !!user &&
+    !isTipsterAccount &&
+    !loadingProfile &&
+    accountSetupMfaReady &&
+    subscriptionAccessState !== "blocked" &&
+    !needsCareerTimelineSetup &&
+    !accountSetupSecurityHardRequired &&
+    !accountSetupCompletedAt &&
+    !accountSetupMfaEnabled;
+  const accountSetupMfaGracePending =
+    accountSetupMfaGraceEligible && !accountSetupMfaGraceStartedAt;
+  const accountSetupMfaGraceActive =
+    accountSetupMfaGraceEligible &&
+    accountSetupMfaGraceDeadlineMs != null &&
+    Date.now() < accountSetupMfaGraceDeadlineMs;
+  const accountSetupMfaGraceExpired =
+    accountSetupMfaGraceEligible &&
+    accountSetupMfaGraceDeadlineMs != null &&
+    Date.now() >= accountSetupMfaGraceDeadlineMs;
+  const accountSetupMfaHardRequired =
+    !accountSetupMfaEnabled &&
+    !accountSetupMfaGracePending &&
+    !accountSetupMfaGraceActive;
+  const accountSetupGateRequired = needsCareerTimelineSetup || accountSetupMfaHardRequired;
+  const accountSetupMfaGraceRemainingDays =
+    accountSetupMfaGraceDeadlineMs == null
+      ? 0
+      : Math.max(1, Math.ceil((accountSetupMfaGraceDeadlineMs - Date.now()) / (24 * 60 * 60 * 1000)));
+  const accountSetupMfaGraceDeadlineLabel =
+    accountSetupMfaGraceDeadlineMs == null
+      ? ""
+      : formatIsoDayCz(new Date(accountSetupMfaGraceDeadlineMs).toISOString().slice(0, 10));
+  const showAccountSetupMfaGraceBanner =
+    accountSetupMfaGraceActive && !showAccountSetupWizard && !showPaywall;
   const timelineSetupGateActive =
     !!user &&
     !isTipsterAccount &&
     !loadingProfile &&
     accountSetupMfaReady &&
     subscriptionAccessState !== "blocked" &&
-    (needsCareerTimelineSetup || !accountSetupMfaEnabled);
+    accountSetupGateRequired;
   const isAdminRequestsUser = isAdminPanelEmail(user?.email);
   const shellFontClass = "font-mono";
   const accountSetupCurrentStep =
@@ -1226,7 +1415,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     ? 100
     : ((accountSetupStep + 1) / ACCOUNT_SETUP_STEPS.length) * 100;
   const accountSetupBusy =
-    accountSetupPhoneSaving || accountSetupTimelineSaving || accountSetupMfaSaving;
+    accountSetupPhoneSaving ||
+    accountSetupTimelineSaving ||
+    accountSetupMfaSaving ||
+    accountSetupCompletionSaving;
   const accountSetupFieldClass =
     "w-full rounded-2xl border border-white/18 bg-white/[0.06] px-3 py-2.5 text-sm font-semibold text-white outline-none transition placeholder:text-violet-100/38 focus:border-violet-200/70 focus:bg-white/[0.09] focus:ring-2 focus:ring-violet-200/20";
   const accountSetupPrimaryLabel =
@@ -1239,7 +1431,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           ? "Ukládám"
           : "Pokračovat"
         : accountSetupMfaEnabled
-          ? "Dokončit"
+          ? accountSetupCompletionSaving
+            ? "Dokončuji"
+            : "Dokončit"
           : accountSetupMfaSecret
             ? accountSetupMfaSaving
               ? "Potvrzuji"
@@ -1442,6 +1636,16 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                           </a>
                           , záložka Kariéra. Řádky zadávej od nejstarší pozice po aktuální.
                           Datumy zadávej totožné.
+                          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                            <div className="rounded-xl border border-emerald-200/20 bg-slate-950/20 px-3 py-2">
+                              <span className="block font-semibold text-white">Poradce 1</span>
+                              <span className="text-emerald-50/74">01.01.2024 - 31.05.2025</span>
+                            </div>
+                            <div className="rounded-xl border border-emerald-200/20 bg-slate-950/20 px-3 py-2">
+                              <span className="block font-semibold text-white">Poradce 2</span>
+                              <span className="text-emerald-50/74">01.06.2025 - současnost</span>
+                            </div>
+                          </div>
                         </div>
 
                         <div className="space-y-2.5">
@@ -1581,6 +1785,49 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                           </div>
                         </div>
 
+                        <div className="flex flex-wrap gap-2">
+                          <a
+                            href={MICROSOFT_AUTHENTICATOR_APP_STORE_URL}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-violet-50 transition hover:bg-white/[0.11]"
+                            aria-label="Otevřít Microsoft Authenticator v App Store"
+                          >
+                            <Apple className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+                            App Store
+                            <ExternalLink className="h-3 w-3" strokeWidth={2.2} aria-hidden="true" />
+                          </a>
+                          <a
+                            href={MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-violet-50 transition hover:bg-white/[0.11]"
+                            aria-label="Otevřít Microsoft Authenticator v Google Play"
+                          >
+                            <Play className="h-3.5 w-3.5" strokeWidth={2.2} fill="currentColor" aria-hidden="true" />
+                            Google Play
+                            <ExternalLink className="h-3 w-3" strokeWidth={2.2} aria-hidden="true" />
+                          </a>
+                        </div>
+
+                        {accountSetupMfaGraceActive ? (
+                          <div className="rounded-2xl border border-amber-200/35 bg-amber-300/12 px-3 py-3 text-sm leading-relaxed text-amber-50/90">
+                            2FA je potřeba zapnout do {accountSetupMfaGraceRemainingDays}{" "}
+                            {accountSetupMfaGraceRemainingDays === 1 ? "dne" : "dnů"}
+                            {accountSetupMfaGraceDeadlineLabel
+                              ? ` (${accountSetupMfaGraceDeadlineLabel})`
+                              : ""}
+                            . Do té doby můžeš pokračovat v aplikaci.
+                          </div>
+                        ) : null}
+
+                        {accountSetupMfaGraceExpired ? (
+                          <div className="rounded-2xl border border-rose-200/35 bg-rose-400/14 px-3 py-3 text-sm leading-relaxed text-rose-50/90">
+                            Lhůta pro zapnutí 2FA vypršela. Pro pokračování je potřeba účet
+                            zabezpečit.
+                          </div>
+                        ) : null}
+
                         {accountSetupMfaEnabled ? (
                           <div className="flex items-start gap-3 rounded-2xl border border-emerald-300/30 bg-emerald-400/12 px-3 py-3 text-sm text-emerald-50/90">
                             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-100" aria-hidden="true" />
@@ -1711,7 +1958,22 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                       Odhlásit se
                     </button>
 
-                    <div className="ml-auto flex items-center gap-2">
+                    <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                      {accountSetupMfaGraceActive && accountSetupCurrentStep === "security" ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAccountSetupError(null);
+                            setAccountSetupWizardManuallyOpened(false);
+                            setShowAccountSetupWizard(false);
+                          }}
+                          disabled={accountSetupBusy}
+                          className="inline-flex items-center gap-2 rounded-full border border-white/18 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-55"
+                        >
+                          Připomenout později
+                        </button>
+                      ) : null}
+
                       {accountSetupStep > 0 ? (
                         <button
                           type="button"
@@ -1739,7 +2001,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                             return;
                           }
                           if (accountSetupMfaEnabled) {
-                            setAccountSetupCompleted(true);
+                            void markAccountSetupCompleted();
                             return;
                           }
                           if (accountSetupMfaSecret) {
@@ -2013,6 +2275,44 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 : "justify-center px-3 py-6 sm:px-4 sm:py-8 lg:px-8",
             ].join(" ")}
           >
+            {showAccountSetupMfaGraceBanner ? (
+              <div className="fixed right-4 top-4 z-40 w-[calc(100vw-2rem)] max-w-md rounded-2xl border border-amber-300/80 bg-amber-50/95 px-4 py-3 text-sm text-amber-950 shadow-[0_16px_34px_rgba(15,23,42,0.2)] backdrop-blur sm:right-5 sm:top-5">
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-amber-300 bg-white text-amber-800">
+                    <ShieldCheck className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold">Zapni 2FA do {accountSetupMfaGraceRemainingDays}{" "}
+                      {accountSetupMfaGraceRemainingDays === 1 ? "dne" : "dnů"}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
+                      Účet zatím běží v přechodné lhůtě
+                      {accountSetupMfaGraceDeadlineLabel
+                        ? ` do ${accountSetupMfaGraceDeadlineLabel}`
+                        : ""}
+                      . Potom bude zapnutí 2FA povinné.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const securityStepIndex = ACCOUNT_SETUP_STEPS.findIndex(
+                          (step) => step.id === "security"
+                        );
+                        setAccountSetupError(null);
+                        setAccountSetupStep(securityStepIndex);
+                        setAccountSetupWizardManuallyOpened(true);
+                        setShowAccountSetupWizard(true);
+                      }}
+                      className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-900/15 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+                    >
+                      Nastavit 2FA
+                      <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             {subscriptionAccessState === "grace" &&
             !showPaywall &&
             !loadingProfile &&
