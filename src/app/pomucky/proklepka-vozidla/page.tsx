@@ -25,6 +25,7 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase-auth";
+import { fetchAuthedJson } from "@/app/lib/authenticatedApi";
 import { rsvVehicleLookupByVin } from "@/app/lib/rsv";
 import { type SautoMarketResponse } from "../naceneni-vozidla/types";
 import {
@@ -2039,20 +2040,20 @@ export default function VehicleAuditPage() {
     if (proklepniOwnerRecords.length > 0) return;
     if (!needsFallback) return;
     if (ownerFallbackRecords && ownerFallbackRecords.length >= ownerRecords.length) return;
+    if (!user) return;
 
     const controller = new AbortController();
     let cancelled = false;
 
     const loadFallbackOwners = async () => {
       try {
-        const resp = await fetch(`/api/proklepni/owners?vin=${encodeURIComponent(queryVin)}`, {
+        const { response, data } = await fetchAuthedJson<ProklepniOwnersResponse>(user, `/api/proklepni/owners?vin=${encodeURIComponent(queryVin)}`, {
           method: "GET",
-          cache: "no-store",
           signal: controller.signal,
         });
-        if (!resp.ok) return;
+        if (!response.ok) return;
 
-        const payload = (await resp.json().catch(() => null)) as ProklepniOwnersResponse | null;
+        const payload = data;
         if (!payload || payload.ok !== true || !Array.isArray(payload.records) || cancelled) return;
 
         const mapped = payload.records
@@ -2094,7 +2095,7 @@ export default function VehicleAuditPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [displayedVin, loading, ownerFallbackRecords, ownerRecords, ownersCountNum, proklepniOwnerRecords.length, result, summary]);
+  }, [displayedVin, loading, ownerFallbackRecords, ownerRecords, ownersCountNum, proklepniOwnerRecords.length, result, summary, user]);
 
   const resolvedOwnerRecords = useMemo(() => {
     if (proklepniOwnerRecords.length > 0) return proklepniOwnerRecords;
@@ -2565,6 +2566,11 @@ export default function VehicleAuditPage() {
   const canSearch = !!user && vin.trim().length >= 11;
 
   const handleSearchByVin = useCallback(async (value: string) => {
+    if (!user) {
+      setError("Přihlaš se, aby šlo načíst data vozidla.");
+      return;
+    }
+
     const queryVin = normalizeVinInput(value);
     setLoading(true);
     setError(null);
@@ -2578,16 +2584,15 @@ export default function VehicleAuditPage() {
     try {
       const [rsvResult, proklepniResult] = await Promise.allSettled([
         rsvVehicleLookupByVin(queryVin),
-        fetch(`/api/proklepni/report?vin=${encodeURIComponent(queryVin)}`, {
+        fetchAuthedJson<ProklepniReportResponse>(user, `/api/proklepni/report?vin=${encodeURIComponent(queryVin)}`, {
           method: "GET",
-          cache: "no-store",
         }),
       ]);
 
       if (proklepniResult.status === "fulfilled") {
-        const response = proklepniResult.value;
+        const { response, data } = proklepniResult.value;
         if (response.ok) {
-          const payload = (await response.json().catch(() => null)) as unknown;
+          const payload = data;
           if (isProklepniReportResponse(payload)) {
             setProklepniReport(payload.report as ProklepniReportPayload);
           }
@@ -2604,7 +2609,7 @@ export default function VehicleAuditPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   const handleSearch = useCallback(async () => {
     setSearchActivated(true);

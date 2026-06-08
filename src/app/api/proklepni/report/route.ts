@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
-  requireIpRateLimited,
-  withIpRateLimitHeaders,
+  requireAdvisorAuthedRateLimited,
+  withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 
 export const runtime = "nodejs";
@@ -666,14 +666,14 @@ function extractTechnicalSectionsFromHtml(html: string): ProklepniTechnicalSecti
 }
 
 export async function GET(req: NextRequest) {
-  const guard = await requireIpRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:proklepni:report:get",
     limit: PROKLEPNI_REPORT_RATE_LIMIT,
     windowMs: PROKLEPNI_REPORT_RATE_LIMIT_WINDOW_MS,
   });
   if (!guard.ok) return guard.response;
   const withRateLimit = (response: NextResponse) =>
-    withIpRateLimitHeaders(response, guard.ctx);
+    withRateLimitHeaders(response, guard.ctx);
 
   const vin = normalizeVin(new URL(req.url).searchParams.get("vin"));
   if (!VIN_RE.test(vin)) {
