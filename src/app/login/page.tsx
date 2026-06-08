@@ -112,6 +112,16 @@ function formatRetryAfter(seconds: number): string {
 }
 
 function buildLoginAttemptMessage(payload: LoginAttemptResponse | null): string {
+  if (payload?.ok === false && !payload.locked) {
+    const message =
+      typeof payload.error === "string" && payload.error.trim()
+        ? payload.error.trim()
+        : typeof payload.message === "string" && payload.message.trim()
+          ? payload.message.trim()
+          : "";
+    if (message) return message;
+  }
+
   if (payload?.locked) {
     const retryAfter = Number(payload.retryAfterSeconds ?? 0);
     return `Příliš mnoho neúspěšných pokusů. Zkus to znovu za ${formatRetryAfter(retryAfter)}.`;

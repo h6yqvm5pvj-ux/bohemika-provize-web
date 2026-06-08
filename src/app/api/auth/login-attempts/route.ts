@@ -96,6 +96,22 @@ export async function POST(req: Request) {
   };
 
   if (!endpointLimit.allowed) {
+    if (endpointLimit.store === "unavailable") {
+      return withEndpointHeaders(
+        NextResponse.json(
+          {
+            ok: false,
+            locked: false,
+            limit: endpointLimit.limit,
+            attemptsRemaining: 0,
+            retryAfterSeconds: endpointLimit.retryAfterSeconds,
+            error: "Bezpečnostní limit přihlášení není momentálně dostupný. Zkus to prosím za chvíli.",
+          },
+          { status: 503 }
+        )
+      );
+    }
+
     return withEndpointHeaders(
       NextResponse.json(
         {

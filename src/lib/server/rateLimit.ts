@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { adminDb } from "@/lib/server/firebaseAdmin";
+
 type RateLimitBucket = {
   count: number;
   resetAtMs: number;
@@ -12,7 +14,7 @@ export type RateLimitResult = {
   resetAtMs: number;
   resetAtUnix: number;
   retryAfterSeconds: number;
-  store: "redis" | "memory" | "memory-fallback" | "unavailable";
+  store: "redis" | "firestore" | "memory" | "memory-fallback" | "unavailable";
 };
 
 type ConsumeRateLimitOptions = {
@@ -192,6 +194,52 @@ async function consumeRedisRateLimit({
   };
 }
 
+async function consumeFirestoreRateLimit({
+  namespace,
+  key,
+  limit,
+  windowMs,
+}: ConsumeRateLimitOptions): Promise<RateLimitResult | null> {
+  if (!adminDb) return null;
+
+  const firestoreKey = bucketKey(namespace, key);
+  const docRef = adminDb.collection("_rateLimits").doc(firestoreKey);
+  const nowMs = Date.now();
+
+  const bucket = await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(docRef);
+    const data = (snap.data() ?? {}) as Partial<RateLimitBucket>;
+    const previousCount = typeof data.count === "number" ? data.count : 0;
+    const previousResetAtMs = typeof data.resetAtMs === "number" ? data.resetAtMs : 0;
+    const resetAtMs = previousResetAtMs > nowMs ? previousResetAtMs : nowMs + windowMs;
+    const count = previousResetAtMs > nowMs ? previousCount + 1 : 1;
+
+    tx.set(docRef, {
+      count,
+      resetAtMs,
+      updatedAtMs: nowMs,
+      expiresAt: new Date(resetAtMs),
+    });
+
+    return { count, resetAtMs };
+  });
+
+  const allowed = bucket.count <= limit;
+  const retryAfterSeconds = allowed
+    ? 0
+    : Math.max(1, Math.ceil((bucket.resetAtMs - nowMs) / 1000));
+
+  return {
+    allowed,
+    limit,
+    remaining: Math.max(0, limit - bucket.count),
+    resetAtMs: bucket.resetAtMs,
+    resetAtUnix: Math.ceil(bucket.resetAtMs / 1000),
+    retryAfterSeconds,
+    store: "firestore",
+  };
+}
+
 function consumeMemoryRateLimit({
   namespace,
   key,
@@ -250,31 +298,43 @@ export async function consumeRateLimit(
   options: ConsumeRateLimitOptions
 ): Promise<RateLimitResult> {
   const memoryFallbackAllowed = allowMemoryRateLimitFallback();
+  let sharedStoreError: unknown = null;
+
   try {
     const redisResult = await consumeRedisRateLimit(options);
     if (redisResult) return redisResult;
   } catch (error) {
-    if (memoryFallbackAllowed) {
-      console.warn("Shared rate limit unavailable, using in-memory fallback:", error);
+    sharedStoreError = error;
+  }
+
+  try {
+    const firestoreResult = await consumeFirestoreRateLimit(options);
+    if (firestoreResult) return firestoreResult;
+  } catch (error) {
+    sharedStoreError = error;
+  }
+
+  if (memoryFallbackAllowed) {
+    if (sharedStoreError) {
+      console.warn("Shared rate limit unavailable, using in-memory fallback:", sharedStoreError);
       return consumeMemoryRateLimit(options, "memory-fallback");
     }
-    warnOnce(
-      "redis-unavailable",
-      "Shared rate limit is unavailable and memory fallback is disabled. Failing closed.",
-      error
-    );
-    return unavailableRateLimitResult(options);
+    return consumeMemoryRateLimit(options, "memory");
   }
 
-  if (!memoryFallbackAllowed) {
+  if (sharedStoreError) {
     warnOnce(
-      "redis-missing-config",
-      "Shared rate limit is not configured and memory fallback is disabled. Failing closed."
+      "shared-store-unavailable",
+      "Shared rate limit store is unavailable and memory fallback is disabled. Failing closed.",
+      sharedStoreError
     );
-    return unavailableRateLimitResult(options);
+  } else {
+    warnOnce(
+      "shared-store-missing-config",
+      "No shared rate limit store is configured and memory fallback is disabled. Failing closed."
+    );
   }
-
-  return consumeMemoryRateLimit(options, "memory");
+  return unavailableRateLimitResult(options);
 }
 
 export function applyRateLimitHeaders(
