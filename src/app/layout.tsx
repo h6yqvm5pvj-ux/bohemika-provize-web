@@ -13,6 +13,11 @@ export const metadata: Metadata = {
   title: "Bohemika SmartApp",
   description: "Webová verze",
   manifest: "/manifest.webmanifest",
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
