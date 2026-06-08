@@ -2,6 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import {
+  advisorSetupError,
+  checkAdvisorSetup,
+} from "@/lib/server/advisorSetupGuard";
+import {
+  getLoginAttemptStatus,
+  loginAttemptLockoutMessage,
+} from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 import { type CommissionMode, type Position } from "@/app/types/domain";
 import {
@@ -102,7 +110,6 @@ const ALLOWED_PATCH_KEYS = new Set([
   "notificationSettings",
   "positionTimeline",
   "accountSetupCompletedAt",
-  "mfaSetupGraceStartedAt",
   "homeLayout",
   "homeWidgets",
   "homePerformanceMode",
@@ -190,6 +197,15 @@ async function getAuthContext(req: NextRequest) {
   const email = normalizeEmail(decoded.email);
   if (!email) {
     return { error: "User e-mail missing in token", status: 401 } as const;
+  }
+
+  const loginLockout = getLoginAttemptStatus(req, email);
+  if (loginLockout.locked) {
+    return {
+      error: loginAttemptLockoutMessage(loginLockout),
+      status: 429,
+      retryAfterSeconds: loginLockout.retryAfterSeconds,
+    } as const;
   }
 
   return {
@@ -893,13 +909,6 @@ function buildPatchFromBody(
   if (body.accountSetupCompletedAt != null) {
     const value = normalizeIsoDateTime(body.accountSetupCompletedAt);
     if (!value) return { error: "Pole accountSetupCompletedAt má neplatný formát." };
-    patch.accountSetupCompletedAt = value;
-  }
-
-  if (body.mfaSetupGraceStartedAt != null) {
-    const value = normalizeIsoDateTime(body.mfaSetupGraceStartedAt);
-    if (!value) return { error: "Pole mfaSetupGraceStartedAt má neplatný formát." };
-    patch.mfaSetupGraceStartedAt = value;
   }
 
   if (body.homeLayout != null) {
@@ -950,9 +959,13 @@ export async function GET(req: NextRequest) {
   try {
     const ctx = await getAuthContext(req);
     if ("error" in ctx && typeof ctx.error === "string") {
-      return NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
+      const response = NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
         status: ctx.status,
       });
+      if ("retryAfterSeconds" in ctx) {
+        response.headers.set("Retry-After", String(ctx.retryAfterSeconds));
+      }
+      return response;
     }
 
     const { email, uid, rawTokenEmail } = ctx;
@@ -1016,9 +1029,13 @@ export async function PATCH(req: NextRequest) {
   try {
     const ctx = await getAuthContext(req);
     if ("error" in ctx && typeof ctx.error === "string") {
-      return NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
+      const response = NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
         status: ctx.status,
       });
+      if ("retryAfterSeconds" in ctx) {
+        response.headers.set("Retry-After", String(ctx.retryAfterSeconds));
+      }
+      return response;
     }
     if (!adminDb) {
       return NextResponse.json(
@@ -1053,6 +1070,44 @@ export async function PATCH(req: NextRequest) {
     }
 
     const { patch } = parsed;
+    const bodyRecord = isPlainObject(body) ? body : {};
+    const requestedAccountSetupCompletion = bodyRecord.accountSetupCompletedAt != null;
+
+    if (requestedAccountSetupCompletion) {
+      const [existingPublicProfile, existingPrivateProfile] = await Promise.all([
+        loadBestPublicProfile({ email, rawTokenEmail, uid }),
+        loadPrivateProfile({ email, rawTokenEmail }),
+      ]);
+      const existingMergedProfile = {
+        ...(existingPublicProfile ?? {}),
+        ...(existingPrivateProfile ?? {}),
+      };
+      const nextSetupProfile = {
+        ...existingMergedProfile,
+        ...patch,
+      };
+
+      const setup = await checkAdvisorSetup({
+        email,
+        uid,
+        profile: {
+          docId: email,
+          data: nextSetupProfile,
+        },
+      });
+      if (setup.accountType === "advisor" && setup.missing.length > 0) {
+        const setupError = advisorSetupError(setup.missing);
+        return NextResponse.json(
+          {
+            ok: false,
+            error: setupError.error,
+          } satisfies ApiError,
+          { status: setupError.status }
+        );
+      }
+      patch.accountSetupCompletedAt = new Date().toISOString();
+    }
+
     if (Object.keys(patch).length === 0) {
       return NextResponse.json(
         { ok: false, error: "Není co uložit." } satisfies ApiError,

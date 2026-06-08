@@ -18,6 +18,8 @@ import {
   consumeRateLimit,
 } from "@/lib/server/rateLimit";
 import { isAdminPanelEmail } from "@/lib/adminAccess";
+import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import type {
   AccountType,
   AggregateMetrics,
@@ -600,6 +602,20 @@ async function getAuthEmail(req: NextRequest): Promise<string> {
   const email = normalizeEmail(decoded.email);
   if (!email) {
     throw Object.assign(new Error("User e-mail missing in token"), { status: 401 });
+  }
+  const lockout = getLoginAttemptLockoutError(req, email);
+  if (lockout) {
+    throw Object.assign(new Error(lockout.error), {
+      status: lockout.status,
+      retryAfterSeconds: lockout.retryAfterSeconds,
+    });
+  }
+  const setupError = await getAdvisorSetupError({ email, uid: decoded.uid });
+  if (setupError) {
+    throw Object.assign(new Error(setupError.error), {
+      status: setupError.status,
+      missingSetup: setupError.missing,
+    });
   }
   return email;
 }
@@ -2546,10 +2562,14 @@ export async function PATCH(req: NextRequest) {
       typeof err?.message === "string" && err.message.trim().length > 0
         ? err.message
         : "Nepodařilo se uložit změny člena týmu.";
-    return NextResponse.json(
+    const response = NextResponse.json(
       { ok: false, error: message } satisfies TeamOverviewError,
       { status }
     );
+    if (typeof err?.retryAfterSeconds === "number") {
+      response.headers.set("Retry-After", String(err.retryAfterSeconds));
+    }
+    return response;
   }
 }
 
@@ -2773,12 +2793,16 @@ export async function GET(req: NextRequest) {
       typeof err?.message === "string" && err.message.trim().length > 0
         ? err.message
         : "Nepodařilo se načíst tým.";
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         ok: false,
         error: message,
       } satisfies TeamOverviewError,
       { status }
     );
+    if (typeof err?.retryAfterSeconds === "number") {
+      response.headers.set("Retry-After", String(err.retryAfterSeconds));
+    }
+    return response;
   }
 }

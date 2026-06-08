@@ -4,6 +4,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { type CommissionMode, type Position } from "@/app/types/domain";
 import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 import { addDaysIso, getTodayIsoInPrague } from "@/lib/subscriptionAccess";
 
@@ -107,6 +109,12 @@ async function getAuthContext(req: NextRequest) {
   if (!email) {
     return { error: "User e-mail missing in token", status: 401 } as const;
   }
+
+  const lockout = getLoginAttemptLockoutError(req, email);
+  if (lockout) return lockout;
+
+  const setupError = await getAdvisorSetupError({ email, uid: String(decoded.uid ?? "").trim() });
+  if (setupError) return setupError;
 
   return {
     email,
@@ -245,9 +253,13 @@ function mapAuthCreateError(error: unknown): { message: string; status: number }
 export async function POST(req: NextRequest) {
   const ctx = await getAuthContext(req);
   if ("error" in ctx && typeof ctx.error === "string") {
-    return NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
+    const response = NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
       status: ctx.status,
     });
+    if ("retryAfterSeconds" in ctx) {
+      response.headers.set("Retry-After", String(ctx.retryAfterSeconds));
+    }
+    return response;
   }
   if (!adminAuth || !adminDb) {
     return NextResponse.json(

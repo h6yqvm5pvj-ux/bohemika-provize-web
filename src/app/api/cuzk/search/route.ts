@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth } from "@/lib/server/firebaseAdmin";
+import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import {
   applyRateLimitHeaders,
   consumeRateLimit,
@@ -172,6 +174,20 @@ async function getAuthContext(req: NextRequest): Promise<AuthContext> {
       new Error("Přihlášený účet nemá dostupný e-mail v tokenu."),
       { status: 401 }
     );
+  }
+  const lockout = getLoginAttemptLockoutError(req, email);
+  if (lockout) {
+    throw Object.assign(new Error(lockout.error), {
+      status: lockout.status,
+      retryAfterSeconds: lockout.retryAfterSeconds,
+    });
+  }
+  const setupError = await getAdvisorSetupError({ email, uid: decoded.uid });
+  if (setupError) {
+    throw Object.assign(new Error(setupError.error), {
+      status: setupError.status,
+      missingSetup: setupError.missing,
+    });
   }
 
   return {
@@ -1003,6 +1019,9 @@ export async function GET(req: NextRequest) {
       { ok: false, error: message } satisfies CuzkSearchError,
       { status }
     );
+    if (typeof err?.retryAfterSeconds === "number") {
+      response.headers.set("Retry-After", String(err.retryAfterSeconds));
+    }
     return response;
   }
 }

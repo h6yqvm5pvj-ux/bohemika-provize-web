@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
 export const runtime = "nodejs";
@@ -168,6 +170,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         { ok: false, error: "User e-mail missing in token" } satisfies UserLookupError,
         { status: 401 }
+      );
+    }
+    const lockout = getLoginAttemptLockoutError(req, requesterEmail);
+    if (lockout) {
+      const response = NextResponse.json(
+        { ok: false, error: lockout.error } satisfies UserLookupError,
+        { status: lockout.status }
+      );
+      response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
+      return response;
+    }
+    const setupError = await getAdvisorSetupError({ email: requesterEmail, uid: decoded.uid });
+    if (setupError) {
+      return NextResponse.json(
+        { ok: false, error: setupError.error } satisfies UserLookupError,
+        { status: setupError.status }
       );
     }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { adminAuth } from "@/lib/server/firebaseAdmin";
+import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
 export const runtime = "nodejs";
@@ -57,6 +58,15 @@ export async function POST(req: Request) {
         { ok: false, error: "User email missing in token" },
         { status: 400 }
       );
+    }
+    const lockout = getLoginAttemptLockoutError(req, email);
+    if (lockout) {
+      const response = NextResponse.json(
+        { ok: false, error: lockout.error },
+        { status: lockout.status }
+      );
+      response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
+      return response;
     }
     if (decoded.email_verified === true) {
       return NextResponse.json({ ok: true, alreadyVerified: true });

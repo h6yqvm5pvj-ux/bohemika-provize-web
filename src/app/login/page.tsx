@@ -156,11 +156,17 @@ function resolvePasswordResetErrorMessage(error: unknown): string {
 
 async function postLoginAttempt(
   action: LoginAttemptAction,
-  email: string
+  email: string,
+  authToken?: string
 ): Promise<LoginAttemptResponse> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (authToken) {
+    headers.set("Authorization", `Bearer ${authToken}`);
+  }
+
   const response = await fetch("/api/auth/login-attempts", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     cache: "no-store",
     body: JSON.stringify({ action, email }),
   });
@@ -245,6 +251,18 @@ export default function LoginPage() {
       }
 
       try {
+        const loginToken = await withTimeout(
+          user.getIdToken(),
+          10000,
+          "Ověření přihlášení trvá příliš dlouho."
+        );
+        const loginAttemptState = await postLoginAttempt("success", rawEmail, loginToken);
+        if (!loginAttemptState.ok || loginAttemptState.locked) {
+          await safeSignOut();
+          setError(buildLoginAttemptMessage(loginAttemptState));
+          return;
+        }
+
         const response = await withTimeout(
           getUserProfileCached(user, { force: true }),
           10000,
@@ -425,9 +443,6 @@ export default function LoginPage() {
         20000,
         "Přihlášení trvá příliš dlouho."
       );
-      void postLoginAttempt("success", trimmedEmail).catch((successError) =>
-        logAuthIssue("loginAttemptSuccess", successError)
-      );
       // dál už to řeší onAuthStateChanged výše:
       // ověří subscription a podle toho buď router.replace("/"),
       // nebo signOut + error.
@@ -438,10 +453,6 @@ export default function LoginPage() {
 
       if (authErr?.code === "auth/multi-factor-auth-required") {
         try {
-          await postLoginAttempt("success", email.trim().toLowerCase()).catch((successError) =>
-            logAuthIssue("loginAttemptMfaSuccess", successError)
-          );
-
           const resolver = getMultiFactorResolver(auth, authErr as MultiFactorError);
           const totpHint = resolver.hints.find(
             (hint) => hint.factorId === FactorId.TOTP

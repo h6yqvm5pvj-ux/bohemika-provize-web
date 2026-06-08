@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
 
+import { adminAuth } from "@/lib/server/firebaseAdmin";
+import {
+  buildLoginAttemptLockedResponse,
+  clearLoginAttemptFailures,
+  getLoginAttemptStatus,
+  LOGIN_ATTEMPT_MAX_FAILED_ATTEMPTS,
+  normalizeLoginAttemptEmail,
+  recordLoginAttemptFailure,
+} from "@/lib/server/loginAttemptLockout";
 import {
   applyRateLimitHeaders,
   consumeRateLimit,
@@ -8,53 +17,10 @@ import {
 
 export const runtime = "nodejs";
 
-const MAX_FAILED_ATTEMPTS = 3;
-const LOCK_WINDOW_MS = 15 * 60 * 1000;
 const ENDPOINT_RATE_LIMIT = 80;
 const ENDPOINT_RATE_LIMIT_WINDOW_MS = 60_000;
 
-type LoginAttemptBucket = {
-  failures: number;
-  lockedUntilMs: number;
-};
-
 type LoginAttemptAction = "check" | "failure" | "success";
-
-const LOGIN_ATTEMPT_STORE = Symbol.for("bohemika.loginAttempt.store");
-const LOGIN_ATTEMPT_LAST_CLEANUP = Symbol.for("bohemika.loginAttempt.lastCleanup");
-const CLEANUP_INTERVAL_MS = 60_000;
-
-type GlobalWithLoginAttempts = typeof globalThis & {
-  [LOGIN_ATTEMPT_STORE]?: Map<string, LoginAttemptBucket>;
-  [LOGIN_ATTEMPT_LAST_CLEANUP]?: number;
-};
-
-function getStore(): Map<string, LoginAttemptBucket> {
-  const g = globalThis as GlobalWithLoginAttempts;
-  if (!g[LOGIN_ATTEMPT_STORE]) {
-    g[LOGIN_ATTEMPT_STORE] = new Map<string, LoginAttemptBucket>();
-  }
-  return g[LOGIN_ATTEMPT_STORE];
-}
-
-function cleanupExpiredBuckets(nowMs: number) {
-  const g = globalThis as GlobalWithLoginAttempts;
-  const lastCleanup = g[LOGIN_ATTEMPT_LAST_CLEANUP] ?? 0;
-  if (nowMs - lastCleanup < CLEANUP_INTERVAL_MS) return;
-
-  const store = getStore();
-  for (const [key, bucket] of store.entries()) {
-    if (bucket.lockedUntilMs <= nowMs) {
-      store.delete(key);
-    }
-  }
-
-  g[LOGIN_ATTEMPT_LAST_CLEANUP] = nowMs;
-}
-
-function normalizeEmail(value: unknown): string {
-  return String(value ?? "").trim().toLowerCase();
-}
 
 function normalizeAction(value: unknown): LoginAttemptAction | null {
   const raw = String(value ?? "").trim().toLowerCase();
@@ -62,33 +28,58 @@ function normalizeAction(value: unknown): LoginAttemptAction | null {
   return null;
 }
 
-function retryAfterSeconds(untilMs: number, nowMs: number): number {
-  return Math.max(1, Math.ceil((untilMs - nowMs) / 1000));
+function readBearerToken(req: Request): string {
+  const authHeader = req.headers.get("authorization") ?? "";
+  if (!authHeader.toLowerCase().startsWith("bearer ")) return "";
+  return authHeader.slice(7).trim();
 }
 
-function buildKey(req: Request, email: string): string {
-  return `${getRequestIp(req).trim().toLowerCase() || "unknown"}:${email}`;
-}
-
-function buildLockedResponse(bucket: LoginAttemptBucket, nowMs: number) {
-  const retryAfter = retryAfterSeconds(bucket.lockedUntilMs, nowMs);
-  return NextResponse.json(
-    {
+async function verifySuccessToken(req: Request, email: string) {
+  if (!adminAuth) {
+    return {
       ok: false,
-      locked: true,
-      limit: MAX_FAILED_ATTEMPTS,
-      attemptsRemaining: 0,
-      retryAfterSeconds: retryAfter,
-      resetAt: Math.ceil(bucket.lockedUntilMs / 1000),
-      message: `Příliš mnoho neúspěšných pokusů. Zkus to znovu za ${retryAfter} s.`,
-    },
-    {
-      status: 429,
-      headers: {
-        "Retry-After": String(retryAfter),
-      },
+      response: NextResponse.json(
+        { ok: false, error: "Server není správně nakonfigurován (Firebase Admin)." },
+        { status: 500 }
+      ),
+    } as const;
+  }
+
+  const token = readBearerToken(req);
+  if (!token) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { ok: false, error: "Pro potvrzení úspěšného přihlášení chybí bearer token." },
+        { status: 401 }
+      ),
+    } as const;
+  }
+
+  try {
+    const decoded = await adminAuth.verifyIdToken(token, true);
+    const tokenEmail = normalizeLoginAttemptEmail(decoded.email);
+    if (!tokenEmail || tokenEmail !== email) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { ok: false, error: "Bearer token neodpovídá přihlašovanému e-mailu." },
+          { status: 403 }
+        ),
+      } as const;
     }
-  );
+  } catch (error: any) {
+    const code = error?.code || "auth/invalid-token";
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { ok: false, error: `Neplatný nebo expirovaný bearer token (${code}).` },
+        { status: 401 }
+      ),
+    } as const;
+  }
+
+  return { ok: true } as const;
 }
 
 export async function POST(req: Request) {
@@ -99,107 +90,96 @@ export async function POST(req: Request) {
     windowMs: ENDPOINT_RATE_LIMIT_WINDOW_MS,
   });
 
-  if (!endpointLimit.allowed) {
-    const response = NextResponse.json(
-      {
-        ok: false,
-        locked: true,
-        limit: endpointLimit.limit,
-        attemptsRemaining: 0,
-        retryAfterSeconds: endpointLimit.retryAfterSeconds,
-        message: "Příliš mnoho požadavků. Zkus to prosím za chvíli.",
-      },
-      { status: 429 }
-    );
+  const withEndpointHeaders = (response: NextResponse) => {
     applyRateLimitHeaders(response.headers, endpointLimit);
     return response;
+  };
+
+  if (!endpointLimit.allowed) {
+    return withEndpointHeaders(
+      NextResponse.json(
+        {
+          ok: false,
+          locked: true,
+          limit: endpointLimit.limit,
+          attemptsRemaining: 0,
+          retryAfterSeconds: endpointLimit.retryAfterSeconds,
+          message: "Příliš mnoho požadavků. Zkus to prosím za chvíli.",
+        },
+        { status: 429 }
+      )
+    );
   }
 
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    const response = NextResponse.json(
-      { ok: false, error: "Neplatný požadavek." },
-      { status: 400 }
+    return withEndpointHeaders(
+      NextResponse.json({ ok: false, error: "Neplatný požadavek." }, { status: 400 })
     );
-    applyRateLimitHeaders(response.headers, endpointLimit);
-    return response;
   }
 
   const payload = body as { action?: unknown; email?: unknown };
   const action = normalizeAction(payload?.action);
-  const email = normalizeEmail(payload?.email);
+  const email = normalizeLoginAttemptEmail(payload?.email);
 
   if (!action || !email) {
-    const response = NextResponse.json(
-      { ok: false, error: "Chybí akce nebo e-mail." },
-      { status: 400 }
+    return withEndpointHeaders(
+      NextResponse.json({ ok: false, error: "Chybí akce nebo e-mail." }, { status: 400 })
     );
-    applyRateLimitHeaders(response.headers, endpointLimit);
-    return response;
   }
-
-  const nowMs = Date.now();
-  cleanupExpiredBuckets(nowMs);
-
-  const store = getStore();
-  const key = buildKey(req, email);
-  const bucket = store.get(key);
 
   if (action === "success") {
-    store.delete(key);
-    const response = NextResponse.json({
-      ok: true,
-      locked: false,
-      limit: MAX_FAILED_ATTEMPTS,
-      attemptsRemaining: MAX_FAILED_ATTEMPTS,
-      retryAfterSeconds: 0,
-    });
-    applyRateLimitHeaders(response.headers, endpointLimit);
-    return response;
+    const verification = await verifySuccessToken(req, email);
+    if (!verification.ok) return withEndpointHeaders(verification.response);
+
+    const status = getLoginAttemptStatus(req, email);
+    if (status.locked) {
+      return withEndpointHeaders(buildLoginAttemptLockedResponse(status));
+    }
+
+    clearLoginAttemptFailures(req, email);
+    return withEndpointHeaders(
+      NextResponse.json({
+        ok: true,
+        locked: false,
+        limit: LOGIN_ATTEMPT_MAX_FAILED_ATTEMPTS,
+        attemptsRemaining: LOGIN_ATTEMPT_MAX_FAILED_ATTEMPTS,
+        retryAfterSeconds: 0,
+      })
+    );
   }
 
-  if (bucket && bucket.lockedUntilMs > nowMs && bucket.failures >= MAX_FAILED_ATTEMPTS) {
-    const response = buildLockedResponse(bucket, nowMs);
-    applyRateLimitHeaders(response.headers, endpointLimit);
-    return response;
+  const currentStatus = getLoginAttemptStatus(req, email);
+  if (currentStatus.locked) {
+    return withEndpointHeaders(buildLoginAttemptLockedResponse(currentStatus));
   }
 
   if (action === "check") {
-    const failures = bucket?.lockedUntilMs && bucket.lockedUntilMs > nowMs ? bucket.failures : 0;
-    const response = NextResponse.json({
+    return withEndpointHeaders(
+      NextResponse.json({
+        ok: true,
+        locked: false,
+        limit: currentStatus.limit,
+        attemptsRemaining: currentStatus.attemptsRemaining,
+        retryAfterSeconds: 0,
+      })
+    );
+  }
+
+  const nextStatus = recordLoginAttemptFailure(req, email);
+  if (nextStatus.locked) {
+    return withEndpointHeaders(buildLoginAttemptLockedResponse(nextStatus));
+  }
+
+  return withEndpointHeaders(
+    NextResponse.json({
       ok: true,
       locked: false,
-      limit: MAX_FAILED_ATTEMPTS,
-      attemptsRemaining: Math.max(0, MAX_FAILED_ATTEMPTS - failures),
+      limit: nextStatus.limit,
+      attemptsRemaining: nextStatus.attemptsRemaining,
       retryAfterSeconds: 0,
-    });
-    applyRateLimitHeaders(response.headers, endpointLimit);
-    return response;
-  }
-
-  const currentFailures =
-    bucket?.lockedUntilMs && bucket.lockedUntilMs > nowMs ? bucket.failures : 0;
-  const nextBucket = {
-    failures: currentFailures + 1,
-    lockedUntilMs: nowMs + LOCK_WINDOW_MS,
-  };
-  store.set(key, nextBucket);
-
-  if (nextBucket.failures >= MAX_FAILED_ATTEMPTS) {
-    const response = buildLockedResponse(nextBucket, nowMs);
-    applyRateLimitHeaders(response.headers, endpointLimit);
-    return response;
-  }
-
-  const response = NextResponse.json({
-    ok: true,
-    locked: false,
-    limit: MAX_FAILED_ATTEMPTS,
-    attemptsRemaining: Math.max(0, MAX_FAILED_ATTEMPTS - nextBucket.failures),
-    retryAfterSeconds: 0,
-  });
-  applyRateLimitHeaders(response.headers, endpointLimit);
-  return response;
+    })
+  );
 }

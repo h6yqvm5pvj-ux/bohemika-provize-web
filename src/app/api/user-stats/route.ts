@@ -3,6 +3,8 @@ import { FieldPath, type QuerySnapshot } from "firebase-admin/firestore";
 
 import { type CommissionMode, type Position } from "@/app/types/domain";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getLoginAttemptStatus, loginAttemptLockoutMessage } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
 export const runtime = "nodejs";
@@ -347,6 +349,28 @@ async function getAuthContext(
       response: NextResponse.json(
         { ok: false, error: "User e-mail missing in token" },
         { status: 401 }
+      ),
+    };
+  }
+  const loginLockout = getLoginAttemptStatus(req, email);
+  if (loginLockout.locked) {
+    const response = NextResponse.json(
+      { ok: false, error: loginAttemptLockoutMessage(loginLockout) } satisfies ApiError,
+      { status: 429 }
+    );
+    response.headers.set("Retry-After", String(loginLockout.retryAfterSeconds));
+    return {
+      ok: false,
+      response,
+    };
+  }
+  const setupError = await getAdvisorSetupError({ email, uid: decoded.uid });
+  if (setupError) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { ok: false, error: setupError.error } satisfies ApiError,
+        { status: setupError.status }
       ),
     };
   }

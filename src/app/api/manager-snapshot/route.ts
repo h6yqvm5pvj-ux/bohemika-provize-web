@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import { type CommissionMode, type Position } from "@/app/types/domain";
+import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 
 export const runtime = "nodejs";
 
@@ -324,6 +326,22 @@ export async function POST(req: Request) {
     }
 
     const tokenEmail = normalizeEmail(decoded.email);
+    const lockout = getLoginAttemptLockoutError(req, tokenEmail);
+    if (lockout) {
+      const response = NextResponse.json(
+        { ok: false, error: lockout.error },
+        { status: lockout.status }
+      );
+      response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
+      return response;
+    }
+    const setupError = await getAdvisorSetupError({ email: tokenEmail, uid: decoded.uid });
+    if (setupError) {
+      return NextResponse.json(
+        { ok: false, error: setupError.error, missingSetup: setupError.missing },
+        { status: setupError.status }
+      );
+    }
     const body = ((await req.json().catch(() => null)) ?? {}) as RequestBody;
     const signedDateIsoRaw =
       typeof body?.signedDateIso === "string" ? body.signedDateIso.trim() : "";

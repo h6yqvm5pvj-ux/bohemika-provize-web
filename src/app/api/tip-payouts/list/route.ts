@@ -3,6 +3,8 @@ import { FieldPath } from "firebase-admin/firestore";
 import { createHash } from "node:crypto";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 import {
   type PaymentFrequency,
@@ -209,6 +211,25 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         { ok: false, error: "User e-mail missing in token" } satisfies TipPayoutsErrorResponse,
         { status: 401 }
+      );
+    }
+    const lockout = getLoginAttemptLockoutError(req, email);
+    if (lockout) {
+      const response = NextResponse.json(
+        { ok: false, error: lockout.error } satisfies TipPayoutsErrorResponse,
+        { status: lockout.status }
+      );
+      response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
+      return response;
+    }
+    const setupError = await getAdvisorSetupError({ email, uid: decoded.uid });
+    if (setupError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: setupError.error,
+        } satisfies TipPayoutsErrorResponse,
+        { status: setupError.status }
       );
     }
     const userDocId = await resolveUserDocId({

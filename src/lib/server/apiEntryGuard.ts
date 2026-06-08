@@ -2,6 +2,15 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import {
+  buildAdvisorSetupResponse,
+  getAdvisorSetupError,
+  loadUserProfileForAdvisorSetup,
+} from "@/lib/server/advisorSetupGuard";
+import {
+  buildLoginAttemptLockedResponse,
+  getLoginAttemptStatus,
+} from "@/lib/server/loginAttemptLockout";
+import {
   applyRateLimitHeaders,
   consumeRateLimit,
   getRequestIp,
@@ -39,67 +48,6 @@ const resolveAccountType = (data: Record<string, unknown> | null): "advisor" | "
   return raw.trim().toLowerCase() === "tipster" ? "tipster" : "advisor";
 };
 
-async function loadUserProfileForAuth({
-  email,
-  uid,
-}: {
-  email: string;
-  uid: string;
-}): Promise<{ docId: string; data: Record<string, unknown> } | null> {
-  if (!adminDb) return null;
-  const db = adminDb;
-  const usersCol = db.collection("users");
-  const loadPrivateProfile = async (profileEmail: string) => {
-    if (!profileEmail) return {};
-    const privateSnap = await db.collection("usersPrivate").doc(profileEmail).get();
-    return (privateSnap.data() ?? {}) as Record<string, unknown>;
-  };
-
-  const directSnap = email ? await usersCol.doc(email).get() : null;
-  if (directSnap?.exists) {
-    const data = (directSnap.data() ?? {}) as Record<string, unknown>;
-    return {
-      docId: directSnap.id,
-      data: {
-        ...data,
-        ...(await loadPrivateProfile(normalizeEmail(data.email) || email)),
-      },
-    };
-  }
-
-  if (email) {
-    const byEmailSnap = await usersCol.where("email", "==", email).limit(1).get();
-    if (!byEmailSnap.empty) {
-      const doc = byEmailSnap.docs[0]!;
-      const data = (doc.data() ?? {}) as Record<string, unknown>;
-      return {
-        docId: doc.id,
-        data: {
-          ...data,
-          ...(await loadPrivateProfile(normalizeEmail(data.email) || email)),
-        },
-      };
-    }
-  }
-
-  if (uid) {
-    const byUidSnap = await usersCol.where("userId", "==", uid).limit(1).get();
-    if (!byUidSnap.empty) {
-      const doc = byUidSnap.docs[0]!;
-      const data = (doc.data() ?? {}) as Record<string, unknown>;
-      return {
-        docId: doc.id,
-        data: {
-          ...data,
-          ...(await loadPrivateProfile(normalizeEmail(data.email) || email)),
-        },
-      };
-    }
-  }
-
-  return null;
-}
-
 export function readBearerToken(req: NextRequest): string {
   const authHeader = req.headers.get("authorization") ?? "";
   if (!authHeader.toLowerCase().startsWith("bearer ")) return "";
@@ -112,10 +60,12 @@ export async function requireAuthedRateLimited(
     namespace,
     limit,
     windowMs,
+    enforceAdvisorSetup,
   }: {
     namespace: string;
     limit: number;
     windowMs: number;
+    enforceAdvisorSetup?: boolean;
   }
 ): Promise<
   | { ok: true; ctx: AuthedRateLimitContext }
@@ -165,6 +115,14 @@ export async function requireAuthedRateLimited(
     };
   }
 
+  const loginLockout = getLoginAttemptStatus(req, email);
+  if (loginLockout.locked) {
+    return {
+      ok: false,
+      response: buildLoginAttemptLockedResponse(loginLockout),
+    };
+  }
+
   const rateLimit = await consumeRateLimit({
     namespace,
     key: email,
@@ -181,6 +139,44 @@ export async function requireAuthedRateLimited(
       ok: false,
       response,
     };
+  }
+
+  if (enforceAdvisorSetup !== false) {
+    if (!adminDb) {
+      return {
+        ok: false,
+        response: withRateLimitHeaders(
+          NextResponse.json(
+            { ok: false, error: "Server není správně nakonfigurován (Firestore)." },
+            { status: 500 }
+          ),
+          {
+            token,
+            uid: decoded.uid,
+            email,
+            decoded,
+            rateLimit,
+          }
+        ),
+      };
+    }
+
+    const setupError = await getAdvisorSetupError({
+      email,
+      uid: decoded.uid,
+    });
+    if (setupError) {
+      return {
+        ok: false,
+        response: withRateLimitHeaders(buildAdvisorSetupResponse(setupError), {
+          token,
+          uid: decoded.uid,
+          email,
+          decoded,
+          rateLimit,
+        }),
+      };
+    }
   }
 
   return {
@@ -231,7 +227,7 @@ export async function requireAdvisorAuthedRateLimited(
     };
   }
 
-  const profile = await loadUserProfileForAuth({
+  const profile = await loadUserProfileForAdvisorSetup({
     email: guard.ctx.email,
     uid: guard.ctx.uid,
   });

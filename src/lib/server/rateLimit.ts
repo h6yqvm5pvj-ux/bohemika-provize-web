@@ -12,7 +12,7 @@ export type RateLimitResult = {
   resetAtMs: number;
   resetAtUnix: number;
   retryAfterSeconds: number;
-  store: "redis" | "memory" | "memory-fallback";
+  store: "redis" | "memory" | "memory-fallback" | "unavailable";
 };
 
 type ConsumeRateLimitOptions = {
@@ -24,7 +24,9 @@ type ConsumeRateLimitOptions = {
 
 const RATE_LIMIT_STORE = Symbol.for("bohemika.rateLimit.store");
 const RATE_LIMIT_LAST_CLEANUP = Symbol.for("bohemika.rateLimit.lastCleanup");
+const RATE_LIMIT_WARNED_KEYS = Symbol.for("bohemika.rateLimit.warnedKeys");
 const CLEANUP_INTERVAL_MS = 60_000;
+const FAIL_CLOSED_RETRY_AFTER_SECONDS = 60;
 const REDIS_RATE_LIMIT_SCRIPT = `
 local current = redis.call("INCR", KEYS[1])
 local ttl = redis.call("PTTL", KEYS[1])
@@ -38,6 +40,7 @@ return { current, ttl }
 type GlobalWithRateLimit = typeof globalThis & {
   [RATE_LIMIT_STORE]?: Map<string, RateLimitBucket>;
   [RATE_LIMIT_LAST_CLEANUP]?: number;
+  [RATE_LIMIT_WARNED_KEYS]?: Set<string>;
 };
 
 function getStore(): Map<string, RateLimitBucket> {
@@ -46,6 +49,20 @@ function getStore(): Map<string, RateLimitBucket> {
     g[RATE_LIMIT_STORE] = new Map<string, RateLimitBucket>();
   }
   return g[RATE_LIMIT_STORE];
+}
+
+function warnOnce(key: string, message: string, error?: unknown) {
+  const g = globalThis as GlobalWithRateLimit;
+  if (!g[RATE_LIMIT_WARNED_KEYS]) {
+    g[RATE_LIMIT_WARNED_KEYS] = new Set<string>();
+  }
+  if (g[RATE_LIMIT_WARNED_KEYS].has(key)) return;
+  g[RATE_LIMIT_WARNED_KEYS].add(key);
+  if (error) {
+    console.error(message, error);
+  } else {
+    console.error(message);
+  }
 }
 
 function cleanupExpiredBuckets(nowMs: number) {
@@ -85,6 +102,14 @@ function getRedisRestConfig(): { url: string; token: string } | null {
     url: normalizeRedisRestUrl(url),
     token,
   };
+}
+
+function allowMemoryRateLimitFallback(): boolean {
+  const explicit = process.env.RATE_LIMIT_ALLOW_MEMORY_FALLBACK?.trim().toLowerCase();
+  if (explicit === "1" || explicit === "true" || explicit === "yes") return true;
+  if (explicit === "0" || explicit === "false" || explicit === "no") return false;
+
+  return process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production";
 }
 
 function bucketKey(namespace: string, key: string): string {
@@ -206,15 +231,47 @@ function consumeMemoryRateLimit({
   };
 }
 
+function unavailableRateLimitResult({
+  limit,
+}: ConsumeRateLimitOptions): RateLimitResult {
+  const resetAtMs = Date.now() + FAIL_CLOSED_RETRY_AFTER_SECONDS * 1000;
+  return {
+    allowed: false,
+    limit,
+    remaining: 0,
+    resetAtMs,
+    resetAtUnix: Math.ceil(resetAtMs / 1000),
+    retryAfterSeconds: FAIL_CLOSED_RETRY_AFTER_SECONDS,
+    store: "unavailable",
+  };
+}
+
 export async function consumeRateLimit(
   options: ConsumeRateLimitOptions
 ): Promise<RateLimitResult> {
+  const memoryFallbackAllowed = allowMemoryRateLimitFallback();
   try {
     const redisResult = await consumeRedisRateLimit(options);
     if (redisResult) return redisResult;
   } catch (error) {
-    console.warn("Shared rate limit unavailable, using in-memory fallback:", error);
-    return consumeMemoryRateLimit(options, "memory-fallback");
+    if (memoryFallbackAllowed) {
+      console.warn("Shared rate limit unavailable, using in-memory fallback:", error);
+      return consumeMemoryRateLimit(options, "memory-fallback");
+    }
+    warnOnce(
+      "redis-unavailable",
+      "Shared rate limit is unavailable and memory fallback is disabled. Failing closed.",
+      error
+    );
+    return unavailableRateLimitResult(options);
+  }
+
+  if (!memoryFallbackAllowed) {
+    warnOnce(
+      "redis-missing-config",
+      "Shared rate limit is not configured and memory fallback is disabled. Failing closed."
+    );
+    return unavailableRateLimitResult(options);
   }
 
   return consumeMemoryRateLimit(options, "memory");

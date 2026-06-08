@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth } from "@/lib/server/firebaseAdmin";
+import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import {
   applyRateLimitHeaders,
   consumeRateLimit as consumeSharedRateLimit,
@@ -715,6 +717,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { ok: false, error: "Přihlášený účet nemá dostupný e-mail v tokenu." },
       { status: 401 }
+    );
+  }
+  const lockout = getLoginAttemptLockoutError(req, decoded.email);
+  if (lockout) {
+    const response = NextResponse.json(
+      { ok: false, error: lockout.error },
+      { status: lockout.status }
+    );
+    response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
+    return response;
+  }
+  const setupError = await getAdvisorSetupError({ email: decoded.email, uid: decoded.uid });
+  if (setupError) {
+    return NextResponse.json(
+      { ok: false, error: setupError.error, missingSetup: setupError.missing },
+      { status: setupError.status }
     );
   }
 

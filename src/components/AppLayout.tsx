@@ -289,7 +289,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const contentOverflowClass =
     active === "tools" || active === "cashflow" ? "overflow-visible" : "overflow-x-clip";
   const lastActiveUpdateRef = useRef(0);
-  const accountSetupMfaGraceStartInFlightRef = useRef(false);
   const isFullBleedPage =
     pathname?.startsWith("/pomucky/zlato") ||
     pathname === "/" ||
@@ -747,68 +746,15 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   useEffect(() => {
     if (!user) return;
     if (loadingProfile || !accountSetupMfaReady || subscriptionAccessState === "blocked") return;
-    if (accountType === "tipster" || accountSetupMfaEnabled) return;
-    if (needsCareerTimelineSetup || accountSetupSecurityHardRequired) return;
-    if (accountSetupCompletedAt || accountSetupMfaGraceStartedAt) return;
-    if (accountSetupMfaGraceStartInFlightRef.current) return;
-
-    const startedAt = new Date().toISOString();
-    accountSetupMfaGraceStartInFlightRef.current = true;
-    setAccountSetupMfaGraceStartedAt(startedAt);
-
-    void fetchAuthedJsonOrThrow(user, "/api/user/profile", {
-      method: "PATCH",
-      body: JSON.stringify({ mfaSetupGraceStartedAt: startedAt }),
-    })
-      .then(() => {
-        userProfileCache.invalidateUserProfileCache(user.email);
-      })
-      .catch((error) => {
-        console.warn("Nepodařilo se uložit start 2FA grace lhůty:", error);
-        setAccountSetupMfaGraceStartedAt(null);
-      })
-      .finally(() => {
-        accountSetupMfaGraceStartInFlightRef.current = false;
-      });
-  }, [
-    accountSetupCompletedAt,
-    accountSetupMfaEnabled,
-    accountSetupMfaGraceStartedAt,
-    accountSetupMfaReady,
-    accountSetupSecurityHardRequired,
-    accountType,
-    loadingProfile,
-    needsCareerTimelineSetup,
-    subscriptionAccessState,
-    user,
-  ]);
-
-  useEffect(() => {
-    if (!user) return;
-    if (loadingProfile || !accountSetupMfaReady || subscriptionAccessState === "blocked") return;
     if (accountType === "tipster") {
       setShowAccountSetupWizard(false);
       return;
     }
-    const graceStartMs = parseIsoDateTimeMs(accountSetupMfaGraceStartedAt);
-    const mfaGraceEligible =
-      !needsCareerTimelineSetup &&
-      !accountSetupSecurityHardRequired &&
-      !accountSetupCompletedAt &&
-      !accountSetupMfaEnabled;
-    const mfaGracePending = mfaGraceEligible && !accountSetupMfaGraceStartedAt;
-    const mfaGraceActive =
-      mfaGraceEligible &&
-      graceStartMs != null &&
-      Date.now() - graceStartMs < MFA_GRACE_PERIOD_MS;
-    const mfaHardRequired =
-      !accountSetupMfaEnabled && !mfaGracePending && !mfaGraceActive;
-    const setupRequired = needsCareerTimelineSetup || mfaHardRequired;
+    const mfaMissing = !accountSetupMfaEnabled;
+    const setupRequired = needsCareerTimelineSetup || mfaMissing;
 
     if (!setupRequired) {
-      if (accountSetupWizardManuallyOpened && mfaGraceEligible) {
-        setShowAccountSetupWizard(true);
-      } else if (!accountSetupCompleted) {
+      if (!accountSetupCompleted) {
         setShowAccountSetupWizard(false);
       }
       return;
@@ -1236,14 +1182,15 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     setAccountSetupInfo(null);
     try {
       await user.reload();
-      let activeUser = auth.currentUser ?? user;
+      const activeUser = auth.currentUser ?? user;
       if (!activeUser.emailVerified) {
-        await fetchAuthedJsonOrThrow(activeUser, "/api/auth/mark-email-verified", {
+        await fetchAuthedJsonOrThrow(activeUser, "/api/auth/email-verification-link", {
           method: "POST",
         });
-        await activeUser.getIdToken(true);
-        await activeUser.reload();
-        activeUser = auth.currentUser ?? activeUser;
+        setAccountSetupInfo(
+          "Poslali jsme ověřovací odkaz na e-mail. Po ověření se vrať a spusť nastavení 2FA znovu."
+        );
+        return;
       }
       const totpAlreadyEnabled = multiFactor(activeUser).enrolledFactors.some(
         (factor) => factor.factorId === FactorId.TOTP
@@ -1416,18 +1363,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     accountSetupMfaGraceStartMs == null
       ? null
       : accountSetupMfaGraceStartMs + MFA_GRACE_PERIOD_MS;
-  const accountSetupMfaGraceEligible =
-    !!user &&
-    !isTipsterAccount &&
-    !loadingProfile &&
-    accountSetupMfaReady &&
-    subscriptionAccessState !== "blocked" &&
-    !needsCareerTimelineSetup &&
-    !accountSetupSecurityHardRequired &&
-    !accountSetupCompletedAt &&
-    !accountSetupMfaEnabled;
-  const accountSetupMfaGracePending =
-    accountSetupMfaGraceEligible && !accountSetupMfaGraceStartedAt;
+  // Server-side setup guard now requires enrolled TOTP; legacy grace timestamps are read-only.
+  const accountSetupMfaGraceEligible = false;
   const accountSetupMfaGraceActive =
     accountSetupMfaGraceEligible &&
     accountSetupMfaGraceDeadlineMs != null &&
@@ -1436,10 +1373,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     accountSetupMfaGraceEligible &&
     accountSetupMfaGraceDeadlineMs != null &&
     Date.now() >= accountSetupMfaGraceDeadlineMs;
-  const accountSetupMfaHardRequired =
-    !accountSetupMfaEnabled &&
-    !accountSetupMfaGracePending &&
-    !accountSetupMfaGraceActive;
+  const accountSetupMfaHardRequired = !accountSetupMfaEnabled;
   const accountSetupGateRequired = needsCareerTimelineSetup || accountSetupMfaHardRequired;
   const accountSetupMfaGraceRemainingDays =
     accountSetupMfaGraceDeadlineMs == null
@@ -2445,6 +2379,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                       602 127 638
                     </a>
                   </p>
+                </div>
+              </div>
+            ) : timelineSetupGateActive ? (
+              <div className="flex w-full min-h-[70vh] items-center justify-center">
+                <div className="text-sm font-medium text-slate-700">
+                  Dokonči nastavení účtu pro pokračování.
                 </div>
               </div>
             ) : tipsterRestrictedRoute ? (

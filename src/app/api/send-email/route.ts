@@ -2,6 +2,8 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { adminAuth } from "@/lib/server/firebaseAdmin";
+import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
 export const runtime = "nodejs";
@@ -53,6 +55,19 @@ export async function POST(req: Request) {
     const senderEmail = decoded.email?.trim().toLowerCase();
     if (!senderEmail) {
       return NextResponse.json({ error: "User e-mail missing in token" }, { status: 401 });
+    }
+    const lockout = getLoginAttemptLockoutError(req, senderEmail);
+    if (lockout) {
+      const response = NextResponse.json({ error: lockout.error }, { status: lockout.status });
+      response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
+      return response;
+    }
+    const setupError = await getAdvisorSetupError({ email: senderEmail, uid: decoded.uid });
+    if (setupError) {
+      return NextResponse.json(
+        { error: setupError.error, missingSetup: setupError.missing },
+        { status: setupError.status }
+      );
     }
 
     const rateLimitResult = await consumeRateLimit({

@@ -3,6 +3,8 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import {
   addDaysIso,
   evaluateSubscriptionFromProfile,
@@ -112,6 +114,12 @@ async function getAuthContext(req: NextRequest) {
   if (!email || !EMAIL_RE.test(email)) {
     return { error: "User e-mail missing in token", status: 401 } as const;
   }
+
+  const lockout = getLoginAttemptLockoutError(req, email);
+  if (lockout) return lockout;
+
+  const setupError = await getAdvisorSetupError({ email, uid: decoded.uid });
+  if (setupError) return setupError;
 
   if (!isAdminPanelEmail(email)) {
     return { error: "Nemáš oprávnění spravovat předplatné.", status: 403 } as const;
@@ -313,7 +321,11 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await getAuthContext(req);
     if ("error" in auth) {
-      return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+      const response = NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+      if ("retryAfterSeconds" in auth) {
+        response.headers.set("Retry-After", String(auth.retryAfterSeconds));
+      }
+      return response;
     }
     if (!adminDb) {
       return NextResponse.json(
@@ -437,7 +449,11 @@ export async function PATCH(req: NextRequest) {
   try {
     const auth = await getAuthContext(req);
     if ("error" in auth) {
-      return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+      const response = NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+      if ("retryAfterSeconds" in auth) {
+        response.headers.set("Retry-After", String(auth.retryAfterSeconds));
+      }
+      return response;
     }
     if (!adminDb || !adminAuth) {
       return NextResponse.json(

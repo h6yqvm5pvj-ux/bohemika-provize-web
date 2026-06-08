@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { evaluateSubscriptionFromProfile } from "@/lib/subscriptionAccess";
 
 export const runtime = "nodejs";
@@ -57,6 +59,15 @@ async function getAuthContext(req: NextRequest) {
   if (!email || !EMAIL_RE.test(email)) {
     return { error: "User e-mail missing in token", status: 401 } as const;
   }
+
+  const lockout = getLoginAttemptLockoutError(req, email);
+  if (lockout) return lockout;
+
+  const setupError = await getAdvisorSetupError({
+    email,
+    uid: String(decoded.uid ?? "").trim(),
+  });
+  if (setupError) return setupError;
 
   return {
     email,
@@ -131,7 +142,11 @@ export async function GET(req: NextRequest) {
   try {
     const ctx = await getAuthContext(req);
     if ("error" in ctx) {
-      return NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
+      const response = NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
+      if ("retryAfterSeconds" in ctx) {
+        response.headers.set("Retry-After", String(ctx.retryAfterSeconds));
+      }
+      return response;
     }
     if (!adminDb) {
       return NextResponse.json(
