@@ -256,6 +256,7 @@ export type UserNode = {
   email: string;
   managerEmail: string | null;
   position: Position | null;
+  accountType: "advisor" | "tipster";
 };
 
 export type UserTreeResult = {

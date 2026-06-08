@@ -3,7 +3,7 @@ import { FieldPath, type QuerySnapshot } from "firebase-admin/firestore";
 
 import { type CommissionMode, type Position } from "@/app/types/domain";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
-import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptStatus, loginAttemptLockoutMessage } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
@@ -364,7 +364,7 @@ async function getAuthContext(
       response,
     };
   }
-  const setupError = await getAdvisorSetupError({ email, uid: decoded.uid });
+  const setupError = await getAdvisorAccessError({ email, uid: decoded.uid });
   if (setupError) {
     return {
       ok: false,

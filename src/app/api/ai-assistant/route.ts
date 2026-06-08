@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
-  requireAuthedRateLimited,
+  requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 
@@ -40,7 +40,7 @@ function parsePayload(raw: unknown): AiAssistantPayload | null {
 }
 
 export async function POST(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:ai-assistant:post",
     limit: AI_ASSISTANT_RATE_LIMIT,
     windowMs: AI_ASSISTANT_RATE_LIMIT_WINDOW_MS,

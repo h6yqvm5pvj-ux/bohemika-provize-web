@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { isAdminPanelEmail } from "@/lib/adminAccess";
-import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { adminAuth } from "@/lib/server/firebaseAdmin";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const setupError = await getAdvisorSetupError({ email: adminEmail, uid: adminUid });
+    const setupError = await getAdvisorAccessError({ email: adminEmail, uid: adminUid });
     if (setupError) {
       return NextResponse.json(
         { ok: false, error: setupError.error, missingSetup: setupError.missing },

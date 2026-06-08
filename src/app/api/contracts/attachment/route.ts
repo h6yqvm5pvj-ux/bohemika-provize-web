@@ -102,6 +102,11 @@ export async function POST(req: NextRequest) {
   });
   if (!guard.ok) return guard.response;
   const { ctx, withRateLimit } = guard;
+  if (ctx.accountType === "tipster") {
+    return withRateLimit(
+      jsonError("Tipařské účty nemají oprávnění nahrávat PDF smluv.", 403)
+    );
+  }
 
   let form: FormData;
   try {

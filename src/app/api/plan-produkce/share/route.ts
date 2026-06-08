@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
+import { requireAdvisorAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { writeMailboxEntries } from "@/lib/server/mailbox";
 
@@ -188,7 +188,7 @@ const parsePlanSnapshot = (raw: unknown): PlanSnapshot => {
 };
 
 export async function POST(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:plan-produkce:share:post",
     limit: PLAN_SHARE_RATE_LIMIT,
     windowMs: PLAN_SHARE_RATE_LIMIT_WINDOW_MS,

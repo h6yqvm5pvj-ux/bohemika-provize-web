@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import { type CommissionMode, type Position } from "@/app/types/domain";
-import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 
 export const runtime = "nodejs";
@@ -335,7 +335,7 @@ export async function POST(req: Request) {
       response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
       return response;
     }
-    const setupError = await getAdvisorSetupError({ email: tokenEmail, uid: decoded.uid });
+    const setupError = await getAdvisorAccessError({ email: tokenEmail, uid: decoded.uid });
     if (setupError) {
       return NextResponse.json(
         { ok: false, error: setupError.error, missingSetup: setupError.missing },

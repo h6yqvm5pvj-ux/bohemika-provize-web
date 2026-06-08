@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
-import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import {
   addDaysIso,
@@ -118,7 +118,7 @@ async function getAuthContext(req: NextRequest) {
   const lockout = getLoginAttemptLockoutError(req, email);
   if (lockout) return lockout;
 
-  const setupError = await getAdvisorSetupError({ email, uid: decoded.uid });
+  const setupError = await getAdvisorAccessError({ email, uid: decoded.uid });
   if (setupError) return setupError;
 
   if (!isAdminPanelEmail(email)) {

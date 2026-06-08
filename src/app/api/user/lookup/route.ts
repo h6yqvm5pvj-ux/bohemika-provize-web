@@ -1,7 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
-import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import {
+  advisorSetupError,
+  checkAdvisorSetup,
+} from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
@@ -181,8 +184,9 @@ export async function GET(req: NextRequest) {
       response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
       return response;
     }
-    const setupError = await getAdvisorSetupError({ email: requesterEmail, uid: decoded.uid });
-    if (setupError) {
+    const setup = await checkAdvisorSetup({ email: requesterEmail, uid: decoded.uid });
+    if (setup.accountType === "advisor" && setup.missing.length > 0) {
+      const setupError = advisorSetupError(setup.missing);
       return NextResponse.json(
         { ok: false, error: setupError.error } satisfies UserLookupError,
         { status: setupError.status }
@@ -212,6 +216,23 @@ export async function GET(req: NextRequest) {
       );
       applyRateLimitHeaders(response.headers, rateLimitResult);
       return response;
+    }
+
+    if (setup.accountType === "tipster") {
+      const allowedEmails = new Set(
+        [
+          normalizeEmail(setup.profile?.tipRecipientEmail),
+          normalizeEmail(setup.profile?.managerEmail),
+        ].filter(Boolean)
+      );
+      if (!allowedEmails.has(lookupEmail)) {
+        const response = NextResponse.json(
+          { ok: false, error: "Tipařské účty nemají oprávnění prohledávat uživatelský adresář." } satisfies UserLookupError,
+          { status: 403 }
+        );
+        applyRateLimitHeaders(response.headers, rateLimitResult);
+        return response;
+      }
     }
 
     const found = await findUserByEmail(lookupEmail);

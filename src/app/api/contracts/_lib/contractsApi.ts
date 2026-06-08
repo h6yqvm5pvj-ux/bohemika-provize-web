@@ -721,6 +721,24 @@ const parseCursor = (search: URLSearchParams): ParsedCursor | null => {
 const normalizeEmail = (email: string | null | undefined) =>
   (email ?? "").trim().toLowerCase();
 
+const resolveAccountType = (
+  data: Record<string, unknown> | null | undefined
+): "advisor" | "tipster" => {
+  const raw =
+    typeof data?.accountType === "string"
+      ? data.accountType
+      : typeof data?.userRole === "string"
+        ? data.userRole
+        : "";
+  return raw.trim().toLowerCase() === "tipster" ? "tipster" : "advisor";
+};
+
+const tipsterContractsMutationResponse = () =>
+  NextResponse.json(
+    { ok: false, error: "Tipařské účty nemají oprávnění ukládat ani upravovat smlouvy." },
+    { status: 403 }
+  );
+
 const stripDiacritics = (value: string): string =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
@@ -4205,6 +4223,7 @@ const buildUserTree = async (): Promise<UserTreeResult> => {
       email,
       managerEmail: managerEmail || null,
       position,
+      accountType: resolveAccountType(data),
     };
     const existing = usersByEmail.get(email);
     if (!existing) {
@@ -4234,6 +4253,7 @@ const buildUserTree = async (): Promise<UserTreeResult> => {
       email: user.email,
       managerEmail,
       position: user.position,
+      accountType: user.accountType,
     };
   });
 
@@ -4816,6 +4836,7 @@ async function getAuthContext(
   return {
     email,
     uid: identity.uid,
+    accountType: me?.accountType ?? "advisor",
     position,
     teamEmails,
     users,
@@ -4866,6 +4887,18 @@ export async function requireContractsEntryGuard(
       ok: false,
       response: withRateLimitHeaders(
         NextResponse.json({ ok: false, error: authCtx.error }, { status: authCtx.status }),
+        guard.ctx
+      ),
+    };
+  }
+  if (authCtx.accountType === "tipster") {
+    return {
+      ok: false,
+      response: withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: "Tipařské účty nemají přístup ke smluvnímu systému." },
+          { status: 403 }
+        ),
         guard.ctx
       ),
     };
@@ -5400,6 +5433,9 @@ export async function handleContractsCreate(req: NextRequest) {
     if (!guard.ok) return guard.response;
     withRateLimit = guard.withRateLimit;
     const ctx = guard.ctx;
+    if (ctx.accountType === "tipster") {
+      return withRateLimit(tipsterContractsMutationResponse());
+    }
     const { email, uid, teamEmails } = ctx;
 
     let body: unknown;
@@ -5910,6 +5946,9 @@ export async function handleContractsPatch(
   });
   if (!guard.ok) return guard.response;
   const { ctx, withRateLimit } = guard;
+  if (ctx.accountType === "tipster") {
+    return withRateLimit(tipsterContractsMutationResponse());
+  }
   const { email, teamEmails } = ctx;
 
   let body: any;
@@ -6502,6 +6541,9 @@ export async function handleContractsDelete(req: NextRequest) {
   });
   if (!guard.ok) return guard.response;
   const { ctx, withRateLimit } = guard;
+  if (ctx.accountType === "tipster") {
+    return withRateLimit(tipsterContractsMutationResponse());
+  }
   const { email, teamEmails } = ctx;
 
   let body: any;

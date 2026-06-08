@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
+import { requireAdvisorAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 
 export const runtime = "nodejs";
@@ -156,7 +156,7 @@ const scoreRow = (row: UserDirectoryRow, queryRaw: string, queryNormalized: stri
 };
 
 export async function GET(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:user-search:get",
     limit: USER_SEARCH_RATE_LIMIT,
     windowMs: USER_SEARCH_RATE_LIMIT_WINDOW_MS,

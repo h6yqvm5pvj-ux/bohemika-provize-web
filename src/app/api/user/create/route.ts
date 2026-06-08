@@ -4,7 +4,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { type CommissionMode, type Position } from "@/app/types/domain";
 import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
-import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 import { addDaysIso, getTodayIsoInPrague } from "@/lib/subscriptionAccess";
@@ -113,7 +113,7 @@ async function getAuthContext(req: NextRequest) {
   const lockout = getLoginAttemptLockoutError(req, email);
   if (lockout) return lockout;
 
-  const setupError = await getAdvisorSetupError({ email, uid: String(decoded.uid ?? "").trim() });
+  const setupError = await getAdvisorAccessError({ email, uid: String(decoded.uid ?? "").trim() });
   if (setupError) return setupError;
 
   return {

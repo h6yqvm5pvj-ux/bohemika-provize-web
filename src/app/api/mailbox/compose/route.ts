@@ -4,6 +4,7 @@ import { getStorage } from "firebase-admin/storage";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
+import { checkAdvisorSetup } from "@/lib/server/advisorSetupGuard";
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 
@@ -548,6 +549,29 @@ export async function POST(req: NextRequest) {
       ctx
     );
   }
+
+  const senderSetup = await checkAdvisorSetup({ email: ctx.email, uid: ctx.uid });
+  if (senderSetup.accountType === "tipster") {
+    const allowedRecipients = new Set(
+      [
+        normalizeEmail(senderSetup.profile?.tipRecipientEmail),
+        normalizeEmail(senderSetup.profile?.managerEmail),
+      ].filter(Boolean)
+    );
+    if (clientMetadata.tipsterTip !== true || !allowedRecipients.has(recipientEmail)) {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          {
+            ok: false,
+            error: "Tipařské účty mohou odesílat jen tipy svému přiřazenému příjemci.",
+          },
+          { status: 403 }
+        ),
+        ctx
+      );
+    }
+  }
+
   if (!subject) {
     return withRateLimitHeaders(
       NextResponse.json({ ok: false, error: "Předmět je povinný." }, { status: 400 }),

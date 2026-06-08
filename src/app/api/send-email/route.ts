@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { adminAuth } from "@/lib/server/firebaseAdmin";
-import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
       response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
       return response;
     }
-    const setupError = await getAdvisorSetupError({ email: senderEmail, uid: decoded.uid });
+    const setupError = await getAdvisorAccessError({ email: senderEmail, uid: decoded.uid });
     if (setupError) {
       return NextResponse.json(
         { error: setupError.error, missingSetup: setupError.missing },

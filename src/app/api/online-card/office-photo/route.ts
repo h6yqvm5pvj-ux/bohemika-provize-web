@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getStorage } from "firebase-admin/storage";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
+import { requireAdvisorAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -118,7 +118,7 @@ async function uploadPhotoToBucket({
 }
 
 export async function POST(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:online-card:office-photo:post",
     limit: UPLOAD_RATE_LIMIT,
     windowMs: UPLOAD_RATE_WINDOW_MS,

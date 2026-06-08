@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth } from "@/lib/server/firebaseAdmin";
-import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import {
   applyRateLimitHeaders,
@@ -182,7 +182,7 @@ async function getAuthContext(req: NextRequest): Promise<AuthContext> {
       retryAfterSeconds: lockout.retryAfterSeconds,
     });
   }
-  const setupError = await getAdvisorSetupError({ email, uid: decoded.uid });
+  const setupError = await getAdvisorAccessError({ email, uid: decoded.uid });
   if (setupError) {
     throw Object.assign(new Error(setupError.error), {
       status: setupError.status,

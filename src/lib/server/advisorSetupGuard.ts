@@ -216,6 +216,27 @@ export async function getAdvisorSetupError({
   return advisorSetupError(setup.missing);
 }
 
+export async function getAdvisorAccessError({
+  email,
+  uid,
+  profile,
+}: {
+  email: string | null;
+  uid: string;
+  profile?: { docId: string; data: Record<string, unknown> } | null;
+}): Promise<AdvisorSetupError | null> {
+  const setup = await checkAdvisorSetup({ email, uid, profile });
+  if (setup.accountType !== "advisor") {
+    return {
+      error: "Tipařské účty nemají přístup k této části systému.",
+      status: 403,
+      missing: [],
+    };
+  }
+  if (setup.missing.length === 0) return null;
+  return advisorSetupError(setup.missing);
+}
+
 export function buildAdvisorSetupResponse(error: AdvisorSetupError): NextResponse {
   return NextResponse.json(
     {

@@ -18,7 +18,7 @@ import {
   consumeRateLimit,
 } from "@/lib/server/rateLimit";
 import { isAdminPanelEmail } from "@/lib/adminAccess";
-import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import type {
   AccountType,
@@ -610,7 +610,7 @@ async function getAuthEmail(req: NextRequest): Promise<string> {
       retryAfterSeconds: lockout.retryAfterSeconds,
     });
   }
-  const setupError = await getAdvisorSetupError({ email, uid: decoded.uid });
+  const setupError = await getAdvisorAccessError({ email, uid: decoded.uid });
   if (setupError) {
     throw Object.assign(new Error(setupError.error), {
       status: setupError.status,

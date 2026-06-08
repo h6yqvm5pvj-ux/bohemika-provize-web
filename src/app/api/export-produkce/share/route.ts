@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
-import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
+import { requireAdvisorAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { writeMailboxEntries } from "@/lib/server/mailbox";
 
@@ -283,7 +283,7 @@ const splitStringByUtf8Bytes = (value: string, maxBytesPerChunk: number): string
 };
 
 export async function POST(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:export-produkce:share:post",
     limit: EXPORT_SHARE_RATE_LIMIT,
     windowMs: EXPORT_SHARE_RATE_LIMIT_WINDOW_MS,

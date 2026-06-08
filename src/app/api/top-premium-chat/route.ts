@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
-  requireAuthedRateLimited,
+  requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 import {
@@ -1456,7 +1456,7 @@ function buildUpstreamPrompt(
 }
 
 export async function POST(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:top-premium-chat:post",
     limit: TOP_PREMIUM_CHAT_RATE_LIMIT,
     windowMs: TOP_PREMIUM_CHAT_RATE_LIMIT_WINDOW_MS,

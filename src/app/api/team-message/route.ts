@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
-  requireAuthedRateLimited,
+  requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
@@ -396,7 +396,7 @@ async function sendTeamMessageViaPush({
 }
 
 export async function POST(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:team-message:post",
     limit: TEAM_MESSAGE_RATE_LIMIT,
     windowMs: TEAM_MESSAGE_RATE_LIMIT_WINDOW_MS,

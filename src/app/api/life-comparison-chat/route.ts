@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
-  requireAuthedRateLimited,
+  requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 import { resolveLifeComparisonSourcePayload } from "@/lib/server/lifeComparisonSource";
@@ -2297,7 +2297,7 @@ async function requestOpenAiAnswer(
 }
 
 export async function POST(req: NextRequest) {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:life-comparison-chat:post",
     limit: CHAT_RATE_LIMIT,
     windowMs: CHAT_RATE_LIMIT_WINDOW_MS,

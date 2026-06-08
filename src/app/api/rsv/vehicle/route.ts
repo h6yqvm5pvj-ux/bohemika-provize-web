@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth } from "@/lib/server/firebaseAdmin";
-import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import {
   applyRateLimitHeaders,
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
     response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
     return response;
   }
-  const setupError = await getAdvisorSetupError({ email: decoded.email, uid: decoded.uid });
+  const setupError = await getAdvisorAccessError({ email: decoded.email, uid: decoded.uid });
   if (setupError) {
     return NextResponse.json(
       { ok: false, error: setupError.error, missingSetup: setupError.missing },
