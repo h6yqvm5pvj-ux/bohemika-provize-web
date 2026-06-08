@@ -84,7 +84,7 @@ type AccountSetupStepId = "phone" | "career" | "security";
 
 type AccountSetupTimelineItem = {
   id: string;
-  position: Position;
+  position: Position | "";
   validFrom: string;
   validTo: string;
 };
@@ -211,11 +211,26 @@ const resolveAccountSetupMfaErrorMessage = (error: unknown, fallback: string): s
   if (code === "auth/requires-recent-login") {
     return "Pro tuto změnu je potřeba znovu ověřit heslo.";
   }
+  if (code === "auth/unverified-email") {
+    return "Nejdřív ověř e-mail. Firebase nepovolí zapnutí 2FA na účtu bez ověřeného e-mailu.";
+  }
+  if (code === "auth/user-not-found") {
+    return "Účet s tímto e-mailem neexistuje ve Firebase Authentication.";
+  }
+  if (code === "auth/invalid-email") {
+    return "Účet nemá platný e-mail.";
+  }
   if (code === "auth/too-many-requests") {
     return "Příliš mnoho pokusů. Zkus to prosím později.";
   }
+  if (code === "auth/network-request-failed") {
+    return "Síťová chyba. Zkontroluj připojení a zkus to znovu.";
+  }
   if (code === "auth/operation-not-allowed") {
-    return "TOTP MFA není zapnuté ve Firebase Console (Authentication > Multi-factor).";
+    return "Firebase nemá zapnutou potřebnou metodu. Zkontroluj Authentication > Sign-in method a Multi-factor.";
+  }
+  if (code) {
+    return `${fallback} Firebase vrátil chybu ${code}.`;
   }
   return fallback;
 };
@@ -290,6 +305,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [subscriptionEvaluation, setSubscriptionEvaluation] =
     useState<EvaluatedSubscriptionAccess | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [hasInternalProfile, setHasInternalProfile] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [authInitTimedOut, setAuthInitTimedOut] = useState(false);
   const [needsCareerTimelineSetup, setNeedsCareerTimelineSetup] = useState(false);
@@ -297,14 +313,14 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [accountSetupStep, setAccountSetupStep] = useState(0);
   const [accountSetupCompleted, setAccountSetupCompleted] = useState(false);
   const [accountSetupPhone, setAccountSetupPhone] = useState("");
+  const [accountSetupSavedPhone, setAccountSetupSavedPhone] = useState("");
   const [accountSetupPhoneSaving, setAccountSetupPhoneSaving] = useState(false);
   const [accountSetupTimelineDraft, setAccountSetupTimelineDraft] = useState<
     AccountSetupTimelineItem[]
   >([]);
   const [accountSetupTimelineSaving, setAccountSetupTimelineSaving] = useState(false);
   const [accountSetupError, setAccountSetupError] = useState<string | null>(null);
-  const [accountSetupDefaultPosition, setAccountSetupDefaultPosition] =
-    useState<Position>("poradce1");
+  const [accountSetupInfo, setAccountSetupInfo] = useState<string | null>(null);
   const [accountSetupMfaReady, setAccountSetupMfaReady] = useState(false);
   const [accountSetupMfaEnabled, setAccountSetupMfaEnabled] = useState(false);
   const [accountSetupMfaPassword, setAccountSetupMfaPassword] = useState("");
@@ -356,14 +372,17 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         setSubscriptionAccessState("none");
         setSubscriptionBlockReason("none");
         setSubscriptionEvaluation(null);
+        setHasInternalProfile(false);
         setLoadingProfile(false);
         setNeedsCareerTimelineSetup(false);
         setShowAccountSetupWizard(false);
         setAccountSetupCompleted(false);
         setAccountSetupStep(0);
         setAccountSetupPhone("");
+        setAccountSetupSavedPhone("");
         setAccountSetupTimelineDraft([]);
         setAccountSetupError(null);
+        setAccountSetupInfo(null);
         setAccountSetupMfaReady(false);
         setAccountSetupMfaEnabled(false);
         setAccountSetupMfaPassword("");
@@ -383,6 +402,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         setHasTipsters(false);
       } else {
         setLoadingProfile(true);
+        setHasInternalProfile(false);
         setHasTeam(readCachedHasTeam(u.email) ?? true);
       }
       setAuthReady(true);
@@ -503,41 +523,45 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     currentUser: FirebaseUser
   ) => {
     const data = (payload?.profile ?? {}) as Record<string, unknown>;
+    const nextHasInternalProfile = payload?.hasProfile === true;
     const nextAccountType = resolveAccountType(data);
-    const evaluation = evaluateSubscriptionFromProfile(data);
+    const evaluation = nextHasInternalProfile ? evaluateSubscriptionFromProfile(data) : null;
     const parsedTimeline = parsePositionTimeline(data.positionTimeline);
     const nextPhoneNumber =
       typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "";
     const nextAccountSetupCompletedAt = normalizeIsoDateTime(data.accountSetupCompletedAt);
     const nextMfaGraceStartedAt = normalizeIsoDateTime(data.mfaSetupGraceStartedAt);
-    const rawCurrentPosition =
-      typeof data.position === "string" ? data.position.trim() : "";
-    const lastTimelinePosition = parsedTimeline[parsedTimeline.length - 1]?.position;
-    const nextDefaultPosition = POSITION_SET.has(rawCurrentPosition as Position)
-      ? (rawCurrentPosition as Position)
-      : lastTimelinePosition ?? "poradce1";
     setAccountType(nextAccountType);
+    setHasInternalProfile(nextHasInternalProfile);
     setAccountSetupPhone(nextPhoneNumber);
+    setAccountSetupSavedPhone(nextPhoneNumber);
     setAccountSetupCompletedAt(nextAccountSetupCompletedAt);
     setAccountSetupMfaGraceStartedAt(nextMfaGraceStartedAt);
-    setAccountSetupDefaultPosition(nextDefaultPosition);
     setAccountSetupTimelineDraft(parsedTimeline);
     setAccountSetupSecurityHardRequired((prev) =>
-      prev || (nextAccountType !== "tipster" && parsedTimeline.length === 0)
+      prev ||
+      (nextAccountType !== "tipster" &&
+        (!nextHasInternalProfile || parsedTimeline.length === 0))
     );
     setSubscriptionEvaluation(evaluation);
-    setSubscriptionAccessState(
-      evaluation.state === "blocked" ? "blocked" : evaluation.state
-    );
-    setSubscriptionBlockReason(
-      evaluation.reason === "unpaid"
-        ? "unpaid"
-        : evaluation.reason === "expired"
-          ? "expired"
-          : "none"
-    );
+    if (!evaluation) {
+      setSubscriptionAccessState("none");
+      setSubscriptionBlockReason("none");
+    } else {
+      setSubscriptionAccessState(
+        evaluation.state === "blocked" ? "blocked" : evaluation.state
+      );
+      setSubscriptionBlockReason(
+        evaluation.reason === "unpaid"
+          ? "unpaid"
+          : evaluation.reason === "expired"
+            ? "expired"
+            : "none"
+      );
+    }
     setNeedsCareerTimelineSetup(
-      nextAccountType !== "tipster" && parsedTimeline.length === 0
+      nextAccountType !== "tipster" &&
+        (!nextHasInternalProfile || parsedTimeline.length === 0)
     );
     const has = payload?.hasTeam === true;
     const hasTipsterAccounts = payload?.hasTipsters === true;
@@ -555,9 +579,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setSubscriptionAccessState("none");
       setSubscriptionBlockReason("none");
       setSubscriptionEvaluation(null);
+      setHasInternalProfile(false);
       setNeedsCareerTimelineSetup(false);
       setLoadingProfile(false);
       setAccountType("advisor");
+      setAccountSetupPhone("");
+      setAccountSetupSavedPhone("");
       setAccountSetupCompletedAt(null);
       setAccountSetupMfaGraceStartedAt(null);
       setAccountSetupSecurityHardRequired(false);
@@ -592,8 +619,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setSubscriptionAccessState("none");
       setSubscriptionBlockReason("none");
       setSubscriptionEvaluation(null);
+      setHasInternalProfile(false);
       setNeedsCareerTimelineSetup(false);
       setAccountType("advisor");
+      setAccountSetupSavedPhone("");
       setAccountSetupCompletedAt(null);
       setAccountSetupMfaGraceStartedAt(null);
       setAccountSetupSecurityHardRequired(false);
@@ -805,12 +834,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     setAccountSetupTimelineDraft([
       {
         id: createTimelineRowId(),
-        position: accountSetupDefaultPosition,
+        position: "",
         validFrom: "",
         validTo: "",
       },
     ]);
-  }, [accountSetupDefaultPosition, accountSetupTimelineDraft.length, showAccountSetupWizard]);
+  }, [accountSetupTimelineDraft.length, showAccountSetupWizard]);
 
   useEffect(() => {
     if (!showAccountSetupWizard || accountSetupCompleted) return;
@@ -818,7 +847,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const careerStepIndex = ACCOUNT_SETUP_STEPS.findIndex((step) => step.id === "career");
     const securityStepIndex = ACCOUNT_SETUP_STEPS.findIndex((step) => step.id === "security");
 
-    if (!accountSetupPhone.trim()) {
+    if (!accountSetupSavedPhone.trim()) {
       setAccountSetupStep(phoneStepIndex);
       return;
     }
@@ -832,7 +861,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   }, [
     accountSetupCompleted,
     accountSetupMfaEnabled,
-    accountSetupPhone,
+    accountSetupSavedPhone,
     needsCareerTimelineSetup,
     showAccountSetupWizard,
   ]);
@@ -844,6 +873,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setAccountSetupCompleted(false);
       setAccountSetupStep(0);
       setAccountSetupError(null);
+      setAccountSetupInfo(null);
       setAccountSetupWizardManuallyOpened(false);
     }, 2200);
     return () => window.clearTimeout(timeoutId);
@@ -860,7 +890,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   useEffect(() => {
     const currentUser = user;
     const email = currentUser?.email?.toLowerCase();
-    if (!currentUser || !email) return;
+    if (!currentUser || !email || !hasInternalProfile) return;
     let cancelled = false;
     const LAST_ACTIVE_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
     const LAST_ACTIVE_THROTTLE_MS = 60 * 1000;
@@ -910,7 +940,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [user]);
+  }, [hasInternalProfile, user]);
 
   // Ruční reload z paywallu
   const handleReloadSubscription = async () => {
@@ -932,6 +962,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         body: JSON.stringify({ accountSetupCompletedAt: completedAt }),
       });
       userProfileCache.invalidateUserProfileCache(user.email);
+      setHasInternalProfile(true);
       setAccountSetupCompletedAt(completedAt);
       setAccountSetupWizardManuallyOpened(false);
       setAccountSetupCompleted(true);
@@ -980,7 +1011,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         body: JSON.stringify({ phoneNumber: nextPhoneNumber }),
       });
       userProfileCache.invalidateUserProfileCache(user.email);
+      setHasInternalProfile(true);
       setAccountSetupPhone(nextPhoneNumber);
+      setAccountSetupSavedPhone(nextPhoneNumber);
       setAccountSetupStep(1);
     } catch (err) {
       const message =
@@ -999,7 +1032,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       ...prev,
       {
         id: createTimelineRowId(),
-        position: prev[prev.length - 1]?.position ?? accountSetupDefaultPosition,
+        position: "",
         validFrom: "",
         validTo: "",
       },
@@ -1025,7 +1058,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         : [
             {
               id: createTimelineRowId(),
-              position: accountSetupDefaultPosition,
+              position: "",
               validFrom: "",
               validTo: "",
             },
@@ -1061,7 +1094,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     for (let i = 0; i < normalized.length; i += 1) {
       const row = normalized[i];
       const rowNo = i + 1;
-      if (!POSITION_SET.has(row.position)) {
+      if (!POSITION_SET.has(row.position as Position)) {
         return { ok: false, error: `Řádek ${rowNo}: vyber platnou pozici.` };
       }
       if (!row.validFrom) {
@@ -1120,7 +1153,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       ok: true,
       payload: sorted.map((row) => ({
         id: row.id,
-        position: row.position,
+        position: row.position as Position,
         validFrom: row.validFrom,
         validTo: row.validTo || null,
       })),
@@ -1150,6 +1183,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         }),
       });
       userProfileCache.invalidateUserProfileCache(user.email);
+      setHasInternalProfile(true);
       setAccountSetupTimelineDraft(
         timeline.payload.map((row) => ({
           id: row.id,
@@ -1199,9 +1233,18 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
     setAccountSetupMfaSaving(true);
     setAccountSetupError(null);
+    setAccountSetupInfo(null);
     try {
       await user.reload();
-      const activeUser = auth.currentUser ?? user;
+      let activeUser = auth.currentUser ?? user;
+      if (!activeUser.emailVerified) {
+        await fetchAuthedJsonOrThrow(activeUser, "/api/auth/mark-email-verified", {
+          method: "POST",
+        });
+        await activeUser.getIdToken(true);
+        await activeUser.reload();
+        activeUser = auth.currentUser ?? activeUser;
+      }
       const totpAlreadyEnabled = multiFactor(activeUser).enrolledFactors.some(
         (factor) => factor.factorId === FactorId.TOTP
       );
@@ -1220,6 +1263,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setAccountSetupMfaSecret(secret);
       setAccountSetupMfaCode("");
     } catch (error) {
+      console.warn("[AccountSetupMFA] start enrollment failed", {
+        code: (error as { code?: string })?.code,
+        message: error instanceof Error ? error.message : String(error),
+      });
       setAccountSetupError(
         resolveAccountSetupMfaErrorMessage(
           error,
@@ -1257,6 +1304,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       clearAccountSetupMfaDraft();
       await markAccountSetupCompleted();
     } catch (error) {
+      console.warn("[AccountSetupMFA] confirm enrollment failed", {
+        code: (error as { code?: string })?.code,
+        message: error instanceof Error ? error.message : String(error),
+      });
       setAccountSetupError(
         resolveAccountSetupMfaErrorMessage(
           error,
@@ -1355,6 +1406,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const activeNavItems = isTipsterAccount ? tipsterNavItems : navItems;
   const showPaywall =
     !!user &&
+    hasInternalProfile &&
     !isTipsterAccount &&
     subscriptionAccessState === "blocked" &&
     !loadingProfile;
@@ -1636,16 +1688,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                           </a>
                           , záložka Kariéra. Řádky zadávej od nejstarší pozice po aktuální.
                           Datumy zadávej totožné.
-                          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
-                            <div className="rounded-xl border border-emerald-200/20 bg-slate-950/20 px-3 py-2">
-                              <span className="block font-semibold text-white">Poradce 1</span>
-                              <span className="text-emerald-50/74">01.01.2024 - 31.05.2025</span>
-                            </div>
-                            <div className="rounded-xl border border-emerald-200/20 bg-slate-950/20 px-3 py-2">
-                              <span className="block font-semibold text-white">Poradce 2</span>
-                              <span className="text-emerald-50/74">01.06.2025 - současnost</span>
-                            </div>
-                          </div>
                         </div>
 
                         <div className="space-y-2.5">
@@ -1675,12 +1717,13 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                                       value={row.position}
                                       onChange={(event) =>
                                         updateAccountSetupTimelineRow(row.id, {
-                                          position: event.target.value as Position,
+                                          position: event.target.value as Position | "",
                                         })
                                       }
                                       disabled={accountSetupTimelineSaving}
                                       className={`${accountSetupFieldClass} [color-scheme:dark]`}
                                     >
+                                      <option value="">Vyber pozici</option>
                                       {POSITIONS.map((positionItem) => (
                                         <option key={positionItem.id} value={positionItem.id}>
                                           {positionItem.label}
@@ -1857,6 +1900,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                                 onChange={(event) => {
                                   setAccountSetupMfaPassword(event.target.value);
                                   setAccountSetupError(null);
+                                  setAccountSetupInfo(null);
                                 }}
                                 placeholder="Aktuální heslo"
                                 disabled={accountSetupMfaSaving}
@@ -1941,6 +1985,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                       </div>
                     ) : null}
                   </div>
+
+                  {accountSetupInfo ? (
+                    <p className="mt-4 rounded-2xl border border-emerald-300/35 bg-emerald-400/14 px-3 py-2 text-xs font-semibold text-emerald-100">
+                      {accountSetupInfo}
+                    </p>
+                  ) : null}
 
                   {accountSetupError ? (
                     <p className="mt-4 rounded-2xl border border-rose-300/45 bg-rose-400/15 px-3 py-2 text-xs font-semibold text-rose-100">

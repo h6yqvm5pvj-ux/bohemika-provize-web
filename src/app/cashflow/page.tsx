@@ -51,6 +51,8 @@ function introDelay(delayMs: number): CSSProperties {
 export default function CashflowPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profileReady, setProfileReady] = useState(false);
+  const [hasInternalProfile, setHasInternalProfile] = useState<boolean | null>(null);
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [accountType, setAccountType] = useState<AccountType>("advisor");
   const [showPastYears, setShowPastYears] = useState(false);
   const [selectedItem, setSelectedItem] = useState<CashflowItem | null>(null);
@@ -66,10 +68,14 @@ export default function CashflowPage() {
       if (!firebaseUser) {
         setUser(null);
         setProfileReady(true);
+        setHasInternalProfile(false);
+        setProfileLoadError(null);
         setAccountType("advisor");
         return;
       }
       setProfileReady(false);
+      setHasInternalProfile(null);
+      setProfileLoadError(null);
       setUser(firebaseUser);
     });
 
@@ -80,21 +86,39 @@ export default function CashflowPage() {
     if (!user) return;
     let cancelled = false;
 
-    getUserProfileCached(user)
-      .then((payload) => {
-        if (cancelled) return;
-        setAccountType(resolveAccountType(payload.profile));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAccountType("advisor");
-      })
-      .finally(() => {
-        if (!cancelled) setProfileReady(true);
-      });
+    const loadProfile = (force = false) => {
+      setProfileReady(false);
+      setProfileLoadError(null);
+
+      void getUserProfileCached(user, { force })
+        .then((payload) => {
+          if (cancelled) return;
+          const nextHasProfile = payload.hasProfile === true;
+          setHasInternalProfile(nextHasProfile);
+          setAccountType(nextHasProfile ? resolveAccountType(payload.profile) : "advisor");
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          console.warn("Cashflow: profil uživatele se nepodařilo načíst.", error);
+          setHasInternalProfile(false);
+          setAccountType("advisor");
+          setProfileLoadError("Nepodařilo se načíst profil uživatele.");
+        })
+        .finally(() => {
+          if (!cancelled) setProfileReady(true);
+        });
+    };
+
+    loadProfile();
+
+    const onRefreshProfile = () => {
+      loadProfile(true);
+    };
+    window.addEventListener("app:refresh-user-profile", onRefreshProfile);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("app:refresh-user-profile", onRefreshProfile);
     };
   }, [user]);
 
@@ -105,7 +129,7 @@ export default function CashflowPage() {
     scopeFilter,
     productFilter,
     tipsterMode: isTipsterMode,
-    enabled: profileReady && Boolean(user?.email),
+    enabled: profileReady && Boolean(user?.email) && hasInternalProfile === true,
   });
 
   const filteredCashflowItems = useMemo(
@@ -158,7 +182,7 @@ export default function CashflowPage() {
             />
           </div>
 
-          {!isTipsterMode && (
+          {!isTipsterMode && hasInternalProfile === true && (
             <div className={introStyles.filtersReveal} style={introDelay(170)}>
               <CashflowFilters
                 hasTeam={hasTeam}
@@ -229,6 +253,14 @@ export default function CashflowPage() {
                   ))}
                 </div>
               </div>
+            ) : profileLoadError ? (
+              <p className="rounded-[24px] border border-rose-100 bg-white/90 px-5 py-4 text-sm text-rose-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
+                {profileLoadError}
+              </p>
+            ) : hasInternalProfile === false ? (
+              <p className="rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
+                Nejdřív dokonči nastavení účtu. Cashflow se načte po založení interního profilu.
+              </p>
             ) : yearGroups.length === 0 ? (
               <p className="rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
                 {isTipsterMode

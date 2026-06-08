@@ -30,7 +30,11 @@ const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
   "auth/invalid-login-credentials",
   "auth/invalid-email",
   "auth/network-request-failed",
+  "auth/operation-not-allowed",
   "auth/timeout",
+  "auth/unauthorized-continue-uri",
+  "auth/invalid-continue-uri",
+  "auth/missing-continue-uri",
 ]);
 
 const PASSWORD_ATTEMPT_ERROR_CODES = new Set<string>([
@@ -119,6 +123,35 @@ function buildLoginAttemptMessage(payload: LoginAttemptResponse | null): string 
   }
 
   return "Nesprávný e-mail nebo heslo.";
+}
+
+function resolvePasswordResetErrorMessage(error: unknown): string {
+  const code = (error as { code?: string })?.code;
+  if (code === "auth/user-not-found") {
+    return "Účet s tímto e-mailem neexistuje ve Firebase Authentication.";
+  }
+  if (code === "auth/invalid-email") {
+    return "Zadej platný e-mail.";
+  }
+  if (code === "auth/operation-not-allowed") {
+    return "Firebase Authentication nemá zapnuté přihlašování přes e-mail a heslo.";
+  }
+  if (code === "auth/too-many-requests") {
+    return "Firebase dočasně blokuje další odesílání kvůli příliš mnoha pokusům. Zkus to později.";
+  }
+  if (code === "auth/network-request-failed") {
+    return "Síťová chyba při komunikaci s Firebase.";
+  }
+  if (code === "auth/unauthorized-continue-uri") {
+    return "Doména není povolená ve Firebase Authentication > Settings > Authorized domains.";
+  }
+  if (code === "auth/invalid-continue-uri" || code === "auth/missing-continue-uri") {
+    return "Návratová URL pro Firebase e-mail není správně nastavená.";
+  }
+  if (code) {
+    return `Firebase vrátil chybu ${code}.`;
+  }
+  return "Nepodařilo se odeslat odkaz pro obnovení.";
 }
 
 async function postLoginAttempt(
@@ -218,8 +251,8 @@ export default function LoginPage() {
           "Ověření účtu trvá příliš dlouho."
         );
         if (response?.hasProfile !== true) {
-          await safeSignOut();
-          setError("Tento účet nemá aktivní předplatné.");
+          clearMfaState();
+          router.replace("/");
           return;
         }
         const data = response?.profile ?? {};
@@ -465,15 +498,12 @@ export default function LoginPage() {
       return;
     }
     try {
+      auth.languageCode = "cs";
       await sendPasswordResetEmail(auth, trimmedEmail);
       setResetStatus("Poslal jsem odkaz pro obnovení hesla na zadaný e-mail.");
     } catch (err: any) {
       logAuthIssue("handleReset", err);
-      let msg = "Nepodařilo se odeslat odkaz pro obnovení.";
-      if (err?.code === "auth/user-not-found") {
-        msg = "Účet s tímto e-mailem neexistuje.";
-      }
-      setResetStatus(msg);
+      setResetStatus(resolvePasswordResetErrorMessage(err));
     }
   };
 
