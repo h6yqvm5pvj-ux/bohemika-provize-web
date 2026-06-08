@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
+  ShieldCheck,
   Snail,
   UserCheck2,
   UserPlus,
@@ -140,6 +141,13 @@ const nameFromEmail = (email: string): string => {
 const formatDateTime = (valueMs: number | null | undefined): string => {
   if (!valueMs || !Number.isFinite(valueMs)) return "—";
   return new Date(valueMs).toLocaleString("cs-CZ");
+};
+
+const formatAuthDateTime = (value: string | null | undefined): string => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("cs-CZ", { timeZone: "Europe/Prague" });
 };
 
 const formatIsoDay = (value: string | null | undefined): string => {
@@ -364,7 +372,7 @@ type InlineStatus = {
   message: string;
 };
 
-type AdminSection = "requests" | "createUser" | "subscriptions";
+type AdminSection = "requests" | "createUser" | "subscriptions" | "security";
 
 type SubscriptionPlanValue = "monthly" | "semiannual" | "yearly" | "unlimited";
 
@@ -423,6 +431,62 @@ type AdminSubscriptionDirectoryRow = {
 type AdminSubscriptionDirectoryResponse = {
   ok?: boolean;
   users?: AdminSubscriptionDirectoryRow[];
+};
+
+type AdminSecurityFactorRow = {
+  uid: string;
+  factorId: string;
+  displayName: string | null;
+  enrollmentTime: string | null;
+  phoneNumber: string | null;
+};
+
+type AdminSecurityUserRow = {
+  uid: string;
+  email: string;
+  fullName: string | null;
+  position: string | null;
+  accountType: string | null;
+  disabled: boolean;
+  emailVerified: boolean;
+  createdAt: string | null;
+  lastSignInAt: string | null;
+  lastRefreshAt: string | null;
+  mfa: {
+    enabled: boolean;
+    factorCount: number;
+    hasTotp: boolean;
+    hasPhone: boolean;
+    factors: AdminSecurityFactorRow[];
+  };
+};
+
+type AdminSecurityResponse = {
+  ok?: boolean;
+  users?: AdminSecurityUserRow[];
+  summary?: {
+    total?: number;
+    enabled?: number;
+    disabled?: number;
+    emailVerified?: number;
+  };
+};
+
+type AdminSecurityFilter = "all" | "enabled" | "disabled";
+
+const SECURITY_FILTERS: Array<{
+  id: AdminSecurityFilter;
+  label: string;
+}> = [
+  { id: "all", label: "Všichni" },
+  { id: "enabled", label: "2FA aktivní" },
+  { id: "disabled", label: "Bez 2FA" },
+];
+
+const getMfaFactorLabel = (factor: AdminSecurityFactorRow): string => {
+  if (factor.factorId === "totp") return "TOTP";
+  if (factor.factorId === "phone") return "SMS";
+  return factor.displayName || factor.factorId.toUpperCase();
 };
 
 const generateTemporaryPassword = (): string => {
@@ -487,6 +551,11 @@ export default function AdminRequestsPage() {
   const [subscriptionDirectoryFilter, setSubscriptionDirectoryFilter] =
     useState<AdminSubscriptionDirectoryFilter>("all");
   const [subscriptionDirectorySearch, setSubscriptionDirectorySearch] = useState("");
+  const [securityRows, setSecurityRows] = useState<AdminSecurityUserRow[]>([]);
+  const [securityLoading, setSecurityLoading] = useState(false);
+  const [securityError, setSecurityError] = useState<string | null>(null);
+  const [securityFilter, setSecurityFilter] = useState<AdminSecurityFilter>("all");
+  const [securitySearch, setSecuritySearch] = useState("");
   const [subscriptionPlanDraft, setSubscriptionPlanDraft] =
     useState<SubscriptionPlanValue>("monthly");
   const [subscriptionFromDraft, setSubscriptionFromDraft] = useState("");
@@ -552,6 +621,41 @@ export default function AdminRequestsPage() {
     if (activeAdminSection !== "subscriptions") return;
     void loadSubscriptionDirectory();
   }, [activeAdminSection, loadSubscriptionDirectory]);
+
+  const loadSecurityRows = useCallback(async () => {
+    const user = auth.currentUser;
+    if (!user || !isAllowedAdmin) {
+      setSecurityRows([]);
+      setSecurityError(null);
+      setSecurityLoading(false);
+      return;
+    }
+
+    setSecurityLoading(true);
+    setSecurityError(null);
+    try {
+      const payload = await fetchAuthedJsonOrThrow<AdminSecurityResponse>(
+        user,
+        "/api/admin/security",
+        { method: "GET" }
+      );
+      setSecurityRows(Array.isArray(payload?.users) ? payload.users : []);
+    } catch (error) {
+      setSecurityRows([]);
+      setSecurityError(
+        error instanceof Error
+          ? error.message
+          : "Nepodařilo se načíst zabezpečení uživatelů."
+      );
+    } finally {
+      setSecurityLoading(false);
+    }
+  }, [isAllowedAdmin]);
+
+  useEffect(() => {
+    if (activeAdminSection !== "security") return;
+    void loadSecurityRows();
+  }, [activeAdminSection, loadSecurityRows]);
 
   const loadRequests = useCallback(async () => {
     const user = auth.currentUser;
@@ -728,6 +832,29 @@ export default function AdminRequestsPage() {
     ).length;
     return { total, overdue, dueSoon, active };
   }, [subscriptionDirectoryRows]);
+
+  const filteredSecurityRows = useMemo(() => {
+    const query = securitySearch.trim().toLowerCase();
+
+    return securityRows.filter((row) => {
+      if (securityFilter === "enabled" && !row.mfa.enabled) return false;
+      if (securityFilter === "disabled" && row.mfa.enabled) return false;
+      if (!query) return true;
+
+      const name = (row.fullName || nameFromEmail(row.email)).toLowerCase();
+      const email = row.email.toLowerCase();
+      const position = (row.position || "").toLowerCase();
+      return name.includes(query) || email.includes(query) || position.includes(query);
+    });
+  }, [securityFilter, securityRows, securitySearch]);
+
+  const securityStats = useMemo(() => {
+    const total = securityRows.length;
+    const mfaEnabled = securityRows.filter((row) => row.mfa.enabled).length;
+    const mfaMissing = total - mfaEnabled;
+    const emailVerified = securityRows.filter((row) => row.emailVerified).length;
+    return { total, mfaEnabled, mfaMissing, emailVerified };
+  }, [securityRows]);
 
   const handleDecision = useCallback(
     async (requestId: string, action: "approve" | "reject") => {
@@ -1203,6 +1330,17 @@ export default function AdminRequestsPage() {
                       }`}
                     >
                       Předplatné
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveAdminSection("security")}
+                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                        activeAdminSection === "security"
+                          ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
+                    >
+                      Zabezpečení
                     </button>
                   </div>
                 ) : null}
@@ -2458,6 +2596,276 @@ export default function AdminRequestsPage() {
                   </div>
                 ) : null}
               </div>
+            </div>
+          </section>
+        ) : null}
+
+        {isAllowedAdmin && activeAdminSection === "security" ? (
+          <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(170deg,#ffffff_0%,#f8fbff_55%,#eff5fb_100%)] px-5 py-5 shadow-[0_22px_46px_rgba(15,23,42,0.1)] sm:px-6">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
+
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <span className="mb-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold tracking-wide text-emerald-800">
+                  Zabezpečení
+                </span>
+                <h2 className="inline-flex items-center gap-1.5 text-base font-semibold text-slate-900 sm:text-lg">
+                  <ShieldCheck size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                  <span>2FA přehled uživatelů</span>
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Přehled čte aktivní druhé faktory přímo z Firebase Auth.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadSecurityRows()}
+                disabled={securityLoading}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw size={15} strokeWidth={2.2} aria-hidden="true" />
+                Obnovit
+              </button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-2xl border border-slate-300 bg-slate-100 px-3 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.06)]">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                    Celkem
+                  </div>
+                  <Inbox size={15} strokeWidth={2.1} className="text-slate-500" aria-hidden="true" />
+                </div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{securityStats.total}</div>
+              </div>
+              <div className="rounded-2xl border border-emerald-700 bg-emerald-600 px-3 py-3 shadow-[0_10px_22px_rgba(5,150,105,0.28)]">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-50">
+                    2FA aktivní
+                  </div>
+                  <ShieldCheck size={15} strokeWidth={2.2} className="text-emerald-50" aria-hidden="true" />
+                </div>
+                <div className="mt-2 text-2xl font-bold text-white">{securityStats.mfaEnabled}</div>
+              </div>
+              <div className="rounded-2xl border border-rose-700 bg-rose-600 px-3 py-3 shadow-[0_10px_22px_rgba(225,29,72,0.28)]">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-50">
+                    Bez 2FA
+                  </div>
+                  <ShieldAlert size={15} strokeWidth={2.2} className="text-rose-50" aria-hidden="true" />
+                </div>
+                <div className="mt-2 text-2xl font-bold text-white">{securityStats.mfaMissing}</div>
+              </div>
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-3 shadow-[0_8px_18px_rgba(14,165,233,0.12)]">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-800">
+                    Ověřený e-mail
+                  </div>
+                  <Check size={15} strokeWidth={2.3} className="text-sky-700" aria-hidden="true" />
+                </div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{securityStats.emailVerified}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-3xl border border-slate-200 bg-white/90 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div
+                  className="inline-flex w-full rounded-2xl border border-slate-300 bg-white/80 p-1 shadow-[0_6px_14px_rgba(15,23,42,0.05)] lg:w-auto"
+                  role="tablist"
+                  aria-label="Filtr zabezpečení"
+                >
+                  {SECURITY_FILTERS.map((filterOption) => {
+                    const active = securityFilter === filterOption.id;
+                    return (
+                      <button
+                        key={filterOption.id}
+                        type="button"
+                        onClick={() => setSecurityFilter(filterOption.id)}
+                        className={`inline-flex flex-1 items-center justify-center gap-1 rounded-xl px-3 py-1.5 text-xs font-semibold transition lg:flex-none ${
+                          active
+                            ? "border border-emerald-600 bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] text-white shadow-[0_10px_18px_rgba(5,150,105,0.28)]"
+                            : "border border-transparent text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        {filterOption.id === "enabled" ? (
+                          <ShieldCheck size={12} strokeWidth={2.2} aria-hidden="true" />
+                        ) : filterOption.id === "disabled" ? (
+                          <ShieldAlert size={12} strokeWidth={2.2} aria-hidden="true" />
+                        ) : (
+                          <Inbox size={12} strokeWidth={2.2} aria-hidden="true" />
+                        )}
+                        {filterOption.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <label className="relative block w-full lg:max-w-sm">
+                  <Search
+                    size={14}
+                    strokeWidth={2.1}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    type="search"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 shadow-[0_6px_14px_rgba(15,23,42,0.05)] outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10"
+                    value={securitySearch}
+                    onChange={(event) => setSecuritySearch(event.target.value)}
+                    placeholder="Hledat jméno, e-mail nebo pozici..."
+                  />
+                </label>
+              </div>
+
+              {securityError ? (
+                <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {securityError}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {securityLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+                  Načítám zabezpečení uživatelů…
+                </div>
+              ) : filteredSecurityRows.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+                  Pro zvolený filtr nejsou žádní uživatelé.
+                </div>
+              ) : (
+                filteredSecurityRows.map((row) => {
+                  const title = row.fullName || nameFromEmail(row.email);
+                  const avatarInitial = (title.trim().charAt(0) || row.email.charAt(0)).toUpperCase();
+                  const mfaEnabled = row.mfa.enabled;
+
+                  return (
+                    <div
+                      key={row.uid}
+                      className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                    >
+                      <span
+                        className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${
+                          mfaEnabled ? "bg-emerald-500" : "bg-rose-500"
+                        }`}
+                      />
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <span
+                            className={`mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-bold ${
+                              mfaEnabled
+                                ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                : "border-rose-200 bg-rose-50 text-rose-700"
+                            }`}
+                          >
+                            {avatarInitial}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="truncate text-lg font-bold text-slate-900">{title}</div>
+                            <div className="truncate text-sm text-slate-500">{row.email}</div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {row.position ? (
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                                  {row.position}
+                                </span>
+                              ) : null}
+                              {row.accountType ? (
+                                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                                  {row.accountType}
+                                </span>
+                              ) : null}
+                              {row.disabled ? (
+                                <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                                  Deaktivovaný účet
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5 lg:justify-end">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold ${
+                              mfaEnabled
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-rose-200 bg-rose-50 text-rose-700"
+                            }`}
+                          >
+                            {mfaEnabled ? (
+                              <ShieldCheck size={13} strokeWidth={2.2} aria-hidden="true" />
+                            ) : (
+                              <ShieldAlert size={13} strokeWidth={2.2} aria-hidden="true" />
+                            )}
+                            {mfaEnabled ? "2FA aktivní" : "Bez 2FA"}
+                          </span>
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold ${
+                              row.emailVerified
+                                ? "border-sky-200 bg-sky-50 text-sky-700"
+                                : "border-amber-200 bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            {row.emailVerified ? (
+                              <Check size={13} strokeWidth={2.3} aria-hidden="true" />
+                            ) : (
+                              <X size={13} strokeWidth={2.3} aria-hidden="true" />
+                            )}
+                            {row.emailVerified ? "E-mail ověřen" : "E-mail neověřen"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-2 text-xs text-slate-700 sm:grid-cols-3">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Vytvořen
+                          </div>
+                          <div className="mt-1 font-semibold text-slate-900">
+                            {formatAuthDateTime(row.createdAt)}
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Poslední přihlášení
+                          </div>
+                          <div className="mt-1 font-semibold text-slate-900">
+                            {formatAuthDateTime(row.lastSignInAt)}
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Druhé faktory
+                          </div>
+                          <div className="mt-1 font-semibold text-slate-900">
+                            {row.mfa.factorCount > 0 ? `${row.mfa.factorCount} aktivní` : "Žádný"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {row.mfa.factors.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {row.mfa.factors.map((factor) => (
+                            <span
+                              key={factor.uid}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                              title={
+                                factor.enrollmentTime
+                                  ? `Zapsáno: ${formatAuthDateTime(factor.enrollmentTime)}`
+                                  : undefined
+                              }
+                            >
+                              <ShieldCheck size={13} strokeWidth={2.2} aria-hidden="true" />
+                              {getMfaFactorLabel(factor)}
+                              {factor.displayName ? ` · ${factor.displayName}` : ""}
+                              {factor.phoneNumber ? ` · ${factor.phoneNumber}` : ""}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
             </div>
           </section>
         ) : null}

@@ -258,9 +258,17 @@ const INSTITUTION_PORTAL_TARGETS: InstitutionPortalTarget[] = [
     key: "csob-zeus",
     label: "ČSOB Zeus",
     href: "https://cassell.csobpoj.cz/cas/login?service=https%3A%2F%2Fzeus.csobpoj.cz%2Fzeus%2Flogin%2Fcas",
-    logoPath: "/icons/csob.png",
+    logoPath: "/icons/csb.png",
     tintClass:
       "bg-[radial-gradient(circle_at_20%_18%,rgba(245,158,11,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(234,179,8,0.16)_0%,transparent_66%)]",
+  },
+  {
+    key: "maxima-secure2",
+    label: "MAXIMA Secure2",
+    href: "https://www.maximapojistovna.cz/pojistenionline/secure2/index.php",
+    logoPath: "/icons/maxima.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(239,68,68,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(37,99,235,0.16)_0%,transparent_66%)]",
   },
   {
     key: "pillow-portal",
@@ -277,6 +285,14 @@ const INSTITUTION_PORTAL_TARGETS: InstitutionPortalTarget[] = [
     logoPath: "/icons/invstk.png",
     tintClass:
       "bg-[radial-gradient(circle_at_20%_18%,rgba(168,85,247,0.24)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(236,72,153,0.16)_0%,transparent_66%)]",
+  },
+  {
+    key: "conseq",
+    label: "CONSEQ",
+    href: "https://www.conseq.cz/my-conseq/login?returnurl=%2fmy-conseq%2f",
+    logoPath: "/icons/conseq.png",
+    tintClass:
+      "bg-[radial-gradient(circle_at_20%_18%,rgba(37,99,235,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(239,68,68,0.14)_0%,transparent_66%)]",
   },
   {
     key: "comfort-commodity",
@@ -793,12 +809,11 @@ export default function ToolsPage() {
                   <div className={`pomucky-portal-tint pointer-events-none absolute inset-0 ${target.tintClass}`} />
 
                   <div className="relative flex h-full flex-col justify-between">
-                    <div className="pomucky-portal-pill inline-flex w-fit items-center rounded-full border border-slate-200/90 bg-white/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                      Otevřít
-                    </div>
+                    <h3 className="max-w-[calc(100%-3rem)] text-2xl font-bold tracking-[-0.015em] text-slate-900">
+                      {target.label}
+                    </h3>
 
-                    <div className="flex items-end justify-between gap-3">
-                      <h3 className="text-2xl font-bold tracking-[-0.015em] text-slate-900">{target.label}</h3>
+                    <div className="flex justify-end">
                       <span className="pomucky-portal-arrow inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/90 bg-white/90 text-slate-700 transition group-hover:border-blue-300 group-hover:bg-blue-700 group-hover:text-white">
                         <ArrowUpRight className="h-4.5 w-4.5" />
                       </span>
@@ -858,12 +873,11 @@ export default function ToolsPage() {
                   <div className={`pomucky-portal-tint pointer-events-none absolute inset-0 ${target.tintClass}`} />
 
                   <div className="relative flex h-full flex-col justify-between">
-                    <div className="pomucky-portal-pill inline-flex w-fit items-center rounded-full border border-slate-200/90 bg-white/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                      Otevřít
-                    </div>
+                    <h3 className="max-w-[calc(100%-3rem)] text-2xl font-bold tracking-[-0.015em] text-slate-900">
+                      {target.label}
+                    </h3>
 
-                    <div className="flex items-end justify-between gap-3">
-                      <h3 className="text-2xl font-bold tracking-[-0.015em] text-slate-900">{target.label}</h3>
+                    <div className="flex justify-end">
                       <span className="pomucky-portal-arrow inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/90 bg-white/90 text-slate-700 transition group-hover:border-indigo-300 group-hover:bg-indigo-700 group-hover:text-white">
                         <ArrowUpRight className="h-4.5 w-4.5" />
                       </span>

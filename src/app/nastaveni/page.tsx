@@ -944,6 +944,8 @@ export default function SettingsPage() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileStatus, setProfileStatus] = useState<InlineStatus | null>(null);
+  const [appCacheClearing, setAppCacheClearing] = useState(false);
+  const [appCacheStatus, setAppCacheStatus] = useState<InlineStatus | null>(null);
   const [, setMonthlyGoal] = useState<number>(0);
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -1704,6 +1706,57 @@ export default function SettingsPage() {
       });
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  const handleClearAppCache = async () => {
+    if (appCacheClearing) return;
+
+    setAppCacheClearing(true);
+    setAppCacheStatus(null);
+
+    try {
+      let deletedCacheCount = 0;
+      if (typeof window !== "undefined" && "caches" in window) {
+        const cacheKeys = await window.caches.keys();
+        const deleted = await Promise.all(cacheKeys.map((key) => window.caches.delete(key)));
+        deletedCacheCount = deleted.filter(Boolean).length;
+      }
+
+      let serviceWorkerChecked = false;
+      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration("/");
+        if (registration) {
+          await registration.update();
+          serviceWorkerChecked = true;
+        }
+      }
+
+      if (user?.email) {
+        invalidateUserProfileCache(user.email);
+      }
+
+      const details =
+        deletedCacheCount > 0 || serviceWorkerChecked
+          ? ` Vymazáno cache: ${deletedCacheCount}${serviceWorkerChecked ? ", service worker zkontrolován" : ""}.`
+          : "";
+      setAppCacheStatus({
+        type: "success",
+        message: `Cache aplikace byla obnovena.${details} Stránka se znovu načte.`,
+      });
+
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => {
+          window.location.reload();
+        }, 700);
+      }
+    } catch (error) {
+      console.error("Chyba při mazání aplikační cache:", error);
+      setAppCacheStatus({
+        type: "error",
+        message: "Cache aplikace se nepodařilo vymazat. Zkus obnovit stránku ručně.",
+      });
+      setAppCacheClearing(false);
     }
   };
 
@@ -3349,6 +3402,44 @@ export default function SettingsPage() {
                             disabled={profileSaving}
                           />
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-1">
+                          <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-900">
+                            Servis aplikace
+                          </h4>
+                          <p className="max-w-xl text-xs leading-relaxed text-slate-500">
+                            Vymaže lokální PWA cache a znovu načte aplikaci. Profil, smlouvy ani uložená nastavení se nemažou.
+                          </p>
+                          {appCacheStatus ? (
+                            <p
+                              className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
+                                appCacheStatus.type === "success"
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : appCacheStatus.type === "info"
+                                    ? "border-slate-200 bg-white text-slate-700"
+                                    : "border-rose-200 bg-rose-50 text-rose-700"
+                              }`}
+                            >
+                              {appCacheStatus.message}
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleClearAppCache();
+                          }}
+                          disabled={appCacheClearing}
+                          className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-[0_10px_22px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                        >
+                          <Wrench size={16} strokeWidth={2} aria-hidden="true" />
+                          {appCacheClearing ? "Obnovuji..." : "Obnovit cache aplikace"}
+                        </button>
                       </div>
                     </div>
 
