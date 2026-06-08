@@ -52,6 +52,7 @@ import {
 } from "@/lib/fontTheme";
 import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import type { UserProfileResponse } from "@/app/lib/userProfileCache";
 import {
@@ -195,6 +196,7 @@ const parsePositionTimeline = (value: unknown): AccountSetupTimelineItem[] => {
 
 const resolveAccountSetupMfaErrorMessage = (error: unknown, fallback: string): string => {
   const code = (error as { code?: string })?.code;
+  const message = error instanceof Error ? error.message.trim() : "";
   if (
     code === "auth/wrong-password" ||
     code === "auth/invalid-credential" ||
@@ -212,7 +214,7 @@ const resolveAccountSetupMfaErrorMessage = (error: unknown, fallback: string): s
     return "Pro tuto změnu je potřeba znovu ověřit heslo.";
   }
   if (code === "auth/unverified-email") {
-    return "Nejdřív ověř e-mail. Firebase nepovolí zapnutí 2FA na účtu bez ověřeného e-mailu.";
+    return "E-mail se nepodařilo automaticky potvrdit pro zapnutí 2FA. Zadej heslo znovu a spusť 2FA ještě jednou.";
   }
   if (code === "auth/user-not-found") {
     return "Účet s tímto e-mailem neexistuje ve Firebase Authentication.";
@@ -231,6 +233,9 @@ const resolveAccountSetupMfaErrorMessage = (error: unknown, fallback: string): s
   }
   if (code) {
     return `${fallback} Firebase vrátil chybu ${code}.`;
+  }
+  if (message) {
+    return message;
   }
   return fallback;
 };
@@ -1183,15 +1188,6 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     try {
       await user.reload();
       const activeUser = auth.currentUser ?? user;
-      if (!activeUser.emailVerified) {
-        await fetchAuthedJsonOrThrow(activeUser, "/api/auth/email-verification-link", {
-          method: "POST",
-        });
-        setAccountSetupInfo(
-          "Poslali jsme ověřovací odkaz na e-mail. Po ověření se vrať a spusť nastavení 2FA znovu."
-        );
-        return;
-      }
       const totpAlreadyEnabled = multiFactor(activeUser).enrolledFactors.some(
         (factor) => factor.factorId === FactorId.TOTP
       );
@@ -1205,10 +1201,16 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
       const credential = EmailAuthProvider.credential(activeUserEmail, currentPassword);
       await reauthenticateWithCredential(activeUser, credential);
-      const session = await multiFactor(activeUser).getSession();
+      if (!activeUser.emailVerified) {
+        setAccountSetupInfo("Potvrzuji e-mail pro zapnutí 2FA.");
+        await confirmEmailForMfaEnrollment(activeUser);
+      }
+      const enrollmentUser = auth.currentUser ?? activeUser;
+      const session = await multiFactor(enrollmentUser).getSession();
       const secret = await TotpMultiFactorGenerator.generateSecret(session);
       setAccountSetupMfaSecret(secret);
       setAccountSetupMfaCode("");
+      setAccountSetupInfo(null);
     } catch (error) {
       console.warn("[AccountSetupMFA] start enrollment failed", {
         code: (error as { code?: string })?.code,

@@ -66,6 +66,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
 import { PremiumOnlineCardPreview } from "@/components/PremiumOnlineCardPreview";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
 import { invalidateUserProfileCache } from "@/app/lib/userProfileCache";
 import {
   deleteBrowserFcmToken,
@@ -868,7 +869,9 @@ const EXPECTED_MFA_ERROR_CODES = new Set<string>([
   "auth/invalid-verification-code",
   "auth/code-expired",
   "auth/requires-recent-login",
+  "auth/unverified-email",
   "auth/too-many-requests",
+  "auth/network-request-failed",
   "auth/operation-not-allowed",
 ]);
 
@@ -888,6 +891,7 @@ const logMfaIssue = (context: string, error: unknown) => {
 
 const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
   const err = error as { code?: string };
+  const message = error instanceof Error ? error.message.trim() : "";
   if (
     err?.code === "auth/wrong-password" ||
     err?.code === "auth/invalid-credential" ||
@@ -907,11 +911,23 @@ const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
   if (err?.code === "auth/requires-recent-login") {
     return "Pro tuto změnu je potřeba znovu ověřit heslo.";
   }
+  if (err?.code === "auth/unverified-email") {
+    return "E-mail se nepodařilo automaticky potvrdit pro zapnutí 2FA. Zadej heslo znovu a spusť 2FA ještě jednou.";
+  }
   if (err?.code === "auth/too-many-requests") {
     return "Příliš mnoho pokusů. Zkus to prosím později.";
   }
+  if (err?.code === "auth/network-request-failed") {
+    return "Síťová chyba. Zkontroluj připojení a zkus to znovu.";
+  }
   if (err?.code === "auth/operation-not-allowed") {
     return "TOTP MFA není zapnuté ve Firebase Console (Authentication > Multi-factor).";
+  }
+  if (err?.code) {
+    return `${fallback} Firebase vrátil chybu ${err.code}.`;
+  }
+  if (message) {
+    return message;
   }
   return fallback;
 };
@@ -2530,7 +2546,16 @@ export default function SettingsPage() {
       const reauthenticated = await reauthenticateForMfaChange(activeUser);
       if (!reauthenticated) return;
 
-      const session = await multiFactor(activeUser).getSession();
+      if (!activeUser.emailVerified) {
+        setMfaStatus({
+          type: "info",
+          message: "Potvrzuji e-mail pro zapnutí 2FA.",
+        });
+        await confirmEmailForMfaEnrollment(activeUser);
+      }
+
+      const enrollmentUser = auth.currentUser ?? activeUser;
+      const session = await multiFactor(enrollmentUser).getSession();
       const secret = await TotpMultiFactorGenerator.generateSecret(session);
 
       setMfaEnrollmentSecret(secret);
