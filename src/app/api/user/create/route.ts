@@ -63,7 +63,7 @@ type ParsedCreateUser = {
   agencyNumber: string | null;
   managerEmail: string | null;
   tipRecipientEmail: string | null;
-  position: Position;
+  position: Position | null;
   commissionMode: CommissionMode;
   accountType: UserAccountType;
 };
@@ -207,8 +207,8 @@ function parseCreateUserPayload(body: unknown): ParsedCreateUser | { error: stri
   }
 
   const positionRaw =
-    typeof body.position === "string" ? body.position.trim() : "poradce1";
-  if (!POSITION_SET.has(positionRaw as Position)) {
+    typeof body.position === "string" ? body.position.trim() : "";
+  if (positionRaw && !POSITION_SET.has(positionRaw as Position)) {
     return { error: "Pole position má neplatnou hodnotu." };
   }
 
@@ -227,7 +227,7 @@ function parseCreateUserPayload(body: unknown): ParsedCreateUser | { error: stri
     agencyNumber,
     managerEmail,
     tipRecipientEmail,
-    position: positionRaw as Position,
+    position: positionRaw ? (positionRaw as Position) : null,
     commissionMode: modeRaw as CommissionMode,
     accountType,
   };
@@ -382,7 +382,6 @@ export async function POST(req: NextRequest) {
       userId: authUser.uid,
       accountType: parsed.accountType,
       userRole: parsed.accountType,
-      position: parsed.position,
       commissionMode: parsed.commissionMode,
       managerEmail: parsed.managerEmail,
       tipRecipientEmail: parsed.tipRecipientEmail,
@@ -393,6 +392,9 @@ export async function POST(req: NextRequest) {
       updatedAt: now,
       updatedByEmail: ctx.email,
     };
+    if (parsed.accountType === "advisor" && parsed.position) {
+      publicProfile.position = parsed.position;
+    }
     if (parsed.fullName) {
       publicProfile.name = parsed.fullName;
       publicProfile.fullName = parsed.fullName;

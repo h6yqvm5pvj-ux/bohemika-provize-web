@@ -728,7 +728,7 @@ type UserCreationRequestDraft = {
   fullName: string | null;
   agencyNumber: string | null;
   managerEmail: string | null;
-  position: Position;
+  position: Position | null;
   commissionMode: CommissionMode;
 };
 
@@ -2282,8 +2282,7 @@ export default function SettingsPage() {
               userRequestSubject === "userCreation" ? requestedAgencyNumber || null : null,
             requestedManagerEmail:
               userRequestSubject === "userCreation" ? requestedManagerEmail || null : null,
-            requestedPosition:
-              userRequestSubject === "userCreation" ? "poradce1" : null,
+            requestedPosition: null,
             requestedCommissionMode:
               userRequestSubject === "userCreation" ? userRequestMode : null,
             message,

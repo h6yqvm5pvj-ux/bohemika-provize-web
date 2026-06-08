@@ -46,7 +46,7 @@ type UserCreationRequestDraft = {
   fullName: string | null;
   agencyNumber: string | null;
   managerEmail: string | null;
-  position: Position;
+  position: Position | null;
   commissionMode: CommissionMode;
 };
 
@@ -125,10 +125,10 @@ const parseStatus = (value: unknown): UserRequestStatus | null => {
   return null;
 };
 
-const parsePosition = (value: unknown): Position =>
+const parsePosition = (value: unknown): Position | null =>
   typeof value === "string" && POSITION_SET.has(value as Position)
     ? (value as Position)
-    : "poradce1";
+    : null;
 
 const parseCommissionMode = (value: unknown): CommissionMode =>
   typeof value === "string" && COMMISSION_MODE_SET.has(value as CommissionMode)
@@ -180,7 +180,7 @@ type CreateUserFromRequestParams = {
   fullName: string | null;
   agencyNumber: string | null;
   managerEmail: string | null;
-  position: Position;
+  position: Position | null;
   commissionMode: CommissionMode;
   password: string;
   decidedByEmail: string;
@@ -240,7 +240,6 @@ async function createUserFromRequest(
     const publicProfile: Record<string, unknown> = {
       email: params.requestedCorporateEmail,
       userId: authUser.uid,
-      position: params.position,
       commissionMode: params.commissionMode,
       managerEmail: params.managerEmail,
       canChangePosition: true,
@@ -251,6 +250,9 @@ async function createUserFromRequest(
       updatedByEmail: params.decidedByEmail,
       createdFromRequestId: params.requestId,
     };
+    if (params.position) {
+      publicProfile.position = params.position;
+    }
     if (params.fullName) {
       publicProfile.name = params.fullName;
       publicProfile.fullName = params.fullName;
@@ -747,7 +749,7 @@ export async function PATCH(req: NextRequest) {
         fullName: existingRequest.requestedUserDraft?.fullName ?? null,
         agencyNumber: existingRequest.requestedUserDraft?.agencyNumber ?? null,
         managerEmail: existingRequest.requestedUserDraft?.managerEmail ?? null,
-        position: existingRequest.requestedUserDraft?.position ?? "poradce1",
+        position: existingRequest.requestedUserDraft?.position ?? null,
         commissionMode: existingRequest.requestedUserDraft?.commissionMode ?? "standard",
         password,
         decidedByEmail: ctx.email,

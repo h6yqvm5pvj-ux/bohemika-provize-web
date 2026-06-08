@@ -219,6 +219,152 @@ body {
   }
 }
 
+@keyframes admin-create-celebration-fade {
+  0% {
+    opacity: 0;
+  }
+  10%,
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes admin-create-success-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.82);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0) scale(1.06);
+  }
+  22%,
+  76% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.96);
+  }
+}
+
+@keyframes admin-create-success-orbit {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes admin-create-success-check-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(167, 139, 250, 0.36),
+      0 0 44px rgba(52, 211, 153, 0.34),
+      inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(196, 181, 253, 0.58),
+      0 0 72px rgba(168, 85, 247, 0.46),
+      0 0 48px rgba(52, 211, 153, 0.34),
+      inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  }
+}
+
+@keyframes admin-create-confetti-burst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.25) rotate(0deg);
+  }
+  8% {
+    opacity: 1;
+  }
+  76% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(
+        calc(-50% + var(--admin-confetti-x)),
+        calc(-50% + var(--admin-confetti-y))
+      )
+      scale(1) rotate(var(--admin-confetti-rotate));
+  }
+}
+
+.admin-create-celebration {
+  animation: admin-create-celebration-fade 2.6s ease forwards;
+}
+
+.admin-create-success-stage {
+  animation: admin-create-success-pop 2.35s cubic-bezier(0.18, 0.84, 0.32, 1) forwards;
+  width: min(100%, 960px);
+}
+
+.admin-create-success-aura {
+  background:
+    radial-gradient(circle, rgba(168, 85, 247, 0.35) 0%, rgba(34, 197, 94, 0.18) 38%, transparent 70%);
+  filter: blur(22px);
+}
+
+.admin-create-success-orbit {
+  border: 1px solid rgba(196, 181, 253, 0.22);
+  border-left-color: rgba(52, 211, 153, 0.8);
+  border-top-color: rgba(192, 132, 252, 0.75);
+  animation: admin-create-success-orbit 2.8s linear infinite;
+}
+
+.admin-create-success-check {
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.18), transparent 38%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.24), rgba(20, 184, 166, 0.12));
+  backdrop-filter: blur(10px);
+  animation: admin-create-success-check-glow 1.45s ease-in-out infinite;
+}
+
+.admin-create-success-kicker {
+  color: rgba(221, 214, 254, 0.86) !important;
+  text-shadow: 0 0 22px rgba(168, 85, 247, 0.48);
+}
+
+.admin-create-success-title {
+  color: #ffffff !important;
+  font-size: 4.75rem;
+  line-height: 0.94;
+  text-wrap: balance;
+  text-shadow:
+    0 4px 34px rgba(12, 10, 32, 0.88),
+    0 0 38px rgba(168, 85, 247, 0.52),
+    0 0 22px rgba(52, 211, 153, 0.22);
+}
+
+@media (max-width: 900px) {
+  .admin-create-success-title {
+    font-size: 3.35rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .admin-create-success-title {
+    font-size: 2.45rem;
+    line-height: 1;
+  }
+}
+
+.admin-create-confetti-piece {
+  background-color: var(--admin-confetti-color);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--admin-confetti-color) 45%, transparent);
+  transform-origin: center;
+  animation: admin-create-confetti-burst 1.65s cubic-bezier(0.16, 0.9, 0.24, 1) forwards;
+}
+
 @keyframes vizitka-cta-glow {
   0%,
   100% {

@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
+  BriefcaseBusiness,
   Check,
   Clock3,
   Copy,
+  KeyRound,
   Inbox,
   Landmark,
+  Mail,
   RefreshCcw,
   RefreshCw,
   Search,
@@ -69,7 +72,7 @@ type UserCreationRequestDraft = {
   fullName: string | null;
   agencyNumber: string | null;
   managerEmail: string | null;
-  position: Position;
+  position: Position | null;
   commissionMode: CommissionMode;
 };
 
@@ -359,6 +362,34 @@ const ACCOUNT_TYPES: { id: NewUserAccountType; label: string; description: strin
 ];
 
 const NEW_USER_AGENCY_NUMBER_MAX_LEN = 80;
+const CREATE_USER_CELEBRATION_MS = 2600;
+const CREATE_USER_CONFETTI_COLORS = [
+  "#c084fc",
+  "#a855f7",
+  "#22c55e",
+  "#34d399",
+  "#fbbf24",
+  "#f472b6",
+  "#60a5fa",
+];
+
+const CREATE_USER_CONFETTI_PIECES = Array.from({ length: 52 }, (_, index) => {
+  const angle = (index / 52) * Math.PI * 2;
+  const radius = 118 + (index % 9) * 18;
+  return {
+    x: Math.round(Math.cos(angle) * radius),
+    y: Math.round(Math.sin(angle) * radius - 26 - (index % 4) * 8),
+    rotate: ((index * 53) % 360) - 180,
+    delayMs: (index % 10) * 22,
+    color: CREATE_USER_CONFETTI_COLORS[index % CREATE_USER_CONFETTI_COLORS.length],
+    shapeClass:
+      index % 5 === 0
+        ? "h-2.5 w-2.5 rounded-full"
+        : index % 3 === 0
+          ? "h-2 w-4 rounded-[3px]"
+          : "h-3 w-1.5 rounded-[2px]",
+  };
+});
 
 type CreateUserResponse = {
   ok?: boolean;
@@ -532,12 +563,13 @@ export default function AdminRequestsPage() {
   const [newUserAgencyNumber, setNewUserAgencyNumber] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserManagerEmail, setNewUserManagerEmail] = useState("");
-  const [newUserPosition, setNewUserPosition] = useState<Position>("poradce1");
   const [newUserMode, setNewUserMode] = useState<CommissionMode>("standard");
   const [newUserAccountType, setNewUserAccountType] =
     useState<NewUserAccountType>("advisor");
   const [createUserBusy, setCreateUserBusy] = useState(false);
   const [createUserStatus, setCreateUserStatus] = useState<InlineStatus | null>(null);
+  const [showCreateUserCelebration, setShowCreateUserCelebration] = useState(false);
+  const [createUserCelebrationKey, setCreateUserCelebrationKey] = useState(0);
   const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>("requests");
   const [subscriptionLookupEmail, setSubscriptionLookupEmail] = useState("");
   const [subscriptionLookupLoading, setSubscriptionLookupLoading] = useState(false);
@@ -585,6 +617,14 @@ export default function AdminRequestsPage() {
     if (!email) return;
     setNewUserManagerEmail((prev) => prev || email);
   }, [currentUser?.email]);
+
+  useEffect(() => {
+    if (!showCreateUserCelebration) return;
+    const timeoutId = window.setTimeout(() => {
+      setShowCreateUserCelebration(false);
+    }, CREATE_USER_CELEBRATION_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [createUserCelebrationKey, showCreateUserCelebration]);
 
   const loadSubscriptionDirectory = useCallback(async () => {
     const user = auth.currentUser;
@@ -1081,7 +1121,6 @@ export default function AdminRequestsPage() {
             managerEmail: newUserAccountType === "advisor" ? managerEmail : "",
             tipRecipientEmail:
               newUserAccountType === "tipster" ? managerEmail : "",
-            position: newUserPosition,
             commissionMode: newUserMode,
           }),
         }
@@ -1091,10 +1130,11 @@ export default function AdminRequestsPage() {
         type: "success",
         message: `Uživatel ${payload?.email ?? email} byl vytvořen.`,
       });
+      setCreateUserCelebrationKey((prev) => prev + 1);
+      setShowCreateUserCelebration(true);
       setNewUserEmail("");
       setNewUserFullName("");
       setNewUserAgencyNumber("");
-      setNewUserPosition("poradce1");
       setNewUserMode("standard");
       setNewUserAccountType("advisor");
       const ownEmail = normalizeEmail(user.email);
@@ -1119,7 +1159,6 @@ export default function AdminRequestsPage() {
     newUserManagerEmail,
     newUserMode,
     newUserPassword,
-    newUserPosition,
   ]);
 
   const loadSubscriptionForEmail = useCallback(
@@ -1280,9 +1319,53 @@ export default function AdminRequestsPage() {
 
   const fieldClass =
     "w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.04)] outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10";
+  const createUserFieldClass =
+    "w-full rounded-2xl border border-white/14 bg-white/[0.07] px-3 py-2.5 text-sm font-semibold !text-white shadow-[0_10px_24px_rgba(7,6,25,0.18)] outline-none transition placeholder:!text-violet-100/42 focus:border-violet-200/70 focus:bg-white/[0.1] focus:ring-2 focus:ring-violet-300/20 [caret-color:#f8fafc]";
+  const createUserLabelClass =
+    "text-[11px] font-semibold uppercase tracking-[0.16em] !text-violet-200/78";
 
   return (
     <AppLayout active="admin">
+      {showCreateUserCelebration ? (
+        <div
+          key={createUserCelebrationKey}
+          className="admin-create-celebration pointer-events-none fixed inset-0 z-[90] flex items-center justify-center px-4"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <div className="absolute inset-0 bg-slate-950/24 backdrop-blur-[5px]" />
+          <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2">
+            {CREATE_USER_CONFETTI_PIECES.map((piece, index) => (
+              <span
+                key={`${piece.x}-${piece.y}-${index}`}
+                className={`admin-create-confetti-piece absolute left-1/2 top-1/2 ${piece.shapeClass}`}
+                style={
+                  {
+                    "--admin-confetti-x": `${piece.x}px`,
+                    "--admin-confetti-y": `${piece.y}px`,
+                    "--admin-confetti-rotate": `${piece.rotate}deg`,
+                    "--admin-confetti-color": piece.color,
+                    animationDelay: `${piece.delayMs}ms`,
+                  } as CSSProperties
+                }
+              />
+            ))}
+          </div>
+          <div className="admin-create-success-stage relative flex min-h-[260px] flex-col items-center justify-center px-4 text-center">
+            <span className="admin-create-success-aura absolute inset-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full" />
+            <span className="admin-create-success-orbit absolute left-1/2 top-1/2 h-[210px] w-[210px] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+            <span className="admin-create-success-check relative mb-5 inline-flex h-24 w-24 items-center justify-center rounded-full !text-emerald-100">
+              <Check size={52} strokeWidth={2.7} aria-hidden="true" />
+            </span>
+            <p className="admin-create-success-kicker text-[12px] font-semibold uppercase tracking-[0.32em]">
+              Hotovo
+            </p>
+            <p className="admin-create-success-title mt-2 font-bold tracking-[-0.02em]">
+              Uživatel vytvořen !
+            </p>
+          </div>
+        </div>
+      ) : null}
       <div className="w-full max-w-[1200px] space-y-6 px-2 pb-8 sm:px-4">
         <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(170deg,#ffffff_0%,#f8fbff_55%,#eff5fb_100%)] px-5 py-5 shadow-[0_22px_46px_rgba(15,23,42,0.1)] sm:px-6">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
@@ -1699,16 +1782,25 @@ export default function AdminRequestsPage() {
                                   </span>
                                 </div>
                               ) : null}
-                              <div>
-                                Pozice:{" "}
-                                <span className="font-medium text-slate-900">
-                                  {request.requestedUserDraft
-                                    ? (POSITIONS.find(
+                              {request.subject === "userCreation" ? (
+                                request.requestedUserDraft?.position ? (
+                                  <div>
+                                    Pozice:{" "}
+                                    <span className="font-medium text-slate-900">
+                                      {POSITIONS.find(
                                         (p) => p.id === request.requestedUserDraft?.position
-                                      )?.label ?? request.requestedUserDraft.position)
-                                    : "—"}
-                                </span>
-                              </div>
+                                      )?.label ?? request.requestedUserDraft.position}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    Kariéra:{" "}
+                                    <span className="font-medium text-slate-900">
+                                      doplní uživatel ve stepperu
+                                    </span>
+                                  </div>
+                                )
+                              ) : null}
                               <div>
                                 Režim:{" "}
                                 <span className="font-medium text-slate-900">
@@ -1863,39 +1955,45 @@ export default function AdminRequestsPage() {
         </section>
 
         {isAllowedAdmin && activeAdminSection === "createUser" ? (
-          <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(170deg,#ffffff_0%,#f8fbff_55%,#eff5fb_100%)] px-5 py-5 shadow-[0_22px_46px_rgba(15,23,42,0.1)] sm:px-6">
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <span className="mb-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold tracking-wide text-emerald-800">
+          <section className="relative overflow-hidden rounded-[30px] border border-violet-300/25 bg-[linear-gradient(155deg,#1b1032_0%,#130b27_54%,#0c0b1b_100%)] px-4 py-4 !text-white shadow-[0_34px_90px_rgba(7,6,25,0.46),inset_0_1px_0_rgba(196,181,253,0.18)] sm:px-6 sm:py-5">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#7c3aed_0%,#a855f7_50%,#22c55e_100%)]" />
+            <div className="relative mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <span className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.06] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] !text-violet-100">
+                  <ShieldCheck size={13} strokeWidth={2.2} aria-hidden="true" />
                   Správa účtů
                 </span>
-                <h2 className="inline-flex items-center gap-1.5 text-base font-semibold text-slate-900 sm:text-lg">
-                  <UserPlus size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+                <h2 className="inline-flex items-center gap-2 text-xl font-bold tracking-[-0.02em] !text-white sm:text-2xl">
+                  <UserPlus size={20} strokeWidth={2.2} className="!text-violet-100" aria-hidden="true" />
                   <span>Přidat uživatele</span>
                 </h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Vytvoří Firebase Auth účet, veřejný profil a aktivní interní profil.
-                  U tipaře se zpřístupní jen odesílání tipů.
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed !text-violet-100/70">
+                  Účet vznikne bez výchozí pozice. Kariérní historii si poradce doplní
+                  v úvodním stepperu při prvním přihlášení.
                 </p>
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-400/12 px-3 py-2 text-xs font-semibold !text-emerald-100">
+                <BriefcaseBusiness size={15} strokeWidth={2.2} aria-hidden="true" />
+                Kariéra ve stepperu
               </div>
             </div>
 
             <form
-              className="grid gap-3 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm lg:grid-cols-2"
+              className="relative grid gap-4 rounded-[24px] border border-white/14 bg-white/[0.055] p-4 shadow-[0_18px_44px_rgba(7,6,25,0.28)] md:grid-cols-2 xl:grid-cols-3"
               onSubmit={(event) => {
                 event.preventDefault();
                 void handleCreateUser();
               }}
             >
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                <label className={`inline-flex items-center gap-1.5 ${createUserLabelClass}`}>
+                  <Mail size={12} strokeWidth={2.2} aria-hidden="true" />
                   E-mail
                 </label>
                 <input
                   type="email"
                   autoComplete="off"
-                  className={fieldClass}
+                  className={createUserFieldClass}
                   value={newUserEmail}
                   onChange={(event) => setNewUserEmail(event.target.value)}
                   placeholder="jmeno.prijmeni@bohemika.eu"
@@ -1903,28 +2001,28 @@ export default function AdminRequestsPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  Jméno
+                <label className={createUserLabelClass}>
+                  Jméno a příjmení / Název
                 </label>
                 <input
                   type="text"
                   autoComplete="off"
-                  className={fieldClass}
+                  className={createUserFieldClass}
                   value={newUserFullName}
                   onChange={(event) => setNewUserFullName(event.target.value)}
-                  placeholder="Jméno Příjmení"
+                  placeholder="Jméno Příjmení nebo název firmy"
                 />
               </div>
 
-              <div className="space-y-1.5 lg:col-span-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+              <div className="space-y-1.5">
+                <label className={createUserLabelClass}>
                   Agenturní číslo
                 </label>
                 <input
                   type="text"
                   inputMode="text"
                   autoComplete="off"
-                  className={fieldClass}
+                  className={createUserFieldClass}
                   value={newUserAgencyNumber}
                   onChange={(event) => setNewUserAgencyNumber(event.target.value)}
                   placeholder="Volitelné agenturní číslo"
@@ -1932,8 +2030,8 @@ export default function AdminRequestsPage() {
                 />
               </div>
 
-              <div className="space-y-1.5 lg:col-span-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+              <div className="space-y-1.5 md:col-span-2 xl:col-span-3">
+                <label className={createUserLabelClass}>
                   Typ účtu
                 </label>
                 <div
@@ -1953,16 +2051,31 @@ export default function AdminRequestsPage() {
                         }}
                         className={`rounded-2xl border px-4 py-3 text-left transition ${
                           active
-                            ? "border-slate-900 bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.22)]"
-                            : "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-300 hover:bg-white"
+                            ? "border-violet-200/60 bg-violet-400/22 !text-white shadow-[0_16px_34px_rgba(124,58,237,0.26)]"
+                            : "border-white/14 bg-white/[0.04] !text-violet-100 hover:border-violet-300/42 hover:bg-white/[0.08]"
                         }`}
                         role="radio"
                         aria-checked={active}
                       >
-                        <span className="block text-sm font-semibold">{type.label}</span>
+                        <span className={`flex items-center gap-2 text-sm font-semibold ${active ? "!text-white" : "!text-violet-100"}`}>
+                          <span
+                            className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border ${
+                              active
+                                ? "border-violet-100/45 bg-white/14 !text-white"
+                                : "border-white/14 bg-white/[0.05] !text-violet-100"
+                            }`}
+                          >
+                            {type.id === "advisor" ? (
+                              <UserCheck2 size={14} strokeWidth={2.2} aria-hidden="true" />
+                            ) : (
+                              <UserPlus size={14} strokeWidth={2.2} aria-hidden="true" />
+                            )}
+                          </span>
+                          {type.label}
+                        </span>
                         <span
                           className={`mt-1 block text-xs leading-relaxed ${
-                            active ? "text-slate-200" : "text-slate-500"
+                            active ? "!text-violet-50/76" : "!text-violet-100/58"
                           }`}
                         >
                           {type.description}
@@ -1974,14 +2087,15 @@ export default function AdminRequestsPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                <label className={`inline-flex items-center gap-1.5 ${createUserLabelClass}`}>
+                  <KeyRound size={12} strokeWidth={2.2} aria-hidden="true" />
                   Dočasné heslo
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     autoComplete="new-password"
-                    className={fieldClass}
+                    className={createUserFieldClass}
                     value={newUserPassword}
                     onChange={(event) => setNewUserPassword(event.target.value)}
                     placeholder="Min. 8 znaků"
@@ -1989,7 +2103,7 @@ export default function AdminRequestsPage() {
                   <button
                     type="button"
                     onClick={handleGenerateNewUserPassword}
-                    className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100"
+                    className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-white/16 bg-white/[0.07] text-violet-100 transition hover:bg-white/[0.12]"
                     title="Vygenerovat heslo"
                     aria-label="Vygenerovat heslo"
                   >
@@ -1999,7 +2113,7 @@ export default function AdminRequestsPage() {
                     type="button"
                     onClick={() => void handleCopyNewUserPassword()}
                     disabled={!newUserPassword}
-                    className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-white/16 bg-white/[0.07] text-violet-100 transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
                     title="Zkopírovat heslo"
                     aria-label="Zkopírovat heslo"
                   >
@@ -2009,13 +2123,13 @@ export default function AdminRequestsPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                <label className={createUserLabelClass}>
                   {newUserAccountType === "tipster" ? "Příjemce tipů" : "Nadřízený"}
                 </label>
                 <input
                   type="email"
                   autoComplete="off"
-                  className={fieldClass}
+                  className={createUserFieldClass}
                   value={newUserManagerEmail}
                   onChange={(event) => setNewUserManagerEmail(event.target.value)}
                   placeholder={
@@ -2028,29 +2142,12 @@ export default function AdminRequestsPage() {
 
               {newUserAccountType === "advisor" ? (
                 <>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                      Výchozí pozice
-                    </label>
-                    <select
-                      className={fieldClass}
-                      value={newUserPosition}
-                      onChange={(event) => setNewUserPosition(event.target.value as Position)}
-                    >
-                      {POSITIONS.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  <div className="space-y-1.5 md:col-span-2">
+                    <label className={createUserLabelClass}>
                       Režim provizí
                     </label>
                     <div
-                      className="inline-flex w-full rounded-2xl border border-slate-300 bg-slate-100 p-1"
+                      className="inline-flex w-full rounded-2xl border border-white/14 bg-slate-950/28 p-1"
                       role="radiogroup"
                       aria-label="Režim provizí nového uživatele"
                     >
@@ -2064,8 +2161,8 @@ export default function AdminRequestsPage() {
                             onClick={() => setNewUserMode(m.id)}
                             className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
                               active
-                                ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_6px_16px_rgba(5,150,105,0.34)]"
-                                : "border border-transparent text-slate-600 hover:text-slate-900"
+                                ? "bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_58%,#22c55e_100%)] !text-white shadow-[0_10px_22px_rgba(124,58,237,0.28)]"
+                                : "border border-transparent !text-violet-100/66 hover:!text-white"
                             }`}
                             role="radio"
                             aria-checked={active}
@@ -2073,7 +2170,7 @@ export default function AdminRequestsPage() {
                             {isAccelerated ? (
                               <Zap size={14} strokeWidth={2.2} className={active ? "!text-white" : "text-amber-600"} aria-hidden="true" />
                             ) : (
-                              <Snail size={14} strokeWidth={2.2} className={active ? "!text-white" : "text-slate-500"} aria-hidden="true" />
+                              <Snail size={14} strokeWidth={2.2} className={active ? "!text-white" : "text-violet-100/58"} aria-hidden="true" />
                             )}
                             {m.label}
                           </button>
@@ -2081,35 +2178,46 @@ export default function AdminRequestsPage() {
                       })}
                     </div>
                   </div>
+
+                  <div className="flex items-start gap-3 rounded-2xl border border-emerald-300/25 bg-emerald-400/10 px-4 py-3 text-sm leading-relaxed !text-emerald-50/88">
+                    <BriefcaseBusiness className="mt-0.5 h-5 w-5 shrink-0 !text-emerald-100" strokeWidth={2.2} aria-hidden="true" />
+                    <div>
+                      <p className="font-semibold !text-white">Kariéra se nezadává při založení</p>
+                      <p className="mt-0.5 !text-emerald-50/72">
+                        Poradce po prvním přihlášení vyplní historii pozic v onboardingovém
+                        stepperu.
+                      </p>
+                    </div>
+                  </div>
                 </>
               ) : (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 lg:col-span-2">
+                <div className="rounded-2xl border border-amber-200/35 bg-amber-300/12 px-4 py-3 text-sm !text-amber-50/90 md:col-span-2 xl:col-span-1">
                   Tipař po přihlášení uvidí pouze domovskou stránku s tlačítkem pro přidání tipu.
                 </div>
               )}
 
-              <div className="flex flex-col gap-2 pt-1 lg:col-span-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-2 pt-1 md:col-span-2 sm:flex-row sm:items-center sm:justify-between xl:col-span-3">
                 {createUserStatus ? (
                   <p
                     className={`text-xs font-medium ${
                       createUserStatus.type === "success"
-                        ? "text-emerald-700"
+                        ? "!text-emerald-100"
                         : createUserStatus.type === "info"
-                          ? "text-slate-700"
-                          : "text-rose-700"
+                          ? "!text-violet-100"
+                          : "!text-rose-100"
                     }`}
                   >
                     {createUserStatus.message}
                   </p>
                 ) : (
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs !text-violet-100/58">
                     Nový účet se po vytvoření může rovnou přihlásit do aplikace.
                   </span>
                 )}
                 <button
                   type="submit"
                   disabled={createUserBusy}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-700 bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#22c55e_100%)] px-5 py-2.5 text-sm font-semibold !text-white shadow-[0_14px_30px_rgba(124,58,237,0.34)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <UserPlus size={15} strokeWidth={2.2} aria-hidden="true" />
                   {createUserBusy ? "Vytvářím..." : "Vytvořit uživatele"}

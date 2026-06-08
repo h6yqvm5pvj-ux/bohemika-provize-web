@@ -1,7 +1,7 @@
 // src/app/kalkulacka/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -183,6 +183,33 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
 ];
 const CONTRACTS_CREATE_IDEMPOTENCY_HEADER = "x-idempotency-key";
 const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
+const CONTRACT_SAVE_CONFETTI_COLORS = [
+  "#c084fc",
+  "#a855f7",
+  "#22c55e",
+  "#34d399",
+  "#fbbf24",
+  "#f472b6",
+  "#60a5fa",
+];
+
+const CONTRACT_SAVE_CONFETTI_PIECES = Array.from({ length: 52 }, (_, index) => {
+  const angle = (index / 52) * Math.PI * 2;
+  const radius = 118 + (index % 9) * 18;
+  return {
+    x: Math.round(Math.cos(angle) * radius),
+    y: Math.round(Math.sin(angle) * radius - 26 - (index % 4) * 8),
+    rotate: ((index * 53) % 360) - 180,
+    delayMs: (index % 10) * 22,
+    color: CONTRACT_SAVE_CONFETTI_COLORS[index % CONTRACT_SAVE_CONFETTI_COLORS.length],
+    shapeClass:
+      index % 5 === 0
+        ? "h-2.5 w-2.5 rounded-full"
+        : index % 3 === 0
+          ? "h-2 w-4 rounded-[3px]"
+          : "h-3 w-1.5 rounded-[2px]",
+  };
+});
 
 const formatTipCreatedAt = (createdAtMs: number | null): string => {
   if (!createdAtMs || !Number.isFinite(createdAtMs)) return "Datum neuvedeno";
@@ -838,6 +865,7 @@ export default function CalculatorPage() {
     contractNumber: string | null;
     clientName: string | null;
   } | null>(null);
+  const [contractSaveCelebrationKey, setContractSaveCelebrationKey] = useState(0);
   const [lastSavedContractRef, setLastSavedContractRef] = useState<{
     ownerEmail: string;
     entryId: string;
@@ -3399,6 +3427,7 @@ export default function CalculatorPage() {
         contractNumber: endorsementDraft.contractNumber,
         clientName: clientName.trim() || null,
       });
+      setContractSaveCelebrationKey((prev) => prev + 1);
       setEndorsementDraft(null);
     } catch (error) {
       const errorMessage =
@@ -3939,6 +3968,7 @@ export default function CalculatorPage() {
         contractNumber: contractNumber.trim() || null,
         clientName: clientName.trim() || null,
       });
+      setContractSaveCelebrationKey((prev) => prev + 1);
       setRefreshOriginalOpen(false);
     } catch (error) {
       const errorMessage =
@@ -4244,38 +4274,48 @@ export default function CalculatorPage() {
   
     return (
     <AppLayout active="calc">
-      <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
-      <div className="mx-auto w-full max-w-6xl font-mono text-slate-900">
-      {saveSuccessFlash && (
+      {saveSuccessFlash ? (
         <div
+          key={contractSaveCelebrationKey}
+          className="admin-create-celebration pointer-events-none fixed inset-0 z-[120] flex items-center justify-center px-4"
           aria-live="polite"
-          className="fixed bottom-6 right-6 z-50 pointer-events-none"
+          aria-atomic="true"
         >
-          <div className="relative flex items-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.18)]">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-white">
-              <svg
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-                className="h-5 w-5"
-              >
-                <path
-                  fill="currentColor"
-                  d="M9.5 15.6 6.4 12.5a1 1 0 0 0-1.4 1.4l3.8 3.8a1 1 0 0 0 1.45-.05l8-9a1 1 0 1 0-1.5-1.3l-7.25 8.2Z"
-                />
-              </svg>
-            </div>
-            <div className="space-y-0.5">
-              <p className="text-sm font-semibold text-slate-900">Sepsáno!</p>
-              <p className="text-[11px] text-slate-600">
-                {saveSuccessFlash.clientName || "Uloženo mezi sepsané"}
-                {saveSuccessFlash.contractNumber
-                  ? ` • č. ${saveSuccessFlash.contractNumber}`
-                  : ""}
-              </p>
-            </div>
+          <div className="absolute inset-0 bg-slate-950/24 backdrop-blur-[5px]" />
+          <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2">
+            {CONTRACT_SAVE_CONFETTI_PIECES.map((piece, index) => (
+              <span
+                key={`${piece.x}-${piece.y}-${index}`}
+                className={`admin-create-confetti-piece absolute left-1/2 top-1/2 ${piece.shapeClass}`}
+                style={
+                  {
+                    "--admin-confetti-x": `${piece.x}px`,
+                    "--admin-confetti-y": `${piece.y}px`,
+                    "--admin-confetti-rotate": `${piece.rotate}deg`,
+                    "--admin-confetti-color": piece.color,
+                    animationDelay: `${piece.delayMs}ms`,
+                  } as CSSProperties
+                }
+              />
+            ))}
+          </div>
+          <div className="admin-create-success-stage relative flex min-h-[260px] flex-col items-center justify-center px-4 text-center">
+            <span className="admin-create-success-aura absolute inset-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full" />
+            <span className="admin-create-success-orbit absolute left-1/2 top-1/2 h-[210px] w-[210px] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+            <span className="admin-create-success-check relative mb-5 inline-flex h-24 w-24 items-center justify-center rounded-full !text-emerald-100">
+              <CheckCircle2 size={56} strokeWidth={2.4} aria-hidden="true" />
+            </span>
+            <p className="admin-create-success-kicker text-[12px] font-semibold uppercase tracking-[0.32em]">
+              Hotovo
+            </p>
+            <p className="admin-create-success-title mt-2 font-bold tracking-[-0.02em]">
+              Smlouva sepsána !
+            </p>
           </div>
         </div>
-      )}
+      ) : null}
+      <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+      <div className="mx-auto w-full max-w-6xl font-mono text-slate-900">
       {validationError && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <div
