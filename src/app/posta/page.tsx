@@ -85,12 +85,14 @@ export default function PostaPage() {
   const [composeMessageText, setComposeMessageText] = useState("");
   const [composeFiles, setComposeFiles] = useState<File[]>([]);
   const [quickReplyText, setQuickReplyText] = useState("");
+  const [quickReplyFiles, setQuickReplyFiles] = useState<File[]>([]);
   const [quickReplyOpen, setQuickReplyOpen] = useState(false);
   const [quickReplySubmitting, setQuickReplySubmitting] = useState(false);
   const [quickReplyErrorText, setQuickReplyErrorText] = useState<string | null>(null);
   const [quickReplySuccessText, setQuickReplySuccessText] = useState<string | null>(null);
   const composeLookupSeq = useRef(0);
   const composeFileInputRef = useRef<HTMLInputElement | null>(null);
+  const quickReplyFileInputRef = useRef<HTMLInputElement | null>(null);
   const openedDeepLinkMessageIdRef = useRef<string>("");
   const pendingDeepLinkMessageIdRef = useRef<string>("");
 
@@ -353,6 +355,8 @@ export default function PostaPage() {
     setSharedExportPreviewHtml(null);
     setSharedExportPreviewLoading(false);
     setQuickReplyText("");
+    setQuickReplyFiles([]);
+    if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
     setQuickReplyOpen(false);
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
@@ -532,6 +536,24 @@ export default function PostaPage() {
     setQuickReplySuccessText(null);
   };
 
+  const handleQuickReplyFilesChange = (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    const current = new Map(quickReplyFiles.map((file) => [`${file.name}-${file.size}`, file]));
+    Array.from(list).forEach((file) => {
+      current.set(`${file.name}-${file.size}`, file);
+    });
+    setQuickReplyFiles([...current.values()].slice(0, COMPOSE_FILES_MAX_COUNT));
+    setQuickReplyErrorText(null);
+    setQuickReplySuccessText(null);
+    if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
+  };
+
+  const removeQuickReplyFile = (targetKey: string) => {
+    setQuickReplyFiles((prev) => prev.filter((file) => `${file.name}-${file.size}` !== targetKey));
+    setQuickReplyErrorText(null);
+    setQuickReplySuccessText(null);
+  };
+
   const handleQuickReplySend = async () => {
     if (!user || !previewItem || previewItem.type !== "direct_message") return;
     if (!quickReplyRecipient) {
@@ -540,8 +562,8 @@ export default function PostaPage() {
     }
 
     const messageText = quickReplyText.trim();
-    if (!messageText) {
-      setQuickReplyErrorText("Napiš text odpovědi.");
+    if (!messageText && quickReplyFiles.length === 0) {
+      setQuickReplyErrorText("Napiš text odpovědi nebo přilož soubor.");
       return;
     }
 
@@ -549,6 +571,9 @@ export default function PostaPage() {
     formData.set("recipientEmail", quickReplyRecipient.email);
     formData.set("subject", toReplySubject(previewItem.title).slice(0, COMPOSE_SUBJECT_MAX_LEN));
     formData.set("text", messageText.slice(0, COMPOSE_MESSAGE_MAX_LEN));
+    quickReplyFiles.forEach((file) => {
+      formData.append("files", file);
+    });
 
     setQuickReplySubmitting(true);
     setQuickReplyErrorText(null);
@@ -559,6 +584,8 @@ export default function PostaPage() {
         body: formData,
       });
       setQuickReplyText("");
+      setQuickReplyFiles([]);
+      if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
       setQuickReplyOpen(false);
       setQuickReplySuccessText(`Odpověď byla odeslána uživateli ${quickReplyRecipient.name}.`);
       await loadMailbox();
@@ -626,6 +653,8 @@ export default function PostaPage() {
     }
     setQuickReplyOpen(false);
     setQuickReplyText("");
+    setQuickReplyFiles([]);
+    if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
     if (item.type === "direct_message") {
@@ -715,6 +744,8 @@ export default function PostaPage() {
   useEffect(() => {
     if (!previewItem) return;
     setQuickReplyText("");
+    setQuickReplyFiles([]);
+    if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
     setQuickReplySubmitting(false);
@@ -727,6 +758,13 @@ export default function PostaPage() {
         setPreviewItem(null);
         setSharedExportPreviewHtml(null);
         setSharedExportPreviewLoading(false);
+        setQuickReplyText("");
+        setQuickReplyFiles([]);
+        if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
+        setQuickReplyOpen(false);
+        setQuickReplyErrorText(null);
+        setQuickReplySuccessText(null);
+        setQuickReplySubmitting(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1427,20 +1465,71 @@ export default function PostaPage() {
                           className="mt-2 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200"
                         />
 
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          {QUICK_EMOJIS.map((emoji) => (
-                            <button
-                              key={`quick-reply-emoji-${emoji}`}
-                              type="button"
-                              onClick={() => appendQuickReplyEmoji(emoji)}
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                          <div className="inline-flex flex-wrap items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                              <Smile className="h-3.5 w-3.5" />
+                              Emoji
+                            </span>
+                            {QUICK_EMOJIS.map((emoji) => (
+                              <button
+                                key={`quick-reply-emoji-${emoji}`}
+                                type="button"
+                                onClick={() => appendQuickReplyEmoji(emoji)}
+                                disabled={quickReplySubmitting}
+                                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-55"
+                                aria-label={`Vložit emoji ${emoji}`}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+
+                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50">
+                            <Paperclip className="h-3.5 w-3.5" />
+                            Přiložit
+                            <input
+                              ref={quickReplyFileInputRef}
+                              type="file"
+                              multiple
+                              onChange={(event) => handleQuickReplyFilesChange(event.target.files)}
                               disabled={quickReplySubmitting}
-                              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-55"
-                              aria-label={`Vložit emoji ${emoji}`}
-                            >
-                              {emoji}
-                            </button>
-                          ))}
+                              className="hidden"
+                            />
+                          </label>
                         </div>
+
+                        {quickReplyFiles.length > 0 ? (
+                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                            {quickReplyFiles.map((file) => {
+                              const key = `${file.name}-${file.size}`;
+                              return (
+                                <div
+                                  key={key}
+                                  className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                                >
+                                  <span className="min-w-0 truncate text-xs font-medium text-slate-700">
+                                    {file.name}
+                                  </span>
+                                  <div className="flex shrink-0 items-center gap-2">
+                                    <span className="text-[11px] text-slate-500">
+                                      {formatFileSize(file.size)}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeQuickReplyFile(key)}
+                                      disabled={quickReplySubmitting}
+                                      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 transition hover:border-slate-400 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                      aria-label={`Odebrat ${file.name}`}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
 
                         {quickReplyErrorText ? (
                           <p className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -1457,7 +1546,10 @@ export default function PostaPage() {
                           <button
                             type="button"
                             onClick={() => void handleQuickReplySend()}
-                            disabled={quickReplySubmitting || quickReplyText.trim().length === 0}
+                            disabled={
+                              quickReplySubmitting ||
+                              (quickReplyText.trim().length === 0 && quickReplyFiles.length === 0)
+                            }
                             className="inline-flex items-center gap-2 rounded-xl border border-emerald-700/70 bg-[linear-gradient(135deg,#16a34a_0%,#1d4ed8_100%)] px-4 py-2 text-sm font-semibold text-zinc-50 shadow-[0_12px_30px_rgba(5,150,105,0.28)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {quickReplySubmitting ? (
