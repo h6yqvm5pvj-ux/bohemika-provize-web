@@ -7,6 +7,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CalendarDays,
+  ChevronDown,
   Eye,
   ExternalLink,
   FileText,
@@ -136,6 +137,15 @@ type ContractPdfPreviewPage = {
   pageNumber: number;
   width: number;
   height: number;
+};
+
+type ContractPdfOption = {
+  ownerEmail: string;
+  entryId: string;
+  fileName: string;
+  label: string;
+  meta: string;
+  isCurrent: boolean;
 };
 
 type PdfReimportParser = (file: File) => Promise<unknown>;
@@ -578,6 +588,9 @@ export default function ContractDetailPage() {
   const [showPaymentVerificationModal, setShowPaymentVerificationModal] =
     useState(false);
   const [showContractPdfModal, setShowContractPdfModal] = useState(false);
+  const [showContractPdfOptions, setShowContractPdfOptions] = useState(false);
+  const [selectedContractPdf, setSelectedContractPdf] =
+    useState<ContractPdfOption | null>(null);
   const [contractPdfBlobUrl, setContractPdfBlobUrl] = useState<string | null>(null);
   const [contractPdfPages, setContractPdfPages] = useState<ContractPdfPreviewPage[]>([]);
   const [contractPdfLoading, setContractPdfLoading] = useState(false);
@@ -598,6 +611,8 @@ export default function ContractDetailPage() {
         setShowStornoModal(false);
         setShowPaymentVerificationModal(false);
         setShowContractPdfModal(false);
+        setShowContractPdfOptions(false);
+        setSelectedContractPdf(null);
         setNeonImmediateBreakdown(null);
       }
     };
@@ -606,6 +621,7 @@ export default function ContractDetailPage() {
       showStornoModal ||
       showPaymentVerificationModal ||
       showContractPdfModal ||
+      showContractPdfOptions ||
       isNeonImmediateBreakdownOpen
     ) {
       window.addEventListener("keydown", onKey);
@@ -618,6 +634,7 @@ export default function ContractDetailPage() {
     showStornoModal,
     showPaymentVerificationModal,
     showContractPdfModal,
+    showContractPdfOptions,
     isNeonImmediateBreakdownOpen,
   ]);
 
@@ -678,6 +695,8 @@ export default function ContractDetailPage() {
 
   const closeContractPdfModal = useCallback(() => {
     setShowContractPdfModal(false);
+    setShowContractPdfOptions(false);
+    setSelectedContractPdf(null);
     setContractPdfError(null);
     setContractPdfLoading(false);
     clearContractPdfPreview();
@@ -1062,6 +1081,84 @@ export default function ContractDetailPage() {
     contractPdfAttachment.originalName.trim()
       ? contractPdfAttachment.originalName.trim()
       : "smlouva.pdf";
+  const contractPdfOptions = useMemo<ContractPdfOption[]>(() => {
+    const normalizedOwnerEmail = normalizeEmail(ownerEmail) || "";
+    if (!normalizedOwnerEmail) return [];
+
+    const sourceEntries =
+      contractTimeline.length > 0 ? contractTimeline : contract ? [contract] : [];
+    const options: ContractPdfOption[] = [];
+    const seenEntryIds = new Set<string>();
+    let endorsementIndex = 0;
+
+    sourceEntries.forEach((entry) => {
+      const sourceEntryId = typeof entry.id === "string" ? entry.id.trim() : "";
+      const attachment = entry.contractPdfAttachment;
+      if (
+        !sourceEntryId ||
+        seenEntryIds.has(sourceEntryId) ||
+        !attachment?.hasFile ||
+        attachment.contentType !== "application/pdf"
+      ) {
+        return;
+      }
+      seenEntryIds.add(sourceEntryId);
+
+      const isEntryEndorsement = entry.entryType === "endorsement";
+      if (isEntryEndorsement) endorsementIndex += 1;
+
+      const explicitDelta = Number(entry.premiumDelta ?? Number.NaN);
+      const previousPremium = Number(entry.previousInputAmount ?? Number.NaN);
+      const nextPremium = Number(
+        entry.newInputAmount ??
+          entry.effectiveInputAmount ??
+          entry.inputAmount ??
+          Number.NaN
+      );
+      const delta = Number.isFinite(explicitDelta)
+        ? explicitDelta
+        : Number.isFinite(previousPremium) && Number.isFinite(nextPremium)
+          ? nextPremium - previousPremium
+          : null;
+      const changeText =
+        isEntryEndorsement && delta != null
+          ? `${delta >= 0 ? "Navýšení" : "Ponížení"} ${formatMoney(Math.abs(delta))}`
+          : null;
+      const dateText = formatDate(entry.contractSignedDate ?? entry.createdAt);
+      const fileName =
+        typeof attachment.originalName === "string" && attachment.originalName.trim()
+          ? attachment.originalName.trim()
+          : "smlouva.pdf";
+      const meta = [dateText !== "—" ? dateText : null, changeText, fileName]
+        .filter((value): value is string => Boolean(value))
+        .join(" / ");
+
+      options.push({
+        ownerEmail: normalizedOwnerEmail,
+        entryId: sourceEntryId,
+        fileName,
+        label: isEntryEndorsement ? `Dodatek ${endorsementIndex}` : "Původní smlouva",
+        meta: meta || fileName,
+        isCurrent: sourceEntryId === contract?.id,
+      });
+    });
+
+    return options;
+  }, [contract, contractTimeline, ownerEmail]);
+  const hasAnyContractPdfAttachment = contractPdfOptions.length > 0;
+  const selectedContractPdfFileName = selectedContractPdf?.fileName ?? contractPdfFileName;
+  const openContractPdfOption = useCallback((option: ContractPdfOption) => {
+    setSelectedContractPdf(option);
+    setShowContractPdfOptions(false);
+    setShowContractPdfModal(true);
+  }, []);
+  const handleContractPdfButtonClick = useCallback(() => {
+    if (contractPdfOptions.length === 1 && contractPdfOptions[0]) {
+      openContractPdfOption(contractPdfOptions[0]);
+      return;
+    }
+    setShowContractPdfOptions((prev) => !prev);
+  }, [contractPdfOptions, openContractPdfOption]);
   const canEmbedPaymentVerification =
     paymentVerificationUrl === KOOPERATIVA_PAYMENT_CHECK_URL ||
     paymentVerificationUrl === CPP_PAYMENT_CHECK_URL;
@@ -1185,7 +1282,11 @@ export default function ContractDetailPage() {
       clearContractPdfPreview();
       return;
     }
-    if (!user || !ownerEmail || !entryId || !hasContractPdfAttachment) {
+    if (
+      !user ||
+      !selectedContractPdf?.ownerEmail ||
+      !selectedContractPdf?.entryId
+    ) {
       return;
     }
 
@@ -1207,8 +1308,8 @@ export default function ContractDetailPage() {
 
       try {
         const params = new URLSearchParams({
-          ownerEmail,
-          entryId,
+          ownerEmail: selectedContractPdf.ownerEmail,
+          entryId: selectedContractPdf.entryId,
         });
         const response = await fetchAuthedBlob(
           user,
@@ -1307,9 +1408,7 @@ export default function ContractDetailPage() {
     };
   }, [
     clearContractPdfPreview,
-    entryId,
-    hasContractPdfAttachment,
-    ownerEmail,
+    selectedContractPdf,
     showContractPdfModal,
     user,
   ]);
@@ -4165,15 +4264,56 @@ export default function ContractDetailPage() {
                   </button>
                 )}
 
-                {hasContractPdfAttachment && (
-                  <button
-                    type="button"
-                    onClick={() => setShowContractPdfModal(true)}
-                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
-                  >
-                    <Eye size={16} strokeWidth={2} aria-hidden="true" />
-                    <span>Zobrazit smlouvu</span>
-                  </button>
+                {hasAnyContractPdfAttachment && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={handleContractPdfButtonClick}
+                      aria-expanded={
+                        contractPdfOptions.length > 1 ? showContractPdfOptions : undefined
+                      }
+                      className={`${headerActionButtonClass} inline-flex items-center gap-2`}
+                    >
+                      <Eye size={16} strokeWidth={2} aria-hidden="true" />
+                      <span>Zobrazit smlouvu</span>
+                      {contractPdfOptions.length > 1 && (
+                        <ChevronDown
+                          size={15}
+                          strokeWidth={2}
+                          className={`transition ${
+                            showContractPdfOptions ? "rotate-180" : ""
+                          }`}
+                          aria-hidden="true"
+                        />
+                      )}
+                    </button>
+                    {showContractPdfOptions && contractPdfOptions.length > 1 && (
+                      <div className="absolute right-0 top-full z-30 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-[0_18px_48px_rgba(15,23,42,0.22)]">
+                        {contractPdfOptions.map((option) => (
+                          <button
+                            key={option.entryId}
+                            type="button"
+                            onClick={() => openContractPdfOption(option)}
+                            className="block w-full border-b border-slate-100 px-4 py-3 text-left transition last:border-b-0 hover:bg-slate-50"
+                          >
+                            <span className="flex items-center justify-between gap-3">
+                              <span className="text-sm font-semibold text-slate-900">
+                                {option.label}
+                              </span>
+                              {option.isCurrent && (
+                                <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                  Aktuální
+                                </span>
+                              )}
+                            </span>
+                            <span className="mt-1 block truncate text-xs text-slate-600">
+                              {option.meta}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {cppExtranetDetailUrl && (
@@ -5218,7 +5358,7 @@ export default function ContractDetailPage() {
           </div>
         )}
 
-      {showContractPdfModal && hasContractPdfAttachment && (
+      {showContractPdfModal && selectedContractPdf && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
           <button
             type="button"
@@ -5238,7 +5378,7 @@ export default function ContractDetailPage() {
                   PDF smlouvy
                 </h3>
                 <p className="mt-1 truncate text-sm text-slate-600 sm:text-base">
-                  {contractPdfFileName}
+                  {selectedContractPdfFileName}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">

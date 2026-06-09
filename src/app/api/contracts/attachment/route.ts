@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import {
+  buildContractPdfStoredFileName,
   contractPdfContentDisposition,
   deleteContractPdfAttachment,
   downloadContractPdfAttachment,
@@ -151,6 +152,11 @@ export async function POST(req: NextRequest) {
       ownerEmail,
       entryId,
       uploaderEmail: ctx.email,
+      storedFileName: buildContractPdfStoredFileName({
+        entryType: loaded.contract.entryType,
+        contractNumber: loaded.contract.contractNumber,
+        entryId,
+      }),
     });
 
     await loaded.entryRef.update({

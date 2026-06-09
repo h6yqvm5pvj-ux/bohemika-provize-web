@@ -2783,7 +2783,7 @@ export default function CalculatorPage() {
       }
 
       setImportedContractPdfFile(file);
-      const attachmentNote = " PDF se při uložení smlouvy přiloží k detailu.";
+      const attachmentNote = " PDF se při uložení přiloží k detailu záznamu.";
       setPdfImportStatus(
         applied > 0
           ? `Načteno z PDF (${applied} polí). Zkontroluj prosím.${attachmentNote}`
@@ -3426,6 +3426,29 @@ export default function CalculatorPage() {
         });
       }
 
+      let pdfAttachmentMessage = "";
+      if (createdEntryId && ownerEmail && importedContractPdfFile) {
+        try {
+          await uploadContractPdfAttachmentWithAuth({
+            user,
+            ownerEmail,
+            entryId: createdEntryId,
+            file: importedContractPdfFile,
+          });
+          pdfAttachmentMessage = " PDF bylo přiloženo k detailu dodatku.";
+          setPdfImportStatus("PDF bylo bezpečně přiloženo k uloženému dodatku.");
+          setPdfImportError(null);
+          setImportedContractPdfFile(null);
+        } catch (pdfUploadErr) {
+          const message =
+            pdfUploadErr instanceof Error && pdfUploadErr.message.trim()
+              ? pdfUploadErr.message.trim()
+              : "PDF se nepodařilo přiložit.";
+          pdfAttachmentMessage = ` PDF se nepodařilo přiložit: ${message}`;
+          setPdfImportError(`PDF se nepodařilo přiložit: ${message}`);
+        }
+      }
+
       if (typeof window !== "undefined") {
         try {
           sessionStorage.removeItem("contracts_cache_v2");
@@ -3436,11 +3459,11 @@ export default function CalculatorPage() {
         }
       }
 
-      setSaveMessage(
+      const savedMessage =
         endorsementDraft.changeType === "increase"
           ? "Dodatek byl uložen mezi sepsané."
-          : "Dodatek (ponížení) byl uložen. Provize je zatím 0 Kč."
-      );
+          : "Dodatek (ponížení) byl uložen. Provize je zatím 0 Kč.";
+      setSaveMessage(`${savedMessage}${pdfAttachmentMessage}`);
       setSaveSuccessFlash({
         contractNumber: endorsementDraft.contractNumber,
         clientName: clientName.trim() || null,

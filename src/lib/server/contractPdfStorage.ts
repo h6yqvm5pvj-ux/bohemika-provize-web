@@ -101,6 +101,22 @@ const sanitizeStorageSegment = (value: string): string =>
 const ownerStorageHash = (ownerEmail: string): string =>
   createHash("sha256").update(ownerEmail.trim().toLowerCase()).digest("hex").slice(0, 32);
 
+export function buildContractPdfStoredFileName({
+  entryType,
+  contractNumber,
+  entryId,
+}: {
+  entryType?: string | null;
+  contractNumber?: string | null;
+  entryId?: string | null;
+}): string {
+  const prefix = entryType === "endorsement" ? "dodatek" : "ps";
+  const source = normalizeText(contractNumber) || normalizeText(entryId) || "bez-cisla";
+  const contractSegment = sanitizeStorageSegment(source).toLowerCase();
+  const suffix = randomUUID().replace(/-/g, "").slice(0, 8);
+  return sanitizeContractPdfFileName(`${prefix}-${contractSegment}-${suffix}.pdf`);
+}
+
 function looksLikePdf(bytes: Buffer): boolean {
   if (bytes.length < 8) return false;
   return bytes.subarray(0, Math.min(bytes.length, 1024)).toString("latin1").includes("%PDF-");
@@ -234,13 +250,16 @@ export async function uploadContractPdfAttachment({
   ownerEmail,
   entryId,
   uploaderEmail,
+  storedFileName,
 }: {
   file: File;
   ownerEmail: string;
   entryId: string;
   uploaderEmail: string;
+  storedFileName?: string | null;
 }): Promise<StoredContractPdfAttachment> {
-  const originalName = normalizeText(file.name) || "smlouva.pdf";
+  const uploadedOriginalName = normalizeText(file.name) || "smlouva.pdf";
+  const originalName = normalizeText(storedFileName) || uploadedOriginalName;
   const contentType = normalizeText(file.type).toLowerCase();
   if (file.size <= 0) {
     throw new Error("PDF soubor je prázdný.");
@@ -255,7 +274,7 @@ export async function uploadContractPdfAttachment({
   ) {
     throw new Error("Příloha musí být PDF soubor.");
   }
-  if (!originalName.toLowerCase().endsWith(".pdf")) {
+  if (!uploadedOriginalName.toLowerCase().endsWith(".pdf")) {
     throw new Error("Příloha musí mít příponu .pdf.");
   }
 
