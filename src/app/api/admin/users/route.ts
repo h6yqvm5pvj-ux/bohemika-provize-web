@@ -1,0 +1,504 @@
+import { NextResponse, type NextRequest } from "next/server";
+import type { UserRecord } from "firebase-admin/auth";
+import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
+
+import { isAdminPanelEmail } from "@/lib/adminAccess";
+import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
+import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
+const AUTH_LIST_USERS_LIMIT = 1000;
+const FULL_NAME_MAX_LEN = 120;
+const AGENCY_NUMBER_MAX_LEN = 80;
+type AccountType = "advisor" | "tipster";
+const ACCOUNT_TYPE_SET = new Set<AccountType>(["advisor", "tipster"]);
+
+type ApiError = { ok: false; error: string };
+
+type AdminUsersRow = {
+  uid: string;
+  email: string;
+  fullName: string | null;
+  agencyNumber: string | null;
+  position: string | null;
+  accountType: string | null;
+  managerEmail: string | null;
+  tipRecipientEmail: string | null;
+  commissionMode: string | null;
+  disabled: boolean;
+  emailVerified: boolean;
+  createdAt: string | null;
+  lastSignInAt: string | null;
+  profileExists: boolean;
+  privateProfileExists: boolean;
+};
+
+type ProfileSummary = {
+  publicDocId: string | null;
+  privateDocId: string | null;
+  publicData: Record<string, unknown>;
+  privateData: Record<string, unknown>;
+};
+
+const normalizeEmail = (value: unknown): string =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const normalizeText = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+
+const normalizeOptionalText = (value: unknown, maxLen: number): string | null => {
+  if (value == null) return "";
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (trimmed.length > maxLen) return null;
+  return trimmed;
+};
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+async function getAuthContext(req: NextRequest) {
+  if (!adminAuth || !adminDb) {
+    return { error: "Server není správně nakonfigurován (Firebase Admin).", status: 500 } as const;
+  }
+
+  const authHeader = req.headers.get("authorization") ?? "";
+  const token = authHeader.toLowerCase().startsWith("bearer ")
+    ? authHeader.slice(7).trim()
+    : "";
+  if (!token) {
+    return { error: "Missing bearer token", status: 401 } as const;
+  }
+
+  let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
+  try {
+    decoded = await adminAuth.verifyIdToken(token, true);
+  } catch (err: any) {
+    const code = err?.code || "auth/invalid-token";
+    const message = err?.message || "Invalid or expired token";
+    return { error: `Invalid or expired token (${code}): ${message}`, status: 401 } as const;
+  }
+
+  const email = normalizeEmail(decoded.email);
+  if (!email || !EMAIL_RE.test(email)) {
+    return { error: "User e-mail missing in token", status: 401 } as const;
+  }
+
+  const lockout = getLoginAttemptLockoutError(req, email);
+  if (lockout) return lockout;
+
+  const setupError = await getAdvisorAccessError({
+    email,
+    uid: String(decoded.uid ?? "").trim(),
+  });
+  if (setupError) return setupError;
+
+  if (!isAdminPanelEmail(email)) {
+    return { error: "Nemáš oprávnění spravovat uživatele.", status: 403 } as const;
+  }
+
+  return {
+    adminEmail: email,
+    adminUid: String(decoded.uid ?? "").trim(),
+  } as const;
+}
+
+async function listAllAuthUsers(): Promise<UserRecord[]> {
+  if (!adminAuth) return [];
+
+  const users: UserRecord[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const page = await adminAuth.listUsers(AUTH_LIST_USERS_LIMIT, pageToken);
+    users.push(...page.users);
+    pageToken = page.pageToken;
+  } while (pageToken);
+
+  return users;
+}
+
+async function loadProfileSummaries() {
+  if (!adminDb) return new Map<string, ProfileSummary>();
+
+  const [usersSnap, privateSnap] = await Promise.all([
+    adminDb.collection("users").get(),
+    adminDb.collection("usersPrivate").get(),
+  ]);
+  const byEmail = new Map<string, ProfileSummary>();
+
+  const ensureSummary = (email: string): ProfileSummary => {
+    const existing = byEmail.get(email);
+    if (existing) return existing;
+    const next: ProfileSummary = {
+      publicDocId: null,
+      privateDocId: null,
+      publicData: {},
+      privateData: {},
+    };
+    byEmail.set(email, next);
+    return next;
+  };
+
+  usersSnap.docs.forEach((docSnap) => {
+    const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
+    const email = normalizeEmail(data.email) || normalizeEmail(docSnap.id);
+    if (!email || !EMAIL_RE.test(email)) return;
+    const summary = ensureSummary(email);
+    summary.publicDocId = docSnap.id;
+    summary.publicData = data;
+  });
+
+  privateSnap.docs.forEach((docSnap) => {
+    const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
+    const email = normalizeEmail(data.email) || normalizeEmail(docSnap.id);
+    if (!email || !EMAIL_RE.test(email)) return;
+    const summary = ensureSummary(email);
+    summary.privateDocId = docSnap.id;
+    summary.privateData = data;
+  });
+
+  return byEmail;
+}
+
+function serializeUser(authUser: UserRecord, summary: ProfileSummary | undefined): AdminUsersRow | null {
+  const email = normalizeEmail(authUser.email);
+  if (!email || !EMAIL_RE.test(email)) return null;
+
+  const publicData = summary?.publicData ?? {};
+  const privateData = summary?.privateData ?? {};
+  const fullName =
+    normalizeText(publicData.fullName) ||
+    normalizeText(publicData.name) ||
+    normalizeText(authUser.displayName) ||
+    null;
+  const accountType =
+    normalizeText(publicData.accountType) ||
+    normalizeText(publicData.userRole) ||
+    null;
+
+  return {
+    uid: authUser.uid,
+    email,
+    fullName,
+    agencyNumber: normalizeText(publicData.agencyNumber) || null,
+    position: normalizeText(publicData.position) || null,
+    accountType,
+    managerEmail: normalizeEmail(publicData.managerEmail) || null,
+    tipRecipientEmail: normalizeEmail(publicData.tipRecipientEmail) || null,
+    commissionMode: normalizeText(publicData.commissionMode) || null,
+    disabled: authUser.disabled,
+    emailVerified: authUser.emailVerified,
+    createdAt: authUser.metadata.creationTime || null,
+    lastSignInAt: authUser.metadata.lastSignInTime || null,
+    profileExists: Boolean(summary?.publicDocId),
+    privateProfileExists: Boolean(summary?.privateDocId || Object.keys(privateData).length > 0),
+  };
+}
+
+async function findProfileRefs(email: string, uid?: string) {
+  if (!adminDb) return { publicRefs: [] as DocumentReference[], privateRefs: [] as DocumentReference[] };
+
+  const usersCol = adminDb.collection("users");
+  const privateCol = adminDb.collection("usersPrivate");
+
+  const [directPublic, byEmailPublic, byUidPublic, directPrivate, byEmailPrivate] =
+    await Promise.all([
+      usersCol.doc(email).get(),
+      usersCol.where("email", "==", email).limit(10).get(),
+      uid ? usersCol.where("userId", "==", uid).limit(10).get() : Promise.resolve(null),
+      privateCol.doc(email).get(),
+      privateCol.where("email", "==", email).limit(10).get(),
+    ]);
+
+  const dedupe = (refs: DocumentReference[]) => {
+    const byPath = new Map<string, DocumentReference>();
+    refs.forEach((ref) => byPath.set(ref.path, ref));
+    return Array.from(byPath.values());
+  };
+
+  const publicRefs: DocumentReference[] = [];
+  if (directPublic.exists) publicRefs.push(directPublic.ref);
+  byEmailPublic.docs.forEach((docSnap) => publicRefs.push(docSnap.ref));
+  byUidPublic?.docs.forEach((docSnap) => publicRefs.push(docSnap.ref));
+
+  const privateRefs: DocumentReference[] = [];
+  if (directPrivate.exists) privateRefs.push(directPrivate.ref);
+  byEmailPrivate.docs.forEach((docSnap) => privateRefs.push(docSnap.ref));
+
+  return {
+    publicRefs: dedupe(publicRefs),
+    privateRefs: dedupe(privateRefs),
+  };
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const ctx = await getAuthContext(req);
+    if ("error" in ctx) {
+      const response = NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
+      if ("retryAfterSeconds" in ctx) {
+        response.headers.set("Retry-After", String(ctx.retryAfterSeconds));
+      }
+      return response;
+    }
+
+    const [authUsers, profilesByEmail] = await Promise.all([
+      listAllAuthUsers(),
+      loadProfileSummaries(),
+    ]);
+
+    const users = authUsers
+      .map((authUser) => serializeUser(authUser, profilesByEmail.get(normalizeEmail(authUser.email))))
+      .filter((row): row is AdminUsersRow => Boolean(row))
+      .sort((a, b) => {
+        const aName = a.fullName || a.email;
+        const bName = b.fullName || b.email;
+        return aName.localeCompare(bName, "cs");
+      });
+
+    const response = NextResponse.json({
+      ok: true,
+      users,
+      summary: {
+        total: users.length,
+        disabled: users.filter((user) => user.disabled).length,
+        missingProfile: users.filter((user) => !user.profileExists).length,
+      },
+    });
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  } catch (error) {
+    console.error("GET /api/admin/users selhalo:", error);
+    return NextResponse.json(
+      { ok: false, error: "Nepodařilo se načíst uživatele." } satisfies ApiError,
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const ctx = await getAuthContext(req);
+    if ("error" in ctx) {
+      const response = NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
+      if ("retryAfterSeconds" in ctx) {
+        response.headers.set("Retry-After", String(ctx.retryAfterSeconds));
+      }
+      return response;
+    }
+    if (!adminAuth || !adminDb) {
+      return NextResponse.json(
+        { ok: false, error: "Server není správně nakonfigurován (Firebase Admin)." } satisfies ApiError,
+        { status: 500 }
+      );
+    }
+
+    const body = await req.json().catch(() => null);
+    if (!isPlainObject(body)) {
+      return NextResponse.json(
+        { ok: false, error: "Neplatný payload." } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+
+    const email = normalizeEmail(body.email);
+    if (!email || !EMAIL_RE.test(email)) {
+      return NextResponse.json(
+        { ok: false, error: "Zadej platný e-mail uživatele." } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+
+    const fullNameRaw = normalizeOptionalText(body.fullName, FULL_NAME_MAX_LEN);
+    if (fullNameRaw == null) {
+      return NextResponse.json(
+        { ok: false, error: `Jméno / název může mít maximálně ${FULL_NAME_MAX_LEN} znaků.` } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+    const agencyNumberRaw = normalizeOptionalText(body.agencyNumber, AGENCY_NUMBER_MAX_LEN);
+    if (agencyNumberRaw == null) {
+      return NextResponse.json(
+        { ok: false, error: `Agenturní číslo může mít maximálně ${AGENCY_NUMBER_MAX_LEN} znaků.` } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+    const hasAccountTypePatch = Object.prototype.hasOwnProperty.call(body, "accountType");
+    const accountTypeRaw =
+      hasAccountTypePatch && typeof body.accountType === "string"
+        ? body.accountType.trim()
+        : "";
+    if (hasAccountTypePatch && typeof body.accountType !== "string") {
+      return NextResponse.json(
+        { ok: false, error: "Typ účtu má neplatnou hodnotu." } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+    if (accountTypeRaw && !ACCOUNT_TYPE_SET.has(accountTypeRaw as AccountType)) {
+      return NextResponse.json(
+        { ok: false, error: "Typ účtu má neplatnou hodnotu." } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+
+    const authUser = await adminAuth
+      .getUserByEmail(email)
+      .catch((error: { code?: string }) => {
+        if (error?.code === "auth/user-not-found") return null;
+        throw error;
+      });
+
+    const fullName = fullNameRaw || null;
+    if (authUser && (authUser.displayName || "") !== (fullName ?? "")) {
+      await adminAuth.updateUser(authUser.uid, {
+        displayName: fullName,
+      });
+    }
+
+    const { publicRefs } = await findProfileRefs(email, authUser?.uid);
+    const publicRef = publicRefs[0] ?? adminDb.collection("users").doc(email);
+    const now = FieldValue.serverTimestamp();
+    const patch: Record<string, unknown> = {
+      email,
+      updatedAt: now,
+      updatedByEmail: ctx.adminEmail,
+    };
+    if (authUser?.uid) patch.userId = authUser.uid;
+    if (fullName) {
+      patch.fullName = fullName;
+      patch.name = fullName;
+    } else {
+      patch.fullName = FieldValue.delete();
+      patch.name = FieldValue.delete();
+    }
+    if (agencyNumberRaw) {
+      patch.agencyNumber = agencyNumberRaw;
+    } else {
+      patch.agencyNumber = FieldValue.delete();
+    }
+    if (hasAccountTypePatch) {
+      if (accountTypeRaw) {
+        const accountType = accountTypeRaw as AccountType;
+        patch.accountType = accountType;
+        patch.userRole = accountType;
+        patch.canChangePosition = accountType === "advisor";
+        patch.activeCollaboration = accountType === "advisor";
+        if (accountType === "advisor") {
+          patch.tipRecipientEmail = FieldValue.delete();
+        }
+        if (accountType === "tipster") {
+          patch.managerEmail = FieldValue.delete();
+          patch.position = FieldValue.delete();
+          patch.positionTimeline = FieldValue.delete();
+        }
+      } else {
+        patch.accountType = FieldValue.delete();
+        patch.userRole = FieldValue.delete();
+      }
+    }
+
+    await publicRef.set(patch, { merge: true });
+
+    return NextResponse.json({
+      ok: true,
+      user: {
+        email,
+        uid: authUser?.uid ?? "",
+        fullName,
+        agencyNumber: agencyNumberRaw || null,
+        accountType: accountTypeRaw || null,
+      },
+    });
+  } catch (error) {
+    console.error("PATCH /api/admin/users selhalo:", error);
+    return NextResponse.json(
+      { ok: false, error: "Nepodařilo se uložit uživatele." } satisfies ApiError,
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const ctx = await getAuthContext(req);
+    if ("error" in ctx) {
+      const response = NextResponse.json({ ok: false, error: ctx.error }, { status: ctx.status });
+      if ("retryAfterSeconds" in ctx) {
+        response.headers.set("Retry-After", String(ctx.retryAfterSeconds));
+      }
+      return response;
+    }
+    if (!adminAuth || !adminDb) {
+      return NextResponse.json(
+        { ok: false, error: "Server není správně nakonfigurován (Firebase Admin)." } satisfies ApiError,
+        { status: 500 }
+      );
+    }
+
+    const body = await req.json().catch(() => null);
+    if (!isPlainObject(body)) {
+      return NextResponse.json(
+        { ok: false, error: "Neplatný payload." } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+
+    const email = normalizeEmail(body.email);
+    const confirmEmail = normalizeEmail(body.confirmEmail);
+    if (!email || !EMAIL_RE.test(email)) {
+      return NextResponse.json(
+        { ok: false, error: "Zadej platný e-mail uživatele." } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+    if (confirmEmail !== email) {
+      return NextResponse.json(
+        { ok: false, error: "Pro smazání potvrď přesný e-mail uživatele." } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+    if (email === ctx.adminEmail) {
+      return NextResponse.json(
+        { ok: false, error: "Nemůžeš smazat vlastní administrátorský účet." } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+
+    const authUser = await adminAuth
+      .getUserByEmail(email)
+      .catch((error: { code?: string }) => {
+        if (error?.code === "auth/user-not-found") return null;
+        throw error;
+      });
+
+    const { publicRefs, privateRefs } = await findProfileRefs(email, authUser?.uid);
+    if (authUser) {
+      await adminAuth.deleteUser(authUser.uid);
+    }
+
+    const batch = adminDb.batch();
+    [...publicRefs, ...privateRefs].forEach((ref) => batch.delete(ref));
+    if (publicRefs.length === 0) batch.delete(adminDb.collection("users").doc(email));
+    if (privateRefs.length === 0) batch.delete(adminDb.collection("usersPrivate").doc(email));
+    await batch.commit();
+
+    return NextResponse.json({
+      ok: true,
+      email,
+      deletedAuth: Boolean(authUser),
+      deletedProfiles: publicRefs.length + privateRefs.length,
+    });
+  } catch (error) {
+    console.error("DELETE /api/admin/users selhalo:", error);
+    return NextResponse.json(
+      { ok: false, error: "Nepodařilo se smazat uživatele." } satisfies ApiError,
+      { status: 500 }
+    );
+  }
+}

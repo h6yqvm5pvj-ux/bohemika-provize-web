@@ -67,6 +67,7 @@ import { parseDomexPdf } from "../lib/parseDomexPdf";
 import { parseCppHafanPdf } from "../lib/parseCppHafanPdf";
 import { parseComfortPdf } from "../lib/parseComfortPdf";
 import { parseMaxCizinKomplexPdf } from "../lib/parseMaxCizinKomplexPdf";
+import { parseMaxdomovPdf } from "../lib/parseMaxdomovPdf";
 import { parseKooperativaAutoPdf } from "../lib/parseKooperativaAutoPdf";
 import { parseAllianzAutoPdf } from "../lib/parseAllianzAutoPdf";
 import { parsePillowAutoPdf } from "../lib/parsePillowAutoPdf";
@@ -674,6 +675,7 @@ const PDF_AUTOMATED_PRODUCTS = new Set<Product>([
   "flexi",
   "domex",
   "cpphafan",
+  "maxdomov",
   "maxcizinkomplex",
   "comfortcc",
 ]);
@@ -805,6 +807,8 @@ export default function CalculatorPage() {
   const [domexHouseholdCoverage, setDomexHouseholdCoverage] = useState<string>("");
   const [domexHouseholdSumInsured, setDomexHouseholdSumInsured] = useState<number | null>(null);
   const [domexHouseholdDeductible, setDomexHouseholdDeductible] = useState<number | null>(null);
+  const [domexOutbuildingSumInsured, setDomexOutbuildingSumInsured] =
+    useState<number | null>(null);
   const [domexLiabilitySumInsured, setDomexLiabilitySumInsured] = useState<number | null>(null);
   const [domexLiabilityDeductible, setDomexLiabilityDeductible] = useState<number | null>(null);
   const [domexLiabilityMobile, setDomexLiabilityMobile] = useState(false);
@@ -1846,7 +1850,7 @@ export default function CalculatorPage() {
   }, [product]);
 
   useEffect(() => {
-    if (product !== "domex") {
+    if (product !== "domex" && product !== "maxdomov") {
       setDomexAddress("");
       setDomexPropertyType("");
       setDomexPropertyCoverage("");
@@ -1856,6 +1860,7 @@ export default function CalculatorPage() {
       setDomexHouseholdCoverage("");
       setDomexHouseholdSumInsured(null);
       setDomexHouseholdDeductible(null);
+      setDomexOutbuildingSumInsured(null);
       setDomexLiabilitySumInsured(null);
       setDomexLiabilityDeductible(null);
       setDomexLiabilityMobile(false);
@@ -2306,7 +2311,7 @@ export default function CalculatorPage() {
       setAutoCarAddonNonFaultAccident(false);
       setAutoCarAddonKeyLossTheft(false);
     }
-    if (importProduct === "domex") {
+    if (importProduct === "domex" || importProduct === "maxdomov") {
       setDomexAddress("");
       setDomexPropertyType("");
       setDomexPropertyCoverage("");
@@ -2316,6 +2321,7 @@ export default function CalculatorPage() {
       setDomexHouseholdCoverage("");
       setDomexHouseholdSumInsured(null);
       setDomexHouseholdDeductible(null);
+      setDomexOutbuildingSumInsured(null);
       setDomexLiabilitySumInsured(null);
       setDomexLiabilityDeductible(null);
       setDomexLiabilityMobile(false);
@@ -2338,6 +2344,7 @@ export default function CalculatorPage() {
         | Awaited<ReturnType<typeof parseFlexiPdf>>
         | Awaited<ReturnType<typeof parseDomexPdf>>
         | Awaited<ReturnType<typeof parseCppHafanPdf>>
+        | Awaited<ReturnType<typeof parseMaxdomovPdf>>
         | Awaited<ReturnType<typeof parseMaxCizinKomplexPdf>>
         | Awaited<ReturnType<typeof parseComfortPdf>>
         | Awaited<ReturnType<typeof parseKooperativaAutoPdf>>
@@ -2368,6 +2375,8 @@ export default function CalculatorPage() {
         parsed = await parseDomexPdf(file);
       } else if (importProduct === "cpphafan") {
         parsed = await parseCppHafanPdf(file);
+      } else if (importProduct === "maxdomov") {
+        parsed = await parseMaxdomovPdf(file);
       } else if (importProduct === "maxcizinkomplex") {
         parsed = await parseMaxCizinKomplexPdf(file);
       } else if (importProduct === "comfortcc") {
@@ -2494,6 +2503,15 @@ export default function CalculatorPage() {
             : null;
         setDomexHouseholdDeductible(householdDeductible);
         if (householdDeductible != null) applied += 1;
+      }
+      if ("domexOutbuildingSumInsured" in parsed) {
+        const outbuildingSumInsured =
+          typeof parsed.domexOutbuildingSumInsured === "number" &&
+          Number.isFinite(parsed.domexOutbuildingSumInsured)
+            ? Math.round(parsed.domexOutbuildingSumInsured)
+            : null;
+        setDomexOutbuildingSumInsured(outbuildingSumInsured);
+        if (outbuildingSumInsured != null) applied += 1;
       }
       if ("domexLiabilitySumInsured" in parsed) {
         const liabilitySumInsured =
@@ -3880,7 +3898,29 @@ export default function CalculatorPage() {
                     householdCoverage: domexHouseholdCoverage.trim() || null,
                     householdSumInsured: domexHouseholdSumInsured,
                     householdDeductible: domexHouseholdDeductible,
-                    outbuildingSumInsured: null,
+                    outbuildingSumInsured: domexOutbuildingSumInsured,
+                    liabilitySumInsured: domexLiabilitySumInsured,
+                    liabilityDeductible: domexLiabilityDeductible,
+                    liabilityMobile: domexLiabilityMobile ? true : null,
+                    liabilityTenant: domexLiabilityTenant ? true : null,
+                    liabilityLandlord: domexLiabilityLandlord ? true : null,
+                    assistancePlus: domexAssistancePlus ? true : null,
+                    note: null,
+                  }
+                : null,
+            maxdomovDetail:
+              product === "maxdomov"
+                ? {
+                    address: domexAddress.trim() || null,
+                    propertyType: domexPropertyType.trim() || null,
+                    propertyCoverage: domexPropertyCoverage.trim() || null,
+                    sumInsured: domexPropertySumInsured,
+                    deductible: domexPropertyDeductible,
+                    householdType: domexHouseholdType.trim() || null,
+                    householdCoverage: domexHouseholdCoverage.trim() || null,
+                    householdSumInsured: domexHouseholdSumInsured,
+                    householdDeductible: domexHouseholdDeductible,
+                    outbuildingSumInsured: domexOutbuildingSumInsured,
                     liabilitySumInsured: domexLiabilitySumInsured,
                     liabilityDeductible: domexLiabilityDeductible,
                     liabilityMobile: domexLiabilityMobile ? true : null,

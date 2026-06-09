@@ -118,7 +118,7 @@ const propertyTypeLabel = (val?: string | null): string => {
 };
 
 export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange }: Props) {
-  if (prod !== "domex") return null;
+  if (prod !== "domex" && prod !== "maxdomov") return null;
 
   const hasValue = (v?: string | null) => !!(v && v.trim().length > 0);
   const hasNum = (v?: number | null) => v != null && Number.isFinite(v);
@@ -230,6 +230,7 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
                     <option value="mini">MINI</option>
                     <option value="opti">OPTI</option>
                     <option value="maxi">MAXI</option>
+                    <option value="vip">VIP</option>
                     <option value="nop">NOP</option>
                   </select>
                 ) : (
@@ -343,6 +344,7 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
                   <option value="mini">MINI</option>
                   <option value="opti">OPTI</option>
                   <option value="maxi">MAXI</option>
+                  <option value="vip">VIP</option>
                   <option value="nop">NOP</option>
                 </select>
               ) : (

@@ -93,6 +93,21 @@ import {
   type MeziprovisionCard,
 } from "./ContractCommissionSection";
 import { fetchAuthedBlob } from "@/app/lib/authenticatedApi";
+import { parseAllianzAutoPdf } from "@/app/lib/parseAllianzAutoPdf";
+import { parseComfortPdf } from "@/app/lib/parseComfortPdf";
+import { parseCppAutoPdf } from "@/app/lib/parseCppAutoPdf";
+import { parseCppCestovkoPdf } from "@/app/lib/parseCppCestovkoPdf";
+import { parseCppHafanPdf } from "@/app/lib/parseCppHafanPdf";
+import { parseCppSimplexPdf } from "@/app/lib/parseCppSimplexPdf";
+import { parseCsobAutoPdf } from "@/app/lib/parseCsobAutoPdf";
+import { parseDomexPdf } from "@/app/lib/parseDomexPdf";
+import { parseFlexiPdf } from "@/app/lib/parseFlexiPdf";
+import { parseKooperativaAutoPdf } from "@/app/lib/parseKooperativaAutoPdf";
+import { parseMaxCizinKomplexPdf } from "@/app/lib/parseMaxCizinKomplexPdf";
+import { parseMaxdomovPdf } from "@/app/lib/parseMaxdomovPdf";
+import { parseNeonPdf } from "@/app/lib/parseNeonPdf";
+import { parsePillowAutoPdf } from "@/app/lib/parsePillowAutoPdf";
+import { parseSlaviaAutoPdf } from "@/app/lib/parseSlaviaAutoPdf";
 
 const CPP_EXTRANET_REDIRECT_URL =
   "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
@@ -121,6 +136,372 @@ type ContractPdfPreviewPage = {
   pageNumber: number;
   width: number;
   height: number;
+};
+
+type PdfReimportParser = (file: File) => Promise<unknown>;
+type PropertyDetail = NonNullable<ContractDoc["maxdomovDetail"]>;
+type PropertyDetailField = keyof PropertyDetail;
+type NeonDetail = NonNullable<ContractDoc["neonDetail"]>;
+type NeonDetailField = keyof NeonDetail;
+type ContractUpdateField = keyof ContractDoc;
+
+const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> = {
+  cppAuto: parseCppAutoPdf,
+  slaviaauto: parseSlaviaAutoPdf,
+  allianzAuto: parseAllianzAutoPdf,
+  csobAuto: parseCsobAutoPdf,
+  pillowAuto: parsePillowAutoPdf,
+  kooperativaAuto: parseKooperativaAutoPdf,
+  cppcestovko: parseCppCestovkoPdf,
+  cppsimplex: parseCppSimplexPdf,
+  neon: parseNeonPdf,
+  flexi: parseFlexiPdf,
+  domex: parseDomexPdf,
+  cpphafan: parseCppHafanPdf,
+  maxdomov: parseMaxdomovPdf,
+  maxcizinkomplex: parseMaxCizinKomplexPdf,
+  comfortcc: parseComfortPdf,
+};
+
+const PDF_CONTRACT_FIELD_MAP = [
+  ["contractNumber", "contractNumber"],
+  ["clientName", "clientName"],
+  ["policyStartDate", "policyStartDate"],
+  ["policyEndDate", "policyEndDate"],
+  ["contractSignedDate", "contractSignedDate"],
+  ["durationYears", "durationYears"],
+  ["durationMonths", "durationMonths"],
+  ["maxCizinKomplexVariant", "maxCizinKomplexVariant"],
+  ["carMake", "carMake"],
+  ["carPlate", "carPlate"],
+  ["carVin", "carVin"],
+  ["carTp", "carTp"],
+  ["carOrv", "carOrv"],
+  ["carAnnualMileage", "carAnnualMileage"],
+  ["carAllianzScope", "carAllianzScope"],
+  ["carLiabilityLimit", "carLiabilityLimit"],
+  ["carHullSumInsured", "carHullSumInsured"],
+  ["carHullSumInsuredText", "carHullSumInsuredText"],
+  ["carHullDeductible", "carHullDeductible"],
+  ["carHullDeductibleText", "carHullDeductibleText"],
+  ["carHullRiskAccident", "carHullRiskAccident"],
+  ["carHullRiskTheft", "carHullRiskTheft"],
+  ["carHullRiskNatural", "carHullRiskNatural"],
+  ["carHullRiskVandalism", "carHullRiskVandalism"],
+  ["carHullRiskAnimalCollision", "carHullRiskAnimalCollision"],
+  ["carAssistancePlan", "carAssistancePlan"],
+  ["carAddonEso", "carAddonEso"],
+  ["carAddonNaturalRisks", "carAddonNaturalRisks"],
+  ["carAddonGlass", "carAddonGlass"],
+  ["carAddonAnimalCollision", "carAddonAnimalCollision"],
+  ["carAddonAnimalDamage", "carAddonAnimalDamage"],
+  ["carAddonVandalism", "carAddonVandalism"],
+  ["carAddonTheft", "carAddonTheft"],
+  ["carAddonNatural", "carAddonNatural"],
+  ["carAddonPothole", "carAddonPothole"],
+  ["carAddonNonFaultAccident", "carAddonNonFaultAccident"],
+  ["carAddonGap", "carAddonGap"],
+  ["carAddonReplacementCar", "carAddonReplacementCar"],
+  ["carAddonLuggage", "carAddonLuggage"],
+  ["carAddonTransportedGoods", "carAddonTransportedGoods"],
+  ["carAddonFireExplosion", "carAddonFireExplosion"],
+  ["carAddonLegalAdvice", "carAddonLegalAdvice"],
+  ["carAddonKeyLossTheft", "carAddonKeyLossTheft"],
+] as const satisfies ReadonlyArray<readonly [string, ContractUpdateField]>;
+
+const NUMBER_CONTRACT_UPDATE_FIELDS = new Set<ContractUpdateField>([
+  "durationYears",
+  "durationMonths",
+  "carLiabilityLimit",
+  "carHullSumInsured",
+  "carHullDeductible",
+]);
+
+const BOOLEAN_CONTRACT_UPDATE_FIELDS = new Set<ContractUpdateField>([
+  "carHullRiskAccident",
+  "carHullRiskTheft",
+  "carHullRiskNatural",
+  "carHullRiskVandalism",
+  "carHullRiskAnimalCollision",
+  "carAddonEso",
+  "carAddonNaturalRisks",
+  "carAddonGlass",
+  "carAddonAnimalCollision",
+  "carAddonAnimalDamage",
+  "carAddonVandalism",
+  "carAddonTheft",
+  "carAddonNatural",
+  "carAddonPothole",
+  "carAddonNonFaultAccident",
+  "carAddonGap",
+  "carAddonReplacementCar",
+  "carAddonLuggage",
+  "carAddonTransportedGoods",
+  "carAddonFireExplosion",
+  "carAddonLegalAdvice",
+  "carAddonKeyLossTheft",
+]);
+
+const PROPERTY_PDF_DETAIL_FIELD_MAP = [
+  ["domexAddress", "address"],
+  ["domexPropertyType", "propertyType"],
+  ["domexPropertyCoverage", "propertyCoverage"],
+  ["domexPropertySumInsured", "sumInsured"],
+  ["domexPropertyDeductible", "deductible"],
+  ["domexHouseholdType", "householdType"],
+  ["domexHouseholdCoverage", "householdCoverage"],
+  ["domexHouseholdSumInsured", "householdSumInsured"],
+  ["domexHouseholdDeductible", "householdDeductible"],
+  ["domexOutbuildingSumInsured", "outbuildingSumInsured"],
+  ["domexLiabilitySumInsured", "liabilitySumInsured"],
+  ["domexLiabilityDeductible", "liabilityDeductible"],
+  ["domexLiabilityMobile", "liabilityMobile"],
+  ["domexLiabilityTenant", "liabilityTenant"],
+  ["domexLiabilityLandlord", "liabilityLandlord"],
+  ["domexAssistancePlus", "assistancePlus"],
+] as const satisfies ReadonlyArray<readonly [string, PropertyDetailField]>;
+
+const NEON_PDF_DETAIL_FIELD_MAP = [
+  ["version", "version"],
+  ["deathType", "deathType"],
+  ["deathAmount", "deathAmount"],
+  ["death2Type", "death2Type"],
+  ["death2Amount", "death2Amount"],
+  ["deathTerminalAmount", "deathTerminalAmount"],
+  ["waiverInvalidity", "waiverInvalidity"],
+  ["waiverUnemployment", "waiverUnemployment"],
+  ["invalidityAType", "invalidityAType"],
+  ["invalidityA1", "invalidityA1"],
+  ["invalidityA2", "invalidityA2"],
+  ["invalidityA3", "invalidityA3"],
+  ["invalidityBType", "invalidityBType"],
+  ["invalidityB1", "invalidityB1"],
+  ["invalidityB2", "invalidityB2"],
+  ["invalidityB3", "invalidityB3"],
+  ["invalidityPension", "invalidityPension"],
+  ["criticalType", "criticalIllnessType"],
+  ["criticalAmount", "criticalIllnessAmount"],
+  ["childSurgeryAmount", "childSurgeryAmount"],
+  ["vaccinationCompAmount", "vaccinationCompAmount"],
+  ["diabetesAmount", "diabetesAmount"],
+  ["deathAccidentAmount", "deathAccidentAmount"],
+  ["injuryPermanentAmount", "injuryPermanentAmount"],
+  ["hospitalizationAmount", "hospitalizationAmount"],
+  ["hospitalizationIllnessAmount", "hospitalizationIllnessAmount"],
+  ["hospitalizationInjuryAmount", "hospitalizationInjuryAmount"],
+  ["accidentDailyBenefit", "accidentDailyBenefit"],
+  ["workIncapacityStart", "workIncapacityStart"],
+  ["workIncapacityBackpay", "workIncapacityBackpay"],
+  ["workIncapacityAmount", "workIncapacityAmount"],
+  ["workIncapacityInjury", "workIncapacityInjury"],
+  ["workIncapacityIllness", "workIncapacityIllness"],
+  ["careDependencyAmount", "careDependencyAmount"],
+  ["specialAidAmount", "specialAidAmount"],
+  ["caregivingAmount", "caregivingAmount"],
+  ["reproductionCostAmount", "reproductionCostAmount"],
+  ["cppHelp", "cppHelp"],
+  ["liabilityCitizenLimit", "liabilityCitizenLimit"],
+  ["liabilityEmployeeLimit", "liabilityEmployeeLimit"],
+  ["travelInsurance", "travelInsurance"],
+] as const satisfies ReadonlyArray<readonly [string, NeonDetailField]>;
+
+const NUMBER_PROPERTY_DETAIL_FIELDS = new Set<PropertyDetailField>([
+  "sumInsured",
+  "deductible",
+  "householdSumInsured",
+  "householdDeductible",
+  "outbuildingSumInsured",
+  "liabilitySumInsured",
+  "liabilityDeductible",
+]);
+
+const BOOLEAN_PROPERTY_DETAIL_FIELDS = new Set<PropertyDetailField>([
+  "liabilityMobile",
+  "liabilityTenant",
+  "liabilityLandlord",
+  "assistancePlus",
+]);
+
+const NUMBER_NEON_DETAIL_FIELDS = new Set<NeonDetailField>([
+  "deathAmount",
+  "death2Amount",
+  "deathTerminalAmount",
+  "invalidityA1",
+  "invalidityA2",
+  "invalidityA3",
+  "invalidityB1",
+  "invalidityB2",
+  "invalidityB3",
+  "criticalIllnessAmount",
+  "childSurgeryAmount",
+  "vaccinationCompAmount",
+  "diabetesAmount",
+  "deathAccidentAmount",
+  "injuryPermanentAmount",
+  "hospitalizationAmount",
+  "hospitalizationIllnessAmount",
+  "hospitalizationInjuryAmount",
+  "accidentDailyBenefit",
+  "workIncapacityAmount",
+  "careDependencyAmount",
+  "specialAidAmount",
+  "caregivingAmount",
+  "reproductionCostAmount",
+  "liabilityCitizenLimit",
+  "liabilityEmployeeLimit",
+]);
+
+const BOOLEAN_NEON_DETAIL_FIELDS = new Set<NeonDetailField>([
+  "waiverInvalidity",
+  "waiverUnemployment",
+  "invalidityPension",
+  "workIncapacityInjury",
+  "workIncapacityIllness",
+  "cppHelp",
+  "travelInsurance",
+]);
+
+const isEmptyReimportValue = (value: unknown): boolean => {
+  if (value == null) return true;
+  if (typeof value === "string") return value.trim().length === 0;
+  if (typeof value === "number") return !Number.isFinite(value);
+  return false;
+};
+
+const parsedPdfValueForContractField = (
+  field: ContractUpdateField,
+  rawValue: unknown
+): string | number | boolean | null => {
+  if (rawValue == null) return null;
+
+  if (NUMBER_CONTRACT_UPDATE_FIELDS.has(field)) {
+    const value =
+      typeof rawValue === "number"
+        ? rawValue
+        : typeof rawValue === "string"
+          ? Number(rawValue.replace(/\s+/g, "").replace(",", "."))
+          : Number.NaN;
+    return Number.isFinite(value) ? Math.round(value) : null;
+  }
+
+  if (BOOLEAN_CONTRACT_UPDATE_FIELDS.has(field)) {
+    return rawValue === true ? true : null;
+  }
+
+  const value = typeof rawValue === "string" ? rawValue.trim() : String(rawValue).trim();
+  return value || null;
+};
+
+const parsedPdfValueForPropertyDetailField = (
+  field: PropertyDetailField,
+  rawValue: unknown
+): string | number | boolean | null => {
+  if (rawValue == null) return null;
+
+  if (NUMBER_PROPERTY_DETAIL_FIELDS.has(field)) {
+    const value =
+      typeof rawValue === "number"
+        ? rawValue
+        : typeof rawValue === "string"
+          ? Number(rawValue.replace(/\s+/g, "").replace(",", "."))
+          : Number.NaN;
+    return Number.isFinite(value) ? Math.round(value) : null;
+  }
+
+  if (BOOLEAN_PROPERTY_DETAIL_FIELDS.has(field)) {
+    return rawValue === true ? true : null;
+  }
+
+  const value = typeof rawValue === "string" ? rawValue.trim() : String(rawValue).trim();
+  return value || null;
+};
+
+const parsedPdfValueForNeonDetailField = (
+  field: NeonDetailField,
+  rawValue: unknown
+): string | number | boolean | null => {
+  if (rawValue == null) return null;
+
+  if (NUMBER_NEON_DETAIL_FIELDS.has(field)) {
+    const value =
+      typeof rawValue === "number"
+        ? rawValue
+        : typeof rawValue === "string"
+          ? Number(rawValue.replace(/\s+/g, "").replace(",", "."))
+          : Number.NaN;
+    return Number.isFinite(value) ? Math.round(value) : null;
+  }
+
+  if (BOOLEAN_NEON_DETAIL_FIELDS.has(field)) {
+    return rawValue === true ? true : null;
+  }
+
+  const value = typeof rawValue === "string" ? rawValue.trim() : String(rawValue).trim();
+  return value || null;
+};
+
+const mergeEmptyContractFields = (
+  currentContract: ContractDoc,
+  parsed: Record<string, unknown>
+): { updates: Record<string, string | number | boolean | null>; appliedCount: number } => {
+  const updates: Record<string, string | number | boolean | null> = {};
+  let appliedCount = 0;
+
+  for (const [parsedKey, contractField] of PDF_CONTRACT_FIELD_MAP) {
+    if (!isEmptyReimportValue(currentContract[contractField])) continue;
+
+    const parsedValue = parsedPdfValueForContractField(contractField, parsed[parsedKey]);
+    if (parsedValue == null) continue;
+
+    updates[contractField] = parsedValue;
+    appliedCount += 1;
+  }
+
+  return { updates, appliedCount };
+};
+
+const mergeEmptyPropertyDetailFields = (
+  currentDetail: ContractDoc["maxdomovDetail"] | ContractDoc["domexDetail"],
+  parsed: Record<string, unknown>
+): { detail: PropertyDetail; appliedCount: number } => {
+  const detail: PropertyDetail = { ...(currentDetail ?? {}) };
+  let appliedCount = 0;
+
+  for (const [parsedKey, detailField] of PROPERTY_PDF_DETAIL_FIELD_MAP) {
+    if (!isEmptyReimportValue(detail[detailField])) continue;
+
+    const parsedValue = parsedPdfValueForPropertyDetailField(detailField, parsed[parsedKey]);
+    if (parsedValue == null) continue;
+
+    (detail as Record<PropertyDetailField, string | number | boolean | null | undefined>)[
+      detailField
+    ] = parsedValue;
+    appliedCount += 1;
+  }
+
+  return { detail, appliedCount };
+};
+
+const mergeEmptyNeonDetailFields = (
+  currentDetail: ContractDoc["neonDetail"],
+  riskFields: Record<string, unknown>
+): { detail: NeonDetail; appliedCount: number } => {
+  const detail: NeonDetail = { ...(currentDetail ?? {}) };
+  let appliedCount = 0;
+
+  for (const [parsedKey, detailField] of NEON_PDF_DETAIL_FIELD_MAP) {
+    if (!isEmptyReimportValue(detail[detailField])) continue;
+
+    const parsedValue = parsedPdfValueForNeonDetailField(detailField, riskFields[parsedKey]);
+    if (parsedValue == null) continue;
+
+    (detail as Record<NeonDetailField, string | number | boolean | null | undefined>)[
+      detailField
+    ] = parsedValue;
+    appliedCount += 1;
+  }
+
+  return { detail, appliedCount };
 };
 
 
@@ -1757,6 +2138,7 @@ export default function ContractDetailPage() {
     []
   );
   const [savingDetails, setSavingDetails] = useState(false);
+  const [refreshingPdfDetails, setRefreshingPdfDetails] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [detailsSaved, setDetailsSaved] = useState(false);
 
@@ -2239,56 +2621,60 @@ export default function ContractDetailPage() {
         : ""
     );
     setEditFlexiAddonTravel(!!contract.flexiDetail?.addonTravel);
-    setEditDomexAddress(contract.domexDetail?.address ?? "");
-    setEditDomexPropertyType(contract.domexDetail?.propertyType ?? "");
-    setEditDomexPropertyCoverage(contract.domexDetail?.propertyCoverage ?? "");
+    const propertyDetail =
+      contract.productKey === "maxdomov"
+        ? contract.maxdomovDetail
+        : contract.domexDetail;
+    setEditDomexAddress(propertyDetail?.address ?? "");
+    setEditDomexPropertyType(propertyDetail?.propertyType ?? "");
+    setEditDomexPropertyCoverage(propertyDetail?.propertyCoverage ?? "");
     setEditDomexSumInsured(
-      contract.domexDetail?.sumInsured != null && Number.isFinite(contract.domexDetail.sumInsured)
-        ? String(contract.domexDetail.sumInsured)
+      propertyDetail?.sumInsured != null && Number.isFinite(propertyDetail.sumInsured)
+        ? String(propertyDetail.sumInsured)
         : ""
     );
     setEditDomexDeductible(
-      contract.domexDetail?.deductible != null && Number.isFinite(contract.domexDetail.deductible)
-        ? String(contract.domexDetail.deductible)
+      propertyDetail?.deductible != null && Number.isFinite(propertyDetail.deductible)
+        ? String(propertyDetail.deductible)
         : ""
     );
-    setEditDomexHouseholdType(contract.domexDetail?.householdType ?? "");
-    setEditDomexHouseholdCoverage(contract.domexDetail?.householdCoverage ?? "");
+    setEditDomexHouseholdType(propertyDetail?.householdType ?? "");
+    setEditDomexHouseholdCoverage(propertyDetail?.householdCoverage ?? "");
     setEditDomexHouseholdSumInsured(
-      contract.domexDetail?.householdSumInsured != null &&
-      Number.isFinite(contract.domexDetail.householdSumInsured)
-        ? String(contract.domexDetail.householdSumInsured)
+      propertyDetail?.householdSumInsured != null &&
+      Number.isFinite(propertyDetail.householdSumInsured)
+        ? String(propertyDetail.householdSumInsured)
         : ""
     );
     setEditDomexHouseholdDeductible(
-      contract.domexDetail?.householdDeductible != null &&
-      Number.isFinite(contract.domexDetail.householdDeductible)
-        ? String(contract.domexDetail.householdDeductible)
+      propertyDetail?.householdDeductible != null &&
+      Number.isFinite(propertyDetail.householdDeductible)
+        ? String(propertyDetail.householdDeductible)
         : ""
     );
     setEditDomexOutbuildingSumInsured(
-      contract.domexDetail?.outbuildingSumInsured != null &&
-      Number.isFinite(contract.domexDetail.outbuildingSumInsured)
-        ? String(contract.domexDetail.outbuildingSumInsured)
+      propertyDetail?.outbuildingSumInsured != null &&
+      Number.isFinite(propertyDetail.outbuildingSumInsured)
+        ? String(propertyDetail.outbuildingSumInsured)
         : ""
     );
     setEditDomexLiabilitySumInsured(
-      contract.domexDetail?.liabilitySumInsured != null &&
-      Number.isFinite(contract.domexDetail.liabilitySumInsured)
-        ? String(contract.domexDetail.liabilitySumInsured)
+      propertyDetail?.liabilitySumInsured != null &&
+      Number.isFinite(propertyDetail.liabilitySumInsured)
+        ? String(propertyDetail.liabilitySumInsured)
         : ""
     );
     setEditDomexLiabilityDeductible(
-      contract.domexDetail?.liabilityDeductible != null &&
-      Number.isFinite(contract.domexDetail.liabilityDeductible)
-        ? String(contract.domexDetail.liabilityDeductible)
+      propertyDetail?.liabilityDeductible != null &&
+      Number.isFinite(propertyDetail.liabilityDeductible)
+        ? String(propertyDetail.liabilityDeductible)
         : ""
     );
-    setEditDomexLiabilityMobile(!!contract.domexDetail?.liabilityMobile);
-    setEditDomexLiabilityTenant(!!contract.domexDetail?.liabilityTenant);
-    setEditDomexLiabilityLandlord(!!contract.domexDetail?.liabilityLandlord);
-    setEditDomexAssistancePlus(!!contract.domexDetail?.assistancePlus);
-    setEditDomexNote(contract.domexDetail?.note ?? "");
+    setEditDomexLiabilityMobile(!!propertyDetail?.liabilityMobile);
+    setEditDomexLiabilityTenant(!!propertyDetail?.liabilityTenant);
+    setEditDomexLiabilityLandlord(!!propertyDetail?.liabilityLandlord);
+    setEditDomexAssistancePlus(!!propertyDetail?.assistancePlus);
+    setEditDomexNote(propertyDetail?.note ?? "");
   }, [contract]);
 
   useEffect(() => {
@@ -2297,6 +2683,148 @@ export default function ContractDetailPage() {
     setDetailsSaved(false);
     setDetailsError(null);
   }, [contract, resetEditFields]);
+
+  const handleRefreshDetailsFromPdf = async () => {
+    if (
+      !user ||
+      !ownerEmail ||
+      !entryId ||
+      !contract ||
+      !prod ||
+      !isOwnContract ||
+      !hasContractPdfAttachment
+    ) {
+      return;
+    }
+
+    const parser = PDF_REIMPORT_PARSERS[prod];
+    if (!parser) {
+      pushToast("Pro tento produkt tuto funkci připravujeme.", "success");
+      return;
+    }
+
+    setRefreshingPdfDetails(true);
+    setDetailsError(null);
+    setDetailsSaved(false);
+
+    try {
+      const params = new URLSearchParams({
+        ownerEmail,
+        entryId,
+      });
+      const response = await fetchAuthedBlob(
+        user,
+        `/api/contracts/attachment?${params.toString()}`,
+        { method: "GET" }
+      );
+      if (!response.ok) {
+        let message = "PDF smlouvy se nepodařilo načíst.";
+        try {
+          const payload = (await response.json()) as unknown;
+          if (
+            payload &&
+            typeof payload === "object" &&
+            typeof (payload as Record<string, unknown>).error === "string"
+          ) {
+            message = (payload as Record<string, string>).error;
+          }
+        } catch {
+          // Binary endpoint may fail before JSON is available.
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const pdfBlob =
+        blob.type === "application/pdf"
+          ? blob
+          : new Blob([blob], { type: "application/pdf" });
+      const pdfFile = new File([pdfBlob], contractPdfFileName, {
+        type: "application/pdf",
+      });
+      const parsedRaw = await parser(pdfFile);
+      const parsed =
+        parsedRaw && typeof parsedRaw === "object"
+          ? (parsedRaw as Record<string, unknown>)
+          : {};
+
+      const apiUpdates: Record<string, unknown> = {};
+      const contractPatch: Partial<ContractDoc> = {};
+      let appliedCount = 0;
+
+      const topLevelMerge = mergeEmptyContractFields(contract, parsed);
+      Object.assign(apiUpdates, topLevelMerge.updates);
+      Object.assign(contractPatch, topLevelMerge.updates);
+      appliedCount += topLevelMerge.appliedCount;
+
+      if (prod === "domex") {
+        const propertyMerge = mergeEmptyPropertyDetailFields(contract.domexDetail, parsed);
+        if (propertyMerge.appliedCount > 0) {
+          apiUpdates.domexDetail = propertyMerge.detail;
+          contractPatch.domexDetail = propertyMerge.detail;
+          appliedCount += propertyMerge.appliedCount;
+        }
+      }
+
+      if (prod === "maxdomov") {
+        const propertyMerge = mergeEmptyPropertyDetailFields(contract.maxdomovDetail, parsed);
+        if (propertyMerge.appliedCount > 0) {
+          apiUpdates.maxdomovDetail = propertyMerge.detail;
+          contractPatch.maxdomovDetail = propertyMerge.detail;
+          appliedCount += propertyMerge.appliedCount;
+        }
+      }
+
+      const riskFields = parsed.riskFields;
+      if (
+        prod === "neon" &&
+        riskFields &&
+        typeof riskFields === "object" &&
+        !Array.isArray(riskFields)
+      ) {
+        const neonMerge = mergeEmptyNeonDetailFields(
+          contract.neonDetail,
+          riskFields as Record<string, unknown>
+        );
+        if (neonMerge.appliedCount > 0) {
+          apiUpdates.neonDetail = neonMerge.detail;
+          contractPatch.neonDetail = neonMerge.detail;
+          appliedCount += neonMerge.appliedCount;
+        }
+      }
+
+      if (appliedCount === 0) {
+        pushToast("PDF neobsahuje žádná nová prázdná pole k doplnění.", "success");
+        return;
+      }
+
+      await requestContractsApi<ContractsApiResponseBase>("/api/contracts/update-fields", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ownerEmail,
+          entryId,
+          updates: apiUpdates,
+        }),
+      });
+
+      setContract((prev) => (prev ? { ...prev, ...contractPatch } : prev));
+      setDetailsSaved(true);
+      pushToast(`Z PDF doplněno ${appliedCount} prázdných polí.`, "success");
+    } catch (e) {
+      console.error("Doplnění detailů z PDF selhalo:", e);
+      const message =
+        e instanceof Error && e.message.trim()
+          ? e.message.trim()
+          : "Data z PDF se nepodařilo doplnit.";
+      setDetailsError(message);
+      pushToast(message, "error");
+    } finally {
+      setRefreshingPdfDetails(false);
+    }
+  };
 
   const handleSaveDetails = async () => {
     if (!isOwnContract || !ownerEmail || !entryId) return;
@@ -2455,30 +2983,32 @@ export default function ContractDetailPage() {
               carAddonKeyLossTheft: null,
             };
 
-      const domexUpdate =
+      const propertyDetailPayload = {
+        address: editDomexAddress.trim() || null,
+        propertyType: editDomexPropertyType.trim() || null,
+        propertyCoverage: editDomexPropertyCoverage.trim() || null,
+        sumInsured: toNumberOrNull(editDomexSumInsured),
+        deductible: toNumberOrNull(editDomexDeductible),
+        householdType: editDomexHouseholdType.trim() || null,
+        householdCoverage: editDomexHouseholdCoverage.trim() || null,
+        householdSumInsured: toNumberOrNull(editDomexHouseholdSumInsured),
+        householdDeductible: toNumberOrNull(editDomexHouseholdDeductible),
+        outbuildingSumInsured: toNumberOrNull(editDomexOutbuildingSumInsured),
+        liabilitySumInsured: toNumberOrNull(editDomexLiabilitySumInsured),
+        liabilityDeductible: toNumberOrNull(editDomexLiabilityDeductible),
+        liabilityMobile: !!editDomexLiabilityMobile,
+        liabilityTenant: !!editDomexLiabilityTenant,
+        liabilityLandlord: !!editDomexLiabilityLandlord,
+        assistancePlus: !!editDomexAssistancePlus,
+        note: editDomexNote.trim() || null,
+      };
+
+      const propertyDetailUpdate =
         prod === "domex"
-          ? {
-              domexDetail: {
-                address: editDomexAddress.trim() || null,
-                propertyType: editDomexPropertyType.trim() || null,
-                propertyCoverage: editDomexPropertyCoverage.trim() || null,
-                sumInsured: toNumberOrNull(editDomexSumInsured),
-                deductible: toNumberOrNull(editDomexDeductible),
-                householdType: editDomexHouseholdType.trim() || null,
-                householdCoverage: editDomexHouseholdCoverage.trim() || null,
-                householdSumInsured: toNumberOrNull(editDomexHouseholdSumInsured),
-                householdDeductible: toNumberOrNull(editDomexHouseholdDeductible),
-                outbuildingSumInsured: toNumberOrNull(editDomexOutbuildingSumInsured),
-                liabilitySumInsured: toNumberOrNull(editDomexLiabilitySumInsured),
-                liabilityDeductible: toNumberOrNull(editDomexLiabilityDeductible),
-                liabilityMobile: !!editDomexLiabilityMobile,
-                liabilityTenant: !!editDomexLiabilityTenant,
-                liabilityLandlord: !!editDomexLiabilityLandlord,
-              assistancePlus: !!editDomexAssistancePlus,
-              note: editDomexNote.trim() || null,
-            },
-          }
-        : { domexDetail: null };
+          ? { domexDetail: propertyDetailPayload, maxdomovDetail: null }
+          : prod === "maxdomov"
+            ? { domexDetail: null, maxdomovDetail: propertyDetailPayload }
+            : { domexDetail: null, maxdomovDetail: null };
 
       const neonUpdate =
         prod === "neon"
@@ -2594,7 +3124,7 @@ export default function ContractDetailPage() {
         ...autoFields,
         ...neonUpdate,
         ...flexiUpdate,
-        ...domexUpdate,
+        ...propertyDetailUpdate,
       };
       if (showDurationForProduct) {
         updates.durationYears = durationVal ?? null;
@@ -2729,11 +3259,8 @@ export default function ContractDetailPage() {
                     carAddonKeyLossTheft: null,
                     neonDetail: neonUpdate.neonDetail,
                   }),
-              ...(prod === "domex"
-                ? {
-                    domexDetail: domexUpdate.domexDetail,
-                  }
-                : { domexDetail: null }),
+              domexDetail: propertyDetailUpdate.domexDetail,
+              maxdomovDetail: propertyDetailUpdate.maxdomovDetail,
               ...(prod === "flexi"
                 ? { flexiDetail: flexiUpdate.flexiDetail }
                 : { flexiDetail: null }),
@@ -3437,6 +3964,21 @@ export default function ContractDetailPage() {
         </h3>
         <span className="text-base text-slate-600">{productLabel(prod)}</span>
       </div>
+      {isOwnContract && !editMode && hasContractPdfAttachment && (
+        <button
+          type="button"
+          onClick={handleRefreshDetailsFromPdf}
+          disabled={refreshingPdfDetails}
+          className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 disabled:opacity-60"
+        >
+          {refreshingPdfDetails ? (
+            <Spinner className="h-3.5 w-3.5 border-2 border-slate-300 border-t-slate-700" />
+          ) : (
+            <FileText size={14} strokeWidth={2} aria-hidden="true" />
+          )}
+          <span>{refreshingPdfDetails ? "Načítám…" : "Načíst z PDF"}</span>
+        </button>
+      )}
       {isAutoProduct(prod) && (
         <AutoDetailPanel
           prod={prod}
@@ -3455,12 +3997,16 @@ export default function ContractDetailPage() {
           onChange={handleNeonFieldChange}
         />
       )}
-      {prod === "domex" && (
+      {(prod === "domex" || prod === "maxdomov") && (
         <DomexDetailPanel
           prod={prod}
           editMode={editMode}
           fields={domexFields}
-          domexDetail={contract?.domexDetail ?? null}
+          domexDetail={
+            prod === "maxdomov"
+              ? contract?.maxdomovDetail ?? null
+              : contract?.domexDetail ?? null
+          }
           onChange={handleDomexFieldChange}
         />
       )}

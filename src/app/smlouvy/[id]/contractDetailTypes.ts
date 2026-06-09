@@ -168,6 +168,25 @@ export type ContractDoc = {
     assistancePlus?: boolean | null;
     note?: string | null;
   } | null;
+  maxdomovDetail?: {
+    address?: string | null;
+    propertyType?: string | null;
+    propertyCoverage?: string | null;
+    sumInsured?: number | null;
+    deductible?: number | null;
+    householdType?: string | null;
+    householdCoverage?: string | null;
+    householdSumInsured?: number | null;
+    householdDeductible?: number | null;
+    outbuildingSumInsured?: number | null;
+    liabilitySumInsured?: number | null;
+    liabilityDeductible?: number | null;
+    liabilityMobile?: boolean | null;
+    liabilityTenant?: boolean | null;
+    liabilityLandlord?: boolean | null;
+    assistancePlus?: boolean | null;
+    note?: string | null;
+  } | null;
   neonDetail?: {
     version?: string | null;
     deathType?: string | null;

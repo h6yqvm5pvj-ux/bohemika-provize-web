@@ -201,6 +201,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAddonPassengerInjury",
   "carAddonKeyLossTheft",
   "domexDetail",
+  "maxdomovDetail",
   "isRefresh",
   "refreshOriginalContractNumber",
   "rootContractEntryId",
@@ -398,6 +399,7 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "neonDetail",
   "flexiDetail",
   "domexDetail",
+  "maxdomovDetail",
   "durationYears",
   "durationMonths",
   "maxCizinKomplexVariant",
@@ -1215,6 +1217,7 @@ type NormalizedCreateEntryPayload = {
   carAddonPassengerInjury: boolean | null;
   carAddonKeyLossTheft: boolean | null;
   domexDetail: Record<string, unknown> | null;
+  maxdomovDetail: Record<string, unknown> | null;
   paid: boolean;
   managerEmailSnapshot: string | null;
   managerPositionSnapshot: Position | null;
@@ -1574,6 +1577,12 @@ const normalizeCreateEntryPayload = ({
     DOMEX_DETAIL_ALLOWED_KEYS
   );
   if (!domexDetailParsed.ok) return domexDetailParsed;
+  const maxdomovDetailParsed = sanitizeDetailObject(
+    raw.maxdomovDetail,
+    "maxdomovDetail",
+    DOMEX_DETAIL_ALLOWED_KEYS
+  );
+  if (!maxdomovDetailParsed.ok) return maxdomovDetailParsed;
 
   const signedDateParsed = parseRequiredDateField(raw.contractSignedDate, "contractSignedDate");
   if (!signedDateParsed.ok) return signedDateParsed;
@@ -1829,6 +1838,8 @@ const normalizeCreateEntryPayload = ({
       carAddonPassengerInjury: carAddonPassengerInjuryParsed.value,
       carAddonKeyLossTheft: carAddonKeyLossTheftParsed.value,
       domexDetail: productParsed.value === "domex" ? domexDetailParsed.value : null,
+      maxdomovDetail:
+        productParsed.value === "maxdomov" ? maxdomovDetailParsed.value : null,
       paid: false,
       managerEmailSnapshot: null,
       managerPositionSnapshot: null,
@@ -3372,7 +3383,7 @@ const parseContractStatus = (value: unknown): ParseResult<"active" | "storno"> =
 
 const sanitizeDetailObject = (
   value: unknown,
-  field: "neonDetail" | "flexiDetail" | "domexDetail",
+  field: "neonDetail" | "flexiDetail" | "domexDetail" | "maxdomovDetail",
   allowedKeys: Set<string>
 ): ParseResult<Record<string, string | number | boolean | null> | null> => {
   if (value == null) return { ok: true, value: null };
@@ -3635,6 +3646,13 @@ const normalizePatchUpdates = (
     }
 
     if (field === "domexDetail") {
+      const parsed = sanitizeDetailObject(rawValue, field, DOMEX_DETAIL_ALLOWED_KEYS);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (field === "maxdomovDetail") {
       const parsed = sanitizeDetailObject(rawValue, field, DOMEX_DETAIL_ALLOWED_KEYS);
       if (!parsed.ok) return parsed;
       normalized[field] = parsed.value;

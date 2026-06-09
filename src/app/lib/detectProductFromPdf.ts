@@ -140,6 +140,15 @@ const DETECTION_RULES: DetectionRule[] = [
     reason: "Na 1. stránce jsou texty „Česká podnikatelská pojišťovna, a.s.“ a „DOMEX“.",
   },
   {
+    product: "maxdomov",
+    mustContain: [
+      { page: "any", text: normalizeText("MAXDOMOV") },
+      { page: "any", text: normalizeText("MAXIMA") },
+    ],
+    confidence: "high",
+    reason: "V PDF jsou nalezeny texty „MAXDOMOV“ a „MAXIMA“.",
+  },
+  {
     product: "allianzAuto",
     page: 2,
     allOf: [normalizeText("Allianz pojišťovna, a.s."), normalizeText("MojeAuto")],

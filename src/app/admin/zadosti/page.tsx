@@ -2,20 +2,26 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
+  AlertTriangle,
   BriefcaseBusiness,
   Check,
   Clock3,
   Copy,
+  IdCard,
   KeyRound,
+  Loader2,
   Inbox,
   Landmark,
   Mail,
+  Pencil,
   RefreshCcw,
   RefreshCw,
+  Save,
   Search,
   ShieldAlert,
   ShieldCheck,
   Snail,
+  Trash2,
   UserCheck2,
   UserPlus,
   X,
@@ -403,7 +409,7 @@ type InlineStatus = {
   message: string;
 };
 
-type AdminSection = "requests" | "createUser" | "subscriptions" | "security";
+type AdminSection = "requests" | "createUser" | "users" | "subscriptions" | "security";
 
 type SubscriptionPlanValue = "monthly" | "semiannual" | "yearly" | "unlimited";
 
@@ -514,6 +520,41 @@ const SECURITY_FILTERS: Array<{
   { id: "disabled", label: "Bez 2FA" },
 ];
 
+type AdminUsersRow = {
+  uid: string;
+  email: string;
+  fullName: string | null;
+  agencyNumber: string | null;
+  position: string | null;
+  accountType: string | null;
+  managerEmail: string | null;
+  tipRecipientEmail: string | null;
+  commissionMode: string | null;
+  disabled: boolean;
+  emailVerified: boolean;
+  createdAt: string | null;
+  lastSignInAt: string | null;
+  profileExists: boolean;
+  privateProfileExists: boolean;
+};
+
+type AdminUsersResponse = {
+  ok?: boolean;
+  users?: AdminUsersRow[];
+  summary?: {
+    total?: number;
+    disabled?: number;
+    missingProfile?: number;
+  };
+};
+
+type AdminUsersDeleteTarget = {
+  email: string;
+  fullName: string | null;
+};
+
+type AdminUsersAccountTypeDraft = NewUserAccountType | "";
+
 const getMfaFactorLabel = (factor: AdminSecurityFactorRow): string => {
   if (factor.factorId === "totp") return "TOTP";
   if (factor.factorId === "phone") return "SMS";
@@ -588,6 +629,21 @@ export default function AdminRequestsPage() {
   const [securityError, setSecurityError] = useState<string | null>(null);
   const [securityFilter, setSecurityFilter] = useState<AdminSecurityFilter>("all");
   const [securitySearch, setSecuritySearch] = useState("");
+  const [adminUsersRows, setAdminUsersRows] = useState<AdminUsersRow[]>([]);
+  const [adminUsersLoading, setAdminUsersLoading] = useState(false);
+  const [adminUsersError, setAdminUsersError] = useState<string | null>(null);
+  const [adminUsersStatus, setAdminUsersStatus] = useState<InlineStatus | null>(null);
+  const [adminUsersSearch, setAdminUsersSearch] = useState("");
+  const [adminUsersEditingEmail, setAdminUsersEditingEmail] = useState<string | null>(null);
+  const [adminUsersEditFullName, setAdminUsersEditFullName] = useState("");
+  const [adminUsersEditAgencyNumber, setAdminUsersEditAgencyNumber] = useState("");
+  const [adminUsersEditAccountType, setAdminUsersEditAccountType] =
+    useState<AdminUsersAccountTypeDraft>("");
+  const [adminUsersSavingEmail, setAdminUsersSavingEmail] = useState<string | null>(null);
+  const [adminUsersDeleteTarget, setAdminUsersDeleteTarget] =
+    useState<AdminUsersDeleteTarget | null>(null);
+  const [adminUsersDeleteConfirmEmail, setAdminUsersDeleteConfirmEmail] = useState("");
+  const [adminUsersDeletingEmail, setAdminUsersDeletingEmail] = useState<string | null>(null);
   const [subscriptionPlanDraft, setSubscriptionPlanDraft] =
     useState<SubscriptionPlanValue>("monthly");
   const [subscriptionFromDraft, setSubscriptionFromDraft] = useState("");
@@ -696,6 +752,39 @@ export default function AdminRequestsPage() {
     if (activeAdminSection !== "security") return;
     void loadSecurityRows();
   }, [activeAdminSection, loadSecurityRows]);
+
+  const loadAdminUsersRows = useCallback(async () => {
+    const user = auth.currentUser;
+    if (!user || !isAllowedAdmin) {
+      setAdminUsersRows([]);
+      setAdminUsersError(null);
+      setAdminUsersLoading(false);
+      return;
+    }
+
+    setAdminUsersLoading(true);
+    setAdminUsersError(null);
+    try {
+      const payload = await fetchAuthedJsonOrThrow<AdminUsersResponse>(
+        user,
+        "/api/admin/users",
+        { method: "GET" }
+      );
+      setAdminUsersRows(Array.isArray(payload?.users) ? payload.users : []);
+    } catch (error) {
+      setAdminUsersRows([]);
+      setAdminUsersError(
+        error instanceof Error ? error.message : "Nepodařilo se načíst uživatele."
+      );
+    } finally {
+      setAdminUsersLoading(false);
+    }
+  }, [isAllowedAdmin]);
+
+  useEffect(() => {
+    if (activeAdminSection !== "users") return;
+    void loadAdminUsersRows();
+  }, [activeAdminSection, loadAdminUsersRows]);
 
   const loadRequests = useCallback(async () => {
     const user = auth.currentUser;
@@ -895,6 +984,37 @@ export default function AdminRequestsPage() {
     const emailVerified = securityRows.filter((row) => row.emailVerified).length;
     return { total, mfaEnabled, mfaMissing, emailVerified };
   }, [securityRows]);
+
+  const filteredAdminUsersRows = useMemo(() => {
+    const query = adminUsersSearch.trim().toLowerCase();
+    if (!query) return adminUsersRows;
+
+    return adminUsersRows.filter((row) => {
+      const title = (row.fullName || nameFromEmail(row.email)).toLowerCase();
+      const email = row.email.toLowerCase();
+      const agencyNumber = (row.agencyNumber || "").toLowerCase();
+      const managerEmail = (row.managerEmail || "").toLowerCase();
+      const tipRecipientEmail = (row.tipRecipientEmail || "").toLowerCase();
+      const position = (row.position || "").toLowerCase();
+      return (
+        title.includes(query) ||
+        email.includes(query) ||
+        agencyNumber.includes(query) ||
+        managerEmail.includes(query) ||
+        tipRecipientEmail.includes(query) ||
+        position.includes(query)
+      );
+    });
+  }, [adminUsersRows, adminUsersSearch]);
+
+  const adminUsersStats = useMemo(() => {
+    const total = adminUsersRows.length;
+    const missingProfile = adminUsersRows.filter((row) => !row.profileExists).length;
+    const disabled = adminUsersRows.filter((row) => row.disabled).length;
+    const advisors = adminUsersRows.filter((row) => row.accountType === "advisor").length;
+    const tipsters = adminUsersRows.filter((row) => row.accountType === "tipster").length;
+    return { total, missingProfile, disabled, advisors, tipsters };
+  }, [adminUsersRows]);
 
   const handleDecision = useCallback(
     async (requestId: string, action: "approve" | "reject") => {
@@ -1317,6 +1437,124 @@ export default function AdminRequestsPage() {
     subscriptionNoteDraft,
   ]);
 
+  const handleStartAdminUserEdit = useCallback((row: AdminUsersRow) => {
+    setAdminUsersEditingEmail(row.email);
+    setAdminUsersEditFullName(row.fullName ?? "");
+    setAdminUsersEditAgencyNumber(row.agencyNumber ?? "");
+    setAdminUsersEditAccountType(
+      row.accountType === "advisor" || row.accountType === "tipster"
+        ? row.accountType
+        : ""
+    );
+    setAdminUsersStatus(null);
+    setAdminUsersError(null);
+  }, []);
+
+  const handleCancelAdminUserEdit = useCallback(() => {
+    setAdminUsersEditingEmail(null);
+    setAdminUsersEditFullName("");
+    setAdminUsersEditAgencyNumber("");
+    setAdminUsersEditAccountType("");
+  }, []);
+
+  const handleSaveAdminUser = useCallback(
+    async (row: AdminUsersRow) => {
+      const user = auth.currentUser;
+      if (!user || !isAllowedAdmin) return;
+
+      setAdminUsersSavingEmail(row.email);
+      setAdminUsersStatus(null);
+      setAdminUsersError(null);
+      try {
+        await fetchAuthedJsonOrThrow(user, "/api/admin/users", {
+          method: "PATCH",
+          body: JSON.stringify({
+            email: row.email,
+            fullName: adminUsersEditFullName,
+            agencyNumber: adminUsersEditAgencyNumber,
+            accountType: adminUsersEditAccountType,
+          }),
+        });
+        setAdminUsersStatus({
+          type: "success",
+          message: `Uživatel ${row.email} byl uložen.`,
+        });
+        setAdminUsersEditingEmail(null);
+        setAdminUsersEditFullName("");
+        setAdminUsersEditAgencyNumber("");
+        setAdminUsersEditAccountType("");
+        await loadAdminUsersRows();
+      } catch (error) {
+        setAdminUsersError(
+          error instanceof Error ? error.message : "Uživatele se nepodařilo uložit."
+        );
+      } finally {
+        setAdminUsersSavingEmail(null);
+      }
+    },
+    [
+      adminUsersEditAgencyNumber,
+      adminUsersEditAccountType,
+      adminUsersEditFullName,
+      isAllowedAdmin,
+      loadAdminUsersRows,
+    ]
+  );
+
+  const handleOpenAdminUserDelete = useCallback((row: AdminUsersRow) => {
+    setAdminUsersDeleteTarget({
+      email: row.email,
+      fullName: row.fullName,
+    });
+    setAdminUsersDeleteConfirmEmail("");
+    setAdminUsersStatus(null);
+    setAdminUsersError(null);
+  }, []);
+
+  const handleDeleteAdminUser = useCallback(async () => {
+    const user = auth.currentUser;
+    const target = adminUsersDeleteTarget;
+    if (!user || !isAllowedAdmin || !target) return;
+
+    const email = normalizeEmail(target.email);
+    const confirmEmail = normalizeEmail(adminUsersDeleteConfirmEmail);
+    if (confirmEmail !== email) {
+      setAdminUsersError("Pro smazání opiš přesný e-mail uživatele.");
+      return;
+    }
+
+    setAdminUsersDeletingEmail(email);
+    setAdminUsersStatus(null);
+    setAdminUsersError(null);
+    try {
+      await fetchAuthedJsonOrThrow(user, "/api/admin/users", {
+        method: "DELETE",
+        body: JSON.stringify({
+          email,
+          confirmEmail,
+        }),
+      });
+      setAdminUsersStatus({
+        type: "success",
+        message: `Uživatel ${email} byl smazán z Auth a profilů.`,
+      });
+      setAdminUsersDeleteTarget(null);
+      setAdminUsersDeleteConfirmEmail("");
+      await loadAdminUsersRows();
+    } catch (error) {
+      setAdminUsersError(
+        error instanceof Error ? error.message : "Uživatele se nepodařilo smazat."
+      );
+    } finally {
+      setAdminUsersDeletingEmail(null);
+    }
+  }, [
+    adminUsersDeleteConfirmEmail,
+    adminUsersDeleteTarget,
+    isAllowedAdmin,
+    loadAdminUsersRows,
+  ]);
+
   const fieldClass =
     "w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.04)] outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10";
   const createUserFieldClass =
@@ -1366,6 +1604,92 @@ export default function AdminRequestsPage() {
           </div>
         </div>
       ) : null}
+      {adminUsersDeleteTarget ? (
+        <div
+          className="fixed inset-0 z-[95] flex items-center justify-center px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Smazat uživatele"
+        >
+          <div
+            className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm"
+            onClick={() => {
+              if (adminUsersDeletingEmail) return;
+              setAdminUsersDeleteTarget(null);
+              setAdminUsersDeleteConfirmEmail("");
+            }}
+          />
+          <section className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-rose-200 bg-white p-5 shadow-[0_30px_90px_rgba(15,23,42,0.35)]">
+            <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-rose-500" />
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-rose-700">
+                <AlertTriangle size={22} strokeWidth={2.2} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold text-slate-900">
+                  Smazat uživatele?
+                </h2>
+                <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                  Smaže se Firebase Auth účet a profil v databázi. Historické smlouvy a další
+                  obchodní data se tímto krokem nemažou.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <div className="text-sm font-semibold text-slate-900">
+                {adminUsersDeleteTarget.fullName || nameFromEmail(adminUsersDeleteTarget.email)}
+              </div>
+              <div className="mt-0.5 text-sm text-slate-600">{adminUsersDeleteTarget.email}</div>
+            </div>
+
+            <label className="mt-4 block space-y-1.5">
+              <span className="block text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">
+                Pro potvrzení opiš e-mail
+              </span>
+              <input
+                type="email"
+                value={adminUsersDeleteConfirmEmail}
+                onChange={(event) => setAdminUsersDeleteConfirmEmail(event.target.value)}
+                className={fieldClass}
+                placeholder={adminUsersDeleteTarget.email}
+                autoComplete="off"
+              />
+            </label>
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminUsersDeleteTarget(null);
+                  setAdminUsersDeleteConfirmEmail("");
+                }}
+                disabled={Boolean(adminUsersDeletingEmail)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <X size={15} strokeWidth={2.2} aria-hidden="true" />
+                Zrušit
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteAdminUser()}
+                disabled={
+                  Boolean(adminUsersDeletingEmail) ||
+                  normalizeEmail(adminUsersDeleteConfirmEmail) !== adminUsersDeleteTarget.email
+                }
+                className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-rose-600 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {adminUsersDeletingEmail ? (
+                  <Loader2 size={15} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Trash2 size={15} strokeWidth={2.2} aria-hidden="true" />
+                )}
+                Smazat uživatele
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
       <div className="w-full max-w-[1200px] space-y-6 px-2 pb-8 sm:px-4">
         <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(170deg,#ffffff_0%,#f8fbff_55%,#eff5fb_100%)] px-5 py-5 shadow-[0_22px_46px_rgba(15,23,42,0.1)] sm:px-6">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
@@ -1402,6 +1726,17 @@ export default function AdminRequestsPage() {
                       }`}
                     >
                       Přidat uživatele
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveAdminSection("users")}
+                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                        activeAdminSection === "users"
+                          ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
+                    >
+                      Uživatelé
                     </button>
                     <button
                       type="button"
@@ -2224,6 +2559,323 @@ export default function AdminRequestsPage() {
                 </button>
               </div>
             </form>
+          </section>
+        ) : null}
+
+        {isAllowedAdmin && activeAdminSection === "users" ? (
+          <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(170deg,#ffffff_0%,#f8fbff_55%,#eff5fb_100%)] px-5 py-5 shadow-[0_22px_46px_rgba(15,23,42,0.1)] sm:px-6">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
+
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <span className="mb-2 inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold tracking-wide text-sky-800">
+                  Správa účtů
+                </span>
+                <h2 className="inline-flex items-center gap-1.5 text-base font-semibold text-slate-900 sm:text-lg">
+                  <UserCheck2 size={15} strokeWidth={2.1} className="text-slate-600" aria-hidden="true" />
+                  <span>Uživatelé</span>
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Uprav jméno a příjmení / název, agenturní číslo nebo smaž účet z Auth a profilů.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadAdminUsersRows()}
+                disabled={adminUsersLoading}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {adminUsersLoading ? (
+                  <Loader2 size={15} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <RefreshCw size={15} strokeWidth={2.2} aria-hidden="true" />
+                )}
+                Obnovit
+              </button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="rounded-2xl border border-slate-300 bg-slate-100 px-3 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.06)]">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                  Celkem
+                </div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{adminUsersStats.total}</div>
+              </div>
+              <div className="rounded-2xl border border-emerald-700 bg-emerald-600 px-3 py-3 shadow-[0_10px_22px_rgba(5,150,105,0.28)]">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-50">
+                  Poradci
+                </div>
+                <div className="mt-2 text-2xl font-bold text-white">{adminUsersStats.advisors}</div>
+              </div>
+              <div className="rounded-2xl border border-violet-700 bg-violet-600 px-3 py-3 shadow-[0_10px_22px_rgba(124,58,237,0.26)]">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-50">
+                  Tipaři
+                </div>
+                <div className="mt-2 text-2xl font-bold text-white">{adminUsersStats.tipsters}</div>
+              </div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 shadow-[0_8px_18px_rgba(245,158,11,0.12)]">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">
+                  Bez profilu
+                </div>
+                <div className="mt-2 text-2xl font-bold text-amber-900">{adminUsersStats.missingProfile}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-300 bg-white px-3 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.06)]">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                  Deaktivovaní
+                </div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{adminUsersStats.disabled}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-3xl border border-slate-200 bg-white/90 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+              <label className="relative block">
+                <Search
+                  size={14}
+                  strokeWidth={2.1}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  type="search"
+                  className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 shadow-[0_6px_14px_rgba(15,23,42,0.05)] outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10"
+                  value={adminUsersSearch}
+                  onChange={(event) => setAdminUsersSearch(event.target.value)}
+                  placeholder="Hledat jméno, e-mail, agenturní číslo nebo nadřízeného..."
+                />
+              </label>
+
+              {adminUsersStatus ? (
+                <div
+                  className={`mt-3 rounded-xl border px-3 py-2 text-sm ${
+                    adminUsersStatus.type === "success"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : adminUsersStatus.type === "info"
+                        ? "border-sky-200 bg-sky-50 text-sky-700"
+                        : "border-rose-200 bg-rose-50 text-rose-700"
+                  }`}
+                >
+                  {adminUsersStatus.message}
+                </div>
+              ) : null}
+
+              {adminUsersError ? (
+                <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {adminUsersError}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {adminUsersLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+                  Načítám uživatele…
+                </div>
+              ) : filteredAdminUsersRows.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-9 text-center text-sm text-slate-600">
+                  Pro zadaný filtr nejsou žádní uživatelé.
+                </div>
+              ) : (
+                filteredAdminUsersRows.map((row) => {
+                  const editing = adminUsersEditingEmail === row.email;
+                  const title = row.fullName || nameFromEmail(row.email);
+                  const avatarInitial = (title.trim().charAt(0) || row.email.charAt(0)).toUpperCase();
+                  const saving = adminUsersSavingEmail === row.email;
+                  const isCurrentUser = normalizeEmail(currentUser?.email) === row.email;
+                  const effectiveAccountType = editing ? adminUsersEditAccountType : row.accountType;
+                  const relationLabel =
+                    effectiveAccountType === "tipster" ? "Příjemce tipů" : "Nadřízený";
+                  const relationEmail =
+                    effectiveAccountType === "tipster" ? row.tipRecipientEmail : row.managerEmail;
+
+                  return (
+                    <article
+                      key={row.uid || row.email}
+                      className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                    >
+                      <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f766e_0%,#2563eb_55%,#7c3aed_100%)]" />
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <span className="mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sky-200 bg-sky-50 text-sm font-bold text-sky-700">
+                            {avatarInitial}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="truncate text-lg font-bold text-slate-900">{title}</div>
+                            <div className="truncate text-sm text-slate-500">{row.email}</div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                                {row.accountType === "tipster"
+                                  ? "Tipař"
+                                  : row.accountType === "advisor"
+                                    ? "Vázaný zástupce"
+                                    : "Bez typu účtu"}
+                              </span>
+                              {row.position ? (
+                                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                                  {row.position}
+                                </span>
+                              ) : null}
+                              {row.disabled ? (
+                                <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                                  Deaktivovaný
+                                </span>
+                              ) : null}
+                              {!row.profileExists ? (
+                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                                  Bez veřejného profilu
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 lg:justify-end">
+                          {editing ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveAdminUser(row)}
+                                disabled={saving}
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-600 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {saving ? (
+                                  <Loader2 size={14} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
+                                ) : (
+                                  <Save size={14} strokeWidth={2.2} aria-hidden="true" />
+                                )}
+                                Uložit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelAdminUserEdit}
+                                disabled={saving}
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <X size={14} strokeWidth={2.2} aria-hidden="true" />
+                                Zrušit
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleStartAdminUserEdit(row)}
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                              >
+                                <Pencil size={14} strokeWidth={2.2} aria-hidden="true" />
+                                Upravit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenAdminUserDelete(row)}
+                                disabled={isCurrentUser}
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                title={isCurrentUser ? "Vlastní účet nejde smazat." : undefined}
+                              >
+                                <Trash2 size={14} strokeWidth={2.2} aria-hidden="true" />
+                                Smazat
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                        <label className="space-y-1.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            <UserCheck2 size={11} strokeWidth={2.2} aria-hidden="true" />
+                            Jméno a příjmení / Název
+                          </span>
+                          {editing ? (
+                            <input
+                              type="text"
+                              value={adminUsersEditFullName}
+                              onChange={(event) => setAdminUsersEditFullName(event.target.value)}
+                              className={fieldClass}
+                              placeholder="Jméno Příjmení nebo název firmy"
+                              maxLength={120}
+                            />
+                          ) : (
+                            <div className="min-h-[42px] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900">
+                              {row.fullName || "—"}
+                            </div>
+                          )}
+                        </label>
+
+                        <label className="space-y-1.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            <IdCard size={11} strokeWidth={2.2} aria-hidden="true" />
+                            Agenturní číslo
+                          </span>
+                          {editing ? (
+                            <input
+                              type="text"
+                              value={adminUsersEditAgencyNumber}
+                              onChange={(event) => setAdminUsersEditAgencyNumber(event.target.value)}
+                              className={fieldClass}
+                              placeholder="Volitelné"
+                              maxLength={NEW_USER_AGENCY_NUMBER_MAX_LEN}
+                            />
+                          ) : (
+                            <div className="min-h-[42px] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900">
+                              {row.agencyNumber || "—"}
+                            </div>
+                          )}
+                        </label>
+
+                        <label className="space-y-1.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            <UserPlus size={11} strokeWidth={2.2} aria-hidden="true" />
+                            Typ účtu
+                          </span>
+                          {editing ? (
+                            <select
+                              value={adminUsersEditAccountType}
+                              onChange={(event) =>
+                                setAdminUsersEditAccountType(
+                                  event.target.value as AdminUsersAccountTypeDraft
+                                )
+                              }
+                              className={fieldClass}
+                            >
+                              <option value="">Bez typu účtu</option>
+                              <option value="advisor">Vázaný zástupce</option>
+                              <option value="tipster">Tipař</option>
+                            </select>
+                          ) : (
+                            <div className="min-h-[42px] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900">
+                              {row.accountType === "tipster"
+                                ? "Tipař"
+                                : row.accountType === "advisor"
+                                  ? "Vázaný zástupce"
+                                  : "Bez typu účtu"}
+                            </div>
+                          )}
+                        </label>
+
+                        <div className="space-y-1.5">
+                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            {relationLabel}
+                          </span>
+                          <div className="min-h-[42px] truncate rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900">
+                            {relationEmail || "—"}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Vytvořen / přihlášení
+                          </span>
+                          <div className="min-h-[42px] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-900">
+                            <div>{formatAuthDateTime(row.createdAt)}</div>
+                            <div className="mt-0.5 text-slate-500">{formatAuthDateTime(row.lastSignInAt)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
           </section>
         ) : null}
 
