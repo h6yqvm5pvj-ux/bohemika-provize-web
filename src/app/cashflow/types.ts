@@ -96,7 +96,9 @@ export type ProductFilter =
   | "life"
   | "auto"
   | "property"
-  | "other"
+  | "entrepreneurs"
+  | "travel"
+  | "foreigners"
   | "gold";
 
 export type ScopeFilter = "combined" | "own" | "team";

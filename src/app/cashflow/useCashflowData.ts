@@ -12,6 +12,7 @@ import { totalWithMultipliers } from "../lib/commissionTotals";
 import { computeLegacyFrequencyOverrideTotal } from "../lib/managerOverrideTotals";
 import { generateCashflow } from "./generator";
 import {
+  matchesProductFilter,
   stripTotalRows,
 } from "./helpers";
 import type {
@@ -616,58 +617,7 @@ export function useCashflowData({
       entriesForCashflow = [];
     } else if (productFilter !== "all") {
       entriesForCashflow = entriesForCashflow.filter((entry) => {
-        const product = entry.productKey;
-        if (!product) return false;
-        if (productFilter === "life") {
-          return (
-            product === "neon" ||
-            product === "flexi" ||
-            product === "maximaMaxEfekt" ||
-            product === "pillowInjury"
-          );
-        }
-        if (productFilter === "auto") {
-          return (
-            product === "cppAuto" ||
-            product === "slaviaauto" ||
-            product === "allianzAuto" ||
-            product === "csobAuto" ||
-            product === "uniqaAuto" ||
-            product === "uniqaflotila" ||
-            product === "pillowAuto" ||
-            product === "kooperativaAuto"
-          );
-        }
-        if (productFilter === "property") {
-          return (
-            product === "domex" ||
-            product === "cpphafan" ||
-            product === "pillowmajetek" ||
-            product === "koopmajetekobcan" ||
-            product === "maxdomov" ||
-            product === "allianzmujdomov" ||
-            product === "cppsimplex" ||
-            product === "cppPPRs" ||
-            product === "cppPPRbez" ||
-            product === "cppcestovko" ||
-            product === "axacestovko" ||
-            product === "koopcestovko" ||
-            product === "maxcizinkomplex" ||
-            product === "zamex"
-          );
-        }
-        if (productFilter === "other") {
-          return !(
-            product === "neon" ||
-            product === "flexi" ||
-            product === "maximaMaxEfekt" ||
-            product === "pillowInjury"
-          );
-        }
-        if (productFilter === "gold") {
-          return product === "comfortcc";
-        }
-        return true;
+        return matchesProductFilter(entry.productKey, productFilter);
       });
     }
 

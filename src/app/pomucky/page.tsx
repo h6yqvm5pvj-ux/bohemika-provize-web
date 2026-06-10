@@ -447,15 +447,6 @@ export default function ToolsPage() {
         href: "/cuzk",
       },
       {
-        key: "cap-kalkulacka",
-        category: "Pojištění majetku",
-        title: "ČAP Kalkulačka",
-        description: "Kalkulace orientační pojistné hodnoty rodinného domu.",
-        icon: WalletCards,
-        href: "https://www.cap.cz/kophn",
-        external: true,
-      },
-      {
         key: "proklepka-vozidla",
         category: "Pojištění vozidel",
         title: "Proklepka vozidla",

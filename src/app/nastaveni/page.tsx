@@ -3135,6 +3135,135 @@ export default function SettingsPage() {
       </div>
     </section>
   );
+  const onlineCardStudioPublishPanel = (
+    <aside className="relative overflow-hidden rounded-[30px] border border-violet-300/25 bg-[radial-gradient(circle_at_8%_0%,rgba(196,181,253,0.24),transparent_30%),linear-gradient(135deg,#140b2f_0%,#24104f_46%,#5b21b6_100%)] p-4 text-white shadow-[0_26px_70px_rgba(60,18,122,0.34)] sm:p-5">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_0%,transparent_45%,rgba(255,255,255,0.1)_100%)]" />
+      <div className="relative z-10 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.38fr)]">
+        <div className="min-w-0 space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <p className="inline-flex items-center gap-2 rounded-full border border-violet-200/25 bg-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-100">
+                <Globe className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+                Veřejná online vizitka
+              </p>
+              <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
+                Publikace a sdílení vizitky
+              </h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-violet-100/76">
+                Zapni veřejnou stránku, zkontroluj URL a ulož změny. Samotný editor je hned pod tímto panelem přes celou šířku.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                updateOnlineCardDraft({
+                  enabled: !onlineCardDraft.enabled,
+                })
+              }
+              className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                onlineCardDraft.enabled
+                  ? "border-emerald-200/45 bg-emerald-300/18 text-emerald-50 shadow-[0_14px_30px_rgba(16,185,129,0.18)]"
+                  : "border-white/18 bg-white/[0.08] text-violet-100 hover:bg-white/[0.12]"
+              }`}
+              aria-pressed={onlineCardDraft.enabled}
+            >
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${
+                  onlineCardDraft.enabled ? "bg-emerald-200" : "bg-violet-200/60"
+                }`}
+                aria-hidden="true"
+              />
+              {onlineCardDraft.enabled ? "Zapnuto" : "Vypnuto"}
+            </button>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <div className="min-w-0 rounded-2xl border border-white/14 bg-white/[0.08] px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-100/72">
+                Veřejná URL
+              </p>
+              {onlineCardPublicUrl ? (
+                <p className="mt-2 break-all text-base font-bold leading-6 text-white">
+                  {onlineCardPublicUrl}
+                </p>
+              ) : (
+                <p className="mt-2 text-sm font-semibold text-violet-100/74">
+                  Pro vygenerování URL nejdřív vyplň jméno.
+                </p>
+              )}
+              <p className="mt-2 text-xs text-violet-100/60">
+                URL se generuje automaticky podle jména. Pokud vizitku vypneš, URL zůstane uložená, ale nebude veřejně dostupná.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {onlineCardPublicUrl ? (
+                <a
+                  href={onlineCardPublicUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/24 bg-white px-4 py-2 text-sm font-semibold text-violet-950 transition hover:bg-violet-50"
+                >
+                  Otevřít vizitku
+                  <ExternalLink size={14} strokeWidth={2.2} aria-hidden="true" />
+                </a>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleOpenOnlineCardQr}
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.1] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.16]"
+              >
+                QR kód
+                <QrCodeIcon size={14} strokeWidth={2.2} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex min-h-full flex-col justify-between gap-3 rounded-2xl border border-white/14 bg-white/[0.08] px-4 py-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-100/72">
+              Text „O mně“
+            </p>
+            <p className="mt-1 text-2xl font-extrabold text-white">
+              {onlineCardDraft.bio.length}/1000
+            </p>
+            <p className="mt-1 text-xs text-violet-100/62">znaků</p>
+          </div>
+
+          <div className="space-y-3">
+            {onlineCardStatus ? (
+              <p
+                className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${
+                  onlineCardStatus.type === "success"
+                    ? "border-emerald-200/25 bg-emerald-300/12 text-emerald-50"
+                    : onlineCardStatus.type === "info"
+                      ? "border-white/16 bg-white/[0.08] text-violet-50"
+                      : "border-rose-200/25 bg-rose-300/12 text-rose-50"
+                }`}
+              >
+                {onlineCardStatus.message}
+              </p>
+            ) : (
+              <p className="rounded-2xl border border-white/12 bg-white/[0.06] px-3 py-2 text-xs text-violet-100/72">
+                Uložení zapíše aktuální náhled do profilu.
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={() => void handleSaveOnlineCard()}
+              disabled={onlineCardSaving || !onlineCardPublishReady}
+              className="inline-flex w-full items-center justify-center rounded-2xl border border-white/25 bg-white px-4 py-3 text-sm font-bold text-violet-950 shadow-[0_16px_36px_rgba(255,255,255,0.13)] transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {onlineCardSaving ? "Ukládám..." : "Uložit vizitku"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
 
   return (
     <AppLayout active="settings">
@@ -3964,9 +4093,11 @@ export default function SettingsPage() {
 
               {activeTab === "onlineCard" && !timelineSetupRequired && (
               <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
-                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#1d4ed8_48%,#22d3ee_100%)]" />
-                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.28fr)_minmax(0,0.72fr)]">
-                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#4c1d95_0%,#7c3aed_48%,#c084fc_100%)]" />
+                <div className="space-y-5">
+                  {onlineCardStudioPublishPanel}
+
+                  <div className="space-y-4 rounded-[30px] border border-violet-100 bg-white px-4 py-4 shadow-[0_20px_60px_rgba(88,28,135,0.08)] sm:px-5 sm:py-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
@@ -4028,120 +4159,6 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  <aside className="space-y-3 rounded-2xl border border-slate-200 bg-[linear-gradient(165deg,rgba(255,255,255,0.96)_0%,rgba(241,245,249,0.96)_100%)] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-700">
-                          Veřejná stránka
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          Publikovat bez přihlášení.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateOnlineCardDraft({
-                            enabled: !onlineCardDraft.enabled,
-                          })
-                        }
-                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                          onlineCardDraft.enabled
-                            ? "border-slate-900 bg-slate-900 text-white"
-                            : toggleOffClass
-                        }`}
-                        aria-pressed={onlineCardDraft.enabled}
-                      >
-                        <span
-                          className={`h-2.5 w-2.5 rounded-full ${
-                            onlineCardDraft.enabled ? "bg-white" : "bg-slate-400"
-                          }`}
-                          aria-hidden="true"
-                        />
-                        {onlineCardDraft.enabled ? "Zapnuto" : "Vypnuto"}
-                      </button>
-                    </div>
-
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
-                      Veřejná URL
-                    </h3>
-                    {onlineCardPublicUrl ? (
-                      <div className="space-y-2 rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                        <p className="break-all text-sm font-semibold text-slate-900">
-                          {onlineCardPublicUrl}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <a
-                            href={onlineCardPublicUrl}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:bg-slate-100"
-                          >
-                            Otevřít vizitku
-                            <ExternalLink size={12} strokeWidth={2.2} aria-hidden="true" />
-                          </a>
-                          <button
-                            type="button"
-                            onClick={handleOpenOnlineCardQr}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 transition hover:bg-slate-100"
-                          >
-                            QR kód
-                            <QrCodeIcon size={12} strokeWidth={2.2} aria-hidden="true" />
-                          </button>
-                        </div>
-                        <p className="text-[11px] text-slate-500">
-                          URL se generuje automaticky podle jména.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-xs text-slate-500">
-                        Pro vygenerování URL nejdřív vyplň jméno.
-                      </div>
-                    )}
-
-                    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-600">
-                      Pokud vizitku vypneš, URL zůstane uložená, ale stránka nebude veřejně
-                      dostupná.
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                      <p className="text-[11px] text-slate-500">
-                        Text „O mně“
-                      </p>
-                      <p className="mt-1 text-xs font-semibold text-slate-700">
-                        {onlineCardDraft.bio.length}/1000 znaků
-                      </p>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      {onlineCardStatus ? (
-                        <p
-                          className={`text-xs ${
-                            onlineCardStatus.type === "success"
-                              ? "text-emerald-700"
-                              : onlineCardStatus.type === "info"
-                                ? "text-slate-700"
-                                : "text-rose-700"
-                          }`}
-                        >
-                          {onlineCardStatus.message}
-                        </p>
-                      ) : (
-                        <span className="text-xs text-slate-500">
-                          Uložení zapíše aktuální náhled do profilu.
-                        </span>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => void handleSaveOnlineCard()}
-                        disabled={onlineCardSaving || !onlineCardPublishReady}
-                        className="inline-flex items-center justify-center rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {onlineCardSaving ? "Ukládám..." : "Uložit vizitku"}
-                      </button>
-                    </div>
-                  </aside>
                 </div>
 
                 {onlineCardStudioFullscreen && (

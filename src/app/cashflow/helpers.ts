@@ -4,9 +4,6 @@ import type {
   Product,
 } from "../types/domain";
 import {
-  hasProductGroup,
-  isComfortProduct,
-  isLifeProduct,
   productLabel as productLabelFromCatalog,
 } from "@/app/lib/productCatalog";
 import type {
@@ -17,6 +14,35 @@ import type {
 } from "./types";
 import { formatMoney, toDate } from "@/app/lib/formatters";
 export { formatMoney, toDate };
+
+export const CASHFLOW_PRODUCTS_BY_FILTER: Record<
+  Exclude<ProductFilter, "all" | "tip">,
+  readonly Product[]
+> = {
+  life: ["neon", "flexi", "maximaMaxEfekt", "pillowInjury"],
+  auto: [
+    "cppAuto",
+    "slaviaauto",
+    "allianzAuto",
+    "csobAuto",
+    "uniqaAuto",
+    "uniqaflotila",
+    "pillowAuto",
+    "kooperativaAuto",
+  ],
+  property: [
+    "domex",
+    "cpphafan",
+    "pillowmajetek",
+    "koopmajetekobcan",
+    "maxdomov",
+    "allianzmujdomov",
+  ],
+  entrepreneurs: ["cppsimplex", "cppPPRs", "cppPPRbez"],
+  travel: ["cppcestovko", "axacestovko", "koopcestovko"],
+  foreigners: ["maxcizinkomplex"],
+  gold: ["comfortcc"],
+};
 
 const MONTH_LABELS = [
   "leden",
@@ -89,26 +115,7 @@ export function matchesProductFilter(
   if (productFilter === "tip") return false;
   if (!product) return false;
   if (productFilter === "all") return true;
-  if (productFilter === "life") {
-    return isLifeProduct(product);
-  }
-  if (productFilter === "auto") {
-    return hasProductGroup(product, "auto");
-  }
-  if (productFilter === "property") {
-    return (
-      hasProductGroup(product, "property") ||
-      hasProductGroup(product, "travel") ||
-      hasProductGroup(product, "liability")
-    );
-  }
-  if (productFilter === "other") {
-    return !isLifeProduct(product);
-  }
-  if (productFilter === "gold") {
-    return isComfortProduct(product);
-  }
-  return true;
+  return CASHFLOW_PRODUCTS_BY_FILTER[productFilter].includes(product);
 }
 
 export function filterPastItems(

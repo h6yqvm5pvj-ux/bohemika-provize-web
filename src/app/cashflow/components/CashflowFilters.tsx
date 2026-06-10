@@ -1,11 +1,13 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  BriefcaseBusiness,
   CarFront,
+  Globe2,
   HeartPulse,
   Home,
   Landmark,
+  Plane,
   Tag,
-  Wrench,
   UserRound,
   UsersRound,
   Sparkles,
@@ -28,8 +30,10 @@ const PRODUCT_FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
   { value: "life", label: "Život" },
   { value: "auto", label: "Auto" },
   { value: "property", label: "Majetek" },
+  { value: "entrepreneurs", label: "Podnikatele" },
+  { value: "travel", label: "Cestovní" },
+  { value: "foreigners", label: "Cizinci" },
   { value: "gold", label: "Zlato" },
-  { value: "other", label: "Vedlejší produkty" },
 ];
 
 const PRODUCT_FILTER_ICONS: Partial<Record<ProductFilter, LucideIcon>> = {
@@ -38,8 +42,10 @@ const PRODUCT_FILTER_ICONS: Partial<Record<ProductFilter, LucideIcon>> = {
   life: HeartPulse,
   auto: CarFront,
   property: Home,
+  entrepreneurs: BriefcaseBusiness,
+  travel: Plane,
+  foreigners: Globe2,
   gold: Landmark,
-  other: Wrench,
 };
 
 type ChipVisual = {
@@ -79,13 +85,21 @@ const PRODUCT_FILTER_VISUALS: Record<ProductFilter, ChipVisual> = {
     activeClass:
       "z-10 border-cyan-500/55 bg-[linear-gradient(135deg,#22d3ee_0%,#0e7490_100%)] text-[#f8fafc] shadow-[0_12px_24px_rgba(14,116,144,0.35)]",
   },
+  entrepreneurs: {
+    activeClass:
+      "z-10 border-indigo-500/55 bg-[linear-gradient(135deg,#818cf8_0%,#4338ca_100%)] text-[#f8fafc] shadow-[0_12px_24px_rgba(67,56,202,0.35)]",
+  },
+  travel: {
+    activeClass:
+      "z-10 border-sky-500/55 bg-[linear-gradient(135deg,#38bdf8_0%,#0369a1_100%)] text-[#f8fafc] shadow-[0_12px_24px_rgba(3,105,161,0.35)]",
+  },
+  foreigners: {
+    activeClass:
+      "z-10 border-teal-500/55 bg-[linear-gradient(135deg,#2dd4bf_0%,#0f766e_100%)] text-[#f8fafc] shadow-[0_12px_24px_rgba(15,118,110,0.35)]",
+  },
   gold: {
     activeClass:
       "z-10 border-amber-500/55 bg-[linear-gradient(135deg,#facc15_0%,#ca8a04_100%)] text-[#f8fafc] shadow-[0_12px_24px_rgba(202,138,4,0.34)]",
-  },
-  other: {
-    activeClass:
-      "z-10 border-slate-500/55 bg-[linear-gradient(135deg,#64748b_0%,#334155_100%)] text-[#f8fafc] shadow-[0_12px_24px_rgba(51,65,85,0.34)]",
   },
 };
 
