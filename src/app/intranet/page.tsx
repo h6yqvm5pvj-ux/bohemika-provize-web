@@ -19,6 +19,7 @@ import {
   Loader2,
   MessageSquare,
   Paperclip,
+  Pencil,
   Plane,
   Plus,
   RefreshCw,
@@ -35,7 +36,10 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
-import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import {
+  fetchAuthedBlobOrThrow,
+  fetchAuthedJsonOrThrow,
+} from "@/app/lib/authenticatedApi";
 import {
   INTRANET_SECTIONS,
   INTRANET_SECTION_LABEL_BY_KEY,
@@ -118,6 +122,12 @@ type WallCreateResponse = {
 };
 
 type WallDeleteResponse = {
+  ok?: boolean;
+  error?: string;
+  postId?: string;
+};
+
+type WallUpdateResponse = {
   ok?: boolean;
   error?: string;
   postId?: string;
@@ -314,6 +324,198 @@ const isPreviewableImage = (file: File): boolean => {
 const replyComposerKey = (postId: string, commentId: string): string =>
   `${postId}::${commentId}`;
 
+const attachmentPreviewUrlCache = new Map<string, string>();
+const attachmentPreviewInflightCache = new Map<string, Promise<string>>();
+
+type RichTextSegment =
+  | { kind: "text"; value: string }
+  | { kind: "link"; value: string; href: string };
+
+const trimUrlCandidate = (value: string): string => {
+  let trimmed = value.trim();
+  while (trimmed && !/[\p{L}\p{N}/#%=&_+~.-]/u.test(trimmed.slice(-1))) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return trimmed;
+};
+
+const normalizeLinkHref = (value: string): string | null => {
+  const trimmed = trimUrlCandidate(value);
+  if (!trimmed) return null;
+  try {
+    const url = new URL(/^www\./i.test(trimmed) ? `https://${trimmed}` : trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
+const splitTextIntoLinkSegments = (value: string): RichTextSegment[] => {
+  const segments: RichTextSegment[] = [];
+  const regex = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+  let cursor = 0;
+
+  for (const match of value.matchAll(regex)) {
+    const raw = match[0] ?? "";
+    const start = match.index ?? 0;
+    const linkText = trimUrlCandidate(raw);
+    const href = normalizeLinkHref(linkText);
+    if (!linkText || !href) continue;
+
+    if (start > cursor) {
+      segments.push({ kind: "text", value: value.slice(cursor, start) });
+    }
+    segments.push({ kind: "link", value: linkText, href });
+    cursor = start + linkText.length;
+  }
+
+  if (cursor < value.length) {
+    segments.push({ kind: "text", value: value.slice(cursor) });
+  }
+
+  return segments.length ? segments : [{ kind: "text", value }];
+};
+
+function LinkedText({ text, className }: { text: string; className: string }) {
+  const segments = useMemo(() => splitTextIntoLinkSegments(text), [text]);
+
+  return (
+    <p className={className}>
+      {segments.map((segment, index) =>
+        segment.kind === "link" ? (
+          <a
+            key={`${segment.href}-${index}`}
+            href={segment.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-sky-700 underline decoration-sky-300 underline-offset-2 transition hover:text-sky-900 hover:decoration-sky-600"
+          >
+            {segment.value}
+          </a>
+        ) : (
+          <span key={`text-${index}`}>{segment.value}</span>
+        )
+      )}
+    </p>
+  );
+}
+
+function AttachmentImagePreview({
+  attachment,
+  user,
+  onOpen,
+}: {
+  attachment: WallAttachment;
+  user: FirebaseUser | null;
+  onOpen: (attachment: WallAttachment) => void;
+}) {
+  const previewCacheKey = attachment.url;
+  const [previewUrl, setPreviewUrl] = useState<string | null>(
+    () => attachmentPreviewUrlCache.get(previewCacheKey) ?? null
+  );
+  const [failed, setFailed] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const previewRef = useRef<HTMLButtonElement | null>(null);
+  const loading = isVisible && !!user && !previewUrl && !failed;
+
+  useEffect(() => {
+    const node = previewRef.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined") {
+      const frame = window.requestAnimationFrame(() => setIsVisible(true));
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "1200px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isVisible || !user || !attachment.isImage) return;
+
+    let active = true;
+    const existingRequest = attachmentPreviewInflightCache.get(previewCacheKey);
+    const request =
+      existingRequest ??
+      fetchAuthedBlobOrThrow(user, attachment.url, { cache: "force-cache" }).then((blob) => {
+        const objectUrl = URL.createObjectURL(blob);
+        attachmentPreviewUrlCache.set(previewCacheKey, objectUrl);
+        return objectUrl;
+      });
+
+    if (!existingRequest) {
+      attachmentPreviewInflightCache.set(previewCacheKey, request);
+    }
+
+    request
+      .then((objectUrl) => {
+        if (active) {
+          setFailed(false);
+          setPreviewUrl(objectUrl);
+        }
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      })
+      .finally(() => {
+        if (attachmentPreviewInflightCache.get(previewCacheKey) === request) {
+          attachmentPreviewInflightCache.delete(previewCacheKey);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [attachment.isImage, attachment.url, isVisible, previewCacheKey, user]);
+
+  return (
+    <button
+      ref={previewRef}
+      type="button"
+      onClick={() => onOpen(attachment)}
+      className="flex w-full shrink-0 items-start justify-center overflow-hidden rounded-xl bg-transparent text-xs font-semibold text-slate-600 transition hover:opacity-90"
+    >
+      {previewUrl ? (
+        <span className="flex w-full items-start justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewUrl}
+            alt={`Náhled ${attachment.name}`}
+            loading="lazy"
+            decoding="async"
+            className="max-h-[260px] max-w-full rounded-xl object-contain"
+          />
+        </span>
+      ) : loading ? (
+        <span className="flex min-h-40 w-full items-center justify-center gap-2 rounded-xl bg-slate-100">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Načítám náhled
+        </span>
+      ) : failed ? (
+        <span className="flex min-h-40 w-full items-center justify-center gap-2 rounded-xl bg-slate-100">
+          <ImageIcon className="h-4 w-4" />
+          Otevřít obrázek
+        </span>
+      ) : (
+        <span className="flex min-h-40 w-full items-center justify-center gap-2 rounded-xl bg-slate-100">
+          <ImageIcon className="h-4 w-4" />
+          Připravuji náhled
+        </span>
+      )}
+    </button>
+  );
+}
+
 export default function IntranetPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [selectedSection, setSelectedSection] = useState<IntranetSectionKey>("obecne");
@@ -330,6 +532,7 @@ export default function IntranetPage() {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [filePreviewUrls, setFilePreviewUrls] = useState<Record<string, string>>({});
   const [postModalOpen, setPostModalOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState<WallPost | null>(null);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
 
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
@@ -359,6 +562,40 @@ export default function IntranetPage() {
   const postCardRefs = useRef<Record<string, HTMLElement | null>>({});
   const dragDepthRef = useRef(0);
   const highlightTimerRef = useRef<number | null>(null);
+
+  const resetPostFormForCreate = () => {
+    setTitle("");
+    setText("");
+    setPostSection(selectedSection);
+    setFiles([]);
+    setEmojiOpen(false);
+    setPostError(null);
+  };
+
+  const openCreatePostModal = () => {
+    setEditingPost(null);
+    resetPostFormForCreate();
+    setPostModalOpen(true);
+  };
+
+  const openEditPostModal = (post: WallPost) => {
+    setEditingPost(post);
+    setTitle(post.title);
+    setText(post.text);
+    setPostSection(post.section);
+    setFiles([]);
+    setEmojiOpen(false);
+    setPostError(null);
+    setPostModalOpen(true);
+  };
+
+  const closePostModal = () => {
+    setPostModalOpen(false);
+    setEditingPost(null);
+    setPostError(null);
+    setIsDraggingFiles(false);
+    dragDepthRef.current = 0;
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
@@ -400,6 +637,8 @@ export default function IntranetPage() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setPostModalOpen(false);
+        setEditingPost(null);
+        setPostError(null);
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -520,6 +759,11 @@ export default function IntranetPage() {
   const selectedPostSectionVisual = SECTION_VISUALS[postSection];
   const SelectedFilterIcon = selectedSectionVisual.icon;
   const SelectedPostIcon = selectedPostSectionVisual.icon;
+  const isEditingPost = editingPost !== null;
+  const existingAttachmentCount = editingPost?.attachments.length ?? 0;
+  const attachmentSlotsRemaining = Math.max(0, MAX_FILES - existingAttachmentCount);
+  const attachmentSlotsAvailable = Math.max(0, attachmentSlotsRemaining - files.length);
+  const PostModalIcon = isEditingPost ? Pencil : Plus;
 
   const addEmojiToPost = (emoji: string) => {
     setText((prev) => `${prev}${emoji}`);
@@ -545,10 +789,15 @@ export default function IntranetPage() {
 
   const addFiles = (incoming: File[]) => {
     if (!incoming.length) return;
+    const maxNewFiles = isEditingPost ? attachmentSlotsRemaining : MAX_FILES;
+    if (maxNewFiles <= 0) {
+      setPostError(`Příspěvek může mít maximálně ${MAX_FILES} příloh.`);
+      return;
+    }
     setFiles((prev) => {
       const merged = [...prev, ...incoming];
-      if (merged.length <= MAX_FILES) return merged;
-      return merged.slice(0, MAX_FILES);
+      if (merged.length <= maxNewFiles) return merged;
+      return merged.slice(0, maxNewFiles);
     });
     setPostError(null);
   };
@@ -600,10 +849,11 @@ export default function IntranetPage() {
     setFiles((prev) => prev.filter((_, idx) => idx !== index));
   };
 
-  const handleCreatePost = async () => {
+  const handleSavePost = async () => {
     if (!user || posting) return;
     const trimmedTitle = title.trim();
     const trimmedText = text.trim();
+    const isEditing = !!editingPost;
     if (!trimmedTitle) {
       setPostError("Titulek je povinný.");
       return;
@@ -623,14 +873,23 @@ export default function IntranetPage() {
       form.set("section", postSection);
       files.forEach((file) => form.append("files", file));
 
-      const payload = await fetchAuthedJsonOrThrow<WallCreateResponse>(
-        user,
-        "/api/intranet/wall",
-        {
-          method: "POST",
-          body: form,
-        }
-      );
+      const payload = isEditing
+        ? await fetchAuthedJsonOrThrow<WallUpdateResponse>(
+            user,
+            `/api/intranet/wall/${encodeURIComponent(editingPost.id)}`,
+            {
+              method: "PATCH",
+              body: form,
+            }
+          )
+        : await fetchAuthedJsonOrThrow<WallCreateResponse>(
+            user,
+            "/api/intranet/wall",
+            {
+              method: "POST",
+              body: form,
+            }
+          );
       if (!payload?.ok) {
         throw new Error(payload?.error || "Server nevrátil úspěšnou odpověď.");
       }
@@ -640,9 +899,20 @@ export default function IntranetPage() {
       setFiles([]);
       setEmojiOpen(false);
       setPostModalOpen(false);
-      await loadPosts(user, selectedSection);
+      setEditingPost(null);
+      if (postSection !== selectedSection) {
+        setSelectedSection(postSection);
+      } else {
+        await loadPosts(user, selectedSection);
+      }
     } catch (error) {
-      setPostError(error instanceof Error ? error.message : "Nepodařilo se přidat příspěvek.");
+      setPostError(
+        error instanceof Error
+          ? error.message
+          : isEditing
+            ? "Nepodařilo se upravit příspěvek."
+            : "Nepodařilo se přidat příspěvek."
+      );
     } finally {
       setPosting(false);
     }
@@ -937,7 +1207,7 @@ export default function IntranetPage() {
               <div className="flex justify-start xl:justify-end">
                 <button
                   type="button"
-                  onClick={() => setPostModalOpen(true)}
+                  onClick={openCreatePostModal}
                   className={`${styles.createButton} inline-flex items-center gap-3 rounded-2xl border border-emerald-700/70 bg-[linear-gradient(135deg,#16a34a_0%,#047857_100%)] px-6 py-3.5 text-lg font-bold text-white shadow-[0_18px_44px_rgba(5,150,105,0.34)] transition hover:-translate-y-1 hover:shadow-[0_22px_52px_rgba(5,150,105,0.42)]`}
                 >
                   <Plus className="h-5 w-5" />
@@ -998,11 +1268,11 @@ export default function IntranetPage() {
 
           <section>
             {loadingPosts ? (
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-3">
                 {Array.from({ length: 4 }).map((_, idx) => (
                   <div
                     key={`wall-skeleton-${idx}`}
-                    className="h-56 animate-pulse rounded-[28px] border border-slate-200/70 bg-white/75"
+                    className="h-44 animate-pulse rounded-[24px] border border-slate-200/70 bg-white/75"
                   />
                 ))}
               </div>
@@ -1022,7 +1292,7 @@ export default function IntranetPage() {
                 <div className="mt-6">
                   <button
                     type="button"
-                    onClick={() => setPostModalOpen(true)}
+                    onClick={openCreatePostModal}
                     className="inline-flex items-center gap-2 rounded-2xl border border-emerald-700/70 bg-[linear-gradient(135deg,#16a34a_0%,#047857_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(16,185,129,0.28)] transition hover:-translate-y-0.5"
                   >
                     <Plus className="h-4 w-4" />
@@ -1031,7 +1301,7 @@ export default function IntranetPage() {
                 </div>
               </div>
             ) : (
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-3">
                 {posts.map((post, index) => {
                   const visual = SECTION_VISUALS[post.section] ?? SECTION_VISUALS.obecne;
                   const SectionIcon = visual.icon;
@@ -1040,6 +1310,8 @@ export default function IntranetPage() {
                   const commentComposerOpen = commentComposerOpenById[post.id] === true;
                   const isLikingThis = likePostingById[post.id] === true;
                   const isCommentPostingThis = commentPostingById[post.id] === true;
+                  const imageAttachments = post.attachments.filter((attachment) => attachment.isImage);
+                  const otherAttachments = post.attachments.filter((attachment) => !attachment.isImage);
 
                   return (
                     <article
@@ -1047,7 +1319,7 @@ export default function IntranetPage() {
                       ref={(node) => {
                         postCardRefs.current[post.id] = node;
                       }}
-                      className={`${styles.wallCard} relative overflow-hidden rounded-[30px] border border-white/75 bg-white/88 p-4 shadow-[0_18px_52px_rgba(15,23,42,0.14)] backdrop-blur-xl ring-1 ${visual.postAccent} ${
+                      className={`${styles.wallCard} relative overflow-hidden rounded-[24px] border border-white/75 bg-white/88 p-4 shadow-[0_14px_38px_rgba(15,23,42,0.12)] backdrop-blur-xl ring-1 ${visual.postAccent} ${
                         highlightPostId === post.id
                           ? "ring-2 ring-emerald-300 shadow-[0_0_0_4px_rgba(16,185,129,0.14),0_24px_54px_rgba(15,23,42,0.16)]"
                           : ""
@@ -1095,75 +1367,98 @@ export default function IntranetPage() {
 
                         <div className="flex items-center gap-2">
                           {canDeletePost(post) ? (
-                            <button
-                              type="button"
-                              onClick={() => void handleDeletePost(post.id)}
-                              disabled={!!deletingPostId}
-                              className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {isDeletingThis ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5" />
-                              )}
-                              Smazat
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openEditPostModal(post)}
+                                disabled={!!deletingPostId}
+                                className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Upravit
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => void handleDeletePost(post.id)}
+                                disabled={!!deletingPostId}
+                                className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {isDeletingThis ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                                Smazat
+                              </button>
+                            </>
                           ) : null}
                         </div>
                       </div>
 
-                      <h3 className="mt-4 text-xl font-bold leading-tight tracking-[-0.01em] text-slate-900">
-                        {post.title}
-                      </h3>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                        {post.text}
-                      </p>
+                      <div
+                        className={[
+                          "mt-4 grid gap-4",
+                          imageAttachments.length > 0
+                            ? "lg:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] lg:items-start"
+                            : "",
+                        ].join(" ")}
+                      >
+                        <div className="min-w-0">
+                          <h3 className="text-xl font-bold leading-tight tracking-[-0.01em] text-slate-900">
+                            {post.title}
+                          </h3>
+                          <LinkedText
+                            text={post.text}
+                            className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700"
+                          />
 
-                      {post.attachments.length > 0 ? (
-                        <div className="mt-4 rounded-2xl border border-slate-200/85 bg-slate-50/80 p-3">
-                          <div className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-slate-500">
-                            <Paperclip className="h-3.5 w-3.5" />
-                            Přílohy
-                          </div>
-
-                          <div className="space-y-2">
-                            {post.attachments.map((attachment) => (
-                              <div
-                                key={attachment.id}
-                                className="rounded-xl border border-slate-200 bg-white/95 p-2"
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => void handleOpenAttachment(attachment)}
-                                  className="inline-flex items-center gap-2 text-left text-xs font-semibold text-slate-700 underline-offset-2 hover:underline"
-                                >
-                                  {attachment.isImage ? (
-                                    <ImageIcon className="h-3.5 w-3.5" />
-                                  ) : (
-                                    <Paperclip className="h-3.5 w-3.5" />
-                                  )}
-                                  {attachment.name}
-                                </button>
-                                <div className="mt-0.5 text-[11px] text-slate-500">
-                                  {attachment.contentType} • {formatBytes(attachment.sizeBytes)}
-                                </div>
-                                {attachment.isImage ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleOpenAttachment(attachment)}
-                                    className="mt-2 flex min-h-28 w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-xs font-semibold text-slate-600 transition hover:border-slate-400 hover:bg-slate-100"
-                                  >
-                                    <ImageIcon className="mr-2 h-4 w-4" />
-                                    Otevřít obrázek
-                                  </button>
-                                ) : null}
+                          {otherAttachments.length > 0 ? (
+                            <div className="mt-3 rounded-xl border border-slate-200/85 bg-slate-50/75 p-2.5">
+                              <div className="mb-2 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">
+                                <Paperclip className="h-3.5 w-3.5" />
+                                Přílohy
                               </div>
+
+                              <div className="space-y-2">
+                                {otherAttachments.map((attachment) => (
+                                  <div
+                                    key={attachment.id}
+                                    className="rounded-xl border border-slate-200 bg-white/95 p-2"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleOpenAttachment(attachment)}
+                                      className="inline-flex items-center gap-2 text-left text-xs font-semibold text-slate-700 underline-offset-2 hover:underline"
+                                    >
+                                      <Paperclip className="h-3.5 w-3.5" />
+                                      {attachment.name}
+                                    </button>
+                                    <div className="mt-0.5 text-[11px] text-slate-500">
+                                      {attachment.contentType} • {formatBytes(attachment.sizeBytes)}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {imageAttachments.length > 0 ? (
+                          <div className="grid gap-2 lg:justify-items-end">
+                            {imageAttachments.map((attachment) => (
+                              <AttachmentImagePreview
+                                key={attachment.id}
+                                attachment={attachment}
+                                user={user}
+                                onOpen={(item) => void handleOpenAttachment(item)}
+                              />
                             ))}
                           </div>
-                        </div>
-                      ) : null}
+                        ) : null}
+                      </div>
 
-                      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/90 bg-[linear-gradient(150deg,rgba(248,250,252,0.95)_0%,rgba(255,255,255,0.95)_100%)] p-2.5">
+                      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200/90 bg-[linear-gradient(150deg,rgba(248,250,252,0.95)_0%,rgba(255,255,255,0.95)_100%)] p-2">
                         <button
                           type="button"
                           onClick={() => void handleToggleLike(post.id)}
@@ -1243,9 +1538,10 @@ export default function IntranetPage() {
                                       <span className="font-semibold text-slate-700">{comment.author.name}</span>
                                       <span>{formatDateTime(comment.createdAtMs)}</span>
                                     </div>
-                                    <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
-                                      {comment.text}
-                                    </p>
+                                    <LinkedText
+                                      text={comment.text}
+                                      className="mt-1 whitespace-pre-wrap text-sm text-slate-700"
+                                    />
 
                                     <div className="mt-2 flex flex-wrap items-center gap-2">
                                       <button
@@ -1313,9 +1609,10 @@ export default function IntranetPage() {
                                                 </span>
                                                 <span>{formatDateTime(reply.createdAtMs)}</span>
                                               </div>
-                                              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
-                                                {reply.text}
-                                              </p>
+                                              <LinkedText
+                                                text={reply.text}
+                                                className="mt-1 whitespace-pre-wrap text-sm text-slate-700"
+                                              />
                                               <div className="mt-1.5">
                                                 <button
                                                   type="button"
@@ -1510,7 +1807,7 @@ export default function IntranetPage() {
           <button
             type="button"
             className={`${styles.modalBackdrop} absolute inset-0 bg-slate-950/60 backdrop-blur-sm`}
-            onClick={() => setPostModalOpen(false)}
+            onClick={closePostModal}
             aria-label="Zavřít okno"
           />
 
@@ -1520,17 +1817,21 @@ export default function IntranetPage() {
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-[0_12px_24px_rgba(16,185,129,0.2)]">
-                      <Plus className="h-5 w-5" />
+                      <PostModalIcon className="h-5 w-5" />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-bold tracking-[-0.01em] text-slate-900">Přidat příspěvek</h3>
-                      <p className="text-xs text-slate-500">Sdílej update, otázku nebo tip.</p>
+                      <h3 className="text-2xl font-bold tracking-[-0.01em] text-slate-900">
+                        {isEditingPost ? "Upravit příspěvek" : "Přidat příspěvek"}
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {isEditingPost ? "Uprav text, titulek nebo sekci." : "Sdílej update, otázku nebo tip."}
+                      </p>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => setPostModalOpen(false)}
+                    onClick={closePostModal}
                     className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-600 transition hover:border-slate-500 hover:bg-slate-100"
                   >
                     <X className="h-4 w-4" />
@@ -1631,12 +1932,12 @@ export default function IntranetPage() {
 
                   <button
                     type="button"
-                    onClick={handleCreatePost}
+                    onClick={handleSavePost}
                     disabled={posting || !user}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-700 bg-[linear-gradient(135deg,#16a34a_0%,#047857_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_42px_rgba(5,150,105,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(5,150,105,0.36)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {posting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    Publikovat příspěvek
+                    {isEditingPost ? "Uložit úpravy" : "Publikovat příspěvek"}
                   </button>
                 </div>
               </div>
@@ -1648,85 +1949,200 @@ export default function IntranetPage() {
                 </div>
 
                 <h4 className="text-sm font-semibold uppercase tracking-[0.13em] text-slate-500">Přílohy</h4>
-                <p className="mt-1 text-xs text-slate-600">PNG/JPG/JPEG zobrazí náhled přímo ve formuláři.</p>
 
-                <div
-                  className={[
-                    styles.dropzone,
-                    isDraggingFiles ? styles.dropzoneActive : "",
-                    "mt-3 space-y-2 rounded-2xl border border-dashed border-slate-300 bg-white/80 p-3 transition",
-                  ].join(" ")}
-                  onDragEnter={handleDropZoneDragEnter}
-                  onDragOver={handleDropZoneDragOver}
-                  onDragLeave={handleDropZoneDragLeave}
-                  onDrop={handleDropZoneDrop}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
-                    >
-                      <Paperclip className="h-3.5 w-3.5" />
-                      Přidat soubor
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      onChange={(event) => handleFileAdd(event.target.files)}
-                      className="hidden"
-                    />
-                    <span className="text-xs text-slate-500">Max {MAX_FILES} souborů</span>
-                  </div>
-                  <div className={styles.dropzoneHint}>
-                    {isDraggingFiles
-                      ? "Pusť soubory sem a přidám je do příloh."
-                      : "Přetáhni soubory sem nebo klikni na Přidat soubor."}
-                  </div>
-
-                  {files.length > 0 ? (
-                    <div className="space-y-2">
-                      {files.map((file, index) => {
-                        const key = filePreviewKey(file, index);
-                        const previewUrl = filePreviewUrls[key];
-                        const showPreview = isPreviewableImage(file) && !!previewUrl;
-
-                        return (
-                          <div key={key} className="rounded-xl border border-slate-300 bg-white p-2 text-xs">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className="truncate font-semibold text-slate-800">{file.name}</div>
-                                <div className="text-slate-500">{formatBytes(file.size)}</div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveFile(index)}
-                                className="rounded-lg border border-slate-300 p-1 text-slate-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
-                                aria-label={`Odebrat soubor ${file.name}`}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-
-                            {showPreview ? (
-                              <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={previewUrl}
-                                  alt={`Náhled ${file.name}`}
-                                  className="h-32 w-full object-cover"
-                                />
-                              </div>
-                            ) : null}
-                          </div>
-                        );
-                      })}
+                {isEditingPost ? (
+                  <>
+                    <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-white/80 p-3">
+                      {editingPost.attachments.length > 0 ? (
+                        editingPost.attachments.map((attachment) => (
+                          <button
+                            key={attachment.id}
+                            type="button"
+                            onClick={() => void handleOpenAttachment(attachment)}
+                            className="flex w-full min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                          >
+                            {attachment.isImage ? (
+                              <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+                            ) : (
+                              <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                            )}
+                            <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+                            <span className="shrink-0 text-[11px] font-medium text-slate-500">
+                              {formatBytes(attachment.sizeBytes)}
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="text-xs text-slate-500">Bez příloh.</div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="text-xs text-slate-500">Zatím bez příloh.</div>
-                  )}
-                </div>
+
+                    <div
+                      className={[
+                        styles.dropzone,
+                        isDraggingFiles ? styles.dropzoneActive : "",
+                        "mt-3 space-y-2 rounded-2xl border border-dashed border-slate-300 bg-white/80 p-3 transition",
+                      ].join(" ")}
+                      onDragEnter={handleDropZoneDragEnter}
+                      onDragOver={handleDropZoneDragOver}
+                      onDragLeave={handleDropZoneDragLeave}
+                      onDrop={handleDropZoneDrop}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={attachmentSlotsAvailable <= 0}
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Paperclip className="h-3.5 w-3.5" />
+                          Dohrát přílohu
+                        </button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          onChange={(event) => handleFileAdd(event.target.files)}
+                          className="hidden"
+                        />
+                        <span className="text-xs text-slate-500">
+                          Volná místa: {attachmentSlotsAvailable}
+                        </span>
+                      </div>
+                      <div className={styles.dropzoneHint}>
+                        {attachmentSlotsAvailable <= 0
+                          ? `Limit ${MAX_FILES} příloh je vyčerpaný.`
+                          : isDraggingFiles
+                            ? "Pusť soubory sem a přidám je k přílohám."
+                            : "Přetáhni nové soubory sem nebo klikni na Dohrát přílohu."}
+                      </div>
+
+                      {files.length > 0 ? (
+                        <div className="space-y-2">
+                          {files.map((file, index) => {
+                            const key = filePreviewKey(file, index);
+                            const previewUrl = filePreviewUrls[key];
+                            const showPreview = isPreviewableImage(file) && !!previewUrl;
+
+                            return (
+                              <div key={key} className="rounded-xl border border-slate-300 bg-white p-2 text-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="truncate font-semibold text-slate-800">{file.name}</div>
+                                    <div className="text-slate-500">{formatBytes(file.size)}</div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveFile(index)}
+                                    className="rounded-lg border border-slate-300 p-1 text-slate-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                                    aria-label={`Odebrat soubor ${file.name}`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+
+                                {showPreview ? (
+                                  <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={previewUrl}
+                                      alt={`Náhled ${file.name}`}
+                                      className="h-32 w-full object-cover"
+                                    />
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-500">Zatím nejsou vybrané nové přílohy.</div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-xs text-slate-600">PNG/JPG/JPEG zobrazí náhled přímo ve formuláři.</p>
+
+                    <div
+                      className={[
+                        styles.dropzone,
+                        isDraggingFiles ? styles.dropzoneActive : "",
+                        "mt-3 space-y-2 rounded-2xl border border-dashed border-slate-300 bg-white/80 p-3 transition",
+                      ].join(" ")}
+                      onDragEnter={handleDropZoneDragEnter}
+                      onDragOver={handleDropZoneDragOver}
+                      onDragLeave={handleDropZoneDragLeave}
+                      onDrop={handleDropZoneDrop}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
+                        >
+                          <Paperclip className="h-3.5 w-3.5" />
+                          Přidat soubor
+                        </button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          onChange={(event) => handleFileAdd(event.target.files)}
+                          className="hidden"
+                        />
+                        <span className="text-xs text-slate-500">Max {MAX_FILES} souborů</span>
+                      </div>
+                      <div className={styles.dropzoneHint}>
+                        {isDraggingFiles
+                          ? "Pusť soubory sem a přidám je do příloh."
+                          : "Přetáhni soubory sem nebo klikni na Přidat soubor."}
+                      </div>
+
+                      {files.length > 0 ? (
+                        <div className="space-y-2">
+                          {files.map((file, index) => {
+                            const key = filePreviewKey(file, index);
+                            const previewUrl = filePreviewUrls[key];
+                            const showPreview = isPreviewableImage(file) && !!previewUrl;
+
+                            return (
+                              <div key={key} className="rounded-xl border border-slate-300 bg-white p-2 text-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="truncate font-semibold text-slate-800">{file.name}</div>
+                                    <div className="text-slate-500">{formatBytes(file.size)}</div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveFile(index)}
+                                    className="rounded-lg border border-slate-300 p-1 text-slate-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                                    aria-label={`Odebrat soubor ${file.name}`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+
+                                {showPreview ? (
+                                  <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={previewUrl}
+                                      alt={`Náhled ${file.name}`}
+                                      className="h-32 w-full object-cover"
+                                    />
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-500">Zatím bez příloh.</div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

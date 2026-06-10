@@ -205,6 +205,7 @@ export async function GET(req: NextRequest) {
   }
 
   const shouldDownload = req.nextUrl.searchParams.get("download") === "1";
+  const isInlineImage = !shouldDownload && attachment.contentType.startsWith("image/");
   return withRateLimitHeaders(
     new NextResponse(new Uint8Array(bytes), {
       status: 200,
@@ -212,7 +213,9 @@ export async function GET(req: NextRequest) {
         "Content-Type": attachment.contentType,
         "Content-Length": String(bytes.length),
         "Content-Disposition": contentDisposition(attachment.name, shouldDownload),
-        "Cache-Control": "private, no-store, max-age=0",
+        "Cache-Control": isInlineImage
+          ? "private, max-age=600"
+          : "private, no-store, max-age=0",
         "Cross-Origin-Resource-Policy": "same-origin",
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
