@@ -376,6 +376,7 @@ const sendDirectMessagePushNotification = async ({
   senderEmail,
   senderName,
   subject,
+  isTipsterTip,
 }: {
   req: NextRequest;
   recipientEmail: string;
@@ -383,6 +384,7 @@ const sendDirectMessagePushNotification = async ({
   senderEmail: string;
   senderName: string;
   subject: string;
+  isTipsterTip?: boolean;
 }): Promise<void> => {
   if (!adminMessaging) return;
 
@@ -390,8 +392,11 @@ const sendDirectMessagePushNotification = async ({
   if (tokens.length === 0) return;
 
   const actorName = normalizeText(senderName) || nameFromEmail(senderEmail);
-  const body = `${actorName} ti posílá zprávu! 📩`;
-  const deepLink = `/posta?messageId=${encodeURIComponent(recipientMessageId)}`;
+  const notificationTitle = isTipsterTip ? `Nový TIP od ${actorName}` : "Nová zpráva v poště";
+  const body = isTipsterTip ? subject || "Přišel nový tip." : `${actorName} ti posílá zprávu! 📩`;
+  const deepLink = isTipsterTip
+    ? `/tipy/${encodeURIComponent(recipientMessageId)}`
+    : `/posta?messageId=${encodeURIComponent(recipientMessageId)}`;
   const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
   const webPushLink = `${baseUrl}${deepLink}`;
   const createdAtIso = new Date().toISOString();
@@ -403,11 +408,11 @@ const sendDirectMessagePushNotification = async ({
     await adminMessaging.sendEachForMulticast({
       tokens: chunk,
       notification: {
-        title: "Nová zpráva v poště",
+        title: notificationTitle,
         body,
       },
       data: {
-        type: "direct_message",
+        type: isTipsterTip ? "tipster_tip" : "direct_message",
         messageId: recipientMessageId,
         senderEmail: normalizeEmail(senderEmail),
         senderName: actorName,
@@ -422,7 +427,9 @@ const sendDirectMessagePushNotification = async ({
         notification: {
           icon: "/pwa/icon-192.png",
           badge: "/pwa/icon-192.png",
-          tag: `bohemika-mailbox-direct-message-${recipientMessageId}`,
+          tag: isTipsterTip
+            ? `bohemika-tipster-tip-${recipientMessageId}`
+            : `bohemika-mailbox-direct-message-${recipientMessageId}`,
           requireInteraction: false,
         },
       },
@@ -707,6 +714,8 @@ export async function POST(req: NextRequest) {
             .collection("tipsterTips")
             .doc()
         : null;
+    const recipientDeepLink = tipRef ? `/tipy/${encodeURIComponent(recipientRef.id)}` : "/posta";
+    const senderDeepLink = tipRef ? `/tipy/${encodeURIComponent(tipRef.id)}` : "/posta";
 
     const commonMetadata = {
       ...clientMetadata,
@@ -715,6 +724,7 @@ export async function POST(req: NextRequest) {
       senderName,
       recipientEmail: recipient.email,
       recipientName: recipient.name,
+      tipId: tipRef?.id ?? null,
       messageText,
       attachmentCount: attachments.length,
       attachments,
@@ -726,7 +736,7 @@ export async function POST(req: NextRequest) {
       type: "direct_message",
       title: subject,
       body: messagePreview,
-      deepLink: "/posta",
+      deepLink: recipientDeepLink,
       read: false,
       readAtMs: null,
       readAt: null,
@@ -742,7 +752,7 @@ export async function POST(req: NextRequest) {
       type: "direct_message",
       title: subject,
       body: messagePreview,
-      deepLink: "/posta",
+      deepLink: senderDeepLink,
       read: true,
       readAtMs: createdAtMs,
       readAt: FieldValue.serverTimestamp(),
@@ -784,6 +794,7 @@ export async function POST(req: NextRequest) {
         senderEmail: ctx.email,
         senderName,
         subject,
+        isTipsterTip: clientMetadata.tipsterTip === true,
       });
     } catch (pushError) {
       console.warn("Mailbox direct message push notification failed:", pushError);

@@ -17,7 +17,6 @@ type YearVisual = {
   line: string;
   amount: string;
   progress: string;
-  glow: string;
   arrow: string;
 };
 
@@ -25,7 +24,6 @@ const YEAR_VISUAL: YearVisual = {
   line: "from-[#c878ff] via-[#ac62f8] to-[#8f45e8]",
   amount: "text-[#fbf7ff]",
   progress: "from-[#cb81ff] to-[#a759f8]",
-  glow: "bg-[#aa5cff]/34",
   arrow: "group-hover:border-[#c89bff] group-hover:bg-[#a85aff] group-hover:text-[#160d24]",
 };
 
@@ -69,7 +67,7 @@ export function CashflowAccordion({
             key={yearGroup.year}
             data-year={yearGroup.year}
             style={staggerDelay("--cf-card-delay", Math.min(yearIndex * 90, 540))}
-            className={`cashflow-card-year ${introStyles.yearCard} ${introStyles.yearGhostCard} group relative isolate overflow-hidden rounded-[30px] border border-[#5a2878] bg-[#150e1f] px-4 pb-4 pt-4 shadow-[0_26px_48px_rgba(25,8,42,0.55)] ring-1 ring-[#7a35a7]/35 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#8244b9] hover:shadow-[0_34px_70px_rgba(20,8,34,0.62)] sm:px-5 sm:pb-5 sm:pt-5 ${
+            className={`cashflow-card-year ${introStyles.yearCard} ${introStyles.yearGhostCard} group relative isolate overflow-hidden rounded-[30px] border border-[#5a2878] bg-[#150e1f] px-4 pb-4 pt-4 ring-1 ring-[#7a35a7]/35 transition-[transform,border-color] duration-200 hover:-translate-y-0.5 hover:border-[#8244b9] sm:px-5 sm:pb-5 sm:pt-5 ${
               yearOpen ? "lg:col-span-2" : ""
             }`}
           >
@@ -80,10 +78,6 @@ export function CashflowAccordion({
             <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
             <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
             <div className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
-            <div
-              className={`pointer-events-none absolute -right-16 top-8 h-36 w-36 rounded-full blur-3xl ${visual.glow}`}
-              aria-hidden="true"
-            />
 
             <button
               type="button"
@@ -160,12 +154,11 @@ export function CashflowAccordion({
                         type="button"
                         onClick={() => onSelectMonth(month)}
                         style={staggerDelay("--cf-month-delay", Math.min(monthIndex * 65, 455))}
-                        className={`group cashflow-card-month ${introStyles.monthCard} relative isolate min-h-[258px] overflow-hidden rounded-[26px] border border-[#653493] bg-[#150e1f] px-4 py-4 text-left shadow-[0_18px_34px_rgba(20,8,32,0.38)] ring-1 ring-[#7a35a7]/22 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#9756d1] hover:shadow-[0_24px_44px_rgba(20,8,34,0.5)]`}
+                        className={`group cashflow-card-month ${introStyles.monthCard} relative isolate min-h-[258px] overflow-hidden rounded-[26px] border border-[#653493] bg-[#150e1f] px-4 py-4 text-left ring-1 ring-[#7a35a7]/22 transition-[transform,border-color] duration-200 hover:-translate-y-0.5 hover:border-[#9756d1]`}
                       >
                         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
                         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.11)_0%,rgba(190,92,255,0)_40%,rgba(164,82,244,0.11)_100%)]" />
                         <div className="pointer-events-none absolute -top-12 left-10 h-52 w-px rotate-[34deg] bg-[#9d61ca]/13" />
-                        <div className="pointer-events-none absolute -right-16 top-8 h-36 w-36 rounded-full bg-[#ab66ff]/22 blur-3xl" />
 
                         <div className="relative z-[1] flex h-full flex-col">
                           <div className="flex items-start justify-between gap-3">

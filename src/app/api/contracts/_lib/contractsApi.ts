@@ -2870,6 +2870,7 @@ const syncTipPayoutDocsForEntry = async ({
   const tipsterProfile = await loadUserProfileByEmail(tipsterEmail);
   const tipsterUserDocId = (tipsterProfile?.docId ?? tipsterEmail).trim();
   if (!tipsterUserDocId) return;
+  const sourceOwnerProfile = await loadUserProfileByEmail(normalizedOwner);
 
   const sourceKey = tipPayoutSourceKey(normalizedOwner, normalizedEntryId);
   await deleteTipPayoutDocsForSource({
@@ -2906,6 +2907,8 @@ const syncTipPayoutDocsForEntry = async ({
     normalizeOptionalDisplayName(entryData.tipContractTipsterName) ??
     tipsterProfile?.name ??
     null;
+  const sourceOwnerName = sourceOwnerProfile?.name ?? null;
+  const clientName = normalizeOptionalDisplayName(entryData.clientName) ?? null;
   const sourceStatus = normalizeContractStatusForTip(entryData.status);
   const sourceStornoDate =
     sourceStatus === "storno" ? toDate(entryData.stornoDate) ?? new Date() : null;
@@ -2931,12 +2934,14 @@ const syncTipPayoutDocsForEntry = async ({
     const payload: TipPayoutDoc = {
       sourceKey,
       sourceOwnerEmail: normalizedOwner,
+      sourceOwnerName,
       sourceEntryId: normalizedEntryId,
       sourceEntryType: entryType,
       adviserEmail: normalizedOwner,
       tipsterEmail,
       tipsterUserDocId,
       tipsterName,
+      clientName,
       tipsterPercent,
       productKey:
         (entryData.productKey as Product | null | undefined) ?? null,

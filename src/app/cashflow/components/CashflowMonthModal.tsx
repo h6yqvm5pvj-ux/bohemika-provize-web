@@ -154,8 +154,8 @@ export function CashflowMonthModal({
                 ? "border-indigo-400/60 bg-indigo-500/18 text-indigo-100"
                 : "border-emerald-400/60 bg-emerald-500/20 text-emerald-100";
               const tipSourceOwner =
-                item.tipSourceAdviserEmail && item.tipSourceAdviserEmail.trim() !== ""
-                  ? item.tipSourceAdviserEmail.trim().toLowerCase()
+                item.tipSourceAdviserName && item.tipSourceAdviserName.trim() !== ""
+                  ? item.tipSourceAdviserName.trim()
                   : null;
 
                 return (
@@ -183,24 +183,30 @@ export function CashflowMonthModal({
 
                         <div className="mt-3 grid grid-cols-1 gap-1 text-[1.03rem] text-[#e6dcf3]">
                           {isTipIncome ? (
-                            <p>
-                              <span className="text-[#bfa5d8]">TIP od:</span>{" "}
-                              <span className="font-medium text-[#faf5ff]">{tipSourceOwner ?? "—"}</span>
-                            </p>
+                            <>
+                              <p>
+                                <span className="text-[#bfa5d8]">Klient:</span>{" "}
+                                <span className="font-medium text-[#faf5ff]">{clientName ?? "—"}</span>
+                              </p>
+                              <p>
+                                <span className="text-[#bfa5d8]">Smlouvu uzavřel:</span>{" "}
+                                <span className="font-medium text-[#faf5ff]">{tipSourceOwner ?? "—"}</span>
+                              </p>
+                            </>
                           ) : (
                             <p>
                               <span className="text-[#bfa5d8]">Klient:</span>{" "}
                               <span className="font-medium text-[#faf5ff]">{clientName ?? "—"}</span>
                             </p>
                           )}
-                          <p>
-                            <span className="text-[#bfa5d8]">
-                              {isTipIncome ? "Typ:" : "Frekvence:"}
-                            </span>{" "}
-                            <span className="font-medium text-[#faf5ff]">
-                              {isTipIncome ? "TIP provize" : frequencyText(item.frequency)}
-                            </span>
-                          </p>
+                          {!isTipIncome && (
+                            <p>
+                              <span className="text-[#bfa5d8]">Frekvence:</span>{" "}
+                              <span className="font-medium text-[#faf5ff]">
+                                {frequencyText(item.frequency)}
+                              </span>
+                            </p>
+                          )}
                         </div>
                       </button>
 

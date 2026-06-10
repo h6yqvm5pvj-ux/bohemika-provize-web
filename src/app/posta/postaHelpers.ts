@@ -65,6 +65,43 @@ export const isTipsterTipMailboxItem = (item: MailboxItem): boolean => {
   return item.body.toLowerCase().includes("nový tip z tipařského formuláře");
 };
 
+export const tipsterTipCategoryText = (item: MailboxItem): string => {
+  const metadata = item.metadata ?? {};
+  const metadataLabel =
+    typeof metadata.tipProductLabel === "string" ? metadata.tipProductLabel.trim() : "";
+  if (metadataLabel) return metadataLabel;
+
+  const titleLabel = item.title.replace(/^nový tip\s*-\s*/i, "").trim();
+  return titleLabel || "Tip";
+};
+
+export const tipsterTipListTitle = (item: MailboxItem): string =>
+  `Nový TIP - ${tipsterTipCategoryText(item)}`;
+
+export const tipsterTipSenderText = (item: MailboxItem): string => {
+  const metadata = item.metadata ?? {};
+  const senderName =
+    typeof metadata.senderName === "string" && metadata.senderName.trim()
+      ? metadata.senderName.trim()
+      : "";
+  const senderEmail =
+    typeof metadata.senderEmail === "string" && metadata.senderEmail.trim()
+      ? metadata.senderEmail.trim()
+      : "";
+  const sender = senderName || (senderEmail ? nameFromEmail(senderEmail) : "Tipař");
+  return `Tip posílá: ${sender}`;
+};
+
+export const tipsterTipDetailId = (item: MailboxItem): string => {
+  const metadata = item.metadata ?? {};
+  const storedTipId =
+    typeof metadata.tipId === "string" && metadata.tipId.trim()
+      ? metadata.tipId.trim()
+      : "";
+  if (isSentMailboxItem(item)) return storedTipId;
+  return item.id;
+};
+
 export const sentRecipientText = (item: MailboxItem): string => {
   const recipientName =
     item.metadata && typeof item.metadata.recipientName === "string"

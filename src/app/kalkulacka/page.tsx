@@ -5093,7 +5093,7 @@ export default function CalculatorPage() {
             />
 
             <section className="rounded-[1.35rem] border border-slate-300 bg-white/90 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)] space-y-4">
-              {/* Doba trvání + frekvence */}
+              {/* Doba trvání + platba */}
               <CalculatorDurationAndFrequencySection
                 embedded
                 product={product}
@@ -5108,15 +5108,19 @@ export default function CalculatorPage() {
                 isLifeProduct={isLifeProduct}
                 frequency={frequency}
                 allowedFrequencies={allowed}
+                comfortGradual={comfortGradual}
+                amountText={amountText}
                 onToggleDurationHelp={() => setDurationHelpOpen((prev) => !prev)}
                 onDurationYearsChange={setDurationYears}
                 onDurationMonthsChange={setDurationMonths}
                 onMaxCizinVariantChange={setMaxCizinKomplexVariant}
                 onFrequencyChange={setFrequency}
+                onAmountTextChange={setAmountText}
               />
 
               <CalculatorAmountAndActionsSection
                 embedded
+                showAmountInput={false}
                 product={product}
                 frequency={frequency}
                 isLifeProduct={isLifeProduct}

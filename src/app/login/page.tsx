@@ -3,7 +3,6 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import {
   FactorId,
   getMultiFactorResolver,
@@ -529,7 +528,7 @@ export default function LoginPage() {
   };
 
   const fieldInputClass =
-    "w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.06)] outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
+    "w-full rounded-2xl border border-violet-300/25 bg-white/[0.08] px-4 py-3 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] outline-none transition placeholder:text-violet-100/38 focus:border-violet-200/70 focus:bg-white/[0.12] focus:ring-2 focus:ring-violet-200/20";
 
   const handleInstallCta = async () => {
     setInstallFeedback(null);
@@ -580,42 +579,38 @@ export default function LoginPage() {
   const isInstallGuideForIos = installPlatform === "ios";
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(120%_140%_at_20%_0%,#eef2ff_0%,#f8fafc_46%,#ffffff_100%)] text-slate-900">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_45%,#cbd5e1_100%)]" />
-      <div className="pointer-events-none absolute -top-24 left-1/2 h-64 w-[min(80vw,720px)] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,#c7d2fe_0%,#e2e8f0_44%,transparent_72%)] opacity-60 blur-2xl" />
-      <div className="pointer-events-none absolute -left-24 bottom-[-180px] h-[520px] w-[520px] opacity-[0.24] sm:-left-32 sm:h-[680px] sm:w-[680px] lg:-left-40 lg:h-[860px] lg:w-[860px]">
-        <Image
-          src="/icons/bohemika_logo.png"
-          alt=""
-          fill
-          sizes="(max-width: 640px) 520px, (max-width: 1024px) 680px, 860px"
-          className="object-contain saturate-0 contrast-125"
-          priority
-        />
-      </div>
+    <main className="relative min-h-screen overflow-hidden bg-[#0b0717] text-white">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,#080513_0%,#130923_48%,#25134a_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[length:46px_46px] opacity-60" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,transparent_28%,rgba(168,85,247,0.16)_28%,rgba(168,85,247,0.16)_28.35%,transparent_28.35%,transparent_61%,rgba(99,102,241,0.12)_61%,rgba(99,102,241,0.12)_61.35%,transparent_61.35%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.09)_0%,rgba(255,255,255,0.025)_34%,rgba(0,0,0,0.22)_100%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#160c2a_0%,#7c3aed_52%,#c084fc_100%)]" />
 
-      <div className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-12 sm:py-16">
+      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-12 sm:py-16">
         <div className="w-full max-w-xl space-y-7 font-mono">
           <div className="space-y-2 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-violet-200/30 bg-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-100 shadow-[0_8px_20px_rgba(10,5,30,0.18)]">
+              <span className="h-2 w-2 rounded-full bg-violet-300" aria-hidden="true" />
               Přihlášení
             </div>
-            <h1 className="text-5xl font-semibold tracking-tight text-slate-900 sm:text-6xl">
+            <h1 className="text-5xl font-semibold tracking-tight text-white sm:text-6xl">
               Bohemka.App
             </h1>
-            <p className="text-sm text-slate-600">Přihlaš se do svého účtu.</p>
+            <p className="text-sm text-violet-100/72">Přihlaš se do svého účtu.</p>
           </div>
 
-          <section className="relative overflow-hidden rounded-[30px] border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_55%,#eff3f8_100%)] px-7 py-8 shadow-[0_26px_56px_rgba(15,23,42,0.12)] sm:px-9 sm:py-9">
-            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_52%,#cbd5e1_100%)]" />
-            <form onSubmit={handleSubmit} className="space-y-4">
+          <section className="relative overflow-hidden rounded-[30px] border border-violet-300/25 bg-[linear-gradient(155deg,#160c2a_0%,#100b21_62%,#0b0717_100%)] px-7 py-8 text-[#f8fafc] shadow-[0_24px_68px_rgba(39,18,67,0.34),inset_0_1px_0_rgba(196,181,253,0.18)] sm:px-9 sm:py-9">
+            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#cb85ff_0%,#aa57f5_46%,#8f44e8_100%)]" />
+            <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
+            <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
+            <span className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
+            <form onSubmit={handleSubmit} className="relative z-10 space-y-4">
               {!mfaResolver ? (
                 <>
                   <div className="space-y-1.5">
                     <label
                       htmlFor="login-email"
-                      className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700"
+                      className="text-xs font-semibold uppercase tracking-[0.12em] text-violet-100/75"
                     >
                       E-mail
                     </label>
@@ -635,7 +630,7 @@ export default function LoginPage() {
                   <div className="space-y-1.5">
                     <label
                       htmlFor="login-password"
-                      className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700"
+                      className="text-xs font-semibold uppercase tracking-[0.12em] text-violet-100/75"
                     >
                       Heslo
                     </label>
@@ -655,7 +650,7 @@ export default function LoginPage() {
                         type="button"
                         onClick={handleReset}
                         disabled={loading}
-                        className="text-[11px] font-medium text-slate-600 transition hover:text-slate-900 disabled:opacity-60"
+                        className="text-[11px] font-medium text-violet-100/68 transition hover:text-white disabled:opacity-60"
                       >
                         Zapomenuté heslo?
                       </button>
@@ -664,7 +659,7 @@ export default function LoginPage() {
                 </>
               ) : (
                 <div className="space-y-3">
-                  <div className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                  <div className="rounded-2xl border border-violet-300/25 bg-white/[0.07] px-3 py-2 text-xs text-violet-100/82">
                     Přihlášení pokračuje přes 2FA.
                     {mfaHintLabel
                       ? ` Faktor: ${mfaHintLabel}.`
@@ -673,7 +668,7 @@ export default function LoginPage() {
                   <div className="space-y-1.5">
                     <label
                       htmlFor="login-otp"
-                      className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700"
+                      className="text-xs font-semibold uppercase tracking-[0.12em] text-violet-100/75"
                     >
                       Jednorázový kód (2FA)
                     </label>
@@ -697,7 +692,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={clearMfaState}
                       disabled={loading}
-                      className="text-[11px] font-medium text-slate-600 transition hover:text-slate-900 disabled:opacity-60"
+                      className="text-[11px] font-medium text-violet-100/68 transition hover:text-white disabled:opacity-60"
                     >
                       Zpět na přihlášení heslem
                     </button>
@@ -706,12 +701,12 @@ export default function LoginPage() {
               )}
 
               {error && (
-                <p className="rounded-2xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                <p className="rounded-2xl border border-rose-300/40 bg-rose-500/12 px-3 py-2 text-xs text-rose-100">
                   {error}
                 </p>
               )}
               {resetStatus && (
-                <p className="rounded-2xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                <p className="rounded-2xl border border-emerald-300/40 bg-emerald-400/12 px-3 py-2 text-xs text-emerald-100">
                   {resetStatus}
                 </p>
               )}
@@ -719,7 +714,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="mt-2 w-full rounded-2xl border border-slate-900/80 bg-gradient-to-r from-slate-900 via-indigo-900 to-blue-900 py-3 text-base font-semibold tracking-[0.01em] text-white shadow-[0_10px_24px_rgba(15,23,42,0.28)] transition duration-200 hover:-translate-y-0.5 hover:from-slate-800 hover:via-indigo-800 hover:to-blue-800 hover:shadow-[0_14px_30px_rgba(37,99,235,0.33)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                className="mt-2 w-full rounded-2xl border border-violet-200/25 bg-[linear-gradient(135deg,#b85cff_0%,#7c3aed_52%,#4338ca_100%)] py-3 text-base font-semibold tracking-[0.01em] text-white shadow-[0_14px_30px_rgba(124,58,237,0.34)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#100b21] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               >
                 {loading
                   ? mfaResolver
@@ -732,13 +727,13 @@ export default function LoginPage() {
             </form>
 
             {shouldShowInstallAssistant ? (
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-white/75 p-4 shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+              <div className="relative z-10 mt-4 rounded-2xl border border-violet-300/20 bg-white/[0.06] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-100/70">
                       Aplikace na plochu
                     </div>
-                    <p className="mt-1 text-sm text-slate-700">{installLeadText}</p>
+                    <p className="mt-1 text-sm text-violet-100/82">{installLeadText}</p>
                   </div>
                   <button
                     type="button"
@@ -748,8 +743,8 @@ export default function LoginPage() {
                     disabled={isStandaloneApp}
                     className={`inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold transition ${
                       isStandaloneApp
-                        ? "cursor-default border-emerald-300 bg-emerald-100 text-emerald-800"
-                        : "border-slate-900/80 bg-slate-900 text-white hover:bg-black"
+                        ? "cursor-default border-emerald-300/40 bg-emerald-400/14 text-emerald-100"
+                        : "border-violet-200/25 bg-white/12 text-white hover:bg-white/18"
                     }`}
                   >
                     {installCtaLabel}
@@ -757,7 +752,7 @@ export default function LoginPage() {
                 </div>
 
                 {installFeedback ? (
-                  <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                  <p className="mt-3 rounded-xl border border-violet-300/20 bg-white/[0.06] px-3 py-2 text-xs text-violet-100/78">
                     {installFeedback}
                   </p>
                 ) : null}

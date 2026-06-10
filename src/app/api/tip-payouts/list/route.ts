@@ -32,7 +32,9 @@ type TipPayoutListItem = {
   productKey: Product | null;
   frequencyRaw: PaymentFrequency | null;
   tipsterPercent: number | null;
+  clientName: string | null;
   sourceOwnerEmail: string | null;
+  sourceOwnerName: string | null;
   sourceToken: string | null;
   sourceContractSignedDate: number | null;
   adviserEmail: string | null;
@@ -58,6 +60,23 @@ type TipPayoutsErrorResponse = {
 
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const normalizeText = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+
+const nameFromEmail = (email: string): string => {
+  const local = email.split("@")[0] ?? "";
+  const parts = local.split(/[.\-_]+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  return parts
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+};
+
+const pickProfileName = (data: Record<string, unknown>): string =>
+  normalizeText(data.name) ||
+  normalizeText(data.fullName) ||
+  normalizeText(data.displayName);
 
 const resolveUserDocId = async ({
   email,
@@ -140,6 +159,118 @@ const sourceTokenFromRaw = (sourceKey: unknown): string | null => {
   const normalized = sourceKey.trim();
   if (!normalized) return null;
   return createHash("sha256").update(normalized).digest("hex").slice(0, 24);
+};
+
+const sourceEntryKey = (ownerEmail: string | null, entryId: string | null): string | null => {
+  if (!ownerEmail || !entryId) return null;
+  return `${ownerEmail}___${entryId}`;
+};
+
+const loadFallbackClientNames = async (
+  rows: Array<{
+    clientName: string | null;
+    sourceOwnerEmail: string | null;
+    sourceEntryId: string | null;
+  }>
+): Promise<Map<string, string>> => {
+  if (!adminDb) return new Map();
+  const db = adminDb;
+  const missingKeys = new Map<string, { ownerEmail: string; entryId: string }>();
+  rows.forEach((row) => {
+    if (row.clientName) return;
+    const key = sourceEntryKey(row.sourceOwnerEmail, row.sourceEntryId);
+    if (!key || !row.sourceOwnerEmail || !row.sourceEntryId) return;
+    missingKeys.set(key, {
+      ownerEmail: row.sourceOwnerEmail,
+      entryId: row.sourceEntryId,
+    });
+  });
+  if (missingKeys.size === 0) return new Map();
+
+  const pairs = await Promise.all(
+    [...missingKeys.entries()].map(async ([key, source]) => {
+      try {
+        const snap = await db
+          .collection("users")
+          .doc(source.ownerEmail)
+          .collection("entries")
+          .doc(source.entryId)
+          .get();
+        const data = (snap.data() ?? {}) as Record<string, unknown>;
+        const clientName = normalizeText(data.clientName);
+        return clientName ? ([key, clientName] as const) : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const out = new Map<string, string>();
+  pairs.forEach((pair) => {
+    if (pair) out.set(pair[0], pair[1]);
+  });
+  return out;
+};
+
+const loadFallbackSourceOwnerNames = async (
+  rows: Array<{
+    sourceOwnerEmail: string | null;
+    sourceOwnerName: string | null;
+    adviserEmail: string | null;
+  }>
+): Promise<Map<string, string>> => {
+  if (!adminDb) return new Map();
+  const db = adminDb;
+  const emails = new Set<string>();
+  rows.forEach((row) => {
+    if (row.sourceOwnerName) return;
+    const email = normalizeEmail(row.sourceOwnerEmail) || normalizeEmail(row.adviserEmail);
+    if (email) emails.add(email);
+  });
+  if (emails.size === 0) return new Map();
+
+  const pairs = await Promise.all(
+    [...emails].map(async (email) => {
+      try {
+        const directSnap = await db.collection("users").doc(email).get();
+        const directData = (directSnap.data() ?? {}) as Record<string, unknown>;
+        const directName = pickProfileName(directData);
+        if (directName) return [email, directName] as const;
+
+        const byEmailSnap = await db.collection("users").where("email", "==", email).limit(1).get();
+        const data = (byEmailSnap.docs[0]?.data() ?? {}) as Record<string, unknown>;
+        const publicName = pickProfileName(data);
+        if (publicName) return [email, publicName] as const;
+
+        const privateSnap = await db.collection("usersPrivate").doc(email).get();
+        const privateData = (privateSnap.data() ?? {}) as Record<string, unknown>;
+        const privateName = pickProfileName(privateData);
+        if (privateName) return [email, privateName] as const;
+
+        const privateByEmailSnap = await db
+          .collection("usersPrivate")
+          .where("email", "==", email)
+          .limit(1)
+          .get();
+        const privateByEmailData = (privateByEmailSnap.docs[0]?.data() ?? {}) as Record<string, unknown>;
+        const privateByEmailName = pickProfileName(privateByEmailData);
+        if (privateByEmailName) return [email, privateByEmailName] as const;
+
+        const authUser = await adminAuth?.getUserByEmail(email).catch(() => null);
+        const authName = normalizeText(authUser?.displayName);
+        const name = authName || nameFromEmail(email);
+        return name ? ([email, name] as const) : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const out = new Map<string, string>();
+  pairs.forEach((pair) => {
+    if (pair) out.set(pair[0], pair[1]);
+  });
+  return out;
 };
 
 const encodeCursorToken = (cursor: CursorTokenPayload): string =>
@@ -308,7 +439,7 @@ export async function GET(req: NextRequest) {
     const docs = snap.docs.slice(0, pageSize);
     const hasMore = snap.docs.length > pageSize;
 
-    const payouts: TipPayoutListItem[] = docs.map((docSnap) => {
+    const payoutRows = docs.map((docSnap) => {
       const raw = (docSnap.data() ?? {}) as Record<string, unknown>;
       return {
         id: docSnap.id,
@@ -330,10 +461,39 @@ export async function GET(req: NextRequest) {
           typeof raw.tipsterPercent === "number" && Number.isFinite(raw.tipsterPercent)
             ? raw.tipsterPercent
             : null,
+        clientName: normalizeText(raw.clientName) || null,
         sourceOwnerEmail: normalizeEmail(raw.sourceOwnerEmail) || null,
+        sourceOwnerName:
+          normalizeText(raw.sourceOwnerName) ||
+          normalizeText(raw.adviserName) ||
+          null,
+        sourceEntryId: normalizeText(raw.sourceEntryId) || null,
         sourceToken: sourceTokenFromRaw(raw.sourceKey),
         sourceContractSignedDate: toMillis(raw.sourceContractSignedDate),
         adviserEmail: normalizeEmail(raw.adviserEmail) || null,
+      };
+    });
+    const fallbackClientNames = await loadFallbackClientNames(payoutRows);
+    const fallbackSourceOwnerNames = await loadFallbackSourceOwnerNames(payoutRows);
+    const payouts: TipPayoutListItem[] = payoutRows.map((row) => {
+      const key = sourceEntryKey(row.sourceOwnerEmail, row.sourceEntryId);
+      const sourceOwnerEmail = row.sourceOwnerEmail || row.adviserEmail;
+      return {
+        id: row.id,
+        payoutDate: row.payoutDate,
+        amount: row.amount,
+        note: row.note,
+        productKey: row.productKey,
+        frequencyRaw: row.frequencyRaw,
+        tipsterPercent: row.tipsterPercent,
+        clientName: row.clientName || (key ? fallbackClientNames.get(key) ?? null : null),
+        sourceOwnerEmail: row.sourceOwnerEmail,
+        sourceOwnerName:
+          row.sourceOwnerName ||
+          (sourceOwnerEmail ? fallbackSourceOwnerNames.get(sourceOwnerEmail) ?? null : null),
+        sourceToken: row.sourceToken,
+        sourceContractSignedDate: row.sourceContractSignedDate,
+        adviserEmail: row.adviserEmail,
       };
     });
 

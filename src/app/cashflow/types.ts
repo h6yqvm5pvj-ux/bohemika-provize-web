@@ -72,6 +72,7 @@ export type CashflowItem = {
   isManagerOverride?: boolean;
   isTipPayout?: boolean;
   tipSourceAdviserEmail?: string | null;
+  tipSourceAdviserName?: string | null;
 };
 
 export type MonthGroup = {

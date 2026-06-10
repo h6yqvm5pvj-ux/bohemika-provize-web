@@ -55,6 +55,8 @@ type TipPayoutApiItem = {
   productKey?: Product | null;
   frequencyRaw?: PaymentFrequency | null;
   tipsterPercent?: number | null;
+  clientName?: string | null;
+  sourceOwnerName?: string | null;
   sourceOwnerEmail?: string | null;
   adviserEmail?: string | null;
 };
@@ -93,6 +95,17 @@ const contractsSnapshotInFlight: Partial<Record<string, Promise<RawContractsSnap
 
 const normalizeEmail = (value: string | null | undefined): string =>
   (value ?? "").trim().toLowerCase();
+
+const nameFromEmail = (email: string | null | undefined): string | null => {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return null;
+  const local = normalized.split("@")[0] ?? "";
+  const parts = local.split(/[.\-_]+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  return parts
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+};
 
 const normalizeCursorToken = (
   token: string | null | undefined,
@@ -682,6 +695,14 @@ export function useCashflowData({
               : "unknown";
           const tipSourceAdviserEmail =
             normalizeEmail(payout.sourceOwnerEmail ?? payout.adviserEmail) || null;
+          const tipSourceAdviserName =
+            typeof payout.sourceOwnerName === "string" && payout.sourceOwnerName.trim()
+              ? payout.sourceOwnerName.trim()
+              : nameFromEmail(tipSourceAdviserEmail);
+          const clientName =
+            typeof payout.clientName === "string" && payout.clientName.trim()
+              ? payout.clientName.trim()
+              : null;
           const note =
             typeof payout.note === "string" && payout.note.trim()
               ? payout.note.trim()
@@ -697,11 +718,12 @@ export function useCashflowData({
             frequency: (payout.frequencyRaw as PaymentFrequency | null | undefined) ?? null,
             source: "own",
             contractNumber: null,
-            clientName: null,
+            clientName,
             ownerEmail: null,
             entryId: null,
             isTipPayout: true,
             tipSourceAdviserEmail,
+            tipSourceAdviserName,
           });
           return acc;
         }, [])

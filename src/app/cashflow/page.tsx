@@ -10,7 +10,6 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "../firebase";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
-import styles from "../pomucky/pomuckyWallArt.module.css";
 import {
   filterPastItems,
   groupItemsByMonth,
@@ -159,19 +158,6 @@ export default function CashflowPage() {
   return (
     <AppLayout active="cashflow">
       <div className={`${cashflowFont.className} ${introStyles.pageEnter} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
-        <div
-          className="pointer-events-none absolute -inset-y-14 left-0 -right-20 overflow-hidden sm:-right-24 lg:-right-28"
-          aria-hidden="true"
-        >
-          <div className={styles.canvas}>
-            <span className={`${styles.orb} ${styles.orbA}`} />
-            <span className={`${styles.orb} ${styles.orbB}`} />
-            <span className={`${styles.orb} ${styles.orbC}`} />
-            <span className={styles.mesh} />
-          </div>
-          <div className={styles.grain} />
-        </div>
-
         <div className="relative z-10 mx-auto w-full max-w-7xl space-y-5 px-3 sm:px-4 lg:px-6">
           <div className={introStyles.heroReveal} style={introDelay(40)}>
             <CashflowHeader

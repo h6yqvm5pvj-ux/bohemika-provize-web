@@ -12,14 +12,12 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
-  FileText,
   Home as HomeIcon,
   Loader2,
   Package,
   Plus,
   Search,
   Send,
-  ShieldCheck,
   Sparkles,
   X,
 } from "lucide-react";
@@ -186,24 +184,6 @@ const PRODUCT_HOME_META: Record<
     accent: "from-fuchsia-400 to-violet-500",
   },
 };
-
-const TIP_WORKFLOW_STEPS = [
-  {
-    title: "Vyber produkt",
-    description: "Zvol kategorii a formulář ukáže jen relevantní pole.",
-    icon: ClipboardCheck,
-  },
-  {
-    title: "Doplň kontakt",
-    description: "Stačí telefon nebo e-mail, u firem pomůže ARES.",
-    icon: ShieldCheck,
-  },
-  {
-    title: "Přidej podklady",
-    description: "Obrázky a PDF až do 20 MB na soubor.",
-    icon: FileText,
-  },
-] as const;
 
 const MILEAGE_OPTIONS = [
   "0-5000 km",
@@ -1491,70 +1471,6 @@ export function TipsterHomeView({
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
             {status}
           </p>
-        ) : null}
-
-        {!formOpen ? (
-          <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-            <section className="rounded-[30px] border border-slate-200/80 bg-white/[0.86] p-5 shadow-[0_18px_45px_rgba(15,23,42,0.08)] backdrop-blur sm:p-6">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-                    Jak to probíhá
-                  </p>
-                  <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-                    Tři kroky a tip je u poradce
-                  </h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => startTip()}
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-slate-950 px-4 py-2 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-slate-800"
-                >
-                  Začít
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </button>
-              </div>
-              <div className="mt-5 grid gap-3 md:grid-cols-3">
-                {TIP_WORKFLOW_STEPS.map((item, index) => {
-                  const Icon = item.icon;
-                  return (
-                    <article key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                      <div className="flex items-center justify-between">
-                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-950 shadow-sm">
-                          <Icon className="h-5 w-5" aria-hidden="true" />
-                        </span>
-                        <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                          0{index + 1}
-                        </span>
-                      </div>
-                      <h3 className="mt-4 text-base font-black text-slate-950">{item.title}</h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
-
-            <aside className="rounded-[30px] border border-slate-900/10 bg-[linear-gradient(145deg,#ffffff_0%,#ecfeff_100%)] p-5 shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:p-6">
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-teal-700">
-                Co si připravit
-              </p>
-              <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-                Stačí minimum, podklady pomůžou
-              </h2>
-              <div className="mt-5 space-y-3 text-sm leading-6 text-slate-700">
-                <div className="rounded-2xl border border-teal-100 bg-white/75 px-4 py-3">
-                  Kontakt na klienta: telefon nebo e-mail.
-                </div>
-                <div className="rounded-2xl border border-teal-100 bg-white/75 px-4 py-3">
-                  U podnikatele můžeš zadat IČO nebo název firmy přes ARES.
-                </div>
-                <div className="rounded-2xl border border-teal-100 bg-white/75 px-4 py-3">
-                  Přílohy: fotky a PDF, maximálně 20 MB na soubor.
-                </div>
-              </div>
-            </aside>
-          </div>
         ) : null}
 
         {formOpen ? (

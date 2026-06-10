@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import { useRouter } from "next/navigation";
 import { Space_Grotesk } from "next/font/google";
 import {
   CheckCheck,
@@ -36,6 +37,9 @@ import {
   normalizeEmail,
   parseMailboxAttachments,
   sentRecipientText,
+  tipsterTipDetailId,
+  tipsterTipListTitle,
+  tipsterTipSenderText,
   toReplySubject,
 } from "./postaHelpers";
 import { buildMailboxPreviewHtml } from "./postaPreview";
@@ -58,6 +62,7 @@ const mailFont = Space_Grotesk({
 });
 
 export default function PostaPage() {
+  const router = useRouter();
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -651,6 +656,13 @@ export default function PostaPage() {
     if (!item.read) {
       await markItemsRead([item.id]);
     }
+    if (isTipsterTipMailboxItem(item)) {
+      const detailId = tipsterTipDetailId(item);
+      if (detailId) {
+        router.push(`/tipy/${encodeURIComponent(detailId)}`);
+        return;
+      }
+    }
     setQuickReplyOpen(false);
     setQuickReplyText("");
     setQuickReplyFiles([]);
@@ -1010,6 +1022,8 @@ export default function PostaPage() {
                   const sentTo = isSent ? sentRecipientText(item) : "";
                   const deleting = deletingIds.includes(item.id);
                   const attachments = item.type === "direct_message" ? parseMailboxAttachments(item) : [];
+                  const itemTitle = isTipsterTip ? tipsterTipListTitle(item) : item.title;
+                  const itemBody = isTipsterTip ? tipsterTipSenderText(item) : item.body;
 
                   return (
                     <div
@@ -1064,7 +1078,7 @@ export default function PostaPage() {
                               }`}
                             />
                             <p className="truncate text-sm font-semibold text-slate-900 sm:text-base">
-                              {item.title}
+                              {itemTitle}
                             </p>
                             {isSent && (
                               <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-indigo-700">
@@ -1077,7 +1091,7 @@ export default function PostaPage() {
                               </span>
                             )}
                           </div>
-                          <p className="mt-1 line-clamp-2 text-sm text-slate-700">{item.body}</p>
+                          <p className="mt-1 line-clamp-2 text-sm text-slate-700">{itemBody}</p>
                           {attachments.length > 0 ? (
                             <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-600">
                               <Paperclip className="h-3.5 w-3.5" />

@@ -81,6 +81,15 @@ type FillablePdfPreviewConfig = {
   title: string;
   description: string;
 };
+type GeneratedLetterPreviewConfig = {
+  id: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  terminationSentence: string;
+  refundAccountSentence?: string;
+  calculator: "annualAnniversary" | "twoMonths";
+};
 type OnlineFormConfig = {
   id: string;
   eyebrow: string;
@@ -162,6 +171,17 @@ const CSOB_NON_LIFE_TERMINATION_REASONS: TerminationReasonOption[] = [
   },
 ];
 
+const UNIQA_NON_LIFE_TERMINATION_REASONS: TerminationReasonOption[] = [
+  {
+    id: "anniversary",
+    label: "K výročí s 6 týdenní výpovědní lhůtou",
+  },
+  {
+    id: "twoMonths",
+    label: "Do 2 měsíců od uzavření s 8 denní výpovědní lhůtou",
+  },
+];
+
 const INSURERS = [
   { label: "ČPP", logoPath: "/icons/cpp.png", logoClass: "p-2" },
   { label: "Kooperativa", logoPath: "/icons/koop-v2.png", logoClass: "p-2" },
@@ -191,6 +211,10 @@ const getAvailableReasons = (
     return CSOB_NON_LIFE_TERMINATION_REASONS;
   }
 
+  if (insuranceType === "nonLife" && insurer === "UNIQA") {
+    return UNIQA_NON_LIFE_TERMINATION_REASONS;
+  }
+
   return [];
 };
 
@@ -203,9 +227,55 @@ const NN_LIFE_TERMINATION_DOCUMENT_ID: SecureDocumentId = "nn-zivot-vypoved";
 const MAXIMA_NON_LIFE_TERMINATION_DOCUMENT_ID: SecureDocumentId =
   "maxima-nezivot-vypoved";
 const GENERALI_UPLOAD_URL = "https://www.generaliceska.cz/napiste-nam";
+const UNIQA_UPLOAD_URL = "https://epodatelna.uniqa.cz/klient/odeslani-zasilky";
 const AGREEMENT_PAGE_COUNT = 3;
 const STANDARD_TERMINATION_PAGE_COUNT = 2;
 const DEFAULT_AGENT_COMPANY = "Bohemika a.s.";
+
+const UNIQA_LIFE_ANNIVERSARY_LETTER_CONFIG: GeneratedLetterPreviewConfig = {
+  id: "uniqa-life-anniversary-letter",
+  eyebrow: "UNIQA životní pojištění",
+  title: "Náhled a doplnění PDF",
+  description:
+    "Dopis doplň přímo v náhledu. Tisk vytiskne jednu A4 stranu s vyplněnými údaji.",
+  terminationSentence:
+    "K nejbližšímu výročí s 6 týdenní výpovědní lhůtou.",
+  calculator: "annualAnniversary",
+};
+
+const UNIQA_LIFE_TWO_MONTHS_LETTER_CONFIG: GeneratedLetterPreviewConfig = {
+  id: "uniqa-life-two-months-letter",
+  eyebrow: "UNIQA životní pojištění",
+  title: "Náhled a doplnění PDF",
+  description:
+    "Dopis doplň přímo v náhledu. Tisk vytiskne jednu A4 stranu s vyplněnými údaji.",
+  terminationSentence:
+    "Do 2 měsíců od uzavření s 8 denní výpovědní lhůtou.",
+  calculator: "twoMonths",
+};
+
+const UNIQA_NON_LIFE_TWO_MONTHS_LETTER_CONFIG: GeneratedLetterPreviewConfig = {
+  id: "uniqa-non-life-two-months-letter",
+  eyebrow: "UNIQA neživotní pojištění",
+  title: "Náhled a doplnění PDF",
+  description:
+    "Dopis doplň přímo v náhledu. Tisk vytiskne jednu A4 stranu s vyplněnými údaji.",
+  terminationSentence:
+    "Do 2 měsíců od uzavření s 8 denní výpovědní lhůtou.",
+  refundAccountSentence:
+    "Přeplatek na pojistném prosím zaslat na číslo účtu:",
+  calculator: "twoMonths",
+};
+
+const UNIQA_NON_LIFE_ANNIVERSARY_LETTER_CONFIG: GeneratedLetterPreviewConfig = {
+  id: "uniqa-non-life-anniversary-letter",
+  eyebrow: "UNIQA neživotní pojištění",
+  title: "Náhled a doplnění PDF",
+  description:
+    "Dopis doplň přímo v náhledu. Tisk vytiskne jednu A4 stranu s vyplněnými údaji.",
+  terminationSentence: "K výročí s 6 týdenní výpovědní lhůtou.",
+  calculator: "annualAnniversary",
+};
 
 const CPP_AGREEMENT_PRINT_RULES = [
   "Storno dohodou může být akceptováno s datem účinnosti až 1 měsíc zpětně, doporučuji ponechat pravidlo vždy k výročnímu dni počátku pojištění.",
@@ -843,6 +913,41 @@ const getMonthlyAnniversaryTermination = (
   };
 };
 
+const annualAnniversaryOnOrAfter = (
+  policyStartDate: Date,
+  minimumDate: Date
+): Date => {
+  let anniversaryYear = Math.max(
+    minimumDate.getFullYear(),
+    policyStartDate.getFullYear() + 1
+  );
+  let candidate = anniversaryInYear(policyStartDate, anniversaryYear);
+
+  while (candidate < minimumDate) {
+    anniversaryYear += 1;
+    candidate = anniversaryInYear(policyStartDate, anniversaryYear);
+  }
+
+  return candidate;
+};
+
+const getAnnualAnniversaryTermination = (
+  policyStartDate: Date,
+  deliveryDate: Date
+) => {
+  const earliestTerminationDate = addDays(deliveryDate, 42);
+  const terminationDate = annualAnniversaryOnOrAfter(
+    policyStartDate,
+    earliestTerminationDate
+  );
+
+  return {
+    earliestTerminationDate,
+    terminationDate,
+    deliveryDeadline: addDays(terminationDate, -42),
+  };
+};
+
 function PeriodEndDeadlineBox() {
   const [policyStartDateText, setPolicyStartDateText] = useState("");
   const policyStartDate = parseDateInput(policyStartDateText);
@@ -1348,6 +1453,197 @@ function CppMonthlyAnniversaryCalculatorModal({
   );
 }
 
+function UniqaAnnualAnniversaryCalculatorModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  const [policyStartDateText, setPolicyStartDateText] = useState("");
+  const [deliveryDateText, setDeliveryDateText] = useState("");
+  const policyStartDate = parseDateInput(policyStartDateText);
+  const deliveryDate = parseDateInput(deliveryDateText);
+  const isDeliveryBeforeStart =
+    Boolean(policyStartDate && deliveryDate) && deliveryDate! < policyStartDate!;
+  const terminationInfo =
+    policyStartDate && deliveryDate && !isDeliveryBeforeStart
+      ? getAnnualAnniversaryTermination(policyStartDate, deliveryDate)
+      : null;
+
+  return (
+    <div className="uniqa-no-print fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/62 px-3 py-4 backdrop-blur-[2.5px] sm:px-6 sm:py-6">
+      <div className="w-full max-w-4xl rounded-[30px] border border-slate-200 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_55%,#f5f0ff_100%)] p-4 shadow-[0_30px_80px_rgba(15,23,42,0.35)] sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-800">
+              UNIQA životní pojištění
+            </span>
+            <h3 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
+              Kdy bude smlouva ukončena?
+            </h3>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+              Výpověď k výročí musí být doručena nejpozději 6 týdnů před ročním výročím počátku smlouvy.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+            aria-label="Zavřít výpočet ukončení smlouvy"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-6 rounded-3xl border border-violet-200 bg-[linear-gradient(180deg,#fbfaff_0%,#f6f3ff_100%)] p-4 text-center shadow-[0_18px_44px_rgba(88,28,135,0.10)] sm:p-5">
+          <div className="mx-auto max-w-2xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+              Roční výročí
+            </p>
+            <h4 className="mt-1 text-xl font-extrabold tracking-[-0.02em] text-slate-950">
+              Výpočet ukončení k výročnímu dni
+            </h4>
+            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">
+              Zadej datum počátku smlouvy a datum doručení výpovědi. Systém najde nejbližší roční výročí, které splní šestitýdenní lhůtu.
+            </p>
+          </div>
+
+          <div className="mx-auto mt-4 grid max-w-2xl gap-3 sm:grid-cols-2">
+            <div className="flex flex-col items-center gap-2">
+              <label
+                className="text-sm font-semibold text-slate-900"
+                htmlFor="uniqa-policy-start-date"
+              >
+                Datum počátku smlouvy
+              </label>
+              <input
+                id="uniqa-policy-start-date"
+                type="date"
+                value={policyStartDateText}
+                onChange={(event) => setPolicyStartDateText(event.target.value)}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-center text-base font-bold text-slate-950 shadow-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              />
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <label
+                className="text-sm font-semibold text-slate-900"
+                htmlFor="uniqa-delivery-date"
+              >
+                Datum doručení výpovědi
+              </label>
+              <input
+                id="uniqa-delivery-date"
+                type="date"
+                value={deliveryDateText}
+                onChange={(event) => setDeliveryDateText(event.target.value)}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-center text-base font-bold text-slate-950 shadow-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              />
+            </div>
+          </div>
+
+          {terminationInfo && deliveryDate ? (
+            <div className="mt-5 rounded-2xl border border-white/80 bg-white p-4 text-sm text-slate-700 shadow-[0_16px_34px_rgba(15,23,42,0.10)]">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl bg-slate-50 px-3 py-3">
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Doručeno
+                  </span>
+                  <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                    {formatDateCz(deliveryDate)}
+                  </span>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-3 py-3">
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Doručit nejpozději
+                  </span>
+                  <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                    {formatDateCz(terminationInfo.deliveryDeadline)}
+                  </span>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-3 py-3">
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Ukončení smlouvy
+                  </span>
+                  <span className="mt-1 block text-lg font-extrabold text-slate-950">
+                    {formatDateCz(terminationInfo.terminationDate)}
+                  </span>
+                </div>
+              </div>
+
+              <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+                Smlouva bude ukončena k {formatDateCz(terminationInfo.terminationDate)}. Jde o nejbližší roční výročí, které je alespoň 6 týdnů po doručení výpovědi.
+              </p>
+            </div>
+          ) : (
+            <p
+              className={`mx-auto mt-4 max-w-xl rounded-2xl border border-white/80 bg-white px-4 py-3 text-sm font-semibold shadow-sm ${
+                isDeliveryBeforeStart ? "text-amber-800" : "text-slate-600"
+              }`}
+            >
+              {isDeliveryBeforeStart
+                ? "Datum doručení je před datem počátku smlouvy. Zkontroluj zadaná data."
+                : "Po zadání obou dat se zobrazí den ukončení smlouvy."}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+          >
+            Zavřít
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UniqaTwoMonthsCalculatorModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="uniqa-no-print fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/62 px-3 py-4 backdrop-blur-[2.5px] sm:px-6 sm:py-6">
+      <div className="w-full max-w-4xl rounded-[30px] border border-slate-200 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_55%,#f5f0ff_100%)] p-4 shadow-[0_30px_80px_rgba(15,23,42,0.35)] sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-800">
+              UNIQA životní pojištění
+            </span>
+            <h3 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
+              Kdy bude smlouva ukončena?
+            </h3>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+              Výpověď musí být doručena do 2 měsíců od uzavření smlouvy. Pojištění následně zanikne po 8 dnech od doručení výpovědi.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+            aria-label="Zavřít výpočet ukončení smlouvy"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <DeliveryTerminationDateBox />
+
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+          >
+            Zavřít
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OnlineFormPanel({ config }: { config: OnlineFormConfig }) {
   return (
     <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] sm:p-5 vizitka-anim-up">
@@ -1438,6 +1734,16 @@ export default function ContractTerminationPage() {
     insuranceType === "life" &&
     insurer === "NN" &&
     (reason === "anniversary" || reason === "twoMonths");
+  const showUniqaLifeLetter =
+    completed &&
+    insuranceType === "life" &&
+    insurer === "UNIQA" &&
+    (reason === "anniversary" || reason === "twoMonths");
+  const showUniqaNonLifeLetter =
+    completed &&
+    insuranceType === "nonLife" &&
+    insurer === "UNIQA" &&
+    (reason === "anniversary" || reason === "twoMonths");
   const showMaximaNonLifeDocument =
     completed && insuranceType === "nonLife" && insurer === "Maxima";
   const showCsobPeriodEndOnlineForm =
@@ -1485,7 +1791,20 @@ export default function ContractTerminationPage() {
         : showCsobOtherReasonOnlineForm
           ? CSOB_OTHER_REASON_ONLINE_FORM_CONFIG
     : null;
-  const activeDocument = activePdfConfig ?? activeFillablePdfConfig ?? activeOnlineFormConfig;
+  const activeGeneratedLetterConfig = showUniqaLifeLetter
+    ? reason === "twoMonths"
+      ? UNIQA_LIFE_TWO_MONTHS_LETTER_CONFIG
+      : UNIQA_LIFE_ANNIVERSARY_LETTER_CONFIG
+    : showUniqaNonLifeLetter
+      ? reason === "twoMonths"
+        ? UNIQA_NON_LIFE_TWO_MONTHS_LETTER_CONFIG
+        : UNIQA_NON_LIFE_ANNIVERSARY_LETTER_CONFIG
+      : null;
+  const activeDocument =
+    activePdfConfig ??
+    activeFillablePdfConfig ??
+    activeOnlineFormConfig ??
+    activeGeneratedLetterConfig;
 
   const validateCurrentStep = () => {
     if (currentStep === "insurer" && !insurer) {
@@ -1847,8 +2166,337 @@ export default function ContractTerminationPage() {
         {activeOnlineFormConfig ? (
           <OnlineFormPanel key={activeOnlineFormConfig.id} config={activeOnlineFormConfig} />
         ) : null}
+        {activeGeneratedLetterConfig ? (
+          <UniqaLifeAnniversaryLetterPreview
+            key={activeGeneratedLetterConfig.id}
+            config={activeGeneratedLetterConfig}
+          />
+        ) : null}
       </div>
     </AppLayout>
+  );
+}
+
+type UniqaLifeAnniversaryLetterFieldKey =
+  | "contractNumber"
+  | "policyholderName"
+  | "personalId"
+  | "address"
+  | "phone"
+  | "email"
+  | "place"
+  | "signedDate"
+  | "refundAccount";
+
+type UniqaLifeAnniversaryLetterFields = Record<
+  UniqaLifeAnniversaryLetterFieldKey,
+  string
+>;
+
+const createEmptyUniqaLifeAnniversaryLetterFields =
+  (): UniqaLifeAnniversaryLetterFields => ({
+    contractNumber: "",
+    policyholderName: "",
+    personalId: "",
+    address: "",
+    phone: "",
+    email: "",
+    place: "",
+    signedDate: "",
+    refundAccount: "",
+  });
+
+function UniqaLifeAnniversaryLetterPreview({
+  config,
+}: {
+  config: GeneratedLetterPreviewConfig;
+}) {
+  const [fields, setFields] = useState<UniqaLifeAnniversaryLetterFields>(() =>
+    createEmptyUniqaLifeAnniversaryLetterFields()
+  );
+  const [showTerminationCalculator, setShowTerminationCalculator] =
+    useState(false);
+  const portalRoot =
+    typeof document === "undefined" ? null : document.body;
+
+  const updateField = (
+    key: UniqaLifeAnniversaryLetterFieldKey,
+    value: string
+  ) => {
+    const maxLength =
+      key === "address" ? 180 : key === "refundAccount" ? 120 : 90;
+    setFields((prev) => ({
+      ...prev,
+      [key]: value.slice(0, maxLength),
+    }));
+  };
+
+  const resetFields = () => {
+    setFields(createEmptyUniqaLifeAnniversaryLetterFields());
+  };
+
+  const printLetter = () => {
+    window.setTimeout(() => window.print(), 0);
+  };
+
+  const renderInput = (
+    key: UniqaLifeAnniversaryLetterFieldKey,
+    label: string,
+    className = ""
+  ) => (
+    <input
+      aria-label={label}
+      title={label}
+      value={fields[key]}
+      onChange={(event) => updateField(key, event.target.value)}
+      placeholder="doplní uživatel"
+      className={`uniqa-letter-input min-w-0 rounded-none border-0 border-b border-blue-500/50 bg-blue-50/45 px-1 py-0.5 font-semibold text-[#123c7c] outline-none transition placeholder:text-blue-900/35 focus:border-blue-600 focus:bg-blue-50 focus:ring-2 focus:ring-blue-500/20 ${className}`}
+    />
+  );
+
+  return (
+    <section
+      id={config.id}
+      className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] sm:p-5 vizitka-anim-up"
+    >
+      <style jsx global>{`
+        #${config.id} .uniqa-letter-page {
+          aspect-ratio: 210 / 297;
+        }
+
+        #${config.id} .uniqa-letter-content {
+          min-height: 100%;
+        }
+
+        #${config.id} .uniqa-letter-input {
+          -webkit-appearance: none;
+          appearance: none;
+          line-height: 1.35;
+        }
+
+        @media print {
+          @page {
+            size: A4;
+            margin: 0;
+          }
+
+          body * {
+            visibility: hidden !important;
+          }
+
+          #${config.id},
+          #${config.id} * {
+            visibility: visible !important;
+          }
+
+          #${config.id} {
+            position: absolute !important;
+            inset: 0 auto auto 0 !important;
+            width: 100% !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
+
+          #${config.id} .uniqa-no-print {
+            display: none !important;
+          }
+
+          #${config.id} .uniqa-letter-pages {
+            gap: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
+
+          #${config.id} .uniqa-letter-page {
+            width: 210mm !important;
+            height: 297mm !important;
+            max-width: none !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+          }
+
+          #${config.id} .uniqa-letter-content {
+            padding: 28mm 24mm 22mm !important;
+            color: #111827 !important;
+            font-size: 11.4pt !important;
+            line-height: 1.7 !important;
+          }
+
+          #${config.id} .uniqa-letter-input {
+            border: 0 !important;
+            border-bottom: 1px solid #111827 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            color: #111827 !important;
+            font-size: 11.4pt !important;
+            min-height: 6mm !important;
+            padding: 0 1mm !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          #${config.id} .uniqa-letter-input::placeholder {
+            color: transparent !important;
+          }
+
+          #${config.id} .uniqa-letter-signature {
+            border-color: #111827 !important;
+            color: #374151 !important;
+          }
+        }
+      `}</style>
+
+      <div className="uniqa-no-print flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+            {config.eyebrow}
+          </p>
+          <h2 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-slate-950">
+            {config.title}
+          </h2>
+          <p className="mt-1 max-w-2xl text-sm text-slate-600">
+            {config.description}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowTerminationCalculator(true)}
+            className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            Kdy bude smlouva ukončena?
+          </button>
+          <a
+            href={UNIQA_UPLOAD_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110"
+          >
+            <Send className="h-4 w-4" />
+            Odeslat výpověď
+          </a>
+          <button
+            type="button"
+            onClick={resetFields}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Vymazat
+          </button>
+          <button
+            type="button"
+            onClick={printLetter}
+            className="inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110"
+          >
+            <Printer className="h-4 w-4" />
+            Tisk
+          </button>
+        </div>
+      </div>
+
+      {showTerminationCalculator && portalRoot
+        ? createPortal(
+            config.calculator === "twoMonths" ? (
+              <UniqaTwoMonthsCalculatorModal
+                onClose={() => setShowTerminationCalculator(false)}
+              />
+            ) : (
+              <UniqaAnnualAnniversaryCalculatorModal
+                onClose={() => setShowTerminationCalculator(false)}
+              />
+            ),
+            portalRoot
+          )
+        : null}
+
+      <div className="uniqa-letter-pages mt-5 grid gap-5 bg-slate-100/80 p-3 sm:p-4">
+        <article
+          className="uniqa-letter-page mx-auto w-full max-w-[760px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
+          aria-label="Náhled výpovědi smlouvy UNIQA"
+        >
+          <div className="uniqa-letter-content flex flex-col px-[8.5%] py-[9%] text-[clamp(12px,2.15vw,18px)] leading-8 text-slate-950">
+            <h1 className="text-center text-[clamp(23px,4.4vw,34px)] font-bold text-slate-950">
+              Výpověď smlouvy
+            </h1>
+
+            <div className="mt-[10%] space-y-[4.8%]">
+              <p>
+                Tímto žádám o výpověď smlouvy číslo{" "}
+                {renderInput(
+                  "contractNumber",
+                  "Číslo smlouvy",
+                  "inline-block w-[min(100%,230px)] align-baseline"
+                )}
+                ,
+              </p>
+              <p className="font-semibold">- {config.terminationSentence}</p>
+              {config.refundAccountSentence ? (
+                <p className="font-semibold">
+                  {config.refundAccountSentence}{" "}
+                  {renderInput(
+                    "refundAccount",
+                    "Číslo účtu pro přeplatek",
+                    "inline-block w-[min(100%,260px)] align-baseline"
+                  )}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="mt-[9%]">
+              <p className="font-bold">Pojistník:</p>
+              <div className="mt-[4%] space-y-[3.4%]">
+                <label className="grid gap-1 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-end">
+                  <span className="font-semibold">Jméno a příjmení:</span>
+                  {renderInput("policyholderName", "Jméno a příjmení", "w-full")}
+                </label>
+                <label className="grid gap-1 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-end">
+                  <span className="font-semibold">Rodné číslo:</span>
+                  {renderInput("personalId", "Rodné číslo", "w-full")}
+                </label>
+                <label className="grid gap-1 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-end">
+                  <span className="font-semibold">Adresa:</span>
+                  {renderInput("address", "Adresa", "w-full")}
+                </label>
+                <label className="grid gap-1 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-end">
+                  <span className="font-semibold">Tel. číslo:</span>
+                  {renderInput("phone", "Tel. číslo", "w-full")}
+                </label>
+                <label className="grid gap-1 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-end">
+                  <span className="font-semibold">email:</span>
+                  {renderInput("email", "email", "w-full")}
+                </label>
+              </div>
+            </div>
+
+            <div className="mt-auto pt-[13%]">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                <label className="flex min-w-0 items-end gap-2">
+                  <span className="font-semibold">V</span>
+                  {renderInput("place", "Místo podpisu", "w-full sm:w-[180px]")}
+                </label>
+                <label className="flex min-w-0 items-end gap-2">
+                  <span className="font-semibold">dne</span>
+                  {renderInput("signedDate", "Datum podpisu", "w-full sm:w-[170px]")}
+                </label>
+              </div>
+
+              <div className="mt-[13%] ml-auto w-full max-w-[300px]">
+                <div className="uniqa-letter-signature border-t border-slate-950 pt-2 text-center text-[0.78em] text-slate-600">
+                  podpis pojistníka
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
   );
 }
 

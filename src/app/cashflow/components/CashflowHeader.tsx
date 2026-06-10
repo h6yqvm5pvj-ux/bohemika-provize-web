@@ -52,7 +52,7 @@ export function CashflowHeader({
           </div>
 
           <div className="w-full xl:w-auto xl:pl-4">
-            <div className="relative isolate inline-flex w-fit max-w-full flex-col overflow-hidden rounded-[22px] border border-[#6b34a0] bg-[#140b23] px-4 py-3 shadow-[0_18px_34px_rgba(20,8,34,0.42)] ring-1 ring-[#8a4bc6]/35 sm:px-5">
+            <div className="relative isolate inline-flex w-fit max-w-full flex-col overflow-hidden rounded-[22px] border border-[#6b34a0] bg-[#140b23] px-4 py-3 ring-1 ring-[#8a4bc6]/35 sm:px-5">
               <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
               <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
               <span className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />

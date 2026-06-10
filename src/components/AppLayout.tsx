@@ -1352,7 +1352,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   );
 
   const isTipsterAccount = accountType === "tipster";
-  const activeNavItems = isTipsterAccount ? tipsterNavItems : navItems;
+  const isNavProfilePending = Boolean(user && loadingProfile);
+  const activeNavItems = isNavProfilePending
+    ? []
+    : isTipsterAccount
+      ? tipsterNavItems
+      : navItems;
   const showPaywall =
     !!user &&
     hasInternalProfile &&

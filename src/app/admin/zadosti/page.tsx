@@ -367,6 +367,29 @@ const ACCOUNT_TYPES: { id: NewUserAccountType; label: string; description: strin
   },
 ];
 
+const formatAccountTypeLabel = (value: string | null | undefined): string => {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (normalized === "tipster") return "Tipař";
+  if (normalized === "advisor") return "Vázaný zástupce";
+  return "Bez typu účtu";
+};
+
+const formatPositionLabel = (value: string | null | undefined): string => {
+  const raw = (value ?? "").trim();
+  if (!raw) return "";
+
+  const known = POSITIONS.find((position) => position.id === raw)?.label;
+  if (known) return known;
+
+  const compact = raw.toLowerCase().replace(/[\s_-]+/g, "");
+  const poradceMatch = compact.match(/^poradce(\d+)$/);
+  if (poradceMatch?.[1]) return `Poradce ${poradceMatch[1]}`;
+  const managerMatch = compact.match(/^(manazer|manažer|manager)(\d+)$/);
+  if (managerMatch?.[2]) return `Manažer ${managerMatch[2]}`;
+
+  return raw;
+};
+
 const NEW_USER_AGENCY_NUMBER_MAX_LEN = 80;
 const CREATE_USER_CELEBRATION_MS = 2600;
 const CREATE_USER_CONFETTI_COLORS = [
@@ -642,7 +665,7 @@ export default function AdminRequestsPage() {
   const [adminUsersSavingEmail, setAdminUsersSavingEmail] = useState<string | null>(null);
   const [adminUsersDeleteTarget, setAdminUsersDeleteTarget] =
     useState<AdminUsersDeleteTarget | null>(null);
-  const [adminUsersDeleteConfirmEmail, setAdminUsersDeleteConfirmEmail] = useState("");
+  const [adminUsersDeleteConfirmed, setAdminUsersDeleteConfirmed] = useState(false);
   const [adminUsersDeletingEmail, setAdminUsersDeletingEmail] = useState<string | null>(null);
   const [subscriptionPlanDraft, setSubscriptionPlanDraft] =
     useState<SubscriptionPlanValue>("monthly");
@@ -973,7 +996,15 @@ export default function AdminRequestsPage() {
       const name = (row.fullName || nameFromEmail(row.email)).toLowerCase();
       const email = row.email.toLowerCase();
       const position = (row.position || "").toLowerCase();
-      return name.includes(query) || email.includes(query) || position.includes(query);
+      const positionLabel = formatPositionLabel(row.position).toLowerCase();
+      const accountTypeLabel = formatAccountTypeLabel(row.accountType).toLowerCase();
+      return (
+        name.includes(query) ||
+        email.includes(query) ||
+        position.includes(query) ||
+        positionLabel.includes(query) ||
+        accountTypeLabel.includes(query)
+      );
     });
   }, [securityFilter, securityRows, securitySearch]);
 
@@ -984,6 +1015,16 @@ export default function AdminRequestsPage() {
     const emailVerified = securityRows.filter((row) => row.emailVerified).length;
     return { total, mfaEnabled, mfaMissing, emailVerified };
   }, [securityRows]);
+
+  const adminUsersNameByEmail = useMemo(() => {
+    const map = new Map<string, string>();
+    adminUsersRows.forEach((row) => {
+      const email = normalizeEmail(row.email);
+      if (!email) return;
+      map.set(email, row.fullName || nameFromEmail(row.email));
+    });
+    return map;
+  }, [adminUsersRows]);
 
   const filteredAdminUsersRows = useMemo(() => {
     const query = adminUsersSearch.trim().toLowerCase();
@@ -996,16 +1037,27 @@ export default function AdminRequestsPage() {
       const managerEmail = (row.managerEmail || "").toLowerCase();
       const tipRecipientEmail = (row.tipRecipientEmail || "").toLowerCase();
       const position = (row.position || "").toLowerCase();
+      const positionLabel = formatPositionLabel(row.position).toLowerCase();
+      const accountTypeLabel = formatAccountTypeLabel(row.accountType).toLowerCase();
+      const relationEmail =
+        row.accountType === "tipster" ? row.tipRecipientEmail : row.managerEmail;
+      const relationName = relationEmail
+        ? (adminUsersNameByEmail.get(normalizeEmail(relationEmail)) ?? "")
+            .toLowerCase()
+        : "";
       return (
         title.includes(query) ||
         email.includes(query) ||
         agencyNumber.includes(query) ||
         managerEmail.includes(query) ||
         tipRecipientEmail.includes(query) ||
-        position.includes(query)
+        position.includes(query) ||
+        positionLabel.includes(query) ||
+        accountTypeLabel.includes(query) ||
+        relationName.includes(query)
       );
     });
-  }, [adminUsersRows, adminUsersSearch]);
+  }, [adminUsersNameByEmail, adminUsersRows, adminUsersSearch]);
 
   const adminUsersStats = useMemo(() => {
     const total = adminUsersRows.length;
@@ -1506,7 +1558,7 @@ export default function AdminRequestsPage() {
       email: row.email,
       fullName: row.fullName,
     });
-    setAdminUsersDeleteConfirmEmail("");
+    setAdminUsersDeleteConfirmed(false);
     setAdminUsersStatus(null);
     setAdminUsersError(null);
   }, []);
@@ -1517,9 +1569,8 @@ export default function AdminRequestsPage() {
     if (!user || !isAllowedAdmin || !target) return;
 
     const email = normalizeEmail(target.email);
-    const confirmEmail = normalizeEmail(adminUsersDeleteConfirmEmail);
-    if (confirmEmail !== email) {
-      setAdminUsersError("Pro smazání opiš přesný e-mail uživatele.");
+    if (!adminUsersDeleteConfirmed) {
+      setAdminUsersError("Nejdřív potvrď, že chceš uživatele smazat.");
       return;
     }
 
@@ -1531,7 +1582,7 @@ export default function AdminRequestsPage() {
         method: "DELETE",
         body: JSON.stringify({
           email,
-          confirmEmail,
+          confirmEmail: email,
         }),
       });
       setAdminUsersStatus({
@@ -1539,7 +1590,7 @@ export default function AdminRequestsPage() {
         message: `Uživatel ${email} byl smazán z Auth a profilů.`,
       });
       setAdminUsersDeleteTarget(null);
-      setAdminUsersDeleteConfirmEmail("");
+      setAdminUsersDeleteConfirmed(false);
       await loadAdminUsersRows();
     } catch (error) {
       setAdminUsersError(
@@ -1549,7 +1600,7 @@ export default function AdminRequestsPage() {
       setAdminUsersDeletingEmail(null);
     }
   }, [
-    adminUsersDeleteConfirmEmail,
+    adminUsersDeleteConfirmed,
     adminUsersDeleteTarget,
     isAllowedAdmin,
     loadAdminUsersRows,
@@ -1616,7 +1667,7 @@ export default function AdminRequestsPage() {
             onClick={() => {
               if (adminUsersDeletingEmail) return;
               setAdminUsersDeleteTarget(null);
-              setAdminUsersDeleteConfirmEmail("");
+              setAdminUsersDeleteConfirmed(false);
             }}
           />
           <section className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-rose-200 bg-white p-5 shadow-[0_30px_90px_rgba(15,23,42,0.35)]">
@@ -1643,18 +1694,23 @@ export default function AdminRequestsPage() {
               <div className="mt-0.5 text-sm text-slate-600">{adminUsersDeleteTarget.email}</div>
             </div>
 
-            <label className="mt-4 block space-y-1.5">
-              <span className="block text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">
-                Pro potvrzení opiš e-mail
-              </span>
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-950 transition hover:border-rose-300 hover:bg-rose-100">
               <input
-                type="email"
-                value={adminUsersDeleteConfirmEmail}
-                onChange={(event) => setAdminUsersDeleteConfirmEmail(event.target.value)}
-                className={fieldClass}
-                placeholder={adminUsersDeleteTarget.email}
-                autoComplete="off"
+                type="checkbox"
+                checked={adminUsersDeleteConfirmed}
+                onChange={(event) => setAdminUsersDeleteConfirmed(event.target.checked)}
+                disabled={Boolean(adminUsersDeletingEmail)}
+                className="mt-0.5 h-5 w-5 rounded border-rose-300 text-rose-600 accent-rose-600 disabled:cursor-not-allowed"
               />
+              <span>
+                <span className="block font-semibold">
+                  Rozumím, chci smazat tohoto uživatele.
+                </span>
+                <span className="mt-1 block text-xs leading-relaxed text-rose-800">
+                  Administrátorská akce smaže přihlášení a profily pro{" "}
+                  <span className="font-semibold">{adminUsersDeleteTarget.email}</span>.
+                </span>
+              </span>
             </label>
 
             <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -1662,7 +1718,7 @@ export default function AdminRequestsPage() {
                 type="button"
                 onClick={() => {
                   setAdminUsersDeleteTarget(null);
-                  setAdminUsersDeleteConfirmEmail("");
+                  setAdminUsersDeleteConfirmed(false);
                 }}
                 disabled={Boolean(adminUsersDeletingEmail)}
                 className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1675,7 +1731,7 @@ export default function AdminRequestsPage() {
                 onClick={() => void handleDeleteAdminUser()}
                 disabled={
                   Boolean(adminUsersDeletingEmail) ||
-                  normalizeEmail(adminUsersDeleteConfirmEmail) !== adminUsersDeleteTarget.email
+                  !adminUsersDeleteConfirmed
                 }
                 className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-rose-600 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -2682,10 +2738,15 @@ export default function AdminRequestsPage() {
                   const saving = adminUsersSavingEmail === row.email;
                   const isCurrentUser = normalizeEmail(currentUser?.email) === row.email;
                   const effectiveAccountType = editing ? adminUsersEditAccountType : row.accountType;
+                  const accountTypeLabel = formatAccountTypeLabel(effectiveAccountType);
+                  const positionLabel = formatPositionLabel(row.position);
                   const relationLabel =
                     effectiveAccountType === "tipster" ? "Příjemce tipů" : "Nadřízený";
                   const relationEmail =
                     effectiveAccountType === "tipster" ? row.tipRecipientEmail : row.managerEmail;
+                  const relationDisplayName = relationEmail
+                    ? adminUsersNameByEmail.get(normalizeEmail(relationEmail)) || relationEmail
+                    : null;
 
                   return (
                     <article
@@ -2699,21 +2760,30 @@ export default function AdminRequestsPage() {
                             {avatarInitial}
                           </span>
                           <div className="min-w-0">
-                            <div className="truncate text-lg font-bold text-slate-900">{title}</div>
-                            <div className="truncate text-sm text-slate-500">{row.email}</div>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-                                {row.accountType === "tipster"
-                                  ? "Tipař"
-                                  : row.accountType === "advisor"
-                                    ? "Vázaný zástupce"
-                                    : "Bez typu účtu"}
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <span className="min-w-0 max-w-full truncate text-lg font-bold text-slate-900">
+                                {title}
                               </span>
-                              {row.position ? (
+                              <span
+                                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                                  effectiveAccountType === "tipster"
+                                    ? "border-violet-200 bg-violet-50 text-violet-700"
+                                    : effectiveAccountType === "advisor"
+                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                      : "border-slate-200 bg-slate-50 text-slate-600"
+                                }`}
+                              >
+                                {accountTypeLabel}
+                              </span>
+                              {positionLabel ? (
                                 <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                                  {row.position}
+                                  {positionLabel}
                                 </span>
                               ) : null}
+                            </div>
+                            <div className="truncate text-sm text-slate-500">{row.email}</div>
+                            {row.disabled || !row.profileExists ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
                               {row.disabled ? (
                                 <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
                                   Deaktivovaný
@@ -2724,7 +2794,8 @@ export default function AdminRequestsPage() {
                                   Bez veřejného profilu
                                 </span>
                               ) : null}
-                            </div>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
 
@@ -2779,28 +2850,7 @@ export default function AdminRequestsPage() {
                         </div>
                       </div>
 
-                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                        <label className="space-y-1.5">
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            <UserCheck2 size={11} strokeWidth={2.2} aria-hidden="true" />
-                            Jméno a příjmení / Název
-                          </span>
-                          {editing ? (
-                            <input
-                              type="text"
-                              value={adminUsersEditFullName}
-                              onChange={(event) => setAdminUsersEditFullName(event.target.value)}
-                              className={fieldClass}
-                              placeholder="Jméno Příjmení nebo název firmy"
-                              maxLength={120}
-                            />
-                          ) : (
-                            <div className="min-h-[42px] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900">
-                              {row.fullName || "—"}
-                            </div>
-                          )}
-                        </label>
-
+                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                         <label className="space-y-1.5">
                           <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                             <IdCard size={11} strokeWidth={2.2} aria-hidden="true" />
@@ -2843,11 +2893,7 @@ export default function AdminRequestsPage() {
                             </select>
                           ) : (
                             <div className="min-h-[42px] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900">
-                              {row.accountType === "tipster"
-                                ? "Tipař"
-                                : row.accountType === "advisor"
-                                  ? "Vázaný zástupce"
-                                  : "Bez typu účtu"}
+                              {accountTypeLabel}
                             </div>
                           )}
                         </label>
@@ -2857,7 +2903,7 @@ export default function AdminRequestsPage() {
                             {relationLabel}
                           </span>
                           <div className="min-h-[42px] truncate rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900">
-                            {relationEmail || "—"}
+                            {relationDisplayName || "—"}
                           </div>
                         </div>
 
@@ -3498,6 +3544,8 @@ export default function AdminRequestsPage() {
                   const title = row.fullName || nameFromEmail(row.email);
                   const avatarInitial = (title.trim().charAt(0) || row.email.charAt(0)).toUpperCase();
                   const mfaEnabled = row.mfa.enabled;
+                  const accountTypeLabel = formatAccountTypeLabel(row.accountType);
+                  const positionLabel = formatPositionLabel(row.position);
 
                   return (
                     <div
@@ -3521,25 +3569,35 @@ export default function AdminRequestsPage() {
                             {avatarInitial}
                           </span>
                           <div className="min-w-0">
-                            <div className="truncate text-lg font-bold text-slate-900">{title}</div>
-                            <div className="truncate text-sm text-slate-500">{row.email}</div>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {row.position ? (
-                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-                                  {row.position}
-                                </span>
-                              ) : null}
-                              {row.accountType ? (
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <span className="min-w-0 max-w-full truncate text-lg font-bold text-slate-900">
+                                {title}
+                              </span>
+                              <span
+                                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                                  row.accountType === "tipster"
+                                    ? "border-violet-200 bg-violet-50 text-violet-700"
+                                    : row.accountType === "advisor"
+                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                      : "border-slate-200 bg-slate-50 text-slate-600"
+                                }`}
+                              >
+                                {accountTypeLabel}
+                              </span>
+                              {positionLabel ? (
                                 <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                                  {row.accountType}
-                                </span>
-                              ) : null}
-                              {row.disabled ? (
-                                <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                                  Deaktivovaný účet
+                                  {positionLabel}
                                 </span>
                               ) : null}
                             </div>
+                            <div className="truncate text-sm text-slate-500">{row.email}</div>
+                            {row.disabled ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                                  Deaktivovaný účet
+                                </span>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
 

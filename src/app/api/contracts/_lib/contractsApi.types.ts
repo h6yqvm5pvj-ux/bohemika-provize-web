@@ -169,12 +169,14 @@ export type ContractDoc = {
 export type TipPayoutDoc = {
   sourceKey: string;
   sourceOwnerEmail: string;
+  sourceOwnerName?: string | null;
   sourceEntryId: string;
   sourceEntryType: "contract" | "endorsement";
   adviserEmail: string;
   tipsterEmail: string;
   tipsterUserDocId: string;
   tipsterName?: string | null;
+  clientName?: string | null;
   tipsterPercent: number;
   productKey: Product | null;
   frequencyRaw: PaymentFrequency | null;
