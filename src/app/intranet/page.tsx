@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import Image from "next/image";
 import { Space_Grotesk } from "next/font/google";
@@ -11,6 +11,8 @@ import {
   ChevronUp,
   CircleHelp,
   Clock3,
+  Download,
+  FileText,
   Heart,
   HeartPulse,
   Home,
@@ -154,6 +156,45 @@ type WallCommentLikeResponse = {
   commentId?: string;
   likeCount?: number;
   likedByMe?: boolean;
+};
+
+type AttachmentPreviewState = {
+  attachment: WallAttachment;
+  objectUrl: string | null;
+  loading: boolean;
+  error: string | null;
+};
+
+type PdfRenderedPage = {
+  pageNumber: number;
+  dataUrl: string;
+  width: number;
+  height: number;
+};
+
+type PdfViewportLike = {
+  width: number;
+  height: number;
+};
+
+type PdfRenderTaskLike = {
+  promise: Promise<void>;
+};
+
+type PdfPageLike = {
+  getViewport: (params: { scale: number }) => PdfViewportLike;
+  render: (params: {
+    canvas: HTMLCanvasElement;
+    canvasContext: CanvasRenderingContext2D;
+    viewport: PdfViewportLike;
+    transform?: [number, number, number, number, number, number];
+  }) => PdfRenderTaskLike;
+};
+
+type PdfDocumentLike = {
+  numPages: number;
+  getPage: (pageNumber: number) => Promise<PdfPageLike>;
+  destroy: () => Promise<void>;
 };
 
 type SectionVisual = {
@@ -324,8 +365,17 @@ const isPreviewableImage = (file: File): boolean => {
 const replyComposerKey = (postId: string, commentId: string): string =>
   `${postId}::${commentId}`;
 
+const isPdfAttachment = (attachment: WallAttachment): boolean => {
+  const type = attachment.contentType.trim().toLowerCase();
+  return type === "application/pdf" || attachment.name.toLowerCase().endsWith(".pdf");
+};
+
+const isPreviewableAttachment = (attachment: WallAttachment): boolean =>
+  attachment.isImage || isPdfAttachment(attachment);
+
 const attachmentPreviewUrlCache = new Map<string, string>();
 const attachmentPreviewInflightCache = new Map<string, Promise<string>>();
+const pdfFirstPagePreviewCache = new Map<string, PdfRenderedPage>();
 
 type RichTextSegment =
   | { kind: "text"; value: string }
@@ -516,6 +566,344 @@ function AttachmentImagePreview({
   );
 }
 
+function PdfPagePreview({
+  pageNumber,
+  page,
+  error,
+  onRender,
+}: {
+  pageNumber: number;
+  page: PdfRenderedPage | undefined;
+  error: string | undefined;
+  onRender: (pageNumber: number) => void;
+}) {
+  const pageRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (page || error) return;
+    const node = pageRef.current;
+    if (!node) return;
+
+    if (pageNumber === 1 || typeof IntersectionObserver === "undefined") {
+      onRender(pageNumber);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          onRender(pageNumber);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "900px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [error, onRender, page, pageNumber]);
+
+  return (
+    <div
+      ref={pageRef}
+      className="w-full max-w-[920px] overflow-hidden rounded-xl bg-white shadow-[0_14px_44px_rgba(15,23,42,0.14)] ring-1 ring-slate-200"
+      style={{ aspectRatio: page ? `${page.width} / ${page.height}` : "210 / 297" }}
+    >
+      {page ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={page.dataUrl}
+          alt={`Strana ${page.pageNumber}`}
+          className="h-auto w-full"
+          style={{ aspectRatio: `${page.width} / ${page.height}` }}
+        />
+      ) : error ? (
+        <div className="flex h-full min-h-40 items-center justify-center px-4 text-center text-xs font-semibold text-red-700">
+          {error}
+        </div>
+      ) : (
+        <div className="flex h-full min-h-40 items-center justify-center">
+          <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Strana {pageNumber}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PdfDocumentPreview({
+  objectUrl,
+  name,
+  cacheKey,
+}: {
+  objectUrl: string;
+  name: string;
+  cacheKey: string;
+}) {
+  const [pagesByNumber, setPagesByNumber] = useState<Record<number, PdfRenderedPage>>({});
+  const [pageErrorsByNumber, setPageErrorsByNumber] = useState<Record<number, string>>({});
+  const [loadingDocument, setLoadingDocument] = useState(true);
+  const [documentError, setDocumentError] = useState<string | null>(null);
+  const [totalPages, setTotalPages] = useState(0);
+  const pdfDocumentRef = useRef<PdfDocumentLike | null>(null);
+  const renderingPagesRef = useRef<Set<number>>(new Set());
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadingTask: { destroy: () => void } | null = null;
+    const cachedFirstPage = pdfFirstPagePreviewCache.get(cacheKey);
+
+    setPagesByNumber(cachedFirstPage ? { 1: cachedFirstPage } : {});
+    setPageErrorsByNumber({});
+    setLoadingDocument(true);
+    setDocumentError(null);
+    setTotalPages(0);
+    renderingPagesRef.current.clear();
+
+    if (pdfDocumentRef.current) {
+      void pdfDocumentRef.current.destroy();
+      pdfDocumentRef.current = null;
+    }
+
+    const loadPdf = async () => {
+      try {
+        const pdfjs = await import("pdfjs-dist");
+        if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+          pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+            "pdfjs-dist/build/pdf.worker.min.mjs",
+            import.meta.url
+          ).toString();
+        }
+
+        const task = pdfjs.getDocument({ url: objectUrl });
+        loadingTask = task;
+        const pdf = (await task.promise) as unknown as PdfDocumentLike;
+        if (cancelled) {
+          void pdf.destroy();
+          return;
+        }
+
+        pdfDocumentRef.current = pdf;
+        setTotalPages(pdf.numPages);
+        setLoadingDocument(false);
+      } catch (loadError) {
+        if (cancelled) return;
+        setLoadingDocument(false);
+        setDocumentError(
+          loadError instanceof Error ? loadError.message : "PDF se nepodařilo načíst."
+        );
+      }
+    };
+
+    void loadPdf();
+
+    return () => {
+      cancelled = true;
+      loadingTask?.destroy();
+      if (pdfDocumentRef.current) {
+        void pdfDocumentRef.current.destroy();
+        pdfDocumentRef.current = null;
+      }
+    };
+  }, [cacheKey, objectUrl]);
+
+  const renderPage = useCallback(
+    async (pageNumber: number) => {
+      const pdf = pdfDocumentRef.current;
+      if (!pdf || pageNumber < 1 || pageNumber > pdf.numPages) return;
+      if (pagesByNumber[pageNumber] || renderingPagesRef.current.has(pageNumber)) return;
+
+      const cachedFirstPage =
+        pageNumber === 1 ? pdfFirstPagePreviewCache.get(cacheKey) : undefined;
+      if (cachedFirstPage) {
+        setPagesByNumber((prev) => ({ ...prev, 1: cachedFirstPage }));
+        return;
+      }
+
+      renderingPagesRef.current.add(pageNumber);
+      setPageErrorsByNumber((prev) => {
+        if (!prev[pageNumber]) return prev;
+        const next = { ...prev };
+        delete next[pageNumber];
+        return next;
+      });
+
+      try {
+        const page = await pdf.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 1.55 });
+        const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+          throw new Error("Prohlížeč nepodporuje canvas náhled PDF.");
+        }
+
+        canvas.width = Math.floor(viewport.width * outputScale);
+        canvas.height = Math.floor(viewport.height * outputScale);
+
+        await page.render({
+          canvas,
+          canvasContext: context,
+          viewport,
+          transform:
+            outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0],
+        }).promise;
+
+        const renderedPage: PdfRenderedPage = {
+          pageNumber,
+          dataUrl: canvas.toDataURL("image/png"),
+          width: viewport.width,
+          height: viewport.height,
+        };
+
+        if (pageNumber === 1) {
+          pdfFirstPagePreviewCache.set(cacheKey, renderedPage);
+        }
+
+        if (mountedRef.current && pdfDocumentRef.current === pdf) {
+          setPagesByNumber((prev) => ({ ...prev, [pageNumber]: renderedPage }));
+        }
+      } catch (renderError) {
+        if (!mountedRef.current || pdfDocumentRef.current !== pdf) return;
+        setPageErrorsByNumber((prev) => ({
+          ...prev,
+          [pageNumber]:
+            renderError instanceof Error
+              ? renderError.message
+              : "Stranu se nepodařilo zobrazit.",
+        }));
+      } finally {
+        renderingPagesRef.current.delete(pageNumber);
+      }
+    },
+    [cacheKey, pagesByNumber]
+  );
+
+  useEffect(() => {
+    if (!loadingDocument && totalPages > 0) {
+      void renderPage(1);
+    }
+  }, [loadingDocument, renderPage, totalPages]);
+
+  if (documentError) {
+    return (
+      <div className="flex min-h-[54vh] items-center justify-center rounded-2xl border border-red-200 bg-red-50 px-5 text-center text-sm font-semibold text-red-700">
+        {documentError}
+      </div>
+    );
+  }
+
+  if (loadingDocument && totalPages === 0) {
+    return (
+      <div className="flex min-h-[54vh] items-center justify-center rounded-2xl bg-white">
+        <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          Připravuji PDF náhled
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex w-full max-w-5xl flex-col items-center gap-4">
+      <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
+        {name} • {totalPages} {totalPages === 1 ? "strana" : "stran"}
+      </div>
+
+      {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+        <PdfPagePreview
+          key={pageNumber}
+          pageNumber={pageNumber}
+          page={pagesByNumber[pageNumber]}
+          error={pageErrorsByNumber[pageNumber]}
+          onRender={(nextPageNumber) => {
+            void renderPage(nextPageNumber);
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AttachmentFileCard({
+  attachment,
+  onPreview,
+  onDownload,
+}: {
+  attachment: WallAttachment;
+  onPreview: (attachment: WallAttachment) => void;
+  onDownload: (attachment: WallAttachment) => void;
+}) {
+  const isPdf = isPdfAttachment(attachment);
+  const AttachmentIcon = isPdf ? FileText : Paperclip;
+  const PreviewIcon = isPdf ? FileText : ImageIcon;
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/95 p-2.5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <div
+          className={[
+            "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border",
+            isPdf
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-slate-200 bg-slate-50 text-slate-600",
+          ].join(" ")}
+        >
+          <AttachmentIcon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={() => onPreview(attachment)}
+            className="block max-w-full truncate text-left text-xs font-bold text-slate-800 underline-offset-2 hover:underline"
+          >
+            {attachment.name}
+          </button>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-slate-500">
+            {isPdf ? (
+              <span className="rounded-full border border-red-100 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-700">
+                PDF
+              </span>
+            ) : null}
+            <span>{attachment.contentType}</span>
+            <span>•</span>
+            <span>{formatBytes(attachment.sizeBytes)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => onPreview(attachment)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
+        >
+          <PreviewIcon className="h-3.5 w-3.5" />
+          Náhled
+        </button>
+        <button
+          type="button"
+          onClick={() => onDownload(attachment)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Stáhnout
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function IntranetPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [selectedSection, setSelectedSection] = useState<IntranetSectionKey>("obecne");
@@ -534,6 +922,12 @@ export default function IntranetPage() {
   const [postModalOpen, setPostModalOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<WallPost | null>(null);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreviewState | null>(null);
+  const [removedAttachmentIds, setRemovedAttachmentIds] = useState<string[]>([]);
+  const [replacementFilesByAttachmentId, setReplacementFilesByAttachmentId] = useState<
+    Record<string, File>
+  >({});
+  const [replaceAttachmentTargetId, setReplaceAttachmentTargetId] = useState<string | null>(null);
 
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentPostingById, setCommentPostingById] = useState<Record<string, boolean>>({});
@@ -557,17 +951,23 @@ export default function IntranetPage() {
   const [deepLinkPostId, setDeepLinkPostId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const replaceAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const commentInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const replyInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const postCardRefs = useRef<Record<string, HTMLElement | null>>({});
   const dragDepthRef = useRef(0);
   const highlightTimerRef = useRef<number | null>(null);
+  const attachmentPreviewRequestIdRef = useRef(0);
+  const attachmentPreviewObjectUrlRef = useRef<string | null>(null);
 
   const resetPostFormForCreate = () => {
     setTitle("");
     setText("");
     setPostSection(selectedSection);
     setFiles([]);
+    setRemovedAttachmentIds([]);
+    setReplacementFilesByAttachmentId({});
+    setReplaceAttachmentTargetId(null);
     setEmojiOpen(false);
     setPostError(null);
   };
@@ -584,6 +984,9 @@ export default function IntranetPage() {
     setText(post.text);
     setPostSection(post.section);
     setFiles([]);
+    setRemovedAttachmentIds([]);
+    setReplacementFilesByAttachmentId({});
+    setReplaceAttachmentTargetId(null);
     setEmojiOpen(false);
     setPostError(null);
     setPostModalOpen(true);
@@ -593,9 +996,21 @@ export default function IntranetPage() {
     setPostModalOpen(false);
     setEditingPost(null);
     setPostError(null);
+    setRemovedAttachmentIds([]);
+    setReplacementFilesByAttachmentId({});
+    setReplaceAttachmentTargetId(null);
     setIsDraggingFiles(false);
     dragDepthRef.current = 0;
   };
+
+  const closeAttachmentPreview = useCallback(() => {
+    attachmentPreviewRequestIdRef.current += 1;
+    if (attachmentPreviewObjectUrlRef.current) {
+      URL.revokeObjectURL(attachmentPreviewObjectUrlRef.current);
+      attachmentPreviewObjectUrlRef.current = null;
+    }
+    setAttachmentPreview(null);
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
@@ -633,17 +1048,31 @@ export default function IntranetPage() {
   }, [deepLinkSection, deepLinkPostId]);
 
   useEffect(() => {
-    if (!postModalOpen) return;
+    if (!postModalOpen || attachmentPreview) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setPostModalOpen(false);
         setEditingPost(null);
         setPostError(null);
+        setRemovedAttachmentIds([]);
+        setReplacementFilesByAttachmentId({});
+        setReplaceAttachmentTargetId(null);
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [postModalOpen]);
+  }, [attachmentPreview, postModalOpen]);
+
+  useEffect(() => {
+    if (!attachmentPreview) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeAttachmentPreview();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [attachmentPreview, closeAttachmentPreview]);
 
   useEffect(() => {
     if (postModalOpen) return;
@@ -727,6 +1156,11 @@ export default function IntranetPage() {
       if (highlightTimerRef.current != null) {
         window.clearTimeout(highlightTimerRef.current);
       }
+      attachmentPreviewRequestIdRef.current += 1;
+      if (attachmentPreviewObjectUrlRef.current) {
+        URL.revokeObjectURL(attachmentPreviewObjectUrlRef.current);
+        attachmentPreviewObjectUrlRef.current = null;
+      }
     },
     []
   );
@@ -760,8 +1194,21 @@ export default function IntranetPage() {
   const SelectedFilterIcon = selectedSectionVisual.icon;
   const SelectedPostIcon = selectedPostSectionVisual.icon;
   const isEditingPost = editingPost !== null;
-  const existingAttachmentCount = editingPost?.attachments.length ?? 0;
-  const attachmentSlotsRemaining = Math.max(0, MAX_FILES - existingAttachmentCount);
+  const removedAttachmentIdSet = useMemo(
+    () => new Set(removedAttachmentIds),
+    [removedAttachmentIds]
+  );
+  const replacementAttachmentIds = useMemo(
+    () => Object.keys(replacementFilesByAttachmentId),
+    [replacementFilesByAttachmentId]
+  );
+  const keptExistingAttachmentCount =
+    editingPost?.attachments.filter((attachment) => !removedAttachmentIdSet.has(attachment.id))
+      .length ?? 0;
+  const replacementAttachmentCount = replacementAttachmentIds.length;
+  const pendingExistingAttachmentCount =
+    keptExistingAttachmentCount + replacementAttachmentCount;
+  const attachmentSlotsRemaining = Math.max(0, MAX_FILES - pendingExistingAttachmentCount);
   const attachmentSlotsAvailable = Math.max(0, attachmentSlotsRemaining - files.length);
   const PostModalIcon = isEditingPost ? Pencil : Plus;
 
@@ -849,6 +1296,54 @@ export default function IntranetPage() {
     setFiles((prev) => prev.filter((_, idx) => idx !== index));
   };
 
+  const handleRemoveExistingAttachment = (attachmentId: string) => {
+    setRemovedAttachmentIds((prev) => (prev.includes(attachmentId) ? prev : [...prev, attachmentId]));
+    setReplacementFilesByAttachmentId((prev) => {
+      if (!prev[attachmentId]) return prev;
+      const next = { ...prev };
+      delete next[attachmentId];
+      return next;
+    });
+    setPostError(null);
+  };
+
+  const handleUndoExistingAttachmentChange = (attachmentId: string) => {
+    setRemovedAttachmentIds((prev) => prev.filter((id) => id !== attachmentId));
+    setReplacementFilesByAttachmentId((prev) => {
+      if (!prev[attachmentId]) return prev;
+      const next = { ...prev };
+      delete next[attachmentId];
+      return next;
+    });
+    setPostError(null);
+  };
+
+  const handleReplaceAttachmentClick = (attachmentId: string) => {
+    setReplaceAttachmentTargetId(attachmentId);
+    replaceAttachmentInputRef.current?.click();
+  };
+
+  const handleReplaceAttachmentFile = (nextFiles: FileList | null) => {
+    const file = nextFiles?.[0] ?? null;
+    const attachmentId = replaceAttachmentTargetId;
+    if (replaceAttachmentInputRef.current) {
+      replaceAttachmentInputRef.current.value = "";
+    }
+    setReplaceAttachmentTargetId(null);
+    if (!file || !attachmentId) return;
+
+    const alreadyRemoved = removedAttachmentIdSet.has(attachmentId);
+    const alreadyHasReplacement = !!replacementFilesByAttachmentId[attachmentId];
+    if (alreadyRemoved && !alreadyHasReplacement && attachmentSlotsAvailable <= 0) {
+      setPostError(`Příspěvek může mít maximálně ${MAX_FILES} příloh.`);
+      return;
+    }
+
+    setRemovedAttachmentIds((prev) => (prev.includes(attachmentId) ? prev : [...prev, attachmentId]));
+    setReplacementFilesByAttachmentId((prev) => ({ ...prev, [attachmentId]: file }));
+    setPostError(null);
+  };
+
   const handleSavePost = async () => {
     if (!user || posting) return;
     const trimmedTitle = title.trim();
@@ -872,6 +1367,14 @@ export default function IntranetPage() {
       form.set("text", trimmedText.slice(0, MAX_TEXT_LEN));
       form.set("section", postSection);
       files.forEach((file) => form.append("files", file));
+      if (isEditing) {
+        removedAttachmentIds.forEach((attachmentId) => {
+          form.append("removedAttachmentIds", attachmentId);
+        });
+        Object.values(replacementFilesByAttachmentId).forEach((file) => {
+          form.append("files", file);
+        });
+      }
 
       const payload = isEditing
         ? await fetchAuthedJsonOrThrow<WallUpdateResponse>(
@@ -897,6 +1400,9 @@ export default function IntranetPage() {
       setTitle("");
       setText("");
       setFiles([]);
+      setRemovedAttachmentIds([]);
+      setReplacementFilesByAttachmentId({});
+      setReplaceAttachmentTargetId(null);
       setEmojiOpen(false);
       setPostModalOpen(false);
       setEditingPost(null);
@@ -944,24 +1450,67 @@ export default function IntranetPage() {
 
   const handleOpenAttachment = async (attachment: WallAttachment) => {
     if (!user) return;
+    const requestId = attachmentPreviewRequestIdRef.current + 1;
+    attachmentPreviewRequestIdRef.current = requestId;
+
+    if (attachmentPreviewObjectUrlRef.current) {
+      URL.revokeObjectURL(attachmentPreviewObjectUrlRef.current);
+      attachmentPreviewObjectUrlRef.current = null;
+    }
+
+    setPostsError(null);
+    setAttachmentPreview({
+      attachment,
+      objectUrl: null,
+      loading: true,
+      error: null,
+    });
+
+    try {
+      const blob = await fetchAuthedBlobOrThrow(user, attachment.url, {
+        cache: attachment.isImage ? "force-cache" : "no-store",
+      });
+      const objectUrl = URL.createObjectURL(blob);
+      if (attachmentPreviewRequestIdRef.current !== requestId) {
+        URL.revokeObjectURL(objectUrl);
+        return;
+      }
+
+      attachmentPreviewObjectUrlRef.current = objectUrl;
+      setAttachmentPreview({
+        attachment,
+        objectUrl,
+        loading: false,
+        error: null,
+      });
+    } catch (error) {
+      if (attachmentPreviewRequestIdRef.current !== requestId) return;
+      setAttachmentPreview({
+        attachment,
+        objectUrl: null,
+        loading: false,
+        error: error instanceof Error ? error.message : "Přílohu se nepodařilo otevřít.",
+      });
+    }
+  };
+
+  const handleDownloadAttachment = async (attachment: WallAttachment) => {
+    if (!user) return;
     setPostsError(null);
     try {
-      const token = await user.getIdToken();
-      const res = await fetch(attachment.url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const blob = await fetchAuthedBlobOrThrow(user, attachment.url, {
+        cache: attachment.isImage ? "force-cache" : "no-store",
       });
-      if (!res.ok) {
-        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error || "Přílohu se nepodařilo načíst.");
-      }
-      const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = attachment.name || "priloha";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
     } catch (error) {
-      setPostsError(error instanceof Error ? error.message : "Přílohu se nepodařilo otevřít.");
+      setPostsError(error instanceof Error ? error.message : "Přílohu se nepodařilo stáhnout.");
     }
   };
 
@@ -1164,6 +1713,18 @@ export default function IntranetPage() {
     const author = normalizeEmail(post.author.email);
     return !!me && !!author && me === author;
   };
+
+  const previewAttachmentIsPdf = attachmentPreview
+    ? isPdfAttachment(attachmentPreview.attachment)
+    : false;
+  const previewAttachmentCanRender = attachmentPreview
+    ? isPreviewableAttachment(attachmentPreview.attachment)
+    : false;
+  const AttachmentPreviewIcon = attachmentPreview?.attachment.isImage
+    ? ImageIcon
+    : previewAttachmentIsPdf
+      ? FileText
+      : Paperclip;
 
   return (
     <AppLayout active="intranet">
@@ -1422,22 +1983,12 @@ export default function IntranetPage() {
 
                               <div className="space-y-2">
                                 {otherAttachments.map((attachment) => (
-                                  <div
+                                  <AttachmentFileCard
                                     key={attachment.id}
-                                    className="rounded-xl border border-slate-200 bg-white/95 p-2"
-                                  >
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleOpenAttachment(attachment)}
-                                      className="inline-flex items-center gap-2 text-left text-xs font-semibold text-slate-700 underline-offset-2 hover:underline"
-                                    >
-                                      <Paperclip className="h-3.5 w-3.5" />
-                                      {attachment.name}
-                                    </button>
-                                    <div className="mt-0.5 text-[11px] text-slate-500">
-                                      {attachment.contentType} • {formatBytes(attachment.sizeBytes)}
-                                    </div>
-                                  </div>
+                                    attachment={attachment}
+                                    onPreview={(item) => void handleOpenAttachment(item)}
+                                    onDownload={(item) => void handleDownloadAttachment(item)}
+                                  />
                                 ))}
                               </div>
                             </div>
@@ -1802,6 +2353,93 @@ export default function IntranetPage() {
         </div>
       </div>
 
+      {attachmentPreview ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center px-3 py-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/70 backdrop-blur-md"
+            onClick={closeAttachmentPreview}
+            aria-label="Zavřít náhled přílohy"
+          />
+
+          <div className="relative z-10 flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_34px_90px_rgba(2,6,23,0.5)]">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
+                  <AttachmentPreviewIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-bold text-slate-900">
+                    {attachmentPreview.attachment.name}
+                  </div>
+                  <div className="mt-0.5 truncate text-xs text-slate-500">
+                    {attachmentPreview.attachment.contentType} •{" "}
+                    {formatBytes(attachmentPreview.attachment.sizeBytes)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                {attachmentPreview.objectUrl ? (
+                  <a
+                    href={attachmentPreview.objectUrl}
+                    download={attachmentPreview.attachment.name}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
+                  >
+                    <Download className="h-4 w-4" />
+                    Stáhnout
+                  </a>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={closeAttachmentPreview}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-600 transition hover:border-slate-500 hover:bg-slate-100"
+                  aria-label="Zavřít náhled přílohy"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="min-h-[54vh] flex-1 overflow-auto bg-slate-100 p-3 sm:p-4">
+              {attachmentPreview.loading ? (
+                <div className="flex min-h-[54vh] items-center justify-center rounded-2xl bg-white">
+                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Načítám náhled
+                  </div>
+                </div>
+              ) : attachmentPreview.error ? (
+                <div className="flex min-h-[54vh] items-center justify-center rounded-2xl border border-red-200 bg-red-50 px-5 text-center text-sm font-semibold text-red-700">
+                  {attachmentPreview.error}
+                </div>
+              ) : attachmentPreview.objectUrl && attachmentPreview.attachment.isImage ? (
+                <div className="flex min-h-[54vh] items-center justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={attachmentPreview.objectUrl}
+                    alt={`Náhled ${attachmentPreview.attachment.name}`}
+                    className="max-h-[74vh] max-w-full rounded-2xl object-contain shadow-[0_18px_50px_rgba(15,23,42,0.18)]"
+                  />
+                </div>
+              ) : attachmentPreview.objectUrl && previewAttachmentIsPdf ? (
+                <PdfDocumentPreview
+                  objectUrl={attachmentPreview.objectUrl}
+                  name={attachmentPreview.attachment.name}
+                  cacheKey={attachmentPreview.attachment.url}
+                />
+              ) : (
+                <div className="flex min-h-[54vh] items-center justify-center rounded-2xl bg-white px-5 text-center text-sm font-semibold text-slate-600">
+                  {previewAttachmentCanRender
+                    ? "Náhled se nepodařilo zobrazit."
+                    : "Náhled pro tento typ souboru zatím není dostupný. Soubor si můžeš stáhnout."}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {postModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-3 py-4">
           <button
@@ -1953,25 +2591,109 @@ export default function IntranetPage() {
                 {isEditingPost ? (
                   <>
                     <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-white/80 p-3">
+                      <input
+                        ref={replaceAttachmentInputRef}
+                        type="file"
+                        onChange={(event) => handleReplaceAttachmentFile(event.target.files)}
+                        className="hidden"
+                      />
                       {editingPost.attachments.length > 0 ? (
-                        editingPost.attachments.map((attachment) => (
-                          <button
-                            key={attachment.id}
-                            type="button"
-                            onClick={() => void handleOpenAttachment(attachment)}
-                            className="flex w-full min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                          >
-                            {attachment.isImage ? (
-                              <ImageIcon className="h-3.5 w-3.5 shrink-0" />
-                            ) : (
-                              <Paperclip className="h-3.5 w-3.5 shrink-0" />
-                            )}
-                            <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
-                            <span className="shrink-0 text-[11px] font-medium text-slate-500">
-                              {formatBytes(attachment.sizeBytes)}
-                            </span>
-                          </button>
-                        ))
+                        editingPost.attachments.map((attachment) => {
+                          const isRemoved = removedAttachmentIdSet.has(attachment.id);
+                          const replacementFile = replacementFilesByAttachmentId[attachment.id];
+                          const attachmentIsPdf = isPdfAttachment(attachment);
+                          const ExistingAttachmentIcon = attachment.isImage
+                            ? ImageIcon
+                            : attachmentIsPdf
+                              ? FileText
+                              : Paperclip;
+
+                          return (
+                            <div
+                              key={attachment.id}
+                              className={[
+                                "rounded-xl border p-2 text-xs transition",
+                                isRemoved
+                                  ? "border-amber-200 bg-amber-50/80"
+                                  : "border-slate-200 bg-white",
+                              ].join(" ")}
+                            >
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <div
+                                    className={[
+                                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border",
+                                      attachmentIsPdf
+                                        ? "border-red-200 bg-red-50 text-red-700"
+                                        : "border-slate-200 bg-slate-50 text-slate-600",
+                                    ].join(" ")}
+                                  >
+                                    <ExistingAttachmentIcon className="h-4 w-4" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="truncate font-bold text-slate-800">
+                                      {attachment.name}
+                                    </div>
+                                    <div className="mt-0.5 text-[11px] font-medium text-slate-500">
+                                      {attachment.contentType} • {formatBytes(attachment.sizeBytes)}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                                  {!isRemoved ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleOpenAttachment(attachment)}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
+                                    >
+                                      <ExistingAttachmentIcon className="h-3.5 w-3.5" />
+                                      Náhled
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReplaceAttachmentClick(attachment.id)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-100"
+                                  >
+                                    <RefreshCw className="h-3.5 w-3.5" />
+                                    {replacementFile ? "Změnit" : "Nahradit"}
+                                  </button>
+                                  {isRemoved ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUndoExistingAttachmentChange(attachment.id)}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                      Vrátit
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveExistingAttachment(attachment.id)}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] font-semibold text-red-700 transition hover:bg-red-100"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                      Odebrat
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {replacementFile ? (
+                                <div className="mt-2 rounded-lg border border-sky-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-sky-700">
+                                  Nový soubor: {replacementFile.name} •{" "}
+                                  {formatBytes(replacementFile.size)}
+                                </div>
+                              ) : isRemoved ? (
+                                <div className="mt-2 rounded-lg border border-amber-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-amber-700">
+                                  Příloha bude po uložení odebraná.
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })
                       ) : (
                         <div className="text-xs text-slate-500">Bez příloh.</div>
                       )}

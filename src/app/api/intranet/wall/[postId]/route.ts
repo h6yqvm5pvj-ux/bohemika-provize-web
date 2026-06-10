@@ -53,6 +53,9 @@ const normalizeEmail = (value: unknown): string =>
 const resolvePostId = (raw: string): string =>
   normalizeText(raw).replace(/[^\w-]/g, "");
 
+const normalizeAttachmentId = (value: unknown): string =>
+  normalizeText(value).replace(/[^\w-]/g, "");
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
@@ -349,6 +352,7 @@ export async function PATCH(
   let text = "";
   let section: IntranetSectionKey | null = null;
   let files: File[] = [];
+  let removedAttachmentIds: string[] = [];
   const contentType = req.headers.get("content-type")?.toLowerCase() ?? "";
   try {
     if (contentType.includes("multipart/form-data")) {
@@ -357,6 +361,14 @@ export async function PATCH(
       text = normalizeText(form.get("text")).slice(0, TEXT_MAX_LEN);
       section = parseSection(form.get("section"));
       files = form.getAll("files").filter((entry): entry is File => entry instanceof File);
+      removedAttachmentIds = Array.from(
+        new Set(
+          form
+            .getAll("removedAttachmentIds")
+            .map(normalizeAttachmentId)
+            .filter(Boolean)
+        )
+      );
     } else {
       const body = await req.json();
       if (!isPlainObject(body)) {
@@ -365,6 +377,11 @@ export async function PATCH(
       title = normalizeText(body.title).slice(0, TITLE_MAX_LEN);
       text = normalizeText(body.text).slice(0, TEXT_MAX_LEN);
       section = parseSection(body.section);
+      removedAttachmentIds = Array.isArray(body.removedAttachmentIds)
+        ? Array.from(
+            new Set(body.removedAttachmentIds.map(normalizeAttachmentId).filter(Boolean))
+          )
+        : [];
     }
   } catch {
     return withRateLimitHeaders(
@@ -489,7 +506,29 @@ export async function PATCH(
   }
 
   const existingAttachments = parseAttachments(postRaw.attachments);
-  if (existingAttachments.length + files.length > FILES_MAX_COUNT) {
+  const existingAttachmentIds = new Set(existingAttachments.map((attachment) => attachment.id));
+  const unknownRemovedAttachmentId = removedAttachmentIds.find(
+    (attachmentId) => !existingAttachmentIds.has(attachmentId)
+  );
+  if (unknownRemovedAttachmentId) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Některá příloha k odebrání nebyla nalezena." },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+
+  const removedAttachmentIdSet = new Set(removedAttachmentIds);
+  const keptAttachments = existingAttachments.filter(
+    (attachment) => !removedAttachmentIdSet.has(attachment.id)
+  );
+  const removedAttachments = existingAttachments.filter((attachment) =>
+    removedAttachmentIdSet.has(attachment.id)
+  );
+
+  if (keptAttachments.length + files.length > FILES_MAX_COUNT) {
     return withRateLimitHeaders(
       NextResponse.json(
         {
@@ -510,7 +549,7 @@ export async function PATCH(
       uploaderEmail: ctx.email,
       existingAttachments,
     });
-    const attachments = [...existingAttachments, ...uploadedAttachments];
+    const attachments = [...keptAttachments, ...uploadedAttachments];
 
     await postRef.update({
       title,
@@ -520,6 +559,8 @@ export async function PATCH(
       attachments,
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    await deleteAttachmentsBestEffort(removedAttachments);
 
     return withRateLimitHeaders(
       NextResponse.json({ ok: true, postId }),
