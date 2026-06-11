@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { randomUUID } from "node:crypto";
 
@@ -30,12 +30,16 @@ const POST_RATE_LIMIT_WINDOW_MS = 60_000;
 
 const POSTS_DEFAULT_LIMIT = 30;
 const POSTS_MAX_LIMIT = 50;
+const POSTS_SCAN_BATCH_LIMIT = 100;
 const COMMENTS_PER_POST_LIMIT = 120;
 const TITLE_MAX_LEN = 140;
 const TEXT_MAX_LEN = 6000;
 const FILES_MAX_COUNT = 6;
 const FILE_MAX_SIZE_BYTES = 10 * 1024 * 1024;
 const FILE_TOTAL_MAX_BYTES = 30 * 1024 * 1024;
+const POLL_QUESTION_MAX_LEN = 180;
+const POLL_OPTION_MAX_LEN = 100;
+const POLL_OPTIONS_MAX_COUNT = 8;
 const INTRANET_PUSH_MAX_RECIPIENTS = 350;
 const INTRANET_PUSH_MAX_TOKENS_PER_USER = 8;
 const INTRANET_PUSH_MAX_TOKENS_PER_MULTICAST = 500;
@@ -61,6 +65,20 @@ type WallAuthor = {
   uid: string;
   email: string;
   name: string;
+};
+
+type WallPollOption = {
+  id: string;
+  text: string;
+  voteCount: number;
+};
+
+type WallPoll = {
+  id: string;
+  question: string;
+  totalVotes: number;
+  selectedOptionId: string | null;
+  options: WallPollOption[];
 };
 
 type WallComment = {
@@ -98,6 +116,7 @@ type WallPost = {
   author: WallAuthor;
   attachments: WallAttachment[];
   comments: WallComment[];
+  poll: WallPoll | null;
 };
 
 type IntranetPushRecipient = {
@@ -227,6 +246,68 @@ const parseLikedByEmails = (value: unknown): string[] => {
     seen.add(normalized);
   }
   return Array.from(seen);
+};
+
+const normalizePollOptionId = (value: unknown): string =>
+  normalizeText(value).replace(/[^\w-]/g, "");
+
+const parsePollVotes = (value: unknown): Array<{ email: string; optionId: string }> => {
+  if (!Array.isArray(value)) return [];
+  const votesByEmail = new Map<string, string>();
+
+  for (const raw of value) {
+    if (!isPlainObject(raw)) continue;
+    const email = normalizeEmail(raw.email);
+    const optionId = normalizePollOptionId(raw.optionId);
+    if (!email || !optionId) continue;
+    votesByEmail.set(email, optionId);
+  }
+
+  return Array.from(votesByEmail, ([email, optionId]) => ({ email, optionId }));
+};
+
+const parsePoll = (
+  pollRaw: unknown,
+  votesRaw: unknown,
+  viewerEmail: string
+): WallPoll | null => {
+  if (!isPlainObject(pollRaw)) return null;
+  const id = normalizeText(pollRaw.id) || "poll";
+  const question = normalizeText(pollRaw.question);
+  const optionsRaw = Array.isArray(pollRaw.options) ? pollRaw.options : [];
+  const options = optionsRaw
+    .map((optionRaw): { id: string; text: string } | null => {
+      if (!isPlainObject(optionRaw)) return null;
+      const optionId = normalizePollOptionId(optionRaw.id);
+      const text = normalizeText(optionRaw.text);
+      if (!optionId || !text) return null;
+      return { id: optionId, text };
+    })
+    .filter((option): option is { id: string; text: string } => option !== null);
+
+  if (!question || options.length < 2) return null;
+
+  const optionIds = new Set(options.map((option) => option.id));
+  const countsByOptionId = new Map(options.map((option) => [option.id, 0]));
+  const votes = parsePollVotes(votesRaw).filter((vote) => optionIds.has(vote.optionId));
+  votes.forEach((vote) => {
+    countsByOptionId.set(vote.optionId, (countsByOptionId.get(vote.optionId) ?? 0) + 1);
+  });
+
+  const viewerVote = viewerEmail
+    ? votes.find((vote) => vote.email === viewerEmail)?.optionId ?? null
+    : null;
+
+  return {
+    id,
+    question,
+    totalVotes: votes.length,
+    selectedOptionId: viewerVote,
+    options: options.map((option) => ({
+      ...option,
+      voteCount: countsByOptionId.get(option.id) ?? 0,
+    })),
+  };
 };
 
 const parseAuthor = (
@@ -773,6 +854,7 @@ function mapPostFromDoc(
       isImage,
     })
   );
+  const poll = parsePoll(raw.poll, raw.pollVotes, viewerEmail);
 
   return {
     id: docId,
@@ -788,6 +870,7 @@ function mapPostFromDoc(
     author,
     attachments,
     comments,
+    poll,
   };
 }
 
@@ -827,18 +910,55 @@ export async function GET(req: NextRequest) {
     Number.isFinite(limitRaw) && limitRaw > 0
       ? Math.min(Math.max(1, Math.floor(limitRaw)), POSTS_MAX_LIMIT)
       : POSTS_DEFAULT_LIMIT;
+  const cursorRaw = Number(req.nextUrl.searchParams.get("cursorMs"));
+  const cursorMs =
+    Number.isFinite(cursorRaw) && cursorRaw > 0 ? Math.floor(cursorRaw) : null;
 
   try {
     const viewerEmail = normalizeEmail(ctx.email);
-    const queryLimit = section ? Math.max(limit * 4, 80) : limit;
-    const query = adminDb
+    const batchLimit = Math.max(limit + 1, POSTS_SCAN_BATCH_LIMIT);
+    const matchingDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+    let query: FirebaseFirestore.Query = adminDb
       .collection(POSTS_COLLECTION)
       .orderBy("createdAt", "desc")
-      .limit(queryLimit);
-    const postsSnap = await query.get();
+      .limit(batchLimit);
+    if (cursorMs) {
+      query = query.startAfter(Timestamp.fromMillis(cursorMs));
+    }
+
+    while (matchingDocs.length <= limit) {
+      const postsSnap = await query.get();
+      if (postsSnap.empty) break;
+
+      for (const doc of postsSnap.docs) {
+        const raw = doc.data() as Record<string, unknown>;
+        const docSection = parseSection(raw.section);
+        if (!section || docSection === section) {
+          matchingDocs.push(doc);
+          if (matchingDocs.length > limit) break;
+        }
+      }
+
+      if (matchingDocs.length > limit || postsSnap.size < batchLimit) break;
+      const lastDoc = postsSnap.docs[postsSnap.docs.length - 1];
+      if (!lastDoc) break;
+      query = adminDb
+        .collection(POSTS_COLLECTION)
+        .orderBy("createdAt", "desc")
+        .startAfter(lastDoc)
+        .limit(batchLimit);
+    }
+
+    const docsToReturn = matchingDocs.slice(0, limit);
+    const hasMoreCandidate = matchingDocs.length > limit;
+    const lastReturnedDoc = docsToReturn[docsToReturn.length - 1] ?? null;
+    const nextCursorMs = hasMoreCandidate
+      ? toMillis(lastReturnedDoc?.data().createdAt) ?? null
+      : null;
+    const hasMore = hasMoreCandidate && nextCursorMs !== null;
 
     const posts = await Promise.all(
-      postsSnap.docs.map(async (doc) => {
+      docsToReturn.map(async (doc) => {
         const raw = doc.data() as Record<string, unknown>;
         const comments = await loadCommentsForPost(doc.id, viewerEmail);
         return mapPostFromDoc(doc.id, raw, comments, viewerEmail);
@@ -851,8 +971,9 @@ export async function GET(req: NextRequest) {
         sections: INTRANET_SECTIONS,
         posts: posts
           .filter((post): post is WallPost => post !== null)
-          .filter((post) => (section ? post.section === section : true))
           .slice(0, limit),
+        hasMore,
+        nextCursorMs,
       }),
       ctx
     );
@@ -904,6 +1025,13 @@ export async function POST(req: NextRequest) {
   const text = normalizeText(form.get("text")).slice(0, TEXT_MAX_LEN);
   const sectionInput = form.get("section");
   const section = parseSection(sectionInput) ?? "obecne";
+  const pollEnabled = normalizeText(form.get("pollEnabled")) === "1";
+  const pollQuestion = normalizeText(form.get("pollQuestion")).slice(0, POLL_QUESTION_MAX_LEN);
+  const pollOptions = form
+    .getAll("pollOptions")
+    .map((option) => normalizeText(option).slice(0, POLL_OPTION_MAX_LEN))
+    .filter(Boolean)
+    .slice(0, POLL_OPTIONS_MAX_COUNT);
 
   if (!title) {
     return withRateLimitHeaders(
@@ -922,6 +1050,26 @@ export async function POST(req: NextRequest) {
       ),
       ctx
     );
+  }
+  if (pollEnabled) {
+    if (!pollQuestion) {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: "Otázka ankety je povinná." },
+          { status: 400 }
+        ),
+        ctx
+      );
+    }
+    if (pollOptions.length < 2) {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: "Anketa musí mít alespoň dvě možnosti." },
+          { status: 400 }
+        ),
+        ctx
+      );
+    }
   }
 
   const filesRaw = form.getAll("files");
@@ -1001,7 +1149,17 @@ export async function POST(req: NextRequest) {
 
     const timestamp = FieldValue.serverTimestamp();
     const sectionLabel = INTRANET_SECTION_LABEL_BY_KEY.get(section) ?? section;
-    await postRef.set({
+    const poll = pollEnabled
+      ? {
+          id: randomUUID(),
+          question: pollQuestion,
+          options: pollOptions.map((option) => ({
+            id: randomUUID(),
+            text: option,
+          })),
+        }
+      : null;
+    const postData: Record<string, unknown> = {
       title,
       text,
       section,
@@ -1015,7 +1173,12 @@ export async function POST(req: NextRequest) {
       likedByEmails: [],
       createdAt: timestamp,
       updatedAt: timestamp,
-    });
+    };
+    if (poll) {
+      postData.poll = poll;
+      postData.pollVotes = [];
+    }
+    await postRef.set(postData);
 
     try {
       await sendIntranetPostPushNotification({

@@ -6,9 +6,13 @@ import { useState } from "react";
 import {
   Calculator,
   ChartNoAxesColumn,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   FileDown,
   Files,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -75,7 +79,7 @@ const getInsurerLogoPath = (insurer: string): string | null => {
     return "/icons/cclogo.png";
   }
   if (normalized.includes("maxima")) return "/icons/maxima.png";
-  if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csob.png";
+  if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csb.png";
   if (normalized.includes("simplea")) return "/icons/simplea.png";
   return null;
 };
@@ -1372,6 +1376,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState<string | null>(null);
+  const [scenarioModalOpen, setScenarioModalOpen] = useState(false);
+  const [scenarioStep, setScenarioStep] = useState<0 | 1>(0);
   const [scenarioAInput, setScenarioAInput] = useState("25");
   const [scenarioBInput, setScenarioBInput] = useState("50");
   const [scenarioCInput, setScenarioCInput] = useState("75");
@@ -1405,18 +1411,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
 
-  const handleExportThreeScenarioPdf = async () => {
-    if (sumInsuredValue <= 0) {
-      setScenarioExportError("Zadej nejdřív pojistnou částku.");
-      return;
-    }
-
-    setScenarioExportError(null);
-    setScenarioExporting(true);
-    try {
-      const html2pdf = await getHtml2Pdf();
-      const generatedAt = new Date().toLocaleString("cs-CZ");
-
+  const buildScenarioPdfExportHtml = (generatedAt: string): string => {
       const scenariosHtml = scenarioValues
         .map((scenario, scenarioIndex) => {
           const scenarioCards = [...applyCardFilters(buildCardsForPercent(scenario.percent))]
@@ -1482,16 +1477,73 @@ export default function SrovnavacTrvalychNasledkuPage() {
               }
             )
             .join("");
+          const leadersHtml = scenarioCards
+            .slice(0, 3)
+            .map((card, idx) => {
+              const logoPath = getInsurerLogoPath(card.insurer);
+              const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
+              const leaderRankClass =
+                idx === 0
+                  ? "leader-rank leader-rank--top"
+                  : idx === 1
+                    ? "leader-rank leader-rank--second"
+                    : "leader-rank leader-rank--third";
+              const logoMarkup = logoPath
+                ? `<span class="leader-logo-wrap"><img class="leader-logo" src="${escapeHtml(
+                    logoPath
+                  )}" alt="" /></span>`
+                : `<span class="leader-logo-wrap leader-logo-fallback">${escapeHtml(
+                    insurerName.slice(0, 2).toUpperCase()
+                  )}</span>`;
+
+              return `
+                <div class="leader-card">
+                  <div class="leader-head">
+                    <span class="${leaderRankClass}">${idx + 1}</span>
+                    ${logoMarkup}
+                  </div>
+                  <div class="leader-name">${escapeHtml(insurerName)}</div>
+                  <div class="leader-product">${escapeHtml(productName)}</div>
+                  <div class="leader-payout">${escapeHtml(formatMoney(card.payout))}</div>
+                </div>
+              `;
+            })
+            .join("");
 
           return `
-            <section class="scenario-block ${scenarioToneClass}">
-              <div class="scenario-head">
-                <div class="scenario-kicker">${scenarioToneLabel}</div>
-                <div class="scenario-range">Rozsah poškození ${escapeHtml(
-                  formatPercent(scenario.percent)
-                )}</div>
+            <section class="report-page ${scenarioToneClass}">
+              <div class="page-topbar">
+                <span class="topbar-pill">Bohemika.App interní report</span>
+                <span class="topbar-meta">Vygenerováno ${escapeHtml(generatedAt)}</span>
               </div>
-              <div class="scenario-title">${escapeHtml(scenario.label)}</div>
+
+              <header class="page-header">
+                <div class="brand-head">
+                  <img class="brand-logo" src="/icons/bohemika_logo.png" alt="Bohemika" />
+                  <div class="title-block">
+                    <h1>
+                      <span class="title-line">Porovnání plnění</span>
+                      <span class="title-line">trvalých následků úrazu</span>
+                    </h1>
+                    <div class="title-tags">
+                      <span class="title-tag">3 scénáře</span>
+                      <span class="title-tag title-tag-accent">PDF pro klienta</span>
+                    </div>
+                  </div>
+                </div>
+              </header>
+
+              <section class="scenario-block">
+                <div class="scenario-top">
+                  <div>
+                    <div class="scenario-kicker">${scenarioToneLabel}</div>
+                    <div class="scenario-title">${escapeHtml(scenario.label)}</div>
+                  </div>
+                <div class="scenario-range-card">
+                  <span>Rozsah poškození</span>
+                  <strong>${escapeHtml(formatPercent(scenario.percent))}</strong>
+                </div>
+              </div>
               <div class="meta-row">
                 <div class="meta-chip">
                   <span class="meta-label">Pojistná částka</span>
@@ -1510,6 +1562,9 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   <strong class="meta-value">${scenarioCards.length}</strong>
                 </div>
               </div>
+              ${leadersHtml ? `<div class="leader-grid">${leadersHtml}</div>` : ""}
+              </section>
+
               <table class="scenario-table">
                 <thead>
                   <tr>
@@ -1529,29 +1584,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
         .join("");
 
       const pdfHtml = `
-        <div class="pdf-page">
-          <div class="page-topbar">
-            <span class="topbar-pill">Bohemika.App interní report</span>
-            <span class="topbar-meta">Vygenerováno ${escapeHtml(generatedAt)}</span>
-          </div>
-          <header class="page-header">
-            <div class="brand-head">
-              <img class="brand-logo" src="/icons/bohemika_logo.png" alt="Bohemika" />
-              <div class="title-block">
-                <h1>
-                  <span class="title-line">Porovnání plnění</span>
-                  <span class="title-line">TRVALÝCH NÁSLEDKŮ ÚRAZU</span>
-                </h1>
-                <div class="title-tags">
-                  <span class="title-tag">3 scénáře</span>
-                  <span class="title-tag title-tag-accent">PDF pro klienta</span>
-                </div>
-              </div>
-            </div>
-          </header>
-          <div class="scenarios-stack">
-            ${scenariosHtml}
-          </div>
+        <div class="report-stack">
+          ${scenariosHtml}
         </div>
       `;
 
@@ -1559,23 +1593,23 @@ export default function SrovnavacTrvalychNasledkuPage() {
         <style>
           @page {
             size: A4 portrait;
-            margin: 7mm;
+            margin: 0;
           }
           * { box-sizing: border-box; }
           .pdf-root {
-            font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(155deg, #edf3fb 0%, #f8fbff 55%, #eef4fc 100%);
-            color: #10213d;
-            padding: 6px;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #eef3fb;
+            color: #13233f;
+            padding: 8px;
           }
           .pdf-page {
             width: 100%;
-            padding: 12px 13px 14px;
-            border-radius: 22px;
-            border: 1px solid #d6e1f1;
-            background: linear-gradient(180deg, #ffffff 0%, #f9fcff 100%);
+            padding: 12px;
+            border-radius: 24px;
+            border: 1px solid #d9e3f1;
+            background: #f8fbff;
             box-shadow:
-              0 18px 42px rgba(16, 33, 61, 0.14),
+              0 18px 42px rgba(15, 23, 42, 0.14),
               0 1px 0 rgba(255,255,255,0.9) inset;
             position: relative;
             overflow: hidden;
@@ -1583,12 +1617,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
           .pdf-page::before {
             content: "";
             position: absolute;
-            right: -110px;
-            top: -110px;
-            width: 250px;
-            height: 250px;
+            right: -90px;
+            top: -130px;
+            width: 280px;
+            height: 280px;
             border-radius: 999px;
-            background: radial-gradient(circle at center, rgba(46,110,255,0.20) 0%, rgba(46,110,255,0) 72%);
+            background: radial-gradient(circle at center, rgba(139,92,246,0.18) 0%, rgba(139,92,246,0) 72%);
             pointer-events: none;
           }
           .page-topbar {
@@ -1597,58 +1631,70 @@ export default function SrovnavacTrvalychNasledkuPage() {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
           }
           .topbar-pill {
             display: inline-flex;
             align-items: center;
             border-radius: 999px;
-            border: 1px solid #ccd9ec;
-            background: #f4f8ff;
-            color: #26406e;
-            padding: 4px 10px;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #334155;
+            padding: 5px 10px;
             font-size: 9px;
-            letter-spacing: 0.08em;
+            letter-spacing: 0.09em;
             text-transform: uppercase;
             font-weight: 700;
           }
           .topbar-meta {
             font-size: 9px;
-            color: #647896;
-            letter-spacing: 0.03em;
+            color: #64748b;
             font-weight: 600;
           }
           .scenarios-stack {
             display: flex;
             flex-direction: column;
-            gap: 9px;
+            gap: 10px;
             position: relative;
             z-index: 1;
           }
           .page-header {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            margin-bottom: 11px;
+            position: relative;
+            margin-bottom: 10px;
+            overflow: hidden;
+            border-radius: 20px;
+            background: linear-gradient(135deg, #101827 0%, #1d2750 58%, #31205a 100%);
+            padding: 16px 18px;
+            color: #ffffff;
+            box-shadow: 0 16px 34px rgba(15, 23, 42, 0.22);
+          }
+          .page-header::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 88% 0%, rgba(168,85,247,0.34), transparent 34%);
+            pointer-events: none;
           }
           .brand-head {
+            position: relative;
+            z-index: 1;
             display: flex;
             align-items: center;
-            gap: 11px;
+            gap: 14px;
           }
           .brand-logo {
             width: auto;
-            height: 52px;
-            max-width: 48px;
+            height: 56px;
+            max-width: 52px;
             display: block;
           }
           .title-block h1 {
             margin: 0;
-            font-size: 29px;
-            line-height: 1.02;
-            letter-spacing: 0.01em;
-            font-weight: 700;
-            color: #102344;
+            font-size: 30px;
+            line-height: 1.04;
+            letter-spacing: 0;
+            font-weight: 800;
+            color: #ffffff;
           }
           .title-line {
             display: block;
@@ -1663,28 +1709,29 @@ export default function SrovnavacTrvalychNasledkuPage() {
             display: inline-flex;
             align-items: center;
             border-radius: 999px;
-            padding: 4px 8px;
-            border: 1px solid #d6e3f5;
-            background: #f5f9ff;
-            color: #274570;
+            padding: 5px 9px;
+            border: 1px solid rgba(255,255,255,0.18);
+            background: rgba(255,255,255,0.10);
+            color: #dbeafe;
             font-size: 9px;
             font-weight: 700;
             letter-spacing: 0.05em;
             text-transform: uppercase;
           }
           .title-tag-accent {
-            background: linear-gradient(135deg, #264da3 0%, #1d3277 100%);
-            border-color: #1f3e87;
+            background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
+            border-color: rgba(255,255,255,0.20);
             color: #ffffff;
           }
           .scenario-block {
             --tone: #3b82f6;
-            border: 1px solid #cfdced;
-            border-radius: 15px;
-            padding: 11px;
+            --tone-soft: #eff6ff;
+            border: 1px solid #d9e3f0;
+            border-radius: 18px;
+            padding: 12px;
             display: block;
-            background: linear-gradient(170deg, #ffffff 0%, #f7fbff 100%);
-            box-shadow: 0 10px 24px rgba(15, 30, 58, 0.09);
+            background: #ffffff;
+            box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
             break-inside: avoid;
             page-break-inside: avoid;
             position: relative;
@@ -1693,60 +1740,74 @@ export default function SrovnavacTrvalychNasledkuPage() {
           .scenario-block::before {
             content: "";
             position: absolute;
-            left: 0;
-            top: 10px;
-            bottom: 10px;
-            width: 4px;
-            border-radius: 0 6px 6px 0;
+            inset: 0 0 auto 0;
+            height: 4px;
             background: var(--tone);
           }
-          .scenario--low { --tone: #1d72e8; }
-          .scenario--mid { --tone: #6246d1; }
-          .scenario--high { --tone: #0f9f6e; }
-          .scenario-head {
+          .scenario--low { --tone: #2563eb; --tone-soft: #eff6ff; }
+          .scenario--mid { --tone: #7c3aed; --tone-soft: #f5f3ff; }
+          .scenario--high { --tone: #059669; --tone-soft: #ecfdf5; }
+          .scenario-top {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 8px;
-            margin-bottom: 5px;
+            gap: 10px;
+            margin-bottom: 8px;
           }
           .scenario-kicker {
             display: inline-flex;
             align-items: center;
             border-radius: 999px;
-            background: #eef4ff;
-            border: 1px solid #c8d7f0;
-            color: #274773;
+            background: var(--tone-soft);
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            color: var(--tone);
             font-size: 9px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
+            font-weight: 800;
+            letter-spacing: 0.09em;
             text-transform: uppercase;
             padding: 4px 8px;
           }
-          .scenario-range {
-            font-size: 10px;
-            color: #3f5270;
+          .scenario-range-card {
+            min-width: 128px;
+            border-radius: 13px;
+            border: 1px solid #dbe4f0;
+            background: #f8fafc;
+            padding: 8px 10px;
+            text-align: right;
+          }
+          .scenario-range-card span {
+            display: block;
+            font-size: 8px;
             font-weight: 700;
-            letter-spacing: 0.03em;
+            color: #64748b;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+          }
+          .scenario-range-card strong {
+            display: block;
+            margin-top: 2px;
+            color: #0f172a;
+            font-size: 17px;
+            font-weight: 800;
           }
           .scenario-title {
-            margin-bottom: 7px;
-            font-size: 18px;
-            font-weight: 700;
-            color: #10284c;
-            letter-spacing: 0.01em;
+            margin-top: 4px;
+            font-size: 20px;
+            font-weight: 800;
+            color: #0f172a;
+            letter-spacing: 0;
           }
           .meta-row {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 7px;
-            margin-bottom: 8px;
+            margin-bottom: 9px;
           }
           .meta-chip {
-            border-radius: 10px;
-            border: 1px solid #d6e3f4;
-            background: #ffffff;
-            padding: 7px 8px;
+            border-radius: 13px;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            padding: 8px 9px;
             display: grid;
             grid-template-columns: 1fr;
             gap: 2px;
@@ -1755,44 +1816,132 @@ export default function SrovnavacTrvalychNasledkuPage() {
             font-size: 9px;
             text-transform: uppercase;
             letter-spacing: 0.08em;
-            color: #60758f;
+            color: #64748b;
             font-weight: 700;
           }
           .meta-value {
-            font-size: 13px;
-            color: #182e4d;
+            font-size: 14px;
+            color: #0f172a;
             font-weight: 800;
+          }
+          .leader-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            margin: 0 0 10px;
+          }
+          .leader-card {
+            min-height: 104px;
+            border-radius: 16px;
+            border: 1px solid #dbe4f0;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            padding: 10px;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.07);
+          }
+          .leader-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+          }
+          .leader-rank {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 800;
+            border: 1px solid #dbe4f0;
+            color: #334155;
+            background: #f1f5f9;
+          }
+          .leader-rank--top {
+            border-color: #f4c76a;
+            background: #fff7df;
+            color: #9a5e00;
+          }
+          .leader-rank--second {
+            border-color: #bfdbfe;
+            background: #eff6ff;
+            color: #1d4ed8;
+          }
+          .leader-rank--third {
+            border-color: #ddd6fe;
+            background: #f5f3ff;
+            color: #6d28d9;
+          }
+          .leader-logo-wrap {
+            width: 52px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .leader-logo {
+            max-width: 52px;
+            max-height: 28px;
+            object-fit: contain;
+            display: block;
+          }
+          .leader-logo-fallback {
+            border-radius: 10px;
+            background: #e2e8f0;
+            color: #334155;
+            font-size: 11px;
+            font-weight: 800;
+          }
+          .leader-name {
+            margin-top: 9px;
+            color: #0f172a;
+            font-size: 15px;
+            font-weight: 800;
+            line-height: 1.12;
+          }
+          .leader-product {
+            margin-top: 2px;
+            color: #64748b;
+            font-size: 10px;
+            font-weight: 600;
+          }
+          .leader-payout {
+            margin-top: 10px;
+            color: #047857;
+            font-size: 19px;
+            font-weight: 800;
+            line-height: 1;
           }
           .scenario-table {
             width: 100%;
             border-collapse: separate;
             border-spacing: 0;
-            border: 1px solid #cad8ec;
-            border-radius: 12px;
+            border: 1px solid #dbe4f0;
+            border-radius: 14px;
             overflow: hidden;
-            box-shadow: 0 8px 20px rgba(18, 34, 64, 0.08);
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
             break-inside: auto;
             page-break-inside: auto;
           }
           .scenario-table thead th {
-            background: linear-gradient(135deg, #15315e 0%, #21498a 100%);
-            color: #f1f6ff;
+            background: #111827;
+            color: #f8fafc;
             text-align: left;
-            font-size: 10px;
-            padding: 9px 10px;
+            font-size: 9px;
+            padding: 8px 10px;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
+            letter-spacing: 0.08em;
             border-bottom: 1px solid rgba(255,255,255,0.18);
           }
           .scenario-table tbody td {
-            border-top: 1px solid #e2eaf5;
-            padding: 9px 10px;
-            font-size: 12px;
+            border-top: 1px solid #e5edf6;
+            padding: 8px 10px;
+            font-size: 11px;
             line-height: 1.25;
             page-break-inside: avoid;
           }
           .scenario-table tbody tr:nth-child(odd) td { background: #ffffff; }
-          .scenario-table tbody tr:nth-child(even) td { background: #f7fbff; }
+          .scenario-table tbody tr:nth-child(even) td { background: #f8fafc; }
           .rank-cell {
             width: 50px;
             text-align: center;
@@ -1809,7 +1958,6 @@ export default function SrovnavacTrvalychNasledkuPage() {
             color: #1a355d;
             font-size: 11px;
             font-weight: 800;
-            font-family: "Avenir Next", "Segoe UI", Arial, sans-serif;
           }
           .rank-badge--top {
             border-color: #f2c777;
@@ -1841,10 +1989,9 @@ export default function SrovnavacTrvalychNasledkuPage() {
             align-items: center;
             justify-content: center;
             flex: 0 0 46px;
-            border-radius: 8px;
-            border: 1px solid #cfddf0;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
             background: #ffffff;
-            box-shadow: 0 4px 10px rgba(15,30,56,0.08);
           }
           .insurer-logo {
             width: auto;
@@ -1874,7 +2021,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
             min-width: 0;
           }
           .insurer-name {
-            color: #102546;
+            color: #0f172a;
             line-height: 1.2;
             font-weight: 800;
             font-size: 13px;
@@ -1882,8 +2029,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
           .insurer-product {
             margin-top: 1px;
             font-size: 10px;
-            color: #5b6f8a;
-            letter-spacing: 0.03em;
+            color: #64748b;
           }
           .variant-col {
             width: 24%;
@@ -1892,11 +2038,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
             display: inline-flex;
             align-items: center;
             border-radius: 999px;
-            border: 1px solid #d4dff1;
-            background: #f5f8ff;
-            color: #2c466f;
+            border: 1px solid #ddd6fe;
+            background: #f5f3ff;
+            color: #5b21b6;
             font-size: 10px;
-            font-weight: 700;
+            font-weight: 800;
             padding: 4px 8px;
             line-height: 1.2;
           }
@@ -1904,10 +2050,9 @@ export default function SrovnavacTrvalychNasledkuPage() {
             width: 23%;
             text-align: right;
             white-space: nowrap;
-            color: #0f3c63;
+            color: #047857;
             font-weight: 800;
-            font-size: 18px;
-            font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI", sans-serif;
+            font-size: 15px;
           }
           .empty-cell {
             padding: 14px 10px;
@@ -1917,18 +2062,518 @@ export default function SrovnavacTrvalychNasledkuPage() {
             background: #f5f9ff;
             border-top: 1px dashed #c7d5ea;
           }
+
+          /* Print-first overrides: stable A4 layout, simple CSS, normal fonts. */
+          .pdf-root {
+            width: 794px;
+            margin: 0 auto;
+            padding: 0;
+            background: #eef2f7;
+            font-family: Arial, Helvetica, sans-serif;
+            color: #111827;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .report-stack {
+            width: 794px;
+            margin: 0 auto;
+          }
+          .report-page {
+            --tone: #2563eb;
+            --tone-soft: #eff6ff;
+            --tone-ink: #1d4ed8;
+            position: relative;
+            width: 794px;
+            height: 1123px;
+            min-height: 1123px;
+            padding: 30px 36px 32px;
+            background: #ffffff;
+            border: 0;
+            break-after: page;
+            page-break-after: always;
+            overflow: hidden;
+          }
+          .report-page.scenario--mid {
+            --tone: #7c3aed;
+            --tone-soft: #f5f3ff;
+            --tone-ink: #6d28d9;
+          }
+          .report-page.scenario--high {
+            --tone: #059669;
+            --tone-soft: #ecfdf5;
+            --tone-ink: #047857;
+          }
+          .report-page::before {
+            content: "";
+            position: absolute;
+            inset: 0 0 auto 0;
+            height: 8px;
+            background: var(--tone);
+          }
+          .report-page:last-child {
+            break-after: auto;
+            page-break-after: auto;
+          }
+          .report-page .page-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 13px;
+          }
+          .report-page .topbar-pill {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid #d7dee9;
+            border-radius: 999px;
+            background: #f8fafc;
+            color: #334155;
+            padding: 5px 10px;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0;
+            text-transform: uppercase;
+          }
+          .report-page .topbar-meta {
+            color: #64748b;
+            font-size: 9px;
+            font-weight: 600;
+          }
+          .report-page .page-header {
+            display: block;
+            margin: 0 0 14px;
+            padding: 16px 18px;
+            border: 1px solid #dce4ef;
+            border-left: 6px solid var(--tone);
+            border-radius: 16px;
+            background: #f8fafc;
+            color: #111827;
+            box-shadow: none;
+          }
+          .report-page .page-header::after {
+            display: none;
+          }
+          .report-page .brand-head {
+            display: flex;
+            align-items: center;
+            gap: 13px;
+          }
+          .report-page .brand-logo {
+            width: 40px;
+            height: auto;
+            max-height: 48px;
+          }
+          .report-page .title-block h1 {
+            margin: 0;
+            color: #111827;
+            font-size: 26px;
+            line-height: 1.06;
+            font-weight: 800;
+            letter-spacing: 0;
+          }
+          .report-page .title-tags {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+          }
+          .report-page .title-tag {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid #dbe4f0;
+            border-radius: 999px;
+            background: #ffffff;
+            color: #334155;
+            padding: 4px 9px;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0;
+            text-transform: uppercase;
+          }
+          .report-page .title-tag-accent {
+            border-color: var(--tone);
+            background: var(--tone);
+            color: #ffffff;
+          }
+          .report-page .scenario-block {
+            border: 1px solid #dce4ef;
+            border-radius: 16px;
+            background: #ffffff;
+            padding: 12px;
+            margin: 0 0 12px;
+            box-shadow: none;
+            overflow: hidden;
+          }
+          .report-page .scenario-block::before {
+            display: none;
+          }
+          .report-page .scenario-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 9px;
+          }
+          .report-page .scenario-kicker {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid #dbe4f0;
+            border-radius: 999px;
+            background: var(--tone-soft);
+            color: var(--tone-ink);
+            padding: 4px 8px;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0;
+            text-transform: uppercase;
+          }
+          .report-page .scenario-title {
+            margin: 5px 0 0;
+            color: #111827;
+            font-size: 21px;
+            line-height: 1.05;
+            font-weight: 800;
+            letter-spacing: 0;
+          }
+          .report-page .scenario-range-card {
+            min-width: 126px;
+            border: 1px solid #dbe4f0;
+            border-radius: 13px;
+            background: #f8fafc;
+            padding: 8px 10px;
+            text-align: right;
+          }
+          .report-page .scenario-range-card span,
+          .report-page .meta-label {
+            color: #64748b;
+            font-size: 8px;
+            font-weight: 800;
+            letter-spacing: 0;
+            text-transform: uppercase;
+          }
+          .report-page .scenario-range-card strong {
+            display: block;
+            margin-top: 2px;
+            color: #111827;
+            font-size: 19px;
+            line-height: 1;
+            font-weight: 800;
+          }
+          .report-page .meta-row {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            margin: 0 0 9px;
+          }
+          .report-page .meta-chip {
+            border: 1px solid #dbe4f0;
+            border-radius: 12px;
+            background: #f8fafc;
+            padding: 7px 9px;
+          }
+          .report-page .meta-value {
+            display: block;
+            margin-top: 3px;
+            color: #111827;
+            font-size: 13px;
+            line-height: 1;
+            font-weight: 800;
+          }
+          .report-page .leader-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            margin: 0;
+          }
+          .report-page .leader-card {
+            height: 86px;
+            border: 1px solid #dbe4f0;
+            border-radius: 14px;
+            background: #f8fafc;
+            padding: 8px 9px;
+            box-shadow: none;
+            overflow: hidden;
+          }
+          .report-page .leader-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+          }
+          .report-page .leader-rank {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 24px;
+            height: 24px;
+            border-radius: 999px;
+            border: 1px solid #dbe4f0;
+            background: #ffffff;
+            color: #334155;
+            font-size: 10px;
+            font-weight: 800;
+          }
+          .report-page .leader-rank--top {
+            border-color: #f4c76a;
+            background: #fff7df;
+            color: #9a5e00;
+          }
+          .report-page .leader-rank--second {
+            border-color: #bfdbfe;
+            background: #eff6ff;
+            color: #1d4ed8;
+          }
+          .report-page .leader-rank--third {
+            border-color: #ddd6fe;
+            background: #f5f3ff;
+            color: #6d28d9;
+          }
+          .report-page .leader-logo-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 56px;
+            height: 24px;
+          }
+          .report-page .leader-logo {
+            width: auto;
+            height: auto;
+            max-width: 56px;
+            max-height: 23px;
+            object-fit: contain;
+            display: block;
+          }
+          .report-page .leader-logo-fallback {
+            border-radius: 8px;
+            background: #e2e8f0;
+            color: #334155;
+            font-size: 10px;
+            font-weight: 800;
+          }
+          .report-page .leader-name {
+            margin-top: 6px;
+            color: #111827;
+            font-size: 13px;
+            line-height: 1.1;
+            font-weight: 800;
+          }
+          .report-page .leader-product {
+            margin-top: 1px;
+            color: #64748b;
+            font-size: 9px;
+            line-height: 1.1;
+            font-weight: 600;
+          }
+          .report-page .leader-payout {
+            margin-top: 5px;
+            color: #047857;
+            font-size: 15px;
+            line-height: 1;
+            font-weight: 800;
+          }
+          .report-page .scenario-table {
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: separate;
+            border-spacing: 0;
+            border: 1px solid #dbe4f0;
+            border-radius: 13px;
+            box-shadow: none;
+            overflow: hidden;
+          }
+          .report-page .scenario-table thead th {
+            background: #111827;
+            color: #ffffff;
+            padding: 7px 9px;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0;
+            text-align: left;
+            text-transform: uppercase;
+          }
+          .report-page .scenario-table tbody td {
+            padding: 5px 9px;
+            border-top: 1px solid #e5edf6;
+            font-size: 10px;
+            line-height: 1.15;
+          }
+          .report-page .scenario-table tbody tr:nth-child(odd) td {
+            background: #ffffff;
+          }
+          .report-page .scenario-table tbody tr:nth-child(even) td {
+            background: #f8fafc;
+          }
+          .report-page .rank-cell {
+            width: 46px;
+            text-align: center;
+          }
+          .report-page .rank-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 21px;
+            height: 21px;
+            border-radius: 999px;
+            border: 1px solid #cbd5e1;
+            background: #f1f5f9;
+            color: #334155;
+            font-size: 10px;
+            font-weight: 800;
+          }
+          .report-page .rank-badge--top {
+            border-color: #f4c76a;
+            background: #fff7df;
+            color: #9a5e00;
+          }
+          .report-page .rank-badge--second {
+            border-color: #bfdbfe;
+            background: #eff6ff;
+            color: #1d4ed8;
+          }
+          .report-page .rank-badge--third {
+            border-color: #ddd6fe;
+            background: #f5f3ff;
+            color: #6d28d9;
+          }
+          .report-page .insurer-col {
+            width: 42%;
+          }
+          .report-page .insurer-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .report-page .insurer-logo-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 25px;
+            flex: 0 0 44px;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
+          }
+          .report-page .insurer-logo {
+            width: auto;
+            height: auto;
+            max-width: 44px;
+            max-height: 24px;
+            object-fit: contain;
+            display: block;
+          }
+          .report-page .insurer-logo--wide {
+            max-width: 50px;
+            max-height: 24px;
+          }
+          .report-page .insurer-logo--medium {
+            max-width: 46px;
+            max-height: 24px;
+          }
+          .report-page .insurer-logo--square {
+            max-width: 36px;
+            max-height: 24px;
+          }
+          .report-page .insurer-copy {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+          }
+          .report-page .insurer-name {
+            color: #111827;
+            font-size: 11px;
+            line-height: 1.1;
+            font-weight: 800;
+          }
+          .report-page .insurer-product {
+            color: #64748b;
+            font-size: 9px;
+            line-height: 1.1;
+          }
+          .report-page .variant-col {
+            width: 25%;
+          }
+          .report-page .variant-chip {
+            border: 1px solid #ddd6fe;
+            border-radius: 999px;
+            background: #f5f3ff;
+            color: #5b21b6;
+            padding: 3px 7px;
+            font-size: 9px;
+            font-weight: 800;
+            white-space: nowrap;
+          }
+          .report-page .amount-col {
+            width: 23%;
+            text-align: right;
+            white-space: nowrap;
+            color: #047857;
+            font-size: 12px;
+            font-weight: 800;
+          }
         </style>
       `;
 
+      return stripUnsupportedColorFunctions(
+        `<div class="pdf-root">${styleBlock}${pdfHtml}</div>`
+      );
+  };
+
+  const validateScenarioExportInputs = (): boolean => {
+    if (sumInsuredValue <= 0) {
+      setScenarioExportError("Zadej nejdřív pojistnou částku.");
+      return false;
+    }
+
+    const scenarioInputs = [
+      { label: "nižší rozsah", value: scenarioAInput },
+      { label: "střední rozsah", value: scenarioBInput },
+      { label: "vysoký rozsah", value: scenarioCInput },
+    ];
+    const invalidInput = scenarioInputs.find(({ value }) => {
+      const parsed = parseNumber(value);
+      return !Number.isFinite(parsed) || parsed < 0 || parsed > 100;
+    });
+
+    if (invalidInput) {
+      setScenarioExportError(`Zadej ${invalidInput.label} v rozmezí 0 až 100 %.`);
+      return false;
+    }
+
+    return true;
+  };
+
+  const openScenarioExportModal = () => {
+    setScenarioStep(0);
+    setScenarioExportError(null);
+    setScenarioModalOpen(true);
+  };
+
+  const goToScenarioPreview = () => {
+    if (!validateScenarioExportInputs()) return;
+    setScenarioExportError(null);
+    setScenarioStep(1);
+  };
+
+  const handleExportThreeScenarioPdf = async () => {
+    if (!validateScenarioExportInputs()) return;
+
+    setScenarioExportError(null);
+    setScenarioExporting(true);
+    try {
+      const html2pdf = await getHtml2Pdf();
+      const generatedAt = new Date().toLocaleString("cs-CZ");
       const fileStamp = new Date().toISOString().slice(0, 10);
       const opt: any = {
-        margin: [6, 6, 6, 6],
+        margin: [0, 0, 0, 0],
         filename: `srovnani_trvalych_nasledku_scenare_${fileStamp}.pdf`,
-        image: { type: "jpeg", quality: 0.92 },
+        image: { type: "png", quality: 1 },
         html2canvas: {
-          scale: 2.2,
-          backgroundColor: "#ffffff",
+          scale: 2.6,
+          backgroundColor: "#eef2f7",
           useCORS: true,
+          windowWidth: 794,
+          scrollX: 0,
+          scrollY: 0,
           onclone: (doc: Document) => {
             // html2canvas neumí CSS color funkce lab()/oklch()
             // z některých globálních stylů, proto je při exportu odfiltrujeme.
@@ -1942,13 +2587,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
         jsPDF: { unit: "pt", format: "a4", orientation: "portrait", compress: true },
         pagebreak: {
           mode: ["css", "legacy"],
-          avoid: ["tr"],
+          before: ".report-page:not(:first-child)",
+          avoid: [".leader-card", ".meta-chip"],
         },
       };
-
-      const exportHtml = stripUnsupportedColorFunctions(
-        `<div class="pdf-root">${styleBlock}${pdfHtml}</div>`
-      );
+      const exportHtml = buildScenarioPdfExportHtml(generatedAt);
 
       await (html2pdf() as any).set(opt).from(exportHtml).save();
     } catch (error) {
@@ -1969,35 +2612,14 @@ export default function SrovnavacTrvalychNasledkuPage() {
     (compactList ? 1 : 0) +
     (selectedInsurers.length > 0 ? 1 : 0);
 
-  const podiumStyles: Array<{
-    title: string;
-    subtitle: string;
-    border: string;
-    badgeBg: string;
-    badgeText: string;
-  }> = [
-    {
-      title: "1. místo",
-      subtitle: "Nejvyšší plnění",
-      border: "border-[1.5px] border-amber-300/80",
-      badgeBg: "bg-amber-100 text-amber-800",
-      badgeText: "TOP",
-    },
-    {
-      title: "2. místo",
-      subtitle: "Druhé nejvyšší plnění",
-      border: "border-[1.5px] border-sky-300/70",
-      badgeBg: "bg-sky-100 text-sky-800",
-      badgeText: "2",
-    },
-    {
-      title: "3. místo",
-      subtitle: "Třetí nejvyšší plnění",
-      border: "border-[1.5px] border-slate-300/70",
-      badgeBg: "bg-slate-100 text-slate-800",
-      badgeText: "3",
-    },
-  ];
+  const podiumStyles: Array<{ badgeText: string }> = [{ badgeText: "TOP" }];
+  const scenarioStepperSteps = ["Scénáře", "Náhled PDF"];
+  const scenarioPreviewSrcDoc =
+    scenarioModalOpen && scenarioStep === 1
+      ? `<!doctype html><html lang="cs"><head><meta charset="utf-8" /><style>html,body{margin:0;background:#edf3fb;min-height:100%;}body{display:flex;justify-content:center;padding:16px;}.preview-scale{zoom:.94;}@supports not (zoom:1){.preview-scale{width:106.383%;transform:scale(.94);transform-origin:top center;}}</style></head><body><div class="preview-scale">${buildScenarioPdfExportHtml(
+          new Date().toLocaleString("cs-CZ")
+        )}</div></body></html>`
+      : "";
 
   return (
     <AppLayout active="tools">
@@ -2018,15 +2640,21 @@ export default function SrovnavacTrvalychNasledkuPage() {
               </h2>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-              <label className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition shadow-[0_10px_24px_rgba(15,23,42,0.06)] focus-within:border-emerald-300 focus-within:shadow-[0_10px_24px_rgba(16,185,129,0.12)]">
-                <div className="h-1 bg-[linear-gradient(90deg,#10b981_0%,#86efac_100%)]" />
-                <div className="px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="group relative isolate overflow-hidden rounded-[26px] border border-[#653493] bg-[#150e1f] px-3 py-3 font-mono shadow-[0_18px_34px_rgba(20,8,32,0.32)] ring-1 ring-[#7a35a7]/22 transition-[transform,border-color,box-shadow] duration-200 focus-within:border-[#9756d1] focus-within:shadow-[0_24px_44px_rgba(20,8,34,0.44)] hover:-translate-y-0.5 hover:border-[#9756d1]">
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.11)_0%,rgba(190,92,255,0)_40%,rgba(164,82,244,0.11)_100%)]" />
+                <div className="pointer-events-none absolute -right-10 top-4 h-28 w-28 rounded-full bg-[#ab66ff]/20 blur-3xl" />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(192,132,252,0.74),rgba(168,85,247,0))]"
+                />
+                <div className="relative z-[1]">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase leading-tight tracking-[0.11em] text-[#c8aee4]">
                       Pojistná částka
                     </span>
-                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                    <span className="rounded-[9px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#fbf7ff] shadow-[0_10px_20px_rgba(159,72,237,0.36)]">
                       Kč
                     </span>
                   </div>
@@ -2044,19 +2672,25 @@ export default function SrovnavacTrvalychNasledkuPage() {
                         setSumInsuredInput(formatKcInput(parsed));
                       }
                     }}
-                    className="mt-3 w-full border-0 border-b border-slate-200 bg-transparent px-0 pb-2 text-2xl font-semibold leading-none text-slate-950 outline-none transition focus:border-emerald-300 focus:ring-0"
+                    className="mt-3 w-full border-0 border-b-2 border-[#a855f7]/55 bg-transparent px-0 pb-2 text-xl font-black leading-none text-[#fbf7ff] outline-none transition placeholder:text-[#d8bcf3]/45 focus:border-[#d8b4fe] focus:ring-0"
                   />
                 </div>
               </label>
 
-              <label className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition shadow-[0_10px_24px_rgba(15,23,42,0.06)] focus-within:border-sky-300 focus-within:shadow-[0_10px_24px_rgba(14,165,233,0.12)]">
-                <div className="h-1 bg-[linear-gradient(90deg,#0ea5e9_0%,#7dd3fc_100%)]" />
-                <div className="px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              <label className="group relative isolate overflow-hidden rounded-[26px] border border-[#653493] bg-[#150e1f] px-3 py-3 font-mono shadow-[0_18px_34px_rgba(20,8,32,0.32)] ring-1 ring-[#7a35a7]/22 transition-[transform,border-color,box-shadow] duration-200 focus-within:border-[#9756d1] focus-within:shadow-[0_24px_44px_rgba(20,8,34,0.44)] hover:-translate-y-0.5 hover:border-[#9756d1]">
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.11)_0%,rgba(190,92,255,0)_40%,rgba(164,82,244,0.11)_100%)]" />
+                <div className="pointer-events-none absolute -right-10 top-4 h-28 w-28 rounded-full bg-[#ab66ff]/20 blur-3xl" />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(192,132,252,0.74),rgba(168,85,247,0))]"
+                />
+                <div className="relative z-[1]">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase leading-tight tracking-[0.11em] text-[#c8aee4]">
                       Rozsah trvalých následků
                     </span>
-                    <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                    <span className="rounded-[9px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#fbf7ff] shadow-[0_10px_20px_rgba(159,72,237,0.36)]">
                       %
                     </span>
                   </div>
@@ -2071,10 +2705,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       const limited = Math.min(100, Math.max(0, parsed));
                       setRangePercentInput(formatKcInput(limited));
                     }}
-                    className="mt-3 w-full border-0 border-b border-slate-200 bg-transparent px-0 pb-2 text-2xl font-semibold leading-none text-slate-950 outline-none transition focus:border-sky-300 focus:ring-0"
+                    className="mt-3 w-full border-0 border-b-2 border-[#a855f7]/55 bg-transparent px-0 pb-2 text-xl font-black leading-none text-[#fbf7ff] outline-none transition placeholder:text-[#d8bcf3]/45 focus:border-[#d8b4fe] focus:ring-0"
                   />
                   {Number.isFinite(rangePercentRaw) && rangePercentRaw > 100 && (
-                    <p className="mt-2 text-[11px] text-amber-800">
+                    <p className="mt-2 text-[11px] font-semibold text-amber-200">
                       Max 100 %. Počítám s {rangePercentValue}%.
                     </p>
                   )}
@@ -2100,12 +2734,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleExportThreeScenarioPdf}
+                  onClick={openScenarioExportModal}
                   disabled={scenarioExporting}
                   className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_22px_rgba(15,23,42,0.18)] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Files className="h-3.5 w-3.5" />
-                  <span>{scenarioExporting ? "Generuji…" : "Export 3 scénáře PDF"}</span>
+                  <span>Export 3 scénáře PDF</span>
                 </button>
               </div>
             </div>
@@ -2142,63 +2776,207 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 <span>Filtry</span>
               </button>
             </div>
+          </section>
+        </div>
 
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-              <div className="h-1 bg-[linear-gradient(90deg,#c89d2e_0%,#f6d36b_45%,#94a3b8_100%)]" />
-              <div className="space-y-3 px-4 py-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Scénáře pro klientský PDF výstup
+        {scenarioModalOpen && (
+          <div
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/65 px-4 py-6 backdrop-blur-sm"
+            onClick={() => setScenarioModalOpen(false)}
+          >
+            <section
+              className={`relative max-h-[94vh] w-full overflow-y-auto rounded-[28px] border border-violet-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(167,139,250,0.24),transparent_34%),linear-gradient(155deg,#160c2a_0%,#100b21_100%)] p-4 text-[#f8fafc] shadow-[0_34px_90px_rgba(7,6,25,0.7),inset_0_1px_0_rgba(196,181,253,0.2)] sm:p-5 ${
+                scenarioStep === 1 ? "max-w-7xl" : "max-w-5xl"
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setScenarioModalOpen(false)}
+                className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/18 bg-white/[0.05] text-violet-100 transition hover:bg-white/[0.12]"
+                aria-label="Zavřít export scénářů"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              <div className="flex flex-col gap-3 pr-12 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/80">
+                    Klientský PDF výstup
+                  </p>
+                  <h3 className="mt-1 text-lg font-bold tracking-[-0.02em] text-[#f8fafc] sm:text-xl">
+                    Export 3 scénářů
+                  </h3>
                 </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <label className="space-y-1 text-xs text-slate-700">
-                    <span>Nižší rozsah (%)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.1}
-                      value={scenarioAInput}
-                      onChange={(e) => setScenarioAInput(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                    />
-                  </label>
-                  <label className="space-y-1 text-xs text-slate-700">
-                    <span>Střední rozsah (%)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.1}
-                      value={scenarioBInput}
-                      onChange={(e) => setScenarioBInput(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                    />
-                  </label>
-                  <label className="space-y-1 text-xs text-slate-700">
-                    <span>Vysoký rozsah (%)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.1}
-                      value={scenarioCInput}
-                      onChange={(e) => setScenarioCInput(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                    />
-                  </label>
+                {scenarioStep === 1 ? (
+                  <button
+                    type="button"
+                    onClick={handleExportThreeScenarioPdf}
+                    disabled={scenarioExporting}
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <FileDown className="h-4 w-4" />
+                    {scenarioExporting ? "Generuji…" : "Stáhnout PDF"}
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-white/14 bg-white/[0.04] px-3 py-2.5">
+                <div
+                  className="grid gap-2"
+                  style={{
+                    gridTemplateColumns: `repeat(${scenarioStepperSteps.length}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {scenarioStepperSteps.map((stepLabel, index) => {
+                    const stepDone = scenarioStep > index;
+                    const stepActive = scenarioStep === index;
+
+                    return (
+                      <div key={stepLabel} className="flex flex-col items-center gap-1 text-center">
+                        <span
+                          className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold transition ${
+                            stepDone
+                              ? "border-emerald-300/70 bg-emerald-400/25 text-emerald-100"
+                              : stepActive
+                                ? "border-violet-200/70 bg-violet-400/30 text-[#f8fafc]"
+                                : "border-white/20 bg-white/[0.03] text-violet-200/70"
+                          }`}
+                        >
+                          {stepDone ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
+                        </span>
+                        <span
+                          className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                            stepActive || stepDone ? "text-[#f4f0ff]" : "text-violet-200/60"
+                          }`}
+                        >
+                          {stepLabel}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="text-[11px] text-slate-500">
-                  Export se pokusí vše zkompaktovat na co nejmenší počet stran.
+                <div className="mt-2.5 h-1.5 rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-[linear-gradient(90deg,#8b5cf6_0%,#a855f7_55%,#c084fc_100%)] transition-[width] duration-300"
+                    style={{
+                      width: `${((scenarioStep + 1) / scenarioStepperSteps.length) * 100}%`,
+                    }}
+                  />
                 </div>
-                {scenarioExportError && (
-                  <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                    {scenarioExportError}
+              </div>
+
+              <div className="mt-4">
+                {scenarioStep === 0 ? (
+                  <div className="space-y-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
+                      Rozsahy trvalých následků
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {[
+                        {
+                          label: "1. scénář",
+                          helper: "Nižší rozsah",
+                          value: scenarioAInput,
+                          onChange: setScenarioAInput,
+                        },
+                        {
+                          label: "2. scénář",
+                          helper: "Střední rozsah",
+                          value: scenarioBInput,
+                          onChange: setScenarioBInput,
+                        },
+                        {
+                          label: "3. scénář",
+                          helper: "Vysoký rozsah",
+                          value: scenarioCInput,
+                          onChange: setScenarioCInput,
+                        },
+                      ].map((item) => (
+                        <label
+                          key={item.label}
+                          className="rounded-2xl border border-white/14 bg-white/[0.04] px-4 py-3 transition focus-within:border-violet-300/60 focus-within:bg-white/[0.07]"
+                        >
+                          <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-200/80">
+                            {item.label}
+                          </span>
+                          <span className="mt-1 block text-sm font-semibold text-[#f8fafc]">
+                            {item.helper}
+                          </span>
+                          <div className="mt-3 flex items-end gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={0.1}
+                              value={item.value}
+                              onChange={(e) => item.onChange(e.target.value)}
+                              className="w-full border-0 border-b border-white/18 bg-transparent px-0 pb-2 text-3xl font-black leading-none text-[#f8fafc] outline-none transition placeholder:text-violet-100/35 focus:border-violet-300 focus:ring-0"
+                            />
+                            <span className="mb-2 rounded-full border border-violet-200/25 bg-violet-300/15 px-2 py-1 text-xs font-semibold text-violet-100">
+                              %
+                            </span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="rounded-2xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-violet-100/70">
+                      Export použije aktuální pojistnou částku a aktivní filtry. Náhled v dalším kroku ukazuje stejný obsah, který se stáhne do PDF.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="overflow-hidden rounded-2xl border border-white/14 bg-white shadow-[0_22px_56px_rgba(0,0,0,0.28)]">
+                      <iframe
+                        title="Náhled klientského PDF výstupu"
+                        srcDoc={scenarioPreviewSrcDoc}
+                        className="h-[calc(94vh-205px)] min-h-[560px] w-full bg-white"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
-            </div>
-          </section>
-        </div>
+
+              {scenarioExportError ? (
+                <p className="mt-4 rounded-2xl border border-rose-300/45 bg-rose-400/15 px-3 py-2 text-xs text-rose-100">
+                  {scenarioExportError}
+                </p>
+              ) : null}
+
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-violet-100/70">
+                  Krok {scenarioStep + 1} / {scenarioStepperSteps.length}
+                </p>
+                <div className="ml-auto flex items-center gap-2">
+                  {scenarioStep > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScenarioExportError(null);
+                        setScenarioStep(0);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/22 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-white/[0.1]"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Zpět
+                    </button>
+                  ) : null}
+
+                  {scenarioStep === 0 ? (
+                    <button
+                      type="button"
+                      onClick={goToScenarioPreview}
+                      className="inline-flex items-center gap-2 rounded-full border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.35)] transition hover:brightness-110"
+                    >
+                      Pokračovat
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
 
         {filtersOpen && (
           <div
@@ -2329,9 +3107,30 @@ export default function SrovnavacTrvalychNasledkuPage() {
           >
             {sortedCards.map((card, idx) => {
               const podium = podiumStyles[idx];
-              const borderClass = podium
-                ? podium.border
-                : "border border-slate-200";
+              const accentClass =
+                idx === 0
+                  ? "bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(251,191,36,0.92),rgba(217,180,254,0.9),rgba(168,85,247,0))]"
+                  : idx === 1
+                    ? "bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(56,189,248,0.88),rgba(217,180,254,0.9),rgba(168,85,247,0))]"
+                    : idx === 2
+                      ? "bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(148,163,184,0.82),rgba(217,180,254,0.9),rgba(168,85,247,0))]"
+                      : "bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(168,85,247,0))]";
+              const borderClass =
+                idx === 0
+                  ? "border-[#b89145] ring-[#fbbf24]/20"
+                  : idx === 1
+                    ? "border-[#4f9eca] ring-[#38bdf8]/18"
+                    : idx === 2
+                      ? "border-[#6b647d] ring-slate-300/16"
+                      : "border-[#653493] ring-[#7a35a7]/22";
+              const badgeClass =
+                idx === 0
+                  ? "border-amber-400/80 bg-[linear-gradient(135deg,#fbbf24_0%,#d97706_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(217,119,6,0.34)]"
+                  : idx === 1
+                    ? "border-sky-400/80 bg-[linear-gradient(135deg,#38bdf8_0%,#0369a1_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(3,105,161,0.34)]"
+                    : idx === 2
+                      ? "border-slate-400/80 bg-[linear-gradient(135deg,#cbd5e1_0%,#64748b_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(71,85,105,0.32)]"
+                      : "border-[#9a67d0]/80 bg-[#2e1c43]/92 text-[#d8bcf3]";
               const logoPath = getInsurerLogoPath(card.insurer);
               const logoKey = institutionLogoKeyFromInsurerName(card.insurer);
               const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
@@ -2339,27 +3138,56 @@ export default function SrovnavacTrvalychNasledkuPage() {
               return (
                 <div
                   key={card.key}
-                  className={`relative print-card rounded-3xl bg-white text-slate-950 shadow-[0_14px_34px_rgba(15,23,42,0.10)] ${compactList ? "px-4 py-4" : "px-5 py-5"} ${borderClass} ${
+                  className={`group relative isolate overflow-visible print-card rounded-[26px] border bg-[#150e1f] font-mono text-[#fbf7ff] shadow-[0_18px_34px_rgba(20,8,32,0.38)] ring-1 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#9756d1] hover:shadow-[0_24px_44px_rgba(20,8,34,0.5)] ${compactList ? "px-4 py-4" : "px-4 py-4"} ${borderClass} ${
                     compactList ? "md:flex md:items-center md:gap-4" : ""
                   }`}
                 >
+                  <div
+                    className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]"
+                    aria-hidden="true"
+                  >
+                    <div className="absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
+                    <div className="absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.11)_0%,rgba(190,92,255,0)_40%,rgba(164,82,244,0.11)_100%)]" />
+                    <div className="absolute -top-16 left-12 h-56 w-px rotate-[34deg] bg-[#9d61ca]/16" />
+                    <div className="absolute -right-14 top-8 h-36 w-36 rounded-full bg-[#ab66ff]/22 blur-3xl" />
+                    <div className={`absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full ${accentClass}`} />
+                    <div className="absolute inset-x-10 top-[2px] z-[1] h-px rounded-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(250,245,255,0.62),rgba(168,85,247,0))]" />
+                  </div>
+
                   {podium && (
-                    <div className="absolute -top-3 left-4 z-10 flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-slate-900">
-                      <span className={`rounded-full px-2 py-0.5 ${podium.badgeBg}`}>
-                        {podium.badgeText}
-                      </span>
-                      <span className="text-slate-900">{podium.title}</span>
+                    <div className={`absolute left-5 top-0 z-20 -translate-y-1/2 rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.08em] ${badgeClass}`}>
+                      {podium.badgeText}
                     </div>
                   )}
 
-                  <div
-                    className={`flex items-start justify-between gap-3 ${
-                      compactList ? "md:w-1/3" : ""
-                    }`}
+                  {card.badges.length > 0 && (
+                    <div className="absolute right-4 top-4 z-20 flex max-w-[45%] flex-wrap justify-end gap-2">
+                      {card.badges.map((badge) => (
+                        <div
+                          key={badge}
+                          className="rounded-full border border-[#9a67d0]/70 bg-[#2e1c43]/90 px-3 py-1 text-[11px] font-semibold text-[#d8bcf3] shadow-[0_10px_20px_rgba(20,8,34,0.26)]"
+                        >
+                          {badge}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setInfoOpen(infoOpen === card.key ? null : card.key)}
+                    className="absolute bottom-4 right-4 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#9a67d0]/80 bg-[#2e1c43]/92 text-xs font-semibold text-[#d8bcf3] shadow-[0_10px_20px_rgba(20,8,34,0.3)] transition hover:border-[#d8b4fe] hover:text-[#fbf7ff]"
+                    aria-label={`Zobrazit výpočet pro ${card.insurer}`}
+                    aria-expanded={infoOpen === card.key}
+                    title="Výpočet"
                   >
-                    <div className="flex items-start gap-3">
+                    i
+                  </button>
+
+                  <div className={`relative z-[1] min-w-0 pr-32 ${compactList ? "md:flex-1" : ""}`}>
+                    <div className="flex min-w-0 items-start gap-3">
                       <span
-                        className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_8px_18px_rgba(15,23,42,0.08)] ${institutionLogoFrameClass(
+                        className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/95 shadow-[0_10px_20px_rgba(20,8,34,0.2)] ${institutionLogoFrameClass(
                           logoKey,
                           "compact"
                         )}`}
@@ -2376,42 +3204,25 @@ export default function SrovnavacTrvalychNasledkuPage() {
                           <span className="text-[10px] font-semibold text-slate-400">LOGO</span>
                         )}
                       </span>
-                      <div className="space-y-0.5">
-                        <div className="text-xs uppercase tracking-wide text-slate-500">
-                          Pojišťovna
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="break-words text-[1.35rem] font-semibold leading-tight text-[#fbf7ff]">
+                          {insurerName}
                         </div>
-                        <div className="text-xl font-semibold text-slate-950">{insurerName}</div>
-                        <div className="text-sm text-slate-600">{productName}</div>
+                        <div className="break-words text-sm leading-snug text-[#c8aee4]">
+                          {productName}
+                        </div>
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      {card.badges.map((badge) => (
-                        <div
-                          key={badge}
-                          className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700"
-                        >
-                          {badge}
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setInfoOpen(infoOpen === card.key ? null : card.key)}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 shadow-[0_6px_14px_rgba(15,23,42,0.08)] transition hover:border-slate-900 hover:text-slate-950"
-                        aria-label={`Zobrazit výpočet pro ${card.insurer}`}
-                        aria-expanded={infoOpen === card.key}
-                        title="Výpočet"
-                      >
-                        i
-                      </button>
-                    </div>
-                </div>
+                  </div>
 
                   <div
-                    className={`mt-4 space-y-2 ${compactList ? "md:mt-0 md:w-1/3" : ""}`}
+                    className={`relative z-[1] mt-5 border-t-2 border-[#a855f7]/75 pt-4 pr-12 ${compactList ? "md:mt-0 md:w-64 md:border-l-2 md:border-t-0 md:pl-5 md:pt-0" : ""}`}
                   >
-                    <div className="text-sm text-slate-500">Plnění</div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.14em] text-[#f3e8ff] drop-shadow-[0_2px_8px_rgba(243,232,255,0.18)]">
+                      Plnění
+                    </div>
                     <div
-                      className={`font-bold text-emerald-700 ${
+                      className={`mt-1 whitespace-nowrap font-black leading-none tracking-tight text-[#fbf7ff] drop-shadow-[0_8px_18px_rgba(168,85,247,0.2)] ${
                         compactList ? "text-2xl" : "text-3xl"
                       }`}
                     >
@@ -2421,11 +3232,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
                 {infoOpen === card.key && (
                   <div
-                    className="absolute right-4 top-14 z-10 w-56 rounded-2xl border border-slate-900 bg-white px-3 py-2 shadow-[0_18px_40px_rgba(2,6,23,0.24)]"
+                    className="absolute right-4 top-14 z-20 w-56 rounded-2xl border border-[#653493] bg-[#fbf7ff] px-3 py-2 text-slate-900 shadow-[0_18px_40px_rgba(2,6,23,0.34)]"
                     style={compactList ? { top: "100%", marginTop: "8px" } : {}}
                   >
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                      <span className="text-[11px] uppercase text-slate-500">
                         Výpočet
                       </span>
                       <button

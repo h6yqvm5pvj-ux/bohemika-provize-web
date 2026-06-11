@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Space_Grotesk } from "next/font/google";
 import type { LucideIcon } from "lucide-react";
 import {
+  BarChart3,
   CarFront,
   ChevronDown,
   ChevronUp,
@@ -32,6 +33,7 @@ import {
   TrendingUp,
   Trash2,
   UserRound,
+  Vote,
   Wrench,
   X,
 } from "lucide-react";
@@ -74,6 +76,20 @@ type WallAttachment = {
   path?: string;
 };
 
+type WallPollOption = {
+  id: string;
+  text: string;
+  voteCount: number;
+};
+
+type WallPoll = {
+  id: string;
+  question: string;
+  totalVotes: number;
+  selectedOptionId: string | null;
+  options: WallPollOption[];
+};
+
 type WallComment = {
   id: string;
   text: string;
@@ -109,12 +125,15 @@ type WallPost = {
   author: WallAuthor;
   attachments: WallAttachment[];
   comments: WallComment[];
+  poll: WallPoll | null;
 };
 
 type WallApiResponse = {
   ok?: boolean;
   error?: string;
   posts?: WallPost[];
+  hasMore?: boolean;
+  nextCursorMs?: number | null;
 };
 
 type WallCreateResponse = {
@@ -147,6 +166,13 @@ type WallLikeResponse = {
   postId?: string;
   likeCount?: number;
   likedByMe?: boolean;
+};
+
+type WallPollVoteResponse = {
+  ok?: boolean;
+  error?: string;
+  postId?: string;
+  poll?: WallPoll;
 };
 
 type WallCommentLikeResponse = {
@@ -313,6 +339,12 @@ const SECTION_VISUALS: Record<IntranetSectionKey, SectionVisual> = {
 const MAX_TITLE_LEN = 140;
 const MAX_TEXT_LEN = 6000;
 const MAX_FILES = 6;
+const POSTS_PAGE_SIZE = 10;
+const MAX_POLL_QUESTION_LEN = 180;
+const MAX_POLL_OPTION_LEN = 100;
+const MAX_POLL_OPTIONS = 8;
+const MIN_POLL_OPTIONS = 2;
+const MAX_COMMENT_LEN = 2000;
 const QUICK_EMOJIS = [
   "👏",
   "🔥",
@@ -330,6 +362,51 @@ const QUICK_EMOJIS = [
   "❤️",
   "📌",
   "💬",
+  "👍",
+  "👎",
+  "🙌",
+  "👌",
+  "🤔",
+  "👀",
+  "💡",
+  "❗",
+  "❓",
+  "⚠️",
+  "⏰",
+  "📣",
+  "📝",
+  "📎",
+  "📊",
+  "💰",
+  "🎉",
+  "🥳",
+  "🤩",
+  "😎",
+  "😂",
+  "😅",
+  "😊",
+  "😍",
+  "😮",
+  "😢",
+  "😡",
+  "🤯",
+  "🫶",
+  "🤞",
+  "💯",
+  "🔝",
+  "🌟",
+  "✨",
+  "🧠",
+  "📚",
+  "🧾",
+  "📅",
+  "☎️",
+  "💻",
+  "🔒",
+  "🔓",
+  "🟢",
+  "🟡",
+  "🔴",
 ];
 
 const normalizeEmail = (value: string | null | undefined): string =>
@@ -450,6 +527,69 @@ function LinkedText({ text, className }: { text: string; className: string }) {
     </p>
   );
 }
+
+const insertAtTextAreaSelection = ({
+  currentValue,
+  insertion,
+  maxLength,
+  textarea,
+}: {
+  currentValue: string;
+  insertion: string;
+  maxLength: number;
+  textarea: HTMLTextAreaElement | null;
+}): { value: string; cursor: number } => {
+  const startRaw = textarea?.selectionStart ?? currentValue.length;
+  const endRaw = textarea?.selectionEnd ?? currentValue.length;
+  const start = Math.min(Math.max(startRaw, 0), currentValue.length);
+  const end = Math.min(Math.max(endRaw, start), currentValue.length);
+  const baseLength = currentValue.length - (end - start);
+  const remainingLength = Math.max(0, maxLength - baseLength);
+  const inserted = insertion.slice(0, remainingLength);
+  const value = `${currentValue.slice(0, start)}${inserted}${currentValue.slice(end)}`;
+
+  return {
+    value,
+    cursor: Math.min(start + inserted.length, value.length),
+  };
+};
+
+const restoreTextAreaCursor = (textarea: HTMLTextAreaElement | null, cursor: number) => {
+  if (!textarea || typeof window === "undefined") return;
+  window.requestAnimationFrame(() => {
+    textarea.focus();
+    textarea.setSelectionRange(cursor, cursor);
+  });
+};
+
+const normalizeWallPosts = (rawPosts: WallPost[]): WallPost[] =>
+  rawPosts.map((post) => ({
+    ...post,
+    likeCount:
+      Number.isFinite(post.likeCount) && post.likeCount >= 0
+        ? Math.floor(post.likeCount)
+        : 0,
+    likedByMe: post.likedByMe === true,
+    poll: post.poll
+      ? {
+          ...post.poll,
+          totalVotes:
+            Number.isFinite(post.poll.totalVotes) && post.poll.totalVotes >= 0
+              ? Math.floor(post.poll.totalVotes)
+              : 0,
+          selectedOptionId: post.poll.selectedOptionId ?? null,
+          options: Array.isArray(post.poll.options)
+            ? post.poll.options.map((option) => ({
+                ...option,
+                voteCount:
+                  Number.isFinite(option.voteCount) && option.voteCount >= 0
+                    ? Math.floor(option.voteCount)
+                    : 0,
+              }))
+            : [],
+        }
+      : null,
+  }));
 
 function AttachmentImagePreview({
   attachment,
@@ -904,12 +1044,103 @@ function AttachmentFileCard({
   );
 }
 
+function PollCard({
+  postId,
+  poll,
+  votingOptionId,
+  error,
+  onVote,
+}: {
+  postId: string;
+  poll: WallPoll;
+  votingOptionId: string | null | undefined;
+  error: string | null | undefined;
+  onVote: (postId: string, optionId: string) => void;
+}) {
+  return (
+    <div className="mt-3 rounded-2xl border border-emerald-200/80 bg-[linear-gradient(150deg,rgba(240,253,244,0.92)_0%,rgba(255,255,255,0.96)_100%)] p-3 shadow-[0_12px_32px_rgba(16,185,129,0.1)]">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-white px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-700">
+            <Vote className="h-3.5 w-3.5" />
+            Hlasování
+          </div>
+          <div className="mt-2 text-sm font-bold text-slate-900">{poll.question}</div>
+        </div>
+        <div className="shrink-0 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+          {poll.totalVotes} {poll.totalVotes === 1 ? "hlas" : poll.totalVotes > 1 && poll.totalVotes < 5 ? "hlasy" : "hlasů"}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {poll.options.map((option) => {
+          const isSelected = poll.selectedOptionId === option.id;
+          const isVoting = votingOptionId === option.id;
+          const percent =
+            poll.totalVotes > 0 ? Math.round((option.voteCount / poll.totalVotes) * 100) : 0;
+
+          return (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => onVote(postId, option.id)}
+              disabled={!!votingOptionId}
+              className={[
+                "group relative w-full overflow-hidden rounded-xl border bg-white px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-75",
+                isSelected
+                  ? "border-emerald-300 shadow-[0_10px_24px_rgba(16,185,129,0.16)]"
+                  : "border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/35",
+              ].join(" ")}
+            >
+              <span
+                className="absolute inset-y-0 left-0 bg-emerald-100/80 transition-all"
+                style={{ width: `${percent}%` }}
+                aria-hidden="true"
+              />
+              <span className="relative flex items-center justify-between gap-3">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    className={[
+                      "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold",
+                      isSelected
+                        ? "border-emerald-600 bg-emerald-600 text-white"
+                        : "border-slate-300 bg-white text-slate-500",
+                    ].join(" ")}
+                  >
+                    {isVoting ? <Loader2 className="h-3 w-3 animate-spin" /> : isSelected ? "✓" : ""}
+                  </span>
+                  <span className="truncate text-xs font-semibold text-slate-800">
+                    {option.text}
+                  </span>
+                </span>
+                <span className="shrink-0 text-[11px] font-bold text-slate-600">
+                  {percent}% · {option.voteCount}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {error ? (
+        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-700">
+          {error}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function IntranetPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [selectedSection, setSelectedSection] = useState<IntranetSectionKey>("obecne");
   const [posts, setPosts] = useState<WallPost[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
+  const [loadingOlderPosts, setLoadingOlderPosts] = useState(false);
   const [postsError, setPostsError] = useState<string | null>(null);
+  const [olderPostsError, setOlderPostsError] = useState<string | null>(null);
+  const [postsHasMore, setPostsHasMore] = useState(false);
+  const [postsCursorMs, setPostsCursorMs] = useState<number | null>(null);
 
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
@@ -918,6 +1149,9 @@ export default function IntranetPage() {
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [pollEnabled, setPollEnabled] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState("");
+  const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
   const [filePreviewUrls, setFilePreviewUrls] = useState<Record<string, string>>({});
   const [postModalOpen, setPostModalOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<WallPost | null>(null);
@@ -942,6 +1176,8 @@ export default function IntranetPage() {
     {}
   );
   const [likePostingById, setLikePostingById] = useState<Record<string, boolean>>({});
+  const [pollVotingByPostId, setPollVotingByPostId] = useState<Record<string, string | null>>({});
+  const [pollErrorByPostId, setPollErrorByPostId] = useState<Record<string, string | null>>({});
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [pendingFocusPostId, setPendingFocusPostId] = useState<string | null>(null);
   const [highlightPostId, setHighlightPostId] = useState<string | null>(null);
@@ -952,6 +1188,7 @@ export default function IntranetPage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const replaceAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const postTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const commentInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const replyInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const postCardRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -968,6 +1205,9 @@ export default function IntranetPage() {
     setRemovedAttachmentIds([]);
     setReplacementFilesByAttachmentId({});
     setReplaceAttachmentTargetId(null);
+    setPollEnabled(false);
+    setPollQuestion("");
+    setPollOptions(["", ""]);
     setEmojiOpen(false);
     setPostError(null);
   };
@@ -987,6 +1227,9 @@ export default function IntranetPage() {
     setRemovedAttachmentIds([]);
     setReplacementFilesByAttachmentId({});
     setReplaceAttachmentTargetId(null);
+    setPollEnabled(false);
+    setPollQuestion("");
+    setPollOptions(["", ""]);
     setEmojiOpen(false);
     setPostError(null);
     setPostModalOpen(true);
@@ -999,6 +1242,9 @@ export default function IntranetPage() {
     setRemovedAttachmentIds([]);
     setReplacementFilesByAttachmentId({});
     setReplaceAttachmentTargetId(null);
+    setPollEnabled(false);
+    setPollQuestion("");
+    setPollOptions(["", ""]);
     setIsDraggingFiles(false);
     dragDepthRef.current = 0;
   };
@@ -1057,6 +1303,9 @@ export default function IntranetPage() {
         setRemovedAttachmentIds([]);
         setReplacementFilesByAttachmentId({});
         setReplaceAttachmentTargetId(null);
+        setPollEnabled(false);
+        setPollQuestion("");
+        setPollOptions(["", ""]);
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -1080,13 +1329,29 @@ export default function IntranetPage() {
     setIsDraggingFiles(false);
   }, [postModalOpen]);
 
-  const loadPosts = async (currentUser: FirebaseUser, section: IntranetSectionKey) => {
-    setLoadingPosts(true);
-    setPostsError(null);
+  const loadPosts = async (
+    currentUser: FirebaseUser,
+    section: IntranetSectionKey,
+    options?: { append?: boolean; cursorMs?: number | null }
+  ) => {
+    const append = options?.append === true;
+    if (append) {
+      setLoadingOlderPosts(true);
+      setOlderPostsError(null);
+    } else {
+      setLoadingPosts(true);
+      setPostsError(null);
+      setOlderPostsError(null);
+      setPostsHasMore(false);
+      setPostsCursorMs(null);
+    }
     try {
       const query = new URLSearchParams();
       query.set("section", section);
-      query.set("limit", "40");
+      query.set("limit", String(POSTS_PAGE_SIZE));
+      if (append && options?.cursorMs) {
+        query.set("cursorMs", String(options.cursorMs));
+      }
       const endpoint = `/api/intranet/wall${query.toString() ? `?${query.toString()}` : ""}`;
       const payload = await fetchAuthedJsonOrThrow<WallApiResponse>(currentUser, endpoint, {
         method: "GET",
@@ -1095,29 +1360,53 @@ export default function IntranetPage() {
         throw new Error(payload?.error || "Server nevrátil úspěšnou odpověď.");
       }
       const rawPosts = Array.isArray(payload.posts) ? payload.posts : [];
-      setPosts(
-        rawPosts.map((post) => ({
-          ...post,
-          likeCount:
-            Number.isFinite(post.likeCount) && post.likeCount >= 0
-              ? Math.floor(post.likeCount)
-              : 0,
-          likedByMe: post.likedByMe === true,
-        }))
+      const normalizedPosts = normalizeWallPosts(rawPosts);
+      setPosts((prev) => {
+        if (!append) return normalizedPosts;
+        const seen = new Set(prev.map((post) => post.id));
+        return [
+          ...prev,
+          ...normalizedPosts.filter((post) => {
+            if (seen.has(post.id)) return false;
+            seen.add(post.id);
+            return true;
+          }),
+        ];
+      });
+      setPostsHasMore(payload.hasMore === true);
+      setPostsCursorMs(
+        typeof payload.nextCursorMs === "number" && Number.isFinite(payload.nextCursorMs)
+          ? payload.nextCursorMs
+          : null
       );
     } catch (error) {
-      setPostsError(
-        error instanceof Error ? error.message : "Nepodařilo se načíst příspěvky."
-      );
-      setPosts([]);
+      if (append) {
+        setOlderPostsError(
+          error instanceof Error ? error.message : "Nepodařilo se načíst starší příspěvky."
+        );
+      } else {
+        setPostsError(
+          error instanceof Error ? error.message : "Nepodařilo se načíst příspěvky."
+        );
+        setPosts([]);
+        setPostsHasMore(false);
+        setPostsCursorMs(null);
+      }
     } finally {
-      setLoadingPosts(false);
+      if (append) {
+        setLoadingOlderPosts(false);
+      } else {
+        setLoadingPosts(false);
+      }
     }
   };
 
   useEffect(() => {
     if (!user) {
       setPosts([]);
+      setPostsHasMore(false);
+      setPostsCursorMs(null);
+      setOlderPostsError(null);
       return;
     }
     void loadPosts(user, selectedSection);
@@ -1189,9 +1478,7 @@ export default function IntranetPage() {
     [selectedSection]
   );
 
-  const selectedSectionVisual = SECTION_VISUALS[selectedSection];
   const selectedPostSectionVisual = SECTION_VISUALS[postSection];
-  const SelectedFilterIcon = selectedSectionVisual.icon;
   const SelectedPostIcon = selectedPostSectionVisual.icon;
   const isEditingPost = editingPost !== null;
   const removedAttachmentIdSet = useMemo(
@@ -1213,24 +1500,73 @@ export default function IntranetPage() {
   const PostModalIcon = isEditingPost ? Pencil : Plus;
 
   const addEmojiToPost = (emoji: string) => {
-    setText((prev) => `${prev}${emoji}`);
+    const textarea = postTextAreaRef.current;
+    const result = insertAtTextAreaSelection({
+      currentValue: text,
+      insertion: emoji,
+      maxLength: MAX_TEXT_LEN,
+      textarea,
+    });
+    setText(result.value);
+    restoreTextAreaCursor(textarea, result.cursor);
+    setPostError(null);
+  };
+
+  const updatePollOption = (index: number, value: string) => {
+    setPollOptions((prev) =>
+      prev.map((option, idx) =>
+        idx === index ? value.slice(0, MAX_POLL_OPTION_LEN) : option
+      )
+    );
+    setPostError(null);
+  };
+
+  const addPollOption = () => {
+    setPollOptions((prev) =>
+      prev.length >= MAX_POLL_OPTIONS ? prev : [...prev, ""]
+    );
+    setPostError(null);
+  };
+
+  const removePollOption = (index: number) => {
+    setPollOptions((prev) =>
+      prev.length <= MIN_POLL_OPTIONS ? prev : prev.filter((_, idx) => idx !== index)
+    );
     setPostError(null);
   };
 
   const addEmojiToComment = (postId: string, emoji: string) => {
+    const textarea = commentInputRefs.current[postId] ?? null;
+    const currentValue = commentDrafts[postId] ?? "";
+    const result = insertAtTextAreaSelection({
+      currentValue,
+      insertion: emoji,
+      maxLength: MAX_COMMENT_LEN,
+      textarea,
+    });
     setCommentDrafts((prev) => ({
       ...prev,
-      [postId]: `${prev[postId] ?? ""}${emoji}`,
+      [postId]: result.value,
     }));
+    restoreTextAreaCursor(textarea, result.cursor);
     setCommentErrorById((prev) => ({ ...prev, [postId]: null }));
   };
 
   const addEmojiToReply = (postId: string, commentId: string, emoji: string) => {
     const key = replyComposerKey(postId, commentId);
+    const textarea = replyInputRefs.current[key] ?? null;
+    const currentValue = replyDraftsById[key] ?? "";
+    const result = insertAtTextAreaSelection({
+      currentValue,
+      insertion: emoji,
+      maxLength: MAX_COMMENT_LEN,
+      textarea,
+    });
     setReplyDraftsById((prev) => ({
       ...prev,
-      [key]: `${prev[key] ?? ""}${emoji}`,
+      [key]: result.value,
     }));
+    restoreTextAreaCursor(textarea, result.cursor);
     setReplyErrorById((prev) => ({ ...prev, [key]: null }));
   };
 
@@ -1357,6 +1693,21 @@ export default function IntranetPage() {
       setPostError("Text příspěvku je povinný.");
       return;
     }
+    const trimmedPollQuestion = pollQuestion.trim();
+    const trimmedPollOptions = pollOptions
+      .map((option) => option.trim())
+      .filter(Boolean)
+      .slice(0, MAX_POLL_OPTIONS);
+    if (!isEditing && pollEnabled) {
+      if (!trimmedPollQuestion) {
+        setPostError("Otázka ankety je povinná.");
+        return;
+      }
+      if (trimmedPollOptions.length < MIN_POLL_OPTIONS) {
+        setPostError("Anketa musí mít alespoň dvě možnosti.");
+        return;
+      }
+    }
 
     setPosting(true);
     setPostError(null);
@@ -1367,6 +1718,13 @@ export default function IntranetPage() {
       form.set("text", trimmedText.slice(0, MAX_TEXT_LEN));
       form.set("section", postSection);
       files.forEach((file) => form.append("files", file));
+      if (!isEditing && pollEnabled) {
+        form.set("pollEnabled", "1");
+        form.set("pollQuestion", trimmedPollQuestion.slice(0, MAX_POLL_QUESTION_LEN));
+        trimmedPollOptions.forEach((option) => {
+          form.append("pollOptions", option.slice(0, MAX_POLL_OPTION_LEN));
+        });
+      }
       if (isEditing) {
         removedAttachmentIds.forEach((attachmentId) => {
           form.append("removedAttachmentIds", attachmentId);
@@ -1403,6 +1761,9 @@ export default function IntranetPage() {
       setRemovedAttachmentIds([]);
       setReplacementFilesByAttachmentId({});
       setReplaceAttachmentTargetId(null);
+      setPollEnabled(false);
+      setPollQuestion("");
+      setPollOptions(["", ""]);
       setEmojiOpen(false);
       setPostModalOpen(false);
       setEditingPost(null);
@@ -1708,6 +2069,52 @@ export default function IntranetPage() {
     }
   };
 
+  const handleVoteInPoll = async (postId: string, optionId: string) => {
+    if (!user || pollVotingByPostId[postId]) return;
+
+    setPollVotingByPostId((prev) => ({ ...prev, [postId]: optionId }));
+    setPollErrorByPostId((prev) => ({ ...prev, [postId]: null }));
+    try {
+      const payload = await fetchAuthedJsonOrThrow<WallPollVoteResponse>(
+        user,
+        `/api/intranet/wall/${encodeURIComponent(postId)}/poll-vote`,
+        {
+          method: "POST",
+          body: JSON.stringify({ optionId }),
+        }
+      );
+      if (!payload?.ok || !payload.poll) {
+        throw new Error(payload?.error || "Server nevrátil úspěšnou odpověď.");
+      }
+
+      setPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId
+            ? {
+                ...post,
+                poll: payload.poll ?? post.poll,
+              }
+            : post
+        )
+      );
+    } catch (error) {
+      setPollErrorByPostId((prev) => ({
+        ...prev,
+        [postId]: error instanceof Error ? error.message : "Nepodařilo se uložit hlas.",
+      }));
+    } finally {
+      setPollVotingByPostId((prev) => ({ ...prev, [postId]: null }));
+    }
+  };
+
+  const handleLoadOlderPosts = () => {
+    if (!user || loadingOlderPosts || !postsHasMore || !postsCursorMs) return;
+    void loadPosts(user, selectedSection, {
+      append: true,
+      cursorMs: postsCursorMs,
+    });
+  };
+
   const canDeletePost = (post: WallPost): boolean => {
     const me = normalizeEmail(user?.email);
     const author = normalizeEmail(post.author.email);
@@ -1765,7 +2172,17 @@ export default function IntranetPage() {
                 </div>
               </div>
 
-              <div className="flex justify-start xl:justify-end">
+              <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (user) void loadPosts(user, selectedSection);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-300/80 bg-white/90 px-4 py-3 text-sm font-semibold text-slate-700 shadow-[0_12px_30px_rgba(15,23,42,0.1)] transition hover:-translate-y-0.5 hover:border-slate-500 hover:bg-white"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Obnovit
+                </button>
                 <button
                   type="button"
                   onClick={openCreatePostModal}
@@ -1801,29 +2218,6 @@ export default function IntranetPage() {
                   </button>
                 );
               })}
-            </div>
-          </section>
-
-          <section className="rounded-[28px] border border-white/65 bg-white/70 p-4 shadow-[0_18px_52px_rgba(15,23,42,0.13)] backdrop-blur-xl sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-2xl font-bold tracking-[-0.015em] text-slate-900">Zeď příspěvků</h2>
-                <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-700">
-                  <SelectedFilterIcon className="h-4 w-4" />
-                  Sekce <strong>{currentSectionLabel}</strong>
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (user) void loadPosts(user, selectedSection);
-                }}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-300/80 bg-white/90 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-500 hover:bg-white"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Obnovit
-              </button>
             </div>
           </section>
 
@@ -1973,6 +2367,18 @@ export default function IntranetPage() {
                             text={post.text}
                             className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700"
                           />
+
+                          {post.poll ? (
+                            <PollCard
+                              postId={post.id}
+                              poll={post.poll}
+                              votingOptionId={pollVotingByPostId[post.id]}
+                              error={pollErrorByPostId[post.id]}
+                              onVote={(targetPostId, optionId) =>
+                                void handleVoteInPoll(targetPostId, optionId)
+                              }
+                            />
+                          ) : null}
 
                           {otherAttachments.length > 0 ? (
                             <div className="mt-3 rounded-xl border border-slate-200/85 bg-slate-50/75 p-2.5">
@@ -2215,10 +2621,11 @@ export default function IntranetPage() {
                                         />
 
                                         <div className="flex flex-wrap gap-1.5">
-                                          {QUICK_EMOJIS.slice(0, 8).map((emoji) => (
+                                          {QUICK_EMOJIS.slice(0, 14).map((emoji) => (
                                             <button
                                               key={`${commentActionKey}-${emoji}`}
                                               type="button"
+                                              onMouseDown={(event) => event.preventDefault()}
                                               onClick={() =>
                                                 addEmojiToReply(post.id, comment.id, emoji)
                                               }
@@ -2293,10 +2700,11 @@ export default function IntranetPage() {
                               />
 
                               <div className="flex flex-wrap gap-1.5">
-                                {QUICK_EMOJIS.slice(0, 8).map((emoji) => (
+                                {QUICK_EMOJIS.slice(0, 14).map((emoji) => (
                                   <button
                                     key={`${post.id}-${emoji}`}
                                     type="button"
+                                    onMouseDown={(event) => event.preventDefault()}
                                     onClick={() => addEmojiToComment(post.id, emoji)}
                                     className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm transition hover:border-slate-500 hover:bg-slate-100"
                                   >
@@ -2347,6 +2755,30 @@ export default function IntranetPage() {
                     </article>
                   );
                 })}
+
+                {olderPostsError ? (
+                  <div className="rounded-2xl border border-red-300/80 bg-red-50/90 px-4 py-3 text-sm font-semibold text-red-700">
+                    {olderPostsError}
+                  </div>
+                ) : null}
+
+                {postsHasMore ? (
+                  <div className="flex justify-center py-2">
+                    <button
+                      type="button"
+                      onClick={handleLoadOlderPosts}
+                      disabled={loadingOlderPosts || !postsCursorMs}
+                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white/92 px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_12px_30px_rgba(15,23,42,0.1)] transition hover:-translate-y-0.5 hover:border-slate-500 hover:bg-white disabled:cursor-not-allowed disabled:opacity-55"
+                    >
+                      {loadingOlderPosts ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
+                      {loadingOlderPosts ? "Načítám starší" : "Zobrazit starší"}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
           </section>
@@ -2508,6 +2940,7 @@ export default function IntranetPage() {
                       </span>
                     </div>
                     <textarea
+                      ref={postTextAreaRef}
                       value={text}
                       onChange={(event) => {
                         setText(event.target.value.slice(0, MAX_TEXT_LEN));
@@ -2541,11 +2974,12 @@ export default function IntranetPage() {
                       <Smile className="h-3.5 w-3.5" />
                       Emoji
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex max-h-36 flex-wrap gap-1.5 overflow-y-auto pr-1">
                       {(emojiOpen ? QUICK_EMOJIS : QUICK_EMOJIS.slice(0, 8)).map((emoji) => (
                         <button
                           key={emoji}
                           type="button"
+                          onMouseDown={(event) => event.preventDefault()}
                           onClick={() => addEmojiToPost(emoji)}
                           className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm transition hover:border-slate-500 hover:bg-slate-100"
                         >
@@ -2554,6 +2988,7 @@ export default function IntranetPage() {
                       ))}
                       <button
                         type="button"
+                        onMouseDown={(event) => event.preventDefault()}
                         onClick={() => setEmojiOpen((prev) => !prev)}
                         className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
                       >
@@ -2561,6 +2996,109 @@ export default function IntranetPage() {
                       </button>
                     </div>
                   </div>
+
+                  {!isEditingPost ? (
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-emerald-700">
+                            <BarChart3 className="h-3.5 w-3.5" />
+                            Hlasování
+                          </div>
+                          <div className="mt-1 text-xs text-emerald-800/80">
+                            Jedna otázka, jedna volba na člověka.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPollEnabled((prev) => !prev);
+                            setPostError(null);
+                          }}
+                          className={[
+                            "inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition",
+                            pollEnabled
+                              ? "border-emerald-600 bg-emerald-600 text-white"
+                              : "border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50",
+                          ].join(" ")}
+                        >
+                          <Vote className="h-3.5 w-3.5" />
+                          {pollEnabled ? "Zapnuto" : "Přidat"}
+                        </button>
+                      </div>
+
+                      {pollEnabled ? (
+                        <div className="mt-3 space-y-2">
+                          <label className="block space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-800">
+                                Otázka
+                              </span>
+                              <span className="text-[11px] text-emerald-800/60">
+                                {pollQuestion.length}/{MAX_POLL_QUESTION_LEN}
+                              </span>
+                            </div>
+                            <input
+                              type="text"
+                              value={pollQuestion}
+                              onChange={(event) => {
+                                setPollQuestion(event.target.value.slice(0, MAX_POLL_QUESTION_LEN));
+                                setPostError(null);
+                              }}
+                              placeholder="Na co se chceš zeptat?"
+                              className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+                            />
+                          </label>
+
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-800">
+                                Možnosti
+                              </span>
+                              <span className="text-[11px] text-emerald-800/60">
+                                {pollOptions.length}/{MAX_POLL_OPTIONS}
+                              </span>
+                            </div>
+
+                            {pollOptions.map((option, index) => (
+                              <div key={`poll-option-${index}`} className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={option}
+                                  onChange={(event) => updatePollOption(index, event.target.value)}
+                                  placeholder={`Možnost ${index + 1}`}
+                                  className="min-w-0 flex-1 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removePollOption(index)}
+                                  disabled={pollOptions.length <= MIN_POLL_OPTIONS}
+                                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                  aria-label={`Odebrat možnost ${index + 1}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+
+                            <button
+                              type="button"
+                              onClick={addPollOption}
+                              disabled={pollOptions.length >= MAX_POLL_OPTIONS}
+                              className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              Přidat možnost
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : editingPost.poll ? (
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3 text-xs font-semibold text-emerald-800">
+                      Tento příspěvek má anketu. Otázky a možnosti se po publikování nemění, aby výsledky zůstaly férové.
+                    </div>
+                  ) : null}
 
                   {postError ? (
                     <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">

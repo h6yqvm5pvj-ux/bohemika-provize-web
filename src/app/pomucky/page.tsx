@@ -7,7 +7,6 @@ import Link from "next/link";
 import { Space_Grotesk } from "next/font/google";
 import type { LucideIcon } from "lucide-react";
 import {
-  Accessibility,
   ArrowUpRight,
   BanknoteArrowDown,
   BarChart3,
@@ -495,20 +494,12 @@ export default function ToolsPage() {
         href: "/pomucky/projekce-vykonu",
       },
       {
-        key: "pracovni-neschopenka",
+        key: "nastaveni-zivotniho-pojisteni",
         category: "Životní pojištění",
-        title: "Jak nastavit Pracovní neschopnost",
-        description: "Kalkulačka na stanovení pojistné částky pro případ pracovní neschopnosti.",
+        title: "Nastavení Životního pojištění",
+        description: "Stepper pro nastavení pracovní neschopnosti a invalidity podle příjmu, závazků a dluhů.",
         icon: HeartPulse,
-        href: "/pomucky/pracovni-neschopenka",
-      },
-      {
-        key: "invalidita",
-        category: "Životní pojištění",
-        title: "Jak nastavit Invaliditu",
-        description: "Kalkulačka na stanovení pojistné částky pro Invaliditu 1., 2. a 3. stupně dle poklesu příjmu.",
-        icon: Accessibility,
-        href: "/pomucky/invalidita",
+        href: "/pomucky/nastaveni-zivotniho-pojisteni",
       },
       {
         key: "srovnavac-trvalych-nasledku",
