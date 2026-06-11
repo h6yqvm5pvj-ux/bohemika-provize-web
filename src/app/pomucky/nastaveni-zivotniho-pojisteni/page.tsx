@@ -31,7 +31,7 @@ import { formatMoney } from "@/app/lib/formatters";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import SplitTitle from "../plan-produkce/SplitTitle";
 
-type StepId = "base" | "family" | "debtEducation" | "confirm";
+type StepId = "base" | "family" | "children" | "mortgage" | "confirm";
 type ProviderRole = "main" | "secondary";
 type InvalidityModel = "insurance" | "investment";
 type InputKey =
@@ -60,7 +60,8 @@ type AdvisorFooterInfo = {
 const STEPS: Array<{ id: StepId; label: string }> = [
   { id: "base", label: "Základ" },
   { id: "family", label: "Rodina" },
-  { id: "debtEducation", label: "Hypotéka" },
+  { id: "children", label: "Děti" },
+  { id: "mortgage", label: "Hypotéka" },
   { id: "confirm", label: "Potvrzení" },
 ];
 
@@ -302,6 +303,22 @@ const FAMILY_FIELDS: Array<{
     icon: Banknote,
   },
   {
+    key: "funeralCost",
+    label: "Náklady na rozloučení",
+    description: "Orientačně 50 000 až 100 000 Kč jako konstantní částka.",
+    badge: "Kč",
+    icon: HeartPulse,
+  },
+];
+
+const CHILDREN_FIELDS: Array<{
+  key: InputKey;
+  label: string;
+  description: string;
+  badge: string;
+  icon: LucideIcon;
+}> = [
+  {
     key: "childrenCount",
     label: "Počet dětí",
     description: "Počet dětí, pro které má být krytý horizont do dospělosti a studium.",
@@ -315,9 +332,23 @@ const FAMILY_FIELDS: Array<{
     badge: "roky",
     icon: Clock3,
   },
+  {
+    key: "educationMonthlyPerChild",
+    label: "Studium na dítě měsíčně",
+    description: "Průměrně 15 000 Kč na ubytování, jídlo, dopravu a běžné výdaje.",
+    badge: "Kč / měsíc",
+    icon: GraduationCap,
+  },
+  {
+    key: "educationYears",
+    label: "Délka studia",
+    description: "Typicky 3 až 5 let.",
+    badge: "roky",
+    icon: Clock3,
+  },
 ];
 
-const DEBT_EDUCATION_FIELDS: Array<{
+const MORTGAGE_FIELDS: Array<{
   key: InputKey;
   label: string;
   description: string;
@@ -337,27 +368,6 @@ const DEBT_EDUCATION_FIELDS: Array<{
     description: "Orientační sazba pro poznámku k anuitně klesající částce.",
     badge: "% p.a.",
     icon: Percent,
-  },
-  {
-    key: "educationMonthlyPerChild",
-    label: "Studium na dítě měsíčně",
-    description: "Průměrně 15 000 Kč na ubytování, jídlo, dopravu a běžné výdaje.",
-    badge: "Kč / měsíc",
-    icon: GraduationCap,
-  },
-  {
-    key: "educationYears",
-    label: "Délka studia",
-    description: "Typicky 3 až 5 let.",
-    badge: "roky",
-    icon: Clock3,
-  },
-  {
-    key: "funeralCost",
-    label: "Náklady na rozloučení",
-    description: "Orientačně 50 000 až 100 000 Kč jako konstantní částka.",
-    badge: "Kč",
-    icon: HeartPulse,
   },
 ];
 
@@ -423,6 +433,7 @@ export default function LifeInsuranceSetupPage() {
     useState<InvalidityScenarioId>("medium");
   const [invalidityModel, setInvalidityModel] =
     useState<InvalidityModel>("insurance");
+  const [hasChildren, setHasChildren] = useState(true);
   const [values, setValues] = useState<InputValues>({
     age: "35",
     insuredIncome: "35000",
@@ -446,12 +457,20 @@ export default function LifeInsuranceSetupPage() {
     const loanPayments = roundMoney(parseInput(values.loanPayments));
     const totalDebt = roundMoney(parseInput(values.totalDebt));
     const otherHouseholdIncome = roundMoney(parseInput(values.otherHouseholdIncome));
-    const childrenCount = Math.max(0, Math.round(parseInput(values.childrenCount)));
-    const childHorizonYears = Math.max(0, Math.round(parseInput(values.childHorizonYears)));
+    const childrenCount = hasChildren
+      ? Math.max(0, Math.round(parseInput(values.childrenCount)))
+      : 0;
+    const childHorizonYears = hasChildren
+      ? Math.max(0, Math.round(parseInput(values.childHorizonYears)))
+      : 0;
     const mortgageYears = Math.max(0, Math.round(parseInput(values.mortgageYears)));
     const mortgageRate = Math.max(0, parseInput(values.mortgageRate));
-    const educationMonthlyPerChild = roundMoney(parseInput(values.educationMonthlyPerChild));
-    const educationYears = Math.max(0, Math.round(parseInput(values.educationYears)));
+    const educationMonthlyPerChild = hasChildren
+      ? roundMoney(parseInput(values.educationMonthlyPerChild))
+      : 0;
+    const educationYears = hasChildren
+      ? Math.max(0, Math.round(parseInput(values.educationYears)))
+      : 0;
     const funeralCost = roundMoney(parseInput(values.funeralCost));
     const monthlyExpenses = essentialExpenses + loanPayments;
     const householdIncome = insuredIncome + otherHouseholdIncome;
@@ -488,7 +507,7 @@ export default function LifeInsuranceSetupPage() {
       deathTermTo75,
       incomeGapYears,
     };
-  }, [values]);
+  }, [hasChildren, values]);
 
   const sickLeave = useMemo(() => {
     const stateBenefit = Math.round(numbers.insuredIncome * 0.6);
@@ -895,7 +914,7 @@ export default function LifeInsuranceSetupPage() {
 
               {currentStep === "family" ? (
                 <div className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-3">
+                  <div className="grid gap-3 md:grid-cols-2">
                     {FAMILY_FIELDS.map((field) => (
                       <NumberField
                         key={field.key}
@@ -949,10 +968,98 @@ export default function LifeInsuranceSetupPage() {
                 </div>
               ) : null}
 
-              {currentStep === "debtEducation" ? (
+              {currentStep === "children" ? (
                 <div className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                    {DEBT_EDUCATION_FIELDS.map((field) => (
+                  <div className="rounded-2xl border border-white/14 bg-white/[0.04] p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
+                      Má klient děti?
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {[
+                        {
+                          id: true,
+                          label: "Ano, klient má děti",
+                          description: "Do výpočtu vstoupí horizont do dospělosti a náklady na studium.",
+                        },
+                        {
+                          id: false,
+                          label: "Ne, klient nemá děti",
+                          description: "Dětské krytí a náklady na studium se do smrti nezapočítají.",
+                        },
+                      ].map((item) => {
+                        const selected = hasChildren === item.id;
+
+                        return (
+                          <button
+                            key={item.label}
+                            type="button"
+                            onClick={() => {
+                              setHasChildren(item.id);
+                              setCompleted(false);
+                              setFormError(null);
+                            }}
+                            className={`rounded-2xl border px-4 py-3 text-left transition ${
+                              selected
+                                ? "border-violet-200/70 bg-violet-400/20 shadow-[0_10px_26px_rgba(139,92,246,0.28)]"
+                                : "border-white/14 bg-white/[0.03] hover:border-violet-300/40 hover:bg-white/[0.07]"
+                            }`}
+                          >
+                            <span className="life-setup-force-white block text-sm font-semibold text-white">
+                              {item.label}
+                            </span>
+                            <span className="mt-1 block text-xs leading-relaxed text-violet-100/65">
+                              {item.description}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {hasChildren ? (
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      {CHILDREN_FIELDS.map((field) => (
+                        <NumberField
+                          key={field.key}
+                          field={field}
+                          value={values[field.key]}
+                          onChange={(value) => updateValue(field.key, value)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-violet-300/20 bg-violet-400/10 px-4 py-3 text-sm leading-relaxed text-violet-50">
+                      Dětská část je vypnutá. Klesající pojistná částka smrti se
+                      bude počítat bez nákladů na studium a bez horizontu dětí.
+                    </div>
+                  )}
+
+                  <WizardMetrics
+                    items={[
+                      {
+                        label: "Počet dětí",
+                        value: hasChildren ? `${numbers.childrenCount}` : "Ne",
+                      },
+                      {
+                        label: "Studium dětí",
+                        value: formatMoney(death.educationCoverage),
+                      },
+                      {
+                        label: "Horizont",
+                        value:
+                          hasChildren && numbers.childrenCount > 0
+                            ? `${numbers.childHorizonYears} let`
+                            : "Bez dětí",
+                      },
+                    ]}
+                  />
+                </div>
+              ) : null}
+
+              {currentStep === "mortgage" ? (
+                <div className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {MORTGAGE_FIELDS.map((field) => (
                       <NumberField
                         key={field.key}
                         field={field}
@@ -968,8 +1075,8 @@ export default function LifeInsuranceSetupPage() {
                         value: formatMoney(numbers.monthlyGapAfterDeath),
                       },
                       {
-                        label: "Studium dětí",
-                        value: formatMoney(death.educationCoverage),
+                        label: "Splátky měsíčně",
+                        value: formatMoney(numbers.loanPayments),
                       },
                       {
                         label: "Hypotéka / dluhy",
@@ -995,7 +1102,7 @@ export default function LifeInsuranceSetupPage() {
                     />
                     <ConfirmTile
                       label="Děti"
-                      value={`${numbers.childrenCount}`}
+                      value={numbers.childrenCount > 0 ? `${numbers.childrenCount}` : "Ne"}
                       note={
                         numbers.childrenCount > 0
                           ? `Horizont ${numbers.childHorizonYears} let.`
