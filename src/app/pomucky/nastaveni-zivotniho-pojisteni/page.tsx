@@ -472,17 +472,18 @@ export default function LifeInsuranceSetupPage() {
     const stateBenefit = Math.round(numbers.insuredIncome * 0.6);
     const incomeShortfall = Math.max(0, numbers.insuredIncome - stateBenefit);
     const commitmentGap = Math.max(0, numbers.monthlyExpenses - stateBenefit);
-    const minimumTarget = numbers.insuredIncome * DAILY_TARGET_RATIO;
-    const recommendedMonthly = roundMoney(
-      Math.max(minimumTarget, incomeShortfall, commitmentGap)
+    const recommendedDaily = Math.max(
+      0,
+      Math.round((numbers.insuredIncome * DAILY_TARGET_RATIO) / 30)
     );
+    const recommendedMonthly = recommendedDaily * 30;
 
     return {
       stateBenefit,
       incomeShortfall,
       commitmentGap,
       recommendedMonthly,
-      recommendedDaily: roundUp(recommendedMonthly / 30, 10),
+      recommendedDaily,
     };
   }, [numbers.insuredIncome, numbers.monthlyExpenses]);
 
@@ -1400,8 +1401,7 @@ function PreviewPanel({
             </div>
             <p className="mt-2 text-sm leading-relaxed text-violet-900">
               Měsíčně přibližně {formatMoney(sickLeave.recommendedMonthly)}.
-              Výpočet hlídá minimálně 40 % příjmu a zároveň krytí měsíčních
-              nákladů.
+              Výpočet bere 40 % čistého příjmu a dělí ho 30 dny.
             </p>
           </div>
 
@@ -1415,7 +1415,7 @@ function PreviewPanel({
               value={formatMoney(sickLeave.incomeShortfall)}
             />
             <SmallCalcRow
-              label="Mezera proti nákladům"
+              label="Mezera proti nákladům informativně"
               value={formatMoney(sickLeave.commitmentGap)}
             />
           </div>
