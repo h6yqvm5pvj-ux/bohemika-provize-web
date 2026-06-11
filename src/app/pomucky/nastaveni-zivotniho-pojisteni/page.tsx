@@ -62,8 +62,14 @@ const STEPS: Array<{ id: StepId; label: string }> = [
 ];
 
 const LIFE_SETUP_TITLE = "Nastavení Životního pojištění";
-const INVALIDITY_RATIOS = [0.4, 0.6, 1] as const;
+const INVALIDITY_SCENARIOS = [
+  { id: "veryLow", label: "Velmi nízké", ratios: [0.1, 0.2, 0.3] },
+  { id: "low", label: "Nízké", ratios: [0.3, 0.5, 0.8] },
+  { id: "medium", label: "Střední", ratios: [0.4, 0.6, 1] },
+  { id: "high", label: "Vyšší", ratios: [0.5, 0.75, 1.2] },
+] as const;
 const INVALIDITY_LABELS = ["1. stupeň", "2. stupeň", "3. stupeň"] as const;
+type InvalidityScenarioId = (typeof INVALIDITY_SCENARIOS)[number]["id"];
 const RETIREMENT_AGE = 65;
 const DEATH_COVERAGE_END_AGE = 75;
 const DAILY_TARGET_RATIO = 0.4;
@@ -393,6 +399,8 @@ export default function LifeInsuranceSetupPage() {
     advisorFooterFromProfile(null, auth.currentUser)
   );
   const [providerRole, setProviderRole] = useState<ProviderRole>("main");
+  const [invalidityScenarioId, setInvalidityScenarioId] =
+    useState<InvalidityScenarioId>("medium");
   const [values, setValues] = useState<InputValues>({
     age: "35",
     insuredIncome: "35000",
@@ -478,8 +486,15 @@ export default function LifeInsuranceSetupPage() {
     };
   }, [numbers.insuredIncome, numbers.monthlyExpenses]);
 
+  const invalidityScenario = useMemo(
+    () =>
+      INVALIDITY_SCENARIOS.find((scenario) => scenario.id === invalidityScenarioId) ??
+      INVALIDITY_SCENARIOS[2],
+    [invalidityScenarioId]
+  );
+
   const invalidity = useMemo(() => {
-    return INVALIDITY_RATIOS.map((ratio, index) => {
+    return invalidityScenario.ratios.map((ratio, index) => {
       const monthlyNeed = roundMoney(
         Math.max(numbers.insuredIncome * ratio, numbers.monthlyExpenses * ratio)
       );
@@ -492,7 +507,12 @@ export default function LifeInsuranceSetupPage() {
         lumpWithoutDebt,
       };
     });
-  }, [numbers.insuredIncome, numbers.invalidityMonths, numbers.monthlyExpenses]);
+  }, [
+    invalidityScenario.ratios,
+    numbers.insuredIncome,
+    numbers.invalidityMonths,
+    numbers.monthlyExpenses,
+  ]);
 
   const death = useMemo(() => {
     const incomeGapCoverage = roundMoney(
@@ -1025,6 +1045,8 @@ export default function LifeInsuranceSetupPage() {
               providerRole={providerRole}
               sickLeave={sickLeave}
               invalidity={invalidity}
+              invalidityScenarioId={invalidityScenarioId}
+              onInvalidityScenarioChange={setInvalidityScenarioId}
               death={death}
               advisorFooter={advisorFooter}
               generatedAtLabel={formatGeneratedDate(pdfGeneratedAt)}
@@ -1210,6 +1232,8 @@ function PreviewPanel({
   providerRole,
   sickLeave,
   invalidity,
+  invalidityScenarioId,
+  onInvalidityScenarioChange,
   death,
   advisorFooter,
   generatedAtLabel,
@@ -1252,6 +1276,8 @@ function PreviewPanel({
     monthlyNeed: number;
     lumpWithoutDebt: number;
   }>;
+  invalidityScenarioId: InvalidityScenarioId;
+  onInvalidityScenarioChange: (scenarioId: InvalidityScenarioId) => void;
   death: {
     incomeGapCoverage: number;
     educationCoverage: number;
@@ -1264,6 +1290,10 @@ function PreviewPanel({
   advisorFooter: AdvisorFooterInfo;
   generatedAtLabel: string;
 }) {
+  const activeInvalidityScenario =
+    INVALIDITY_SCENARIOS.find((scenario) => scenario.id === invalidityScenarioId) ??
+    INVALIDITY_SCENARIOS[2];
+
   return (
     <div className="space-y-5">
       <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
@@ -1399,11 +1429,51 @@ function PreviewPanel({
               Invalidita
             </p>
             <h3 className="mt-1 text-2xl font-bold text-slate-950">
-            Rentové pojistné částky podle stupně
+              Rentové pojistné částky podle stupně
             </h3>
           </div>
           <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">
             Krytí do 65 let: {numbers.invalidityYears} let
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-violet-100 bg-violet-50/60 p-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-700">
+              Varianta krytí invalidity
+            </div>
+            <div className="mt-1 text-xl font-bold text-violet-950">
+              {activeInvalidityScenario.label}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto pb-1 lg:pb-0">
+            <div className="inline-flex min-w-max items-center rounded-2xl border border-violet-200 bg-white p-1 shadow-[0_8px_18px_rgba(124,58,237,0.08)]">
+              {INVALIDITY_SCENARIOS.map((scenario) => {
+                const active = scenario.id === invalidityScenarioId;
+                return (
+                  <button
+                    key={scenario.id}
+                    type="button"
+                    onClick={() => onInvalidityScenarioChange(scenario.id)}
+                    className={`rounded-xl px-3.5 py-2 text-sm font-semibold transition ${
+                      active
+                        ? "bg-[linear-gradient(135deg,#6d28d9_0%,#a855f7_100%)] text-white shadow-[0_8px_18px_rgba(124,58,237,0.28)]"
+                        : "text-slate-600 hover:bg-violet-50 hover:text-violet-900"
+                    }`}
+                  >
+                    {scenario.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="shrink-0 rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-900">
+            Pokrytí:{" "}
+            {activeInvalidityScenario.ratios
+              .map((ratio) => `${Math.round(ratio * 100)} %`)
+              .join(" / ")}
           </div>
         </div>
 
