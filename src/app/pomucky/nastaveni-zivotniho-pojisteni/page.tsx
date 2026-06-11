@@ -31,6 +31,7 @@ import SplitTitle from "../plan-produkce/SplitTitle";
 
 type StepId = "base" | "family" | "debtEducation" | "confirm";
 type ProviderRole = "main" | "secondary";
+type InvalidityModel = "insurance" | "investment";
 type InputKey =
   | "age"
   | "insuredIncome"
@@ -74,6 +75,8 @@ const RETIREMENT_AGE = 65;
 const DEATH_COVERAGE_END_AGE = 75;
 const DAILY_TARGET_RATIO = 0.4;
 const DEFAULT_SOLO_DEATH_YEARS = 5;
+const INVESTIKA_RETURN_RANGE = { min: 0.055, max: 0.06 };
+const INVESTMENT_PRODUCT_NAME = "INVESTIKA Realitní Fond";
 const FIELD_TEXT_STYLE: CSSProperties = {
   color: "#fff",
   WebkitTextFillColor: "#fff",
@@ -376,6 +379,21 @@ function roundUp(value: number, step = 50_000): number {
   return Math.ceil(value / step) * step;
 }
 
+function requiredCapitalForRenta(
+  monthly: number,
+  months: number,
+  annualRate: number
+): number {
+  if (!Number.isFinite(monthly) || monthly <= 0 || months <= 0) return 0;
+  if (!Number.isFinite(annualRate) || annualRate <= 0) {
+    return monthly * months;
+  }
+
+  const monthlyRate = annualRate / 12;
+  const factor = (1 - Math.pow(1 + monthlyRate, -months)) / monthlyRate;
+  return monthly * factor;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -401,6 +419,8 @@ export default function LifeInsuranceSetupPage() {
   const [providerRole, setProviderRole] = useState<ProviderRole>("main");
   const [invalidityScenarioId, setInvalidityScenarioId] =
     useState<InvalidityScenarioId>("medium");
+  const [invalidityModel, setInvalidityModel] =
+    useState<InvalidityModel>("insurance");
   const [values, setValues] = useState<InputValues>({
     age: "35",
     insuredIncome: "35000",
@@ -786,12 +806,6 @@ export default function LifeInsuranceSetupPage() {
             <div data-pdf-ignore="1">
               <SplitTitle text={LIFE_SETUP_TITLE} className="!text-3xl sm:!text-5xl" />
             </div>
-            <h1
-              data-pdf-only="1"
-              className="hidden text-5xl font-extrabold tracking-normal text-slate-950"
-            >
-              {LIFE_SETUP_TITLE}
-            </h1>
             {completed ? (
               <div
                 className="flex flex-wrap items-center gap-2 sm:justify-end"
@@ -1046,6 +1060,8 @@ export default function LifeInsuranceSetupPage() {
               providerRole={providerRole}
               sickLeave={sickLeave}
               invalidity={invalidity}
+              invalidityModel={invalidityModel}
+              onInvalidityModelChange={setInvalidityModel}
               invalidityScenarioId={invalidityScenarioId}
               onInvalidityScenarioChange={setInvalidityScenarioId}
               death={death}
@@ -1233,6 +1249,8 @@ function PreviewPanel({
   providerRole,
   sickLeave,
   invalidity,
+  invalidityModel,
+  onInvalidityModelChange,
   invalidityScenarioId,
   onInvalidityScenarioChange,
   death,
@@ -1277,6 +1295,8 @@ function PreviewPanel({
     monthlyNeed: number;
     lumpWithoutDebt: number;
   }>;
+  invalidityModel: InvalidityModel;
+  onInvalidityModelChange: (model: InvalidityModel) => void;
   invalidityScenarioId: InvalidityScenarioId;
   onInvalidityScenarioChange: (scenarioId: InvalidityScenarioId) => void;
   death: {
@@ -1294,6 +1314,8 @@ function PreviewPanel({
   const activeInvalidityScenario =
     INVALIDITY_SCENARIOS.find((scenario) => scenario.id === invalidityScenarioId) ??
     INVALIDITY_SCENARIOS[2];
+  const invalidityModelLabel =
+    invalidityModel === "investment" ? "Investiční varianta" : "Pojistné plnění";
 
   return (
     <div className="space-y-5">
@@ -1429,7 +1451,9 @@ function PreviewPanel({
               Invalidita
             </p>
             <h3 className="mt-1 text-2xl font-bold text-slate-950">
-              Rentové pojistné částky podle stupně
+              {invalidityModel === "investment"
+                ? "Investiční varianta podle stupně"
+                : "Rentové pojistné částky podle stupně"}
             </h3>
           </div>
           <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">
@@ -1445,9 +1469,39 @@ function PreviewPanel({
             <div className="mt-1 text-xl font-bold text-violet-950">
               {activeInvalidityScenario.label}
             </div>
+            <div className="mt-0.5 text-xs font-semibold text-violet-800">
+              {invalidityModelLabel}
+              {invalidityModel === "investment" ? ` - ${INVESTMENT_PRODUCT_NAME}` : ""}
+            </div>
           </div>
 
-          <div className="overflow-x-auto pb-1 lg:pb-0" data-pdf-ignore="1">
+          <div
+            className="flex max-w-full flex-col gap-2 overflow-x-auto pb-1 lg:pb-0"
+            data-pdf-ignore="1"
+          >
+            <div className="inline-flex min-w-max items-center rounded-2xl border border-violet-200 bg-white p-1 shadow-[0_8px_18px_rgba(124,58,237,0.08)]">
+              {[
+                { id: "insurance" as const, label: "Pojistné plnění" },
+                { id: "investment" as const, label: "Investiční varianta" },
+              ].map((model) => {
+                const active = model.id === invalidityModel;
+                return (
+                  <button
+                    key={model.id}
+                    type="button"
+                    onClick={() => onInvalidityModelChange(model.id)}
+                    className={`rounded-xl px-3.5 py-2 text-sm font-semibold transition ${
+                      active
+                        ? "bg-[linear-gradient(135deg,#312e81_0%,#7c3aed_100%)] text-white shadow-[0_8px_18px_rgba(49,46,129,0.24)]"
+                        : "text-slate-600 hover:bg-violet-50 hover:text-violet-900"
+                    }`}
+                  >
+                    {model.label}
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="inline-flex min-w-max items-center rounded-2xl border border-violet-200 bg-white p-1 shadow-[0_8px_18px_rgba(124,58,237,0.08)]">
               {INVALIDITY_SCENARIOS.map((scenario) => {
                 const active = scenario.id === invalidityScenarioId;
@@ -1474,44 +1528,79 @@ function PreviewPanel({
             {activeInvalidityScenario.ratios
               .map((ratio) => `${Math.round(ratio * 100)} %`)
               .join(" / ")}
+            {invalidityModel === "investment" ? " | 5,5-6 % p.a." : ""}
           </div>
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-3">
-          {invalidity.map((item) => (
-            <article
-              key={item.label}
-              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-            >
-              <div className="h-1.5 bg-[linear-gradient(90deg,#8b5cf6_0%,#a855f7_55%,#c084fc_100%)]" />
-              <div className="px-4 py-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Stupeň invalidity
+          {invalidity.map((item) => {
+            const minInvestmentCapital = roundMoney(
+              requiredCapitalForRenta(
+                item.monthlyNeed,
+                numbers.invalidityMonths,
+                INVESTIKA_RETURN_RANGE.max
+              )
+            );
+            const maxInvestmentCapital = roundMoney(
+              requiredCapitalForRenta(
+                item.monthlyNeed,
+                numbers.invalidityMonths,
+                INVESTIKA_RETURN_RANGE.min
+              )
+            );
+
+            return (
+              <article
+                key={item.label}
+                className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+              >
+                <div className="h-1.5 bg-[linear-gradient(90deg,#8b5cf6_0%,#a855f7_55%,#c084fc_100%)]" />
+                <div className="px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Stupeň invalidity
+                      </div>
+                      <h4 className="mt-1 text-lg font-semibold text-slate-950">
+                        {item.label}
+                      </h4>
                     </div>
-                    <h4 className="mt-1 text-lg font-semibold text-slate-950">
-                      {item.label}
-                    </h4>
+                    <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-violet-800">
+                      {invalidityModel === "investment"
+                        ? `Pokrytí ${Math.round(item.ratio * 100)} %`
+                        : `${Math.round(item.ratio * 100)} %`}
+                    </span>
                   </div>
-                  <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-violet-800">
-                    {Math.round(item.ratio * 100)} %
-                  </span>
+                  <div className="mt-4 divide-y divide-slate-200 border-y border-slate-100">
+                    <SmallCalcRow
+                      label="Měsíční renta"
+                      value={formatMoney(item.monthlyNeed)}
+                    />
+                    {invalidityModel === "investment" ? (
+                      <SmallCalcRow
+                        label="Potřebný vklad"
+                        value={`${formatMoney(minInvestmentCapital)} až ${formatMoney(maxInvestmentCapital)}`}
+                      />
+                    ) : (
+                      <SmallCalcRow
+                        label="PČ bez dluhů"
+                        value={formatMoney(item.lumpWithoutDebt)}
+                      />
+                    )}
+                  </div>
                 </div>
-                <div className="mt-4 divide-y divide-slate-200 border-y border-slate-100">
-                  <SmallCalcRow
-                    label="Měsíční renta"
-                    value={formatMoney(item.monthlyNeed)}
-                  />
-                  <SmallCalcRow
-                    label="PČ bez dluhů"
-                    value={formatMoney(item.lumpWithoutDebt)}
-                  />
-                </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
+
+        {invalidityModel === "investment" ? (
+          <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-950">
+            Investiční varianta modeluje kapitál, ze kterého by šla čerpat
+            zvolená měsíční renta při výnosu 5,5-6 % p.a. Nejde o investiční
+            doporučení.
+          </div>
+        ) : null}
 
         {numbers.totalDebt > 0 ? (
           <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-4">
@@ -1567,44 +1656,44 @@ function PdfAdvisorFooter({
   return (
     <footer
       data-pdf-only="1"
-      className="hidden rounded-[28px] border border-violet-200 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)]"
+      className="hidden rounded-2xl border border-violet-200 bg-white p-2 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
     >
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-        <div className="h-2 bg-[linear-gradient(90deg,#2e1065_0%,#7c3aed_52%,#a855f7_100%)]" />
-        <div className="grid gap-4 px-5 py-4 md:grid-cols-[1.15fr_2fr] md:items-center">
-          <div className="flex items-center gap-3">
-            <span className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-violet-200 bg-white shadow-[0_10px_22px_rgba(124,58,237,0.12)]">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+        <div className="h-1.5 bg-[linear-gradient(90deg,#2e1065_0%,#7c3aed_52%,#a855f7_100%)]" />
+        <div className="grid gap-3 px-3 py-2.5 md:grid-cols-[0.9fr_2.35fr] md:items-center">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-white shadow-[0_6px_14px_rgba(124,58,237,0.1)]">
               <Image
                 src="/icons/bohemika_logo.png"
                 alt="Bohemika"
-                width={40}
-                height={40}
-                className="h-10 w-10 object-contain"
+                width={28}
+                height={28}
+                className="h-7 w-7 object-contain"
               />
             </span>
             <div className="min-w-0">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+              <div className="text-[8px] font-semibold uppercase tracking-[0.16em] text-violet-700">
                 {advisorRole}
               </div>
-              <div className="mt-1 text-xl font-bold leading-tight text-slate-950">
+              <div className="mt-0.5 text-base font-bold leading-tight text-slate-950">
                 {advisorName}
               </div>
-              <div className="mt-0.5 text-xs font-semibold text-slate-500">
+              <div className="text-[10px] font-semibold leading-tight text-slate-500">
                 Bohemika a.s.
               </div>
             </div>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-1.5 sm:grid-cols-2 md:grid-cols-4">
             {contactItems.map((item) => (
               <div
                 key={item.label}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2"
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5"
               >
-                <div className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   {item.label}
                 </div>
-                <div className="mt-1 break-words text-sm font-bold text-slate-950">
+                <div className="mt-0.5 break-words text-[11px] font-bold leading-tight text-slate-950">
                   {item.value}
                 </div>
               </div>
