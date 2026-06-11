@@ -302,12 +302,13 @@ const WEBSITE_FEATURES: WebsiteFeature[] = [
   },
   {
     id: "nastaveni-zivotniho-pojisteni",
-    title: "Nastavení Životního pojištění",
+    title: "Jak nastavit Smrt, Invaliditu a Pracovní neschopnost ?",
     path: "/pomucky/nastaveni-zivotniho-pojisteni",
     summary:
-      "Stepper pro nastavení pracovní neschopnosti a invalidity podle příjmu, závazků a dluhů.",
+      "Stepper pro nastavení smrti, pracovní neschopnosti a invalidity podle příjmu, závazků a dluhů.",
     keywords: [
       "nastaveni zivotniho pojisteni",
+      "smrt",
       "pracovni neschopnost",
       "neschopenka",
       "pn",

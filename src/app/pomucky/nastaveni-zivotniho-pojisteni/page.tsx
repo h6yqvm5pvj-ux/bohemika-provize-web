@@ -1,6 +1,9 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import type { User as FirebaseUser } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
+import Image from "next/image";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -9,9 +12,11 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  FileDown,
   GraduationCap,
   HeartPulse,
   Home,
+  Loader2,
   PiggyBank,
   ShieldCheck,
   Users,
@@ -19,7 +24,9 @@ import {
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
+import { auth } from "@/app/firebase-auth";
 import { formatMoney } from "@/app/lib/formatters";
+import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import SplitTitle from "../plan-produkce/SplitTitle";
 
 type StepId = "base" | "family" | "debtEducation" | "confirm";
@@ -39,6 +46,13 @@ type InputKey =
   | "educationYears"
   | "funeralCost";
 type InputValues = Record<InputKey, string>;
+type AdvisorFooterInfo = {
+  fullName: string;
+  roleLabel: string;
+  ico: string;
+  phone: string;
+  email: string;
+};
 
 const STEPS: Array<{ id: StepId; label: string }> = [
   { id: "base", label: "Základ" },
@@ -47,6 +61,7 @@ const STEPS: Array<{ id: StepId; label: string }> = [
   { id: "confirm", label: "Potvrzení" },
 ];
 
+const LIFE_SETUP_TITLE = "Nastavení Životního pojištění";
 const INVALIDITY_RATIOS = [0.4, 0.6, 1] as const;
 const INVALIDITY_LABELS = ["1. stupeň", "2. stupeň", "3. stupeň"] as const;
 const RETIREMENT_AGE = 65;
@@ -57,6 +72,165 @@ const FIELD_TEXT_STYLE: CSSProperties = {
   color: "#fff",
   WebkitTextFillColor: "#fff",
 };
+
+type Html2CanvasFn = (
+  element: HTMLElement,
+  options?: {
+    scale?: number;
+    backgroundColor?: string;
+    useCORS?: boolean;
+    imageTimeout?: number;
+    logging?: boolean;
+    onclone?: (doc: Document) => void;
+  }
+) => Promise<HTMLCanvasElement>;
+
+type JsPdfInstance = {
+  internal: { pageSize: { getWidth: () => number; getHeight: () => number } };
+  addImage: (
+    imageData: string,
+    format: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    alias?: string,
+    compression?: string
+  ) => unknown;
+  addPage: () => unknown;
+  save: (filename: string) => void;
+};
+
+type JsPdfCtor = new (options: Record<string, unknown>) => JsPdfInstance;
+
+let html2canvasProPromise: Promise<Html2CanvasFn> | null = null;
+let jsPdfCtorPromise: Promise<JsPdfCtor> | null = null;
+
+async function getHtml2CanvasPro(): Promise<Html2CanvasFn> {
+  if (!html2canvasProPromise) {
+    html2canvasProPromise = import("html2canvas-pro").then((mod: unknown) => {
+      const candidate =
+        (mod as { default?: unknown }).default ?? (mod as Record<string, unknown>);
+      if (typeof candidate !== "function") {
+        throw new Error("Nepodařilo se načíst renderer PDF.");
+      }
+      return candidate as Html2CanvasFn;
+    });
+  }
+  return html2canvasProPromise;
+}
+
+async function getJsPdfCtor(): Promise<JsPdfCtor> {
+  if (!jsPdfCtorPromise) {
+    jsPdfCtorPromise = import("jspdf").then((mod: unknown) => {
+      const typed = mod as {
+        jsPDF?: unknown;
+        default?: { jsPDF?: unknown } | unknown;
+      };
+      const candidate =
+        typed.jsPDF ??
+        (typed.default &&
+        typeof typed.default === "object" &&
+        "jsPDF" in typed.default
+          ? (typed.default as { jsPDF?: unknown }).jsPDF
+          : typed.default);
+      if (typeof candidate !== "function") {
+        throw new Error("Nepodařilo se načíst PDF engine.");
+      }
+      return candidate as JsPdfCtor;
+    });
+  }
+  return jsPdfCtorPromise;
+}
+
+function waitForNextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
+function nameFromEmail(email: string | null | undefined): string {
+  const localPart = (email ?? "").split("@")[0]?.trim();
+  if (!localPart) return "";
+
+  const words = localPart.split(/[._-]+/).filter(Boolean);
+  if (!words.length) return localPart;
+
+  return words
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function displayNameFromUser(user: FirebaseUser | null): string {
+  const displayName = user?.displayName?.trim();
+  if (displayName) return displayName;
+
+  return nameFromEmail(user?.email);
+}
+
+function readText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readProfileObject(profile: Record<string, unknown> | null | undefined): {
+  onlineCard?: Record<string, unknown>;
+} {
+  const onlineCard =
+    profile?.onlineCard && typeof profile.onlineCard === "object"
+      ? (profile.onlineCard as Record<string, unknown>)
+      : undefined;
+  return { onlineCard };
+}
+
+function advisorFooterFromProfile(
+  profile: Record<string, unknown> | null | undefined,
+  user: FirebaseUser | null,
+  fallbackEmailOverride?: string
+): AdvisorFooterInfo {
+  const { onlineCard } = readProfileObject(profile);
+  const fallbackEmail = fallbackEmailOverride?.trim() || user?.email?.trim() || "";
+  const position = readText(profile?.position).toLowerCase();
+  const onlineCardTitle = readText(onlineCard?.title).toLowerCase();
+  const roleLabel =
+    position.startsWith("manazer") ||
+    position.startsWith("manažer") ||
+    onlineCardTitle.includes("manazer") ||
+    onlineCardTitle.includes("manažer")
+      ? "Manažer"
+      : "Poradce";
+
+  return {
+    roleLabel,
+    fullName:
+      readText(onlineCard?.fullName) ||
+      readText(profile?.fullName) ||
+      readText(profile?.name) ||
+      readText(profile?.displayName) ||
+      displayNameFromUser(user) ||
+      nameFromEmail(fallbackEmail),
+    ico:
+      readText(onlineCard?.ico) ||
+      readText(profile?.ico) ||
+      readText(profile?.ic) ||
+      readText(profile?.companyId),
+    phone:
+      readText(onlineCard?.phone) ||
+      readText(profile?.phoneNumber) ||
+      readText(profile?.phone),
+    email:
+      readText(onlineCard?.email) ||
+      readText(profile?.email) ||
+      fallbackEmail,
+  };
+}
+
+function formatGeneratedDate(value: Date): string {
+  return value.toLocaleDateString("cs-CZ", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
 
 const BASE_FIELDS: Array<{
   key: InputKey;
@@ -208,9 +382,16 @@ function formatPercent(value: number): string {
 }
 
 export default function LifeInsuranceSetupPage() {
+  const pdfContentRef = useRef<HTMLDivElement | null>(null);
   const [step, setStep] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [pdfGeneratedAt, setPdfGeneratedAt] = useState(() => new Date());
+  const [advisorFooter, setAdvisorFooter] = useState<AdvisorFooterInfo>(() =>
+    advisorFooterFromProfile(null, auth.currentUser)
+  );
   const [providerRole, setProviderRole] = useState<ProviderRole>("main");
   const [values, setValues] = useState<InputValues>({
     age: "35",
@@ -363,6 +544,42 @@ export default function LifeInsuranceSetupPage() {
       ? Math.round((numbers.monthlyExpenses / numbers.householdIncome) * 100)
       : 0;
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadFooter = (currentUser: FirebaseUser | null) => {
+      setAdvisorFooter(advisorFooterFromProfile(null, currentUser));
+      if (!currentUser) return;
+
+      getUserProfileCached(currentUser, { force: true })
+        .then((payload) => {
+          if (cancelled) return;
+          const payloadEmail =
+            typeof (payload as { email?: unknown }).email === "string"
+              ? (payload as { email?: string }).email
+              : "";
+          setAdvisorFooter(
+            advisorFooterFromProfile(payload.profile, currentUser, payloadEmail)
+          );
+        })
+        .catch((error) => {
+          console.warn(
+            "Profil poradce pro PDF patičku se nepodařilo načíst.",
+            error
+          );
+        });
+    };
+
+    loadFooter(auth.currentUser);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      loadFooter(currentUser);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
   const updateValue = (key: InputKey, value: string) => {
     setValues((prev) => ({ ...prev, [key]: sanitizeInputValue(value) }));
     setCompleted(false);
@@ -406,53 +623,189 @@ export default function LifeInsuranceSetupPage() {
     setStep((prev) => Math.max(prev - 1, 0));
   };
 
+  const handleDownloadPdf = async () => {
+    const source = pdfContentRef.current;
+    if (!source) return;
+
+    setPdfGenerating(true);
+    setPdfError(null);
+    setPdfGeneratedAt(new Date());
+
+    try {
+      await waitForNextFrame();
+      await waitForNextFrame();
+
+      const html2canvas = await getHtml2CanvasPro();
+      const JsPdfCtor = await getJsPdfCtor();
+      const sourceRect = source.getBoundingClientRect();
+      const sourceWidth = Math.ceil(sourceRect.width);
+
+      const canvas = await html2canvas(source, {
+        scale: Math.min(3, Math.max(2, window.devicePixelRatio || 2)),
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        imageTimeout: 20000,
+        logging: false,
+        onclone: (doc) => {
+          doc
+            .querySelectorAll<HTMLElement>("[data-pdf-ignore='1']")
+            .forEach((node) => node.remove());
+
+          const clonedSource = doc.querySelector<HTMLElement>(
+            "[data-life-setup-pdf='1']"
+          );
+          if (clonedSource) {
+            clonedSource.style.width = `${sourceWidth}px`;
+            clonedSource.style.maxWidth = `${sourceWidth}px`;
+            clonedSource.style.margin = "0";
+            clonedSource.style.padding = "0";
+            clonedSource.style.background = "#ffffff";
+          }
+
+          doc.querySelectorAll<HTMLElement>("[data-pdf-only='1']").forEach((node) => {
+            node.style.setProperty("display", "block", "important");
+          });
+        },
+      });
+
+      const pdf = new JsPdfCtor({
+        unit: "pt",
+        format: "a4",
+        orientation: "portrait",
+        compress: true,
+      });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 22;
+      const contentWidth = pageWidth - margin * 2;
+      const contentHeight = pageHeight - margin * 2;
+      const pxPerPt = canvas.width / contentWidth;
+      const sliceHeightPx = Math.max(1, Math.floor(contentHeight * pxPerPt));
+      const sliceCanvas = document.createElement("canvas");
+      const sliceCtx = sliceCanvas.getContext("2d");
+
+      if (!sliceCtx) {
+        throw new Error("Prohlížeč nepodporuje přípravu PDF canvasu.");
+      }
+
+      let renderedFirstPage = false;
+      for (let offsetY = 0; offsetY < canvas.height; offsetY += sliceHeightPx) {
+        const currentSliceHeight = Math.min(sliceHeightPx, canvas.height - offsetY);
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = currentSliceHeight;
+        sliceCtx.clearRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        sliceCtx.fillStyle = "#ffffff";
+        sliceCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        sliceCtx.drawImage(
+          canvas,
+          0,
+          offsetY,
+          canvas.width,
+          currentSliceHeight,
+          0,
+          0,
+          canvas.width,
+          currentSliceHeight
+        );
+
+        if (renderedFirstPage) {
+          pdf.addPage();
+        }
+
+        const sliceHeightPt = currentSliceHeight / pxPerPt;
+        pdf.addImage(
+          sliceCanvas.toDataURL("image/jpeg", 0.96),
+          "JPEG",
+          margin,
+          margin,
+          contentWidth,
+          sliceHeightPt,
+          undefined,
+          "FAST"
+        );
+        renderedFirstPage = true;
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      pdf.save(`nastaveni-zivotniho-pojisteni-${today}.pdf`);
+    } catch (error) {
+      console.error("PDF export nastavení životního pojištění selhal:", error);
+      setPdfError("PDF se nepodařilo vygenerovat. Zkus to prosím znovu.");
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
   return (
     <AppLayout active="tools">
       <div className="w-full max-w-6xl space-y-6 px-2 pb-10 sm:px-3">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <SplitTitle
-            text="Nastavení Životního pojištění"
-            className="!text-3xl sm:!text-5xl"
-          />
-          {completed ? (
-            <button
-              type="button"
-              onClick={() => {
-                setCompleted(false);
-                setStep(0);
-              }}
-              className="inline-flex items-center justify-center gap-2 self-start rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-[0_10px_26px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:bg-slate-50 sm:self-auto"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Upravit vstupy
-            </button>
-          ) : null}
-        </header>
-
         <style jsx global>{`
-          body.simple-bg.simple-bg-white
-            .app-content
-            .life-setup-dark-panel
-            .text-white,
-          body.simple-bg.simple-bg-white
-            .app-content
-            .life-setup-dark-panel
-            .\\!text-white,
-          body.simple-bg.simple-bg-white
-            .app-content
-            .life-setup-dark-panel
-            .life-setup-force-white,
-          body.simple-bg.simple-bg-white
-            .app-content
-            .life-setup-dark-panel
-            input {
+          .life-setup-dark-panel,
+          .life-setup-dark-panel :where(h1, h2, h3, h4, p, span, div, label, button, input) {
+            color: #f8fafc !important;
+            -webkit-text-fill-color: #f8fafc !important;
+          }
+
+          .life-setup-dark-panel input,
+          .life-setup-dark-panel .\\!text-white,
+          .life-setup-dark-panel .text-white,
+          .life-setup-dark-panel .life-setup-force-white {
             color: #ffffff !important;
             -webkit-text-fill-color: #ffffff !important;
           }
+
+          .life-setup-dark-panel input::placeholder {
+            color: rgba(255, 255, 255, 0.35) !important;
+            -webkit-text-fill-color: rgba(255, 255, 255, 0.35) !important;
+          }
         `}</style>
 
-        {!completed ? (
-          <section className="life-setup-dark-panel relative overflow-hidden rounded-[28px] border border-violet-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(167,139,250,0.24),transparent_34%),linear-gradient(155deg,#160c2a_0%,#100b21_100%)] p-4 text-[#f8fafc] shadow-[0_34px_90px_rgba(7,6,25,0.7),inset_0_1px_0_rgba(196,181,253,0.2)] sm:p-6">
+        <div ref={pdfContentRef} data-life-setup-pdf="1" className="space-y-6 bg-white">
+          <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div data-pdf-ignore="1">
+              <SplitTitle text={LIFE_SETUP_TITLE} className="!text-3xl sm:!text-5xl" />
+            </div>
+            <h1
+              data-pdf-only="1"
+              className="hidden text-5xl font-extrabold tracking-normal text-slate-950"
+            >
+              {LIFE_SETUP_TITLE}
+            </h1>
+            {completed ? (
+              <div
+                className="flex flex-wrap items-center gap-2 sm:justify-end"
+                data-pdf-ignore="1"
+              >
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={pdfGenerating}
+                  className="inline-flex items-center justify-center gap-2 self-start rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(124,58,237,0.24)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:self-auto"
+                >
+                  {pdfGenerating ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileDown className="h-4 w-4" />
+                  )}
+                  {pdfGenerating ? "Připravuji PDF" : "Tisk do PDF"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompleted(false);
+                    setStep(0);
+                  }}
+                  className="inline-flex items-center justify-center gap-2 self-start rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-[0_10px_26px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:bg-slate-50 sm:self-auto"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Upravit vstupy
+                </button>
+              </div>
+            ) : null}
+          </header>
+
+          {!completed ? (
+            <section className="life-setup-dark-panel relative overflow-hidden rounded-[28px] border border-violet-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(167,139,250,0.24),transparent_34%),linear-gradient(155deg,#160c2a_0%,#100b21_100%)] p-4 text-[#f8fafc] shadow-[0_34px_90px_rgba(7,6,25,0.7),inset_0_1px_0_rgba(196,181,253,0.2)] sm:p-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/80">
@@ -665,16 +1018,28 @@ export default function LifeInsuranceSetupPage() {
                 </button>
               </div>
             </div>
-          </section>
-        ) : (
-          <PreviewPanel
-            numbers={numbers}
-            providerRole={providerRole}
-            sickLeave={sickLeave}
-            invalidity={invalidity}
-            death={death}
-          />
-        )}
+            </section>
+          ) : (
+            <PreviewPanel
+              numbers={numbers}
+              providerRole={providerRole}
+              sickLeave={sickLeave}
+              invalidity={invalidity}
+              death={death}
+              advisorFooter={advisorFooter}
+              generatedAtLabel={formatGeneratedDate(pdfGeneratedAt)}
+            />
+          )}
+        </div>
+
+        {pdfError ? (
+          <p
+            className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800"
+            data-pdf-ignore="1"
+          >
+            {pdfError}
+          </p>
+        ) : null}
       </div>
     </AppLayout>
   );
@@ -846,6 +1211,8 @@ function PreviewPanel({
   sickLeave,
   invalidity,
   death,
+  advisorFooter,
+  generatedAtLabel,
 }: {
   numbers: {
     age: number;
@@ -894,6 +1261,8 @@ function PreviewPanel({
     constantAmount: number;
     annuityMortgageAmount: number;
   };
+  advisorFooter: AdvisorFooterInfo;
+  generatedAtLabel: string;
 }) {
   return (
     <div className="space-y-5">
@@ -1103,7 +1472,77 @@ function PreviewPanel({
           </div>
         ) : null}
       </section>
+
+      <PdfAdvisorFooter advisor={advisorFooter} generatedAtLabel={generatedAtLabel} />
     </div>
+  );
+}
+
+function PdfAdvisorFooter({
+  advisor,
+  generatedAtLabel,
+}: {
+  advisor: AdvisorFooterInfo;
+  generatedAtLabel: string;
+}) {
+  const advisorRole = advisor.roleLabel || "Poradce";
+  const advisorName = advisor.fullName || `${advisorRole} Bohemika`;
+  const contactItems = [
+    { label: "IČO", value: advisor.ico || "neuvedeno" },
+    { label: "Telefon", value: advisor.phone || "neuvedeno" },
+    { label: "E-mail", value: advisor.email || "neuvedeno" },
+    { label: "Vygenerováno", value: generatedAtLabel },
+  ];
+
+  return (
+    <footer
+      data-pdf-only="1"
+      className="hidden rounded-[28px] border border-violet-200 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)]"
+    >
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+        <div className="h-2 bg-[linear-gradient(90deg,#2e1065_0%,#7c3aed_52%,#a855f7_100%)]" />
+        <div className="grid gap-4 px-5 py-4 md:grid-cols-[1.15fr_2fr] md:items-center">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-violet-200 bg-white shadow-[0_10px_22px_rgba(124,58,237,0.12)]">
+              <Image
+                src="/icons/bohemika_logo.png"
+                alt="Bohemika"
+                width={40}
+                height={40}
+                className="h-10 w-10 object-contain"
+              />
+            </span>
+            <div className="min-w-0">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+                {advisorRole}
+              </div>
+              <div className="mt-1 text-xl font-bold leading-tight text-slate-950">
+                {advisorName}
+              </div>
+              <div className="mt-0.5 text-xs font-semibold text-slate-500">
+                Bohemika a.s.
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            {contactItems.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2"
+              >
+                <div className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  {item.label}
+                </div>
+                <div className="mt-1 break-words text-sm font-bold text-slate-950">
+                  {item.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </footer>
   );
 }
 

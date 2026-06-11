@@ -496,8 +496,8 @@ export default function ToolsPage() {
       {
         key: "nastaveni-zivotniho-pojisteni",
         category: "Životní pojištění",
-        title: "Nastavení Životního pojištění",
-        description: "Stepper pro nastavení pracovní neschopnosti a invalidity podle příjmu, závazků a dluhů.",
+        title: "Jak nastavit Smrt, Invaliditu a Pracovní neschopnost ?",
+        description: "Stepper pro nastavení smrti, invalidity a pracovní neschopnosti podle příjmu, závazků a dluhů.",
         icon: HeartPulse,
         href: "/pomucky/nastaveni-zivotniho-pojisteni",
       },
