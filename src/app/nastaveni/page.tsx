@@ -20,6 +20,7 @@ import {
   Building2,
   ExternalLink,
   FileText,
+  Fingerprint,
   Globe,
   Globe2,
   HeartPulse,
@@ -67,6 +68,14 @@ import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
 import { PremiumOnlineCardPreview } from "@/components/PremiumOnlineCardPreview";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
+import {
+  createPasskeyForUser,
+  deletePasskeyForUser,
+  getPasskeyAvailability,
+  listPasskeysForUser,
+  resolvePasskeyErrorMessage,
+  type PasskeyCredentialSummary,
+} from "@/app/lib/passkeys";
 import { invalidateUserProfileCache } from "@/app/lib/userProfileCache";
 import {
   deleteBrowserFcmToken,
@@ -969,6 +978,14 @@ export default function SettingsPage() {
   const [mfaQrCodeDataUrl, setMfaQrCodeDataUrl] = useState("");
   const [mfaQrCodeLoading, setMfaQrCodeLoading] = useState(false);
   const [mfaQrCodeError, setMfaQrCodeError] = useState<string | null>(null);
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [passkeyPlatformAvailable, setPasskeyPlatformAvailable] = useState(false);
+  const [passkeyCredentials, setPasskeyCredentials] = useState<PasskeyCredentialSummary[]>([]);
+  const [passkeysLoading, setPasskeysLoading] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyDeletingId, setPasskeyDeletingId] = useState<string | null>(null);
+  const [passkeyName, setPasskeyName] = useState("");
+  const [passkeyStatus, setPasskeyStatus] = useState<InlineStatus | null>(null);
   const [fcmActive, setFcmActive] = useState<boolean | null>(null);
   const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">(
     "unsupported"
@@ -1078,6 +1095,48 @@ export default function SettingsPage() {
     setPushSupported(supported);
     setPushPermission(getPushPermission());
   }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+    void getPasskeyAvailability().then((availability) => {
+      if (isCancelled) return;
+      setPasskeySupported(availability.supported);
+      setPasskeyPlatformAvailable(availability.platformAvailable);
+    });
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  const loadPasskeys = useCallback(async () => {
+    if (!user) return;
+    setPasskeysLoading(true);
+    setPasskeyStatus(null);
+    try {
+      const credentials = await listPasskeysForUser(user);
+      setPasskeyCredentials(credentials);
+    } catch (error) {
+      setPasskeyStatus({
+        type: "error",
+        message: resolvePasskeyErrorMessage(
+          error,
+          "Passkeys se nepodařilo načíst."
+        ),
+      });
+    } finally {
+      setPasskeysLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setPasskeyCredentials([]);
+      setPasskeyStatus(null);
+      return;
+    }
+    if (activeTab !== "account") return;
+    void loadPasskeys();
+  }, [activeTab, loadPasskeys, user]);
 
   useEffect(() => {
     if (!onlineCardStudioFullscreen || typeof window === "undefined") return;
@@ -2714,6 +2773,73 @@ export default function SettingsPage() {
       });
     } finally {
       setMfaBusy(false);
+    }
+  };
+
+  const handleCreatePasskey = async () => {
+    if (!user) return;
+    if (!passkeySupported) {
+      setPasskeyStatus({
+        type: "error",
+        message: "Tento prohlížeč nebo zařízení passkeys nepodporuje.",
+      });
+      return;
+    }
+
+    setPasskeyBusy(true);
+    setPasskeyStatus(null);
+
+    try {
+      const created = await createPasskeyForUser(
+        user,
+        passkeyName.trim() || "Moje zařízení"
+      );
+      setPasskeyCredentials((prev) => [
+        created,
+        ...prev.filter((item) => item.credentialId !== created.credentialId),
+      ]);
+      setPasskeyName("");
+      setPasskeyStatus({
+        type: "success",
+        message: "Passkey byl uložený. Příště se můžeš přihlásit přes Face ID.",
+      });
+    } catch (error) {
+      setPasskeyStatus({
+        type: "error",
+        message: resolvePasskeyErrorMessage(
+          error,
+          "Passkey se nepodařilo vytvořit."
+        ),
+      });
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
+  const handleDeletePasskey = async (credentialId: string) => {
+    if (!user) return;
+    setPasskeyDeletingId(credentialId);
+    setPasskeyStatus(null);
+
+    try {
+      await deletePasskeyForUser(user, credentialId);
+      setPasskeyCredentials((prev) =>
+        prev.filter((item) => item.credentialId !== credentialId)
+      );
+      setPasskeyStatus({
+        type: "success",
+        message: "Passkey byl odebraný.",
+      });
+    } catch (error) {
+      setPasskeyStatus({
+        type: "error",
+        message: resolvePasskeyErrorMessage(
+          error,
+          "Passkey se nepodařilo odebrat."
+        ),
+      });
+    } finally {
+      setPasskeyDeletingId(null);
     }
   };
 
@@ -5454,6 +5580,120 @@ export default function SettingsPage() {
                           )}
                         </div>
                       )}
+                    </div>
+
+                    <div className="mt-4 border-t border-slate-100 pt-4">
+                      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          <Fingerprint size={13} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
+                          <span>Face ID / passkeys</span>
+                        </div>
+                        <span
+                          className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                            passkeyCredentials.length > 0
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-slate-200 bg-slate-50 text-slate-500"
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              passkeyCredentials.length > 0
+                                ? "bg-emerald-500"
+                                : "bg-slate-400"
+                            }`}
+                            aria-hidden="true"
+                          />
+                          {passkeyCredentials.length > 0 ? "Aktivní" : "Nenastaveno"}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        {passkeySupported ? (
+                          <>
+                            <input
+                              type="text"
+                              className={fieldClass}
+                              placeholder={
+                                passkeyPlatformAvailable
+                                  ? "Název zařízení (např. iPhone)"
+                                  : "Název passkey"
+                              }
+                              value={passkeyName}
+                              onChange={(event) => setPasskeyName(event.target.value)}
+                              disabled={passkeyBusy}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void handleCreatePasskey()}
+                              disabled={passkeyBusy}
+                              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Fingerprint size={16} strokeWidth={2} aria-hidden="true" />
+                              {passkeyBusy ? "Otevírám ověření…" : "Zapnout Face ID / passkey"}
+                            </button>
+                          </>
+                        ) : (
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                            Tento prohlížeč passkeys nepodporuje.
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            <span>Uložené passkeys</span>
+                            {passkeysLoading ? <span>Načítám…</span> : null}
+                          </div>
+
+                          {!passkeysLoading && passkeyCredentials.length === 0 ? (
+                            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
+                              Zatím není uložený žádný passkey.
+                            </div>
+                          ) : null}
+
+                          {passkeyCredentials.map((credential) => (
+                            <div
+                              key={credential.credentialId}
+                              className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold text-slate-900">
+                                  {credential.name}
+                                </div>
+                                <div className="mt-0.5 text-[11px] text-slate-500">
+                                  Přidáno {formatDateTime(credential.createdAtMs)}
+                                  {credential.lastUsedAtMs
+                                    ? ` · použito ${formatDateTime(credential.lastUsedAtMs)}`
+                                    : ""}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeletePasskey(credential.credentialId)}
+                                disabled={passkeyDeletingId === credential.credentialId}
+                                className="inline-flex min-h-[36px] shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {passkeyDeletingId === credential.credentialId
+                                  ? "Odebírám…"
+                                  : "Odebrat"}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        {passkeyStatus && (
+                          <div
+                            className={`rounded-2xl border px-3 py-2 text-xs ${
+                              passkeyStatus.type === "success"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : passkeyStatus.type === "info"
+                                  ? "border-slate-200 bg-white text-slate-700"
+                                  : "border-rose-200 bg-rose-50 text-rose-700"
+                            }`}
+                          >
+                            {passkeyStatus.message}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -17,6 +17,11 @@ import {
 import { auth } from "../firebase";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import { evaluateSubscriptionFromProfile } from "@/lib/subscriptionAccess";
+import {
+  getPasskeyAvailability,
+  resolvePasskeyErrorMessage,
+  signInWithPasskey,
+} from "@/app/lib/passkeys";
 
 const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
   "auth/multi-factor-auth-required",
@@ -216,6 +221,8 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [passkeySupported, setPasskeySupported] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetStatus, setResetStatus] = useState<string | null>(null);
   const [mfaResolver, setMfaResolver] = useState<MultiFactorResolver | null>(null);
@@ -349,6 +356,17 @@ export default function LoginPage() {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
       window.removeEventListener("appinstalled", handleAppInstalled);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+    void getPasskeyAvailability().then((availability) => {
+      if (isCancelled) return;
+      setPasskeySupported(availability.supported);
+    });
+    return () => {
+      isCancelled = true;
     };
   }, []);
 
@@ -509,6 +527,35 @@ export default function LoginPage() {
     }
   };
 
+  const handlePasskeyLogin = async () => {
+    if (!passkeySupported) {
+      setError("Tento prohlížeč nebo zařízení passkeys nepodporuje.");
+      return;
+    }
+
+    setError(null);
+    setResetStatus(null);
+    setPasskeyLoading(true);
+    setLoading(true);
+    clearMfaState();
+
+    try {
+      await signInWithPasskey();
+      // dokončení přihlášení + kontrolu subscription řeší onAuthStateChanged
+    } catch (error) {
+      logAuthIssue("handlePasskeyLogin", error);
+      setError(
+        resolvePasskeyErrorMessage(
+          error,
+          "Passkey přihlášení se nepodařilo dokončit."
+        )
+      );
+      setLoading(false);
+    } finally {
+      setPasskeyLoading(false);
+    }
+  };
+
   const handleReset = async () => {
     setError(null);
     setResetStatus(null);
@@ -618,7 +665,7 @@ export default function LoginPage() {
                       id="login-email"
                       name="email"
                       type="email"
-                      autoComplete="email"
+                      autoComplete="username webauthn"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -713,17 +760,41 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || passkeyLoading}
                 className="mt-2 w-full rounded-2xl border border-violet-200/25 bg-[linear-gradient(135deg,#b85cff_0%,#7c3aed_52%,#4338ca_100%)] py-3 text-base font-semibold tracking-[0.01em] text-white shadow-[0_14px_30px_rgba(124,58,237,0.34)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#100b21] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               >
-                {loading
+                {loading && !passkeyLoading
                   ? mfaResolver
                     ? "Ověřuji 2FA…"
                     : "Přihlašuji…"
+                  : passkeyLoading
+                    ? "Ověřuji passkey…"
                   : mfaResolver
                     ? "Potvrdit 2FA"
                     : "Přihlásit se"}
               </button>
+
+              {!mfaResolver && passkeySupported ? (
+                <div className="space-y-3 pt-1">
+                  <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-100/45">
+                    <span className="h-px flex-1 bg-violet-200/15" />
+                    <span>nebo</span>
+                    <span className="h-px flex-1 bg-violet-200/15" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handlePasskeyLogin()}
+                    disabled={loading || passkeyLoading}
+                    className="inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl border border-violet-200/25 bg-white/[0.1] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(10,5,30,0.18)] transition hover:bg-white/[0.16] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {passkeyLoading
+                      ? "Otevírám ověření…"
+                      : installPlatform === "ios"
+                        ? "Přihlásit přes Face ID"
+                        : "Přihlásit přes passkey"}
+                  </button>
+                </div>
+              ) : null}
             </form>
 
             {shouldShowInstallAssistant ? (
