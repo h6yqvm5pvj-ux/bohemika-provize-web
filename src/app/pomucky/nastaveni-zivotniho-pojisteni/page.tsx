@@ -6,18 +6,20 @@ import { onAuthStateChanged } from "firebase/auth";
 import Image from "next/image";
 import type { LucideIcon } from "lucide-react";
 import {
+  Accessibility,
   Activity,
   Banknote,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  Clock3,
   FileDown,
   GraduationCap,
   HeartPulse,
   Home,
   Loader2,
-  PiggyBank,
+  Percent,
   ShieldCheck,
   Users,
   Wallet,
@@ -297,21 +299,21 @@ const FAMILY_FIELDS: Array<{
     label: "Ostatní příjem domácnosti",
     description: "Příjem partnera nebo jiný příjem, který po smrti klienta zůstane.",
     badge: "Kč / měsíc",
-    icon: Users,
+    icon: Banknote,
   },
   {
     key: "childrenCount",
     label: "Počet dětí",
     description: "Počet dětí, pro které má být krytý horizont do dospělosti a studium.",
     badge: "děti",
-    icon: GraduationCap,
+    icon: Users,
   },
   {
     key: "childHorizonYears",
     label: "Let do dospělosti dětí",
     description: "U rodiny typicky 10 až 15 let podle věku dětí.",
     badge: "roky",
-    icon: Activity,
+    icon: Clock3,
   },
 ];
 
@@ -327,14 +329,14 @@ const DEBT_EDUCATION_FIELDS: Array<{
     label: "Zbývající doba splácení",
     description: "Pro anuitně klesající smrt k hypotéce nebo úvěru.",
     badge: "roky",
-    icon: Home,
+    icon: Clock3,
   },
   {
     key: "mortgageRate",
     label: "Úrok úvěru",
     description: "Orientační sazba pro poznámku k anuitně klesající částce.",
     badge: "% p.a.",
-    icon: PiggyBank,
+    icon: Percent,
   },
   {
     key: "educationMonthlyPerChild",
@@ -348,7 +350,7 @@ const DEBT_EDUCATION_FIELDS: Array<{
     label: "Délka studia",
     description: "Typicky 3 až 5 let.",
     badge: "roky",
-    icon: Activity,
+    icon: Clock3,
   },
   {
     key: "funeralCost",
@@ -815,12 +817,12 @@ export default function LifeInsuranceSetupPage() {
                   type="button"
                   onClick={handleDownloadPdf}
                   disabled={pdfGenerating}
-                  className="inline-flex items-center justify-center gap-2 self-start rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(124,58,237,0.24)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:self-auto"
+                  className="inline-flex items-center justify-center gap-2 self-start rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-4 py-2 text-sm font-semibold !text-white shadow-[0_12px_26px_rgba(124,58,237,0.24)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:self-auto"
                 >
                   {pdfGenerating ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin !text-white" />
                   ) : (
-                    <FileDown className="h-4 w-4" />
+                    <FileDown className="h-4 w-4 !text-white" />
                   )}
                   {pdfGenerating ? "Připravuji PDF" : "Tisk do PDF"}
                 </button>
@@ -1167,7 +1169,7 @@ function NumberField({
     <label className="group min-h-[172px] overflow-hidden rounded-2xl border border-white/14 bg-white/[0.05] transition focus-within:border-violet-300/40 focus-within:bg-white/[0.08]">
       <div className="flex h-full flex-col px-4 py-4">
         <div className="flex items-start justify-between gap-3">
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/[0.05] text-violet-100">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-300/35 bg-[linear-gradient(135deg,#7c3aed_0%,#a855f7_70%,#c084fc_100%)] text-white shadow-[0_10px_22px_rgba(124,58,237,0.24)]">
             <Icon className="h-5 w-5" />
           </span>
           <span className="rounded-full border border-violet-200/20 bg-violet-300/10 px-2 py-0.5 text-[10px] font-semibold text-violet-50">
@@ -1456,8 +1458,11 @@ function PreviewPanel({
                 : "Rentové pojistné částky podle stupně"}
             </h3>
           </div>
-          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">
-            Krytí do 65 let: {numbers.invalidityYears} let
+          <div className="flex items-center gap-3">
+            <Accessibility className="h-8 w-8 text-violet-700" />
+            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">
+              Krytí do 65 let: {numbers.invalidityYears} let
+            </div>
           </div>
         </div>
 
@@ -1492,7 +1497,7 @@ function PreviewPanel({
                     onClick={() => onInvalidityModelChange(model.id)}
                     className={`rounded-xl px-3.5 py-2 text-sm font-semibold transition ${
                       active
-                        ? "bg-[linear-gradient(135deg,#312e81_0%,#7c3aed_100%)] text-white shadow-[0_8px_18px_rgba(49,46,129,0.24)]"
+                        ? "bg-[linear-gradient(135deg,#312e81_0%,#7c3aed_100%)] !text-white shadow-[0_8px_18px_rgba(49,46,129,0.24)]"
                         : "text-slate-600 hover:bg-violet-50 hover:text-violet-900"
                     }`}
                   >
@@ -1512,7 +1517,7 @@ function PreviewPanel({
                     onClick={() => onInvalidityScenarioChange(scenario.id)}
                     className={`rounded-xl px-3.5 py-2 text-sm font-semibold transition ${
                       active
-                        ? "bg-[linear-gradient(135deg,#6d28d9_0%,#a855f7_100%)] text-white shadow-[0_8px_18px_rgba(124,58,237,0.28)]"
+                        ? "bg-[linear-gradient(135deg,#6d28d9_0%,#a855f7_100%)] !text-white shadow-[0_8px_18px_rgba(124,58,237,0.28)]"
                         : "text-slate-600 hover:bg-violet-50 hover:text-violet-900"
                     }`}
                   >
