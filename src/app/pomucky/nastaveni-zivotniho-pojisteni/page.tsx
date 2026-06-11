@@ -1447,7 +1447,7 @@ function PreviewPanel({
             </div>
           </div>
 
-          <div className="overflow-x-auto pb-1 lg:pb-0">
+          <div className="overflow-x-auto pb-1 lg:pb-0" data-pdf-ignore="1">
             <div className="inline-flex min-w-max items-center rounded-2xl border border-violet-200 bg-white p-1 shadow-[0_8px_18px_rgba(124,58,237,0.08)]">
               {INVALIDITY_SCENARIOS.map((scenario) => {
                 const active = scenario.id === invalidityScenarioId;
