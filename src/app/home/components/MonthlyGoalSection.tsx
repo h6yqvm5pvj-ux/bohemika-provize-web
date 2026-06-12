@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { Pencil, Target } from "lucide-react";
 import Image from "next/image";
 
+import { type AppLanguage } from "@/lib/appLanguage";
 import { formatMoney } from "../homeUtils";
 
 type Props = {
+  language: AppLanguage;
   monthlyGoal: number | null;
   progress: number;
   progressTone: string;
@@ -13,7 +15,43 @@ type Props = {
   onSaveGoal: (value: number) => Promise<void>;
 };
 
+const MONTHLY_GOAL_COPY: Record<
+  AppLanguage,
+  {
+    notSet: string;
+    invalidAmount: string;
+    saveFailed: string;
+    editTitle: string;
+    editDescription: string;
+    placeholder: string;
+    cancel: string;
+    saving: string;
+    save: string;
+    monthlyGoal: string;
+    completed: string;
+    loading: string;
+    editGoal: string;
+  }
+> = {
+  cs: {
+    notSet: "Není nastaven",
+    invalidAmount: "Zadej částku 0 nebo víc.",
+    saveFailed: "Uložení se nepodařilo. Zkus to znovu.",
+    editTitle: "Upravit měsíční cíl",
+    editDescription: "Zadej částku provize, kterou chceš tento měsíc dosáhnout.",
+    placeholder: "Např. 50000",
+    cancel: "Zrušit",
+    saving: "Ukládám…",
+    save: "Uložit",
+    monthlyGoal: "Měsíční cíl:",
+    completed: "Splněno",
+    loading: "Načítám…",
+    editGoal: "Upravit cíl",
+  },
+};
+
 export function MonthlyGoalSection({
+  language,
   monthlyGoal,
   progress,
   progressTone,
@@ -21,6 +59,7 @@ export function MonthlyGoalSection({
   isLiteUI,
   onSaveGoal,
 }: Props) {
+  const copy = MONTHLY_GOAL_COPY[language];
   const [editOpen, setEditOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [saving, setSaving] = useState(false);
@@ -36,7 +75,7 @@ export function MonthlyGoalSection({
     : rawProgress >= 51
       ? "bg-emerald-600"
       : "bg-rose-600";
-  const goalDisplayValue = monthlyGoal ? formatMoney(monthlyGoal) : "Není nastaven";
+  const goalDisplayValue = monthlyGoal ? formatMoney(monthlyGoal) : copy.notSet;
 
   useEffect(() => {
     setInputValue(
@@ -48,7 +87,7 @@ export function MonthlyGoalSection({
     const raw = (inputValue ?? "").toString().replace(/\s+/g, "");
     const parsed = Number(raw);
     if (!Number.isFinite(parsed) || parsed < 0) {
-      setError("Zadej částku 0 nebo víc.");
+      setError(copy.invalidAmount);
       return;
     }
 
@@ -59,7 +98,7 @@ export function MonthlyGoalSection({
       setEditOpen(false);
     } catch (err) {
       console.error("Uložení měsíčního cíle selhalo", err);
-      setError("Uložení se nepodařilo. Zkus to znovu.");
+      setError(copy.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -89,9 +128,9 @@ export function MonthlyGoalSection({
       {editOpen && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
-            <h3 className="text-base font-semibold text-slate-900">Upravit měsíční cíl</h3>
+            <h3 className="text-base font-semibold text-slate-900">{copy.editTitle}</h3>
             <p className="mt-1 text-sm text-slate-600">
-              Zadej částku provize, kterou chceš tento měsíc dosáhnout.
+              {copy.editDescription}
             </p>
             <div className="mt-3 space-y-2">
               <input
@@ -99,7 +138,7 @@ export function MonthlyGoalSection({
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-800 focus:ring-2 focus:ring-slate-800/10"
-                placeholder="Např. 50000"
+                placeholder={copy.placeholder}
                 autoFocus
                 min={0}
               />
@@ -115,7 +154,7 @@ export function MonthlyGoalSection({
                 className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-50"
                 disabled={saving}
               >
-                Zrušit
+                {copy.cancel}
               </button>
               <button
                 type="button"
@@ -123,7 +162,7 @@ export function MonthlyGoalSection({
                 disabled={saving}
                 className="rounded-xl border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {saving ? "Ukládám…" : "Uložit"}
+                {saving ? copy.saving : copy.save}
               </button>
             </div>
           </div>
@@ -134,14 +173,14 @@ export function MonthlyGoalSection({
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 text-2xl font-semibold text-slate-900">
               <Target className="h-6 w-6 text-slate-700" strokeWidth={2} aria-hidden="true" />
-              <span>Měsíční cíl:</span>
+              <span>{copy.monthlyGoal}</span>
             </div>
             <div className="mt-1 text-[2.5rem] leading-[1] font-semibold tracking-tight text-slate-900 sm:text-[3rem]">
               {goalDisplayValue}
             </div>
           </div>
           <div className="self-start sm:self-auto sm:text-right">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Splněno</div>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{copy.completed}</div>
             <div className="text-3xl font-semibold text-slate-900">
               {loading ? (
                 <span className="inline-flex items-center gap-2 text-base font-medium text-slate-500">
@@ -149,7 +188,7 @@ export function MonthlyGoalSection({
                     className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700"
                     aria-hidden="true"
                   />
-                  <span>Načítám…</span>
+                  <span>{copy.loading}</span>
                 </span>
               ) : (
                 `${progressLabel}%`
@@ -161,7 +200,7 @@ export function MonthlyGoalSection({
               className="mt-2 whitespace-nowrap inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-900 transition hover:bg-slate-50 sm:mt-3"
             >
               <Pencil className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
-              Upravit cíl
+              {copy.editGoal}
             </button>
           </div>
         </div>

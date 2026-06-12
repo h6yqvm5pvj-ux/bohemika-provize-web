@@ -15,6 +15,14 @@ import {
   getUserProfileCached,
   invalidateUserProfileCache,
 } from "@/app/lib/userProfileCache";
+import {
+  APP_LANGUAGE_EVENT,
+  APP_LANGUAGE_LOCAL_STORAGE_KEY,
+  DEFAULT_APP_LANGUAGE,
+  getAppLanguageMeta,
+  resolveAppLanguage,
+  type AppLanguage,
+} from "@/lib/appLanguage";
 
 import { AppLayout } from "@/components/AppLayout";
 import { AutoAnniversaryModal } from "@/components/AutoAnniversaryModal";
@@ -35,7 +43,6 @@ import {
   nameFromEmail,
   normalizeToAnnual,
   normalizeToMonthly,
-  MONTH_LABELS,
 } from "./home/homeUtils";
 import {
   type ChartMode,
@@ -151,6 +158,123 @@ const HOME_LAYOUT_DEFAULT: HomeSection[] = [
 const PERFORMANCE_DEFAULT: PerformanceMode = "default";
 const QUICK_ACTIONS_DEFAULT: QuickAction[] = [];
 
+const HOME_LOCALES: Record<AppLanguage, string> = {
+  cs: "cs-CZ",
+};
+
+const HOME_COPY: Record<
+  AppLanguage,
+  {
+    authLoading: string;
+    authCheckAria: string;
+    profileTypeLoadError: string;
+    homeHeadingPrefix: string;
+    mail: string;
+    customizeHomeAria: string;
+    customizeTitle: string;
+    customizeButtonTitle: string;
+    close: string;
+    dragToMove: string;
+    widgetLabels: Record<keyof HomeWidgets, string>;
+    managerOnlyNote: string;
+    performance: {
+      title: string;
+      liteDescription: string;
+      defaultDescription: string;
+      liteLabel: string;
+      defaultLabel: string;
+    };
+    storage: {
+      title: string;
+      cloudDescription: string;
+      deviceDescription: string;
+      cloudLabel: string;
+      deviceLabel: string;
+      cloudHelp: string;
+      deviceHelp: string;
+    };
+    quickActions: {
+      kicker: string;
+      title: string;
+      add: string;
+      pickerTitle: string;
+      allAdded: string;
+      categoryFallback: string;
+      empty: string;
+      removeAriaPrefix: string;
+    };
+    leaderboard: {
+      life: string;
+      other: string;
+    };
+    goldFetch: {
+      apiError: string;
+      dataError: string;
+      invalidPrice: string;
+      priceError: string;
+    };
+  }
+> = {
+  cs: {
+    authLoading: "Načítám přihlášení…",
+    authCheckAria: "Ověřuji typ účtu",
+    profileTypeLoadError: "Nepodařilo se ověřit typ účtu.",
+    homeHeadingPrefix: "Produkce",
+    mail: "Pošta",
+    customizeHomeAria: "Přizpůsobit domovskou stránku",
+    customizeTitle: "Přizpůsobení domova",
+    customizeButtonTitle: "Přizpůsobit",
+    close: "Zavřít",
+    dragToMove: "⠿ Táhni pro přesun",
+    widgetLabels: {
+      productionSummary: "Přehled produkce",
+      expectedPayout: "Očekávaná výplata",
+      monthlyGoal: "Měsíční cíl",
+      teamLeaderboard: "Žebříček týmu",
+      productionChart: "Graf produkce",
+      goldWidget: "Cena zlata",
+      quickActions: "Rychlé akce (pomůcky)",
+    },
+    managerOnlyNote: "Jen pro manažery s týmem",
+    performance: {
+      title: "Režim výkonu",
+      liteDescription: "Odlehčené vizuály a menší efekty pro slabší zařízení.",
+      defaultDescription: "Plné vizuály a efekty.",
+      liteLabel: "Odlehčený",
+      defaultLabel: "Plný",
+    },
+    storage: {
+      title: "Ukládání",
+      cloudDescription: "Synchronizuje se s tvým profilem (všechna zařízení).",
+      deviceDescription: "Uloží se jen do tohoto zařízení/prohlížeče.",
+      cloudLabel: "Cloud",
+      deviceLabel: "Jen zařízení",
+      cloudHelp: "Nastavení i rozložení se uloží do profilu a funguje na všech zařízeních.",
+      deviceHelp: "Nastavení zůstává jen v tomto prohlížeči (localStorage).",
+    },
+    quickActions: {
+      kicker: "Rychlé akce",
+      title: "Pomůcky po ruce",
+      add: "+ Přidat",
+      pickerTitle: "Pomůcky",
+      allAdded: "Vše už máš přidané.",
+      categoryFallback: "Pomůcky",
+      empty: "Přidej si sem nejčastěji používané pomůcky a měj je na jedno kliknutí.",
+      removeAriaPrefix: "Odebrat",
+    },
+    leaderboard: {
+      life: "Životní pojištění",
+      other: "Vedlejší produkty",
+    },
+    goldFetch: {
+      apiError: "API vrací chybu",
+      dataError: "Nepodařilo se načíst data o zlatu.",
+      invalidPrice: "Neplatná cena zlata.",
+      priceError: "Nepodařilo se načíst cenu zlata.",
+    },
+  },
+};
+
 const QUICK_ACTION_OPTIONS: QuickAction[] = [
   { key: "argumenty", title: "Argumenty", href: "/pomucky/argumenty", category: "Obecné" },
   { key: "dokumenty", title: "Dokumenty", href: "/pomucky/dokumenty", category: "Obecné" },
@@ -173,6 +297,42 @@ const QUICK_ACTION_OPTIONS: QuickAction[] = [
 const QUICK_ACTION_OPTIONS_BY_KEY = new Map<string, QuickAction>(
   QUICK_ACTION_OPTIONS.map((option) => [option.key, option])
 );
+
+const QUICK_ACTION_TRANSLATIONS: Partial<
+  Record<AppLanguage, Record<string, Pick<QuickAction, "title" | "category">>>
+> = {};
+
+const resolveQuickActionText = (action: QuickAction, language: AppLanguage) => {
+  const translated = QUICK_ACTION_TRANSLATIONS[language]?.[action.key];
+  return {
+    title: translated?.title ?? action.title,
+    category: translated?.category ?? action.category,
+  };
+};
+
+const applyHomeLanguagePreference = (value: unknown): AppLanguage => {
+  const next = resolveAppLanguage(value);
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(APP_LANGUAGE_LOCAL_STORAGE_KEY, next);
+  }
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = getAppLanguageMeta(next)?.htmlLang ?? next;
+  }
+  return next;
+};
+
+const capitalizeForLocale = (value: string, language: AppLanguage) => {
+  const locale = HOME_LOCALES[language];
+  return value.charAt(0).toLocaleUpperCase(locale) + value.slice(1);
+};
+
+const formatHomeMonthLabel = (date: Date, language: AppLanguage) =>
+  new Intl.DateTimeFormat(HOME_LOCALES[language], { month: "long" }).format(date);
+
+const formatHomeMonthShortLabel = (date: Date, language: AppLanguage) =>
+  new Intl.DateTimeFormat(HOME_LOCALES[language], { month: "short" })
+    .format(date)
+    .replace(/\.$/, "");
 
 const normalizeQuickActions = (
   actions: QuickAction[] | null | undefined
@@ -271,6 +431,7 @@ const normalizeHomeLayout = (layout: HomeSection[] | null | undefined): HomeSect
 
 export default function HomePage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [language, setLanguage] = useState<AppLanguage>(DEFAULT_APP_LANGUAGE);
   const [lbProductFilter, setLbProductFilter] =
     useState<LeaderboardProductFilter>("life");
   const [lbRange, setLbRange] = useState<LeaderboardRange>("month");
@@ -307,6 +468,7 @@ export default function HomePage() {
     () => user?.email?.toLowerCase() ?? null,
     [user?.email]
   );
+  const copy = HOME_COPY[language];
   const accountType = useMemo(() => resolveAccountType(accessProfile), [accessProfile]);
   const shouldLoadAdvisorHome =
     authReady && !!user && accessProfileReady && accountType !== "tipster";
@@ -344,10 +506,35 @@ export default function HomePage() {
   });
 
   const now = new Date();
-  const monthLabel = MONTH_LABELS[now.getMonth()];
-  const monthLabelCapitalized =
-    monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+  const monthLabel = formatHomeMonthLabel(now, language);
+  const monthLabelCapitalized = capitalizeForLocale(monthLabel, language);
   const year = now.getFullYear();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    setLanguage(
+      applyHomeLanguagePreference(
+        window.localStorage.getItem(APP_LANGUAGE_LOCAL_STORAGE_KEY)
+      )
+    );
+
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key && ev.key !== APP_LANGUAGE_LOCAL_STORAGE_KEY) return;
+      setLanguage(applyHomeLanguagePreference(ev.newValue));
+    };
+    const onCustom = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ language?: string }>).detail;
+      setLanguage(applyHomeLanguagePreference(detail?.language));
+    };
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(APP_LANGUAGE_EVENT, onCustom as EventListener);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(APP_LANGUAGE_EVENT, onCustom as EventListener);
+    };
+  }, []);
 
   // auth
   useEffect(() => {
@@ -394,13 +581,17 @@ export default function HomePage() {
     getUserProfileCached(user, { maxAgeMs: 60 * 1000 })
       .then((payload) => {
         if (cancelled) return;
-        setAccessProfile((payload?.profile ?? {}) as Record<string, unknown>);
+        const profile = (payload?.profile ?? {}) as Record<string, unknown>;
+        setAccessProfile(profile);
+        if (typeof profile.language === "string") {
+          setLanguage(applyHomeLanguagePreference(profile.language));
+        }
       })
       .catch((error) => {
         if (cancelled) return;
         console.error("Ověření typu účtu selhalo:", error);
         setAccessProfile(null);
-        setAccessProfileError("Nepodařilo se ověřit typ účtu.");
+        setAccessProfileError(HOME_COPY.cs.profileTypeLoadError);
       })
       .finally(() => {
         if (!cancelled) setAccessProfileReady(true);
@@ -696,9 +887,9 @@ export default function HomePage() {
       setGoldError(null);
       try {
         const res = await fetch("/api/gold?range=d1", { cache: "no-store" });
-        if (!res.ok) throw new Error("API vrací chybu");
+        if (!res.ok) throw new Error(copy.goldFetch.apiError);
         const j = (await res.json()) as any;
-        if (j?.ok !== true) throw new Error(String(j?.message || j?.error || "Nepodařilo se načíst data o zlatu."));
+        if (j?.ok !== true) throw new Error(String(j?.message || j?.error || copy.goldFetch.dataError));
 
         const czkPerOz = Number(j?.czkPerOz);
         const ts = Number(j?.ts || Date.now());
@@ -706,14 +897,14 @@ export default function HomePage() {
         const changePct = Number.isFinite(Number(changePctRaw)) ? Number(changePctRaw) : null;
 
         if (!Number.isFinite(czkPerOz) || czkPerOz <= 0) {
-          throw new Error("Neplatná cena zlata.");
+          throw new Error(copy.goldFetch.invalidPrice);
         }
 
         if (cancelled) return;
         setGoldData({ czkPerOz, ts, changePct });
       } catch (e) {
         if (!cancelled) {
-          setGoldError((e as any)?.message || "Nepodařilo se načíst cenu zlata.");
+          setGoldError((e as any)?.message || copy.goldFetch.priceError);
           setGoldData(null);
         }
       } finally {
@@ -724,7 +915,7 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [homeWidgets.goldWidget, goldReloadKey]);
+  }, [homeWidgets.goldWidget, goldReloadKey, copy.goldFetch]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -851,6 +1042,7 @@ export default function HomePage() {
         if (!showGoldWidget) return null;
         return (
           <GoldWidget
+            language={language}
             isLiteUI={isLiteUI}
             goldLoading={goldLoading}
             goldData={goldData}
@@ -865,6 +1057,7 @@ export default function HomePage() {
         if (!showProductionSummary) return null;
         return (
           <ProductionSummarySection
+            language={language}
             loading={summaryLoading}
             showTeamBox={showTeamBox}
             myContractsCount={myContractsCount}
@@ -886,6 +1079,7 @@ export default function HomePage() {
         if (!showMonthlyGoalSection) return null;
         return (
           <MonthlyGoalSection
+            language={language}
             monthlyGoal={monthlyGoal}
             progress={progress}
             progressTone={progressTone}
@@ -898,6 +1092,7 @@ export default function HomePage() {
         if (!showExpectedPayoutSection) return null;
         return (
           <ExpectedPayoutSection
+            language={language}
             loading={cashflowLoading}
             grossAmount={expectedPayout.grossAmount}
             stornoFundAmount={expectedPayout.stornoFundAmount}
@@ -910,6 +1105,7 @@ export default function HomePage() {
         if (!showLeaderboardSection) return null;
         return (
           <TeamLeaderboardSection
+            language={language}
             loading={historyLoading}
             entries={leaderboardEntries}
             leaderboardLabel={leaderboardLabel}
@@ -938,10 +1134,10 @@ export default function HomePage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                  Rychlé akce
+                  {copy.quickActions.kicker}
                 </p>
                 <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">
-                  Pomůcky po ruce
+                  {copy.quickActions.title}
                 </h2>
               </div>
               <div className="relative z-30">
@@ -951,7 +1147,7 @@ export default function HomePage() {
                   onClick={() => setQaPickerOpen((v) => !v)}
                   className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
                 >
-                  + Přidat
+                  {copy.quickActions.add}
                 </button>
                 {qaPickerOpen && (
                   <div
@@ -959,7 +1155,7 @@ export default function HomePage() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                        Pomůcky
+                        {copy.quickActions.pickerTitle}
                       </div>
                       <button
                         type="button"
@@ -970,24 +1166,27 @@ export default function HomePage() {
                       </button>
                     </div>
                     {availableQA.length === 0 ? (
-                      <p className="text-xs text-slate-600">Vše už máš přidané.</p>
+                      <p className="text-xs text-slate-600">{copy.quickActions.allAdded}</p>
                     ) : (
-                      availableQA.map((opt) => (
-                        <button
-                          key={opt.key}
-                          type="button"
-                          onClick={() => {
-                            persistQuickActions((prev) => [...prev, opt]);
-                            setQaPickerOpen(false);
-                          }}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm text-slate-900 transition hover:bg-white"
-                        >
-                          <div className="font-semibold">{opt.title}</div>
-                          <div className="text-[11px] text-slate-500">
-                            {opt.category ?? "Pomůcky"}
-                          </div>
-                        </button>
-                      ))
+                      availableQA.map((opt) => {
+                        const actionText = resolveQuickActionText(opt, language);
+                        return (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={() => {
+                              persistQuickActions((prev) => [...prev, opt]);
+                              setQaPickerOpen(false);
+                            }}
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm text-slate-900 transition hover:bg-white"
+                          >
+                            <div className="font-semibold">{actionText.title}</div>
+                            <div className="text-[11px] text-slate-500">
+                              {actionText.category ?? copy.quickActions.categoryFallback}
+                            </div>
+                          </button>
+                        );
+                      })
                     )}
                   </div>
                 )}
@@ -996,30 +1195,33 @@ export default function HomePage() {
 
             {quickActions.length === 0 ? (
               <p className="text-sm text-slate-600">
-                Přidej si sem nejčastěji používané pomůcky a měj je na jedno kliknutí.
+                {copy.quickActions.empty}
               </p>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {quickActions.map((qa) => (
-                  <div
-                    key={qa.key}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900"
-                  >
-                    <Link href={qa.href} className="hover:text-slate-700">
-                      {qa.title}
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        persistQuickActions((prev) => prev.filter((item) => item.key !== qa.key))
-                      }
-                      className="text-[12px] text-slate-500 hover:text-rose-600"
-                      aria-label={`Odebrat ${qa.title}`}
+                {quickActions.map((qa) => {
+                  const actionText = resolveQuickActionText(qa, language);
+                  return (
+                    <div
+                      key={qa.key}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900"
                     >
-                      ×
-                    </button>
-                  </div>
-                ))}
+                      <Link href={qa.href} className="hover:text-slate-700">
+                        {actionText.title}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          persistQuickActions((prev) => prev.filter((item) => item.key !== qa.key))
+                        }
+                        className="text-[12px] text-slate-500 hover:text-rose-600"
+                        aria-label={`${copy.quickActions.removeAriaPrefix} ${actionText.title}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>
@@ -1094,9 +1296,9 @@ export default function HomePage() {
       map.set(email, { email, name: nameFromEmail(email) });
     }
     return Array.from(map.values()).sort((a, b) =>
-      a.name.localeCompare(b.name, "cs")
+      a.name.localeCompare(b.name, HOME_LOCALES[language])
     );
-  }, [teamEntries]);
+  }, [language, teamEntries]);
 
   const chartEntries = useMemo(() => {
     if (!hasTeam) return myEntries;
@@ -1130,7 +1332,7 @@ export default function HomePage() {
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${d.getMonth()}`;
-      const shortMonth = MONTH_LABELS[d.getMonth()].slice(0, 3);
+      const shortMonth = formatHomeMonthShortLabel(d, language);
       months.push({
         key,
         label: `${shortMonth} ${String(d.getFullYear()).slice(2)}`,
@@ -1172,7 +1374,7 @@ export default function HomePage() {
     }
 
     return months;
-  }, [chartEntries]);
+  }, [chartEntries, language]);
 
   // ---------- žebříček týmu ----------
 
@@ -1249,8 +1451,8 @@ export default function HomePage() {
 
   const leaderboardLabel =
     lbProductFilter === "life"
-      ? "Životní pojištění"
-      : "Vedlejší produkty";
+      ? copy.leaderboard.life
+      : copy.leaderboard.other;
 
   const isSectionVisible = (sec: HomeSection) => {
     switch (sec) {
@@ -1278,7 +1480,7 @@ export default function HomePage() {
   if (!authReady) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-white text-slate-900">
-        <div className="text-sm text-slate-700">Načítám přihlášení…</div>
+        <div className="text-sm text-slate-700">{copy.authLoading}</div>
       </main>
     );
   }
@@ -1294,7 +1496,7 @@ export default function HomePage() {
           <div
             className="h-14 w-14 animate-spin rounded-full border-[4px] border-current border-t-transparent text-slate-700"
             role="status"
-            aria-label="Ověřuji typ účtu"
+            aria-label={copy.authCheckAria}
           />
         </div>
       </AppLayout>
@@ -1306,7 +1508,9 @@ export default function HomePage() {
       <AppLayout active="home">
         <div className="flex min-h-[70vh] w-full items-center justify-center bg-slate-50 px-4">
           <div className="rounded-3xl border border-rose-200 bg-white px-5 py-4 text-sm font-medium text-rose-800 shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
-            {accessProfileError}
+            {accessProfileError === HOME_COPY.cs.profileTypeLoadError
+              ? copy.profileTypeLoadError
+              : accessProfileError}
           </div>
         </div>
       </AppLayout>
@@ -1316,7 +1520,7 @@ export default function HomePage() {
   if (accountType === "tipster") {
     return (
       <AppLayout active="home">
-        <TipsterHomeView user={user} profile={accessProfile ?? {}} />
+        <TipsterHomeView user={user} profile={accessProfile ?? {}} language={language} />
       </AppLayout>
     );
   }
@@ -1327,13 +1531,13 @@ export default function HomePage() {
       <div className="w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
         <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <SplitTextHeading text={`Produkce ${monthLabelCapitalized} ${year}`} />
+          <SplitTextHeading text={`${copy.homeHeadingPrefix} ${monthLabelCapitalized} ${year}`} />
           <div className="self-start flex items-center gap-3">
             <Link
               href="/posta"
               className="relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-blue-700 bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-[0_12px_24px_rgba(37,99,235,0.35)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2"
-              aria-label="Pošta"
-              title="Pošta"
+              aria-label={copy.mail}
+              title={copy.mail}
             >
               <Mail size={21} aria-hidden="true" />
               {mailUnreadCount > 0 ? (
@@ -1348,8 +1552,8 @@ export default function HomePage() {
                 type="button"
                 onClick={() => setWidgetPanelOpen((prev) => !prev)}
                 className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-white shadow-[0_12px_24px_rgba(15,23,42,0.28)] transition hover:scale-[1.03] hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2"
-                aria-label="Přizpůsobit domovskou stránku"
-                title="Přizpůsobit"
+                aria-label={copy.customizeHomeAria}
+                title={copy.customizeButtonTitle}
               >
                 <SlidersHorizontal size={21} aria-hidden="true" className="opacity-90" />
               </button>
@@ -1358,13 +1562,13 @@ export default function HomePage() {
                 <div className="absolute right-0 z-40 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
                   <div className="flex items-center justify-between gap-2 pb-2">
                     <div className="text-sm font-semibold text-slate-900">
-                      Přizpůsobení domova
+                      {copy.customizeTitle}
                     </div>
                     <button
                       type="button"
                       onClick={() => setWidgetPanelOpen(false)}
                       className="rounded-full border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 transition hover:bg-slate-50"
-                      aria-label="Zavřít"
+                      aria-label={copy.close}
                     >
                       ×
                     </button>
@@ -1372,17 +1576,17 @@ export default function HomePage() {
 
                   <div className="space-y-2 text-sm text-slate-700">
                     {[
-                      { key: "productionSummary", label: "Přehled produkce", disabled: false },
-                      { key: "expectedPayout", label: "Očekávaná výplata", disabled: false },
-                      { key: "monthlyGoal", label: "Měsíční cíl", disabled: false },
-                      { key: "goldWidget", label: "Cena zlata", disabled: false },
+                      { key: "productionSummary", label: copy.widgetLabels.productionSummary, disabled: false },
+                      { key: "expectedPayout", label: copy.widgetLabels.expectedPayout, disabled: false },
+                      { key: "monthlyGoal", label: copy.widgetLabels.monthlyGoal, disabled: false },
+                      { key: "goldWidget", label: copy.widgetLabels.goldWidget, disabled: false },
                       {
                         key: "teamLeaderboard",
-                        label: "Žebříček týmu",
+                        label: copy.widgetLabels.teamLeaderboard,
                         disabled: !showTeamBox,
-                        note: "Jen pro manažery s týmem",
+                        note: copy.managerOnlyNote,
                       },
-                      { key: "quickActions", label: "Rychlé akce (pomůcky)", disabled: false },
+                      { key: "quickActions", label: copy.widgetLabels.quickActions, disabled: false },
                     ].map((opt) => {
                     const checked = homeWidgets[opt.key as keyof HomeWidgets];
                     const disabled = opt.disabled;
@@ -1416,16 +1620,16 @@ export default function HomePage() {
                 </div>
                 <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-semibold text-slate-900">Režim výkonu</span>
+                    <span className="text-sm font-semibold text-slate-900">{copy.performance.title}</span>
                     <span className="text-[11px] text-slate-500">
                       {performanceMode === "lite"
-                        ? "Odlehčené vizuály a menší efekty pro slabší zařízení."
-                        : "Plné vizuály a efekty."}
+                        ? copy.performance.liteDescription
+                        : copy.performance.defaultDescription}
                     </span>
                   </div>
                   <label className="inline-flex items-center gap-2 text-xs text-slate-700">
                     <span className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                      {performanceMode === "lite" ? "Odlehčený" : "Plný"}
+                      {performanceMode === "lite" ? copy.performance.liteLabel : copy.performance.defaultLabel}
                     </span>
                     <input
                       type="checkbox"
@@ -1439,16 +1643,16 @@ export default function HomePage() {
                 </div>
                 <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-semibold text-slate-900">Ukládání</span>
+                    <span className="text-sm font-semibold text-slate-900">{copy.storage.title}</span>
                     <span className="text-[11px] text-slate-500">
                       {layoutScope === "cloud"
-                        ? "Synchronizuje se s tvým profilem (všechna zařízení)."
-                        : "Uloží se jen do tohoto zařízení/prohlížeče."}
+                        ? copy.storage.cloudDescription
+                        : copy.storage.deviceDescription}
                     </span>
                   </div>
                   <label className="inline-flex items-center gap-2 text-xs text-slate-700">
                     <span className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                      {layoutScope === "cloud" ? "Cloud" : "Jen zařízení"}
+                      {layoutScope === "cloud" ? copy.storage.cloudLabel : copy.storage.deviceLabel}
                     </span>
                     <input
                       type="checkbox"
@@ -1460,8 +1664,8 @@ export default function HomePage() {
                 </div>
                 <p className="mt-2 text-[11px] text-slate-500">
                   {layoutScope === "cloud"
-                    ? "Nastavení i rozložení se uloží do profilu a funguje na všech zařízeních."
-                    : "Nastavení zůstává jen v tomto prohlížeči (localStorage)."}
+                    ? copy.storage.cloudHelp
+                    : copy.storage.deviceHelp}
                 </p>
               </div>
             )}
@@ -1521,7 +1725,7 @@ export default function HomePage() {
                   {reorderEnabled && (
                     <div className="pointer-events-none absolute right-3 top-3 z-10">
                       <span className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-[11px] font-semibold text-white shadow-sm">
-                        ⠿ Táhni pro přesun
+                        {copy.dragToMove}
                       </span>
                     </div>
                   )}

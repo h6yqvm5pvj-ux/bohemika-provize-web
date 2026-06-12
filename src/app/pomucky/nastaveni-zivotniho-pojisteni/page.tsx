@@ -34,6 +34,7 @@ import SplitTitle from "../plan-produkce/SplitTitle";
 type StepId = "base" | "family" | "children" | "mortgage" | "confirm";
 type ProviderRole = "main" | "secondary";
 type InvalidityModel = "insurance" | "investment";
+type PdfLanguage = "cs" | "en" | "uk";
 type InputKey =
   | "age"
   | "insuredIncome"
@@ -61,11 +62,26 @@ const STEPS: Array<{ id: StepId; label: string }> = [
   { id: "base", label: "Základ" },
   { id: "family", label: "Rodina" },
   { id: "children", label: "Děti" },
-  { id: "mortgage", label: "Hypotéka" },
+  { id: "mortgage", label: "Úvěr / Hypotéka" },
   { id: "confirm", label: "Potvrzení" },
 ];
 
-const LIFE_SETUP_TITLE = "Nastavení Životního pojištění";
+const LIFE_SETUP_TITLE = "Jak nastavit Životní pojištění";
+const EMPTY_INPUT_VALUES: InputValues = {
+  age: "",
+  insuredIncome: "",
+  essentialExpenses: "",
+  loanPayments: "",
+  totalDebt: "",
+  otherHouseholdIncome: "",
+  childrenCount: "",
+  childHorizonYears: "",
+  mortgageYears: "",
+  mortgageRate: "",
+  educationMonthlyPerChild: "",
+  educationYears: "",
+  funeralCost: "",
+};
 const INVALIDITY_SCENARIOS = [
   { id: "veryLow", label: "Velmi nízké", ratios: [0.1, 0.2, 0.3] },
   { id: "low", label: "Nízké", ratios: [0.3, 0.5, 0.8] },
@@ -84,6 +100,276 @@ const FIELD_TEXT_STYLE: CSSProperties = {
   color: "#fff",
   WebkitTextFillColor: "#fff",
 };
+
+const PDF_LANGUAGE_OPTIONS: Array<{
+  id: PdfLanguage;
+  label: string;
+  flag: string;
+  description: string;
+}> = [
+  {
+    id: "cs",
+    label: "Čeština",
+    flag: "🇨🇿",
+    description: "Výchozí jazyk PDF.",
+  },
+  {
+    id: "en",
+    label: "Angličtina",
+    flag: "🇬🇧",
+    description: "English version for clients.",
+  },
+  {
+    id: "uk",
+    label: "Ukrajinština",
+    flag: "🇺🇦",
+    description: "Українська версія для клієнтів.",
+  },
+];
+
+const PDF_COPY = {
+  cs: {
+    previewEyebrow: "Náhled nastavení",
+    previewTitle: "Co a jak nastavit ve smlouvě",
+    previewIntro:
+      "Výpočet vychází z toho, co po smrti nebo dlouhodobém zdravotním problému v domácnosti reálně chybí: příjem, dluhy, horizont dětí a jednorázové náklady.",
+    householdIncome: "Příjem domácnosti",
+    householdExpenses: "Náklady domácnosti",
+    missingAfterDeath: "Po smrti klienta chybí",
+    clientRole: "Role klienta",
+    client: "Klient",
+    otherIncome: "ostatní",
+    essentialExpenses: "Nutné výdaje",
+    installments: "splátky",
+    remainingIncome: "Zůstane příjem",
+    mainProvider: "Hlavní živitel",
+    secondaryProvider: "Vedlejší příjem",
+    deathSetupNote: "Nastavení smrti počítá s výpadkem příjmu klienta.",
+    death: "Smrt",
+    recommendedSetup: "Doporučené nastavení",
+    constantDeathSum: "Konstantní PČ pro případ smrti",
+    constantDeathNote:
+      "Na náklady rozloučení. Držet konstantně, typicky 50 000 až 100 000 Kč.",
+    decreasingDeathSum: "Klesající PČ pro případ smrti",
+    incomeGap: "Výpadek příjmu",
+    childrenEducation: "vzdělání dětí",
+    approximatelyFor: "Orientačně na",
+    annuityDeathSum: "Anuitně klesající PČ k hypotéce / úvěru",
+    setByDebt: "Nastavit podle dluhu na",
+    interest: "úrok",
+    perYear: "p.a.",
+    noDebtDeathNote: "Pokud klient nemá dluh, tuto část není potřeba nastavovat.",
+    quickMethodPrefix: "Kontrola proti rychlé metodě: 5 ročních příjmů klienta vychází na",
+    quickMethodSuffix:
+      "Pro rodinu je ale důležitější výpadek příjmu, dluhy a horizont dětí.",
+    sickLeave: "Pracovní neschopnost",
+    dailyBenefit: "Denní dávka",
+    set: "Nastavit",
+    perDay: "den",
+    monthlyApprox: "Měsíčně přibližně",
+    sickLeaveFormula: "Výpočet bere 40 % čistého příjmu a dělí ho 30 dny.",
+    stateSicknessBenefit: "Orientační státní nemocenská",
+    incomeDrop: "Pokles proti příjmu klienta",
+    expenseGapInfo: "Mezera proti nákladům informativně",
+    disability: "Invalidita",
+    investmentByDegree: "Investiční varianta podle stupně",
+    insuranceByDegree: "Rentové pojistné částky podle stupně",
+    coverageTo65: "Krytí do 65 let",
+    disabilityCoverageVariant: "Varianta krytí invalidity",
+    insurancePayout: "Pojistné plnění",
+    investmentVariant: "Investiční varianta",
+    coveragePrefix: "Pokrytí",
+    degreeOfDisability: "Stupeň invalidity",
+    monthlyAnnuity: "Měsíční renta",
+    requiredDeposit: "Potřebný vklad",
+    sumWithoutDebt: "PČ bez dluhů",
+    to: "až",
+    investmentNote:
+      "Investiční varianta modeluje kapitál, ze kterého by šla čerpat zvolená měsíční renta při výnosu 5,5-6 % p.a. Nejde o investiční doporučení.",
+    disabilityAndLoan: "Invalidita a úvěr",
+    disabilityLoanTitle: "Anuitně klesající PČ k hypotéce / úvěru na invaliditu",
+    disabilityLoanNote:
+      "Nastavit samostatně podle aktuální dlužné částky na dobu splácení. Renta výše kryje výpadek příjmu, tato část kryje splacení dluhu.",
+    byRepaymentPeriod: "Podle doby splácení",
+    scenarioLabels: {
+      veryLow: "Velmi nízké",
+      low: "Nízké",
+      medium: "Střední",
+      high: "Vyšší",
+    },
+    degreeLabels: ["1. stupeň", "2. stupeň", "3. stupeň"],
+    footer: {
+      manager: "Manažer",
+      advisor: "Poradce",
+      companyId: "IČO",
+      phone: "Telefon",
+      email: "E-mail",
+      generated: "Vygenerováno",
+      missing: "neuvedeno",
+    },
+  },
+  en: {
+    previewEyebrow: "Setup preview",
+    previewTitle: "What to set up in the policy",
+    previewIntro:
+      "The calculation is based on what the household would realistically lack after death or a long-term health problem: income, debt cover, the children's support horizon, and one-off costs.",
+    householdIncome: "Household income",
+    householdExpenses: "Household expenses",
+    missingAfterDeath: "Shortfall after the client's death",
+    clientRole: "Client role",
+    client: "Client",
+    otherIncome: "other income",
+    essentialExpenses: "Essential expenses",
+    installments: "loan payments",
+    remainingIncome: "Remaining income",
+    mainProvider: "Main provider",
+    secondaryProvider: "Secondary income",
+    deathSetupNote: "The death cover is calculated around the loss of the client's income.",
+    death: "Death",
+    recommendedSetup: "Recommended setup",
+    constantDeathSum: "Fixed sum insured for death",
+    constantDeathNote:
+      "For final expenses. Keep this amount fixed, typically CZK 50,000 to 100,000.",
+    decreasingDeathSum: "Decreasing sum insured for death",
+    incomeGap: "Income shortfall",
+    childrenEducation: "children's education",
+    approximatelyFor: "Approximately for",
+    annuityDeathSum: "Annuity-decreasing sum insured for a mortgage / loan",
+    setByDebt: "Set according to the debt for",
+    interest: "interest",
+    perYear: "p.a.",
+    noDebtDeathNote: "If the client has no debt, this part does not need to be set.",
+    quickMethodPrefix: "Quick-method check: 5 years of the client's income equals",
+    quickMethodSuffix:
+      "For a family, however, the income shortfall, debts, and the children's support horizon matter more.",
+    sickLeave: "Incapacity for work",
+    dailyBenefit: "Daily benefit",
+    set: "Set",
+    perDay: "day",
+    monthlyApprox: "Approximately per month",
+    sickLeaveFormula: "The calculation uses 40% of net income and divides it by 30 days.",
+    stateSicknessBenefit: "Estimated state sickness benefit",
+    incomeDrop: "Drop compared with the client's income",
+    expenseGapInfo: "Indicative gap compared with expenses",
+    disability: "Disability",
+    investmentByDegree: "Investment variant by disability degree",
+    insuranceByDegree: "Annuity-based sums insured by disability degree",
+    coverageTo65: "Cover until age 65",
+    disabilityCoverageVariant: "Disability cover variant",
+    insurancePayout: "Insurance payout",
+    investmentVariant: "Investment variant",
+    coveragePrefix: "Coverage",
+    degreeOfDisability: "Disability degree",
+    monthlyAnnuity: "Monthly annuity",
+    requiredDeposit: "Required deposit",
+    sumWithoutDebt: "Sum insured excluding debts",
+    to: "to",
+    investmentNote:
+      "The investment variant models the capital from which the selected monthly annuity could be drawn at a 5.5-6% p.a. return. This is not investment advice.",
+    disabilityAndLoan: "Disability and loan",
+    disabilityLoanTitle: "Annuity-decreasing sum insured for mortgage / loan disability cover",
+    disabilityLoanNote:
+      "Set this separately according to the current outstanding debt and repayment period. The annuity above covers the income shortfall; this part covers repayment of the debt.",
+    byRepaymentPeriod: "According to the repayment period",
+    scenarioLabels: {
+      veryLow: "Very low",
+      low: "Low",
+      medium: "Medium",
+      high: "Higher",
+    },
+    degreeLabels: ["Degree I", "Degree II", "Degree III"],
+    footer: {
+      manager: "Manager",
+      advisor: "Advisor",
+      companyId: "Company ID",
+      phone: "Phone",
+      email: "E-mail",
+      generated: "Generated",
+      missing: "not provided",
+    },
+  },
+  uk: {
+    previewEyebrow: "Попередній перегляд налаштувань",
+    previewTitle: "Що і як налаштувати в договорі",
+    previewIntro:
+      "Розрахунок виходить із того, чого реально бракуватиме домогосподарству у разі смерті або тривалої проблеми зі здоров'ям: доходу, покриття боргів, горизонту забезпечення дітей і одноразових витрат.",
+    householdIncome: "Дохід домогосподарства",
+    householdExpenses: "Витрати домогосподарства",
+    missingAfterDeath: "Бракує після смерті клієнта",
+    clientRole: "Роль клієнта",
+    client: "Клієнт",
+    otherIncome: "інші доходи",
+    essentialExpenses: "обов'язкові витрати",
+    installments: "платежі за кредитами",
+    remainingIncome: "Залишається дохід",
+    mainProvider: "Основний годувальник",
+    secondaryProvider: "Додатковий дохід",
+    deathSetupNote: "Налаштування покриття смерті враховує втрату доходу клієнта.",
+    death: "Смерть",
+    recommendedSetup: "Рекомендоване налаштування",
+    constantDeathSum: "Фіксована страхова сума на випадок смерті",
+    constantDeathNote:
+      "На витрати на прощання. Тримати суму фіксованою, зазвичай 50 000-100 000 Kč.",
+    decreasingDeathSum: "Зменшувана страхова сума на випадок смерті",
+    incomeGap: "Втрата доходу",
+    childrenEducation: "освіта дітей",
+    approximatelyFor: "Орієнтовно на",
+    annuityDeathSum: "Ануїтетно-зменшувана страхова сума для іпотеки / кредиту",
+    setByDebt: "Налаштувати за сумою боргу на",
+    interest: "ставка",
+    perYear: "річних",
+    noDebtDeathNote: "Якщо у клієнта немає боргу, цю частину налаштовувати не потрібно.",
+    quickMethodPrefix: "Перевірка швидким методом: 5 річних доходів клієнта дорівнює",
+    quickMethodSuffix:
+      "Для сім'ї важливіші втрата доходу, борги та горизонт забезпечення дітей.",
+    sickLeave: "Тимчасова непрацездатність",
+    dailyBenefit: "Денна виплата",
+    set: "Налаштувати",
+    perDay: "день",
+    monthlyApprox: "Орієнтовно на місяць",
+    sickLeaveFormula: "Розрахунок бере 40% чистого доходу і ділить його на 30 днів.",
+    stateSicknessBenefit: "Орієнтовна державна лікарняна виплата",
+    incomeDrop: "Зниження порівняно з доходом клієнта",
+    expenseGapInfo: "Орієнтовний розрив відносно витрат",
+    disability: "Інвалідність",
+    investmentByDegree: "Інвестиційний варіант за ступенем інвалідності",
+    insuranceByDegree: "Страхові суми для ренти за ступенем інвалідності",
+    coverageTo65: "Покриття до 65 років",
+    disabilityCoverageVariant: "Варіант покриття інвалідності",
+    insurancePayout: "Страхова виплата",
+    investmentVariant: "Інвестиційний варіант",
+    coveragePrefix: "Покриття",
+    degreeOfDisability: "Ступінь інвалідності",
+    monthlyAnnuity: "Місячна рента",
+    requiredDeposit: "Необхідний внесок",
+    sumWithoutDebt: "Страхова сума без боргів",
+    to: "до",
+    investmentNote:
+      "Інвестиційний варіант моделює капітал, з якого можна було б отримувати обрану місячну ренту за дохідності 5,5-6% річних. Це не є інвестиційною рекомендацією.",
+    disabilityAndLoan: "Інвалідність і кредит",
+    disabilityLoanTitle:
+      "Ануїтетно-зменшувана страхова сума для іпотеки / кредиту на випадок інвалідності",
+    disabilityLoanNote:
+      "Налаштувати окремо за актуальною сумою боргу на строк погашення. Рента вище покриває втрату доходу; ця частина покриває погашення боргу.",
+    byRepaymentPeriod: "За строком погашення",
+    scenarioLabels: {
+      veryLow: "Дуже низьке",
+      low: "Низьке",
+      medium: "Середнє",
+      high: "Вище",
+    },
+    degreeLabels: ["I ступінь", "II ступінь", "III ступінь"],
+    footer: {
+      manager: "Менеджер",
+      advisor: "Консультант",
+      companyId: "Ідентифікаційний номер",
+      phone: "Телефон",
+      email: "E-mail",
+      generated: "Згенеровано",
+      missing: "не вказано",
+    },
+  },
+} as const;
 
 type Html2CanvasFn = (
   element: HTMLElement,
@@ -236,12 +522,74 @@ function advisorFooterFromProfile(
   };
 }
 
-function formatGeneratedDate(value: Date): string {
-  return value.toLocaleDateString("cs-CZ", {
+function formatGeneratedDate(value: Date, language: PdfLanguage): string {
+  const locale =
+    language === "en" ? "en-GB" : language === "uk" ? "uk-UA" : "cs-CZ";
+
+  return value.toLocaleDateString(locale, {
     day: "2-digit",
-    month: "2-digit",
+    month: language === "cs" ? "2-digit" : "long",
     year: "numeric",
   });
+}
+
+function formatYears(value: number, language: PdfLanguage): string {
+  const years = Math.max(0, Math.round(value));
+
+  if (language === "en") {
+    return `${years} ${years === 1 ? "year" : "years"}`;
+  }
+
+  if (language === "uk") {
+    const lastTwo = years % 100;
+    const last = years % 10;
+    const unit =
+      lastTwo >= 11 && lastTwo <= 14
+        ? "років"
+        : last === 1
+          ? "рік"
+          : last >= 2 && last <= 4
+            ? "роки"
+            : "років";
+    return `${years} ${unit}`;
+  }
+
+  const unit = years === 1 ? "rok" : years >= 2 && years <= 4 ? "roky" : "let";
+  return `${years} ${unit}`;
+}
+
+function formatPdfMoney(value: number, language: PdfLanguage): string {
+  if (language === "cs") return formatMoney(value);
+
+  const formatted = Math.round(value).toLocaleString(
+    language === "en" ? "en-GB" : "uk-UA",
+    { maximumFractionDigits: 0 }
+  );
+
+  return language === "en" ? `CZK ${formatted}` : `${formatted} Kč`;
+}
+
+function translateAdvisorRole(roleLabel: string, language: PdfLanguage): string {
+  const normalized = roleLabel.trim().toLowerCase();
+  const footer = PDF_COPY[language].footer;
+
+  if (
+    normalized.startsWith("manazer") ||
+    normalized.startsWith("manažer") ||
+    normalized === "manager"
+  ) {
+    return footer.manager;
+  }
+
+  if (
+    normalized.startsWith("poradce") ||
+    normalized === "advisor" ||
+    normalized === "consultant"
+  ) {
+    return footer.advisor;
+  }
+
+  return roleLabel || footer.advisor;
 }
 
 const BASE_FIELDS: Array<{
@@ -253,7 +601,7 @@ const BASE_FIELDS: Array<{
 }> = [
   {
     key: "age",
-    label: "Věk",
+    label: "Věk klienta",
     description: "Pro invaliditu počítáme krytí do 65 let, pro smrt orientačně do 75 let.",
     badge: "roky",
     icon: Activity,
@@ -268,23 +616,10 @@ const BASE_FIELDS: Array<{
   {
     key: "essentialExpenses",
     label: "Závazky - nutné výdaje",
-    description: "Bydlení, energie, jídlo, domácnost a další pevné náklady.",
+    description:
+      "Bydlení, energie, jídlo, domácnost a další pevné náklady. Splátky úvěru / hypotéky zde neuvádějte.",
     badge: "Kč / měsíc",
     icon: Home,
-  },
-  {
-    key: "loanPayments",
-    label: "Závazky - splátky úvěru / hypoték",
-    description: "Měsíční splátky hypotéky, úvěrů a dalších závazků.",
-    badge: "Kč / měsíc",
-    icon: Wallet,
-  },
-  {
-    key: "totalDebt",
-    label: "Celková dlužná částka",
-    description: "Aktuální zůstatek hypotéky, úvěrů a dalších dluhů.",
-    badge: "Kč celkem",
-    icon: CircleDollarSign,
   },
 ];
 
@@ -356,6 +691,20 @@ const MORTGAGE_FIELDS: Array<{
   icon: LucideIcon;
 }> = [
   {
+    key: "loanPayments",
+    label: "Závazky - splátky úvěru / hypoték",
+    description: "Měsíční splátky hypotéky, úvěrů a dalších závazků.",
+    badge: "Kč / měsíc",
+    icon: Wallet,
+  },
+  {
+    key: "totalDebt",
+    label: "Celková dlužná částka",
+    description: "Aktuální zůstatek hypotéky, úvěrů a dalších dluhů.",
+    badge: "Kč celkem",
+    icon: CircleDollarSign,
+  },
+  {
     key: "mortgageYears",
     label: "Zbývající doba splácení",
     description: "Pro anuitně klesající smrt k hypotéce nebo úvěru.",
@@ -424,6 +773,9 @@ export default function LifeInsuranceSetupPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [pdfLanguageModalOpen, setPdfLanguageModalOpen] = useState(false);
+  const [selectedPdfLanguage, setSelectedPdfLanguage] = useState<PdfLanguage>("cs");
+  const [pdfRenderLanguage, setPdfRenderLanguage] = useState<PdfLanguage>("cs");
   const [pdfGeneratedAt, setPdfGeneratedAt] = useState(() => new Date());
   const [advisorFooter, setAdvisorFooter] = useState<AdvisorFooterInfo>(() =>
     advisorFooterFromProfile(null, auth.currentUser)
@@ -433,22 +785,9 @@ export default function LifeInsuranceSetupPage() {
     useState<InvalidityScenarioId>("medium");
   const [invalidityModel, setInvalidityModel] =
     useState<InvalidityModel>("insurance");
-  const [hasChildren, setHasChildren] = useState(true);
-  const [values, setValues] = useState<InputValues>({
-    age: "35",
-    insuredIncome: "35000",
-    essentialExpenses: "30000",
-    loanPayments: "8000",
-    totalDebt: "3000000",
-    otherHouseholdIncome: "25000",
-    childrenCount: "2",
-    childHorizonYears: "15",
-    mortgageYears: "25",
-    mortgageRate: "5",
-    educationMonthlyPerChild: "15000",
-    educationYears: "5",
-    funeralCost: "100000",
-  });
+  const [hasChildren, setHasChildren] = useState<boolean | null>(null);
+  const [hasMortgageOrLoan, setHasMortgageOrLoan] = useState<boolean | null>(null);
+  const [values, setValues] = useState<InputValues>(EMPTY_INPUT_VALUES);
 
   const numbers = useMemo(() => {
     const age = Math.max(0, Math.round(parseInput(values.age)));
@@ -648,6 +987,48 @@ export default function LifeInsuranceSetupPage() {
     setFormError(null);
   };
 
+  const clearChildrenValues = () => {
+    setValues((prev) => ({
+      ...prev,
+      childrenCount: "",
+      childHorizonYears: "",
+      educationMonthlyPerChild: "",
+      educationYears: "",
+    }));
+  };
+
+  const handleChildrenChoice = (selected: boolean) => {
+    setHasChildren(selected);
+    setCompleted(false);
+    setFormError(null);
+
+    if (!selected) {
+      clearChildrenValues();
+      setStep((prev) => Math.min(prev + 1, lastStep));
+    }
+  };
+
+  const clearMortgageValues = () => {
+    setValues((prev) => ({
+      ...prev,
+      loanPayments: "",
+      totalDebt: "",
+      mortgageYears: "",
+      mortgageRate: "",
+    }));
+  };
+
+  const handleMortgageChoice = (selected: boolean) => {
+    setHasMortgageOrLoan(selected);
+    setCompleted(false);
+    setFormError(null);
+
+    if (!selected) {
+      clearMortgageValues();
+      setStep((prev) => Math.min(prev + 1, lastStep));
+    }
+  };
+
   const validateInputs = () => {
     if (numbers.age <= 0) {
       setFormError("Doplň věk klienta.");
@@ -661,6 +1042,16 @@ export default function LifeInsuranceSetupPage() {
 
     if (numbers.insuredIncome <= 0) {
       setFormError("Doplň čistý měsíční příjem klienta.");
+      return false;
+    }
+
+    if (currentStep === "children" && hasChildren === null) {
+      setFormError("Vyber, jestli klient má děti.");
+      return false;
+    }
+
+    if (currentStep === "mortgage" && hasMortgageOrLoan === null) {
+      setFormError("Vyber, jestli klient má hypotéku nebo úvěr.");
       return false;
     }
 
@@ -685,10 +1076,17 @@ export default function LifeInsuranceSetupPage() {
     setStep((prev) => Math.max(prev - 1, 0));
   };
 
-  const handleDownloadPdf = async () => {
+  const openPdfLanguageModal = () => {
+    setSelectedPdfLanguage("cs");
+    setPdfLanguageModalOpen(true);
+  };
+
+  const handleDownloadPdf = async (language: PdfLanguage) => {
     const source = pdfContentRef.current;
     if (!source) return;
 
+    setPdfRenderLanguage(language);
+    setPdfLanguageModalOpen(false);
     setPdfGenerating(true);
     setPdfError(null);
     setPdfGeneratedAt(new Date());
@@ -789,12 +1187,13 @@ export default function LifeInsuranceSetupPage() {
       }
 
       const today = new Date().toISOString().slice(0, 10);
-      pdf.save(`nastaveni-zivotniho-pojisteni-${today}.pdf`);
+      pdf.save(`nastaveni-zivotniho-pojisteni-${language}-${today}.pdf`);
     } catch (error) {
       console.error("PDF export nastavení životního pojištění selhal:", error);
       setPdfError("PDF se nepodařilo vygenerovat. Zkus to prosím znovu.");
     } finally {
       setPdfGenerating(false);
+      setPdfRenderLanguage("cs");
     }
   };
 
@@ -834,7 +1233,7 @@ export default function LifeInsuranceSetupPage() {
               >
                 <button
                   type="button"
-                  onClick={handleDownloadPdf}
+                  onClick={openPdfLanguageModal}
                   disabled={pdfGenerating}
                   className="inline-flex items-center justify-center gap-2 self-start rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-4 py-2 text-sm font-semibold !text-white shadow-[0_12px_26px_rgba(124,58,237,0.24)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:self-auto"
                 >
@@ -882,7 +1281,7 @@ export default function LifeInsuranceSetupPage() {
             <div className="mt-5">
               {currentStep === "base" ? (
                 <div className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  <div className="grid gap-3 md:grid-cols-3">
                     {BASE_FIELDS.map((field) => (
                       <NumberField
                         key={field.key}
@@ -978,13 +1377,13 @@ export default function LifeInsuranceSetupPage() {
                       {[
                         {
                           id: true,
-                          label: "Ano, klient má děti",
+                          label: "Ano",
                           description: "Do výpočtu vstoupí horizont do dospělosti a náklady na studium.",
                         },
                         {
                           id: false,
-                          label: "Ne, klient nemá děti",
-                          description: "Dětské krytí a náklady na studium se do smrti nezapočítají.",
+                          label: "Ne",
+                          description: "Přeskočit dětskou část a pokračovat dál.",
                         },
                       ].map((item) => {
                         const selected = hasChildren === item.id;
@@ -993,18 +1392,19 @@ export default function LifeInsuranceSetupPage() {
                           <button
                             key={item.label}
                             type="button"
-                            onClick={() => {
-                              setHasChildren(item.id);
-                              setCompleted(false);
-                              setFormError(null);
-                            }}
+                            onClick={() => handleChildrenChoice(item.id)}
                             className={`rounded-2xl border px-4 py-3 text-left transition ${
                               selected
                                 ? "border-violet-200/70 bg-violet-400/20 shadow-[0_10px_26px_rgba(139,92,246,0.28)]"
                                 : "border-white/14 bg-white/[0.03] hover:border-violet-300/40 hover:bg-white/[0.07]"
                             }`}
                           >
-                            <span className="life-setup-force-white block text-sm font-semibold text-white">
+                            <span className="life-setup-force-white flex items-center gap-2 text-sm font-semibold text-white">
+                              <CheckCircle2
+                                className={`h-4 w-4 ${
+                                  selected ? "text-emerald-200" : "text-violet-100/35"
+                                }`}
+                              />
                               {item.label}
                             </span>
                             <span className="mt-1 block text-xs leading-relaxed text-violet-100/65">
@@ -1017,73 +1417,120 @@ export default function LifeInsuranceSetupPage() {
                   </div>
 
                   {hasChildren ? (
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                      {CHILDREN_FIELDS.map((field) => (
-                        <NumberField
-                          key={field.key}
-                          field={field}
-                          value={values[field.key]}
-                          onChange={(value) => updateValue(field.key, value)}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-violet-300/20 bg-violet-400/10 px-4 py-3 text-sm leading-relaxed text-violet-50">
-                      Dětská část je vypnutá. Klesající pojistná částka smrti se
-                      bude počítat bez nákladů na studium a bez horizontu dětí.
-                    </div>
-                  )}
-
-                  <WizardMetrics
-                    items={[
-                      {
-                        label: "Počet dětí",
-                        value: hasChildren ? `${numbers.childrenCount}` : "Ne",
-                      },
-                      {
-                        label: "Studium dětí",
-                        value: formatMoney(death.educationCoverage),
-                      },
-                      {
-                        label: "Horizont",
-                        value:
-                          hasChildren && numbers.childrenCount > 0
-                            ? `${numbers.childHorizonYears} let`
-                            : "Bez dětí",
-                      },
-                    ]}
-                  />
+                    <>
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        {CHILDREN_FIELDS.map((field) => (
+                          <NumberField
+                            key={field.key}
+                            field={field}
+                            value={values[field.key]}
+                            onChange={(value) => updateValue(field.key, value)}
+                          />
+                        ))}
+                      </div>
+                      <WizardMetrics
+                        items={[
+                          {
+                            label: "Počet dětí",
+                            value: `${numbers.childrenCount}`,
+                          },
+                          {
+                            label: "Studium dětí",
+                            value: formatMoney(death.educationCoverage),
+                          },
+                          {
+                            label: "Horizont",
+                            value:
+                              numbers.childrenCount > 0
+                                ? `${numbers.childHorizonYears} let`
+                                : "Bez dětí",
+                          },
+                        ]}
+                      />
+                    </>
+                  ) : null}
                 </div>
               ) : null}
 
               {currentStep === "mortgage" ? (
                 <div className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {MORTGAGE_FIELDS.map((field) => (
-                      <NumberField
-                        key={field.key}
-                        field={field}
-                        value={values[field.key]}
-                        onChange={(value) => updateValue(field.key, value)}
-                      />
-                    ))}
+                  <div className="rounded-2xl border border-white/14 bg-white/[0.04] p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
+                      Má klient hypotéku nebo úvěr?
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {[
+                        {
+                          id: true,
+                          label: "Ano",
+                          description: "Zobrazit pole pro splátky, dluh, dobu a úrok.",
+                        },
+                        {
+                          id: false,
+                          label: "Ne",
+                          description: "Přeskočit úvěrovou část a pokračovat dál.",
+                        },
+                      ].map((item) => {
+                        const selected = hasMortgageOrLoan === item.id;
+
+                        return (
+                          <button
+                            key={item.label}
+                            type="button"
+                            onClick={() => handleMortgageChoice(item.id)}
+                            className={`rounded-2xl border px-4 py-3 text-left transition ${
+                              selected
+                                ? "border-violet-200/70 bg-violet-400/20 shadow-[0_10px_26px_rgba(139,92,246,0.28)]"
+                                : "border-white/14 bg-white/[0.03] hover:border-violet-300/40 hover:bg-white/[0.07]"
+                            }`}
+                          >
+                            <span className="life-setup-force-white flex items-center gap-2 text-sm font-semibold text-white">
+                              <CheckCircle2
+                                className={`h-4 w-4 ${
+                                  selected ? "text-emerald-200" : "text-violet-100/35"
+                                }`}
+                              />
+                              {item.label}
+                            </span>
+                            <span className="mt-1 block text-xs leading-relaxed text-violet-100/65">
+                              {item.description}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <WizardMetrics
-                    items={[
-                      {
-                        label: "Výpadek po smrti",
-                        value: formatMoney(numbers.monthlyGapAfterDeath),
-                      },
-                      {
-                        label: "Splátky měsíčně",
-                        value: formatMoney(numbers.loanPayments),
-                      },
-                      {
-                        label: "Hypotéka / dluhy",
-                        value: formatMoney(numbers.totalDebt),
-                      },
-                    ]}
-                  />
+
+                  {hasMortgageOrLoan ? (
+                    <>
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        {MORTGAGE_FIELDS.map((field) => (
+                          <NumberField
+                            key={field.key}
+                            field={field}
+                            value={values[field.key]}
+                            onChange={(value) => updateValue(field.key, value)}
+                          />
+                        ))}
+                      </div>
+                      <WizardMetrics
+                        items={[
+                          {
+                            label: "Výpadek po smrti",
+                            value: formatMoney(numbers.monthlyGapAfterDeath),
+                          },
+                          {
+                            label: "Splátky měsíčně",
+                            value: formatMoney(numbers.loanPayments),
+                          },
+                          {
+                            label: "Hypotéka / dluhy",
+                            value: formatMoney(numbers.totalDebt),
+                          },
+                        ]}
+                      />
+                    </>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -1175,7 +1622,8 @@ export default function LifeInsuranceSetupPage() {
               onInvalidityScenarioChange={setInvalidityScenarioId}
               death={death}
               advisorFooter={advisorFooter}
-              generatedAtLabel={formatGeneratedDate(pdfGeneratedAt)}
+              generatedAtLabel={formatGeneratedDate(pdfGeneratedAt, pdfRenderLanguage)}
+              language={pdfRenderLanguage}
             />
           )}
         </div>
@@ -1189,6 +1637,79 @@ export default function LifeInsuranceSetupPage() {
           </p>
         ) : null}
       </div>
+
+      {pdfLanguageModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+          data-pdf-ignore="1"
+        >
+          <div className="w-full max-w-xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_26px_80px_rgba(15,23,42,0.28)]">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+                Jazyk PDF
+              </div>
+              <h2 className="mt-1 text-2xl font-bold text-slate-950">
+                Vyber jazyk pro tisk
+              </h2>
+              <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                Čeština je výchozí. Po kliknutí na tisk se PDF vygeneruje ve
+                zvoleném jazyce.
+              </p>
+            </div>
+
+            <div className="grid gap-3 px-5 py-5 sm:grid-cols-3">
+              {PDF_LANGUAGE_OPTIONS.map((option) => {
+                const selected = selectedPdfLanguage === option.id;
+
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setSelectedPdfLanguage(option.id)}
+                    className={`rounded-2xl border px-4 py-4 text-left transition ${
+                      selected
+                        ? "border-violet-500 bg-violet-50 shadow-[0_12px_28px_rgba(124,58,237,0.18)]"
+                        : "border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50/50"
+                    }`}
+                  >
+                    <span className="block text-4xl leading-none">{option.flag}</span>
+                    <span className="mt-3 block text-base font-bold text-slate-950">
+                      {option.label}
+                    </span>
+                    <span className="mt-1 block text-xs leading-relaxed text-slate-500">
+                      {option.description}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setPdfLanguageModalOpen(false)}
+                disabled={pdfGenerating}
+                className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownloadPdf(selectedPdfLanguage)}
+                disabled={pdfGenerating}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold !text-white shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {pdfGenerating ? (
+                  <Loader2 className="h-4 w-4 animate-spin !text-white" />
+                ) : (
+                  <FileDown className="h-4 w-4 !text-white" />
+                )}
+                {pdfGenerating ? "Připravuji PDF" : "Tisk"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AppLayout>
   );
 }
@@ -1283,7 +1804,7 @@ function NumberField({
             {field.badge}
           </span>
         </div>
-        <span className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-200/85">
+        <span className="mt-3 flex min-h-[32px] items-start text-[11px] font-semibold uppercase leading-[1.35] tracking-[0.14em] text-violet-200/85">
           {field.label}
         </span>
         <input
@@ -1293,7 +1814,6 @@ function NumberField({
           onChange={(event) => onChange(event.target.value)}
           className="mt-2 w-full border-0 border-b border-white/18 bg-transparent px-0 pb-2 text-2xl font-semibold leading-none !text-white outline-none transition placeholder:text-white/30 focus:border-violet-200 focus:ring-0"
           style={FIELD_TEXT_STYLE}
-          placeholder="0"
         />
         <span className="mt-2 text-[11px] leading-snug text-violet-100/65">
           {field.description}
@@ -1315,7 +1835,7 @@ function WizardMetrics({
           key={item.label}
           className="rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3"
         >
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-200/80">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300/85">
             {item.label}
           </div>
           <div
@@ -1365,6 +1885,7 @@ function PreviewPanel({
   death,
   advisorFooter,
   generatedAtLabel,
+  language,
 }: {
   numbers: {
     age: number;
@@ -1419,50 +1940,53 @@ function PreviewPanel({
   };
   advisorFooter: AdvisorFooterInfo;
   generatedAtLabel: string;
+  language: PdfLanguage;
 }) {
+  const copy = PDF_COPY[language];
+  const money = (value: number) => formatPdfMoney(value, language);
   const activeInvalidityScenario =
     INVALIDITY_SCENARIOS.find((scenario) => scenario.id === invalidityScenarioId) ??
     INVALIDITY_SCENARIOS[2];
   const invalidityModelLabel =
-    invalidityModel === "investment" ? "Investiční varianta" : "Pojistné plnění";
+    invalidityModel === "investment" ? copy.investmentVariant : copy.insurancePayout;
+  const activeInvalidityScenarioLabel =
+    copy.scenarioLabels[activeInvalidityScenario.id] ?? activeInvalidityScenario.label;
 
   return (
     <div className="space-y-5">
       <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
       <div className="life-setup-dark-panel border-b border-slate-200 bg-[linear-gradient(135deg,#2e1065_0%,#7c3aed_52%,#a855f7_100%)] px-5 py-5 text-white">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100/80">
-            Náhled nastavení
+            {copy.previewEyebrow}
           </p>
           <h2 className="mt-1 text-2xl font-bold tracking-tight">
-            Co a jak nastavit ve smlouvě
+            {copy.previewTitle}
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-relaxed text-violet-50/78">
-            Výpočet vychází z toho, co po smrti nebo dlouhodobém zdravotním
-            problému v domácnosti reálně chybí: příjem, dluhy, horizont dětí a
-            jednorázové náklady.
+            {copy.previewIntro}
           </p>
         </div>
 
         <div className="grid gap-0 md:grid-cols-4">
           <PreviewMetric
-            label="Příjem domácnosti"
-            value={formatMoney(numbers.householdIncome)}
-            note={`Klient ${formatMoney(numbers.insuredIncome)} + ostatní ${formatMoney(numbers.otherHouseholdIncome)}.`}
+            label={copy.householdIncome}
+            value={money(numbers.householdIncome)}
+            note={`${copy.client} ${money(numbers.insuredIncome)} + ${copy.otherIncome} ${money(numbers.otherHouseholdIncome)}.`}
           />
           <PreviewMetric
-            label="Náklady domácnosti"
-            value={formatMoney(numbers.monthlyExpenses)}
-            note={`Nutné výdaje ${formatMoney(numbers.essentialExpenses)} + splátky ${formatMoney(numbers.loanPayments)}.`}
+            label={copy.householdExpenses}
+            value={money(numbers.monthlyExpenses)}
+            note={`${copy.essentialExpenses} ${money(numbers.essentialExpenses)} + ${copy.installments} ${money(numbers.loanPayments)}.`}
           />
           <PreviewMetric
-            label="Po smrti klienta chybí"
-            value={formatMoney(numbers.monthlyGapAfterDeath)}
-            note={`Zůstane příjem ${formatMoney(numbers.incomeAfterDeath)}.`}
+            label={copy.missingAfterDeath}
+            value={money(numbers.monthlyGapAfterDeath)}
+            note={`${copy.remainingIncome} ${money(numbers.incomeAfterDeath)}.`}
           />
           <PreviewMetric
-            label="Role klienta"
-            value={providerRole === "main" ? "Hlavní živitel" : "Vedlejší příjem"}
-            note={`Nastavení smrti počítá s výpadkem příjmu klienta.`}
+            label={copy.clientRole}
+            value={providerRole === "main" ? copy.mainProvider : copy.secondaryProvider}
+            note={copy.deathSetupNote}
           />
         </div>
       </section>
@@ -1472,10 +1996,10 @@ function PreviewPanel({
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
-                Smrt
+                {copy.death}
               </p>
               <h3 className="mt-1 text-2xl font-bold text-slate-950">
-                Doporučené nastavení
+                {copy.recommendedSetup}
               </h3>
             </div>
             <HeartPulse className="h-8 w-8 text-violet-700" />
@@ -1483,30 +2007,29 @@ function PreviewPanel({
 
           <div className="mt-5 space-y-3">
             <RecommendationRow
-              label="Konstantní PČ pro případ smrti"
-              value={formatMoney(death.constantAmount)}
-              note="Na náklady rozloučení. Držet konstantně, typicky 50 000 až 100 000 Kč."
+              label={copy.constantDeathSum}
+              value={money(death.constantAmount)}
+              note={copy.constantDeathNote}
             />
             <RecommendationRow
-              label="Klesající PČ pro případ smrti"
-              value={formatMoney(death.decreasingAmount)}
-              note={`Výpadek příjmu ${formatMoney(death.incomeGapCoverage)} + vzdělání dětí ${formatMoney(death.educationCoverage)}. Orientačně do ${numbers.deathTermTo75} let věku klienta.`}
+              label={copy.decreasingDeathSum}
+              value={money(death.decreasingAmount)}
+              note={`${copy.incomeGap} ${money(death.incomeGapCoverage)} + ${copy.childrenEducation} ${money(death.educationCoverage)}. ${copy.approximatelyFor} ${formatYears(numbers.deathTermTo75, language)}.`}
             />
             <RecommendationRow
-              label="Anuitně klesající PČ k hypotéce / úvěru"
-              value={formatMoney(death.annuityMortgageAmount)}
+              label={copy.annuityDeathSum}
+              value={money(death.annuityMortgageAmount)}
               note={
                 numbers.totalDebt > 0
-                  ? `Nastavit podle dluhu na ${numbers.mortgageYears} let, úrok ${formatPercent(numbers.mortgageRate)} p.a.`
-                  : "Pokud klient nemá dluh, tuto část není potřeba nastavovat."
+                  ? `${copy.setByDebt} ${formatYears(numbers.mortgageYears, language)}, ${copy.interest} ${formatPercent(numbers.mortgageRate)} ${copy.perYear}.`
+                  : copy.noDebtDeathNote
               }
             />
           </div>
 
           <div className="mt-4 rounded-2xl bg-violet-50 px-4 py-3 text-sm leading-relaxed text-violet-950">
-            Kontrola proti rychlé metodě: 5 ročních příjmů klienta vychází na{" "}
-            <strong>{formatMoney(death.salaryFloor)}</strong>. Pro rodinu je ale
-            důležitější výpadek příjmu, dluhy a horizont dětí.
+            {copy.quickMethodPrefix} <strong>{money(death.salaryFloor)}</strong>.{" "}
+            {copy.quickMethodSuffix}
           </div>
         </article>
 
@@ -1514,10 +2037,10 @@ function PreviewPanel({
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
-                Pracovní neschopnost
+                {copy.sickLeave}
               </p>
               <h3 className="mt-1 text-2xl font-bold text-slate-950">
-                Denní dávka
+                {copy.dailyBenefit}
               </h3>
             </div>
             <ShieldCheck className="h-8 w-8 text-violet-700" />
@@ -1525,29 +2048,29 @@ function PreviewPanel({
 
           <div className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-4">
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-700">
-              Nastavit
+              {copy.set}
             </div>
             <div className="mt-2 text-4xl font-bold text-violet-950">
-              {formatMoney(sickLeave.recommendedDaily)} / den
+              {money(sickLeave.recommendedDaily)} / {copy.perDay}
             </div>
             <p className="mt-2 text-sm leading-relaxed text-violet-900">
-              Měsíčně přibližně {formatMoney(sickLeave.recommendedMonthly)}.
-              Výpočet bere 40 % čistého příjmu a dělí ho 30 dny.
+              {copy.monthlyApprox} {money(sickLeave.recommendedMonthly)}.{" "}
+              {copy.sickLeaveFormula}
             </p>
           </div>
 
           <div className="mt-4 divide-y divide-slate-200 border-y border-slate-100">
             <SmallCalcRow
-              label="Orientační státní nemocenská"
-              value={formatMoney(sickLeave.stateBenefit)}
+              label={copy.stateSicknessBenefit}
+              value={money(sickLeave.stateBenefit)}
             />
             <SmallCalcRow
-              label="Pokles proti příjmu klienta"
-              value={formatMoney(sickLeave.incomeShortfall)}
+              label={copy.incomeDrop}
+              value={money(sickLeave.incomeShortfall)}
             />
             <SmallCalcRow
-              label="Mezera proti nákladům informativně"
-              value={formatMoney(sickLeave.commitmentGap)}
+              label={copy.expenseGapInfo}
+              value={money(sickLeave.commitmentGap)}
             />
           </div>
         </article>
@@ -1557,18 +2080,18 @@ function PreviewPanel({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
-              Invalidita
+              {copy.disability}
             </p>
             <h3 className="mt-1 text-2xl font-bold text-slate-950">
               {invalidityModel === "investment"
-                ? "Investiční varianta podle stupně"
-                : "Rentové pojistné částky podle stupně"}
+                ? copy.investmentByDegree
+                : copy.insuranceByDegree}
             </h3>
           </div>
           <div className="flex items-center gap-3">
             <Accessibility className="h-8 w-8 text-violet-700" />
             <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">
-              Krytí do 65 let: {numbers.invalidityYears} let
+              {copy.coverageTo65}: {formatYears(numbers.invalidityYears, language)}
             </div>
           </div>
         </div>
@@ -1576,10 +2099,10 @@ function PreviewPanel({
         <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-violet-100 bg-violet-50/60 p-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-700">
-              Varianta krytí invalidity
+              {copy.disabilityCoverageVariant}
             </div>
             <div className="mt-1 text-xl font-bold text-violet-950">
-              {activeInvalidityScenario.label}
+              {activeInvalidityScenarioLabel}
             </div>
             <div className="mt-0.5 text-xs font-semibold text-violet-800">
               {invalidityModelLabel}
@@ -1636,16 +2159,16 @@ function PreviewPanel({
           </div>
 
           <div className="shrink-0 rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-900">
-            Pokrytí:{" "}
+            {copy.coveragePrefix}:{" "}
             {activeInvalidityScenario.ratios
               .map((ratio) => `${Math.round(ratio * 100)} %`)
               .join(" / ")}
-            {invalidityModel === "investment" ? " | 5,5-6 % p.a." : ""}
+            {invalidityModel === "investment" ? ` | 5,5-6 % ${copy.perYear}` : ""}
           </div>
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-3">
-          {invalidity.map((item) => {
+          {invalidity.map((item, index) => {
             const minInvestmentCapital = roundMoney(
               requiredCapitalForRenta(
                 item.monthlyNeed,
@@ -1660,6 +2183,7 @@ function PreviewPanel({
                 INVESTIKA_RETURN_RANGE.min
               )
             );
+            const degreeLabel = copy.degreeLabels[index] ?? item.label;
 
             return (
               <article
@@ -1671,32 +2195,32 @@ function PreviewPanel({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Stupeň invalidity
+                        {copy.degreeOfDisability}
                       </div>
                       <h4 className="mt-1 text-lg font-semibold text-slate-950">
-                        {item.label}
+                        {degreeLabel}
                       </h4>
                     </div>
                     <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-violet-800">
                       {invalidityModel === "investment"
-                        ? `Pokrytí ${Math.round(item.ratio * 100)} %`
+                        ? `${copy.coveragePrefix} ${Math.round(item.ratio * 100)} %`
                         : `${Math.round(item.ratio * 100)} %`}
                     </span>
                   </div>
                   <div className="mt-4 divide-y divide-slate-200 border-y border-slate-100">
                     <SmallCalcRow
-                      label="Měsíční renta"
-                      value={formatMoney(item.monthlyNeed)}
+                      label={copy.monthlyAnnuity}
+                      value={money(item.monthlyNeed)}
                     />
                     {invalidityModel === "investment" ? (
                       <SmallCalcRow
-                        label="Potřebný vklad"
-                        value={`${formatMoney(minInvestmentCapital)} až ${formatMoney(maxInvestmentCapital)}`}
+                        label={copy.requiredDeposit}
+                        value={`${money(minInvestmentCapital)} ${copy.to} ${money(maxInvestmentCapital)}`}
                       />
                     ) : (
                       <SmallCalcRow
-                        label="PČ bez dluhů"
-                        value={formatMoney(item.lumpWithoutDebt)}
+                        label={copy.sumWithoutDebt}
+                        value={money(item.lumpWithoutDebt)}
                       />
                     )}
                   </div>
@@ -1708,9 +2232,7 @@ function PreviewPanel({
 
         {invalidityModel === "investment" ? (
           <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-950">
-            Investiční varianta modeluje kapitál, ze kterého by šla čerpat
-            zvolená měsíční renta při výnosu 5,5-6 % p.a. Nejde o investiční
-            doporučení.
+            {copy.investmentNote}
           </div>
         ) : null}
 
@@ -1719,24 +2241,23 @@ function PreviewPanel({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-700">
-                  Invalidita a úvěr
+                  {copy.disabilityAndLoan}
                 </div>
                 <h4 className="mt-1 text-lg font-bold text-violet-950">
-                  Anuitně klesající PČ k hypotéce / úvěru na invaliditu
+                  {copy.disabilityLoanTitle}
                 </h4>
                 <p className="mt-1 text-sm leading-relaxed text-violet-900">
-                  Nastavit samostatně podle aktuální dlužné částky na dobu splácení.
-                  Renta výše kryje výpadek příjmu, tato část kryje splacení dluhu.
+                  {copy.disabilityLoanNote}
                 </p>
               </div>
               <div className="shrink-0 text-left sm:text-right">
                 <div className="text-3xl font-bold tabular-nums text-violet-950">
-                  {formatMoney(death.annuityMortgageAmount)}
+                  {money(death.annuityMortgageAmount)}
                 </div>
                 <div className="mt-1 text-xs font-semibold text-violet-800">
                   {numbers.mortgageYears > 0
-                    ? `${numbers.mortgageYears} let, úrok ${formatPercent(numbers.mortgageRate)} p.a.`
-                    : `Podle doby splácení, úrok ${formatPercent(numbers.mortgageRate)} p.a.`}
+                    ? `${formatYears(numbers.mortgageYears, language)}, ${copy.interest} ${formatPercent(numbers.mortgageRate)} ${copy.perYear}`
+                    : `${copy.byRepaymentPeriod}, ${copy.interest} ${formatPercent(numbers.mortgageRate)} ${copy.perYear}`}
                 </div>
               </div>
             </div>
@@ -1744,7 +2265,11 @@ function PreviewPanel({
         ) : null}
       </section>
 
-      <PdfAdvisorFooter advisor={advisorFooter} generatedAtLabel={generatedAtLabel} />
+      <PdfAdvisorFooter
+        advisor={advisorFooter}
+        generatedAtLabel={generatedAtLabel}
+        language={language}
+      />
     </div>
   );
 }
@@ -1752,17 +2277,20 @@ function PreviewPanel({
 function PdfAdvisorFooter({
   advisor,
   generatedAtLabel,
+  language,
 }: {
   advisor: AdvisorFooterInfo;
   generatedAtLabel: string;
+  language: PdfLanguage;
 }) {
-  const advisorRole = advisor.roleLabel || "Poradce";
+  const footerCopy = PDF_COPY[language].footer;
+  const advisorRole = translateAdvisorRole(advisor.roleLabel, language);
   const advisorName = advisor.fullName || `${advisorRole} Bohemika`;
   const contactItems = [
-    { label: "IČO", value: advisor.ico || "neuvedeno" },
-    { label: "Telefon", value: advisor.phone || "neuvedeno" },
-    { label: "E-mail", value: advisor.email || "neuvedeno" },
-    { label: "Vygenerováno", value: generatedAtLabel },
+    { label: footerCopy.companyId, value: advisor.ico || footerCopy.missing },
+    { label: footerCopy.phone, value: advisor.phone || footerCopy.missing },
+    { label: footerCopy.email, value: advisor.email || footerCopy.missing },
+    { label: footerCopy.generated, value: generatedAtLabel },
   ];
 
   return (

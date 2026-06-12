@@ -128,6 +128,10 @@ function requestFallbackOrigin(req: NextRequest): string {
   return `${proto}://${host}`;
 }
 
+function isProductionRuntime(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
 function configuredOrigins(fallbackOrigin: string): Set<string> {
   const origins = new Set<string>();
   const add = (value: string | undefined) => {
@@ -138,8 +142,10 @@ function configuredOrigins(fallbackOrigin: string): Set<string> {
     }
   };
 
-  const fallback = normalizeOrigin(fallbackOrigin);
-  if (fallback) origins.add(fallback);
+  if (!isProductionRuntime()) {
+    const fallback = normalizeOrigin(fallbackOrigin);
+    if (fallback) origins.add(fallback);
+  }
   add(process.env.NEXT_PUBLIC_APP_URL);
   add(process.env.WEBAUTHN_ORIGIN);
   add(process.env.WEBAUTHN_ALLOWED_ORIGINS);
@@ -164,7 +170,10 @@ function getRequestWebAuthnContext(req: NextRequest): RequestWebAuthnContext {
   }
 
   const allowedOrigins = configuredOrigins(fallbackOrigin);
-  if (originHeader && !allowedOrigins.has(origin)) {
+  if (allowedOrigins.size === 0) {
+    throw new PasskeyError("Server nemá nastavený povolený WebAuthn origin.", 500);
+  }
+  if (!allowedOrigins.has(origin)) {
     throw new PasskeyError("Origin není povolený pro passkey přihlášení.", 403);
   }
 
@@ -295,13 +304,16 @@ async function consumeChallenge(
 ): Promise<PasskeyChallengeDoc> {
   const { db } = assertAdminReady();
   const ref = db.collection(PASSKEY_CHALLENGES_COLLECTION).doc(challenge);
-  const snap = await ref.get();
-  if (!snap.exists) {
-    throw new PasskeyError("Ověřovací výzva vypršela. Zkus to znovu.", 400);
-  }
+  const data = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) {
+      throw new PasskeyError("Ověřovací výzva vypršela. Zkus to znovu.", 400);
+    }
 
-  const data = snap.data() as Partial<PasskeyChallengeDoc>;
-  await ref.delete().catch(() => undefined);
+    const value = snap.data() as Partial<PasskeyChallengeDoc>;
+    tx.delete(ref);
+    return value;
+  });
 
   if (
     data.challenge !== challenge ||
@@ -431,10 +443,18 @@ export async function verifyRegistration(
     updatedAtMs: nowMs,
   };
 
-  await db.collection(PASSKEY_CREDENTIALS_COLLECTION).doc(credentialId).set({
-    ...doc,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
+  const credentialRef = db.collection(PASSKEY_CREDENTIALS_COLLECTION).doc(credentialId);
+  await db.runTransaction(async (tx) => {
+    const existing = await tx.get(credentialRef);
+    if (existing.exists) {
+      throw new PasskeyError("Tento passkey už je pro účet uložený.", 409);
+    }
+
+    tx.create(credentialRef, {
+      ...doc,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
   });
 
   return summarizeCredential(doc);

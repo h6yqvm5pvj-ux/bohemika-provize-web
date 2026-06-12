@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 
 import { adminDb } from "@/lib/server/firebaseAdmin";
 
@@ -29,6 +30,13 @@ const RATE_LIMIT_LAST_CLEANUP = Symbol.for("bohemika.rateLimit.lastCleanup");
 const RATE_LIMIT_WARNED_KEYS = Symbol.for("bohemika.rateLimit.warnedKeys");
 const CLEANUP_INTERVAL_MS = 60_000;
 const FAIL_CLOSED_RETRY_AFTER_SECONDS = 60;
+const DEFAULT_TRUSTED_IP_HEADERS = [
+  "cf-connecting-ip",
+  "true-client-ip",
+  "x-real-ip",
+  "x-forwarded-for",
+  "forwarded",
+] as const;
 const REDIS_RATE_LIMIT_SCRIPT = `
 local current = redis.call("INCR", KEYS[1])
 local ttl = redis.call("PTTL", KEYS[1])
@@ -65,6 +73,121 @@ function warnOnce(key: string, message: string, error?: unknown) {
   } else {
     console.error(message);
   }
+}
+
+function parseBooleanEnv(value: string | undefined): boolean | null {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return null;
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return null;
+}
+
+function isProductionRuntime(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
+function normalizeHeaderName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function parseTrustedIpHeadersEnv(): string[] | null {
+  const raw = process.env.RATE_LIMIT_TRUSTED_IP_HEADERS;
+  if (raw == null) return null;
+
+  const headers = raw
+    .split(",")
+    .map(normalizeHeaderName)
+    .filter((header) => /^[a-z0-9!#$%&'*+.^_`|~-]+$/.test(header));
+
+  return [...new Set(headers)];
+}
+
+function resolveTrustedIpHeaders(): string[] {
+  const configuredHeaders = parseTrustedIpHeadersEnv();
+  if (configuredHeaders) return configuredHeaders;
+
+  const explicitTrust = parseBooleanEnv(process.env.RATE_LIMIT_TRUST_PROXY_HEADERS);
+  if (explicitTrust === true) return [...DEFAULT_TRUSTED_IP_HEADERS];
+  if (explicitTrust === false) return [];
+
+  if (!isProductionRuntime()) {
+    return [...DEFAULT_TRUSTED_IP_HEADERS];
+  }
+
+  return [];
+}
+
+function stripWrappingQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function normalizeIpAddress(value: string | null | undefined): string | null {
+  let candidate = stripWrappingQuotes(value ?? "");
+  if (!candidate || candidate.toLowerCase() === "unknown") return null;
+
+  if (candidate.startsWith("[")) {
+    const closingBracketIndex = candidate.indexOf("]");
+    if (closingBracketIndex > 0) {
+      candidate = candidate.slice(1, closingBracketIndex);
+    }
+  } else if (!isIP(candidate)) {
+    const lastColonIndex = candidate.lastIndexOf(":");
+    if (lastColonIndex > 0) {
+      const maybeHost = candidate.slice(0, lastColonIndex);
+      const maybePort = candidate.slice(lastColonIndex + 1);
+      if (/^\d+$/.test(maybePort) && isIP(maybeHost)) {
+        candidate = maybeHost;
+      }
+    }
+  }
+
+  const zoneIndex = candidate.indexOf("%");
+  if (zoneIndex > 0) {
+    candidate = candidate.slice(0, zoneIndex);
+  }
+
+  return isIP(candidate) ? candidate.toLowerCase() : null;
+}
+
+function extractForwardedForIp(value: string | null): string | null {
+  const parts = value
+    ?.split(",")
+    .map((part) => normalizeIpAddress(part))
+    .filter((part): part is string => Boolean(part));
+
+  return parts?.[0] ?? null;
+}
+
+function extractRfcForwardedIp(value: string | null): string | null {
+  const forwardedEntries = value?.split(",") ?? [];
+  for (const entry of forwardedEntries) {
+    const segments = entry.split(";");
+    for (const segment of segments) {
+      const [rawKey, ...rawValueParts] = segment.split("=");
+      if (rawKey?.trim().toLowerCase() !== "for") continue;
+      const rawValue = rawValueParts.join("=");
+      const ip = normalizeIpAddress(rawValue);
+      if (ip) return ip;
+    }
+  }
+
+  return null;
+}
+
+function extractIpFromTrustedHeader(headerName: string, value: string | null): string | null {
+  const normalizedHeader = normalizeHeaderName(headerName);
+  if (normalizedHeader === "x-forwarded-for") return extractForwardedForIp(value);
+  if (normalizedHeader === "forwarded") return extractRfcForwardedIp(value);
+  return normalizeIpAddress(value);
+}
+
+function hasUntrustedClientIpHeader(req: Request): boolean {
+  return DEFAULT_TRUSTED_IP_HEADERS.some((headerName) => req.headers.has(headerName));
 }
 
 function cleanupExpiredBuckets(nowMs: number) {
@@ -351,17 +474,22 @@ export function applyRateLimitHeaders(
 }
 
 export function getRequestIp(req: Request): string {
-  const forwardedFor = req.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    const first = forwardedFor.split(",")[0]?.trim();
-    if (first) return first;
+  const trustedHeaders = resolveTrustedIpHeaders();
+  for (const headerName of trustedHeaders) {
+    const ip = extractIpFromTrustedHeader(headerName, req.headers.get(headerName));
+    if (ip) return ip;
   }
 
-  const cfConnectingIp = req.headers.get("cf-connecting-ip")?.trim();
-  if (cfConnectingIp) return cfConnectingIp;
-
-  const realIp = req.headers.get("x-real-ip")?.trim();
-  if (realIp) return realIp;
+  if (
+    isProductionRuntime() &&
+    trustedHeaders.length === 0 &&
+    hasUntrustedClientIpHeader(req)
+  ) {
+    warnOnce(
+      "trusted-ip-headers-not-configured",
+      "No trusted client IP header is configured for production rate limiting. Using shared 'unknown' key."
+    );
+  }
 
   return "unknown";
 }

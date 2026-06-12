@@ -5,6 +5,10 @@ import { randomUUID } from "node:crypto";
 
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import {
+  prepareIntranetWallAttachmentFile,
+  type PreparedIntranetWallAttachmentFile,
+} from "@/lib/server/intranetWallAttachments";
+import {
   requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
@@ -221,7 +225,7 @@ async function uploadAttachmentsToBucket({
 }: {
   bucketName: string;
   postId: string;
-  files: File[];
+  files: PreparedIntranetWallAttachmentFile[];
   uploaderEmail: string;
 }): Promise<StoredAttachment[]> {
   const storage = getStorage();
@@ -230,13 +234,12 @@ async function uploadAttachmentsToBucket({
   const uploadPrefix = `intranet-wall/${postId}`;
 
   for (let index = 0; index < files.length; index += 1) {
-    const file = files[index];
-    const contentType = normalizeText(file.type) || "application/octet-stream";
+    const preparedFile = files[index]!;
+    const { file, bytes, contentType, isImage } = preparedFile;
     const originalName = sanitizeFileName(normalizeText(file.name) || "priloha");
     const objectPath = `${uploadPrefix}/${Date.now()}-${index}-${originalName}`;
     const attachmentId = randomUUID();
     const storageFile = bucket.file(objectPath);
-    const bytes = Buffer.from(await file.arrayBuffer());
 
     await storageFile.save(bytes, {
       resumable: false,
@@ -255,7 +258,7 @@ async function uploadAttachmentsToBucket({
       url: buildAttachmentApiUrl(postId, attachmentId),
       contentType,
       sizeBytes: file.size,
-      isImage: contentType.startsWith("image/") && contentType !== "image/svg+xml",
+      isImage,
       path: objectPath,
       bucketName: bucket.name,
     });
@@ -271,7 +274,7 @@ async function uploadAttachmentsToStorage({
   existingAttachments,
 }: {
   postId: string;
-  files: File[];
+  files: PreparedIntranetWallAttachmentFile[];
   uploaderEmail: string;
   existingAttachments: StoredAttachment[];
 }): Promise<StoredAttachment[]> {
@@ -434,6 +437,7 @@ export async function PATCH(
   }
 
   let totalBytes = 0;
+  const preparedFiles: PreparedIntranetWallAttachmentFile[] = [];
   for (const file of files) {
     const name = normalizeText(file.name);
     if (!name) {
@@ -468,6 +472,17 @@ export async function PATCH(
         ctx
       );
     }
+    const prepared = await prepareIntranetWallAttachmentFile(file);
+    if (!prepared.ok) {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: `Soubor ${name} není podporovaný. ${prepared.error}` },
+          { status: 400 }
+        ),
+        ctx
+      );
+    }
+    preparedFiles.push(prepared.file);
     totalBytes += file.size;
   }
   if (totalBytes > FILE_TOTAL_MAX_BYTES) {
@@ -545,7 +560,7 @@ export async function PATCH(
     const sectionLabel = INTRANET_SECTION_LABEL_BY_KEY.get(section) ?? section;
     const uploadedAttachments = await uploadAttachmentsToStorage({
       postId,
-      files,
+      files: preparedFiles,
       uploaderEmail: ctx.email,
       existingAttachments,
     });

@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, WalletCards } from "lucide-react";
 
+import { type AppLanguage } from "@/lib/appLanguage";
 import { formatMoney } from "../homeUtils";
 import { LoadingProgressPanel } from "./LoadingProgressPanel";
 
 type Props = {
+  language: AppLanguage;
   loading: boolean;
   grossAmount: number;
   stornoFundAmount: number;
@@ -14,7 +16,39 @@ type Props = {
   isLiteUI: boolean;
 };
 
+const EXPECTED_PAYOUT_COPY: Record<
+  AppLanguage,
+  {
+    currentMonth: string;
+    title: string;
+    detail: string;
+    loadingTitle: string;
+    loadingAccent: string;
+    loadingStages: [string, string, string];
+    netPayout: string;
+    gross: string;
+    stornoFund: string;
+  }
+> = {
+  cs: {
+    currentMonth: "aktuální měsíc",
+    title: "Očekávaná výplata",
+    detail: "Detail",
+    loadingTitle: "Načítám data výplaty",
+    loadingAccent: "Výplata",
+    loadingStages: [
+      "Načítám cashflow položky…",
+      "Počítám hrubou výplatu a storno fond…",
+      "Finalizuji čistou výplatu…",
+    ],
+    netPayout: "Čistá výplata",
+    gross: "Hrubá",
+    stornoFund: "StornoFond",
+  },
+};
+
 export function ExpectedPayoutSection({
+  language,
   loading,
   grossAmount,
   stornoFundAmount,
@@ -22,12 +56,13 @@ export function ExpectedPayoutSection({
   periodLabel,
   isLiteUI,
 }: Props) {
+  const copy = EXPECTED_PAYOUT_COPY[language];
   const safeGross = Number.isFinite(grossAmount) ? Math.max(0, grossAmount) : 0;
   const safeStorno = Number.isFinite(stornoFundAmount) ? Math.max(0, stornoFundAmount) : 0;
   const payoutPeriodLabel =
     typeof periodLabel === "string" && periodLabel.trim().length > 0
       ? periodLabel.trim()
-      : "aktuální měsíc";
+      : copy.currentMonth;
 
   const cardClass = isLiteUI
     ? "relative min-w-0 h-full overflow-hidden rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-5 py-5 text-white transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 focus-within:border-violet-200/60 focus-within:shadow-[0_0_0_1px_rgba(221,214,254,0.3)] sm:px-7 sm:py-6"
@@ -59,10 +94,10 @@ export function ExpectedPayoutSection({
 
   const loadingStage =
     clampedLoadingProgress < 35
-      ? "Načítám cashflow položky…"
+      ? copy.loadingStages[0]
       : clampedLoadingProgress < 72
-        ? "Počítám hrubou výplatu a storno fond…"
-        : "Finalizuji čistou výplatu…";
+        ? copy.loadingStages[1]
+        : copy.loadingStages[2];
 
   return (
     <section className={cardClass} data-fixed-box-theme="slate">
@@ -73,22 +108,23 @@ export function ExpectedPayoutSection({
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-100/48 bg-violet-300/18">
                 <WalletCards className="h-4.5 w-4.5 text-emerald-200" strokeWidth={2.2} aria-hidden="true" />
               </span>
-              <span>Očekávaná výplata</span>
+              <span>{copy.title}</span>
             </h2>
             <Link
               href="/cashflow"
               className="inline-flex items-center gap-1.5 rounded-full border border-violet-100/45 bg-violet-300/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-violet-50 transition hover:border-violet-100/70 hover:bg-violet-300/30"
             >
-              Detail
+              {copy.detail}
               <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
             </Link>
           </div>
 
           <LoadingProgressPanel
-            title="Načítám data výplaty"
+            language={language}
+            title={copy.loadingTitle}
             stage={loadingStage}
             progress={clampedLoadingProgress}
-            accentLabel="Výplata"
+            accentLabel={copy.loadingAccent}
           />
         </div>
       ) : (
@@ -98,11 +134,11 @@ export function ExpectedPayoutSection({
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-100/48 bg-violet-300/18">
                 <WalletCards className="h-4.5 w-4.5 text-emerald-200" strokeWidth={2.2} aria-hidden="true" />
               </span>
-              <span>Očekávaná výplata</span>
+              <span>{copy.title}</span>
             </h2>
 
             <p className="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-violet-100/75">
-              Čistá výplata ({payoutPeriodLabel})
+              {copy.netPayout} ({payoutPeriodLabel})
             </p>
             <p className="mt-1 whitespace-nowrap text-[2.4rem] font-black leading-[0.96] tracking-[-0.03em] text-emerald-200 sm:text-[2.95rem]">
               {formatMoney(netAmount)}
@@ -114,17 +150,17 @@ export function ExpectedPayoutSection({
               href="/cashflow"
               className="inline-flex w-fit self-start items-center gap-1.5 rounded-full border border-violet-100/45 bg-violet-300/20 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-50 transition hover:border-violet-100/70 hover:bg-violet-300/30 md:self-end"
             >
-              Detail
+              {copy.detail}
               <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
             </Link>
 
             <dl className="mt-6 space-y-1.5 md:mt-14">
               <div className="flex items-center justify-between gap-2">
-                <dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-100/72">Hrubá</dt>
+                <dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-100/72">{copy.gross}</dt>
                 <dd className="text-sm font-semibold text-violet-50 sm:text-base">{formatMoney(safeGross)}</dd>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-100/72">StornoFond</dt>
+                <dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-100/72">{copy.stornoFund}</dt>
                 <dd className="text-sm font-semibold text-rose-200 sm:text-base">- {formatMoney(safeStorno)}</dd>
               </div>
             </dl>

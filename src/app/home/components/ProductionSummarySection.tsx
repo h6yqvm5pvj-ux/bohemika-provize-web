@@ -9,10 +9,12 @@ import {
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
+import { type AppLanguage } from "@/lib/appLanguage";
 import { AnimatedMoney, AnimatedNumber } from "./AnimatedNumbers";
 import { LoadingProgressPanel } from "./LoadingProgressPanel";
 
 type Props = {
+  language: AppLanguage;
   loading: boolean;
   showTeamBox: boolean;
   myContractsCount: number;
@@ -71,6 +73,66 @@ const PRODUCTION_THEME: Record<ProductionTone, ProductionToneTheme> = {
   },
 };
 
+const PRODUCTION_SUMMARY_COPY: Record<
+  AppLanguage,
+  {
+    previousMonth: string;
+    commission: string;
+    loadingTitle: string;
+    loadingAccent: string;
+    loadingStages: [string, string, string];
+    swipeHint: string;
+    cards: Record<
+      ProductionTone,
+      {
+        titleTop: string;
+        titleBottom: string;
+        description: string;
+        countLabel: string;
+      }
+    >;
+  }
+> = {
+  cs: {
+    previousMonth: "vs. min. měsíc",
+    commission: "Provize",
+    loadingTitle: "Načítám data produkce",
+    loadingAccent: "Produkce",
+    loadingStages: [
+      "Sbírám smlouvy a výkon…",
+      "Počítám vlastní, týmovou a tipařskou produkci…",
+      "Finalizuji součty a trendy…",
+    ],
+    swipeHint: "Swipe do strany pro týmovou a celkovou produkci.",
+    cards: {
+      own: {
+        titleTop: "Vlastní",
+        titleBottom: "produkce",
+        description: "Aktuální osobní výkon za vybrané období.",
+        countLabel: "Počet smluv",
+      },
+      team: {
+        titleTop: "Týmová",
+        titleBottom: "produkce",
+        description: "Součet produkce podřízené týmové struktury.",
+        countLabel: "Počet smluv",
+      },
+      tip: {
+        titleTop: "Tipařská",
+        titleBottom: "produkce",
+        description: "Provize ze smluv vedených jako tipařské.",
+        countLabel: "Počet tipů",
+      },
+      total: {
+        titleTop: "Celková",
+        titleBottom: "produkce",
+        description: "Vlastní a týmová produkce v jednom součtu.",
+        countLabel: "Počet smluv",
+      },
+    },
+  },
+};
+
 function buildTrend(currentValue: number, previousValue: number): {
   direction: "up" | "down" | "flat";
   label: string;
@@ -100,9 +162,11 @@ function buildTrend(currentValue: number, previousValue: number): {
 function TrendInline({
   currentValue,
   previousValue,
+  previousMonthLabel,
 }: {
   currentValue: number;
   previousValue: number;
+  previousMonthLabel: string;
 }) {
   const trend = buildTrend(currentValue, previousValue);
   const trendClass =
@@ -124,7 +188,7 @@ function TrendInline({
     >
       <ArrowIcon className="h-3.5 w-3.5" strokeWidth={2.1} aria-hidden="true" />
       <span>{trend.label}</span>
-      <span className="hidden text-violet-100/60 sm:inline">vs. min. měsíc</span>
+      <span className="hidden text-violet-100/60 sm:inline">{previousMonthLabel}</span>
     </div>
   );
 }
@@ -165,6 +229,8 @@ type ProductionColumnProps = {
   description: string;
   icon: LucideIcon;
   countLabel: string;
+  commissionLabel: string;
+  previousMonthLabel: string;
   countValue: number;
   amountValue: number;
   previousAmountValue: number;
@@ -181,6 +247,8 @@ function ProductionColumn({
   description,
   icon: Icon,
   countLabel,
+  commissionLabel,
+  previousMonthLabel,
   countValue,
   amountValue,
   previousAmountValue,
@@ -200,7 +268,7 @@ function ProductionColumn({
 
       <p className="mt-2 text-sm leading-5 text-violet-100/72">{description}</p>
 
-      <p className="mt-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-100/70">Provize</p>
+      <p className="mt-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-100/70">{commissionLabel}</p>
       <div className="mt-1 flex items-end justify-between gap-2">
         <p className={`whitespace-nowrap text-[2rem] font-black leading-none tracking-[-0.03em] sm:text-[2.45rem] ${theme.amountClass}`}>
           <AnimatedMoney value={amountValue} />
@@ -215,13 +283,18 @@ function ProductionColumn({
             <AnimatedNumber value={countValue} />
           </p>
         </div>
-        <TrendInline currentValue={amountValue} previousValue={previousAmountValue} />
+        <TrendInline
+          currentValue={amountValue}
+          previousValue={previousAmountValue}
+          previousMonthLabel={previousMonthLabel}
+        />
       </div>
     </article>
   );
 }
 
 export function ProductionSummarySection({
+  language,
   loading,
   showTeamBox,
   myContractsCount,
@@ -238,6 +311,7 @@ export function ProductionSummarySection({
   totalPrevWithTeam,
   isLiteUI,
 }: Props) {
+  const copy = PRODUCTION_SUMMARY_COPY[language];
   const [loadingProgress, setLoadingProgress] = useState(14);
   const [mobileCardIndex, setMobileCardIndex] = useState(0);
   const mobileCarouselRef = useRef<HTMLDivElement | null>(null);
@@ -267,10 +341,10 @@ export function ProductionSummarySection({
 
   const loadingStage =
     clampedLoadingProgress < 35
-      ? "Sbírám smlouvy a výkon…"
+      ? copy.loadingStages[0]
       : clampedLoadingProgress < 72
-        ? "Počítám vlastní, týmovou a tipařskou produkci…"
-        : "Finalizuji součty a trendy…";
+        ? copy.loadingStages[1]
+        : copy.loadingStages[2];
 
   const containerShellClass = isLiteUI
     ? "relative h-full overflow-hidden rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-3 py-3 text-white transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 focus-within:border-violet-200/60 focus-within:shadow-[0_0_0_1px_rgba(221,214,254,0.3)] sm:px-4 sm:py-4"
@@ -280,11 +354,13 @@ export function ProductionSummarySection({
   const ownCard: ProductionCard = {
     id: "own",
     tone: "own",
-    titleTop: "Vlastní",
-    titleBottom: "produkce",
-    description: "Aktuální osobní výkon za vybrané období.",
+    titleTop: copy.cards.own.titleTop,
+    titleBottom: copy.cards.own.titleBottom,
+    description: copy.cards.own.description,
     icon: UserRound,
-    countLabel: "Počet smluv",
+    countLabel: copy.cards.own.countLabel,
+    commissionLabel: copy.commission,
+    previousMonthLabel: copy.previousMonth,
     countValue: myContractsCount,
     amountValue: myImmediateSum,
     previousAmountValue: myImmediatePrevSum,
@@ -292,11 +368,13 @@ export function ProductionSummarySection({
   const teamCard: ProductionCard = {
     id: "team",
     tone: "team",
-    titleTop: "Týmová",
-    titleBottom: "produkce",
-    description: "Součet produkce podřízené týmové struktury.",
+    titleTop: copy.cards.team.titleTop,
+    titleBottom: copy.cards.team.titleBottom,
+    description: copy.cards.team.description,
     icon: UsersRound,
-    countLabel: "Počet smluv",
+    countLabel: copy.cards.team.countLabel,
+    commissionLabel: copy.commission,
+    previousMonthLabel: copy.previousMonth,
     countValue: teamContractsCount,
     amountValue: teamImmediateSum,
     previousAmountValue: teamImmediatePrevSum,
@@ -304,11 +382,13 @@ export function ProductionSummarySection({
   const tipCard: ProductionCard = {
     id: "tip",
     tone: "tip",
-    titleTop: "Tipařská",
-    titleBottom: "produkce",
-    description: "Provize ze smluv vedených jako tipařské.",
+    titleTop: copy.cards.tip.titleTop,
+    titleBottom: copy.cards.tip.titleBottom,
+    description: copy.cards.tip.description,
     icon: Tag,
-    countLabel: "Počet tipů",
+    countLabel: copy.cards.tip.countLabel,
+    commissionLabel: copy.commission,
+    previousMonthLabel: copy.previousMonth,
     countValue: myTipContractsCount,
     amountValue: myTipImmediateSum,
     previousAmountValue: myTipImmediatePrevSum,
@@ -316,11 +396,13 @@ export function ProductionSummarySection({
   const totalCard: ProductionCard = {
     id: "total",
     tone: "total",
-    titleTop: "Celková",
-    titleBottom: "produkce",
-    description: "Vlastní a týmová produkce v jednom součtu.",
+    titleTop: copy.cards.total.titleTop,
+    titleBottom: copy.cards.total.titleBottom,
+    description: copy.cards.total.description,
     icon: BarChart3,
-    countLabel: "Počet smluv",
+    countLabel: copy.cards.total.countLabel,
+    commissionLabel: copy.commission,
+    previousMonthLabel: copy.previousMonth,
     countValue: totalContractsCount,
     amountValue: totalWithTeam,
     previousAmountValue: totalPrevWithTeam,
@@ -364,10 +446,11 @@ export function ProductionSummarySection({
       <section className={containerShellClass} data-fixed-box-theme="slate">
         <div className="relative z-10 flex h-full items-center">
           <LoadingProgressPanel
-            title="Načítám data produkce"
+            language={language}
+            title={copy.loadingTitle}
             stage={loadingStage}
             progress={clampedLoadingProgress}
-            accentLabel="Produkce"
+            accentLabel={copy.loadingAccent}
           />
         </div>
       </section>
@@ -431,7 +514,7 @@ export function ProductionSummarySection({
           ))}
         </div>
         <p className="mt-2 text-center text-[11px] font-medium text-violet-100/68">
-          Swipe do strany pro týmovou a celkovou produkci.
+          {copy.swipeHint}
         </p>
       </div>
 

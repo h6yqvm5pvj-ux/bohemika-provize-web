@@ -1,9 +1,11 @@
 import { Trophy } from "lucide-react";
 import { AnimatedMoney } from "./AnimatedNumbers";
 
+import { type AppLanguage } from "@/lib/appLanguage";
 import { type TeamLeaderboardEntry } from "../types";
 
 type Props = {
+  language: AppLanguage;
   loading: boolean;
   entries: TeamLeaderboardEntry[];
   leaderboardLabel: string;
@@ -14,7 +16,39 @@ type Props = {
   isLiteUI: boolean;
 };
 
+const TEAM_LEADERBOARD_COPY: Record<
+  AppLanguage,
+  {
+    kicker: string;
+    title: string;
+    life: string;
+    other: string;
+    month: string;
+    sixMonths: string;
+    year: string;
+    loading: string;
+    empty: string;
+    premium: string;
+    performanceVsFirst: string;
+  }
+> = {
+  cs: {
+    kicker: "Týmový výkon",
+    title: "Žebříček týmu",
+    life: "Život",
+    other: "Vedlejší produkty",
+    month: "Aktuální měsíc",
+    sixMonths: "Posledních 6 měsíců",
+    year: "Aktuální rok",
+    loading: "Načítám týmovou produkci…",
+    empty: "Pro zvolené období a typ produktu zatím nemá tým žádnou produkci.",
+    premium: "Pojistné",
+    performanceVsFirst: "Výkon vůči 1. místu",
+  },
+};
+
 export function TeamLeaderboardSection({
+  language,
   loading,
   entries,
   leaderboardLabel,
@@ -24,6 +58,7 @@ export function TeamLeaderboardSection({
   onRangeChange,
   isLiteUI,
 }: Props) {
+  const copy = TEAM_LEADERBOARD_COPY[language];
   const leaderboardClass = isLiteUI
     ? "relative h-full overflow-hidden rounded-[30px] border border-slate-200 bg-white px-5 py-5 text-slate-900 sm:px-7 sm:py-6"
     : "relative h-full overflow-hidden rounded-[30px] border border-slate-200 bg-white px-5 py-5 text-slate-900 shadow-[0_12px_28px_rgba(15,23,42,0.08)] sm:px-7 sm:py-6";
@@ -81,10 +116,10 @@ export function TeamLeaderboardSection({
     <section className={leaderboardClass} data-fixed-box-theme="slate">
       <div className="relative z-10 mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Týmový výkon</p>
+          <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">{copy.kicker}</p>
           <h2 className="mt-1 inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-[1.75rem]">
             <Trophy className="h-6 w-6 text-amber-500" strokeWidth={1.9} aria-hidden="true" />
-            <span>Žebříček týmu</span>
+            <span>{copy.title}</span>
           </h2>
         </div>
 
@@ -95,14 +130,14 @@ export function TeamLeaderboardSection({
               onClick={() => onProductFilterChange("life")}
               className={lbProductFilter === "life" ? activeChipClass : idleChipClass}
             >
-              Život
+              {copy.life}
             </button>
             <button
               type="button"
               onClick={() => onProductFilterChange("other")}
               className={lbProductFilter === "other" ? activeChipClass : idleChipClass}
             >
-              Vedlejší produkty
+              {copy.other}
             </button>
           </div>
 
@@ -112,21 +147,21 @@ export function TeamLeaderboardSection({
               onClick={() => onRangeChange("month")}
               className={lbRange === "month" ? activeChipClass : idleChipClass}
             >
-              Aktuální měsíc
+              {copy.month}
             </button>
             <button
               type="button"
               onClick={() => onRangeChange("sixMonths")}
               className={lbRange === "sixMonths" ? activeChipClass : idleChipClass}
             >
-              Posledních 6 měsíců
+              {copy.sixMonths}
             </button>
             <button
               type="button"
               onClick={() => onRangeChange("year")}
               className={lbRange === "year" ? activeChipClass : idleChipClass}
             >
-              Aktuální rok
+              {copy.year}
             </button>
           </div>
         </div>
@@ -139,13 +174,13 @@ export function TeamLeaderboardSection({
               className="h-4 w-4 animate-spin rounded-full border-2 border-violet-100/35 border-t-violet-100"
               aria-hidden="true"
             />
-            <span>Načítám týmovou produkci…</span>
+            <span>{copy.loading}</span>
           </div>
         </div>
       ) : entries.length === 0 ? (
         <div className="relative z-10 rounded-2xl border border-dashed border-violet-100/32 bg-violet-950/28 px-4 py-7 text-center">
           <p className="text-sm text-violet-100/78">
-            Pro zvolené období a typ produktu zatím nemá tým žádnou produkci.
+            {copy.empty}
           </p>
         </div>
       ) : (
@@ -191,7 +226,7 @@ export function TeamLeaderboardSection({
                     </div>
 
                     <div className="text-right">
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-violet-100/62">Pojistné</div>
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-violet-100/62">{copy.premium}</div>
                       <div className={`whitespace-nowrap text-[1.95rem] font-semibold leading-none sm:text-[2.45rem] ${accents.amount}`}>
                         <AnimatedMoney value={row.totalPremium} />
                       </div>
@@ -200,7 +235,7 @@ export function TeamLeaderboardSection({
 
                   <div>
                     <div className="mb-1.5 flex items-center justify-between text-[10px] text-violet-100/62">
-                      <span>Výkon vůči 1. místu</span>
+                      <span>{copy.performanceVsFirst}</span>
                       <span>{progress} %</span>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-violet-100/17">

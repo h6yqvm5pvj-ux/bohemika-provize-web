@@ -1,8 +1,10 @@
 import Image from "next/image";
 
+import { type AppLanguage } from "@/lib/appLanguage";
 import { formatMoney } from "../homeUtils";
 
 type Props = {
+  language: AppLanguage;
   isLiteUI: boolean;
   goldLoading: boolean;
   goldData: { czkPerOz: number; ts: number; changePct: number | null } | null;
@@ -13,7 +15,35 @@ type Props = {
   onRefresh: () => void;
 };
 
+const GOLD_WIDGET_COPY: Record<
+  AppLanguage,
+  {
+    coinAlt: string;
+    currentPrice: string;
+    loading: string;
+    updatedAt: string;
+    unknownTime: string;
+    dailyMove: string;
+    noChange: string;
+    refresh: string;
+    locale: string;
+  }
+> = {
+  cs: {
+    coinAlt: "Zlatá mince 1 oz",
+    currentPrice: "Aktuální cena zlata / 1 oz",
+    loading: "Načítám…",
+    updatedAt: "Aktualizace",
+    unknownTime: "Čas zatím neznám",
+    dailyMove: "Denní pohyb",
+    noChange: "Bez změny",
+    refresh: "Obnovit cenu zlata",
+    locale: "cs-CZ",
+  },
+};
+
 export function GoldWidget({
+  language,
   isLiteUI,
   goldLoading,
   goldData,
@@ -23,6 +53,7 @@ export function GoldWidget({
   goldError,
   onRefresh,
 }: Props) {
+  const copy = GOLD_WIDGET_COPY[language];
   const goldCardClass = isLiteUI
     ? "relative w-full overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-4 transition-[border-color,box-shadow] duration-200 hover:border-slate-300 focus-within:border-slate-300 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.35)] sm:px-6 sm:py-5"
     : "relative w-full overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.07)] transition-[border-color,box-shadow] duration-200 hover:border-slate-300 hover:shadow-[0_14px_32px_rgba(15,23,42,0.11)] focus-within:border-slate-300 focus-within:shadow-[0_14px_32px_rgba(15,23,42,0.11),0_0_0_1px_rgba(148,163,184,0.35)] sm:px-6 sm:py-5";
@@ -52,7 +83,7 @@ export function GoldWidget({
             <div className="shrink-0">
               <Image
                 src="/icons/1oZpredni.png"
-                alt="Zlatá mince 1 oz"
+                alt={copy.coinAlt}
                 width={1000}
                 height={1000}
                 className="h-[108px] w-auto object-contain sm:h-[122px]"
@@ -62,22 +93,22 @@ export function GoldWidget({
 
             <div className="flex flex-col gap-1">
               <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
-                Aktuální cena zlata / 1 oz
+                {copy.currentPrice}
               </div>
               <div className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-[3rem]">
-                {goldLoading ? "Načítám…" : goldData ? formatMoney(goldData.czkPerOz) : "—"}
+                {goldLoading ? copy.loading : goldData ? formatMoney(goldData.czkPerOz) : "—"}
               </div>
               <div className="text-[12px] text-slate-500">
                 {goldData?.ts
-                  ? `Aktualizace ${new Date(goldData.ts).toLocaleTimeString("cs-CZ", {
+                  ? `${copy.updatedAt} ${new Date(goldData.ts).toLocaleTimeString(copy.locale, {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}`
-                  : "Čas zatím neznám"}
+                  : copy.unknownTime}
               </div>
               <div className="mt-1 inline-flex w-fit items-center gap-2">
                 <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
-                  Denní pohyb
+                  {copy.dailyMove}
                 </span>
                 <div
                   className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${trendClass}`}
@@ -87,7 +118,7 @@ export function GoldWidget({
                   </span>
                   <span>
                     {goldChangePct == null
-                      ? "Bez změny"
+                      ? copy.noChange
                       : `${goldChangePct > 0 ? "+" : ""}${goldChangePct.toFixed(2)} %`}
                   </span>
                   {goldChangeAbs != null ? (
@@ -106,8 +137,8 @@ export function GoldWidget({
               type="button"
               onClick={onRefresh}
               disabled={goldLoading}
-              aria-label="Obnovit cenu zlata"
-              title="Obnovit cenu zlata"
+              aria-label={copy.refresh}
+              title={copy.refresh}
               className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
             >
               <svg

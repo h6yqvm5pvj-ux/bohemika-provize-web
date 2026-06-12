@@ -50,6 +50,14 @@ import {
   FONT_THEME_LOCAL_STORAGE_KEY,
   applyFontThemeToRoot,
 } from "@/lib/fontTheme";
+import {
+  APP_LANGUAGE_EVENT,
+  APP_LANGUAGE_LOCAL_STORAGE_KEY,
+  DEFAULT_APP_LANGUAGE,
+  getAppLanguageMeta,
+  resolveAppLanguage,
+  type AppLanguage,
+} from "@/lib/appLanguage";
 import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
@@ -125,6 +133,31 @@ const MICROSOFT_AUTHENTICATOR_APP_STORE_URL =
   "https://apps.apple.com/cz/app/microsoft-authenticator/id983156458";
 const MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL =
   "https://play.google.com/store/apps/details?id=com.azure.authenticator";
+const APP_LAYOUT_COPY: Record<
+  AppLanguage,
+  {
+    nav: Record<ActivePage, string>;
+    logout: string;
+    accountSettings: string;
+  }
+> = {
+  cs: {
+    nav: {
+      home: "Domů",
+      intranet: "Intranet",
+      calc: "Kalkulačka",
+      contracts: "Smlouvy",
+      cashflow: "Provizní kalendář",
+      team: "Můj tým",
+      tools: "Pomůcky",
+      tips: "Tipy",
+      settings: "Nastavení",
+      admin: "Admin",
+    },
+    logout: "Odhlásit se",
+    accountSettings: "Nastavení účtu",
+  },
+};
 
 const resolveAccountType = (data: Record<string, unknown>): AccountType => {
   const raw =
@@ -312,6 +345,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [hasInternalProfile, setHasInternalProfile] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [authInitTimedOut, setAuthInitTimedOut] = useState(false);
+  const [language, setLanguage] = useState<AppLanguage>(DEFAULT_APP_LANGUAGE);
   const [needsCareerTimelineSetup, setNeedsCareerTimelineSetup] = useState(false);
   const [showAccountSetupWizard, setShowAccountSetupWizard] = useState(false);
   const [accountSetupStep, setAccountSetupStep] = useState(0);
@@ -491,6 +525,41 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     };
   }, []);
 
+  // Načíst a aplikovat jazyk shellu aplikace z localStorage / profilu.
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const applyLanguage = (value?: unknown) => {
+      const next = resolveAppLanguage(
+        value ?? window.localStorage.getItem(APP_LANGUAGE_LOCAL_STORAGE_KEY)
+      );
+      window.localStorage.setItem(APP_LANGUAGE_LOCAL_STORAGE_KEY, next);
+      if (typeof document !== "undefined") {
+        document.documentElement.lang = getAppLanguageMeta(next)?.htmlLang ?? next;
+      }
+      setLanguage(next);
+    };
+
+    applyLanguage();
+
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key && ev.key !== APP_LANGUAGE_LOCAL_STORAGE_KEY) return;
+      applyLanguage(ev.newValue);
+    };
+
+    const onCustom = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ language?: string }>).detail;
+      applyLanguage(detail?.language);
+    };
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(APP_LANGUAGE_EVENT, onCustom as EventListener);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(APP_LANGUAGE_EVENT, onCustom as EventListener);
+    };
+  }, []);
+
   // zavřít mobilní menu po změně stránky
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -529,6 +598,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const data = (payload?.profile ?? {}) as Record<string, unknown>;
     const nextHasInternalProfile = payload?.hasProfile === true;
     const nextAccountType = resolveAccountType(data);
+    const nextLanguage = resolveAppLanguage(data.language);
     const evaluation = nextHasInternalProfile ? evaluateSubscriptionFromProfile(data) : null;
     const parsedTimeline = parsePositionTimeline(data.positionTimeline);
     const nextPhoneNumber =
@@ -536,6 +606,13 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const nextAccountSetupCompletedAt = normalizeIsoDateTime(data.accountSetupCompletedAt);
     const nextMfaGraceStartedAt = normalizeIsoDateTime(data.mfaSetupGraceStartedAt);
     setAccountType(nextAccountType);
+    setLanguage(nextLanguage);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(APP_LANGUAGE_LOCAL_STORAGE_KEY, nextLanguage);
+    }
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = getAppLanguageMeta(nextLanguage)?.htmlLang ?? nextLanguage;
+    }
     setHasInternalProfile(nextHasInternalProfile);
     setAccountSetupPhone(nextPhoneNumber);
     setAccountSetupSavedPhone(nextPhoneNumber);
@@ -1276,6 +1353,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const navItemInactiveClass =
     "text-slate-700 hover:bg-slate-100 hover:text-slate-900";
   const activeNavRailClass = "bg-emerald-400";
+  const layoutCopy = APP_LAYOUT_COPY[language];
 
   const navItems: {
     key: ActivePage;
@@ -1286,37 +1364,37 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     requiresTipsters?: boolean;
     requiresAdmin?: boolean;
   }[] = [
-    { key: "home", href: "/", label: "Domů", icon: Home },
+    { key: "home", href: "/", label: layoutCopy.nav.home, icon: Home },
     {
       key: "team",
       href: "/muj-tym",
-      label: "Můj tým",
+      label: layoutCopy.nav.team,
       icon: UsersRound,
     },
     {
       key: "intranet",
       href: "/intranet",
-      label: "Intranet",
+      label: layoutCopy.nav.intranet,
       icon: Building2,
     },
-    { key: "calc", href: "/kalkulacka", label: "Kalkulačka", icon: Calculator },
-    { key: "contracts", href: "/smlouvy", label: "Smlouvy", icon: FileText },
-    { key: "tips", href: "/tipy", label: "Tipy", icon: Lightbulb, requiresTipsters: true },
+    { key: "calc", href: "/kalkulacka", label: layoutCopy.nav.calc, icon: Calculator },
+    { key: "contracts", href: "/smlouvy", label: layoutCopy.nav.contracts, icon: FileText },
+    { key: "tips", href: "/tipy", label: layoutCopy.nav.tips, icon: Lightbulb, requiresTipsters: true },
     {
       key: "cashflow",
       href: "/cashflow",
-      label: "Provizní kalendář",
+      label: layoutCopy.nav.cashflow,
       icon: CalendarDays,
     },
-    { key: "tools", href: "/pomucky", label: "Pomůcky", icon: Wrench },
+    { key: "tools", href: "/pomucky", label: layoutCopy.nav.tools, icon: Wrench },
     {
       key: "admin",
       href: "/admin/zadosti",
-      label: "Admin",
+      label: layoutCopy.nav.admin,
       icon: ShieldCheck,
       requiresAdmin: true,
     },
-    { key: "settings", href: "/nastaveni", label: "Nastavení", icon: Settings },
+    { key: "settings", href: "/nastaveni", label: layoutCopy.nav.settings, icon: Settings },
   ];
 
   const tipsterNavItems: {
@@ -1325,12 +1403,12 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     label: string;
     icon: LucideIcon;
   }[] = [
-    { key: "home", href: "/", label: "Domů", icon: Home },
-    { key: "tips", href: "/tipy", label: "Tipy", icon: Lightbulb },
+    { key: "home", href: "/", label: layoutCopy.nav.home, icon: Home },
+    { key: "tips", href: "/tipy", label: layoutCopy.nav.tips, icon: Lightbulb },
     {
       key: "cashflow",
       href: "/cashflow",
-      label: "Provizní kalendář",
+      label: layoutCopy.nav.cashflow,
       icon: CalendarDays,
     },
   ];
@@ -1478,7 +1556,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-3 py-4 backdrop-blur-sm sm:px-4"
             role="dialog"
             aria-modal="true"
-            aria-label="Nastavení účtu"
+            aria-label={layoutCopy.accountSettings}
           >
             <section className="vizitka-anim-up max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-[28px] border border-violet-300/25 bg-[linear-gradient(155deg,#160c2a_0%,#100b21_100%)] p-4 text-[#f8fafc] shadow-[0_34px_90px_rgba(7,6,25,0.72),inset_0_1px_0_rgba(196,181,253,0.2)] sm:p-6">
               {accountSetupCompleted ? (
@@ -1946,7 +2024,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                       disabled={accountSetupBusy}
                       className="inline-flex items-center gap-2 rounded-full border border-white/14 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-violet-100/72 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-55"
                     >
-                      Odhlásit se
+                      {layoutCopy.logout}
                     </button>
 
                     <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
@@ -2110,7 +2188,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                 onClick={handleLogout}
                 className="ui-btn-primary ui-focus w-full rounded-xl py-2 text-xs"
               >
-                Odhlásit se
+                {layoutCopy.logout}
               </button>
             </div>
           </div>
@@ -2250,7 +2328,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                     onClick={handleLogout}
                     className="ui-btn-primary ui-focus w-full rounded-xl py-2 text-xs"
                   >
-                    Odhlásit se
+                    {layoutCopy.logout}
                   </button>
                 </div>
               </div>

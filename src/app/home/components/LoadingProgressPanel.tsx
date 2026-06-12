@@ -1,20 +1,35 @@
 import { Check, LoaderCircle } from "lucide-react";
+import { type AppLanguage } from "@/lib/appLanguage";
 
 type Props = {
+  language: AppLanguage;
   title: string;
   stage: string;
   progress: number;
   accentLabel: string;
 };
 
-const PHASES = ["Sběr dat", "Výpočty", "Finalizace"] as const;
+const LOADING_PROGRESS_COPY: Record<
+  AppLanguage,
+  {
+    phases: string[];
+    ready: string;
+  }
+> = {
+  cs: {
+    phases: ["Sběr dat", "Výpočty", "Finalizace"],
+    ready: "připraveno",
+  },
+};
 
 export function LoadingProgressPanel({
+  language,
   title,
   stage,
   progress,
   accentLabel,
 }: Props) {
+  const copy = LOADING_PROGRESS_COPY[language];
   const safeProgress = Math.max(8, Math.min(97, progress));
   const activePhaseIndex =
     safeProgress < 35 ? 0 : safeProgress < 72 ? 1 : 2;
@@ -41,7 +56,7 @@ export function LoadingProgressPanel({
           </div>
           <div className="mt-2 text-sm text-violet-100/80">{stage}</div>
           <div className="mt-1 text-xs uppercase tracking-[0.14em] text-violet-100/75">
-            {safeProgress}% připraveno
+            {safeProgress}% {copy.ready}
           </div>
         </div>
 
@@ -60,7 +75,7 @@ export function LoadingProgressPanel({
       </div>
 
       <div className="relative z-10 mt-4 grid grid-cols-3 gap-2">
-        {PHASES.map((phase, index) => {
+        {copy.phases.map((phase, index) => {
           const state =
             index < activePhaseIndex
               ? "done"

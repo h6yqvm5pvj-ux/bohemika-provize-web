@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getStorage } from "firebase-admin/storage";
 
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import { resolveIntranetWallAttachmentServing } from "@/lib/server/intranetWallAttachments";
 import {
   requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
@@ -204,22 +205,31 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const shouldDownload = req.nextUrl.searchParams.get("download") === "1";
-  const isInlineImage = !shouldDownload && attachment.contentType.startsWith("image/");
+  const serving = resolveIntranetWallAttachmentServing({
+    bytes,
+    fileName: attachment.name,
+    storedContentType: attachment.contentType,
+    downloadRequested: req.nextUrl.searchParams.get("download") === "1",
+  });
+  const headers = new Headers({
+    "Content-Type": serving.contentType,
+    "Content-Length": String(bytes.length),
+    "Content-Disposition": contentDisposition(attachment.name, serving.shouldDownload),
+    "Cache-Control": serving.isInlineImage
+      ? "private, max-age=600"
+      : "private, no-store, max-age=0",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+  });
+  if (serving.contentSecurityPolicy) {
+    headers.set("Content-Security-Policy", serving.contentSecurityPolicy);
+  }
+
   return withRateLimitHeaders(
     new NextResponse(new Uint8Array(bytes), {
       status: 200,
-      headers: {
-        "Content-Type": attachment.contentType,
-        "Content-Length": String(bytes.length),
-        "Content-Disposition": contentDisposition(attachment.name, shouldDownload),
-        "Cache-Control": isInlineImage
-          ? "private, max-age=600"
-          : "private, no-store, max-age=0",
-        "Cross-Origin-Resource-Policy": "same-origin",
-        "Referrer-Policy": "no-referrer",
-        "X-Content-Type-Options": "nosniff",
-      },
+      headers,
     }),
     ctx
   );

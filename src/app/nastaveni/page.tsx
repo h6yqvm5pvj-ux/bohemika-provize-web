@@ -3657,6 +3657,7 @@ export default function SettingsPage() {
                           />
                         </div>
                       </div>
+
                     </div>
 
                     <div className="rounded-2xl border border-slate-200 bg-slate-50/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
