@@ -34,7 +34,7 @@ import SplitTitle from "../plan-produkce/SplitTitle";
 type StepId = "base" | "family" | "children" | "mortgage" | "confirm";
 type ProviderRole = "main" | "secondary";
 type InvalidityModel = "insurance" | "investment";
-type PdfLanguage = "cs" | "en" | "uk";
+type PdfLanguage = "cs" | "en" | "uk" | "ne" | "hi";
 type InputKey =
   | "age"
   | "insuredIncome"
@@ -124,6 +124,18 @@ const PDF_LANGUAGE_OPTIONS: Array<{
     label: "Ukrajinština",
     flag: "🇺🇦",
     description: "Українська версія для клієнтів.",
+  },
+  {
+    id: "ne",
+    label: "Nepálština",
+    flag: "🇳🇵",
+    description: "ग्राहकका लागि नेपाली संस्करण।",
+  },
+  {
+    id: "hi",
+    label: "Hindština",
+    flag: "🇮🇳",
+    description: "ग्राहकों के लिए हिंदी संस्करण।",
   },
 ];
 
@@ -369,6 +381,166 @@ const PDF_COPY = {
       missing: "не вказано",
     },
   },
+  ne: {
+    previewEyebrow: "सेटिङको पूर्वावलोकन",
+    previewTitle: "बीमा सम्झौतामा के र कसरी सेट गर्ने",
+    previewIntro:
+      "यो गणना मृत्यु वा दीर्घकालीन स्वास्थ्य समस्यापछि परिवारमा वास्तवमै कमी हुने कुरामा आधारित छ: आम्दानी, ऋणको सुरक्षा, बालबालिकाको सहयोग अवधि र एकपटक लाग्ने खर्चहरू।",
+    householdIncome: "परिवारको आम्दानी",
+    householdExpenses: "परिवारका खर्चहरू",
+    missingAfterDeath: "ग्राहकको मृत्युपछि अपुग हुने रकम",
+    clientRole: "ग्राहकको भूमिका",
+    client: "ग्राहक",
+    otherIncome: "अन्य आम्दानी",
+    essentialExpenses: "आवश्यक खर्च",
+    installments: "ऋणका किस्ताहरू",
+    remainingIncome: "बाँकी रहने आम्दानी",
+    mainProvider: "मुख्य आयस्रोत",
+    secondaryProvider: "सहायक आय",
+    deathSetupNote: "मृत्यु कभरेज ग्राहकको आम्दानी गुम्ने आधारमा गणना गरिएको छ।",
+    death: "मृत्यु",
+    recommendedSetup: "सिफारिस गरिएको सेटिङ",
+    constantDeathSum: "मृत्युका लागि स्थिर बीमित रकम",
+    constantDeathNote:
+      "अन्तिम संस्कार / विदाइ खर्चका लागि। यो रकम स्थिर राख्नुहोस्, सामान्यतया CZK 50,000 देखि 100,000।",
+    decreasingDeathSum: "मृत्युका लागि घट्दै जाने बीमित रकम",
+    incomeGap: "आम्दानीको कमी",
+    childrenEducation: "बालबालिकाको शिक्षा",
+    approximatelyFor: "करिब",
+    annuityDeathSum: "हाइपोथेक / ऋणका लागि वार्षिकी रूपमा घट्दै जाने बीमित रकम",
+    setByDebt: "ऋणको आधारमा सेट गर्ने अवधि",
+    interest: "ब्याज",
+    perYear: "वार्षिक",
+    noDebtDeathNote: "ग्राहकसँग ऋण छैन भने यो भाग सेट गर्न आवश्यक छैन।",
+    quickMethodPrefix: "छिटो विधिबाट जाँच: ग्राहकको ५ वर्षको आम्दानी बराबर",
+    quickMethodSuffix:
+      "तर परिवारका लागि आम्दानीको कमी, ऋण र बालबालिकाको सहयोग अवधि बढी महत्त्वपूर्ण हुन्छ।",
+    sickLeave: "काम गर्न असमर्थता",
+    dailyBenefit: "दैनिक भत्ता",
+    set: "सेट गर्ने",
+    perDay: "दिन",
+    monthlyApprox: "मासिक करिब",
+    sickLeaveFormula: "गणनाले शुद्ध आम्दानीको ४०% लिएर ३० दिनले भाग गर्छ।",
+    stateSicknessBenefit: "अनुमानित सरकारी बिरामी भत्ता",
+    incomeDrop: "ग्राहकको आम्दानीको तुलनामा कमी",
+    expenseGapInfo: "खर्चको तुलनामा अनुमानित कमी",
+    disability: "अपाङ्गता",
+    investmentByDegree: "अपाङ्गताको स्तरअनुसार लगानी विकल्प",
+    insuranceByDegree: "अपाङ्गताको स्तरअनुसार रेन्टाका बीमित रकमहरू",
+    coverageTo65: "६५ वर्ष उमेरसम्म कभरेज",
+    disabilityCoverageVariant: "अपाङ्गता कभरेज विकल्प",
+    insurancePayout: "बीमा भुक्तानी",
+    investmentVariant: "लगानी विकल्प",
+    coveragePrefix: "कभरेज",
+    degreeOfDisability: "अपाङ्गताको स्तर",
+    monthlyAnnuity: "मासिक रेन्टा",
+    requiredDeposit: "आवश्यक जम्मा रकम",
+    sumWithoutDebt: "ऋणबाहेकको बीमित रकम",
+    to: "देखि",
+    investmentNote:
+      "लगानी विकल्पले ५.५-६% वार्षिक प्रतिफलमा चयन गरिएको मासिक रेन्टा झिक्न सकिने पूँजीको मोडल देखाउँछ। यो लगानी सल्लाह होइन।",
+    disabilityAndLoan: "अपाङ्गता र ऋण",
+    disabilityLoanTitle: "अपाङ्गताका लागि हाइपोथेक / ऋणमा वार्षिकी रूपमा घट्दै जाने बीमित रकम",
+    disabilityLoanNote:
+      "हालको बाँकी ऋण र भुक्तानी अवधिको आधारमा यो अलग सेट गर्नुहोस्। माथिको रेन्टाले आम्दानीको कमी कभर गर्छ; यो भागले ऋण चुक्ता गर्ने रकम कभर गर्छ।",
+    byRepaymentPeriod: "भुक्तानी अवधिअनुसार",
+    scenarioLabels: {
+      veryLow: "धेरै कम",
+      low: "कम",
+      medium: "मध्यम",
+      high: "उच्च",
+    },
+    degreeLabels: ["पहिलो तह", "दोस्रो तह", "तेस्रो तह"],
+    footer: {
+      manager: "प्रबन्धक",
+      advisor: "सल्लाहकार",
+      companyId: "कम्पनी आईडी",
+      phone: "फोन",
+      email: "E-mail",
+      generated: "सिर्जना गरिएको",
+      missing: "उल्लेख छैन",
+    },
+  },
+  hi: {
+    previewEyebrow: "सेटअप पूर्वावलोकन",
+    previewTitle: "पॉलिसी में क्या और कैसे सेट करें",
+    previewIntro:
+      "यह गणना इस बात पर आधारित है कि मृत्यु या दीर्घकालिक स्वास्थ्य समस्या के बाद परिवार को वास्तव में किन चीज़ों की कमी होगी: आय, ऋण सुरक्षा, बच्चों की सहायता अवधि और एकमुश्त खर्च।",
+    householdIncome: "परिवार की आय",
+    householdExpenses: "परिवार के खर्च",
+    missingAfterDeath: "ग्राहक की मृत्यु के बाद कमी",
+    clientRole: "ग्राहक की भूमिका",
+    client: "ग्राहक",
+    otherIncome: "अन्य आय",
+    essentialExpenses: "आवश्यक खर्च",
+    installments: "ऋण की किस्तें",
+    remainingIncome: "बची हुई आय",
+    mainProvider: "मुख्य आय अर्जक",
+    secondaryProvider: "सहायक आय",
+    deathSetupNote: "मृत्यु कवर ग्राहक की आय में होने वाली कमी के आधार पर गणना किया गया है।",
+    death: "मृत्यु",
+    recommendedSetup: "अनुशंसित सेटअप",
+    constantDeathSum: "मृत्यु के लिए स्थिर बीमित राशि",
+    constantDeathNote:
+      "अंतिम खर्चों के लिए। इस राशि को स्थिर रखें, सामान्यतः CZK 50,000 से 100,000।",
+    decreasingDeathSum: "मृत्यु के लिए घटती बीमित राशि",
+    incomeGap: "आय की कमी",
+    childrenEducation: "बच्चों की शिक्षा",
+    approximatelyFor: "लगभग",
+    annuityDeathSum: "बंधक / ऋण के लिए वार्षिकी-घटती बीमित राशि",
+    setByDebt: "ऋण के आधार पर अवधि सेट करें",
+    interest: "ब्याज",
+    perYear: "प्रति वर्ष",
+    noDebtDeathNote: "यदि ग्राहक पर कोई ऋण नहीं है, तो यह भाग सेट करने की आवश्यकता नहीं है।",
+    quickMethodPrefix: "त्वरित पद्धति से जाँच: ग्राहक की ५ वर्षों की आय बराबर है",
+    quickMethodSuffix:
+      "लेकिन परिवार के लिए आय की कमी, ऋण और बच्चों की सहायता अवधि अधिक महत्वपूर्ण हैं।",
+    sickLeave: "कार्य-असमर्थता",
+    dailyBenefit: "दैनिक लाभ",
+    set: "सेट करें",
+    perDay: "दिन",
+    monthlyApprox: "मासिक लगभग",
+    sickLeaveFormula: "गणना शुद्ध आय का ४०% लेकर उसे ३० दिनों से विभाजित करती है।",
+    stateSicknessBenefit: "अनुमानित सरकारी बीमारी लाभ",
+    incomeDrop: "ग्राहक की आय की तुलना में कमी",
+    expenseGapInfo: "खर्चों की तुलना में अनुमानित कमी",
+    disability: "विकलांगता",
+    investmentByDegree: "विकलांगता स्तर के अनुसार निवेश विकल्प",
+    insuranceByDegree: "विकलांगता स्तर के अनुसार रेंट-आधारित बीमित राशियाँ",
+    coverageTo65: "६५ वर्ष की आयु तक कवर",
+    disabilityCoverageVariant: "विकलांगता कवर विकल्प",
+    insurancePayout: "बीमा भुगतान",
+    investmentVariant: "निवेश विकल्प",
+    coveragePrefix: "कवर",
+    degreeOfDisability: "विकलांगता स्तर",
+    monthlyAnnuity: "मासिक रेंट",
+    requiredDeposit: "आवश्यक जमा राशि",
+    sumWithoutDebt: "ऋणों को छोड़कर बीमित राशि",
+    to: "से",
+    investmentNote:
+      "निवेश विकल्प उस पूँजी का मॉडल दिखाता है जिससे ५.५-६% वार्षिक प्रतिफल पर चुना गया मासिक रेंट निकाला जा सकता है। यह निवेश सलाह नहीं है।",
+    disabilityAndLoan: "विकलांगता और ऋण",
+    disabilityLoanTitle: "विकलांगता कवर के लिए बंधक / ऋण पर वार्षिकी-घटती बीमित राशि",
+    disabilityLoanNote:
+      "इसे वर्तमान बकाया ऋण और चुकौती अवधि के अनुसार अलग से सेट करें। ऊपर दिया गया रेंट आय की कमी को कवर करता है; यह भाग ऋण चुकाने को कवर करता है।",
+    byRepaymentPeriod: "चुकौती अवधि के अनुसार",
+    scenarioLabels: {
+      veryLow: "बहुत कम",
+      low: "कम",
+      medium: "मध्यम",
+      high: "अधिक",
+    },
+    degreeLabels: ["स्तर I", "स्तर II", "स्तर III"],
+    footer: {
+      manager: "प्रबंधक",
+      advisor: "सलाहकार",
+      companyId: "कंपनी आईडी",
+      phone: "फ़ोन",
+      email: "E-mail",
+      generated: "जनरेट किया गया",
+      missing: "उल्लेखित नहीं",
+    },
+  },
 } as const;
 
 type Html2CanvasFn = (
@@ -524,7 +696,15 @@ function advisorFooterFromProfile(
 
 function formatGeneratedDate(value: Date, language: PdfLanguage): string {
   const locale =
-    language === "en" ? "en-GB" : language === "uk" ? "uk-UA" : "cs-CZ";
+    language === "en"
+      ? "en-GB"
+      : language === "uk"
+        ? "uk-UA"
+        : language === "ne"
+          ? "ne-NP"
+          : language === "hi"
+            ? "hi-IN"
+            : "cs-CZ";
 
   return value.toLocaleDateString(locale, {
     day: "2-digit",
@@ -538,6 +718,14 @@ function formatYears(value: number, language: PdfLanguage): string {
 
   if (language === "en") {
     return `${years} ${years === 1 ? "year" : "years"}`;
+  }
+
+  if (language === "ne") {
+    return `${years.toLocaleString("ne-NP", { maximumFractionDigits: 0 })} वर्ष`;
+  }
+
+  if (language === "hi") {
+    return `${years.toLocaleString("hi-IN", { maximumFractionDigits: 0 })} वर्ष`;
   }
 
   if (language === "uk") {
@@ -561,12 +749,37 @@ function formatYears(value: number, language: PdfLanguage): string {
 function formatPdfMoney(value: number, language: PdfLanguage): string {
   if (language === "cs") return formatMoney(value);
 
-  const formatted = Math.round(value).toLocaleString(
-    language === "en" ? "en-GB" : "uk-UA",
-    { maximumFractionDigits: 0 }
-  );
+  if (language === "uk") {
+    const formatted = Math.round(value).toLocaleString("uk-UA", {
+      maximumFractionDigits: 0,
+    });
 
-  return language === "en" ? `CZK ${formatted}` : `${formatted} Kč`;
+    return `${formatted} Kč`;
+  }
+
+  const formatted = Math.round(value).toLocaleString("en-GB", {
+    maximumFractionDigits: 0,
+  });
+
+  return `CZK ${formatted}`;
+}
+
+function formatPdfPercent(value: number, language: PdfLanguage): string {
+  const locale =
+    language === "en"
+      ? "en-GB"
+      : language === "uk"
+        ? "uk-UA"
+        : language === "ne"
+          ? "ne-NP"
+          : language === "hi"
+            ? "hi-IN"
+            : "cs-CZ";
+
+  return `${value.toLocaleString(locale, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })} %`;
 }
 
 function translateAdvisorRole(roleLabel: string, language: PdfLanguage): string {
@@ -757,13 +970,6 @@ function requiredCapitalForRenta(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function formatPercent(value: number): string {
-  return `${value.toLocaleString("cs-CZ", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })} %`;
 }
 
 export default function LifeInsuranceSetupPage() {
@@ -1643,7 +1849,7 @@ export default function LifeInsuranceSetupPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
           data-pdf-ignore="1"
         >
-          <div className="w-full max-w-xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_26px_80px_rgba(15,23,42,0.28)]">
+          <div className="w-full max-w-5xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_26px_80px_rgba(15,23,42,0.28)]">
             <div className="border-b border-slate-200 px-5 py-4">
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
                 Jazyk PDF
@@ -1657,7 +1863,7 @@ export default function LifeInsuranceSetupPage() {
               </p>
             </div>
 
-            <div className="grid gap-3 px-5 py-5 sm:grid-cols-3">
+            <div className="grid max-h-[58vh] gap-3 overflow-y-auto px-5 py-5 sm:grid-cols-2 lg:grid-cols-5">
               {PDF_LANGUAGE_OPTIONS.map((option) => {
                 const selected = selectedPdfLanguage === option.id;
 
@@ -1944,6 +2150,7 @@ function PreviewPanel({
 }) {
   const copy = PDF_COPY[language];
   const money = (value: number) => formatPdfMoney(value, language);
+  const percent = (value: number) => formatPdfPercent(value, language);
   const activeInvalidityScenario =
     INVALIDITY_SCENARIOS.find((scenario) => scenario.id === invalidityScenarioId) ??
     INVALIDITY_SCENARIOS[2];
@@ -2021,7 +2228,7 @@ function PreviewPanel({
               value={money(death.annuityMortgageAmount)}
               note={
                 numbers.totalDebt > 0
-                  ? `${copy.setByDebt} ${formatYears(numbers.mortgageYears, language)}, ${copy.interest} ${formatPercent(numbers.mortgageRate)} ${copy.perYear}.`
+                  ? `${copy.setByDebt} ${formatYears(numbers.mortgageYears, language)}, ${copy.interest} ${percent(numbers.mortgageRate)} ${copy.perYear}.`
                   : copy.noDebtDeathNote
               }
             />
@@ -2161,7 +2368,7 @@ function PreviewPanel({
           <div className="shrink-0 rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-900">
             {copy.coveragePrefix}:{" "}
             {activeInvalidityScenario.ratios
-              .map((ratio) => `${Math.round(ratio * 100)} %`)
+              .map((ratio) => percent(Math.round(ratio * 100)))
               .join(" / ")}
             {invalidityModel === "investment" ? ` | 5,5-6 % ${copy.perYear}` : ""}
           </div>
@@ -2203,8 +2410,8 @@ function PreviewPanel({
                     </div>
                     <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-violet-800">
                       {invalidityModel === "investment"
-                        ? `${copy.coveragePrefix} ${Math.round(item.ratio * 100)} %`
-                        : `${Math.round(item.ratio * 100)} %`}
+                        ? `${copy.coveragePrefix} ${percent(Math.round(item.ratio * 100))}`
+                        : percent(Math.round(item.ratio * 100))}
                     </span>
                   </div>
                   <div className="mt-4 divide-y divide-slate-200 border-y border-slate-100">
@@ -2256,8 +2463,8 @@ function PreviewPanel({
                 </div>
                 <div className="mt-1 text-xs font-semibold text-violet-800">
                   {numbers.mortgageYears > 0
-                    ? `${formatYears(numbers.mortgageYears, language)}, ${copy.interest} ${formatPercent(numbers.mortgageRate)} ${copy.perYear}`
-                    : `${copy.byRepaymentPeriod}, ${copy.interest} ${formatPercent(numbers.mortgageRate)} ${copy.perYear}`}
+                    ? `${formatYears(numbers.mortgageYears, language)}, ${copy.interest} ${percent(numbers.mortgageRate)} ${copy.perYear}`
+                    : `${copy.byRepaymentPeriod}, ${copy.interest} ${percent(numbers.mortgageRate)} ${copy.perYear}`}
                 </div>
               </div>
             </div>
