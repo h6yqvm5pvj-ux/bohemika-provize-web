@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { toDate } from "@/app/lib/formatters";
 import type { CommissionMode, Position } from "@/app/types/domain";
-import { isAdminPanelEmail } from "@/lib/adminAccess";
+import { adminRoleAtLeast, resolveAdminRoleFromClaims } from "@/lib/adminAccess";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import { addDaysIso, getTodayIsoInPrague } from "@/lib/subscriptionAccess";
 import {
@@ -100,8 +100,11 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const isValidEmail = (value: string): boolean => EMAIL_RE.test(value);
 
-const isAdmin = (email: string): boolean =>
-  isAdminPanelEmail(email);
+const isAdmin = (
+  email: string,
+  decoded: Record<string, unknown> | null | undefined
+): boolean =>
+  adminRoleAtLeast(resolveAdminRoleFromClaims(email, decoded), "admin");
 
 const parseSubject = (value: unknown): UserRequestSubject | null => {
   if (value === "userCreation" || value === "other") return value;
@@ -573,7 +576,7 @@ export async function GET(req: NextRequest) {
   }
 
   const scopeRaw = (req.nextUrl.searchParams.get("scope") ?? "").trim().toLowerCase();
-  const canReadAll = scopeRaw === "all" && isAdmin(ctx.email);
+  const canReadAll = scopeRaw === "all" && isAdmin(ctx.email, ctx.decoded as Record<string, unknown>);
   const col = adminDb.collection(USER_REQUESTS_COLLECTION);
 
   const snap = canReadAll
@@ -664,7 +667,7 @@ export async function PATCH(req: NextRequest) {
   if (!guard.ok) return guard.response;
   const { ctx } = guard;
 
-  if (!isAdmin(ctx.email)) {
+  if (!isAdmin(ctx.email, ctx.decoded as Record<string, unknown>)) {
     return withRateLimitHeaders(
       NextResponse.json(
         { ok: false, error: "Nemáš oprávnění měnit stav žádostí." },
@@ -955,7 +958,7 @@ export async function DELETE(req: NextRequest) {
   const requesterEmail = normalizeEmail(row.requesterEmail);
 
   const canDelete =
-    requesterEmail === ctx.email || isAdmin(ctx.email);
+    requesterEmail === ctx.email || isAdmin(ctx.email, ctx.decoded as Record<string, unknown>);
   if (!canDelete) {
     return withRateLimitHeaders(
       NextResponse.json(

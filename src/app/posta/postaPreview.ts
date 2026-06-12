@@ -163,8 +163,14 @@ const isTipsterMetaField = (field: TipsterPreviewField): boolean => {
 
 const isImageAttachment = (file: MailboxAttachment): boolean => {
   const contentType = file.contentType.toLowerCase();
-  if (contentType.startsWith("image/")) return true;
-  return /\.(apng|avif|gif|jpe?g|png|webp)$/i.test(file.name);
+  if (
+    ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"].includes(
+      contentType
+    )
+  ) {
+    return true;
+  }
+  return /\.(avif|gif|jpe?g|png|webp)$/i.test(file.name);
 };
 
 const tipPreviewIcon = (name: TipPreviewIconName): string => {

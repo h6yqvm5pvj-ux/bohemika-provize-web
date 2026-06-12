@@ -2642,7 +2642,7 @@ export default function ExportProductionPage() {
     setShareSuccessText(null);
 
     try {
-      const { html, snapshot } = await buildReportHtml();
+      const { snapshot } = await buildReportHtml();
       const payload = await fetchAuthedJsonOrThrow<ExportShareResponse>(
         user,
         "/api/export-produkce/share",
@@ -2651,7 +2651,6 @@ export default function ExportProductionPage() {
           body: JSON.stringify({
             recipientEmail: recipientOption.email,
             noteText: shareMessageText,
-            previewHtml: html,
             snapshot,
           }),
         }

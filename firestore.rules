@@ -15,6 +15,10 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.admin == true;
     }
 
+    function isOwnerAdmin() {
+      return isAdmin() && request.auth.token.adminRole == "owner";
+    }
+
     function normEmail(email) {
       let c = cleanEmail(email);
       return (c is string) ? c.lower() : "";
@@ -480,19 +484,19 @@ service cloud.firestore {
                   || isManagerOfUserResource(userEmail)
                   || isSubordinateOfUserResource(userEmail);
       // zapisuje majitel nebo admin
-      allow create: if ((isOwner(userEmail) && !isChangingSensitivePublicUserFields() && !isChangingIdentityPublicUserFields()) || isAdmin())
+      allow create: if ((isOwner(userEmail) && !isChangingSensitivePublicUserFields() && !isChangingIdentityPublicUserFields()) || isOwnerAdmin())
         && !isSettingCanChangeToTrue()
-        && (!isChangingCareerCalculationFields() || authUserHasAdminFunction() || isAdmin());
+        && (!isChangingCareerCalculationFields() || authUserHasAdminFunction() || isOwnerAdmin());
       allow update: if (
           (
             (isOwner(userEmail) && !isChangingSensitivePublicUserFields() && !isChangingIdentityPublicUserFields())
-            || isAdmin()
+            || isOwnerAdmin()
           )
           && !isSettingCanChangeToTrue()
-          && (!isChangingCareerCalculationFields() || authUserHasAdminFunction() || isAdmin())
+          && (!isChangingCareerCalculationFields() || authUserHasAdminFunction() || isOwnerAdmin())
         )
         || isPrivilegedSubordinatePositionUpdate();
-      allow delete: if isOwner(userEmail) || isAdmin();
+      allow delete: if isOwner(userEmail) || isOwnerAdmin();
 
       // ---------- entries ----------
       match /entries/{entryId} {
@@ -516,8 +520,8 @@ service cloud.firestore {
       // - subscription/admin flagy mění jen admin/backend
       // - owner může měnit pouze push tokeny
       allow read: if isOwner(userEmail) || isAdmin();
-      allow create, update: if (isOwner(userEmail) && isOwnerPrivateWriteAllowed()) || isAdmin();
-      allow delete: if isAdmin();
+      allow create, update: if (isOwner(userEmail) && isOwnerPrivateWriteAllowed()) || isOwnerAdmin();
+      allow delete: if isOwnerAdmin();
     }
 
     // ---------- userStats ----------

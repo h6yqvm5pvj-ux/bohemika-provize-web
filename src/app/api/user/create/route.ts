@@ -2,10 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { type CommissionMode, type Position } from "@/app/types/domain";
-import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
-import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
-import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
+import {
+  adminAuthErrorResponse,
+  getAdminAuthContext,
+} from "@/lib/server/adminAuth";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 import { addDaysIso, getTodayIsoInPrague } from "@/lib/subscriptionAccess";
 
@@ -50,12 +51,6 @@ const COMMISSION_MODE_SET = new Set<CommissionMode>(["accelerated", "standard"])
 type UserAccountType = "advisor" | "tipster";
 const ACCOUNT_TYPE_SET = new Set<UserAccountType>(["advisor", "tipster"]);
 
-type AuthContext = {
-  email: string;
-  uid: string;
-  rawTokenEmail: string;
-};
-
 type ParsedCreateUser = {
   email: string;
   password: string;
@@ -82,49 +77,6 @@ const normalizeOptionalText = (value: unknown, maxLen: number): string | null =>
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
-
-async function getAuthContext(req: NextRequest) {
-  if (!adminAuth || !adminDb) {
-    return { error: "Server není správně nakonfigurován (Firebase Admin).", status: 500 } as const;
-  }
-
-  const authHeader = req.headers.get("authorization") ?? "";
-  const token = authHeader.toLowerCase().startsWith("bearer ")
-    ? authHeader.slice(7).trim()
-    : "";
-  if (!token) {
-    return { error: "Missing bearer token", status: 401 } as const;
-  }
-
-  let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
-  try {
-    decoded = await adminAuth.verifyIdToken(token, true);
-  } catch (err: any) {
-    const code = err?.code || "auth/invalid-token";
-    const message = err?.message || "Invalid or expired token";
-    return { error: `Invalid or expired token (${code}): ${message}`, status: 401 } as const;
-  }
-
-  const email = normalizeEmail(decoded.email);
-  if (!email) {
-    return { error: "User e-mail missing in token", status: 401 } as const;
-  }
-
-  const lockout = getLoginAttemptLockoutError(req, email);
-  if (lockout) return lockout;
-
-  const setupError = await getAdvisorAccessError({ email, uid: String(decoded.uid ?? "").trim() });
-  if (setupError) return setupError;
-
-  return {
-    email,
-    uid: String(decoded.uid ?? "").trim(),
-    rawTokenEmail: typeof decoded.email === "string" ? decoded.email.trim() : "",
-  } satisfies AuthContext;
-}
-
-const canCreateUsers = (ctx: AuthContext): boolean =>
-  isAdminPanelEmail(ctx.email) || isAdminPanelEmail(ctx.rawTokenEmail);
 
 async function publicProfileExists(email: string): Promise<boolean> {
   if (!adminDb) return false;
@@ -251,15 +203,12 @@ function mapAuthCreateError(error: unknown): { message: string; status: number }
 }
 
 export async function POST(req: NextRequest) {
-  const ctx = await getAuthContext(req);
-  if ("error" in ctx && typeof ctx.error === "string") {
-    const response = NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
-      status: ctx.status,
-    });
-    if ("retryAfterSeconds" in ctx) {
-      response.headers.set("Retry-After", String(ctx.retryAfterSeconds));
-    }
-    return response;
+  const ctx = await getAdminAuthContext(req, {
+    minimumRole: "admin",
+    actionLabel: "vytváření uživatelů",
+  });
+  if ("error" in ctx) {
+    return adminAuthErrorResponse(ctx);
   }
   if (!adminAuth || !adminDb) {
     return NextResponse.json(
@@ -270,7 +219,7 @@ export async function POST(req: NextRequest) {
 
   const rateLimit = await consumeRateLimit({
     namespace: "api:user-create:post",
-    key: ctx.email,
+    key: ctx.adminEmail,
     limit: CREATE_USER_RATE_LIMIT,
     windowMs: CREATE_USER_WINDOW_MS,
   });
@@ -278,15 +227,6 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json(
       { ok: false, error: "Příliš mnoho pokusů o vytvoření uživatele. Zkus to prosím za chvíli." } satisfies ApiError,
       { status: 429 }
-    );
-    applyRateLimitHeaders(res.headers, rateLimit);
-    return res;
-  }
-
-  if (!canCreateUsers(ctx)) {
-    const res = NextResponse.json(
-      { ok: false, error: "Nemáš oprávnění vytvářet nové uživatele." } satisfies ApiError,
-      { status: 403 }
     );
     applyRateLimitHeaders(res.headers, rateLimit);
     return res;
@@ -388,9 +328,9 @@ export async function POST(req: NextRequest) {
       canChangePosition: parsed.accountType === "advisor",
       activeCollaboration: parsed.accountType === "advisor",
       createdAt: now,
-      createdByEmail: ctx.email,
+      createdByEmail: ctx.adminEmail,
       updatedAt: now,
-      updatedByEmail: ctx.email,
+      updatedByEmail: ctx.adminEmail,
     };
     if (parsed.accountType === "advisor" && parsed.position) {
       publicProfile.position = parsed.position;
@@ -411,9 +351,9 @@ export async function POST(req: NextRequest) {
       subscriptionPlan: parsed.accountType === "tipster" ? "unlimited" : null,
       adminFunction: false,
       createdAt: now,
-      createdByEmail: ctx.email,
+      createdByEmail: ctx.adminEmail,
       updatedAt: now,
-      updatedByEmail: ctx.email,
+      updatedByEmail: ctx.adminEmail,
     };
 
     const batch = adminDb.batch();

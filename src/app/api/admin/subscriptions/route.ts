@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
-import { isAdminPanelEmail } from "@/lib/adminAccess";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
-import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
-import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
+import {
+  adminAuthErrorResponse,
+  getAdminAuthContext,
+} from "@/lib/server/adminAuth";
 import {
   addDaysIso,
   evaluateSubscriptionFromProfile,
@@ -86,48 +87,6 @@ function toDayIndex(isoDay: string): number {
 
 function diffIsoDays(fromIso: string, toIso: string): number {
   return toDayIndex(toIso) - toDayIndex(fromIso);
-}
-
-async function getAuthContext(req: NextRequest) {
-  if (!adminAuth || !adminDb) {
-    return { error: "Server není správně nakonfigurován (Firebase Admin).", status: 500 } as const;
-  }
-
-  const authHeader = req.headers.get("authorization") ?? "";
-  const token = authHeader.toLowerCase().startsWith("bearer ")
-    ? authHeader.slice(7).trim()
-    : "";
-  if (!token) {
-    return { error: "Missing bearer token", status: 401 } as const;
-  }
-
-  let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
-  try {
-    decoded = await adminAuth.verifyIdToken(token, true);
-  } catch (err: any) {
-    const code = err?.code || "auth/invalid-token";
-    const message = err?.message || "Invalid or expired token";
-    return { error: `Invalid or expired token (${code}): ${message}`, status: 401 } as const;
-  }
-
-  const email = normalizeEmail(decoded.email);
-  if (!email || !EMAIL_RE.test(email)) {
-    return { error: "User e-mail missing in token", status: 401 } as const;
-  }
-
-  const lockout = getLoginAttemptLockoutError(req, email);
-  if (lockout) return lockout;
-
-  const setupError = await getAdvisorAccessError({ email, uid: decoded.uid });
-  if (setupError) return setupError;
-
-  if (!isAdminPanelEmail(email)) {
-    return { error: "Nemáš oprávnění spravovat předplatné.", status: 403 } as const;
-  }
-
-  return {
-    adminEmail: email,
-  } as const;
 }
 
 async function loadTargetProfile(targetEmail: string) {
@@ -319,13 +278,12 @@ function nameFromEmail(email: string): string {
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = await getAuthContext(req);
+    const auth = await getAdminAuthContext(req, {
+      minimumRole: "owner",
+      actionLabel: "správu předplatného",
+    });
     if ("error" in auth) {
-      const response = NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
-      if ("retryAfterSeconds" in auth) {
-        response.headers.set("Retry-After", String(auth.retryAfterSeconds));
-      }
-      return response;
+      return adminAuthErrorResponse(auth);
     }
     if (!adminDb) {
       return NextResponse.json(
@@ -447,13 +405,12 @@ function parsePatchPayload(body: unknown): AdminPatchPayload | { error: string }
 
 export async function PATCH(req: NextRequest) {
   try {
-    const auth = await getAuthContext(req);
+    const auth = await getAdminAuthContext(req, {
+      minimumRole: "owner",
+      actionLabel: "správu předplatného",
+    });
     if ("error" in auth) {
-      const response = NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
-      if ("retryAfterSeconds" in auth) {
-        response.headers.set("Retry-After", String(auth.retryAfterSeconds));
-      }
-      return response;
+      return adminAuthErrorResponse(auth);
     }
     if (!adminDb || !adminAuth) {
       return NextResponse.json(

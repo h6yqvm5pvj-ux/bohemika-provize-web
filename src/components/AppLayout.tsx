@@ -58,7 +58,11 @@ import {
   resolveAppLanguage,
   type AppLanguage,
 } from "@/lib/appLanguage";
-import { isAdminPanelEmail } from "@/lib/adminAccess";
+import {
+  adminRoleAtLeast,
+  resolveAdminRoleFromClaims,
+  type AdminRole,
+} from "@/lib/adminAccess";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
 import * as userProfileCache from "@/app/lib/userProfileCache";
@@ -379,6 +383,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [accountType, setAccountType] = useState<AccountType>("advisor");
   const [hasTeam, setHasTeam] = useState<boolean>(true);
   const [hasTipsters, setHasTipsters] = useState(false);
+  const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
 
   // Auth listener
   useEffect(() => {
@@ -407,6 +412,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setAuthInitTimedOut(false);
       setUser(u);
       if (!u) {
+        setAdminRole(null);
         setSubscriptionAccessState("none");
         setSubscriptionBlockReason("none");
         setSubscriptionEvaluation(null);
@@ -452,6 +458,35 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       unsub();
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setAdminRole(null);
+      return;
+    }
+
+    user
+      .getIdTokenResult()
+      .then((token) => {
+        if (cancelled) return;
+        setAdminRole(
+          resolveAdminRoleFromClaims(
+            user.email,
+            token.claims as Record<string, unknown>
+          )
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAdminRole(resolveAdminRoleFromClaims(user.email, null));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   // Redirect guests to login (all pages using AppLayout should be protected)
   useEffect(() => {
@@ -1477,7 +1512,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     accountSetupMfaReady &&
     subscriptionAccessState !== "blocked" &&
     accountSetupGateRequired;
-  const isAdminRequestsUser = isAdminPanelEmail(user?.email);
+  const isAdminRequestsUser = adminRoleAtLeast(adminRole, "admin");
   const shellFontClass = "font-mono";
   const accountSetupCurrentStep =
     ACCOUNT_SETUP_STEPS[accountSetupStep]?.id ?? "phone";

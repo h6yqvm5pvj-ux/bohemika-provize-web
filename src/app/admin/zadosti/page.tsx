@@ -33,7 +33,11 @@ import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import type { CommissionMode, Position } from "@/app/types/domain";
-import { ADMIN_PANEL_EMAILS_LABEL, isAdminPanelEmail } from "@/lib/adminAccess";
+import {
+  adminRoleAtLeast,
+  resolveAdminRoleFromClaims,
+  type AdminRole,
+} from "@/lib/adminAccess";
 
 type EndCollaborationRequestStatus =
   | "pending"
@@ -673,16 +677,54 @@ export default function AdminRequestsPage() {
   const [subscriptionNoteDraft, setSubscriptionNoteDraft] = useState("");
   const [subscriptionData, setSubscriptionData] = useState<AdminSubscriptionLookupResponse | null>(null);
   const [requestsNowMs, setRequestsNowMs] = useState(() => Date.now());
+  const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
 
-  const isAllowedAdmin = isAdminPanelEmail(currentUser?.email);
+  const isAllowedAdmin = adminRoleAtLeast(adminRole, "admin");
+  const isOwnerAdmin = adminRoleAtLeast(adminRole, "owner");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      setAdminRole(resolveAdminRoleFromClaims(user?.email, null));
       setAuthReady(true);
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentUser) {
+      setAdminRole(null);
+      return;
+    }
+
+    currentUser
+      .getIdTokenResult()
+      .then((token) => {
+        if (cancelled) return;
+        setAdminRole(
+          resolveAdminRoleFromClaims(
+            currentUser.email,
+            token.claims as Record<string, unknown>
+          )
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAdminRole(resolveAdminRoleFromClaims(currentUser.email, null));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (activeAdminSection === "subscriptions" && !isOwnerAdmin) {
+      setActiveAdminSection("requests");
+    }
+  }, [activeAdminSection, isOwnerAdmin]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -707,7 +749,7 @@ export default function AdminRequestsPage() {
 
   const loadSubscriptionDirectory = useCallback(async () => {
     const user = auth.currentUser;
-    if (!user || !isAllowedAdmin) {
+    if (!user || !isOwnerAdmin) {
       setSubscriptionDirectoryRows([]);
       setSubscriptionDirectoryError(null);
       setSubscriptionDirectoryLoading(false);
@@ -734,7 +776,7 @@ export default function AdminRequestsPage() {
     } finally {
       setSubscriptionDirectoryLoading(false);
     }
-  }, [isAllowedAdmin]);
+  }, [isOwnerAdmin]);
 
   useEffect(() => {
     if (activeAdminSection !== "subscriptions") return;
@@ -1336,7 +1378,7 @@ export default function AdminRequestsPage() {
   const loadSubscriptionForEmail = useCallback(
     async (emailInput?: string) => {
       const user = auth.currentUser;
-      if (!user || !isAllowedAdmin) return;
+      if (!user || !isOwnerAdmin) return;
 
       const email = normalizeEmail(emailInput ?? subscriptionLookupEmail);
       if (!email) {
@@ -1367,7 +1409,7 @@ export default function AdminRequestsPage() {
         setSubscriptionLookupLoading(false);
       }
     },
-    [isAllowedAdmin, subscriptionLookupEmail]
+    [isOwnerAdmin, subscriptionLookupEmail]
   );
 
   useEffect(() => {
@@ -1395,7 +1437,7 @@ export default function AdminRequestsPage() {
 
   const handleAddSubscriptionPayment = useCallback(async () => {
     const user = auth.currentUser;
-    if (!user || !isAllowedAdmin) return;
+    if (!user || !isOwnerAdmin) return;
     const email = normalizeEmail(subscriptionLookupEmail);
     if (!email) {
       setSubscriptionLookupError("Zadej e-mail uživatele.");
@@ -1436,7 +1478,7 @@ export default function AdminRequestsPage() {
       setSubscriptionLookupLoading(false);
     }
   }, [
-    isAllowedAdmin,
+    isOwnerAdmin,
     loadSubscriptionDirectory,
     loadSubscriptionForEmail,
     subscriptionFromDraft,
@@ -1447,7 +1489,7 @@ export default function AdminRequestsPage() {
 
   const handleSetSubscriptionUnpaid = useCallback(async () => {
     const user = auth.currentUser;
-    if (!user || !isAllowedAdmin) return;
+    if (!user || !isOwnerAdmin) return;
     const email = normalizeEmail(subscriptionLookupEmail);
     if (!email) {
       setSubscriptionLookupError("Zadej e-mail uživatele.");
@@ -1482,7 +1524,7 @@ export default function AdminRequestsPage() {
       setSubscriptionLookupLoading(false);
     }
   }, [
-    isAllowedAdmin,
+    isOwnerAdmin,
     loadSubscriptionDirectory,
     loadSubscriptionForEmail,
     subscriptionLookupEmail,
@@ -1554,6 +1596,7 @@ export default function AdminRequestsPage() {
   );
 
   const handleOpenAdminUserDelete = useCallback((row: AdminUsersRow) => {
+    if (!isOwnerAdmin) return;
     setAdminUsersDeleteTarget({
       email: row.email,
       fullName: row.fullName,
@@ -1561,12 +1604,12 @@ export default function AdminRequestsPage() {
     setAdminUsersDeleteConfirmed(false);
     setAdminUsersStatus(null);
     setAdminUsersError(null);
-  }, []);
+  }, [isOwnerAdmin]);
 
   const handleDeleteAdminUser = useCallback(async () => {
     const user = auth.currentUser;
     const target = adminUsersDeleteTarget;
-    if (!user || !isAllowedAdmin || !target) return;
+    if (!user || !isOwnerAdmin || !target) return;
 
     const email = normalizeEmail(target.email);
     if (!adminUsersDeleteConfirmed) {
@@ -1602,7 +1645,7 @@ export default function AdminRequestsPage() {
   }, [
     adminUsersDeleteConfirmed,
     adminUsersDeleteTarget,
-    isAllowedAdmin,
+    isOwnerAdmin,
     loadAdminUsersRows,
   ]);
 
@@ -1794,17 +1837,19 @@ export default function AdminRequestsPage() {
                     >
                       Uživatelé
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveAdminSection("subscriptions")}
-                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                        activeAdminSection === "subscriptions"
-                          ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
-                    >
-                      Předplatné
-                    </button>
+                    {isOwnerAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveAdminSection("subscriptions")}
+                        className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                          activeAdminSection === "subscriptions"
+                            ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
+                            : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                        }`}
+                      >
+                        Předplatné
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => setActiveAdminSection("security")}
@@ -1835,7 +1880,7 @@ export default function AdminRequestsPage() {
 
           {!isAllowedAdmin ? (
             <div className="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-              Tato sekce je dostupná pouze pro {ADMIN_PANEL_EMAILS_LABEL}.
+              Tato sekce je dostupná pouze pro účty s rolí owner nebo admin.
             </div>
           ) : (
             <>
@@ -2835,16 +2880,18 @@ export default function AdminRequestsPage() {
                                 <Pencil size={14} strokeWidth={2.2} aria-hidden="true" />
                                 Upravit
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenAdminUserDelete(row)}
-                                disabled={isCurrentUser}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                title={isCurrentUser ? "Vlastní účet nejde smazat." : undefined}
-                              >
-                                <Trash2 size={14} strokeWidth={2.2} aria-hidden="true" />
-                                Smazat
-                              </button>
+                              {isOwnerAdmin ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenAdminUserDelete(row)}
+                                  disabled={isCurrentUser}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                  title={isCurrentUser ? "Vlastní účet nejde smazat." : undefined}
+                                >
+                                  <Trash2 size={14} strokeWidth={2.2} aria-hidden="true" />
+                                  Smazat
+                                </button>
+                              ) : null}
                             </>
                           )}
                         </div>
@@ -2925,7 +2972,7 @@ export default function AdminRequestsPage() {
           </section>
         ) : null}
 
-        {isAllowedAdmin && activeAdminSection === "subscriptions" ? (
+        {isOwnerAdmin && activeAdminSection === "subscriptions" ? (
           <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(170deg,#ffffff_0%,#f8fbff_55%,#eff5fb_100%)] px-5 py-5 shadow-[0_22px_46px_rgba(15,23,42,0.1)] sm:px-6">
             <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b1220_0%,#173a71_55%,#2c61af_100%)]" />
             <div className="mb-4">

@@ -1422,6 +1422,8 @@ export default function PostaPage() {
                     <div className="min-h-0 flex-1">
                       <iframe
                         srcDoc={mailboxPreviewHtml}
+                        sandbox="allow-popups"
+                        referrerPolicy="no-referrer"
                         title={
                           previewItem.type === "production_export_share"
                             ? "Náhled sdíleného exportu produkce"

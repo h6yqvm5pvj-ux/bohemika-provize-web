@@ -6,6 +6,7 @@ import {
   requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
+import { resolveSafeUserAttachmentServing } from "@/lib/server/safeUserAttachments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -231,19 +232,30 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const shouldDownload = req.nextUrl.searchParams.get("download") === "1";
+  const serving = resolveSafeUserAttachmentServing({
+    bytes,
+    fileName: attachment.name,
+    storedContentType: attachment.contentType,
+    downloadRequested: req.nextUrl.searchParams.get("download") === "1",
+  });
+
+  const responseHeaders = new Headers({
+    "Content-Type": serving.contentType,
+    "Content-Length": String(bytes.length),
+    "Content-Disposition": contentDisposition(attachment.name, serving.shouldDownload),
+    "Cache-Control": "private, no-store, max-age=0",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+  });
+  if (serving.contentSecurityPolicy) {
+    responseHeaders.set("Content-Security-Policy", serving.contentSecurityPolicy);
+  }
+
   return withRateLimitHeaders(
     new NextResponse(new Uint8Array(bytes), {
       status: 200,
-      headers: {
-        "Content-Type": attachment.contentType,
-        "Content-Length": String(bytes.length),
-        "Content-Disposition": contentDisposition(attachment.name, shouldDownload),
-        "Cache-Control": "private, no-store, max-age=0",
-        "Cross-Origin-Resource-Policy": "same-origin",
-        "Referrer-Policy": "no-referrer",
-        "X-Content-Type-Options": "nosniff",
-      },
+      headers: responseHeaders,
     }),
     ctx
   );

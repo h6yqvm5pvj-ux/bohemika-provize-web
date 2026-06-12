@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { isAdminPanelEmail } from "@/lib/adminAccess";
-import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
+import {
+  adminAuthErrorResponse,
+  getAdminAuthContext,
+} from "@/lib/server/adminAuth";
 import { adminAuth } from "@/lib/server/firebaseAdmin";
-import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
 export const runtime = "nodejs";
@@ -15,13 +16,6 @@ type MarkEmailVerifiedBody = {
   targetUid?: unknown;
   targetEmail?: unknown;
 };
-
-function getBearerToken(req: Request): string | null {
-  const authHeader = req.headers.get("authorization") ?? "";
-  if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
-  const token = authHeader.slice(7).trim();
-  return token || null;
-}
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -40,60 +34,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const token = getBearerToken(req);
-    if (!token) {
-      return NextResponse.json(
-        { ok: false, error: "Missing bearer token" },
-        { status: 401 }
-      );
-    }
-
-    let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
-    try {
-      decoded = await adminAuth.verifyIdToken(token, true);
-    } catch {
-      return NextResponse.json(
-        { ok: false, error: "Invalid or expired token" },
-        { status: 401 }
-      );
-    }
-
-    const adminUid = normalizeText(decoded.uid);
-    const adminEmail = normalizeEmail(decoded.email);
-    if (!adminUid || !adminEmail) {
-      return NextResponse.json(
-        { ok: false, error: "User identity missing in token" },
-        { status: 400 }
-      );
-    }
-    const lockout = getLoginAttemptLockoutError(req, adminEmail);
-    if (lockout) {
-      const response = NextResponse.json(
-        { ok: false, error: lockout.error },
-        { status: lockout.status }
-      );
-      response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
-      return response;
-    }
-
-    if (!isAdminPanelEmail(adminEmail)) {
-      return NextResponse.json(
-        { ok: false, error: "Nemáš oprávnění ručně označit e-mail jako ověřený." },
-        { status: 403 }
-      );
-    }
-
-    const setupError = await getAdvisorAccessError({ email: adminEmail, uid: adminUid });
-    if (setupError) {
-      return NextResponse.json(
-        { ok: false, error: setupError.error, missingSetup: setupError.missing },
-        { status: setupError.status }
-      );
-    }
+    const ctx = await getAdminAuthContext(req, {
+      minimumRole: "admin",
+      actionLabel: "ruční ověření e-mailu",
+    });
+    if ("error" in ctx) return adminAuthErrorResponse(ctx);
 
     const rateLimitResult = await consumeRateLimit({
       namespace: "api:mark-email-verified:post",
-      key: adminUid,
+      key: ctx.adminUid,
       limit: MARK_EMAIL_VERIFIED_RATE_LIMIT,
       windowMs: MARK_EMAIL_VERIFIED_WINDOW_MS,
     });

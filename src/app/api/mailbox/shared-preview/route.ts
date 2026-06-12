@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { buildMailboxPreviewHtml } from "@/app/posta/postaPreview";
 import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 
@@ -22,19 +23,27 @@ type SharedPreviewError = {
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
-const parseNonNegativeInt = (value: unknown): number => {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return Math.max(0, Math.floor(value));
-  }
-  if (typeof value === "string") {
-    const parsed = Number(value.trim());
-    if (Number.isFinite(parsed)) return Math.max(0, Math.floor(parsed));
-  }
-  return 0;
-};
-
 const isValidPayloadId = (value: string): boolean =>
   value.length >= 8 && value.length <= 200 && /^[A-Za-z0-9_-]+$/.test(value);
+
+const structuredMetadataFromPayload = (
+  data: Record<string, unknown>
+): Record<string, unknown> | null => {
+  const snapshot =
+    data.snapshot && typeof data.snapshot === "object" && !Array.isArray(data.snapshot)
+      ? (data.snapshot as Record<string, unknown>)
+      : null;
+  if (!snapshot) return null;
+
+  return {
+    ...snapshot,
+    senderEmail: normalizeText(data.senderEmail).toLowerCase(),
+    senderName: normalizeText(data.senderName),
+    recipientEmail: normalizeText(data.recipientEmail).toLowerCase(),
+    recipientName: normalizeText(data.recipientName),
+    noteText: normalizeText(data.noteText),
+  };
+};
 
 export async function GET(req: NextRequest) {
   const guard = await requireAuthedRateLimited(req, {
@@ -106,34 +115,25 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const inlineHtml = typeof data.html === "string" ? data.html : "";
-    let html = inlineHtml;
+    const metadata = structuredMetadataFromPayload(data);
+    const html = metadata
+      ? buildMailboxPreviewHtml({
+          id: payloadId,
+          type,
+          title: "Sdílený export produkce",
+          body: "",
+          deepLink: "/pomucky/export-produkce",
+          read: true,
+          createdAtMs:
+            typeof data.createdAtMs === "number" && Number.isFinite(data.createdAtMs)
+              ? data.createdAtMs
+              : null,
+          readAtMs: null,
+          metadata,
+        })
+      : null;
 
-    if (!html.trim()) {
-      const storageType = normalizeText(data.htmlStorage).toLowerCase();
-      if (storageType === "chunked") {
-        const expectedChunkCount = parseNonNegativeInt(data.htmlChunkCount);
-        const chunkSnap = await docSnap.ref.collection("chunks").get();
-        if (expectedChunkCount > 0 && chunkSnap.docs.length < expectedChunkCount) {
-          return withRateLimitHeaders(
-            NextResponse.json(
-              { ok: false, error: "Sdílený náhled zatím není kompletní." } satisfies SharedPreviewError,
-              { status: 503 }
-            ),
-            ctx
-          );
-        }
-        html = chunkSnap.docs
-          .sort((a, b) => a.id.localeCompare(b.id))
-          .map((chunkDoc) => {
-            const chunkData = chunkDoc.data() as Record<string, unknown>;
-            return typeof chunkData.htmlChunk === "string" ? chunkData.htmlChunk : "";
-          })
-          .join("");
-      }
-    }
-
-    if (!html.trim()) {
+    if (!html?.trim()) {
       return withRateLimitHeaders(
         NextResponse.json(
           { ok: false, error: "Sdílený náhled není dostupný." } satisfies SharedPreviewError,

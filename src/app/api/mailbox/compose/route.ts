@@ -7,6 +7,10 @@ import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/api
 import { checkAdvisorSetup } from "@/lib/server/advisorSetupGuard";
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
 import { collectPushTokens } from "@/lib/server/pushTokens";
+import {
+  prepareSafeUserAttachmentFile,
+  type PreparedSafeUserAttachmentFile,
+} from "@/lib/server/safeUserAttachments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,14 +57,6 @@ const normalizeEmail = (value: unknown): string =>
 
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
-
-const isAllowedAttachmentFile = (file: File): boolean => {
-  const contentType = file.type.toLowerCase();
-  if (contentType.startsWith("image/") || contentType === "application/pdf") {
-    return true;
-  }
-  return /\.(avif|gif|heic|heif|jpe?g|pdf|png|webp)$/i.test(file.name);
-};
 
 const parseClientMetadata = (value: unknown): Record<string, unknown> => {
   const raw = normalizeText(value);
@@ -228,7 +224,7 @@ const uploadAttachmentsToBucket = async ({
 }: {
   bucketName: string;
   messageId: string;
-  files: File[];
+  files: PreparedSafeUserAttachmentFile[];
   uploaderEmail: string;
 }): Promise<MailboxAttachment[]> => {
   const storage = getStorage();
@@ -238,11 +234,12 @@ const uploadAttachmentsToBucket = async ({
 
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index];
-    const contentType = normalizeText(file.type) || "application/octet-stream";
-    const originalName = sanitizeFileName(normalizeText(file.name) || "priloha");
+    if (!file) continue;
+    const contentType = file.contentType;
+    const originalName = sanitizeFileName(normalizeText(file.file.name) || "priloha");
     const objectPath = `${uploadPrefix}/${Date.now()}-${index}-${originalName}`;
     const attachmentId = randomUUID();
-    const bytes = Buffer.from(await file.arrayBuffer());
+    const bytes = file.bytes;
 
     await bucket.file(objectPath).save(bytes, {
       resumable: false,
@@ -257,10 +254,10 @@ const uploadAttachmentsToBucket = async ({
 
     attachments.push({
       id: attachmentId,
-      name: normalizeText(file.name) || originalName,
+      name: normalizeText(file.file.name) || originalName,
       url: buildMailboxAttachmentApiUrl(messageId, attachmentId),
       contentType,
-      sizeBytes: file.size,
+      sizeBytes: bytes.length,
       path: objectPath,
       bucketName: bucket.name,
     });
@@ -275,7 +272,7 @@ const uploadAttachmentsToStorage = async ({
   uploaderEmail,
 }: {
   messageId: string;
-  files: File[];
+  files: PreparedSafeUserAttachmentFile[];
   uploaderEmail: string;
 }): Promise<MailboxAttachment[]> => {
   if (!files.length) return [];
@@ -602,21 +599,13 @@ export async function POST(req: NextRequest) {
   }
 
   let totalBytes = 0;
+  const preparedFiles: PreparedSafeUserAttachmentFile[] = [];
   for (const file of files) {
     const name = normalizeText(file.name);
     if (!name) {
       return withRateLimitHeaders(
         NextResponse.json(
           { ok: false, error: "Soubor bez názvu nelze přiložit." },
-          { status: 400 }
-        ),
-        ctx
-      );
-    }
-    if (!isAllowedAttachmentFile(file)) {
-      return withRateLimitHeaders(
-        NextResponse.json(
-          { ok: false, error: `Soubor ${name} není podporovaný. Povolené jsou obrázky a PDF.` },
           { status: 400 }
         ),
         ctx
@@ -646,6 +635,17 @@ export async function POST(req: NextRequest) {
       );
     }
     totalBytes += file.size;
+    const prepared = await prepareSafeUserAttachmentFile(file);
+    if (!prepared.ok) {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: `Soubor ${name} není podporovaný. ${prepared.error}` },
+          { status: 400 }
+        ),
+        ctx
+      );
+    }
+    preparedFiles.push(prepared.file);
   }
   if (totalBytes > FILE_TOTAL_MAX_BYTES) {
     return withRateLimitHeaders(
@@ -689,7 +689,7 @@ export async function POST(req: NextRequest) {
     const messageId = randomUUID();
     const attachments = await uploadAttachmentsToStorage({
       messageId,
-      files,
+      files: preparedFiles,
       uploaderEmail: ctx.email,
     });
     const publicAttachments = toPublicAttachments(attachments);

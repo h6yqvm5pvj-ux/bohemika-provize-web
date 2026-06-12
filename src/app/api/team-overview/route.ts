@@ -17,7 +17,7 @@ import {
   applyRateLimitHeaders,
   consumeRateLimit,
 } from "@/lib/server/rateLimit";
-import { isAdminPanelEmail } from "@/lib/adminAccess";
+import { adminRoleAtLeast, resolveAdminRoleFromClaims } from "@/lib/adminAccess";
 import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import type {
@@ -94,8 +94,11 @@ const normalizeOptionalText = (value: unknown, maxLen: number): string | null =>
   return trimmed;
 };
 
-const isEndCollaborationApprover = (email: string): boolean =>
-  isAdminPanelEmail(email);
+const isEndCollaborationApprover = (
+  email: string,
+  decoded: Record<string, unknown> | null | undefined
+): boolean =>
+  adminRoleAtLeast(resolveAdminRoleFromClaims(email, decoded), "admin");
 
 const endCollaborationRequestDocId = (targetEmail: string): string =>
   `end-collaboration:${encodeURIComponent(targetEmail)}`;
@@ -573,7 +576,10 @@ function buildContractRefPayload({
   };
 }
 
-async function getAuthEmail(req: NextRequest): Promise<string> {
+async function getAuthContext(req: NextRequest): Promise<{
+  email: string;
+  decoded: Awaited<ReturnType<NonNullable<typeof adminAuth>["verifyIdToken"]>>;
+}> {
   if (!adminAuth || !adminDb) {
     throw Object.assign(new Error("Server není správně nakonfigurován."), {
       status: 500,
@@ -617,7 +623,7 @@ async function getAuthEmail(req: NextRequest): Promise<string> {
       missingSetup: setupError.missing,
     });
   }
-  return email;
+  return { email, decoded };
 }
 
 function candidateFromDoc(
@@ -2332,7 +2338,8 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const email = await getAuthEmail(req);
+    const authCtx = await getAuthContext(req);
+    const { email } = authCtx;
     const rateLimitResult = await consumeRateLimit({
       namespace: "api:team-overview:patch",
       key: email,
@@ -2361,7 +2368,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (parsed.action === "endCollaborationApprove") {
-      if (!isEndCollaborationApprover(email)) {
+      if (!isEndCollaborationApprover(email, authCtx.decoded as Record<string, unknown>)) {
         return NextResponse.json(
           {
             ok: false,
@@ -2387,7 +2394,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (parsed.action === "endCollaborationReject") {
-      if (!isEndCollaborationApprover(email)) {
+      if (!isEndCollaborationApprover(email, authCtx.decoded as Record<string, unknown>)) {
         return NextResponse.json(
           {
             ok: false,
@@ -2575,7 +2582,8 @@ export async function PATCH(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    const email = await getAuthEmail(req);
+    const authCtx = await getAuthContext(req);
+    const { email } = authCtx;
 
     const rateLimitResult = await consumeRateLimit({
       namespace: "api:team-overview:get",
@@ -2597,7 +2605,7 @@ export async function GET(req: NextRequest) {
 
     const action = (req.nextUrl.searchParams.get("action") ?? "").trim();
     if (action === "endCollaborationRequests") {
-      if (!isEndCollaborationApprover(email)) {
+      if (!isEndCollaborationApprover(email, authCtx.decoded as Record<string, unknown>)) {
         return NextResponse.json(
           {
             ok: false,

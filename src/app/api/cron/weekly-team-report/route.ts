@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 import { NextResponse, type NextRequest } from "next/server";
 
 import { toDate } from "@/app/lib/formatters";
@@ -144,26 +146,28 @@ function isWeeklyTeamReportPushEnabled(profile: Record<string, unknown>): boolea
   return typeEnabled && pushEnabled;
 }
 
+function timingSafeStringEquals(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return (
+    leftBuffer.length === rightBuffer.length &&
+    timingSafeEqual(leftBuffer, rightBuffer)
+  );
+}
+
 function isAuthorizedCronRequest(req: NextRequest): boolean {
-  const expectedSecret = (
-    process.env.WEEKLY_TEAM_REPORT_CRON_SECRET ??
-    process.env.CRON_SECRET ??
-    ""
-  ).trim();
+  // Vercel Cron automatically sends only CRON_SECRET as a Bearer token.
+  const expectedSecret = (process.env.CRON_SECRET ?? "").trim();
 
   if (!expectedSecret) {
-    const isVercelCron = req.headers.get("x-vercel-cron") === "1";
-    return process.env.NODE_ENV !== "production" || isVercelCron;
+    return process.env.NODE_ENV !== "production";
   }
 
   const authHeader = req.headers.get("authorization") ?? "";
-  if (authHeader.toLowerCase().startsWith("bearer ")) {
-    const received = authHeader.slice(7).trim();
-    if (received && received === expectedSecret) return true;
-  }
+  if (!authHeader.toLowerCase().startsWith("bearer ")) return false;
 
-  const querySecret = req.nextUrl.searchParams.get("secret")?.trim() ?? "";
-  return Boolean(querySecret && querySecret === expectedSecret);
+  const received = authHeader.slice(7).trim();
+  return Boolean(received && timingSafeStringEquals(received, expectedSecret));
 }
 
 async function collectAllEntriesFromQuery(
