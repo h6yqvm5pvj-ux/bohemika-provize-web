@@ -125,8 +125,9 @@ const POSITIONS: { id: Position; label: string }[] = [
 const POSITION_SET = new Set<Position>(POSITIONS.map((item) => item.id));
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const PHONE_NUMBER_MAX_LEN = 40;
+const PROFILE_ICO_MAX_LEN = 8;
 const ACCOUNT_SETUP_STEPS: { id: AccountSetupStepId; label: string }[] = [
-  { id: "phone", label: "Telefon" },
+  { id: "phone", label: "Kontakt" },
   { id: "career", label: "Kariéra" },
   { id: "security", label: "2FA" },
 ];
@@ -356,6 +357,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [accountSetupCompleted, setAccountSetupCompleted] = useState(false);
   const [accountSetupPhone, setAccountSetupPhone] = useState("");
   const [accountSetupSavedPhone, setAccountSetupSavedPhone] = useState("");
+  const [accountSetupIco, setAccountSetupIco] = useState("");
+  const [accountSetupSavedIco, setAccountSetupSavedIco] = useState("");
   const [accountSetupPhoneSaving, setAccountSetupPhoneSaving] = useState(false);
   const [accountSetupTimelineDraft, setAccountSetupTimelineDraft] = useState<
     AccountSetupTimelineItem[]
@@ -424,6 +427,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         setAccountSetupStep(0);
         setAccountSetupPhone("");
         setAccountSetupSavedPhone("");
+        setAccountSetupIco("");
+        setAccountSetupSavedIco("");
         setAccountSetupTimelineDraft([]);
         setAccountSetupError(null);
         setAccountSetupInfo(null);
@@ -638,6 +643,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const parsedTimeline = parsePositionTimeline(data.positionTimeline);
     const nextPhoneNumber =
       typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "";
+    const nextIco =
+      typeof data.ico === "string"
+        ? data.ico.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN)
+        : "";
     const nextAccountSetupCompletedAt = normalizeIsoDateTime(data.accountSetupCompletedAt);
     const nextMfaGraceStartedAt = normalizeIsoDateTime(data.mfaSetupGraceStartedAt);
     setAccountType(nextAccountType);
@@ -651,6 +660,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     setHasInternalProfile(nextHasInternalProfile);
     setAccountSetupPhone(nextPhoneNumber);
     setAccountSetupSavedPhone(nextPhoneNumber);
+    setAccountSetupIco(nextIco);
+    setAccountSetupSavedIco(nextIco);
     setAccountSetupCompletedAt(nextAccountSetupCompletedAt);
     setAccountSetupMfaGraceStartedAt(nextMfaGraceStartedAt);
     setAccountSetupTimelineDraft(parsedTimeline);
@@ -701,6 +712,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setAccountType("advisor");
       setAccountSetupPhone("");
       setAccountSetupSavedPhone("");
+      setAccountSetupIco("");
+      setAccountSetupSavedIco("");
       setAccountSetupCompletedAt(null);
       setAccountSetupMfaGraceStartedAt(null);
       setAccountSetupSecurityHardRequired(false);
@@ -739,6 +752,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setNeedsCareerTimelineSetup(false);
       setAccountType("advisor");
       setAccountSetupSavedPhone("");
+      setAccountSetupIco("");
+      setAccountSetupSavedIco("");
       setAccountSetupCompletedAt(null);
       setAccountSetupMfaGraceStartedAt(null);
       setAccountSetupSecurityHardRequired(false);
@@ -868,7 +883,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       return;
     }
     const mfaMissing = !accountSetupMfaEnabled;
-    const setupRequired = needsCareerTimelineSetup || mfaMissing;
+    const contactMissing =
+      !accountSetupSavedPhone.trim() || !accountSetupSavedIco.trim();
+    const setupRequired = contactMissing || needsCareerTimelineSetup || mfaMissing;
 
     if (!setupRequired) {
       if (!accountSetupCompleted) {
@@ -885,6 +902,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     accountSetupMfaReady,
     accountSetupSecurityHardRequired,
     accountSetupWizardManuallyOpened,
+    accountSetupSavedIco,
+    accountSetupSavedPhone,
     accountType,
     user,
     loadingProfile,
@@ -910,7 +929,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     const careerStepIndex = ACCOUNT_SETUP_STEPS.findIndex((step) => step.id === "career");
     const securityStepIndex = ACCOUNT_SETUP_STEPS.findIndex((step) => step.id === "security");
 
-    if (!accountSetupSavedPhone.trim()) {
+    if (!accountSetupSavedPhone.trim() || !accountSetupSavedIco.trim()) {
       setAccountSetupStep(phoneStepIndex);
       return;
     }
@@ -924,6 +943,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   }, [
     accountSetupCompleted,
     accountSetupMfaEnabled,
+    accountSetupSavedIco,
     accountSetupSavedPhone,
     needsCareerTimelineSetup,
     showAccountSetupWizard,
@@ -1050,6 +1070,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     }
 
     const nextPhoneNumber = accountSetupPhone.trim();
+    const nextIco = accountSetupIco.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN);
     const digitCount = nextPhoneNumber.replace(/\D+/g, "").length;
     if (!nextPhoneNumber) {
       setAccountSetupError("Vyplň telefonní číslo.");
@@ -1065,24 +1086,34 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       );
       return;
     }
+    if (!nextIco) {
+      setAccountSetupError("Vyplň IČO.");
+      return;
+    }
+    if (nextIco.length !== PROFILE_ICO_MAX_LEN) {
+      setAccountSetupError(`IČO musí mít ${PROFILE_ICO_MAX_LEN} číslic.`);
+      return;
+    }
 
     setAccountSetupPhoneSaving(true);
     setAccountSetupError(null);
     try {
       await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
         method: "PATCH",
-        body: JSON.stringify({ phoneNumber: nextPhoneNumber }),
+        body: JSON.stringify({ phoneNumber: nextPhoneNumber, ico: nextIco }),
       });
       userProfileCache.invalidateUserProfileCache(user.email);
       setHasInternalProfile(true);
       setAccountSetupPhone(nextPhoneNumber);
       setAccountSetupSavedPhone(nextPhoneNumber);
+      setAccountSetupIco(nextIco);
+      setAccountSetupSavedIco(nextIco);
       setAccountSetupStep(1);
     } catch (err) {
       const message =
         err instanceof Error && err.message.trim().length > 0
           ? err.message.trim()
-          : "Telefonní číslo se nepodařilo uložit.";
+          : "Kontaktní údaje se nepodařilo uložit.";
       setAccountSetupError(message);
     } finally {
       setAccountSetupPhoneSaving(false);
@@ -1234,6 +1265,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setAccountSetupError(timeline.error);
       return;
     }
+    const nextIco = accountSetupIco.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN);
 
     setAccountSetupTimelineSaving(true);
     setAccountSetupError(null);
@@ -1242,11 +1274,14 @@ export function AppLayout({ children, active }: AppLayoutProps) {
         method: "PATCH",
         body: JSON.stringify({
           phoneNumber: accountSetupPhone.trim(),
+          ico: nextIco,
           positionTimeline: timeline.payload,
         }),
       });
       userProfileCache.invalidateUserProfileCache(user.email);
       setHasInternalProfile(true);
+      setAccountSetupIco(nextIco);
+      setAccountSetupSavedIco(nextIco);
       setAccountSetupTimelineDraft(
         timeline.payload.map((row) => ({
           id: row.id,
@@ -1494,7 +1529,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     accountSetupMfaGraceDeadlineMs != null &&
     Date.now() >= accountSetupMfaGraceDeadlineMs;
   const accountSetupMfaHardRequired = !accountSetupMfaEnabled;
-  const accountSetupGateRequired = needsCareerTimelineSetup || accountSetupMfaHardRequired;
+  const accountSetupContactMissing =
+    !accountSetupSavedPhone.trim() || !accountSetupSavedIco.trim();
+  const accountSetupGateRequired =
+    accountSetupContactMissing || needsCareerTimelineSetup || accountSetupMfaHardRequired;
   const accountSetupMfaGraceRemainingDays =
     accountSetupMfaGraceDeadlineMs == null
       ? 0
@@ -1680,34 +1718,57 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                           </span>
                           <div className="min-w-0">
                             <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-                              Kontaktní údaj
+                              Kontaktní údaje
                             </p>
-                            <h3 className="mt-1 text-base font-semibold text-white">Tel. číslo</h3>
+                            <h3 className="mt-1 text-base font-semibold text-white">Telefon a IČO</h3>
                             <p className="mt-1 text-sm leading-relaxed text-violet-100/66">
-                              Telefon se uloží do profilu a použije se tam, kde aplikace pracuje
-                              s kontaktními údaji.
+                              Údaje se uloží do profilu a použijí se tam, kde aplikace pracuje
+                              s identifikací a kontaktem poradce.
                             </p>
                           </div>
                         </div>
 
-                        <label className="block space-y-2">
-                          <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">
-                            Tel. číslo
-                          </span>
-                          <input
-                            type="tel"
-                            inputMode="tel"
-                            value={accountSetupPhone}
-                            onChange={(event) => {
-                              setAccountSetupPhone(event.target.value.slice(0, PHONE_NUMBER_MAX_LEN));
-                              setAccountSetupError(null);
-                            }}
-                            placeholder="777 123 456"
-                            maxLength={PHONE_NUMBER_MAX_LEN}
-                            disabled={accountSetupPhoneSaving}
-                            className={accountSetupFieldClass}
-                          />
-                        </label>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="block space-y-2">
+                            <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">
+                              Tel. číslo
+                            </span>
+                            <input
+                              type="tel"
+                              inputMode="tel"
+                              value={accountSetupPhone}
+                              onChange={(event) => {
+                                setAccountSetupPhone(event.target.value.slice(0, PHONE_NUMBER_MAX_LEN));
+                                setAccountSetupError(null);
+                              }}
+                              placeholder="777 123 456"
+                              maxLength={PHONE_NUMBER_MAX_LEN}
+                              disabled={accountSetupPhoneSaving}
+                              className={accountSetupFieldClass}
+                            />
+                          </label>
+
+                          <label className="block space-y-2">
+                            <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">
+                              IČO
+                            </span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={accountSetupIco}
+                              onChange={(event) => {
+                                setAccountSetupIco(
+                                  event.target.value.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN)
+                                );
+                                setAccountSetupError(null);
+                              }}
+                              placeholder="12345678"
+                              maxLength={PROFILE_ICO_MAX_LEN}
+                              disabled={accountSetupPhoneSaving}
+                              className={accountSetupFieldClass}
+                            />
+                          </label>
+                        </div>
                       </div>
                     ) : null}
 

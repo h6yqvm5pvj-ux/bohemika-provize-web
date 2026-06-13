@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   Users,
   Wallet,
+  X,
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -34,6 +35,8 @@ import SplitTitle from "../plan-produkce/SplitTitle";
 type StepId = "base" | "family" | "children" | "mortgage" | "confirm";
 type ProviderRole = "main" | "secondary";
 type InvalidityModel = "insurance" | "investment";
+type InvalidityInvestmentVariantId = "investika" | "savings";
+type FutureFamilyPlan = "yes" | "maybe" | "no";
 type PdfLanguage = "cs" | "en" | "uk" | "ne" | "hi";
 type InputKey =
   | "age"
@@ -96,6 +99,33 @@ const DAILY_TARGET_RATIO = 0.4;
 const DEFAULT_SOLO_DEATH_YEARS = 5;
 const INVESTIKA_RETURN_RANGE = { min: 0.055, max: 0.06 };
 const INVESTMENT_PRODUCT_NAME = "INVESTIKA Realitní Fond";
+const SAVINGS_ACCOUNT_RETURN_RANGE = { min: 0.0285, max: 0.0285 };
+const INVALIDITY_INVESTMENT_VARIANTS: Array<{
+  id: InvalidityInvestmentVariantId;
+  label: string;
+  productName: string;
+  returnRange: { min: number; max: number };
+  returnLabel: string;
+  detail: string;
+}> = [
+  {
+    id: "investika",
+    label: "Investika Realitní fond",
+    productName: INVESTMENT_PRODUCT_NAME,
+    returnRange: INVESTIKA_RETURN_RANGE,
+    returnLabel: "5,5-6 % p.a.",
+    detail: "Modelovaný výnos použitý pro výpočet potřebného kapitálu.",
+  },
+  {
+    id: "savings",
+    label: "Spořicí účet",
+    productName: "Spořicí účet",
+    returnRange: SAVINGS_ACCOUNT_RETURN_RANGE,
+    returnLabel: "2,85 % čistého p.a.",
+    detail:
+      "K červnu 2026: hrubě cca 3,35-3,40 % p.a. pro částky nad 1 000 000 Kč. Pro model počítáme konzervativně s 2,85 % čistého p.a. po 15% srážkové dani.",
+  },
+];
 const FIELD_TEXT_STYLE: CSSProperties = {
   color: "#fff",
   WebkitTextFillColor: "#fff",
@@ -171,6 +201,14 @@ const PDF_COPY = {
     interest: "úrok",
     perYear: "p.a.",
     noDebtDeathNote: "Pokud klient nemá dluh, tuto část není potřeba nastavovat.",
+    noChildrenDeathNote:
+      "Bez dětí nebo jiné závislé rodiny ji aktuálně nepočítáme vysoko. Aktuální potřebu smrti kryje rozloučení a případně samostatné krytí dluhu.",
+    futureFamilyTitle: "Budoucí rodina",
+    futureFamilyAmountLabel: "Orientační budoucí rodinný scénář",
+    futureFamilyText:
+      "Aktuálně klient vysokou PČ na smrt nepotřebuje. Pokud ale rodinu plánuje nebo si není jistý, dává smysl zvážit sjednání krytí už teď, dokud je mladší a zdravotně pojistitelný. Později může být pojištění dražší nebo omezené výlukami/přirážkami.",
+    futureFamilyAmountNote:
+      "Kontrolní hodnota vychází z rychlé metody 5 ročních příjmů. Nezvyšuje automaticky aktuální doporučení smrti.",
     quickMethodPrefix: "Kontrola proti rychlé metodě: 5 ročních příjmů klienta vychází na",
     quickMethodSuffix:
       "Pro rodinu je ale důležitější výpadek příjmu, dluhy a horizont dětí.",
@@ -191,13 +229,14 @@ const PDF_COPY = {
     insurancePayout: "Pojistné plnění",
     investmentVariant: "Investiční varianta",
     coveragePrefix: "Pokrytí",
+    incomeCoverageSuffix: "příjmu",
     degreeOfDisability: "Stupeň invalidity",
     monthlyAnnuity: "Měsíční renta",
     requiredDeposit: "Potřebný vklad",
     sumWithoutDebt: "PČ bez dluhů",
     to: "až",
     investmentNote:
-      "Investiční varianta modeluje kapitál, ze kterého by šla čerpat zvolená měsíční renta při výnosu 5,5-6 % p.a. Nejde o investiční doporučení.",
+      "Investiční varianta modeluje kapitál, ze kterého by šla čerpat zvolená měsíční renta při vybraném výnosu. Nejde o investiční doporučení.",
     disabilityAndLoan: "Invalidita a úvěr",
     disabilityLoanTitle: "Anuitně klesající PČ k hypotéce / úvěru na invaliditu",
     disabilityLoanNote:
@@ -251,6 +290,14 @@ const PDF_COPY = {
     interest: "interest",
     perYear: "p.a.",
     noDebtDeathNote: "If the client has no debt, this part does not need to be set.",
+    noChildrenDeathNote:
+      "Without children or another financially dependent family, this cover is not calculated high for the current situation. The current death need is covered by final expenses and, if applicable, separate debt cover.",
+    futureFamilyTitle: "Future family",
+    futureFamilyAmountLabel: "Indicative future-family scenario",
+    futureFamilyText:
+      "The client does not currently need a high death sum insured. If they plan a family or are unsure, it can make sense to consider arranging cover now while they are younger and insurable. Later, the cover may be more expensive or limited by exclusions or loadings.",
+    futureFamilyAmountNote:
+      "The control value uses the quick method of 5 years of income. It does not automatically increase the current death recommendation.",
     quickMethodPrefix: "Quick-method check: 5 years of the client's income equals",
     quickMethodSuffix:
       "For a family, however, the income shortfall, debts, and the children's support horizon matter more.",
@@ -271,13 +318,14 @@ const PDF_COPY = {
     insurancePayout: "Insurance payout",
     investmentVariant: "Investment variant",
     coveragePrefix: "Coverage",
+    incomeCoverageSuffix: "income",
     degreeOfDisability: "Disability degree",
     monthlyAnnuity: "Monthly annuity",
     requiredDeposit: "Required deposit",
     sumWithoutDebt: "Sum insured excluding debts",
     to: "to",
     investmentNote:
-      "The investment variant models the capital from which the selected monthly annuity could be drawn at a 5.5-6% p.a. return. This is not investment advice.",
+      "The investment variant models the capital from which the selected monthly annuity could be drawn at the selected return. This is not investment advice.",
     disabilityAndLoan: "Disability and loan",
     disabilityLoanTitle: "Annuity-decreasing sum insured for mortgage / loan disability cover",
     disabilityLoanNote:
@@ -331,6 +379,14 @@ const PDF_COPY = {
     interest: "ставка",
     perYear: "річних",
     noDebtDeathNote: "Якщо у клієнта немає боргу, цю частину налаштовувати не потрібно.",
+    noChildrenDeathNote:
+      "Без дітей або іншої фінансово залежної сім'ї це покриття зараз не розраховується як високе. Поточну потребу на випадок смерті покривають витрати на прощання і, за потреби, окреме покриття боргу.",
+    futureFamilyTitle: "Майбутня сім'я",
+    futureFamilyAmountLabel: "Орієнтовний сценарій для майбутньої сім'ї",
+    futureFamilyText:
+      "Зараз клієнту не потрібна висока страхова сума на випадок смерті. Якщо він планує сім'ю або не впевнений, варто розглянути оформлення покриття вже зараз, поки він молодший і може пройти медичну оцінку. Пізніше покриття може бути дорожчим або обмеженим винятками чи надбавками.",
+    futureFamilyAmountNote:
+      "Контрольна величина базується на швидкому методі 5 річних доходів. Вона автоматично не збільшує поточну рекомендацію.",
     quickMethodPrefix: "Перевірка швидким методом: 5 річних доходів клієнта дорівнює",
     quickMethodSuffix:
       "Для сім'ї важливіші втрата доходу, борги та горизонт забезпечення дітей.",
@@ -351,13 +407,14 @@ const PDF_COPY = {
     insurancePayout: "Страхова виплата",
     investmentVariant: "Інвестиційний варіант",
     coveragePrefix: "Покриття",
+    incomeCoverageSuffix: "доходу",
     degreeOfDisability: "Ступінь інвалідності",
     monthlyAnnuity: "Місячна рента",
     requiredDeposit: "Необхідний внесок",
     sumWithoutDebt: "Страхова сума без боргів",
     to: "до",
     investmentNote:
-      "Інвестиційний варіант моделює капітал, з якого можна було б отримувати обрану місячну ренту за дохідності 5,5-6% річних. Це не є інвестиційною рекомендацією.",
+      "Інвестиційний варіант моделює капітал, з якого можна було б отримувати обрану місячну ренту за обраної дохідності. Це не є інвестиційною рекомендацією.",
     disabilityAndLoan: "Інвалідність і кредит",
     disabilityLoanTitle:
       "Ануїтетно-зменшувана страхова сума для іпотеки / кредиту на випадок інвалідності",
@@ -412,6 +469,14 @@ const PDF_COPY = {
     interest: "ब्याज",
     perYear: "वार्षिक",
     noDebtDeathNote: "ग्राहकसँग ऋण छैन भने यो भाग सेट गर्न आवश्यक छैन।",
+    noChildrenDeathNote:
+      "बालबालिका वा आर्थिक रूपमा निर्भर परिवार नभए अहिले यो कभर उच्च रूपमा गणना गरिँदैन। हालको मृत्यु आवश्यकता अन्तिम खर्च र आवश्यक भए छुट्टै ऋण कभरले समेट्छ।",
+    futureFamilyTitle: "भविष्यको परिवार",
+    futureFamilyAmountLabel: "भविष्यको परिवारका लागि संकेतात्मक परिदृश्य",
+    futureFamilyText:
+      "हाल ग्राहकलाई मृत्युका लागि उच्च बीमित रकम आवश्यक छैन। तर परिवार योजना छ वा अनिश्चितता छ भने, ग्राहक युवा र स्वास्थ्य रूपमा बीमायोग्य हुँदा नै कभर सोच्नु उपयोगी हुन सक्छ। पछि कभर महँगो वा बहिष्करण/अतिरिक्त शुल्कसहित सीमित हुन सक्छ।",
+    futureFamilyAmountNote:
+      "जाँच मूल्य ५ वर्षको आम्दानीको छिटो विधिमा आधारित छ। यसले हालको मृत्यु सिफारिस स्वतः बढाउँदैन।",
     quickMethodPrefix: "छिटो विधिबाट जाँच: ग्राहकको ५ वर्षको आम्दानी बराबर",
     quickMethodSuffix:
       "तर परिवारका लागि आम्दानीको कमी, ऋण र बालबालिकाको सहयोग अवधि बढी महत्त्वपूर्ण हुन्छ।",
@@ -432,13 +497,14 @@ const PDF_COPY = {
     insurancePayout: "बीमा भुक्तानी",
     investmentVariant: "लगानी विकल्प",
     coveragePrefix: "कभरेज",
+    incomeCoverageSuffix: "आम्दानी",
     degreeOfDisability: "अपाङ्गताको स्तर",
     monthlyAnnuity: "मासिक रेन्टा",
     requiredDeposit: "आवश्यक जम्मा रकम",
     sumWithoutDebt: "ऋणबाहेकको बीमित रकम",
     to: "देखि",
     investmentNote:
-      "लगानी विकल्पले ५.५-६% वार्षिक प्रतिफलमा चयन गरिएको मासिक रेन्टा झिक्न सकिने पूँजीको मोडल देखाउँछ। यो लगानी सल्लाह होइन।",
+      "लगानी विकल्पले चयन गरिएको प्रतिफलमा मासिक रेन्टा झिक्न सकिने पूँजीको मोडल देखाउँछ। यो लगानी सल्लाह होइन।",
     disabilityAndLoan: "अपाङ्गता र ऋण",
     disabilityLoanTitle: "अपाङ्गताका लागि हाइपोथेक / ऋणमा वार्षिकी रूपमा घट्दै जाने बीमित रकम",
     disabilityLoanNote:
@@ -492,6 +558,14 @@ const PDF_COPY = {
     interest: "ब्याज",
     perYear: "प्रति वर्ष",
     noDebtDeathNote: "यदि ग्राहक पर कोई ऋण नहीं है, तो यह भाग सेट करने की आवश्यकता नहीं है।",
+    noChildrenDeathNote:
+      "बच्चे या आर्थिक रूप से निर्भर परिवार न होने पर इस कवर को वर्तमान स्थिति में अधिक नहीं गिना जाता। मृत्यु की मौजूदा जरूरत अंतिम खर्च और जरूरत हो तो अलग ऋण कवर से पूरी होती है।",
+    futureFamilyTitle: "भविष्य का परिवार",
+    futureFamilyAmountLabel: "भविष्य के परिवार का संकेतात्मक परिदृश्य",
+    futureFamilyText:
+      "अभी ग्राहक को मृत्यु के लिए उच्च बीमित राशि की जरूरत नहीं है। लेकिन यदि परिवार की योजना है या अनिश्चितता है, तो युवा और स्वास्थ्य रूप से बीमायोग्य रहते हुए कवर पर विचार करना उचित हो सकता है। बाद में कवर महंगा हो सकता है या बहिष्करण/अतिरिक्त प्रीमियम से सीमित हो सकता है।",
+    futureFamilyAmountNote:
+      "जांच राशि ५ वर्षों की आय वाली त्वरित पद्धति पर आधारित है। यह मौजूदा मृत्यु सिफारिश को स्वतः नहीं बढ़ाती।",
     quickMethodPrefix: "त्वरित पद्धति से जाँच: ग्राहक की ५ वर्षों की आय बराबर है",
     quickMethodSuffix:
       "लेकिन परिवार के लिए आय की कमी, ऋण और बच्चों की सहायता अवधि अधिक महत्वपूर्ण हैं।",
@@ -512,13 +586,14 @@ const PDF_COPY = {
     insurancePayout: "बीमा भुगतान",
     investmentVariant: "निवेश विकल्प",
     coveragePrefix: "कवर",
+    incomeCoverageSuffix: "आय",
     degreeOfDisability: "विकलांगता स्तर",
     monthlyAnnuity: "मासिक रेंट",
     requiredDeposit: "आवश्यक जमा राशि",
     sumWithoutDebt: "ऋणों को छोड़कर बीमित राशि",
     to: "से",
     investmentNote:
-      "निवेश विकल्प उस पूँजी का मॉडल दिखाता है जिससे ५.५-६% वार्षिक प्रतिफल पर चुना गया मासिक रेंट निकाला जा सकता है। यह निवेश सलाह नहीं है।",
+      "निवेश विकल्प उस पूँजी का मॉडल दिखाता है जिससे चुने गए प्रतिफल पर मासिक रेंट निकाला जा सकता है। यह निवेश सलाह नहीं है।",
     disabilityAndLoan: "विकलांगता और ऋण",
     disabilityLoanTitle: "विकलांगता कवर के लिए बंधक / ऋण पर वार्षिकी-घटती बीमित राशि",
     disabilityLoanNote:
@@ -991,7 +1066,10 @@ export default function LifeInsuranceSetupPage() {
     useState<InvalidityScenarioId>("medium");
   const [invalidityModel, setInvalidityModel] =
     useState<InvalidityModel>("insurance");
+  const [invalidityInvestmentVariantId, setInvalidityInvestmentVariantId] =
+    useState<InvalidityInvestmentVariantId>("investika");
   const [hasChildren, setHasChildren] = useState<boolean | null>(null);
+  const [futureFamilyPlan, setFutureFamilyPlan] = useState<FutureFamilyPlan | null>(null);
   const [hasMortgageOrLoan, setHasMortgageOrLoan] = useState<boolean | null>(null);
   const [values, setValues] = useState<InputValues>(EMPTY_INPUT_VALUES);
 
@@ -1116,11 +1194,12 @@ export default function LifeInsuranceSetupPage() {
     const decreasingAmount = roundUp(
       numbers.childrenCount > 0
         ? Math.max(needsBasedDecreasing, salaryFloor)
-        : Math.max(needsBasedDecreasing, salaryFloor),
+        : 0,
       100_000
     );
     const constantAmount = roundUp(clamp(numbers.funeralCost, 50_000, 100_000), 10_000);
     const annuityMortgageAmount = roundUp(numbers.totalDebt, 50_000);
+    const futureFamilyAmount = roundUp(salaryFloor, 100_000);
 
     return {
       incomeGapCoverage,
@@ -1130,6 +1209,7 @@ export default function LifeInsuranceSetupPage() {
       decreasingAmount,
       constantAmount,
       annuityMortgageAmount,
+      futureFamilyAmount,
     };
   }, [
     numbers.childrenCount,
@@ -1205,13 +1285,19 @@ export default function LifeInsuranceSetupPage() {
 
   const handleChildrenChoice = (selected: boolean) => {
     setHasChildren(selected);
+    setFutureFamilyPlan(null);
     setCompleted(false);
     setFormError(null);
 
     if (!selected) {
       clearChildrenValues();
-      setStep((prev) => Math.min(prev + 1, lastStep));
     }
+  };
+
+  const handleFutureFamilyPlanChoice = (selected: FutureFamilyPlan) => {
+    setFutureFamilyPlan(selected);
+    setCompleted(false);
+    setFormError(null);
   };
 
   const clearMortgageValues = () => {
@@ -1253,6 +1339,11 @@ export default function LifeInsuranceSetupPage() {
 
     if (currentStep === "children" && hasChildren === null) {
       setFormError("Vyber, jestli klient má děti.");
+      return false;
+    }
+
+    if (currentStep === "children" && hasChildren === false && futureFamilyPlan === null) {
+      setFormError("Vyber, jestli klient v budoucnu plánuje rodinu / děti.");
       return false;
     }
 
@@ -1622,6 +1713,60 @@ export default function LifeInsuranceSetupPage() {
                     </div>
                   </div>
 
+                  {hasChildren === false ? (
+                    <div className="rounded-2xl border border-white/14 bg-white/[0.04] p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
+                        Plánuje klient v budoucnu rodinu / děti?
+                      </div>
+                      <div className="mt-3 grid gap-2 md:grid-cols-3">
+                        {[
+                          {
+                            id: "yes" as const,
+                            label: "Ano",
+                            description: "V náhledu se zobrazí strategické doporučení sjednat smrt dříve.",
+                          },
+                          {
+                            id: "maybe" as const,
+                            label: "Nevím",
+                            description: "Zobrazí se stejná poznámka, protože pojistitelnost se může změnit.",
+                          },
+                          {
+                            id: "no" as const,
+                            label: "Ne",
+                            description: "Smrt se ponechá jen na aktuální potřebu rozloučení a dluhů.",
+                          },
+                        ].map((item) => {
+                          const selected = futureFamilyPlan === item.id;
+
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => handleFutureFamilyPlanChoice(item.id)}
+                              className={`rounded-2xl border px-4 py-3 text-left transition ${
+                                selected
+                                  ? "border-violet-200/70 bg-violet-400/20 shadow-[0_10px_26px_rgba(139,92,246,0.28)]"
+                                  : "border-white/14 bg-white/[0.03] hover:border-violet-300/40 hover:bg-white/[0.07]"
+                              }`}
+                            >
+                              <span className="life-setup-force-white flex items-center gap-2 text-sm font-semibold text-white">
+                                <CheckCircle2
+                                  className={`h-4 w-4 ${
+                                    selected ? "text-emerald-200" : "text-violet-100/35"
+                                  }`}
+                                />
+                                {item.label}
+                              </span>
+                              <span className="mt-1 block text-xs leading-relaxed text-violet-100/65">
+                                {item.description}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
                   {hasChildren ? (
                     <>
                       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1759,7 +1904,11 @@ export default function LifeInsuranceSetupPage() {
                       note={
                         numbers.childrenCount > 0
                           ? `Horizont ${numbers.childHorizonYears} let.`
-                          : "Bez nákladů na studium."
+                          : futureFamilyPlan === "yes"
+                            ? "Rodinu v budoucnu plánuje."
+                            : futureFamilyPlan === "maybe"
+                              ? "Budoucí rodina nejistá."
+                              : "Bez nákladů na studium."
                       }
                     />
                     <ConfirmTile
@@ -1820,10 +1969,13 @@ export default function LifeInsuranceSetupPage() {
             <PreviewPanel
               numbers={numbers}
               providerRole={providerRole}
+              futureFamilyPlan={futureFamilyPlan}
               sickLeave={sickLeave}
               invalidity={invalidity}
               invalidityModel={invalidityModel}
               onInvalidityModelChange={setInvalidityModel}
+              invalidityInvestmentVariantId={invalidityInvestmentVariantId}
+              onInvalidityInvestmentVariantChange={setInvalidityInvestmentVariantId}
               invalidityScenarioId={invalidityScenarioId}
               onInvalidityScenarioChange={setInvalidityScenarioId}
               death={death}
@@ -2082,10 +2234,13 @@ function ConfirmTile({
 function PreviewPanel({
   numbers,
   providerRole,
+  futureFamilyPlan,
   sickLeave,
   invalidity,
   invalidityModel,
   onInvalidityModelChange,
+  invalidityInvestmentVariantId,
+  onInvalidityInvestmentVariantChange,
   invalidityScenarioId,
   onInvalidityScenarioChange,
   death,
@@ -2118,6 +2273,7 @@ function PreviewPanel({
     incomeGapYears: number;
   };
   providerRole: ProviderRole;
+  futureFamilyPlan: FutureFamilyPlan | null;
   sickLeave: {
     stateBenefit: number;
     incomeShortfall: number;
@@ -2133,6 +2289,10 @@ function PreviewPanel({
   }>;
   invalidityModel: InvalidityModel;
   onInvalidityModelChange: (model: InvalidityModel) => void;
+  invalidityInvestmentVariantId: InvalidityInvestmentVariantId;
+  onInvalidityInvestmentVariantChange: (
+    variantId: InvalidityInvestmentVariantId
+  ) => void;
   invalidityScenarioId: InvalidityScenarioId;
   onInvalidityScenarioChange: (scenarioId: InvalidityScenarioId) => void;
   death: {
@@ -2143,14 +2303,20 @@ function PreviewPanel({
     decreasingAmount: number;
     constantAmount: number;
     annuityMortgageAmount: number;
+    futureFamilyAmount: number;
   };
   advisorFooter: AdvisorFooterInfo;
   generatedAtLabel: string;
   language: PdfLanguage;
 }) {
+  const [investmentVariantPickerOpen, setInvestmentVariantPickerOpen] = useState(false);
   const copy = PDF_COPY[language];
   const money = (value: number) => formatPdfMoney(value, language);
   const percent = (value: number) => formatPdfPercent(value, language);
+  const activeInvestmentVariant =
+    INVALIDITY_INVESTMENT_VARIANTS.find(
+      (variant) => variant.id === invalidityInvestmentVariantId
+    ) ?? INVALIDITY_INVESTMENT_VARIANTS[0];
   const activeInvalidityScenario =
     INVALIDITY_SCENARIOS.find((scenario) => scenario.id === invalidityScenarioId) ??
     INVALIDITY_SCENARIOS[2];
@@ -2158,6 +2324,9 @@ function PreviewPanel({
     invalidityModel === "investment" ? copy.investmentVariant : copy.insurancePayout;
   const activeInvalidityScenarioLabel =
     copy.scenarioLabels[activeInvalidityScenario.id] ?? activeInvalidityScenario.label;
+  const showFutureFamilyNote =
+    numbers.childrenCount === 0 &&
+    (futureFamilyPlan === "yes" || futureFamilyPlan === "maybe");
 
   return (
     <div className="space-y-5">
@@ -2218,26 +2387,37 @@ function PreviewPanel({
               value={money(death.constantAmount)}
               note={copy.constantDeathNote}
             />
-            <RecommendationRow
-              label={copy.decreasingDeathSum}
-              value={money(death.decreasingAmount)}
-              note={`${copy.incomeGap} ${money(death.incomeGapCoverage)} + ${copy.childrenEducation} ${money(death.educationCoverage)}. ${copy.approximatelyFor} ${formatYears(numbers.deathTermTo75, language)}.`}
-            />
-            <RecommendationRow
-              label={copy.annuityDeathSum}
-              value={money(death.annuityMortgageAmount)}
-              note={
-                numbers.totalDebt > 0
-                  ? `${copy.setByDebt} ${formatYears(numbers.mortgageYears, language)}, ${copy.interest} ${percent(numbers.mortgageRate)} ${copy.perYear}.`
-                  : copy.noDebtDeathNote
-              }
-            />
+            {numbers.childrenCount > 0 ? (
+              <RecommendationRow
+                label={copy.decreasingDeathSum}
+                value={money(death.decreasingAmount)}
+                note={`${copy.incomeGap} ${money(death.incomeGapCoverage)} + ${copy.childrenEducation} ${money(death.educationCoverage)}. ${copy.approximatelyFor} ${formatYears(numbers.deathTermTo75, language)}.`}
+              />
+            ) : null}
+            {numbers.totalDebt > 0 ? (
+              <RecommendationRow
+                label={copy.annuityDeathSum}
+                value={money(death.annuityMortgageAmount)}
+                note={`${copy.setByDebt} ${formatYears(numbers.mortgageYears, language)}, ${copy.interest} ${percent(numbers.mortgageRate)} ${copy.perYear}.`}
+              />
+            ) : null}
           </div>
 
-          <div className="mt-4 rounded-2xl bg-violet-50 px-4 py-3 text-sm leading-relaxed text-violet-950">
-            {copy.quickMethodPrefix} <strong>{money(death.salaryFloor)}</strong>.{" "}
-            {copy.quickMethodSuffix}
-          </div>
+          {numbers.childrenCount > 0 ? (
+            <div className="mt-4 rounded-2xl bg-violet-50 px-4 py-3 text-sm leading-relaxed text-violet-950">
+              {copy.quickMethodPrefix} <strong>{money(death.salaryFloor)}</strong>.{" "}
+              {copy.quickMethodSuffix}
+            </div>
+          ) : null}
+
+          {showFutureFamilyNote ? (
+            <div className="mt-4 rounded-2xl bg-violet-50 px-4 py-3 text-sm leading-relaxed text-violet-950">
+              <strong>{copy.futureFamilyTitle}:</strong> {copy.futureFamilyText}{" "}
+              {copy.futureFamilyAmountLabel}:{" "}
+              <strong>{money(death.futureFamilyAmount)}</strong>.{" "}
+              {copy.futureFamilyAmountNote}
+            </div>
+          ) : null}
         </article>
 
         <article className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
@@ -2313,7 +2493,9 @@ function PreviewPanel({
             </div>
             <div className="mt-0.5 text-xs font-semibold text-violet-800">
               {invalidityModelLabel}
-              {invalidityModel === "investment" ? ` - ${INVESTMENT_PRODUCT_NAME}` : ""}
+              {invalidityModel === "investment"
+                ? ` - ${activeInvestmentVariant.productName}`
+                : ""}
             </div>
           </div>
 
@@ -2331,7 +2513,13 @@ function PreviewPanel({
                   <button
                     key={model.id}
                     type="button"
-                    onClick={() => onInvalidityModelChange(model.id)}
+                    onClick={() => {
+                      if (model.id === "investment") {
+                        setInvestmentVariantPickerOpen(true);
+                        return;
+                      }
+                      onInvalidityModelChange(model.id);
+                    }}
                     className={`rounded-xl px-3.5 py-2 text-sm font-semibold transition ${
                       active
                         ? "bg-[linear-gradient(135deg,#312e81_0%,#7c3aed_100%)] !text-white shadow-[0_8px_18px_rgba(49,46,129,0.24)]"
@@ -2370,9 +2558,85 @@ function PreviewPanel({
             {activeInvalidityScenario.ratios
               .map((ratio) => percent(Math.round(ratio * 100)))
               .join(" / ")}
-            {invalidityModel === "investment" ? ` | 5,5-6 % ${copy.perYear}` : ""}
+            {invalidityModel === "investment"
+              ? ` | ${activeInvestmentVariant.returnLabel}`
+              : ""}
           </div>
         </div>
+
+        {investmentVariantPickerOpen ? (
+          <div
+            className="fixed inset-0 z-[90] flex items-center justify-center px-4 py-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Vybrat investiční variantu"
+            data-pdf-ignore="1"
+          >
+            <button
+              type="button"
+              className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+              aria-label="Zavřít výběr investiční varianty"
+              onClick={() => setInvestmentVariantPickerOpen(false)}
+            />
+            <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#312e81_0%,#7c3aed_55%,#22c55e_100%)]" />
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+                    Investiční varianta
+                  </p>
+                  <h4 className="mt-1 text-xl font-bold text-slate-950">
+                    Vyber výnos pro výpočet
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setInvestmentVariantPickerOpen(false)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50"
+                  aria-label="Zavřít"
+                >
+                  <X className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {INVALIDITY_INVESTMENT_VARIANTS.map((variant) => {
+                  const active = variant.id === invalidityInvestmentVariantId;
+                  return (
+                    <button
+                      key={variant.id}
+                      type="button"
+                      onClick={() => {
+                        onInvalidityInvestmentVariantChange(variant.id);
+                        onInvalidityModelChange("investment");
+                        setInvestmentVariantPickerOpen(false);
+                      }}
+                      className={`rounded-2xl border px-4 py-3 text-left transition ${
+                        active
+                          ? "border-violet-500 bg-violet-50 shadow-[0_12px_26px_rgba(124,58,237,0.14)]"
+                          : "border-slate-200 bg-white hover:border-violet-200 hover:bg-violet-50/60"
+                      }`}
+                    >
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <div className="text-base font-bold text-slate-950">
+                            {variant.label}
+                          </div>
+                          <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                            {variant.detail}
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
+                          {variant.returnLabel}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           {invalidity.map((item, index) => {
@@ -2380,16 +2644,20 @@ function PreviewPanel({
               requiredCapitalForRenta(
                 item.monthlyNeed,
                 numbers.invalidityMonths,
-                INVESTIKA_RETURN_RANGE.max
+                activeInvestmentVariant.returnRange.max
               )
             );
             const maxInvestmentCapital = roundMoney(
               requiredCapitalForRenta(
                 item.monthlyNeed,
                 numbers.invalidityMonths,
-                INVESTIKA_RETURN_RANGE.min
+                activeInvestmentVariant.returnRange.min
               )
             );
+            const investmentCapitalLabel =
+              minInvestmentCapital === maxInvestmentCapital
+                ? money(minInvestmentCapital)
+                : `${money(minInvestmentCapital)} ${copy.to} ${money(maxInvestmentCapital)}`;
             const degreeLabel = copy.degreeLabels[index] ?? item.label;
 
             return (
@@ -2410,8 +2678,8 @@ function PreviewPanel({
                     </div>
                     <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-violet-800">
                       {invalidityModel === "investment"
-                        ? `${copy.coveragePrefix} ${percent(Math.round(item.ratio * 100))}`
-                        : percent(Math.round(item.ratio * 100))}
+                        ? `${copy.coveragePrefix} ${percent(Math.round(item.ratio * 100))} ${copy.incomeCoverageSuffix}`
+                        : `${percent(Math.round(item.ratio * 100))} ${copy.incomeCoverageSuffix}`}
                     </span>
                   </div>
                   <div className="mt-4 divide-y divide-slate-200 border-y border-slate-100">
@@ -2422,7 +2690,7 @@ function PreviewPanel({
                     {invalidityModel === "investment" ? (
                       <SmallCalcRow
                         label={copy.requiredDeposit}
-                        value={`${money(minInvestmentCapital)} ${copy.to} ${money(maxInvestmentCapital)}`}
+                        value={investmentCapitalLabel}
                       />
                     ) : (
                       <SmallCalcRow
@@ -2439,7 +2707,9 @@ function PreviewPanel({
 
         {invalidityModel === "investment" ? (
           <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-950">
-            {copy.investmentNote}
+            {copy.investmentNote}{" "}
+            <strong>{activeInvestmentVariant.productName}</strong>:{" "}
+            <strong>{activeInvestmentVariant.returnLabel}</strong>.
           </div>
         ) : null}
 

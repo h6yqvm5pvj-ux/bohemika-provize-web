@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import { Space_Grotesk } from "next/font/google";
 import {
   CheckCheck,
   Loader2,
@@ -55,11 +54,6 @@ import type {
   UserSearchResponse,
 } from "./postaTypes";
 import styles from "./postaWall.module.css";
-
-const mailFont = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 export default function PostaPage() {
   const router = useRouter();
@@ -819,7 +813,7 @@ export default function PostaPage() {
 
   return (
     <AppLayout active="home">
-      <div className={`${mailFont.className} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
+      <div className="relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3">
         <div className={styles.canvas} aria-hidden="true">
           <span className={`${styles.orb} ${styles.orbA}`} />
           <span className={`${styles.orb} ${styles.orbB}`} />
@@ -1398,7 +1392,7 @@ export default function PostaPage() {
                     <span className="h-3 w-3 rounded-full bg-[#fb7185]" />
                     <span className="h-3 w-3 rounded-full bg-[#f59e0b]" />
                     <span className="h-3 w-3 rounded-full bg-[#22c55e]" />
-                    <span className="truncate font-mono text-[12px] font-medium tracking-[0.01em] text-[#f8fafc]">
+                    <span className="truncate text-[12px] font-medium tracking-[0.01em] text-[#f8fafc]">
                       Bohemka.App náhled
                     </span>
                   </div>

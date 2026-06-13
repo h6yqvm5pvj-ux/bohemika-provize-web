@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   AlertTriangle,
+  Building2,
   BriefcaseBusiness,
   Check,
+  CheckCircle2,
   Clock3,
   Copy,
   IdCard,
@@ -14,6 +16,7 @@ import {
   Landmark,
   Mail,
   Pencil,
+  PhoneCall,
   RefreshCcw,
   RefreshCw,
   Save,
@@ -24,6 +27,7 @@ import {
   Trash2,
   UserCheck2,
   UserPlus,
+  UserRound,
   X,
   Zap,
 } from "lucide-react";
@@ -552,11 +556,20 @@ type AdminUsersRow = {
   email: string;
   fullName: string | null;
   agencyNumber: string | null;
+  ico: string | null;
+  phoneNumber: string | null;
   position: string | null;
+  positionTimeline: Array<{
+    id: string;
+    position: string;
+    validFrom: string;
+    validTo: string | null;
+  }>;
   accountType: string | null;
   managerEmail: string | null;
   tipRecipientEmail: string | null;
   commissionMode: string | null;
+  accountSetupCompletedAt: string | null;
   disabled: boolean;
   emailVerified: boolean;
   createdAt: string | null;
@@ -581,6 +594,62 @@ type AdminUsersDeleteTarget = {
 };
 
 type AdminUsersAccountTypeDraft = NewUserAccountType | "";
+
+type AdminUsersMissingItem = {
+  key: string;
+  label: string;
+};
+
+const ADMIN_USER_ICO_MAX_LEN = 8;
+const ADMIN_USER_PHONE_MAX_LEN = 40;
+
+const normalizeIcoInput = (value: string): string =>
+  value.replace(/\D+/g, "").slice(0, ADMIN_USER_ICO_MAX_LEN);
+
+const hasUsablePhoneNumber = (value: string | null | undefined): boolean =>
+  (value ?? "").replace(/\D+/g, "").length >= 6;
+
+const hasUsableIco = (value: string | null | undefined): boolean =>
+  (value ?? "").replace(/\D+/g, "").length === ADMIN_USER_ICO_MAX_LEN;
+
+const hasUsablePositionTimeline = (
+  timeline: AdminUsersRow["positionTimeline"]
+): boolean => Array.isArray(timeline) && timeline.length > 0;
+
+const buildAdminUserMissingItems = (row: AdminUsersRow): AdminUsersMissingItem[] => {
+  const accountType = (row.accountType ?? "").trim().toLowerCase();
+  const missing: AdminUsersMissingItem[] = [];
+
+  if (!row.profileExists) missing.push({ key: "profile", label: "Profil" });
+  if (!(row.fullName ?? "").trim()) missing.push({ key: "fullName", label: "Jméno" });
+  if (!accountType) missing.push({ key: "accountType", label: "Typ účtu" });
+
+  if (accountType === "tipster") {
+    if (!normalizeEmail(row.tipRecipientEmail)) {
+      missing.push({ key: "tipRecipientEmail", label: "Příjemce tipů" });
+    }
+    return missing;
+  }
+
+  if (!normalizeEmail(row.managerEmail)) {
+    missing.push({ key: "managerEmail", label: "Nadřízený" });
+  }
+  if (!(row.agencyNumber ?? "").trim()) {
+    missing.push({ key: "agencyNumber", label: "Agenturní číslo" });
+  }
+  if (!hasUsableIco(row.ico)) missing.push({ key: "ico", label: "IČO" });
+  if (!hasUsablePhoneNumber(row.phoneNumber)) {
+    missing.push({ key: "phoneNumber", label: "Telefon" });
+  }
+  if (!hasUsablePositionTimeline(row.positionTimeline) && !(row.position ?? "").trim()) {
+    missing.push({ key: "position", label: "Kariéra" });
+  }
+  if (!(row.commissionMode ?? "").trim()) {
+    missing.push({ key: "commissionMode", label: "Provizní režim" });
+  }
+
+  return missing;
+};
 
 const getMfaFactorLabel = (factor: AdminSecurityFactorRow): string => {
   if (factor.factorId === "totp") return "TOTP";
@@ -664,6 +733,8 @@ export default function AdminRequestsPage() {
   const [adminUsersEditingEmail, setAdminUsersEditingEmail] = useState<string | null>(null);
   const [adminUsersEditFullName, setAdminUsersEditFullName] = useState("");
   const [adminUsersEditAgencyNumber, setAdminUsersEditAgencyNumber] = useState("");
+  const [adminUsersEditIco, setAdminUsersEditIco] = useState("");
+  const [adminUsersEditPhoneNumber, setAdminUsersEditPhoneNumber] = useState("");
   const [adminUsersEditAccountType, setAdminUsersEditAccountType] =
     useState<AdminUsersAccountTypeDraft>("");
   const [adminUsersSavingEmail, setAdminUsersSavingEmail] = useState<string | null>(null);
@@ -1076,11 +1147,16 @@ export default function AdminRequestsPage() {
       const title = (row.fullName || nameFromEmail(row.email)).toLowerCase();
       const email = row.email.toLowerCase();
       const agencyNumber = (row.agencyNumber || "").toLowerCase();
+      const ico = (row.ico || "").toLowerCase();
+      const phoneNumber = (row.phoneNumber || "").toLowerCase();
       const managerEmail = (row.managerEmail || "").toLowerCase();
       const tipRecipientEmail = (row.tipRecipientEmail || "").toLowerCase();
       const position = (row.position || "").toLowerCase();
       const positionLabel = formatPositionLabel(row.position).toLowerCase();
       const accountTypeLabel = formatAccountTypeLabel(row.accountType).toLowerCase();
+      const missingLabels = buildAdminUserMissingItems(row)
+        .map((item) => item.label.toLowerCase())
+        .join(" ");
       const relationEmail =
         row.accountType === "tipster" ? row.tipRecipientEmail : row.managerEmail;
       const relationName = relationEmail
@@ -1091,11 +1167,14 @@ export default function AdminRequestsPage() {
         title.includes(query) ||
         email.includes(query) ||
         agencyNumber.includes(query) ||
+        ico.includes(query) ||
+        phoneNumber.includes(query) ||
         managerEmail.includes(query) ||
         tipRecipientEmail.includes(query) ||
         position.includes(query) ||
         positionLabel.includes(query) ||
         accountTypeLabel.includes(query) ||
+        missingLabels.includes(query) ||
         relationName.includes(query)
       );
     });
@@ -1107,7 +1186,9 @@ export default function AdminRequestsPage() {
     const disabled = adminUsersRows.filter((row) => row.disabled).length;
     const advisors = adminUsersRows.filter((row) => row.accountType === "advisor").length;
     const tipsters = adminUsersRows.filter((row) => row.accountType === "tipster").length;
-    return { total, missingProfile, disabled, advisors, tipsters };
+    const incomplete = adminUsersRows.filter((row) => buildAdminUserMissingItems(row).length > 0).length;
+    const complete = total - incomplete;
+    return { total, missingProfile, disabled, advisors, tipsters, incomplete, complete };
   }, [adminUsersRows]);
 
   const handleDecision = useCallback(
@@ -1535,6 +1616,8 @@ export default function AdminRequestsPage() {
     setAdminUsersEditingEmail(row.email);
     setAdminUsersEditFullName(row.fullName ?? "");
     setAdminUsersEditAgencyNumber(row.agencyNumber ?? "");
+    setAdminUsersEditIco(normalizeIcoInput(row.ico ?? ""));
+    setAdminUsersEditPhoneNumber(row.phoneNumber ?? "");
     setAdminUsersEditAccountType(
       row.accountType === "advisor" || row.accountType === "tipster"
         ? row.accountType
@@ -1548,6 +1631,8 @@ export default function AdminRequestsPage() {
     setAdminUsersEditingEmail(null);
     setAdminUsersEditFullName("");
     setAdminUsersEditAgencyNumber("");
+    setAdminUsersEditIco("");
+    setAdminUsersEditPhoneNumber("");
     setAdminUsersEditAccountType("");
   }, []);
 
@@ -1560,12 +1645,19 @@ export default function AdminRequestsPage() {
       setAdminUsersStatus(null);
       setAdminUsersError(null);
       try {
+        const nextIco = normalizeIcoInput(adminUsersEditIco);
+        if (nextIco && nextIco.length !== ADMIN_USER_ICO_MAX_LEN) {
+          setAdminUsersError(`IČO musí mít ${ADMIN_USER_ICO_MAX_LEN} číslic.`);
+          return;
+        }
         await fetchAuthedJsonOrThrow(user, "/api/admin/users", {
           method: "PATCH",
           body: JSON.stringify({
             email: row.email,
             fullName: adminUsersEditFullName,
             agencyNumber: adminUsersEditAgencyNumber,
+            ico: nextIco,
+            phoneNumber: adminUsersEditPhoneNumber.trim(),
             accountType: adminUsersEditAccountType,
           }),
         });
@@ -1576,6 +1668,8 @@ export default function AdminRequestsPage() {
         setAdminUsersEditingEmail(null);
         setAdminUsersEditFullName("");
         setAdminUsersEditAgencyNumber("");
+        setAdminUsersEditIco("");
+        setAdminUsersEditPhoneNumber("");
         setAdminUsersEditAccountType("");
         await loadAdminUsersRows();
       } catch (error) {
@@ -1590,6 +1684,8 @@ export default function AdminRequestsPage() {
       adminUsersEditAgencyNumber,
       adminUsersEditAccountType,
       adminUsersEditFullName,
+      adminUsersEditIco,
+      adminUsersEditPhoneNumber,
       isAllowedAdmin,
       loadAdminUsersRows,
     ]
@@ -1655,6 +1751,22 @@ export default function AdminRequestsPage() {
     "w-full rounded-2xl border border-white/14 bg-white/[0.07] px-3 py-2.5 text-sm font-semibold !text-white shadow-[0_10px_24px_rgba(7,6,25,0.18)] outline-none transition placeholder:!text-violet-100/42 focus:border-violet-200/70 focus:bg-white/[0.1] focus:ring-2 focus:ring-violet-300/20 [caret-color:#f8fafc]";
   const createUserLabelClass =
     "text-[11px] font-semibold uppercase tracking-[0.16em] !text-violet-200/78";
+  const selectedAdminUser = adminUsersEditingEmail
+    ? adminUsersRows.find((row) => row.email === adminUsersEditingEmail) ?? null
+    : null;
+  const selectedAdminUserDraft = selectedAdminUser
+    ? {
+        ...selectedAdminUser,
+        fullName: adminUsersEditFullName.trim() || null,
+        agencyNumber: adminUsersEditAgencyNumber.trim() || null,
+        ico: normalizeIcoInput(adminUsersEditIco) || null,
+        phoneNumber: adminUsersEditPhoneNumber.trim() || null,
+        accountType: adminUsersEditAccountType || null,
+      }
+    : null;
+  const selectedAdminUserMissingItems = selectedAdminUserDraft
+    ? buildAdminUserMissingItems(selectedAdminUserDraft)
+    : [];
 
   return (
     <AppLayout active="admin">
@@ -1787,6 +1899,329 @@ export default function AdminRequestsPage() {
               </button>
             </div>
           </section>
+        </div>
+      ) : null}
+      {selectedAdminUser ? (
+        <div
+          className="fixed inset-0 z-[92] flex items-center justify-center px-3 py-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Detail uživatele"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm"
+            aria-label="Zavřít detail uživatele"
+            onClick={handleCancelAdminUserEdit}
+          />
+          <form
+            className="relative max-h-[calc(100vh-2rem)] w-full max-w-5xl overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-[0_34px_92px_rgba(15,23,42,0.34)]"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSaveAdminUser(selectedAdminUser);
+            }}
+          >
+            <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f766e_0%,#2563eb_55%,#7c3aed_100%)]" />
+            <div className="grid gap-0 lg:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.55fr)]">
+              <aside className="relative overflow-hidden bg-slate-950 px-5 py-5 text-white sm:px-6">
+                <button
+                  type="button"
+                  onClick={handleCancelAdminUserEdit}
+                  className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/14 bg-white/[0.08] text-white transition hover:bg-white/[0.14]"
+                  aria-label="Zavřít detail"
+                >
+                  <X size={16} strokeWidth={2.2} aria-hidden="true" />
+                </button>
+
+                <div className="pr-10">
+                  <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-white/18 bg-white text-xl font-bold text-slate-950">
+                    {(selectedAdminUser.fullName || selectedAdminUser.email).charAt(0).toUpperCase()}
+                  </span>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                        selectedAdminUserMissingItems.length === 0
+                          ? "border-emerald-300/45 bg-emerald-400/16 text-emerald-100"
+                          : "border-amber-300/45 bg-amber-400/16 text-amber-100"
+                      }`}
+                    >
+                      {selectedAdminUserMissingItems.length === 0 ? (
+                        <CheckCircle2 size={13} strokeWidth={2.4} aria-hidden="true" />
+                      ) : (
+                        <AlertTriangle size={13} strokeWidth={2.4} aria-hidden="true" />
+                      )}
+                      {selectedAdminUserMissingItems.length === 0
+                        ? "OK"
+                        : `K doplnění ${selectedAdminUserMissingItems.length}`}
+                    </span>
+                    <span className="rounded-full border border-white/14 bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-slate-100">
+                      {formatAccountTypeLabel(adminUsersEditAccountType || selectedAdminUser.accountType)}
+                    </span>
+                  </div>
+                  <h2 className="mt-4 break-words text-2xl font-bold leading-tight text-white">
+                    {selectedAdminUser.fullName || nameFromEmail(selectedAdminUser.email)}
+                  </h2>
+                  <p className="mt-1 break-all text-sm font-semibold text-slate-300">
+                    {selectedAdminUser.email}
+                  </p>
+                </div>
+
+                <div className="mt-5 space-y-2">
+                  {selectedAdminUserMissingItems.length > 0 ? (
+                    selectedAdminUserMissingItems.map((item) => (
+                      <div
+                        key={item.key}
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-amber-300/22 bg-amber-300/10 px-3 py-2 text-sm font-semibold text-amber-50"
+                      >
+                        <span>{item.label}</span>
+                        <span className="rounded-full bg-amber-200/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em]">
+                          Chybí
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-2xl border border-emerald-300/22 bg-emerald-300/10 px-3 py-3 text-sm font-semibold text-emerald-50">
+                      <CheckCircle2 size={16} strokeWidth={2.3} aria-hidden="true" />
+                      Profil má vyplněné hlavní údaje.
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5 grid gap-2 text-xs text-slate-300">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2">
+                    <span className="block font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      Auth
+                    </span>
+                    <span className="mt-1 block text-slate-100">
+                      {selectedAdminUser.disabled ? "Deaktivovaný" : "Aktivní"} ·{" "}
+                      {selectedAdminUser.emailVerified ? "E-mail ověřen" : "E-mail neověřen"}
+                    </span>
+                  </div>
+                </div>
+              </aside>
+
+              <div className="px-5 py-5 sm:px-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
+                      Profil uživatele
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Upravitelné kontaktní a identifikační údaje.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCancelAdminUserEdit}
+                      disabled={adminUsersSavingEmail === selectedAdminUser.email}
+                      className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <X size={15} strokeWidth={2.2} aria-hidden="true" />
+                      Zavřít
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={adminUsersSavingEmail === selectedAdminUser.email}
+                      className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {adminUsersSavingEmail === selectedAdminUser.email ? (
+                        <Loader2 size={15} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Save size={15} strokeWidth={2.2} aria-hidden="true" />
+                      )}
+                      Uložit
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-1.5">
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      <UserRound size={13} strokeWidth={2.2} aria-hidden="true" />
+                      Jméno / název
+                    </span>
+                    <input
+                      type="text"
+                      value={adminUsersEditFullName}
+                      onChange={(event) => setAdminUsersEditFullName(event.target.value)}
+                      className={fieldClass}
+                      placeholder="Jméno a příjmení"
+                      maxLength={120}
+                    />
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      <UserPlus size={13} strokeWidth={2.2} aria-hidden="true" />
+                      Typ účtu
+                    </span>
+                    <select
+                      value={adminUsersEditAccountType}
+                      onChange={(event) =>
+                        setAdminUsersEditAccountType(
+                          event.target.value as AdminUsersAccountTypeDraft
+                        )
+                      }
+                      className={fieldClass}
+                    >
+                      <option value="">Bez typu účtu</option>
+                      <option value="advisor">Vázaný zástupce</option>
+                      <option value="tipster">Tipař</option>
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      <IdCard size={13} strokeWidth={2.2} aria-hidden="true" />
+                      Agenturní číslo
+                    </span>
+                    <input
+                      type="text"
+                      value={adminUsersEditAgencyNumber}
+                      onChange={(event) => setAdminUsersEditAgencyNumber(event.target.value)}
+                      className={fieldClass}
+                      placeholder="Volitelné"
+                      maxLength={NEW_USER_AGENCY_NUMBER_MAX_LEN}
+                    />
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      <Building2 size={13} strokeWidth={2.2} aria-hidden="true" />
+                      IČO
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={adminUsersEditIco}
+                      onChange={(event) => setAdminUsersEditIco(normalizeIcoInput(event.target.value))}
+                      className={fieldClass}
+                      placeholder="12345678"
+                      maxLength={ADMIN_USER_ICO_MAX_LEN}
+                    />
+                  </label>
+
+                  <label className="space-y-1.5 sm:col-span-2">
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      <PhoneCall size={13} strokeWidth={2.2} aria-hidden="true" />
+                      Telefon
+                    </span>
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      value={adminUsersEditPhoneNumber}
+                      onChange={(event) =>
+                        setAdminUsersEditPhoneNumber(
+                          event.target.value.slice(0, ADMIN_USER_PHONE_MAX_LEN)
+                        )
+                      }
+                      className={fieldClass}
+                      placeholder="777 123 456"
+                      maxLength={ADMIN_USER_PHONE_MAX_LEN}
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {[
+                    {
+                      label: selectedAdminUser.accountType === "tipster" ? "Příjemce tipů" : "Nadřízený",
+                      value:
+                        selectedAdminUser.accountType === "tipster"
+                          ? selectedAdminUser.tipRecipientEmail
+                          : selectedAdminUser.managerEmail,
+                    },
+                    {
+                      label: "Pozice",
+                      value: formatPositionLabel(selectedAdminUser.position) || "—",
+                    },
+                    {
+                      label: "Provizní režim",
+                      value:
+                        COMMISSION_MODES.find((mode) => mode.id === selectedAdminUser.commissionMode)
+                          ?.label ??
+                        selectedAdminUser.commissionMode ??
+                        "—",
+                    },
+                    {
+                      label: "Dokončení setupu",
+                      value: formatAuthDateTime(selectedAdminUser.accountSetupCompletedAt),
+                    },
+                    {
+                      label: "Vytvořen",
+                      value: formatAuthDateTime(selectedAdminUser.createdAt),
+                    },
+                    {
+                      label: "Poslední přihlášení",
+                      value: formatAuthDateTime(selectedAdminUser.lastSignInAt),
+                    },
+                    {
+                      label: "Veřejný profil",
+                      value: selectedAdminUser.profileExists ? "Ano" : "Ne",
+                    },
+                    {
+                      label: "Soukromý profil",
+                      value: selectedAdminUser.privateProfileExists ? "Ano" : "Ne",
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
+                    >
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        {item.label}
+                      </div>
+                      <div className="mt-1 break-words text-sm font-semibold text-slate-900">
+                        {item.value || "—"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {selectedAdminUser.positionTimeline.length > 0 ? (
+                  <div className="mt-5 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                    <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
+                      <BriefcaseBusiness size={13} strokeWidth={2.2} aria-hidden="true" />
+                      Kariérní historie
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {selectedAdminUser.positionTimeline.slice(0, 6).map((row) => (
+                        <div
+                          key={row.id}
+                          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                        >
+                          <div className="font-semibold text-slate-900">
+                            {formatPositionLabel(row.position) || row.position}
+                          </div>
+                          <div className="mt-0.5 text-xs text-slate-500">
+                            {formatIsoDay(row.validFrom)} - {formatIsoDay(row.validTo)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {isOwnerAdmin ? (
+                  <div className="mt-5 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAdminUserDelete(selectedAdminUser)}
+                      disabled={
+                        normalizeEmail(currentUser?.email) === selectedAdminUser.email ||
+                        Boolean(adminUsersSavingEmail)
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Trash2 size={15} strokeWidth={2.2} aria-hidden="true" />
+                      Smazat uživatele
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </form>
         </div>
       ) : null}
       <div className="w-full max-w-[1200px] space-y-6 px-2 pb-8 sm:px-4">
@@ -2677,7 +3112,7 @@ export default function AdminRequestsPage() {
                   <span>Uživatelé</span>
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Uprav jméno a příjmení / název, agenturní číslo nebo smaž účet z Auth a profilů.
+                  Karty zvýrazňují hlavně chybějící údaje. Kliknutím otevřeš detail a editaci.
                 </p>
               </div>
               <button
@@ -2704,15 +3139,15 @@ export default function AdminRequestsPage() {
               </div>
               <div className="rounded-2xl border border-emerald-700 bg-emerald-600 px-3 py-3 shadow-[0_10px_22px_rgba(5,150,105,0.28)]">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-50">
-                  Poradci
+                  OK
                 </div>
-                <div className="mt-2 text-2xl font-bold text-white">{adminUsersStats.advisors}</div>
+                <div className="mt-2 text-2xl font-bold text-white">{adminUsersStats.complete}</div>
               </div>
-              <div className="rounded-2xl border border-violet-700 bg-violet-600 px-3 py-3 shadow-[0_10px_22px_rgba(124,58,237,0.26)]">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-50">
-                  Tipaři
+              <div className="rounded-2xl border border-amber-700 bg-amber-500 px-3 py-3 shadow-[0_10px_22px_rgba(245,158,11,0.24)]">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-50">
+                  K doplnění
                 </div>
-                <div className="mt-2 text-2xl font-bold text-white">{adminUsersStats.tipsters}</div>
+                <div className="mt-2 text-2xl font-bold text-white">{adminUsersStats.incomplete}</div>
               </div>
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 shadow-[0_8px_18px_rgba(245,158,11,0.12)]">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">
@@ -2741,7 +3176,7 @@ export default function AdminRequestsPage() {
                   className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 shadow-[0_6px_14px_rgba(15,23,42,0.05)] outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10"
                   value={adminUsersSearch}
                   onChange={(event) => setAdminUsersSearch(event.target.value)}
-                  placeholder="Hledat jméno, e-mail, agenturní číslo nebo nadřízeného..."
+                  placeholder="Hledat jméno, e-mail, IČO, telefon nebo chybějící položku..."
                 />
               </label>
 
@@ -2777,31 +3212,45 @@ export default function AdminRequestsPage() {
                 </div>
               ) : (
                 filteredAdminUsersRows.map((row) => {
-                  const editing = adminUsersEditingEmail === row.email;
                   const title = row.fullName || nameFromEmail(row.email);
                   const avatarInitial = (title.trim().charAt(0) || row.email.charAt(0)).toUpperCase();
-                  const saving = adminUsersSavingEmail === row.email;
                   const isCurrentUser = normalizeEmail(currentUser?.email) === row.email;
-                  const effectiveAccountType = editing ? adminUsersEditAccountType : row.accountType;
-                  const accountTypeLabel = formatAccountTypeLabel(effectiveAccountType);
+                  const accountTypeLabel = formatAccountTypeLabel(row.accountType);
                   const positionLabel = formatPositionLabel(row.position);
-                  const relationLabel =
-                    effectiveAccountType === "tipster" ? "Příjemce tipů" : "Nadřízený";
-                  const relationEmail =
-                    effectiveAccountType === "tipster" ? row.tipRecipientEmail : row.managerEmail;
-                  const relationDisplayName = relationEmail
-                    ? adminUsersNameByEmail.get(normalizeEmail(relationEmail)) || relationEmail
-                    : null;
+                  const missingItems = buildAdminUserMissingItems(row);
+                  const complete = missingItems.length === 0;
 
                   return (
                     <article
                       key={row.uid || row.email}
-                      className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleStartAdminUserEdit(row)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        handleStartAdminUserEdit(row);
+                      }}
+                      className={`group relative w-full overflow-hidden rounded-3xl border bg-white p-4 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-[1px] hover:shadow-[0_16px_30px_rgba(15,23,42,0.1)] ${
+                        complete ? "border-emerald-200" : "border-amber-200"
+                      }`}
                     >
-                      <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f766e_0%,#2563eb_55%,#7c3aed_100%)]" />
+                      <span
+                        className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${
+                          complete
+                            ? "bg-[linear-gradient(90deg,#059669_0%,#22c55e_100%)]"
+                            : "bg-[linear-gradient(90deg,#f59e0b_0%,#ef4444_100%)]"
+                        }`}
+                      />
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="flex min-w-0 items-start gap-3">
-                          <span className="mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sky-200 bg-sky-50 text-sm font-bold text-sky-700">
+                          <span
+                            className={`mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm font-bold ${
+                              complete
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-amber-200 bg-amber-50 text-amber-700"
+                            }`}
+                          >
                             {avatarInitial}
                           </span>
                           <div className="min-w-0">
@@ -2811,15 +3260,15 @@ export default function AdminRequestsPage() {
                               </span>
                               <span
                                 className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                                  effectiveAccountType === "tipster"
+                                  row.accountType === "tipster"
                                     ? "border-violet-200 bg-violet-50 text-violet-700"
-                                    : effectiveAccountType === "advisor"
+                                    : row.accountType === "advisor"
                                       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                                       : "border-slate-200 bg-slate-50 text-slate-600"
                                 }`}
                               >
-                                {accountTypeLabel}
-                              </span>
+                                  {accountTypeLabel}
+                                </span>
                               {positionLabel ? (
                                 <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
                                   {positionLabel}
@@ -2827,141 +3276,103 @@ export default function AdminRequestsPage() {
                               ) : null}
                             </div>
                             <div className="truncate text-sm text-slate-500">{row.email}</div>
-                            {row.disabled || !row.profileExists ? (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                              {row.disabled ? (
-                                <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                                  Deaktivovaný
-                                </span>
-                              ) : null}
-                              {!row.profileExists ? (
-                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                                  Bez veřejného profilu
-                                </span>
-                              ) : null}
-                              </div>
-                            ) : null}
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-2 lg:justify-end">
-                          {editing ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => void handleSaveAdminUser(row)}
-                                disabled={saving}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-600 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {saving ? (
-                                  <Loader2 size={14} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
-                                ) : (
-                                  <Save size={14} strokeWidth={2.2} aria-hidden="true" />
-                                )}
-                                Uložit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleCancelAdminUserEdit}
-                                disabled={saving}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                <X size={14} strokeWidth={2.2} aria-hidden="true" />
-                                Zrušit
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleStartAdminUserEdit(row)}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                              >
-                                <Pencil size={14} strokeWidth={2.2} aria-hidden="true" />
-                                Upravit
-                              </button>
-                              {isOwnerAdmin ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenAdminUserDelete(row)}
-                                  disabled={isCurrentUser}
-                                  className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                  title={isCurrentUser ? "Vlastní účet nejde smazat." : undefined}
-                                >
-                                  <Trash2 size={14} strokeWidth={2.2} aria-hidden="true" />
-                                  Smazat
-                                </button>
-                              ) : null}
-                            </>
-                          )}
+                        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                              complete
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-amber-200 bg-amber-50 text-amber-800"
+                            }`}
+                          >
+                            {complete ? (
+                              <CheckCircle2 size={14} strokeWidth={2.4} aria-hidden="true" />
+                            ) : (
+                              <AlertTriangle size={14} strokeWidth={2.4} aria-hidden="true" />
+                            )}
+                            {complete ? "OK" : `K doplnění ${missingItems.length}`}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition group-hover:border-slate-300 group-hover:text-slate-900">
+                            <Pencil size={13} strokeWidth={2.2} aria-hidden="true" />
+                            Detail
+                          </span>
+                          {isOwnerAdmin ? (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleOpenAdminUserDelete(row);
+                              }}
+                              disabled={isCurrentUser}
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                                isCurrentUser
+                                  ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
+                                  : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                              }`}
+                              title={isCurrentUser ? "Vlastní účet nejde smazat." : undefined}
+                            >
+                              <Trash2 size={13} strokeWidth={2.2} aria-hidden="true" />
+                              Smazat
+                            </button>
+                          ) : null}
                         </div>
                       </div>
 
-                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <label className="space-y-1.5">
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            <IdCard size={11} strokeWidth={2.2} aria-hidden="true" />
+                      <div className="mt-4">
+                        {complete ? (
+                          <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+                            <CheckCircle2 size={15} strokeWidth={2.4} aria-hidden="true" />
+                            Hlavní profilové údaje jsou vyplněné.
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {missingItems.map((item) => (
+                              <span
+                                key={item.key}
+                                className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800"
+                              >
+                                <AlertTriangle size={12} strokeWidth={2.3} aria-hidden="true" />
+                                {item.label}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            IČO
+                          </span>
+                          <span className="mt-0.5 block font-semibold text-slate-900">
+                            {row.ico || "—"}
+                          </span>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                             Agenturní číslo
                           </span>
-                          {editing ? (
-                            <input
-                              type="text"
-                              value={adminUsersEditAgencyNumber}
-                              onChange={(event) => setAdminUsersEditAgencyNumber(event.target.value)}
-                              className={fieldClass}
-                              placeholder="Volitelné"
-                              maxLength={NEW_USER_AGENCY_NUMBER_MAX_LEN}
-                            />
-                          ) : (
-                            <div className="min-h-[42px] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900">
-                              {row.agencyNumber || "—"}
-                            </div>
-                          )}
-                        </label>
-
-                        <label className="space-y-1.5">
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            <UserPlus size={11} strokeWidth={2.2} aria-hidden="true" />
-                            Typ účtu
+                          <span className="mt-0.5 block font-semibold text-slate-900">
+                            {row.agencyNumber || "—"}
                           </span>
-                          {editing ? (
-                            <select
-                              value={adminUsersEditAccountType}
-                              onChange={(event) =>
-                                setAdminUsersEditAccountType(
-                                  event.target.value as AdminUsersAccountTypeDraft
-                                )
-                              }
-                              className={fieldClass}
-                            >
-                              <option value="">Bez typu účtu</option>
-                              <option value="advisor">Vázaný zástupce</option>
-                              <option value="tipster">Tipař</option>
-                            </select>
-                          ) : (
-                            <div className="min-h-[42px] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900">
-                              {accountTypeLabel}
-                            </div>
-                          )}
-                        </label>
-
-                        <div className="space-y-1.5">
-                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            {relationLabel}
-                          </span>
-                          <div className="min-h-[42px] truncate rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900">
-                            {relationDisplayName || "—"}
-                          </div>
                         </div>
-
-                        <div className="space-y-1.5">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
                           <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            Vytvořen / přihlášení
+                            Telefon
                           </span>
-                          <div className="min-h-[42px] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-900">
-                            <div>{formatAuthDateTime(row.createdAt)}</div>
-                            <div className="mt-0.5 text-slate-500">{formatAuthDateTime(row.lastSignInAt)}</div>
-                          </div>
+                          <span className="mt-0.5 block font-semibold text-slate-900">
+                            {row.phoneNumber || "—"}
+                          </span>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Přihlášení
+                          </span>
+                          <span className="mt-0.5 block font-semibold text-slate-900">
+                            {formatAuthDateTime(row.lastSignInAt)}
+                          </span>
                         </div>
                       </div>
                     </article>

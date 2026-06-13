@@ -790,6 +790,7 @@ const USER_REQUEST_FULL_NAME_MAX_LEN = 120;
 const USER_REQUEST_AGENCY_NUMBER_MAX_LEN = 80;
 const AGENCY_NUMBER_MAX_LEN = 80;
 const PHONE_NUMBER_MAX_LEN = 40;
+const PROFILE_ICO_MAX_LEN = 8;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -950,6 +951,7 @@ export default function SettingsPage() {
   const [position, setPosition] = useState<Position>("manazer7");
   const [mode, setMode] = useState<CommissionMode>("accelerated");
   const [agencyNumber, setAgencyNumber] = useState("");
+  const [ico, setIco] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileStatus, setProfileStatus] = useState<InlineStatus | null>(null);
@@ -1320,6 +1322,11 @@ export default function SettingsPage() {
           }
 
           setAgencyNumber(typeof data.agencyNumber === "string" ? data.agencyNumber.trim() : "");
+          setIco(
+            typeof data.ico === "string"
+              ? data.ico.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN)
+              : ""
+          );
           setPhoneNumber(typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "");
           setProfileStatus(null);
 
@@ -1730,11 +1737,19 @@ export default function SettingsPage() {
 
   const handleSaveProfile = async () => {
     const nextAgencyNumber = agencyNumber.trim();
+    const nextIco = ico.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN);
     const nextPhoneNumber = phoneNumber.trim();
     if (nextAgencyNumber.length > AGENCY_NUMBER_MAX_LEN) {
       setProfileStatus({
         type: "error",
         message: `Agenturní číslo může mít maximálně ${AGENCY_NUMBER_MAX_LEN} znaků.`,
+      });
+      return;
+    }
+    if (nextIco && nextIco.length !== PROFILE_ICO_MAX_LEN) {
+      setProfileStatus({
+        type: "error",
+        message: `IČO musí mít ${PROFILE_ICO_MAX_LEN} číslic.`,
       });
       return;
     }
@@ -1751,6 +1766,7 @@ export default function SettingsPage() {
     try {
       const saved = await saveUserFields({
         agencyNumber: nextAgencyNumber,
+        ico: nextIco,
         phoneNumber: nextPhoneNumber,
       });
       if (!saved.ok) {
@@ -1758,6 +1774,7 @@ export default function SettingsPage() {
         return;
       }
       setAgencyNumber(nextAgencyNumber);
+      setIco(nextIco);
       setPhoneNumber(nextPhoneNumber);
       setProfileStatus({
         type: "success",
@@ -2855,6 +2872,7 @@ export default function SettingsPage() {
     : "Profil uživatele";
   const profileInitial = profileDisplayName.trim().charAt(0).toUpperCase() || "P";
   const profileAgencyNumberFilled = agencyNumber.trim().length > 0;
+  const profileIcoFilled = ico.trim().length > 0;
   const profilePhoneFilled = phoneNumber.trim().length > 0;
   const mfaIssuer = "Bohemka.App";
   const mfaAccountName = normalizedUserEmail || userEmail;
@@ -3554,6 +3572,10 @@ export default function SettingsPage() {
                         <span>{profileAgencyNumberFilled ? "Agenturní číslo vyplněno" : "Chybí agenturní číslo"}</span>
                       </div>
                       <div className="flex items-center gap-2 rounded-2xl border border-white/12 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-slate-100">
+                        <Building2 size={14} strokeWidth={2} className="shrink-0 text-cyan-200" aria-hidden="true" />
+                        <span>{profileIcoFilled ? "IČO vyplněno" : "Chybí IČO"}</span>
+                      </div>
+                      <div className="flex items-center gap-2 rounded-2xl border border-white/12 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-slate-100">
                         <PhoneCall size={14} strokeWidth={2} className="shrink-0 text-sky-200" aria-hidden="true" />
                         <span>{profilePhoneFilled ? "Telefon uložen" : "Chybí telefon"}</span>
                       </div>
@@ -3629,7 +3651,36 @@ export default function SettingsPage() {
                         </div>
                       </div>
 
-                      <div className="space-y-2 lg:col-span-2">
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                          IČO
+                        </label>
+                        <div className="relative">
+                          <Building2
+                            size={15}
+                            strokeWidth={2}
+                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                            aria-hidden="true"
+                          />
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            className={`${fieldClass} min-h-[48px] pl-9 pr-4`}
+                            value={ico}
+                            onChange={(event) => {
+                              setIco(
+                                event.target.value.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN)
+                              );
+                              setProfileStatus(null);
+                            }}
+                            placeholder="12345678"
+                            maxLength={PROFILE_ICO_MAX_LEN}
+                            disabled={profileSaving}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
                         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
                           Tel. číslo
                         </label>

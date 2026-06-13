@@ -15,6 +15,8 @@ const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
 const AUTH_LIST_USERS_LIMIT = 1000;
 const FULL_NAME_MAX_LEN = 120;
 const AGENCY_NUMBER_MAX_LEN = 80;
+const PHONE_NUMBER_MAX_LEN = 40;
+const PROFILE_ICO_MAX_LEN = 8;
 type AccountType = "advisor" | "tipster";
 const ACCOUNT_TYPE_SET = new Set<AccountType>(["advisor", "tipster"]);
 
@@ -25,11 +27,20 @@ type AdminUsersRow = {
   email: string;
   fullName: string | null;
   agencyNumber: string | null;
+  ico: string | null;
+  phoneNumber: string | null;
   position: string | null;
+  positionTimeline: Array<{
+    id: string;
+    position: string;
+    validFrom: string;
+    validTo: string | null;
+  }>;
   accountType: string | null;
   managerEmail: string | null;
   tipRecipientEmail: string | null;
   commissionMode: string | null;
+  accountSetupCompletedAt: string | null;
   disabled: boolean;
   emailVerified: boolean;
   createdAt: string | null;
@@ -59,8 +70,37 @@ const normalizeOptionalText = (value: unknown, maxLen: number): string | null =>
   return trimmed;
 };
 
+const normalizeOptionalIco = (value: unknown): string | null => {
+  if (value == null) return "";
+  if (typeof value !== "string") return null;
+  const digits = value.replace(/\D+/g, "");
+  if (digits.length > PROFILE_ICO_MAX_LEN) return null;
+  if (digits.length > 0 && digits.length !== PROFILE_ICO_MAX_LEN) return null;
+  return digits;
+};
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function sanitizePositionTimeline(value: unknown): AdminUsersRow["positionTimeline"] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((raw, index) => {
+      if (!isPlainObject(raw)) return null;
+      const position = normalizeText(raw.position);
+      const validFrom = normalizeText(raw.validFrom);
+      const validTo = normalizeText(raw.validTo);
+      if (!position || !validFrom) return null;
+      return {
+        id: normalizeText(raw.id) || `timeline-${index}`,
+        position,
+        validFrom,
+        validTo: validTo || null,
+      };
+    })
+    .filter((row): row is AdminUsersRow["positionTimeline"][number] => Boolean(row));
 }
 
 async function listAllAuthUsers(): Promise<UserRecord[]> {
@@ -127,26 +167,34 @@ function serializeUser(authUser: UserRecord, summary: ProfileSummary | undefined
 
   const publicData = summary?.publicData ?? {};
   const privateData = summary?.privateData ?? {};
+  const mergedData = {
+    ...publicData,
+    ...privateData,
+  };
   const fullName =
-    normalizeText(publicData.fullName) ||
-    normalizeText(publicData.name) ||
+    normalizeText(mergedData.fullName) ||
+    normalizeText(mergedData.name) ||
     normalizeText(authUser.displayName) ||
     null;
   const accountType =
-    normalizeText(publicData.accountType) ||
-    normalizeText(publicData.userRole) ||
+    normalizeText(mergedData.accountType) ||
+    normalizeText(mergedData.userRole) ||
     null;
 
   return {
     uid: authUser.uid,
     email,
     fullName,
-    agencyNumber: normalizeText(publicData.agencyNumber) || null,
-    position: normalizeText(publicData.position) || null,
+    agencyNumber: normalizeText(mergedData.agencyNumber) || null,
+    ico: normalizeText(mergedData.ico).replace(/\D+/g, "") || null,
+    phoneNumber: normalizeText(mergedData.phoneNumber) || null,
+    position: normalizeText(mergedData.position) || null,
+    positionTimeline: sanitizePositionTimeline(mergedData.positionTimeline),
     accountType,
-    managerEmail: normalizeEmail(publicData.managerEmail) || null,
-    tipRecipientEmail: normalizeEmail(publicData.tipRecipientEmail) || null,
-    commissionMode: normalizeText(publicData.commissionMode) || null,
+    managerEmail: normalizeEmail(mergedData.managerEmail) || null,
+    tipRecipientEmail: normalizeEmail(mergedData.tipRecipientEmail) || null,
+    commissionMode: normalizeText(mergedData.commissionMode) || null,
+    accountSetupCompletedAt: normalizeText(mergedData.accountSetupCompletedAt) || null,
     disabled: authUser.disabled,
     emailVerified: authUser.emailVerified,
     createdAt: authUser.metadata.creationTime || null,
@@ -282,6 +330,20 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
+    const icoRaw = normalizeOptionalIco(body.ico);
+    if (icoRaw == null) {
+      return NextResponse.json(
+        { ok: false, error: `IČO musí mít ${PROFILE_ICO_MAX_LEN} číslic.` } satisfies ApiError,
+        { status: 400 }
+      );
+    }
+    const phoneNumberRaw = normalizeOptionalText(body.phoneNumber, PHONE_NUMBER_MAX_LEN);
+    if (phoneNumberRaw == null) {
+      return NextResponse.json(
+        { ok: false, error: `Telefonní číslo může mít maximálně ${PHONE_NUMBER_MAX_LEN} znaků.` } satisfies ApiError,
+        { status: 400 }
+      );
+    }
     const hasAccountTypePatch = Object.prototype.hasOwnProperty.call(body, "accountType");
     const accountTypeRaw =
       hasAccountTypePatch && typeof body.accountType === "string"
@@ -335,6 +397,16 @@ export async function PATCH(req: NextRequest) {
     } else {
       patch.agencyNumber = FieldValue.delete();
     }
+    if (icoRaw) {
+      patch.ico = icoRaw;
+    } else {
+      patch.ico = FieldValue.delete();
+    }
+    if (phoneNumberRaw) {
+      patch.phoneNumber = phoneNumberRaw;
+    } else {
+      patch.phoneNumber = FieldValue.delete();
+    }
     if (hasAccountTypePatch) {
       if (accountTypeRaw) {
         const accountType = accountTypeRaw as AccountType;
@@ -365,6 +437,8 @@ export async function PATCH(req: NextRequest) {
         uid: authUser?.uid ?? "",
         fullName,
         agencyNumber: agencyNumberRaw || null,
+        ico: icoRaw || null,
+        phoneNumber: phoneNumberRaw || null,
         accountType: accountTypeRaw || null,
       },
     });

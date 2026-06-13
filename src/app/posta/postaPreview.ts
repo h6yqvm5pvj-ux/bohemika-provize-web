@@ -369,7 +369,7 @@ const buildTipsterTipPreviewHtml = ({
             background:
               radial-gradient(circle at 16% 8%, rgba(168, 85, 247, 0.18), transparent 34%),
               linear-gradient(180deg, #22143c 0%, #12091f 52%, #0b0615 100%);
-            font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
             font-weight: 400;
             color: #f8fafc;
           }
@@ -680,7 +680,7 @@ const buildSharedPlanPreviewHtml = (item: MailboxItem): string | null => {
             margin: 0;
             padding: 24px;
             background: linear-gradient(155deg, #edf3fb 0%, #f8fbff 55%, #eef4fc 100%);
-            font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
             color: #10213d;
           }
           .page {
@@ -902,7 +902,7 @@ const buildSharedExportPreviewHtml = (item: MailboxItem): string | null => {
             margin: 0;
             padding: 24px;
             background: linear-gradient(155deg, #edf3fb 0%, #f8fbff 55%, #eef4fc 100%);
-            font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
             color: #10213d;
           }
           .page {
@@ -1090,9 +1090,6 @@ const buildDirectMessagePreviewHtml = (item: MailboxItem): string | null => {
   const directionLabel = isSent ? "Odeslaná zpráva" : "Přijatá zpráva";
   const counterpartName = isSent ? recipientNameRaw : senderNameRaw;
   const counterpartEmail = isSent ? recipientEmail : senderEmail;
-  const secondaryLabel = isSent ? "Odeslal" : "Komu";
-  const secondaryName = isSent ? senderNameRaw : recipientNameRaw;
-  const secondaryEmail = isSent ? senderEmail : recipientEmail;
   const initials =
     counterpartName
       .split(/\s+/)
@@ -1100,6 +1097,9 @@ const buildDirectMessagePreviewHtml = (item: MailboxItem): string | null => {
       .join("")
       .slice(0, 2)
       .toUpperCase() || "Z";
+  const createdAtLabel = formatDateTime(item.createdAtMs);
+  const counterpartRoleLabel = isSent ? "Příjemce" : "Odesílatel";
+  const ownRoleLabel = isSent ? "Odesílatel" : "Příjemce";
   const attachmentHtml =
     attachments.length > 0
       ? `<section class="section attachments-section">
@@ -1116,7 +1116,7 @@ const buildDirectMessagePreviewHtml = (item: MailboxItem): string | null => {
                   ? `<span class="attachment-preview"><img src="${escapeHtml(file.url)}" alt="${escapeHtml(
                       file.name
                     )}" /></span>`
-                  : `<span class="attachment-icon">📎</span>`;
+                  : `<span class="attachment-icon">${tipPreviewIcon("paperclip")}</span>`;
                 return `<a class="attachment-card" href="${escapeHtml(
                   file.url
                 )}" target="_blank" rel="noreferrer noopener">
@@ -1138,116 +1138,144 @@ const buildDirectMessagePreviewHtml = (item: MailboxItem): string | null => {
         <meta charset="utf-8" />
         <style>
           * { box-sizing: border-box; }
+          html {
+            min-height: 100%;
+            background: #f8fafc;
+          }
           body {
             margin: 0;
-            padding: 28px;
+            min-height: 100vh;
+            padding: 24px;
             background:
-              radial-gradient(circle at 16% 9%, rgba(59, 130, 246, 0.13), transparent 30%),
-              linear-gradient(155deg, #edf3fb 0%, #f8fbff 55%, #eef4fc 100%);
-            font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+              linear-gradient(180deg, rgba(248, 250, 252, 0.96) 0%, rgba(241, 245, 249, 0.96) 48%, rgba(238, 242, 255, 0.98) 100%);
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
             color: #10213d;
           }
           .page {
-            max-width: 900px;
+            display: flex;
+            min-height: calc(100vh - 48px);
+            max-width: 960px;
+            flex-direction: column;
+            overflow: hidden;
             margin: 0 auto;
             border-radius: 28px;
             border: 1px solid #d8e2f0;
-            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-            box-shadow: 0 28px 72px rgba(16, 33, 61, 0.18);
-            padding: 24px;
+            background: #ffffff;
+            box-shadow: 0 26px 68px rgba(15, 23, 42, 0.16);
+          }
+          .hero {
+            position: relative;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 268px;
+            gap: 22px;
+            align-items: start;
+            padding: 26px 28px;
+            color: #ffffff;
+            background: linear-gradient(135deg, #2e1065 0%, #7c3aed 52%, #2563eb 100%);
+          }
+          .hero::after {
+            content: "";
+            position: absolute;
+            inset: auto 28px 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.48), transparent);
+          }
+          .title-block {
+            position: relative;
+            z-index: 1;
+            min-width: 0;
           }
           .pill {
             display: inline-flex;
             align-items: center;
             width: fit-content;
             border-radius: 999px;
-            border: 1px solid #ccd9ec;
-            background: #f4f8ff;
-            color: #26406e;
-            padding: 5px 12px;
-            font-size: 10px;
-            letter-spacing: 0.08em;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            background: rgba(255, 255, 255, 0.1);
+            color: #ede9fe;
+            padding: 6px 13px;
+            font-size: 11px;
+            letter-spacing: 0.12em;
             text-transform: uppercase;
-            font-weight: 700;
-          }
-          .hero {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 18px;
-            align-items: start;
-          }
-          .title-block {
-            min-width: 0;
+            font-weight: 850;
           }
           h1 {
-            margin: 12px 0 6px;
-            font-size: 42px;
-            line-height: 0.98;
-            color: #112347;
-            font-weight: 800;
+            margin: 13px 0 9px;
+            color: #ffffff;
+            font-size: 38px;
+            line-height: 1.02;
+            font-weight: 900;
+            letter-spacing: 0;
             overflow-wrap: anywhere;
           }
           .meta {
             font-size: 13px;
-            color: #4b5f83;
+            color: rgba(237, 233, 254, 0.8);
+          }
+          .meta strong {
+            color: #ffffff;
           }
           .identity {
-            min-width: 210px;
-            border-radius: 18px;
-            border: 1px solid #d8e2f0;
-            background: linear-gradient(155deg, #f8fbff 0%, #eef5ff 100%);
-            padding: 12px;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.86);
+            position: relative;
+            z-index: 1;
+            min-width: 0;
+            border-radius: 22px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(255, 255, 255, 0.11);
+            padding: 15px;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
           }
           .identity-top {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
           }
           .avatar {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 42px;
-            height: 42px;
-            border-radius: 15px;
-            background: linear-gradient(135deg, #1d4ed8 0%, #7c3aed 100%);
+            width: 54px;
+            height: 54px;
+            flex: 0 0 auto;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.16);
             color: white;
-            font-size: 14px;
-            font-weight: 800;
-            box-shadow: 0 12px 28px rgba(37, 99, 235, 0.24);
+            font-size: 18px;
+            font-weight: 900;
+            box-shadow: 0 14px 30px rgba(15, 23, 42, 0.2);
           }
           .identity-name {
             min-width: 0;
-            color: #13284d;
-            font-size: 14px;
-            font-weight: 800;
+            color: #ffffff;
+            font-size: 17px;
+            font-weight: 900;
             overflow-wrap: anywhere;
           }
           .identity-email {
-            margin-top: 2px;
-            color: #5f7494;
-            font-size: 11px;
+            margin-top: 3px;
+            color: rgba(237, 233, 254, 0.72);
+            font-size: 12px;
             overflow-wrap: anywhere;
           }
           .meta-grid {
-            margin-top: 14px;
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            border-bottom: 1px solid #e2e8f0;
           }
           .meta-card {
-            border-radius: 16px;
-            border: 1px solid #cfdced;
-            background: #f8fbff;
-            padding: 10px 12px;
+            min-height: 112px;
+            border-right: 1px solid #e2e8f0;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            padding: 17px 18px;
+          }
+          .meta-card:last-child {
+            border-right: 0;
           }
           .section {
-            margin-top: 14px;
-            border-radius: 20px;
-            border: 1px solid #cfdced;
-            background: linear-gradient(170deg, #ffffff 0%, #f8fbff 100%);
-            padding: 16px;
+            border-radius: 24px;
+            border: 1px solid #d4deec;
+            background: #ffffff;
+            box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
           }
           .section-header {
             display: flex;
@@ -1258,34 +1286,74 @@ const buildDirectMessagePreviewHtml = (item: MailboxItem): string | null => {
           .section-label, .label {
             font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: #5f7494;
-            font-weight: 700;
+            letter-spacing: 0.14em;
+            color: #6d28d9;
+            font-weight: 850;
           }
           h2 {
             margin: 3px 0 0;
             color: #13284d;
-            font-size: 17px;
-            font-weight: 800;
+            font-size: 21px;
+            font-weight: 900;
+            letter-spacing: 0;
           }
           .value {
-            margin-top: 4px;
+            margin-top: 7px;
             color: #13284d;
-            font-size: 14px;
-            font-weight: 800;
+            font-size: 16px;
+            font-weight: 900;
             overflow-wrap: anywhere;
           }
+          .hint {
+            margin: 6px 0 0;
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+          }
+          .content-grid {
+            flex: 1;
+            padding: 22px 28px 20px;
+          }
+          .message-section {
+            padding: 18px;
+          }
           .message-text {
-            margin-top: 12px;
-            border-radius: 16px;
-            border: 1px solid #d9e4f4;
-            background: #f7fbff;
-            padding: 14px 16px;
-            color: #1f355d;
-            font-size: 16px;
-            line-height: 1.56;
+            margin-top: 16px;
+            min-height: 168px;
+            border-radius: 22px;
+            border: 1px solid #ddd6fe;
+            background: #f5f3ff;
+            padding: 18px 20px;
+            color: #241447;
+            font-size: 18px;
+            line-height: 1.6;
             white-space: pre-wrap;
             overflow-wrap: anywhere;
+          }
+          .attachment-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 42px;
+            height: 42px;
+            overflow: hidden;
+            border-radius: 14px;
+            background: #eef2ff;
+            color: #4338ca;
+          }
+          .attachment-icon svg {
+            width: 18px;
+            height: 18px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+          }
+          .attachments-section {
+            margin: 0 28px 22px;
+            padding: 18px;
           }
           .attachment-grid {
             margin-top: 12px;
@@ -1300,7 +1368,7 @@ const buildDirectMessagePreviewHtml = (item: MailboxItem): string | null => {
             min-width: 0;
             padding: 10px;
             border: 1px solid #d4deec;
-            border-radius: 14px;
+            border-radius: 16px;
             background: #f8fbff;
             text-decoration: none;
             color: #1e3a6a;
@@ -1310,15 +1378,15 @@ const buildDirectMessagePreviewHtml = (item: MailboxItem): string | null => {
             border-color: #b8c9e4;
             background: #eef5ff;
           }
-          .attachment-preview, .attachment-icon {
+          .attachment-preview {
             flex: 0 0 auto;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 44px;
-            height: 44px;
+            width: 46px;
+            height: 46px;
             overflow: hidden;
-            border-radius: 12px;
+            border-radius: 14px;
             border: 1px solid #d4deec;
             background: #ffffff;
           }
@@ -1345,31 +1413,58 @@ const buildDirectMessagePreviewHtml = (item: MailboxItem): string | null => {
             font-size: 11px;
           }
           .footer {
-            margin-top: 14px;
+            margin: auto 28px 0;
             font-size: 11px;
             color: #60748f;
             border-top: 1px dashed #cad7ea;
-            padding-top: 10px;
+            padding: 12px 0 16px;
           }
           @media (max-width: 720px) {
-            body { padding: 14px; }
-            .page { padding: 18px; border-radius: 22px; }
-            .hero { grid-template-columns: 1fr; }
-            h1 { font-size: 32px; }
-            .meta-grid, .attachment-grid { grid-template-columns: 1fr; }
+            body { padding: 12px; }
+            .page {
+              min-height: calc(100vh - 24px);
+              border-radius: 22px;
+            }
+            .hero {
+              grid-template-columns: 1fr;
+            }
+            .hero {
+              padding: 22px;
+            }
+            h1 { font-size: 31px; }
+            .meta-grid {
+              grid-template-columns: 1fr;
+            }
+            .meta-card {
+              min-height: auto;
+              border-right: 0;
+              border-bottom: 1px solid #e2e8f0;
+            }
+            .meta-card:last-child {
+              border-bottom: 0;
+            }
+            .content-grid {
+              padding: 16px;
+            }
+            .attachments-section,
+            .footer {
+              margin-left: 16px;
+              margin-right: 16px;
+            }
+            .attachment-grid { grid-template-columns: 1fr; }
             .identity { min-width: 0; }
           }
         </style>
       </head>
       <body>
         <div class="page">
-          <div class="hero">
+          <section class="hero">
             <div class="title-block">
               <span class="pill">${escapeHtml(directionLabel)}</span>
               <h1>${escapeHtml(item.title || "Zpráva")}</h1>
-              <div class="meta">${isSent ? "Komu" : "Od"}: <strong>${escapeHtml(
+              <div class="meta">${escapeHtml(counterpartRoleLabel)}: <strong>${escapeHtml(
     counterpartName
-  )}</strong> • ${escapeHtml(formatDateTime(item.createdAtMs))}</div>
+  )}</strong> • ${escapeHtml(createdAtLabel)}</div>
             </div>
             <aside class="identity">
               <div class="identity-top">
@@ -1384,30 +1479,42 @@ const buildDirectMessagePreviewHtml = (item: MailboxItem): string | null => {
                 </div>
               </div>
             </aside>
-          </div>
+          </section>
 
           <div class="meta-grid">
             <div class="meta-card">
-              <div class="label">${isSent ? "Příjemce" : "Odesílatel"}</div>
-              <div class="value">${escapeHtml(counterpartName)}</div>
+              <div class="label">Typ</div>
+              <div class="value">${escapeHtml(directionLabel)}</div>
+              <p class="hint">Interní zpráva v notifikačním centru.</p>
             </div>
             <div class="meta-card">
-              <div class="label">${escapeHtml(secondaryLabel)}</div>
-              <div class="value">${escapeHtml(secondaryName)}${
-    secondaryEmail ? ` <span class="meta">(${escapeHtml(secondaryEmail)})</span>` : ""
-  }</div>
+              <div class="label">${escapeHtml(counterpartRoleLabel)}</div>
+              <div class="value">${escapeHtml(counterpartName)}</div>
+              ${counterpartEmail ? `<p class="hint">${escapeHtml(counterpartEmail)}</p>` : ""}
+            </div>
+            <div class="meta-card">
+              <div class="label">${escapeHtml(ownRoleLabel)}</div>
+              <div class="value">${escapeHtml(isSent ? senderNameRaw : recipientNameRaw)}</div>
+              <p class="hint">${escapeHtml(isSent ? senderEmail || "Bez e-mailu" : recipientEmail || "Bez e-mailu")}</p>
+            </div>
+            <div class="meta-card">
+              <div class="label">Čas</div>
+              <div class="value">${escapeHtml(createdAtLabel)}</div>
+              <p class="hint">${isSent ? "Zpráva byla odeslána." : "Zpráva byla doručena."}</p>
             </div>
           </div>
 
-          <section class="section">
-            <div class="section-header">
-              <div>
-                <div class="section-label">Text zprávy</div>
-                <h2>Obsah</h2>
+          <div class="content-grid">
+            <section class="section message-section">
+              <div class="section-header">
+                <div>
+                  <div class="section-label">Text zprávy</div>
+                  <h2>Obsah</h2>
+                </div>
               </div>
-            </div>
-            <div class="message-text">${escapeHtml(textRaw || "Bez textu.")}</div>
-          </section>
+              <div class="message-text">${escapeHtml(textRaw || "Bez textu.")}</div>
+            </section>
+          </div>
 
           ${attachmentHtml}
 
@@ -1477,7 +1584,7 @@ const buildOnlineCardMeetingRequestPreviewHtml = (item: MailboxItem): string | n
             background:
               linear-gradient(180deg, rgba(241, 245, 249, 0.88) 0%, rgba(248, 250, 252, 0.98) 100%),
               linear-gradient(135deg, #e9f3ff 0%, #f5f0ff 46%, #edfdf6 100%);
-            font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
             color: #10213d;
           }
           .page {

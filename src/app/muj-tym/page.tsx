@@ -781,6 +781,28 @@ export default function TeamPage() {
         : "Finalizuji produkční statistiky a přehledy…";
   const loadingPhaseIndex =
     clampedLoadingProgress < 34 ? 0 : clampedLoadingProgress < 68 ? 1 : 2;
+  const loadingPhaseItems = [
+    {
+      label: "Členové",
+      caption: "Organizační struktura",
+      Icon: UsersRound,
+    },
+    {
+      label: "Aktivita",
+      caption: "Poslední přihlášení",
+      Icon: Network,
+    },
+    {
+      label: "Statistiky",
+      caption: "Produkční přehled",
+      Icon: BarChart3,
+    },
+  ];
+  const loadingStatusItems = [
+    ["Profil manažera", "ověřeno"],
+    ["Týmová struktura", loadingPhaseIndex > 0 ? "hotovo" : "běží"],
+    ["Produkce a tipy", loadingPhaseIndex >= 2 ? "běží" : "čeká"],
+  ];
 
   useEffect(() => {
     const el = membersListRef.current;
@@ -1608,7 +1630,7 @@ export default function TeamPage() {
   return (
     <AppLayout active="team">
       <div
-        className={`${introStyles.pageEnter} team-panel-root w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2`}
+        className={`${introStyles.pageEnter} team-panel-root w-full max-w-6xl space-y-6 px-1 py-1 text-slate-900 sm:px-2 sm:py-2`}
       >
         <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <SplitTitle text="Můj tým" className="team-panel-title !text-slate-900" />
@@ -1617,32 +1639,47 @@ export default function TeamPage() {
         {!authReady ? (
           <p className="text-sm text-slate-600">Načítám přihlášení…</p>
         ) : loading ? (
-          <div className={`${introStyles.loadingShell} rounded-[30px] border border-cyan-100/70 px-4 py-5 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:px-6 sm:py-6`}>
+          <div className={`${introStyles.loadingShell} rounded-[32px] border border-slate-200/80 bg-white/92 px-4 py-5 shadow-[0_24px_64px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:px-6 sm:py-6`}>
             <span className={introStyles.loadingAuraA} aria-hidden="true" />
             <span className={introStyles.loadingAuraB} aria-hidden="true" />
             <span className={introStyles.loadingSweep} aria-hidden="true" />
 
-            <div className="relative z-10 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-center">
-              <div className="space-y-4 sm:space-y-5">
-                <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200/90 bg-cyan-50/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-800">
-                  <span className="relative inline-flex h-2 w-2">
-                    <span className="absolute inset-0 rounded-full bg-cyan-500/80 animate-ping" />
-                    <span className="relative h-2 w-2 rounded-full bg-cyan-600" />
-                  </span>
-                  Team sync
-                </span>
+            <div className="relative z-10 grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-stretch">
+              <div className="space-y-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/88 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-800 shadow-[0_8px_20px_rgba(14,165,233,0.10)]">
+                      <span className="relative inline-flex h-2 w-2">
+                        <span className="absolute inset-0 rounded-full bg-sky-500/80 animate-ping" />
+                        <span className="relative h-2 w-2 rounded-full bg-sky-600" />
+                      </span>
+                      Synchronizace týmu
+                    </span>
+                    <h3 className="mt-4 text-2xl font-semibold tracking-tight text-slate-950 sm:text-[2rem]">
+                      Připravuju týmový přehled
+                    </h3>
+                    <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
+                      Načítám členy, poslední aktivitu a produkční data. Přehled se zobrazí hned, jak budou hotové hlavní statistiky.
+                    </p>
+                  </div>
 
-                <div className="space-y-1.5">
-                  <h3 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-[2rem]">
-                    Načítám týmovou strukturu…
-                  </h3>
-                  <p className="text-sm text-slate-600 sm:text-base">
-                    Stahuju členy týmu, aktivitu a produkční statistiky.
-                  </p>
+                  <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white/86 px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                    <div className="grid h-11 w-11 place-items-center rounded-xl bg-sky-50 text-sky-700">
+                      <UsersRound className="h-5 w-5" strokeWidth={2.2} />
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Průběh
+                      </div>
+                      <div className="text-2xl font-bold text-slate-950">
+                        {clampedLoadingProgress}%
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  {["Členové", "Aktivita", "Statistiky"].map((phase, index) => {
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  {loadingPhaseItems.map(({ label, caption, Icon }, index) => {
                     const state =
                       index < loadingPhaseIndex
                         ? "done"
@@ -1652,17 +1689,42 @@ export default function TeamPage() {
 
                     return (
                       <div
-                        key={phase}
-                        className={`inline-flex items-center justify-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                        key={label}
+                        className={`rounded-2xl border px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)] ${
                           state === "done"
-                            ? "border-emerald-300/55 bg-emerald-100/65 text-emerald-800"
+                            ? "border-emerald-200 bg-emerald-50/88"
                             : state === "active"
-                              ? "border-cyan-300/75 bg-cyan-100/70 text-cyan-800"
-                              : "border-slate-300/70 bg-white/70 text-slate-500"
+                              ? "border-sky-200 bg-sky-50/92"
+                              : "border-slate-200 bg-white/76"
                         }`}
                       >
-                        {state === "done" ? <Check className="h-3 w-3" /> : null}
-                        <span>{phase}</span>
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`grid h-9 w-9 place-items-center rounded-xl ${
+                              state === "done"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : state === "active"
+                                  ? "bg-sky-100 text-sky-700"
+                                  : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            {state === "done" ? (
+                              <Check className="h-4 w-4" />
+                            ) : state === "active" ? (
+                              <LoaderCircle className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Icon className="h-4 w-4" />
+                            )}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-slate-950">
+                              {label}
+                            </div>
+                            <div className="mt-0.5 truncate text-xs text-slate-500">
+                              {caption}
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
@@ -1670,10 +1732,10 @@ export default function TeamPage() {
 
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    <span>Synchronizace</span>
+                    <span>Aktuální krok</span>
                     <span>{clampedLoadingProgress}%</span>
                   </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-300/55">
+                  <div className="h-3 overflow-hidden rounded-full bg-slate-200/80 shadow-[inset_0_1px_2px_rgba(15,23,42,0.08)]">
                     <div
                       className="relative h-full rounded-full bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-500 transition-[width] duration-300 ease-out"
                       style={{ width: `${clampedLoadingProgress}%` }}
@@ -1688,43 +1750,86 @@ export default function TeamPage() {
                 </div>
               </div>
 
-              <div className="flex justify-center xl:justify-end">
-                <div className="relative h-[10.5rem] w-[10.5rem]">
-                  <div
-                    className="absolute inset-0 rounded-full"
-                    style={{
-                      background: `conic-gradient(from -90deg, rgba(56,189,248,0.92) 0deg ${clampedLoadingProgress * 3.6}deg, rgba(148,163,184,0.26) ${clampedLoadingProgress * 3.6}deg 360deg)`,
-                    }}
-                  />
-                  <div className="absolute inset-[10px] rounded-full border border-white/65 bg-white/70 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.2)]" />
-                  <div className="absolute inset-[26px] rounded-full bg-[radial-gradient(circle_at_32%_28%,rgba(255,255,255,0.95)_0%,rgba(191,219,254,0.88)_55%,rgba(147,197,253,0.8)_100%)] shadow-[0_0_34px_rgba(56,189,248,0.28)]" />
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <UsersRound className="h-6 w-6 text-slate-700/85" strokeWidth={2.2} />
-                    <span className="mt-1 text-xs font-semibold tracking-[0.12em] text-slate-700">
-                      {clampedLoadingProgress}%
-                    </span>
+              <aside className="rounded-[26px] border border-slate-200 bg-white/86 p-4 shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      Stav načítání
+                    </div>
+                    <div className="mt-1 text-lg font-semibold text-slate-950">
+                      Týmový panel
+                    </div>
+                  </div>
+                  <div className="grid h-10 w-10 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
+                    <Check className="h-5 w-5" />
                   </div>
                 </div>
-              </div>
+
+                <div className="mt-5 space-y-3">
+                  {loadingStatusItems.map(([label, state]) => (
+                    <div
+                      key={label}
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2"
+                    >
+                      <span className="text-sm font-medium text-slate-700">
+                        {label}
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          state === "ověřeno" || state === "hotovo"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : state === "běží"
+                              ? "bg-sky-100 text-sky-700"
+                              : "bg-slate-200 text-slate-600"
+                        }`}
+                      >
+                        {state}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/80 px-3 py-3 text-sm leading-relaxed text-slate-700">
+                  <div className="font-semibold text-slate-950">Připravuju data pro seznam i detail člena.</div>
+                  <div className="mt-1 text-xs text-slate-600">
+                    Po načtení se automaticky vybere první osoba v týmu.
+                  </div>
+                </div>
+              </aside>
             </div>
 
-            <div className="relative z-10 mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
-              {[0, 1, 2].map((index) => (
-                <div
-                  key={index}
-                  className={`${introStyles.loadingSkeletonCard} rounded-2xl border border-slate-200/90 bg-white/87 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.07)]`}
-                >
-                  <div className="inline-flex items-center rounded-full border border-cyan-100 bg-cyan-50/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700">
-                    Člen týmu
+            <div className="relative z-10 mt-5 rounded-[26px] border border-slate-200 bg-white/72 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
+              <div className="mb-3 flex items-center justify-between gap-3 px-1">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Náhled seznamu
                   </div>
-                  <div className="mt-2 h-7 w-28 rounded-lg bg-slate-200/90" />
-                  <div className="mt-3 space-y-2">
-                    <div className="h-3 w-5/6 rounded-full bg-slate-200/85" />
-                    <div className="h-3 w-3/4 rounded-full bg-slate-200/85" />
-                    <div className="h-3 w-2/3 rounded-full bg-slate-200/85" />
+                  <div className="mt-0.5 text-sm font-semibold text-slate-900">
+                    Členové týmu se řadí podle aktivity
                   </div>
                 </div>
-              ))}
+                <span className="hidden rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500 sm:inline-flex">
+                  Synchronizuji
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {[0, 1, 2].map((index) => (
+                  <div
+                    key={index}
+                    className={`${introStyles.loadingSkeletonCard} rounded-2xl border border-slate-200/90 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]`}
+                  >
+                    <div className="inline-flex items-center rounded-full border border-cyan-100 bg-cyan-50/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700">
+                      Člen týmu
+                    </div>
+                    <div className="mt-2 h-7 w-28 rounded-lg bg-slate-200/90" />
+                    <div className="mt-3 space-y-2">
+                      <div className="h-3 w-5/6 rounded-full bg-slate-200/85" />
+                      <div className="h-3 w-3/4 rounded-full bg-slate-200/85" />
+                      <div className="h-3 w-2/3 rounded-full bg-slate-200/85" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         ) : members.length === 0 ? (

@@ -96,9 +96,11 @@ const ONLINE_CARD_OFFICE_PHOTOS_MAX = 3;
 const ONLINE_CARD_OFFICE_PHOTO_URL_MAX_LEN = 1_200;
 const AGENCY_NUMBER_MAX_LEN = 80;
 const PHONE_NUMBER_MAX_LEN = 40;
+const PROFILE_ICO_MAX_LEN = 8;
 const ALLOWED_PATCH_KEYS = new Set([
   "commissionMode",
   "agencyNumber",
+  "ico",
   "phoneNumber",
   "monthlyGoal",
   "notifyMinutes",
@@ -829,6 +831,20 @@ function buildPatchFromBody(
       return { error: `Agenturní číslo může mít maximálně ${AGENCY_NUMBER_MAX_LEN} znaků.` };
     }
     patch.agencyNumber = value;
+  }
+
+  if (body.ico != null) {
+    if (typeof body.ico !== "string") {
+      return { error: "IČO má neplatný formát." };
+    }
+    const value = body.ico.replace(/\D+/g, "");
+    if (
+      value.length > PROFILE_ICO_MAX_LEN ||
+      (value.length > 0 && value.length !== PROFILE_ICO_MAX_LEN)
+    ) {
+      return { error: `IČO musí mít ${PROFILE_ICO_MAX_LEN} číslic.` };
+    }
+    patch.ico = value;
   }
 
   if (body.phoneNumber != null) {
