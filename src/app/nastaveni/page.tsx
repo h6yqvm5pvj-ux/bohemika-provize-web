@@ -3094,9 +3094,13 @@ export default function SettingsPage() {
           {activeOnlineCardOfficePhoto ? (
             <div className="space-y-3">
               <div className="relative overflow-hidden rounded-2xl border border-white/14 bg-white/[0.04]">
-                <img
+                <Image
                   src={activeOnlineCardOfficePhoto}
                   alt={`Náhled kanceláře ${onlineCardOfficePhotoIndex + 1}`}
+                  width={960}
+                  height={560}
+                  sizes="(min-width: 640px) 640px, 100vw"
+                  unoptimized
                   className="h-[210px] w-full object-cover sm:h-[280px]"
                 />
                 {onlineCardOfficePhotoCount > 1 ? (
@@ -3134,9 +3138,13 @@ export default function SettingsPage() {
                       }`}
                       aria-label={`Zobrazit fotku kanceláře ${index + 1}`}
                     >
-                      <img
+                      <Image
                         src={photoUrl}
                         alt={`Miniatura kanceláře ${index + 1}`}
+                        width={80}
+                        height={56}
+                        sizes="80px"
+                        unoptimized
                         className="h-14 w-20 object-cover"
                       />
                     </button>
@@ -3264,18 +3272,18 @@ export default function SettingsPage() {
   const onlineCardStudioPublishPanel = (
     <aside className="relative overflow-hidden rounded-[30px] border border-violet-300/25 bg-[radial-gradient(circle_at_8%_0%,rgba(196,181,253,0.24),transparent_30%),linear-gradient(135deg,#140b2f_0%,#24104f_46%,#5b21b6_100%)] p-4 text-white shadow-[0_26px_70px_rgba(60,18,122,0.34)] sm:p-5">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_0%,transparent_45%,rgba(255,255,255,0.1)_100%)]" />
-      <div className="relative z-10 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.38fr)]">
+      <div className="relative z-10 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.32fr)]">
         <div className="min-w-0 space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <p className="inline-flex items-center gap-2 rounded-full border border-violet-200/25 bg-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-100">
+              <p className="inline-flex items-center gap-2 rounded-full border border-violet-200/25 bg-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] !text-violet-100">
                 <Globe className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
                 Veřejná online vizitka
               </p>
-              <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
+              <h2 className="mt-3 text-2xl font-extrabold tracking-tight !text-white sm:text-3xl">
                 Publikace a sdílení vizitky
               </h2>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-violet-100/76">
+              <p className="mt-1 max-w-3xl text-sm leading-6 !text-violet-100/80">
                 Zapni veřejnou stránku, zkontroluj URL a ulož změny. Samotný editor je hned pod tímto panelem přes celou šířku.
               </p>
             </div>
@@ -3289,8 +3297,8 @@ export default function SettingsPage() {
               }
               className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
                 onlineCardDraft.enabled
-                  ? "border-emerald-200/45 bg-emerald-300/18 text-emerald-50 shadow-[0_14px_30px_rgba(16,185,129,0.18)]"
-                  : "border-white/18 bg-white/[0.08] text-violet-100 hover:bg-white/[0.12]"
+                  ? "border-emerald-200/45 bg-emerald-300/18 !text-emerald-50 shadow-[0_14px_30px_rgba(16,185,129,0.18)]"
+                  : "border-white/18 bg-white/[0.08] !text-violet-100 hover:bg-white/[0.12]"
               }`}
               aria-pressed={onlineCardDraft.enabled}
             >
@@ -3306,19 +3314,19 @@ export default function SettingsPage() {
 
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
             <div className="min-w-0 rounded-2xl border border-white/14 bg-white/[0.08] px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-100/72">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] !text-violet-100/72">
                 Veřejná URL
               </p>
               {onlineCardPublicUrl ? (
-                <p className="mt-2 break-all text-base font-bold leading-6 text-white">
+                <p className="mt-2 break-all text-base font-bold leading-6 !text-white">
                   {onlineCardPublicUrl}
                 </p>
               ) : (
-                <p className="mt-2 text-sm font-semibold text-violet-100/74">
+                <p className="mt-2 text-sm font-semibold !text-violet-100/74">
                   Pro vygenerování URL nejdřív vyplň jméno.
                 </p>
               )}
-              <p className="mt-2 text-xs text-violet-100/60">
+              <p className="mt-2 text-xs !text-violet-100/68">
                 URL se generuje automaticky podle jména. Pokud vizitku vypneš, URL zůstane uložená, ale nebude veřejně dostupná.
               </p>
             </div>
@@ -3338,7 +3346,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={handleOpenOnlineCardQr}
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.1] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.16]"
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.1] px-4 py-2 text-sm font-semibold !text-white transition hover:bg-white/[0.16]"
               >
                 QR kód
                 <QrCodeIcon size={14} strokeWidth={2.2} aria-hidden="true" />
@@ -3347,32 +3355,22 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="flex min-h-full flex-col justify-between gap-3 rounded-2xl border border-white/14 bg-white/[0.08] px-4 py-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-100/72">
-              Text „O mně“
-            </p>
-            <p className="mt-1 text-2xl font-extrabold text-white">
-              {onlineCardDraft.bio.length}/1000
-            </p>
-            <p className="mt-1 text-xs text-violet-100/62">znaků</p>
-          </div>
-
+        <div className="flex min-h-full flex-col justify-end gap-3 rounded-2xl border border-white/14 bg-white/[0.08] px-4 py-4">
           <div className="space-y-3">
             {onlineCardStatus ? (
               <p
                 className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${
                   onlineCardStatus.type === "success"
-                    ? "border-emerald-200/25 bg-emerald-300/12 text-emerald-50"
+                    ? "border-emerald-200/25 bg-emerald-300/12 !text-emerald-50"
                     : onlineCardStatus.type === "info"
-                      ? "border-white/16 bg-white/[0.08] text-violet-50"
-                      : "border-rose-200/25 bg-rose-300/12 text-rose-50"
+                      ? "border-white/16 bg-white/[0.08] !text-violet-50"
+                      : "border-rose-200/25 bg-rose-300/12 !text-rose-50"
                 }`}
               >
                 {onlineCardStatus.message}
               </p>
             ) : (
-              <p className="rounded-2xl border border-white/12 bg-white/[0.06] px-3 py-2 text-xs text-violet-100/72">
+              <p className="rounded-2xl border border-white/12 bg-white/[0.06] px-3 py-2 text-xs !text-violet-100/76">
                 Uložení zapíše aktuální náhled do profilu.
               </p>
             )}
@@ -4255,6 +4253,7 @@ export default function SettingsPage() {
                       <PremiumOnlineCardPreview
                         editable
                         layout="fullWidth"
+                        density="compact"
                         showContactSection={false}
                         value={{
                           fullName: onlineCardDraft.fullName,

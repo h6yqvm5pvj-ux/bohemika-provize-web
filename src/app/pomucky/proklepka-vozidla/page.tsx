@@ -1859,21 +1859,41 @@ export default function VehicleAuditPage() {
   const proklepniHero = (readObject(proklepniReport?.hero) ?? null) as ProklepniReportHero | null;
   const proklepniValuation = (readObject(proklepniReport?.valuation) ?? null) as ProklepniReportValuation | null;
   const proklepniTechnical = (readObject(proklepniReport?.technical) ?? null) as ProklepniReportTechnical | null;
-  const proklepniTechnicalSectionsRaw = Array.isArray(proklepniTechnical?.sections)
-    ? (proklepniTechnical?.sections as ProklepniReportTechnicalSection[])
-    : [];
-  const proklepniOwnersRaw = Array.isArray(proklepniReport?.owners)
-    ? (proklepniReport?.owners as ProklepniReportOwnerRow[])
-    : [];
-  const proklepniInspectionsRaw = Array.isArray(proklepniReport?.inspections)
-    ? (proklepniReport?.inspections as ProklepniReportInspectionRow[])
-    : [];
-  const proklepniOdometerRaw = Array.isArray(proklepniReport?.odometerHistory)
-    ? (proklepniReport?.odometerHistory as ProklepniReportOdometerRow[])
-    : [];
-  const proklepniValuationRowsRaw = Array.isArray(proklepniValuation?.mileagePriceRows)
-    ? (proklepniValuation?.mileagePriceRows as ProklepniReportValuationMileageRow[])
-    : [];
+  const proklepniTechnicalSectionsRaw = useMemo(
+    () =>
+      Array.isArray(proklepniTechnical?.sections)
+        ? (proklepniTechnical.sections as ProklepniReportTechnicalSection[])
+        : [],
+    [proklepniTechnical?.sections]
+  );
+  const proklepniOwnersRaw = useMemo(
+    () =>
+      Array.isArray(proklepniReport?.owners)
+        ? (proklepniReport.owners as ProklepniReportOwnerRow[])
+        : [],
+    [proklepniReport?.owners]
+  );
+  const proklepniInspectionsRaw = useMemo(
+    () =>
+      Array.isArray(proklepniReport?.inspections)
+        ? (proklepniReport.inspections as ProklepniReportInspectionRow[])
+        : [],
+    [proklepniReport?.inspections]
+  );
+  const proklepniOdometerRaw = useMemo(
+    () =>
+      Array.isArray(proklepniReport?.odometerHistory)
+        ? (proklepniReport.odometerHistory as ProklepniReportOdometerRow[])
+        : [],
+    [proklepniReport?.odometerHistory]
+  );
+  const proklepniValuationRowsRaw = useMemo(
+    () =>
+      Array.isArray(proklepniValuation?.mileagePriceRows)
+        ? (proklepniValuation.mileagePriceRows as ProklepniReportValuationMileageRow[])
+        : [],
+    [proklepniValuation?.mileagePriceRows]
+  );
 
   const summary = useMemo<VehicleSummary | null>(() => {
     if (!data) return null;

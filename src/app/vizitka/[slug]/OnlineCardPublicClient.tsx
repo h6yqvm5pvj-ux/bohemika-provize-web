@@ -20,6 +20,7 @@ import {
   TrendingUp,
   X,
 } from "lucide-react";
+import Image from "next/image";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
@@ -327,24 +328,33 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                           : "max-w-[620px]"
                     }`}
                   >
-                    <div className="relative overflow-hidden rounded-2xl border border-white/14 bg-[radial-gradient(circle_at_15%_10%,rgba(129,140,248,0.18),rgba(2,6,23,0.65)_55%)]">
-                      <img
+                    <div
+                      className={`relative overflow-hidden rounded-2xl border border-white/14 bg-[radial-gradient(circle_at_15%_10%,rgba(129,140,248,0.18),rgba(2,6,23,0.65)_55%)] ${
+                        activeOfficePhotoIsPortrait
+                          ? "h-[330px] sm:h-[430px] lg:h-[500px]"
+                          : activeOfficePhotoIsLandscape
+                            ? "h-[230px] sm:h-[320px] lg:h-[400px]"
+                            : "h-[260px] sm:h-[360px] lg:h-[430px]"
+                      }`}
+                    >
+                      <Image
                         src={activeOfficePhoto}
                         alt={`Fotka kanceláře ${officePhotoIndex + 1}`}
-                        onLoad={(event) =>
+                        fill
+                        sizes={
+                          activeOfficePhotoIsPortrait
+                            ? "(min-width: 1024px) 390px, 100vw"
+                            : "(min-width: 1024px) 680px, 100vw"
+                        }
+                        unoptimized
+                        onLoadingComplete={(image) =>
                           handleOfficePhotoLoad(
                             activeOfficePhoto,
-                            event.currentTarget.naturalWidth,
-                            event.currentTarget.naturalHeight
+                            image.naturalWidth,
+                            image.naturalHeight
                           )
                         }
-                        className={`w-full object-contain ${
-                          activeOfficePhotoIsPortrait
-                            ? "h-[330px] sm:h-[430px] lg:h-[500px]"
-                            : activeOfficePhotoIsLandscape
-                              ? "h-[230px] sm:h-[320px] lg:h-[400px]"
-                              : "h-[260px] sm:h-[360px] lg:h-[430px]"
-                        }`}
+                        className="object-contain"
                       />
                       {officePhotoCount > 1 ? (
                         <>

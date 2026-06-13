@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -19,11 +20,26 @@ type ApiSuccess = { ok: true; requestId: string };
 
 const REQUEST_RATE_LIMIT = 10;
 const REQUEST_RATE_LIMIT_WINDOW_MS = 10 * 60_000;
+const CARD_BURST_RATE_LIMIT = 24;
+const CARD_BURST_RATE_LIMIT_WINDOW_MS = 10 * 60_000;
+const CARD_DAILY_RATE_LIMIT = 120;
+const CARD_DAILY_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60_000;
+const CONTACT_RATE_LIMIT = 3;
+const CONTACT_RATE_LIMIT_WINDOW_MS = 60 * 60_000;
+const CONTACT_VALUE_RATE_LIMIT = 6;
+const DUPLICATE_CONTENT_RATE_LIMIT = 3;
+const DUPLICATE_CONTENT_RATE_LIMIT_WINDOW_MS = 10 * 60_000;
+const MIN_DUPLICATE_CONTENT_LENGTH = 24;
 const MAX_PUSH_TOKENS_PER_USER = 16;
 const MAX_PUSH_TOKENS_PER_MULTICAST = 500;
+const TOO_MANY_REQUESTS_ERROR = "Příliš mnoho požadavků. Zkus to prosím za chvíli.";
+const RATE_LIMIT_UNAVAILABLE_ERROR =
+  "Bezpečnostní limit není dočasně dostupný. Zkus to prosím za chvíli.";
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CONTROL_CHARS_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+const URL_RE = /\b(?:https?:\/\/|www\.)/gi;
 
 type PublicOnlineCardOwner = {
   slug: string;
@@ -41,12 +57,19 @@ type IncomingBody = {
   company?: unknown;
 };
 
+type AntiSpamCheck = {
+  namespace: string;
+  key: string;
+  limit: number;
+  windowMs: number;
+};
+
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
 const sanitizeText = (value: unknown, maxLen: number): string => {
   if (typeof value !== "string") return "";
-  const trimmed = value.trim();
+  const trimmed = value.replace(CONTROL_CHARS_RE, "").trim();
   if (!trimmed) return "";
   return trimmed.slice(0, maxLen);
 };
@@ -102,6 +125,144 @@ const normalizeSlug = (value: unknown): string => {
 function withRateHeaders(res: NextResponse, rateLimit: RateLimitResult) {
   applyRateLimitHeaders(res.headers, rateLimit);
   return res;
+}
+
+function rateLimitResponse(rateLimit: RateLimitResult) {
+  const status = rateLimit.store === "unavailable" ? 503 : 429;
+  return withRateHeaders(
+    NextResponse.json(
+      {
+        ok: false,
+        error: status === 503 ? RATE_LIMIT_UNAVAILABLE_ERROR : TOO_MANY_REQUESTS_ERROR,
+      } satisfies ApiError,
+      { status }
+    ),
+    rateLimit
+  );
+}
+
+function hashRateLimitKey(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function normalizePhoneForRateLimit(value: string): string {
+  const digits = value.replace(/\D+/g, "");
+  return digits || value.trim().toLowerCase();
+}
+
+function normalizeContentForRateLimit(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 320);
+}
+
+function countLinks(value: string): number {
+  return Array.from(value.matchAll(URL_RE)).length;
+}
+
+function buildDuplicateContentKey({
+  slug,
+  topics,
+  message,
+}: {
+  slug: string;
+  topics: string[];
+  message: string;
+}): string | null {
+  const normalizedMessage = normalizeContentForRateLimit(message);
+  const normalizedTopics = topics
+    .map(normalizeContentForRateLimit)
+    .filter(Boolean)
+    .sort()
+    .join("|");
+  const combined = [normalizedTopics, normalizedMessage].filter(Boolean).join("|");
+  if (combined.length < MIN_DUPLICATE_CONTENT_LENGTH) return null;
+  return `${slug}:${hashRateLimitKey(combined)}`;
+}
+
+async function consumeMeetingAntiSpamLimits({
+  slug,
+  ownerEmail,
+  fullName,
+  phone,
+  email,
+  topics,
+  message,
+}: {
+  slug: string;
+  ownerEmail: string;
+  fullName: string;
+  phone: string;
+  email: string;
+  topics: string[];
+  message: string;
+}): Promise<RateLimitResult | null> {
+  const normalizedPhone = normalizePhoneForRateLimit(phone);
+  const emailHash = hashRateLimitKey(email);
+  const phoneHash = hashRateLimitKey(normalizedPhone);
+  const contactHash = hashRateLimitKey(
+    [
+      normalizeContentForRateLimit(fullName),
+      email,
+      normalizedPhone,
+    ].join("|")
+  );
+  const duplicateContentKey = buildDuplicateContentKey({ slug, topics, message });
+  const checks: AntiSpamCheck[] = [
+    {
+      namespace: "api:online-card:meeting-request:contact",
+      key: `${slug}:${contactHash}`,
+      limit: CONTACT_RATE_LIMIT,
+      windowMs: CONTACT_RATE_LIMIT_WINDOW_MS,
+    },
+    {
+      namespace: "api:online-card:meeting-request:email",
+      key: `${slug}:${emailHash}`,
+      limit: CONTACT_VALUE_RATE_LIMIT,
+      windowMs: CONTACT_RATE_LIMIT_WINDOW_MS,
+    },
+    {
+      namespace: "api:online-card:meeting-request:phone",
+      key: `${slug}:${phoneHash}`,
+      limit: CONTACT_VALUE_RATE_LIMIT,
+      windowMs: CONTACT_RATE_LIMIT_WINDOW_MS,
+    },
+  ];
+
+  if (duplicateContentKey) {
+    checks.push({
+      namespace: "api:online-card:meeting-request:content",
+      key: duplicateContentKey,
+      limit: DUPLICATE_CONTENT_RATE_LIMIT,
+      windowMs: DUPLICATE_CONTENT_RATE_LIMIT_WINDOW_MS,
+    });
+  }
+
+  checks.push(
+    {
+      namespace: "api:online-card:meeting-request:card-burst",
+      key: ownerEmail,
+      limit: CARD_BURST_RATE_LIMIT,
+      windowMs: CARD_BURST_RATE_LIMIT_WINDOW_MS,
+    },
+    {
+      namespace: "api:online-card:meeting-request:card-daily",
+      key: ownerEmail,
+      limit: CARD_DAILY_RATE_LIMIT,
+      windowMs: CARD_DAILY_RATE_LIMIT_WINDOW_MS,
+    }
+  );
+
+  for (const check of checks) {
+    const result = await consumeRateLimit(check);
+    if (!result.allowed) return result;
+  }
+
+  return null;
 }
 
 const isPublicCardEnabled = (value: unknown): value is Record<string, unknown> => {
@@ -247,13 +408,7 @@ export async function POST(req: NextRequest) {
     windowMs: REQUEST_RATE_LIMIT_WINDOW_MS,
   });
   if (!rateLimit.allowed) {
-    return withRateHeaders(
-      NextResponse.json(
-        { ok: false, error: "Příliš mnoho požadavků. Zkus to prosím za chvíli." } satisfies ApiError,
-        { status: 429 }
-      ),
-      rateLimit
-    );
+    return rateLimitResponse(rateLimit);
   }
 
   try {
@@ -329,6 +484,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (countLinks(fullName) > 0 || countLinks(message) > 1) {
+      return withRateHeaders(
+        NextResponse.json(
+          { ok: false, error: "Formulář obsahuje příliš mnoho odkazů." } satisfies ApiError,
+          { status: 400 }
+        ),
+        rateLimit
+      );
+    }
+
     if (honeypot) {
       return withRateHeaders(
         NextResponse.json({ ok: true, requestId: "filtered" } satisfies ApiSuccess),
@@ -345,6 +510,19 @@ export async function POST(req: NextRequest) {
         ),
         rateLimit
       );
+    }
+
+    const antiSpamLimit = await consumeMeetingAntiSpamLimits({
+      slug,
+      ownerEmail: owner.ownerEmail,
+      fullName,
+      phone,
+      email,
+      topics,
+      message,
+    });
+    if (antiSpamLimit) {
+      return rateLimitResponse(antiSpamLimit);
     }
 
     const requestRef = adminDb.collection("onlineCardMeetingRequests").doc();
@@ -368,6 +546,9 @@ export async function POST(req: NextRequest) {
         host: req.nextUrl.host,
         protocol: req.nextUrl.protocol,
         pagePath: `/vizitka/${slug}`,
+        rateLimitStore: rateLimit.store,
+        ipResolved: ip !== "unknown",
+        antiSpamVersion: 1,
       },
       createdAtMs,
       createdAt: FieldValue.serverTimestamp(),
