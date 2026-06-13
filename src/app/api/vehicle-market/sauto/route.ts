@@ -719,7 +719,7 @@ export async function POST(req: NextRequest) {
       { status: 401 }
     );
   }
-  const lockout = getLoginAttemptLockoutError(req, decoded.email);
+  const lockout = await getLoginAttemptLockoutError(req, decoded.email);
   if (lockout) {
     const response = NextResponse.json(
       { ok: false, error: lockout.error },

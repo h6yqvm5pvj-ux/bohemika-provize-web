@@ -4,10 +4,11 @@ import { adminAuth } from "@/lib/server/firebaseAdmin";
 import {
   buildLoginAttemptLockedResponse,
   clearLoginAttemptFailures,
+  getClientReportedLoginAttemptStatus,
   getLoginAttemptStatus,
   LOGIN_ATTEMPT_MAX_FAILED_ATTEMPTS,
   normalizeLoginAttemptEmail,
-  recordLoginAttemptFailure,
+  recordClientReportedLoginAttemptFailure,
 } from "@/lib/server/loginAttemptLockout";
 import {
   applyRateLimitHeaders,
@@ -150,12 +151,12 @@ export async function POST(req: Request) {
     const verification = await verifySuccessToken(req, email);
     if (!verification.ok) return withEndpointHeaders(verification.response);
 
-    const status = getLoginAttemptStatus(req, email);
+    const status = await getLoginAttemptStatus(req, email);
     if (status.locked) {
       return withEndpointHeaders(buildLoginAttemptLockedResponse(status));
     }
 
-    clearLoginAttemptFailures(req, email);
+    await clearLoginAttemptFailures(req, email);
     return withEndpointHeaders(
       NextResponse.json({
         ok: true,
@@ -167,7 +168,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const currentStatus = getLoginAttemptStatus(req, email);
+  const currentStatus = await getClientReportedLoginAttemptStatus(req, email);
   if (currentStatus.locked) {
     return withEndpointHeaders(buildLoginAttemptLockedResponse(currentStatus));
   }
@@ -184,7 +185,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const nextStatus = recordLoginAttemptFailure(req, email);
+  // Public client-reported failures must not create account-wide lockouts.
+  const nextStatus = await recordClientReportedLoginAttemptFailure(req, email);
   if (nextStatus.locked) {
     return withEndpointHeaders(buildLoginAttemptLockedResponse(nextStatus));
   }

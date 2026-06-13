@@ -60,7 +60,7 @@ async function getAuthContext(req: NextRequest) {
     return { error: "User e-mail missing in token", status: 401 } as const;
   }
 
-  const lockout = getLoginAttemptLockoutError(req, email);
+  const lockout = await getLoginAttemptLockoutError(req, email);
   if (lockout) return lockout;
 
   const setupError = await getAdvisorSetupError({

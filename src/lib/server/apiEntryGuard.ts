@@ -115,7 +115,7 @@ export async function requireAuthedRateLimited(
     };
   }
 
-  const loginLockout = getLoginAttemptStatus(req, email);
+  const loginLockout = await getLoginAttemptStatus(req, email);
   if (loginLockout.locked) {
     return {
       ok: false,

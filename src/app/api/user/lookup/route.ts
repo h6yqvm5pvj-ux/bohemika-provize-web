@@ -175,7 +175,7 @@ export async function GET(req: NextRequest) {
         { status: 401 }
       );
     }
-    const lockout = getLoginAttemptLockoutError(req, requesterEmail);
+    const lockout = await getLoginAttemptLockoutError(req, requesterEmail);
     if (lockout) {
       const response = NextResponse.json(
         { ok: false, error: lockout.error } satisfies UserLookupError,

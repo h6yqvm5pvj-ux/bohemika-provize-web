@@ -326,7 +326,7 @@ export async function POST(req: Request) {
     }
 
     const tokenEmail = normalizeEmail(decoded.email);
-    const lockout = getLoginAttemptLockoutError(req, tokenEmail);
+    const lockout = await getLoginAttemptLockoutError(req, tokenEmail);
     if (lockout) {
       const response = NextResponse.json(
         { ok: false, error: lockout.error },

@@ -344,7 +344,7 @@ export async function GET(req: NextRequest) {
         { status: 401 }
       );
     }
-    const lockout = getLoginAttemptLockoutError(req, email);
+    const lockout = await getLoginAttemptLockoutError(req, email);
     if (lockout) {
       const response = NextResponse.json(
         { ok: false, error: lockout.error } satisfies TipPayoutsErrorResponse,

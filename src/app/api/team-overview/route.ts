@@ -609,7 +609,7 @@ async function getAuthContext(req: NextRequest): Promise<{
   if (!email) {
     throw Object.assign(new Error("User e-mail missing in token"), { status: 401 });
   }
-  const lockout = getLoginAttemptLockoutError(req, email);
+  const lockout = await getLoginAttemptLockoutError(req, email);
   if (lockout) {
     throw Object.assign(new Error(lockout.error), {
       status: lockout.status,

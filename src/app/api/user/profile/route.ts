@@ -199,11 +199,11 @@ async function getAuthContext(req: NextRequest) {
     return { error: "User e-mail missing in token", status: 401 } as const;
   }
 
-  const loginLockout = getLoginAttemptStatus(req, email);
+  const loginLockout = await getLoginAttemptStatus(req, email);
   if (loginLockout.locked) {
     return {
       error: loginAttemptLockoutMessage(loginLockout),
-      status: 429,
+      status: loginLockout.unavailable ? 503 : 429,
       retryAfterSeconds: loginLockout.retryAfterSeconds,
     } as const;
   }

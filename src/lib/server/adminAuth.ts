@@ -83,7 +83,7 @@ export async function getAdminAuthContext(
     return { error: "User identity missing in token", status: 401 };
   }
 
-  const lockout = getLoginAttemptLockoutError(req, email);
+  const lockout = await getLoginAttemptLockoutError(req, email);
   if (lockout) return lockout;
 
   const setupError = await getAdvisorAccessError({ email, uid });

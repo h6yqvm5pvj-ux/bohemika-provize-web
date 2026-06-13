@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       return jsonError("User email missing in token", 400);
     }
 
-    const lockout = getLoginAttemptLockoutError(req, email);
+    const lockout = await getLoginAttemptLockoutError(req, email);
     if (lockout) {
       const response = jsonError(lockout.error, lockout.status);
       response.headers.set("Retry-After", String(lockout.retryAfterSeconds));

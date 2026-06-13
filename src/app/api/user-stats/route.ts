@@ -352,11 +352,11 @@ async function getAuthContext(
       ),
     };
   }
-  const loginLockout = getLoginAttemptStatus(req, email);
+  const loginLockout = await getLoginAttemptStatus(req, email);
   if (loginLockout.locked) {
     const response = NextResponse.json(
       { ok: false, error: loginAttemptLockoutMessage(loginLockout) } satisfies ApiError,
-      { status: 429 }
+      { status: loginLockout.unavailable ? 503 : 429 }
     );
     response.headers.set("Retry-After", String(loginLockout.retryAfterSeconds));
     return {
