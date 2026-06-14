@@ -525,10 +525,6 @@ export default function VehicleDataPage() {
     displayedVin !== "—"
       ? `/pomucky/naceneni-vozidla?vin=${encodeURIComponent(displayedVin)}`
       : "/pomucky/naceneni-vozidla";
-  const windshieldHref =
-    displayedVin !== "—"
-      ? `/pomucky/naceneni-celniho-skla?vin=${encodeURIComponent(displayedVin)}`
-      : "/pomucky/naceneni-celniho-skla";
 
   return (
     <AppLayout active="tools">
@@ -724,13 +720,6 @@ export default function VehicleDataPage() {
                     >
                       <CarFront className="h-3.5 w-3.5" />
                       Nacenit vozidlo
-                    </Link>
-                    <Link
-                      href={windshieldHref}
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
-                    >
-                      <Wind className="h-3.5 w-3.5" />
-                      Nacenit sklo
                     </Link>
                   </div>
                 </div>

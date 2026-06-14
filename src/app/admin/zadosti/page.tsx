@@ -569,6 +569,7 @@ type AdminUsersRow = {
   managerEmail: string | null;
   tipRecipientEmail: string | null;
   commissionMode: string | null;
+  specialist: boolean;
   accountSetupCompletedAt: string | null;
   disabled: boolean;
   emailVerified: boolean;
@@ -737,6 +738,7 @@ export default function AdminRequestsPage() {
   const [adminUsersEditPhoneNumber, setAdminUsersEditPhoneNumber] = useState("");
   const [adminUsersEditAccountType, setAdminUsersEditAccountType] =
     useState<AdminUsersAccountTypeDraft>("");
+  const [adminUsersEditSpecialist, setAdminUsersEditSpecialist] = useState(false);
   const [adminUsersSavingEmail, setAdminUsersSavingEmail] = useState<string | null>(null);
   const [adminUsersDeleteTarget, setAdminUsersDeleteTarget] =
     useState<AdminUsersDeleteTarget | null>(null);
@@ -1154,6 +1156,7 @@ export default function AdminRequestsPage() {
       const position = (row.position || "").toLowerCase();
       const positionLabel = formatPositionLabel(row.position).toLowerCase();
       const accountTypeLabel = formatAccountTypeLabel(row.accountType).toLowerCase();
+      const specialistLabel = row.specialist ? "specialista dokumenty" : "";
       const missingLabels = buildAdminUserMissingItems(row)
         .map((item) => item.label.toLowerCase())
         .join(" ");
@@ -1174,6 +1177,7 @@ export default function AdminRequestsPage() {
         position.includes(query) ||
         positionLabel.includes(query) ||
         accountTypeLabel.includes(query) ||
+        specialistLabel.includes(query) ||
         missingLabels.includes(query) ||
         relationName.includes(query)
       );
@@ -1623,6 +1627,7 @@ export default function AdminRequestsPage() {
         ? row.accountType
         : ""
     );
+    setAdminUsersEditSpecialist(row.specialist === true);
     setAdminUsersStatus(null);
     setAdminUsersError(null);
   }, []);
@@ -1634,6 +1639,7 @@ export default function AdminRequestsPage() {
     setAdminUsersEditIco("");
     setAdminUsersEditPhoneNumber("");
     setAdminUsersEditAccountType("");
+    setAdminUsersEditSpecialist(false);
   }, []);
 
   const handleSaveAdminUser = useCallback(
@@ -1659,6 +1665,7 @@ export default function AdminRequestsPage() {
             ico: nextIco,
             phoneNumber: adminUsersEditPhoneNumber.trim(),
             accountType: adminUsersEditAccountType,
+            specialist: adminUsersEditSpecialist,
           }),
         });
         setAdminUsersStatus({
@@ -1671,6 +1678,7 @@ export default function AdminRequestsPage() {
         setAdminUsersEditIco("");
         setAdminUsersEditPhoneNumber("");
         setAdminUsersEditAccountType("");
+        setAdminUsersEditSpecialist(false);
         await loadAdminUsersRows();
       } catch (error) {
         setAdminUsersError(
@@ -1686,6 +1694,7 @@ export default function AdminRequestsPage() {
       adminUsersEditFullName,
       adminUsersEditIco,
       adminUsersEditPhoneNumber,
+      adminUsersEditSpecialist,
       isAllowedAdmin,
       loadAdminUsersRows,
     ]
@@ -1762,6 +1771,7 @@ export default function AdminRequestsPage() {
         ico: normalizeIcoInput(adminUsersEditIco) || null,
         phoneNumber: adminUsersEditPhoneNumber.trim() || null,
         accountType: adminUsersEditAccountType || null,
+        specialist: adminUsersEditSpecialist,
       }
     : null;
   const selectedAdminUserMissingItems = selectedAdminUserDraft
@@ -1957,6 +1967,12 @@ export default function AdminRequestsPage() {
                     <span className="rounded-full border border-white/14 bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-slate-100">
                       {formatAccountTypeLabel(adminUsersEditAccountType || selectedAdminUser.accountType)}
                     </span>
+                    {adminUsersEditSpecialist ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-cyan-300/45 bg-cyan-400/16 px-2.5 py-1 text-xs font-semibold text-cyan-100">
+                        <ShieldCheck size={13} strokeWidth={2.4} aria-hidden="true" />
+                        Specialista
+                      </span>
+                    ) : null}
                   </div>
                   <h2 className="mt-4 break-words text-2xl font-bold leading-tight text-white">
                     {selectedAdminUser.fullName || nameFromEmail(selectedAdminUser.email)}
@@ -2121,6 +2137,24 @@ export default function AdminRequestsPage() {
                       maxLength={ADMIN_USER_PHONE_MAX_LEN}
                     />
                   </label>
+
+                  <label className="flex items-start gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 px-3 py-3 sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={adminUsersEditSpecialist}
+                      onChange={(event) => setAdminUsersEditSpecialist(event.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-cyan-300 text-cyan-700 accent-cyan-700"
+                    />
+                    <span>
+                      <span className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-900">
+                        <ShieldCheck size={14} strokeWidth={2.3} aria-hidden="true" />
+                        Specialista
+                      </span>
+                      <span className="mt-1 block text-xs leading-relaxed text-cyan-800">
+                        Může v pomůcce Dokumenty spravovat dokumenty, upravovat položky a nahrávat PDF nebo obrázky.
+                      </span>
+                    </span>
+                  </label>
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -2143,6 +2177,10 @@ export default function AdminRequestsPage() {
                           ?.label ??
                         selectedAdminUser.commissionMode ??
                         "—",
+                    },
+                    {
+                      label: "Specialista",
+                      value: adminUsersEditSpecialist ? "Ano" : "Ne",
                     },
                     {
                       label: "Dokončení setupu",
@@ -3269,6 +3307,12 @@ export default function AdminRequestsPage() {
                               >
                                   {accountTypeLabel}
                                 </span>
+                              {row.specialist ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold text-cyan-700">
+                                  <ShieldCheck size={12} strokeWidth={2.4} aria-hidden="true" />
+                                  Specialista
+                                </span>
+                              ) : null}
                               {positionLabel ? (
                                 <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
                                   {positionLabel}

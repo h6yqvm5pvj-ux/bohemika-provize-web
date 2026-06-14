@@ -80,7 +80,6 @@ const QUICK_ACTION_SET = new Set([
   "proklepka-vozidla",
   "data-o-vozidle",
   "naceneni-vozidla",
-  "naceneni-celniho-skla",
   "projekce-vykonu",
   "pracovni-neschopenka",
   "invalidita",

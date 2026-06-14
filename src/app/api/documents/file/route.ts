@@ -1,11 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { getStorage } from "firebase-admin/storage";
 
 import {
   requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
+import { resolveSafeUserAttachmentServing } from "@/lib/server/safeUserAttachments";
+import {
+  loadStoredToolDocument,
+  storageBucketCandidates,
+} from "@/lib/server/toolDocuments";
 
 export const runtime = "nodejs";
 
@@ -15,6 +21,10 @@ const DOCUMENT_RATE_LIMIT_WINDOW_MS = 60_000;
 type DocumentMeta = {
   fileName: string;
   contentType: string;
+};
+
+type ResolvedDocumentFile = DocumentMeta & {
+  bytes: Buffer;
 };
 
 const DOCUMENTS: Record<string, DocumentMeta> = {
@@ -67,6 +77,46 @@ const DOCUMENTS: Record<string, DocumentMeta> = {
 const normalizeDocumentId = (value: string | null): string =>
   (value ?? "").trim().toLowerCase();
 
+const normalizeText = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+
+const isStorageNotFoundError = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") return false;
+  const row = error as {
+    code?: number | string;
+    statusCode?: number;
+    message?: string;
+  };
+  const code = typeof row.code === "string" ? Number(row.code) : row.code;
+  if (code === 404 || row.statusCode === 404) return true;
+  const message = typeof row.message === "string" ? row.message.toLowerCase() : "";
+  return message.includes("no such object") || message.includes("not found");
+};
+
+async function downloadStorageFile({
+  path,
+  bucketName,
+}: {
+  path: string;
+  bucketName?: string | null;
+}): Promise<Buffer | null> {
+  let lastError: unknown = null;
+  for (const candidate of storageBucketCandidates(bucketName)) {
+    try {
+      const [downloaded] = await getStorage().bucket(candidate).file(path).download();
+      return downloaded;
+    } catch (error) {
+      lastError = error;
+      if (!isStorageNotFoundError(error)) break;
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+  return null;
+}
+
 function contentDisposition(fileName: string, shouldDownload: boolean): string {
   const fallback = fileName
     .normalize("NFD")
@@ -87,8 +137,9 @@ export async function GET(req: NextRequest) {
   if (!guard.ok) return guard.response;
 
   const id = normalizeDocumentId(req.nextUrl.searchParams.get("id"));
-  const meta = DOCUMENTS[id];
-  if (!meta) {
+
+  const managed = await loadStoredToolDocument(id);
+  if (managed.stored?.disabled === true) {
     return withRateLimitHeaders(
       NextResponse.json(
         { ok: false, error: "Dokument nebyl nalezen." },
@@ -99,12 +150,66 @@ export async function GET(req: NextRequest) {
   }
 
   const shouldDownload = req.nextUrl.searchParams.get("download") === "1";
-  const filePath = join(process.cwd(), "private", "dokumenty", meta.fileName);
+  let resolved: ResolvedDocumentFile | null = null;
 
-  let buffer: Buffer;
-  try {
-    buffer = await readFile(filePath);
-  } catch {
+  const storedPath = normalizeText(managed.stored?.storagePath);
+  if (managed.publicDoc && storedPath) {
+    let bytes: Buffer | null = null;
+    try {
+      bytes = await downloadStorageFile({
+        path: storedPath,
+        bucketName: normalizeText(managed.stored?.bucketName),
+      });
+    } catch {
+      bytes = null;
+    }
+
+    if (!bytes) {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: "Soubor nebyl nalezen." },
+          { status: 404 }
+        ),
+        guard.ctx
+      );
+    }
+
+    resolved = {
+      bytes,
+      fileName: managed.publicDoc.fileName,
+      contentType: managed.publicDoc.contentType,
+    };
+  } else {
+    const meta = managed.publicDoc
+      ? {
+          fileName: managed.publicDoc.fileName,
+          contentType: managed.publicDoc.contentType,
+        }
+      : DOCUMENTS[id];
+
+    if (!meta) {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: "Dokument nebyl nalezen." },
+          { status: 404 }
+        ),
+        guard.ctx
+      );
+    }
+
+    const filePath = join(process.cwd(), "private", "dokumenty", meta.fileName);
+
+    try {
+      resolved = {
+        ...meta,
+        bytes: await readFile(filePath),
+      };
+    } catch {
+      resolved = null;
+    }
+  }
+
+  if (!resolved) {
     return withRateLimitHeaders(
       NextResponse.json(
         { ok: false, error: "Soubor nebyl nalezen." },
@@ -114,15 +219,30 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const serving = resolveSafeUserAttachmentServing({
+    bytes: resolved.bytes,
+    fileName: resolved.fileName,
+    storedContentType: resolved.contentType,
+    downloadRequested: shouldDownload,
+  });
+
+  const responseHeaders = new Headers({
+    "Content-Type": serving.contentType,
+    "Content-Length": String(resolved.bytes.length),
+    "Cache-Control": "private, no-store, max-age=0",
+    "Content-Disposition": contentDisposition(resolved.fileName, serving.shouldDownload),
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+  });
+  if (serving.contentSecurityPolicy) {
+    responseHeaders.set("Content-Security-Policy", serving.contentSecurityPolicy);
+  }
+
   return withRateLimitHeaders(
-    new NextResponse(new Uint8Array(buffer), {
+    new NextResponse(new Uint8Array(resolved.bytes), {
       status: 200,
-      headers: {
-        "Content-Type": meta.contentType,
-        "Content-Length": String(buffer.length),
-        "Cache-Control": "private, no-store, max-age=0",
-        "Content-Disposition": contentDisposition(meta.fileName, shouldDownload),
-      },
+      headers: responseHeaders,
     }),
     guard.ctx
   );

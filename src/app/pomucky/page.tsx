@@ -31,7 +31,6 @@ import {
   TrendingUp,
   Trophy,
   WalletCards,
-  Wind,
   X,
 } from "lucide-react";
 
@@ -99,7 +98,7 @@ const FILTER_VISUALS: Record<FilterKey, FilterVisual> = {
     glow: "shadow-[0_16px_36px_rgba(29,78,216,0.34)]",
     inactive:
       "border-blue-200/90 bg-white/88 text-blue-800 hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50/75",
-    helper: "VIN, nacenění, tachometry i další auto utility.",
+    helper: "VIN, tachometry i další auto utility.",
   },
   "Životní pojištění": {
     icon: HeartPulse,
@@ -452,14 +451,6 @@ export default function ToolsPage() {
         description: "Zjisti informace o vozidle jako například nájezd, tržní cenu, cenu skel, vlastníky, STK, data z ORV a další.",
         icon: ShieldCheck,
         href: "/pomucky/proklepka-vozidla",
-      },
-      {
-        key: "naceneni-celniho-skla",
-        category: "Pojištění vozidel",
-        title: "Nacenění čelního skla",
-        description: "Odhad ceny výměny čelního skla a doporučeného limitu pojištění podle VIN.",
-        icon: Wind,
-        href: "/pomucky/naceneni-celniho-skla",
       },
       {
         key: "nahrat-tachometr",

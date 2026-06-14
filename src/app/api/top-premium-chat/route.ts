@@ -183,13 +183,6 @@ const WEBSITE_FEATURES: WebsiteFeature[] = [
     keywords: ["proklepka", "vozidlo", "vin", "historie vozidla"],
   },
   {
-    id: "naceneni-skla",
-    title: "Nacenění čelního skla",
-    path: "/pomucky/naceneni-celniho-skla",
-    summary: "Odhad ceny výměny čelního skla a doporučeného limitu pojištění.",
-    keywords: ["celni sklo", "naceneni skla", "sklo", "limit skla"],
-  },
-  {
     id: "posta",
     title: "Pošta",
     path: "/posta",

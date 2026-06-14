@@ -288,7 +288,6 @@ const QUICK_ACTION_OPTIONS: QuickAction[] = [
   { key: "zlato", title: "Zlato", href: "/pomucky/zlato", category: "Investice" },
   { key: "katastr", title: "Nahlížení do katastru nemovitostí", href: "/cuzk", category: "Pojištění majetku" },
   { key: "proklepka-vozidla", title: "Proklepka vozidla", href: "/pomucky/proklepka-vozidla", category: "Pojištění vozidel" },
-  { key: "naceneni-celniho-skla", title: "Nacenění čelního skla", href: "/pomucky/naceneni-celniho-skla", category: "Pojištění vozidel" },
   { key: "projekce-vykonu", title: "Projekce výkonu", href: "/pomucky/projekce-vykonu", category: "Finance" },
   { key: "pracovni-neschopenka", title: "Pracovní neschopnost", href: "/pomucky/pracovni-neschopenka", category: "Životní pojištění" },
   { key: "invalidita", title: "Invalidita", href: "/pomucky/invalidita", category: "Životní pojištění" },

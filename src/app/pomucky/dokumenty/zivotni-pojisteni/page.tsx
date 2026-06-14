@@ -8,6 +8,10 @@ import { ArrowLeft, ArrowUpRight, Sparkles } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
 import {
+  LIFE_TOOL_DOCUMENT_INSURERS,
+  type LifeToolDocumentInsurer,
+} from "@/app/lib/toolDocuments";
+import {
   institutionLogoFrameClass,
   institutionLogoImageClass,
   institutionLogoKeyFromPath,
@@ -21,34 +25,23 @@ const documentsFont = Space_Grotesk({
 });
 
 type InsurerCard = {
-  key: string;
+  key: LifeToolDocumentInsurer["key"];
   title: string;
   logo: string;
   description: string;
-  state: "available" | "coming";
-  href?: string;
+  href: string;
 };
 
-const INSURERS: readonly InsurerCard[] = [
-  {
-    key: "cpp",
-    title: "ČPP",
-    logo: "/icons/cpp.png",
-    description: "Dokumenty a materiály pro životní pojištění ČPP.",
-    state: "available",
-    href: "/pomucky/dokumenty/zivotni-pojisteni/cpp",
-  },
-  {
-    key: "kooperativa",
-    title: "Kooperativa",
-    logo: "/icons/koop-v2.png",
-    description: "Dokumenty a materiály pro životní pojištění Kooperativa.",
-    state: "coming",
-  },
-];
+const INSURERS: readonly InsurerCard[] = LIFE_TOOL_DOCUMENT_INSURERS.map((insurer) => ({
+  key: insurer.key,
+  title: insurer.title,
+  logo: insurer.logo,
+  description: insurer.description,
+  href: `/pomucky/dokumenty/zivotni-pojisteni/${insurer.slug}`,
+}));
 
 const INSURER_VISUALS: Record<
-  string,
+  LifeToolDocumentInsurer["key"],
   { accent: string; border: string; chip: string; arrow: string; dot: string; ghostTint: string }
 > = {
   cpp: {
@@ -57,8 +50,7 @@ const INSURER_VISUALS: Record<
     chip: "text-rose-700",
     arrow: "group-hover:border-rose-300 group-hover:bg-rose-700 group-hover:text-white",
     dot: "bg-rose-500",
-    ghostTint:
-      "bg-[radial-gradient(circle_at_14%_20%,rgba(59,130,246,0.18)_0%,transparent_52%),radial-gradient(circle_at_42%_74%,rgba(239,68,68,0.14)_0%,transparent_54%)]",
+    ghostTint: "bg-transparent",
   },
   kooperativa: {
     accent: "from-emerald-500 via-emerald-600 to-teal-600",
@@ -66,8 +58,31 @@ const INSURER_VISUALS: Record<
     chip: "text-emerald-700",
     arrow: "group-hover:border-emerald-300 group-hover:bg-emerald-700 group-hover:text-white",
     dot: "bg-emerald-500",
-    ghostTint:
-      "bg-[radial-gradient(circle_at_14%_20%,rgba(16,185,129,0.18)_0%,transparent_52%),radial-gradient(circle_at_42%_74%,rgba(34,197,94,0.12)_0%,transparent_54%)]",
+    ghostTint: "bg-transparent",
+  },
+  maxima: {
+    accent: "from-sky-500 via-cyan-500 to-emerald-500",
+    border: "border-sky-200/85 hover:border-sky-300",
+    chip: "text-sky-700",
+    arrow: "group-hover:border-sky-300 group-hover:bg-sky-700 group-hover:text-white",
+    dot: "bg-sky-500",
+    ghostTint: "bg-transparent",
+  },
+  allianz: {
+    accent: "from-blue-600 via-sky-500 to-cyan-500",
+    border: "border-blue-200/85 hover:border-blue-300",
+    chip: "text-blue-700",
+    arrow: "group-hover:border-blue-300 group-hover:bg-blue-700 group-hover:text-white",
+    dot: "bg-blue-500",
+    ghostTint: "bg-transparent",
+  },
+  pillow: {
+    accent: "from-violet-500 via-fuchsia-500 to-pink-500",
+    border: "border-violet-200/85 hover:border-violet-300",
+    chip: "text-violet-700",
+    arrow: "group-hover:border-violet-300 group-hover:bg-violet-700 group-hover:text-white",
+    dot: "bg-violet-500",
+    ghostTint: "bg-transparent",
   },
 };
 
@@ -75,16 +90,6 @@ export default function DokumentyZivotniPojisteniPage() {
   return (
     <AppLayout active="tools">
       <div className={`${documentsFont.className} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
-        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-          <div className={styles.canvas}>
-            <span className={`${styles.orb} ${styles.orbA}`} />
-            <span className={`${styles.orb} ${styles.orbB}`} />
-            <span className={`${styles.orb} ${styles.orbC}`} />
-            <span className={styles.mesh} />
-          </div>
-          <div className={styles.grain} />
-        </div>
-
         <div className="relative z-10 mx-auto max-w-6xl space-y-5 px-2 sm:px-3 lg:px-4">
           <header
             className={`${styles.heroPanel} relative rounded-[32px] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.95)_0%,rgba(240,249,255,0.95)_48%,rgba(238,242,255,0.94)_100%)] px-5 py-6 text-slate-900 shadow-[0_24px_70px_rgba(15,23,42,0.14)] sm:px-8 sm:py-8`}
@@ -119,7 +124,7 @@ export default function DokumentyZivotniPojisteniPage() {
                 styles.toolCard,
                 "group relative flex min-h-[222px] flex-col rounded-[28px] border bg-white/92 p-5 shadow-[0_22px_60px_rgba(15,23,42,0.12)] backdrop-blur-sm transition-[transform,border-color,box-shadow] duration-200",
                 visual.border,
-                insurer.href ? "hover:-translate-y-1 hover:shadow-[0_30px_80px_rgba(15,23,42,0.16)]" : "opacity-95",
+                "hover:-translate-y-1 hover:shadow-[0_30px_80px_rgba(15,23,42,0.16)]",
               ].join(" ");
 
               const content = (
@@ -158,7 +163,7 @@ export default function DokumentyZivotniPojisteniPage() {
                         </span>
                         <div className="min-w-0">
                           <p className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${visual.chip}`}>
-                            {insurer.state === "available" ? "Workflow" : "Připravujeme"}
+                            Workflow
                           </p>
                           <h2 className="mt-1 text-[2rem] font-bold leading-tight tracking-[-0.015em] text-slate-950">
                             {insurer.title}
@@ -168,7 +173,7 @@ export default function DokumentyZivotniPojisteniPage() {
 
                       <span
                         className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition ${
-                          insurer.href ? visual.arrow : ""
+                          visual.arrow
                         }`}
                       >
                         <ArrowUpRight className="h-4 w-4" />
@@ -179,38 +184,26 @@ export default function DokumentyZivotniPojisteniPage() {
 
                     <div className="mt-auto flex items-center justify-between gap-3 pt-1">
                       <span className={`text-xs font-semibold uppercase tracking-[0.16em] ${visual.chip}`}>
-                        {insurer.href ? "Otevřít sekci" : "Doplníme v další verzi"}
+                        Otevřít sekci
                       </span>
                       <span className="inline-flex items-center gap-2 text-xs text-slate-500">
                         <span className={`h-1.5 w-1.5 rounded-full ${visual.dot}`} />
-                        {insurer.href ? "Aktivní obsah" : "Čeká na doplnění"}
+                        Aktivní obsah
                       </span>
                     </div>
                   </div>
                 </>
               );
 
-              if (insurer.href) {
-                return (
-                  <Link
-                    key={insurer.key}
-                    href={insurer.href}
-                    className={cardClassName}
-                    style={{ animationDelay: `${Math.min(index * 60, 280)}ms` }}
-                  >
-                    {content}
-                  </Link>
-                );
-              }
-
               return (
-                <article
+                <Link
                   key={insurer.key}
+                  href={insurer.href}
                   className={cardClassName}
                   style={{ animationDelay: `${Math.min(index * 60, 280)}ms` }}
                 >
                   {content}
-                </article>
+                </Link>
               );
             })}
           </section>

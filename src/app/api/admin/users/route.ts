@@ -7,6 +7,7 @@ import {
   adminAuthErrorResponse,
   getAdminAuthContext,
 } from "@/lib/server/adminAuth";
+import { isSpecialistProfile } from "@/lib/specialistAccess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ type AdminUsersRow = {
   managerEmail: string | null;
   tipRecipientEmail: string | null;
   commissionMode: string | null;
+  specialist: boolean;
   accountSetupCompletedAt: string | null;
   disabled: boolean;
   emailVerified: boolean;
@@ -194,6 +196,7 @@ function serializeUser(authUser: UserRecord, summary: ProfileSummary | undefined
     managerEmail: normalizeEmail(mergedData.managerEmail) || null,
     tipRecipientEmail: normalizeEmail(mergedData.tipRecipientEmail) || null,
     commissionMode: normalizeText(mergedData.commissionMode) || null,
+    specialist: isSpecialistProfile(mergedData),
     accountSetupCompletedAt: normalizeText(mergedData.accountSetupCompletedAt) || null,
     disabled: authUser.disabled,
     emailVerified: authUser.emailVerified,
@@ -427,6 +430,15 @@ export async function PATCH(req: NextRequest) {
         patch.userRole = FieldValue.delete();
       }
     }
+    if (Object.prototype.hasOwnProperty.call(body, "specialist")) {
+      if (typeof body.specialist !== "boolean") {
+        return NextResponse.json(
+          { ok: false, error: "Specialista má neplatnou hodnotu." } satisfies ApiError,
+          { status: 400 }
+        );
+      }
+      patch.specialist = body.specialist;
+    }
 
     await publicRef.set(patch, { merge: true });
 
@@ -440,6 +452,7 @@ export async function PATCH(req: NextRequest) {
         ico: icoRaw || null,
         phoneNumber: phoneNumberRaw || null,
         accountType: accountTypeRaw || null,
+        specialist: body.specialist === true,
       },
     });
   } catch (error) {

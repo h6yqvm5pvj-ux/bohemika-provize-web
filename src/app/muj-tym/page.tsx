@@ -1127,16 +1127,16 @@ export default function TeamPage() {
     if (diff <= ONLINE_THRESHOLD_MS) {
       return {
         statusLabel: "Online",
-        className: "bg-emerald-50 text-emerald-700 border-emerald-600",
-        dotClassName: "bg-emerald-500",
+        className: "bg-violet-50 text-violet-700 border-violet-300",
+        dotClassName: "bg-violet-500",
         title: `Aktivní ${new Date(ts).toLocaleString("cs-CZ")}`,
       };
     }
     if (diff <= RECENT_THRESHOLD_MS) {
       return {
         statusLabel: `Aktivní ${formatRelative(ts)}`,
-        className: "bg-amber-50 text-amber-700 border-amber-600",
-        dotClassName: "bg-amber-500",
+        className: "bg-purple-50 text-purple-700 border-purple-300",
+        dotClassName: "bg-purple-500",
         title: `Naposledy ${new Date(ts).toLocaleString("cs-CZ")}`,
       };
     }
@@ -1630,7 +1630,7 @@ export default function TeamPage() {
   return (
     <AppLayout active="team">
       <div
-        className={`${introStyles.pageEnter} team-panel-root w-full max-w-6xl space-y-6 px-1 py-1 text-slate-900 sm:px-2 sm:py-2`}
+        className={`${introStyles.pageEnter} team-panel-root w-full max-w-6xl space-y-6 rounded-[34px] bg-[linear-gradient(180deg,#fbfaff_0%,#ffffff_46%,#fbfaff_100%)] px-1 py-1 text-slate-900 sm:px-2 sm:py-2`}
       >
         <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <SplitTitle text="Můj tým" className="team-panel-title !text-slate-900" />
@@ -1639,7 +1639,7 @@ export default function TeamPage() {
         {!authReady ? (
           <p className="text-sm text-slate-600">Načítám přihlášení…</p>
         ) : loading ? (
-          <div className={`${introStyles.loadingShell} rounded-[32px] border border-slate-200/80 bg-white/92 px-4 py-5 shadow-[0_24px_64px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:px-6 sm:py-6`}>
+          <div className={`${introStyles.loadingShell} rounded-[32px] border border-violet-100/90 bg-white/92 px-4 py-5 shadow-[0_24px_64px_rgba(76,29,149,0.12)] backdrop-blur-xl sm:px-6 sm:py-6`}>
             <span className={introStyles.loadingAuraA} aria-hidden="true" />
             <span className={introStyles.loadingAuraB} aria-hidden="true" />
             <span className={introStyles.loadingSweep} aria-hidden="true" />
@@ -1648,10 +1648,10 @@ export default function TeamPage() {
               <div className="space-y-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/88 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-800 shadow-[0_8px_20px_rgba(14,165,233,0.10)]">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/88 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-800 shadow-[0_8px_20px_rgba(109,40,217,0.10)]">
                       <span className="relative inline-flex h-2 w-2">
-                        <span className="absolute inset-0 rounded-full bg-sky-500/80 animate-ping" />
-                        <span className="relative h-2 w-2 rounded-full bg-sky-600" />
+                        <span className="absolute inset-0 rounded-full bg-violet-500/80 animate-ping" />
+                        <span className="relative h-2 w-2 rounded-full bg-violet-600" />
                       </span>
                       Synchronizace týmu
                     </span>
@@ -1663,8 +1663,8 @@ export default function TeamPage() {
                     </p>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white/86 px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-                    <div className="grid h-11 w-11 place-items-center rounded-xl bg-sky-50 text-sky-700">
+	                  <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-violet-100 bg-white/86 px-4 py-3 shadow-[0_12px_28px_rgba(76,29,149,0.08)]">
+	                    <div className="grid h-11 w-11 place-items-center rounded-xl bg-violet-50 text-violet-700">
                       <UsersRound className="h-5 w-5" strokeWidth={2.2} />
                     </div>
                     <div>
@@ -1692,9 +1692,9 @@ export default function TeamPage() {
                         key={label}
                         className={`rounded-2xl border px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)] ${
                           state === "done"
-                            ? "border-emerald-200 bg-emerald-50/88"
+	                            ? "border-violet-200 bg-violet-50/88"
                             : state === "active"
-                              ? "border-sky-200 bg-sky-50/92"
+	                              ? "border-purple-200 bg-purple-50/92"
                               : "border-slate-200 bg-white/76"
                         }`}
                       >
@@ -1702,9 +1702,9 @@ export default function TeamPage() {
                           <span
                             className={`grid h-9 w-9 place-items-center rounded-xl ${
                               state === "done"
-                                ? "bg-emerald-100 text-emerald-700"
+	                                ? "bg-violet-100 text-violet-700"
                                 : state === "active"
-                                  ? "bg-sky-100 text-sky-700"
+	                                  ? "bg-purple-100 text-purple-700"
                                   : "bg-slate-100 text-slate-500"
                             }`}
                           >
@@ -1737,7 +1737,7 @@ export default function TeamPage() {
                   </div>
                   <div className="h-3 overflow-hidden rounded-full bg-slate-200/80 shadow-[inset_0_1px_2px_rgba(15,23,42,0.08)]">
                     <div
-                      className="relative h-full rounded-full bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-500 transition-[width] duration-300 ease-out"
+	                      className="relative h-full rounded-full bg-gradient-to-r from-violet-400 via-purple-500 to-indigo-500 transition-[width] duration-300 ease-out"
                       style={{ width: `${clampedLoadingProgress}%` }}
                     >
                       <span className="absolute inset-y-0 right-0 w-12 bg-gradient-to-r from-transparent via-white/60 to-transparent opacity-90 animate-pulse" />
@@ -1750,7 +1750,7 @@ export default function TeamPage() {
                 </div>
               </div>
 
-              <aside className="rounded-[26px] border border-slate-200 bg-white/86 p-4 shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
+	              <aside className="rounded-[26px] border border-violet-100 bg-white/86 p-4 shadow-[0_16px_38px_rgba(76,29,149,0.08)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -1760,7 +1760,7 @@ export default function TeamPage() {
                       Týmový panel
                     </div>
                   </div>
-                  <div className="grid h-10 w-10 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
+	                  <div className="grid h-10 w-10 place-items-center rounded-2xl bg-violet-50 text-violet-700">
                     <Check className="h-5 w-5" />
                   </div>
                 </div>
@@ -1777,9 +1777,9 @@ export default function TeamPage() {
                       <span
                         className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                           state === "ověřeno" || state === "hotovo"
-                            ? "bg-emerald-100 text-emerald-700"
+	                            ? "bg-violet-100 text-violet-700"
                             : state === "běží"
-                              ? "bg-sky-100 text-sky-700"
+	                              ? "bg-purple-100 text-purple-700"
                               : "bg-slate-200 text-slate-600"
                         }`}
                       >
@@ -1789,7 +1789,7 @@ export default function TeamPage() {
                   ))}
                 </div>
 
-                <div className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/80 px-3 py-3 text-sm leading-relaxed text-slate-700">
+	                <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/80 px-3 py-3 text-sm leading-relaxed text-slate-700">
                   <div className="font-semibold text-slate-950">Připravuju data pro seznam i detail člena.</div>
                   <div className="mt-1 text-xs text-slate-600">
                     Po načtení se automaticky vybere první osoba v týmu.
@@ -1798,7 +1798,7 @@ export default function TeamPage() {
               </aside>
             </div>
 
-            <div className="relative z-10 mt-5 rounded-[26px] border border-slate-200 bg-white/72 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
+	              <div className="relative z-10 mt-5 rounded-[26px] border border-violet-100 bg-white/72 p-3 shadow-[0_14px_34px_rgba(76,29,149,0.07)]">
               <div className="mb-3 flex items-center justify-between gap-3 px-1">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -1818,7 +1818,7 @@ export default function TeamPage() {
                     key={index}
                     className={`${introStyles.loadingSkeletonCard} rounded-2xl border border-slate-200/90 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]`}
                   >
-                    <div className="inline-flex items-center rounded-full border border-cyan-100 bg-cyan-50/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700">
+	                    <div className="inline-flex items-center rounded-full border border-violet-100 bg-violet-50/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-700">
                       Člen týmu
                     </div>
                     <div className="mt-2 h-7 w-28 rounded-lg bg-slate-200/90" />
@@ -1844,11 +1844,11 @@ export default function TeamPage() {
               }`}
             >
               {showTeamSidebar ? (
-              <aside className="ui-card team-panel-sidebar relative h-full overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
-                <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-slate-900" />
+	              <aside className="ui-card team-panel-sidebar relative h-full overflow-hidden rounded-3xl border border-violet-100/90 bg-white p-3 shadow-[0_18px_48px_rgba(76,29,149,0.08)]">
+	                <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-300 via-purple-400 to-indigo-300" />
                 <div className="flex h-full flex-col gap-3">
-                  <div className="flex min-w-0 sm:min-w-[220px] items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-[0_6px_14px_rgba(15,23,42,0.05)]">
-                    <Search className="h-4 w-4 text-slate-500" aria-hidden="true" />
+	                  <div className="flex min-w-0 sm:min-w-[220px] items-center gap-2 rounded-xl border border-violet-100 bg-white px-3 py-2 shadow-[0_6px_14px_rgba(76,29,149,0.05)]">
+	                    <Search className="h-4 w-4 text-violet-500" aria-hidden="true" />
                     <input
                       type="text"
                       placeholder="Jméno nebo e-mail"
@@ -1861,7 +1861,7 @@ export default function TeamPage() {
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as SortKey)}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition hover:bg-slate-50 focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+	                    className="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition hover:bg-violet-50/50 focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   >
                     {SORT_OPTIONS.map((option) => (
                       <option key={option.key} value={option.key}>
@@ -1873,7 +1873,7 @@ export default function TeamPage() {
                   <div className="grid grid-cols-1 gap-2">
                     <Link
                       href="/pomucky/struktura"
-                      className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-sky-500/80 bg-[linear-gradient(135deg,#38bdf8_0%,#2563eb_100%)] px-3 py-2 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(37,99,235,0.34)] transition hover:-translate-y-0.5 hover:border-sky-400 hover:brightness-105 hover:shadow-[0_16px_34px_rgba(37,99,235,0.42)]"
+	                      className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800 shadow-[0_10px_24px_rgba(76,29,149,0.10)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100"
                     >
                       <Network size={14} strokeWidth={2} aria-hidden="true" />
                       Struktura
@@ -1881,7 +1881,7 @@ export default function TeamPage() {
                     {canSendTeamMessage ? (
                       <Link
                         href="/pomucky/zprava-tymu"
-                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/80 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] px-3 py-2 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(5,150,105,0.32)] transition hover:-translate-y-0.5 hover:border-emerald-400 hover:brightness-105 hover:shadow-[0_16px_34px_rgba(5,150,105,0.4)]"
+	                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-violet-800 shadow-[0_10px_24px_rgba(76,29,149,0.08)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-50"
                       >
                         <MessageSquare size={14} strokeWidth={2} aria-hidden="true" />
                         Zpráva týmu
@@ -1890,7 +1890,7 @@ export default function TeamPage() {
 	                    {showManagerTeamTools ? (
 	                      <Link
                         href="/muj-tym/sin-slavy"
-                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/80 bg-[linear-gradient(135deg,#fbbf24_0%,#d97706_100%)] px-3 py-2 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(180,83,9,0.32)] transition hover:-translate-y-0.5 hover:border-amber-400 hover:brightness-105 hover:shadow-[0_16px_34px_rgba(180,83,9,0.4)]"
+	                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-violet-800 shadow-[0_10px_24px_rgba(76,29,149,0.08)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-50"
                       >
                         <Trophy size={14} strokeWidth={2} aria-hidden="true" />
                         Síň slávy
@@ -1898,10 +1898,10 @@ export default function TeamPage() {
                     ) : null}
                   </div>
 
-	                  <div className="space-y-2 border-t border-slate-200 pt-3">
+	                  <div className="space-y-2 border-t border-violet-100 pt-3">
 	                    <div className="flex items-center justify-between">
 	                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{teamListTitle}</div>
-                      <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+	                      <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-[11px] text-violet-700">
                         {filteredMembers.length} osob
                       </span>
                     </div>
@@ -1910,7 +1910,7 @@ export default function TeamPage() {
                       className="grid grid-cols-1 gap-2 max-h-[58vh] overflow-auto pr-1 lg:max-h-none lg:overflow-visible"
                     >
                       {filteredMembers.length === 0 && (
-                        <div className="col-span-full rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+	                        <div className="col-span-full rounded-2xl border border-violet-100 bg-violet-50/50 px-3 py-2 text-sm text-slate-500">
                           Pro zadané vyhledávání nejsou žádní členové.
                         </div>
                       )}
@@ -1928,23 +1928,23 @@ export default function TeamPage() {
                           <button
                             key={m.email}
                             onClick={() => setSelectedEmail(m.email)}
-                            className={[
-                              "team-member-card relative w-full min-h-[72px] overflow-hidden rounded-xl border px-3 py-1.5 text-left transition",
-                              isSelected
-                                ? "border-slate-900 bg-slate-50 text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.10)]"
-                                : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50",
-                            ].join(" ")}
+	                            className={[
+	                              "team-member-card relative w-full min-h-[72px] overflow-hidden rounded-xl border px-3 py-1.5 text-left transition",
+	                              isSelected
+	                                ? "border-violet-300 bg-violet-50/70 text-slate-900 shadow-[0_12px_28px_rgba(76,29,149,0.12)]"
+	                                : "border-violet-100 bg-white text-slate-900 hover:border-violet-200 hover:bg-violet-50/40",
+	                            ].join(" ")}
                           >
                             {isSelected ? (
-                              <span className="absolute inset-y-0 left-0 w-1 bg-emerald-400" />
+	                              <span className="absolute inset-y-0 left-0 w-1 bg-violet-500" />
                             ) : null}
                             <div className="flex w-full items-start gap-2">
                               <div
                                 className={[
                                   "relative h-7 w-7 shrink-0 overflow-hidden rounded-full border bg-white",
                                   isSelected
-                                    ? "border-slate-900 shadow-[0_0_0_1px_rgba(15,23,42,0.25)]"
-                                    : "border-slate-300",
+	                                    ? "border-violet-300 shadow-[0_0_0_1px_rgba(109,40,217,0.20)]"
+	                                    : "border-violet-100",
                                 ].join(" ")}
                                 aria-hidden="true"
                               >
@@ -1966,7 +1966,7 @@ export default function TeamPage() {
 
                                 <div className="mt-0.5 flex flex-wrap items-center gap-1">
                                   {m.accountType === "tipster" ? (
-                                    <span className="inline-flex items-center justify-center rounded-full border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700">
+	                                    <span className="inline-flex items-center justify-center rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
                                       Tipař
                                     </span>
                                   ) : null}
@@ -1978,7 +1978,7 @@ export default function TeamPage() {
                                     {last.statusLabel}
                                   </span>
                                   {m.agencyNumber ? (
-                                    <span className="inline-flex max-w-full items-center justify-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+	                                    <span className="inline-flex max-w-full items-center justify-center gap-1 rounded-full border border-violet-100 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
                                       <Hash size={10} strokeWidth={2} aria-hidden="true" className="shrink-0" />
                                       <span className="max-w-[150px] truncate">{m.agencyNumber}</span>
                                     </span>
@@ -2003,39 +2003,48 @@ export default function TeamPage() {
               </aside>
               ) : null}
 
-              <div className="relative space-y-4">
-                  {selected ? (
-                    <>
-                      <div className="relative z-10 flex flex-col gap-3 border-b border-slate-200 pb-4">
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1">Detail</div>
-                          <div className="whitespace-nowrap text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">{selected.name}</div>
-                          <div className="mt-2 space-y-0.5">
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                              {selected.accountType === "tipster" ? "Role" : "Pozice"}
-                            </div>
-                            <div className="text-2xl font-bold leading-tight text-slate-900">
-                              {memberRoleLabel(selected)}
-                            </div>
-                          </div>
-                          <p className="text-sm text-slate-500 mt-1">{selected.email}</p>
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <span
-                              className={[
-                                "inline-flex max-w-full items-start gap-2 rounded-2xl border px-3 py-1.5 text-xs font-semibold",
-                                selectedAgencyNumber
-                                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                  : "border-slate-300 bg-slate-50 text-slate-600",
-                              ].join(" ")}
-                            >
-                              <Hash size={13} strokeWidth={2} aria-hidden="true" className="mt-0.5 shrink-0" />
-                              <span className="min-w-0 break-all">
-                                Agenturní číslo: {selectedAgencyNumber || "Nevyplněno"}
-                              </span>
-                            </span>
-                          </div>
-                          {canFillSelectedAgencyNumber ? (
-                            <div className="mt-3 max-w-2xl rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.05)]">
+	              <div className="relative">
+	                  {selected ? (
+	                    <section className="overflow-hidden rounded-[32px] border border-violet-100 bg-white shadow-[0_24px_58px_rgba(76,29,149,0.10)]">
+		                      <div className="relative overflow-hidden border-b border-violet-200/30 bg-[linear-gradient(135deg,#2e1065_0%,#6d28d9_52%,#a855f7_100%)] px-5 py-5 !text-white sm:px-6">
+		                        <span className="pointer-events-none absolute -right-24 -top-28 h-56 w-56 rounded-full bg-white/18 blur-3xl" />
+		                        <span className="pointer-events-none absolute -left-20 -bottom-24 h-48 w-48 rounded-full bg-fuchsia-300/18 blur-3xl" />
+		                        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+	                          <div className="min-w-0">
+	                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.22em] !text-violet-100/80">Detail</div>
+	                            <div className="break-words text-4xl font-bold leading-tight !text-white sm:text-5xl">{selected.name}</div>
+	                            <div className="mt-3 space-y-0.5">
+	                              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] !text-violet-100/72">
+	                                {selected.accountType === "tipster" ? "Role" : "Pozice"}
+	                              </div>
+	                              <div className="text-2xl font-bold leading-tight !text-white">
+	                                {memberRoleLabel(selected)}
+	                              </div>
+	                            </div>
+	                            <p className="mt-2 text-sm !text-violet-50/80">{selected.email}</p>
+	                          </div>
+	                          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+	                            <span
+	                              className={[
+	                                "inline-flex max-w-full items-start gap-2 rounded-2xl border px-3 py-1.5 text-xs font-semibold backdrop-blur",
+	                                selectedAgencyNumber
+		                                  ? "border-white/24 bg-white/15 !text-white"
+		                                : "border-white/18 bg-white/10 !text-violet-100/75",
+	                              ].join(" ")}
+	                            >
+	                              <Hash size={13} strokeWidth={2} aria-hidden="true" className="mt-0.5 shrink-0" />
+	                              <span className="min-w-0 break-all">
+	                                Agenturní číslo: {selectedAgencyNumber || "Nevyplněno"}
+	                              </span>
+	                            </span>
+	                          </div>
+	                        </div>
+	                      </div>
+
+	                      <div className="space-y-4 bg-white px-5 py-5 sm:px-6">
+	                        <div className="space-y-3">
+	                          {canFillSelectedAgencyNumber ? (
+		                            <div className="mt-3 max-w-2xl rounded-2xl border border-violet-100 bg-white px-3 py-3 shadow-[0_8px_22px_rgba(76,29,149,0.05)]">
                               <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                                 Doplnit agenturní číslo
                               </label>
@@ -2049,7 +2058,7 @@ export default function TeamPage() {
                                   }}
                                   maxLength={AGENCY_NUMBER_MAX_LEN}
                                   placeholder="Agenturní číslo"
-                                  className="ui-input ui-focus min-h-[40px] flex-1 rounded-xl border-slate-300 px-3 py-2 text-sm"
+	                                  className="ui-input ui-focus min-h-[40px] flex-1 rounded-xl border-violet-100 px-3 py-2 text-sm focus:border-violet-300 focus:ring-violet-100"
                                   disabled={agencyNumberSaving}
                                 />
                                 <button
@@ -2066,8 +2075,8 @@ export default function TeamPage() {
                           {agencyNumberStatus ? (
                             <div
                               className={`mt-2 text-sm font-semibold ${
-                                agencyNumberStatus.type === "success"
-                                  ? "text-emerald-700"
+	                                agencyNumberStatus.type === "success"
+	                                  ? "text-violet-700"
                                   : "text-rose-700"
                               }`}
                             >
@@ -2079,21 +2088,21 @@ export default function TeamPage() {
                               <button
                                 type="button"
                                 onClick={handleCopySelectedEmail}
-                                className="ui-focus inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-slate-900 hover:text-slate-900"
+	                                className="ui-focus inline-flex items-center gap-2 rounded-full border border-violet-100 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_16px_rgba(76,29,149,0.05)] transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
                               >
                                 <Copy size={12} strokeWidth={2} aria-hidden="true" />
                                 {copiedEmail ? "Zkopírováno" : "Kopírovat e-mail"}
                               </button>
                               <a
                                 href={`mailto:${selected.email}`}
-                                className="ui-focus inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-slate-900 hover:text-slate-900"
+	                                className="ui-focus inline-flex items-center gap-2 rounded-full border border-violet-100 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_16px_rgba(76,29,149,0.05)] transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
                               >
                                 <Mail size={12} strokeWidth={2} aria-hidden="true" />
                                 Napsat e-mail
                               </a>
                               <Link
                                 href={`/pomucky/statistika?user=${encodeURIComponent(selected.email)}`}
-                                className="ui-focus inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-slate-900 hover:text-slate-900"
+	                                className="ui-focus inline-flex items-center gap-2 rounded-full border border-violet-100 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_16px_rgba(76,29,149,0.05)] transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
                               >
                                 <BarChart3 size={12} strokeWidth={2} aria-hidden="true" />
                                 Statistiky
@@ -2110,18 +2119,18 @@ export default function TeamPage() {
                             ) : null}
                           </div>
                           {endCollaborationSuccess ? (
-                            <div className="mt-2 text-sm font-semibold text-emerald-700">
+	                            <div className="mt-2 text-sm font-semibold text-violet-700">
                               {endCollaborationSuccess}
                             </div>
                           ) : null}
-                          <div className="mt-3 inline-flex flex-wrap items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1">
+	                          <div className="mt-3 inline-flex flex-wrap items-center gap-1 rounded-full border border-violet-100 bg-violet-50/70 p-1">
                             <button
                               type="button"
                               onClick={() => setDetailTab("overview")}
                               className={`ui-focus rounded-full px-3 py-1 text-xs font-semibold transition ${
                                 detailTab === "overview"
-                                  ? "bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.24)]"
-                                  : "text-slate-600 hover:bg-white hover:text-slate-900"
+		                                  ? "bg-violet-700 !text-white shadow-[0_6px_14px_rgba(109,40,217,0.24)]"
+	                                  : "text-slate-600 hover:bg-white hover:text-violet-800"
                               }`}
                             >
                               Přehled
@@ -2131,8 +2140,8 @@ export default function TeamPage() {
                               onClick={() => setDetailTab("subordinates")}
                               className={`ui-focus rounded-full px-3 py-1 text-xs font-semibold transition ${
                                 detailTab === "subordinates"
-                                  ? "bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.24)]"
-                                  : "text-slate-600 hover:bg-white hover:text-slate-900"
+		                                  ? "bg-violet-700 !text-white shadow-[0_6px_14px_rgba(109,40,217,0.24)]"
+	                                  : "text-slate-600 hover:bg-white hover:text-violet-800"
                               }`}
                             >
                               Podřízení ({subordinatesOfSelected.length})
@@ -2142,20 +2151,19 @@ export default function TeamPage() {
                               onClick={() => setDetailTab("career")}
                               className={`ui-focus rounded-full px-3 py-1 text-xs font-semibold transition ${
                                 detailTab === "career"
-                                  ? "bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.24)]"
-                                  : "text-slate-600 hover:bg-white hover:text-slate-900"
+		                                  ? "bg-violet-700 !text-white shadow-[0_6px_14px_rgba(109,40,217,0.24)]"
+	                                  : "text-slate-600 hover:bg-white hover:text-violet-800"
                               }`}
                             >
                               Kariéra
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+	                            </button>
+	                          </div>
+	                        </div>
 
-                      {detailTab === "overview" ? (
+	                      {detailTab === "overview" ? (
                         <>
-                          <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-slate-200 py-4 sm:grid-cols-3">
-                            <div className="team-stat-card rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+	                          <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-violet-100 py-4 sm:grid-cols-3">
+	                            <div className="team-stat-card rounded-2xl border border-violet-100 bg-white px-3 py-2.5 shadow-[0_10px_24px_rgba(76,29,149,0.06)]">
                               <div className="text-[11px] uppercase tracking-wide text-slate-500">
                                 {selectedIsTipster ? "Celkem TIPŮ" : "Naposledy aktivní"}
                               </div>
@@ -2172,7 +2180,7 @@ export default function TeamPage() {
                                 </div>
                               )}
                             </div>
-                            <div className="team-stat-card rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+	                            <div className="team-stat-card rounded-2xl border border-violet-100 bg-white px-3 py-2.5 shadow-[0_10px_24px_rgba(76,29,149,0.06)]">
                               <div className="text-[11px] uppercase tracking-wide text-slate-500">
                                 {selectedIsTipster ? "TIPŮ tento měsíc" : "Celkem smluv"}
                               </div>
@@ -2182,7 +2190,7 @@ export default function TeamPage() {
                                   : contractCountLabel(selected.email, "total")}
                               </div>
                             </div>
-                            <div className="team-stat-card rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+	                            <div className="team-stat-card rounded-2xl border border-violet-100 bg-white px-3 py-2.5 shadow-[0_10px_24px_rgba(76,29,149,0.06)]">
                               <div className="text-[11px] uppercase tracking-wide text-slate-500">
                                 {selectedIsTipster ? "Sjednaných TIPŮ" : "Smluv tento měsíc"}
                               </div>
@@ -2194,8 +2202,8 @@ export default function TeamPage() {
                             </div>
                           </div>
 
-                          <div className="relative overflow-hidden space-y-3 rounded-2xl border border-slate-200 bg-slate-50/40 px-3 py-4">
-                            <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-slate-900" />
+	                          <div className="relative overflow-hidden space-y-3 rounded-2xl border border-violet-100 bg-white px-3 py-4 shadow-[0_16px_38px_rgba(76,29,149,0.07)]">
+	                            <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-300 via-purple-400 to-indigo-300" />
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{productionBoxTitle}</div>
                               <div className="text-xs font-semibold text-slate-500">
@@ -2205,7 +2213,7 @@ export default function TeamPage() {
                               </div>
                             </div>
 
-                            <div className="inline-flex w-fit flex-wrap items-center gap-1 rounded-full border border-slate-200 bg-white p-1">
+	                            <div className="inline-flex w-fit flex-wrap items-center gap-1 rounded-full border border-violet-100 bg-violet-50/70 p-1">
                               {PRODUCTION_CATEGORY_TABS.map((tab) => {
                                 const active = productionCategory === tab.key;
                                 return (
@@ -2215,8 +2223,8 @@ export default function TeamPage() {
                                     onClick={() => setProductionCategory(tab.key)}
                                     className={`ui-focus rounded-full px-3 py-1 text-xs font-semibold transition ${
                                       active
-                                        ? "bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.22)]"
-                                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+	                                        ? "bg-violet-700 !text-white shadow-[0_6px_14px_rgba(109,40,217,0.22)]"
+	                                        : "text-slate-600 hover:bg-white hover:text-violet-800"
                                     }`}
                                   >
                                     {tab.label}
@@ -2225,7 +2233,7 @@ export default function TeamPage() {
                               })}
                             </div>
 
-                            <div className="ui-card ui-card-quiet rounded-2xl bg-slate-50 px-4 py-4">
+	                            <div className="ui-card ui-card-quiet rounded-2xl border border-violet-100 bg-violet-50/30 px-4 py-4">
                               {selectedProductionRows.length === 0 ? (
 	                                <div className="text-sm text-slate-500">{emptyProductionMessage}</div>
                               ) : (
@@ -2246,7 +2254,7 @@ export default function TeamPage() {
                                     return (
                                   <div
                                     key={row.name}
-                                      className={`team-production-row grid grid-cols-1 gap-1 rounded-xl border border-slate-200 bg-white px-4 py-3 ${productionGridColsClass} sm:items-center sm:gap-3`}
+	                                      className={`team-production-row grid grid-cols-1 gap-1 rounded-xl border border-violet-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(76,29,149,0.05)] ${productionGridColsClass} sm:items-center sm:gap-3`}
                                     >
                                       <div className="min-w-0 flex items-center gap-2">
                                         {logo ? (
@@ -2269,24 +2277,24 @@ export default function TeamPage() {
                                       </div>
                                       <div className="text-sm font-semibold text-slate-700 sm:text-right sm:text-base">{row.contracts}x smluv</div>
                                       {showMonthlyPremiumInProduction ? (
-                                        <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.monthlyPremium)}</div>
+	                                        <div className="text-base font-bold text-violet-700 sm:text-right sm:text-xl">{formatMoney(row.monthlyPremium)}</div>
                                       ) : null}
-                                      <div className="text-base font-bold text-emerald-700 sm:text-right sm:text-xl">{formatMoney(row.annualPremium)}</div>
+	                                      <div className="text-base font-bold text-violet-700 sm:text-right sm:text-xl">{formatMoney(row.annualPremium)}</div>
                                     </div>
                                   );
                                   })}
                                   <div
-                                    className={`relative grid grid-cols-1 gap-1 overflow-hidden rounded-2xl border border-slate-800/90 bg-[linear-gradient(135deg,#0b1328_0%,#0e1a3a_54%,#081124_100%)] px-4 py-3 text-white shadow-[0_20px_48px_rgba(2,6,23,0.45)] ${productionGridColsClass} sm:items-center sm:gap-3`}
+	                                    className={`relative grid grid-cols-1 gap-1 overflow-hidden rounded-2xl border border-violet-700/90 bg-[linear-gradient(135deg,#4c1d95_0%,#6d28d9_54%,#312e81_100%)] px-4 py-3 !text-white shadow-[0_20px_48px_rgba(76,29,149,0.34)] ${productionGridColsClass} sm:items-center sm:gap-3`}
                                   >
-                                    <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
-                                    <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
+	                                    <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-violet-300/24 blur-3xl" />
+	                                    <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-fuchsia-300/16 blur-3xl" />
                                     <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
                                     <div className="relative z-10 text-base font-bold !text-white drop-shadow-none sm:text-lg">Celkem</div>
                                     <div className="relative z-10 text-sm font-semibold !text-white drop-shadow-none sm:text-right sm:text-base">{selectedProductionTotals.contracts}x smluv</div>
                                     {showMonthlyPremiumInProduction ? (
-                                      <div className="relative z-10 text-base font-bold tracking-tight text-emerald-200 drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)] sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
+	                                      <div className="relative z-10 text-base font-bold tracking-tight text-violet-100 drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)] sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
                                     ) : null}
-                                    <div className="relative z-10 text-base font-bold tracking-tight text-emerald-200 drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)] sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.annualPremium)}</div>
+	                                    <div className="relative z-10 text-base font-bold tracking-tight text-violet-100 drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)] sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.annualPremium)}</div>
                                   </div>
                                 </div>
                               )}
@@ -2302,7 +2310,7 @@ export default function TeamPage() {
                             </span>
                           </div>
                           {subordinatesOfSelected.length === 0 ? (
-                            <div className="text-sm text-slate-500 rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2">
+	                            <div className="text-sm text-slate-500 rounded-2xl border border-violet-100 bg-violet-50/50 px-3 py-2">
                               Nemá podřízené ani v dalších úrovních.
                             </div>
                           ) : (
@@ -2310,18 +2318,18 @@ export default function TeamPage() {
                               {subordinatesOfSelected.map((sub) => (
 	                                <div
 	                                  key={sub.email}
-	                                  className="rounded-2xl border border-slate-200 bg-white px-3 py-3"
+		                                  className="rounded-2xl border border-violet-100 bg-white px-3 py-3 shadow-[0_8px_20px_rgba(76,29,149,0.05)]"
 	                                >
 	                                  <div className="text-base font-semibold text-slate-900">{sub.name}</div>
 	                                  <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-500">
-	                                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold">
+		                                    <span className="rounded-full border border-violet-100 bg-violet-50/60 px-2 py-0.5 font-semibold text-violet-800">
 	                                      {memberRoleLabel(sub)}
 	                                    </span>
 	                                    <span
 	                                      className={[
 	                                        "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 font-semibold",
 	                                        sub.agencyNumber
-	                                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+		                                          ? "border-violet-200 bg-violet-50 text-violet-800"
 	                                          : "border-slate-200 bg-slate-50 text-slate-500",
 	                                      ].join(" ")}
 	                                    >
@@ -2373,11 +2381,11 @@ export default function TeamPage() {
                           </div>
 
                           {careerTimelineLoading ? (
-                            <div className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+	                            <div className="rounded-2xl border border-violet-100 bg-violet-50/50 px-3 py-2 text-sm text-slate-500">
                               Načítám kariéru…
                             </div>
                           ) : careerTimelineDraft.length === 0 ? (
-                            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+	                            <div className="rounded-2xl border border-dashed border-violet-200 bg-violet-50/50 px-4 py-5 text-sm text-slate-500">
                               Vybraný člen zatím nemá vyplněnou historii kariéry.
                             </div>
                           ) : canEditSelectedCareer && careerTimelineEditing ? (
@@ -2395,10 +2403,10 @@ export default function TeamPage() {
                                 return (
                                   <div
                                     key={row.id}
-                                    className={`rounded-2xl border bg-white px-3 py-3 shadow-[0_6px_16px_rgba(15,23,42,0.05)] ${
+	                                    className={`rounded-2xl border bg-white px-3 py-3 shadow-[0_6px_16px_rgba(76,29,149,0.05)] ${
                                       rowRangeError || rowOpenEndedNotLast
                                         ? "border-rose-300"
-                                        : "border-slate-300"
+	                                        : "border-violet-100"
                                     }`}
                                   >
                                     <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_150px_150px_auto]">
@@ -2409,7 +2417,7 @@ export default function TeamPage() {
                                             position: e.target.value as Position,
                                           })
                                         }
-                                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+	                                        className="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                                       >
                                         {POSITION_OPTIONS.map((p) => (
                                           <option key={p.id} value={p.id}>
@@ -2425,7 +2433,7 @@ export default function TeamPage() {
                                             validFrom: e.target.value,
                                           })
                                         }
-                                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+	                                        className="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                                         title="Platí od"
                                       />
                                       <input
@@ -2436,13 +2444,13 @@ export default function TeamPage() {
                                             validTo: e.target.value,
                                           })
                                         }
-                                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+	                                        className="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                                         title="Platí do"
                                       />
                                       <button
                                         type="button"
                                         onClick={() => removeCareerTimelineRow(row.id)}
-                                        className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+	                                        className="rounded-xl border border-violet-100 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-violet-50 hover:text-violet-800"
                                       >
                                         Smazat
                                       </button>
@@ -2467,12 +2475,12 @@ export default function TeamPage() {
                                                 validTo: "",
                                               })
                                             }
-                                            className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200"
+	                                            className="rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-800 transition hover:bg-violet-100"
                                           >
                                             Nastavit DO: současnost
                                           </button>
                                         ) : (
-                                          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+	                                          <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700">
                                             Poslední pozice běží do současnosti
                                           </span>
                                         )}
@@ -2487,7 +2495,7 @@ export default function TeamPage() {
                               {careerTimelineDraft.map((row) => (
                                 <div
                                   key={row.id}
-                                  className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-3"
+	                                  className="rounded-2xl border border-violet-100 bg-white px-3 py-3 shadow-[0_6px_16px_rgba(76,29,149,0.05)]"
                                 >
                                   <div className="text-sm font-semibold text-slate-900">
                                     {positionLabel(row.position)}
@@ -2509,7 +2517,7 @@ export default function TeamPage() {
                           {canEditSelectedCareer && careerTimelineEditing ? (
                             <div className="flex flex-wrap items-center justify-end gap-2">
                               {careerTimelineSaved ? (
-                                <span className="text-xs font-semibold text-emerald-700">
+	                                <span className="text-xs font-semibold text-violet-700">
                                   Uloženo
                                 </span>
                               ) : null}
@@ -2517,7 +2525,7 @@ export default function TeamPage() {
                                 type="button"
                                 onClick={() => void saveCareerTimeline()}
                                 disabled={careerTimelineSaving}
-                                className="rounded-xl border border-emerald-700 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+	                                className="rounded-xl border border-violet-700 bg-violet-700 px-3 py-2 text-xs font-semibold !text-white transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {careerTimelineSaving ? "Ukládám..." : "Uložit kariéru"}
                               </button>
@@ -2533,10 +2541,13 @@ export default function TeamPage() {
                           )}
                         </div>
                       )}
-                    </>
-                  ) : (
-                    <div className="text-sm text-slate-500">Vyber podřízeného v levém panelu.</div>
-                  )}
+	                      </div>
+	                    </section>
+	                  ) : (
+	                    <section className="rounded-[32px] border border-violet-100 bg-white px-5 py-5 text-sm text-slate-500 shadow-[0_24px_58px_rgba(76,29,149,0.10)]">
+	                      Vyber podřízeného v levém panelu.
+	                    </section>
+	                  )}
                 </div>
             </div>
           </div>

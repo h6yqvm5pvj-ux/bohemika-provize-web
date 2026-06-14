@@ -7,7 +7,6 @@ import {
   ExternalLink,
   LifeBuoy,
   Shield,
-  Wind,
   Wrench,
 } from "lucide-react";
 import type { Product } from "@/app/types/domain";
@@ -230,9 +229,6 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
   const vehicleDataHref = resolvedVin
     ? `/pomucky/proklepka-vozidla?vin=${encodeURIComponent(resolvedVin)}`
     : "/pomucky/proklepka-vozidla";
-  const windshieldValuationHref = resolvedVin
-    ? `/pomucky/naceneni-celniho-skla?vin=${encodeURIComponent(resolvedVin)}`
-    : "/pomucky/naceneni-celniho-skla";
 
   const hasHullData =
     contract?.carHullSumInsured != null ||
@@ -297,15 +293,6 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
         >
           <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
           Proklepka vozidla
-        </Link>
-        <Link
-          href={windshieldValuationHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
-        >
-          <Wind size={14} strokeWidth={2} aria-hidden="true" />
-          Nacenit sklo
         </Link>
       </div>
       <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-1 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">

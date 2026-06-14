@@ -5,20 +5,9 @@ import { useEffect, useState } from "react";
 import { auth } from "@/app/firebase-auth";
 import { fetchAuthedBlobOrThrow } from "@/app/lib/authenticatedApi";
 
-export type SecureDocumentId =
-  | "cpp-storno-dohodou"
-  | "cpp-vypoved-zp"
-  | "cpp-vypoved-zp-zadanky"
-  | "generali-nezivot"
-  | "koop-vypoved"
-  | "max-denni-cpp"
-  | "koop-prijem"
-  | "metlife-vypoved"
-  | "metlife-zivot"
-  | "nn-zivot-vypoved"
-  | "maxima-nezivot-vypoved";
+export type SecureDocumentId = string;
 
-export const SECURE_DOCUMENT_FILE_NAMES: Record<SecureDocumentId, string> = {
+export const SECURE_DOCUMENT_FILE_NAMES: Record<string, string> = {
   "cpp-storno-dohodou": "zpneonstornodohodou.pdf",
   "cpp-vypoved-zp": "Výpověď_PS_ŽP_062023.pdf",
   "cpp-vypoved-zp-zadanky": "ŽP DOKUMENTY Žádanky Výpověď_PS_ŽP_062023.pdf",
