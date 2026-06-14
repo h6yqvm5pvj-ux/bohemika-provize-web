@@ -33,6 +33,8 @@ import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import SplitTitle from "../plan-produkce/SplitTitle";
 
 type StepId = "base" | "family" | "children" | "mortgage" | "confirm";
+type EmploymentType = "employee" | "selfEmployed";
+type SicknessInsuranceChoice = "yes" | "no";
 type ProviderRole = "main" | "secondary";
 type InvalidityModel = "insurance" | "investment";
 type InvalidityInvestmentVariantId = "investika" | "savings";
@@ -69,6 +71,40 @@ const STEPS: Array<{ id: StepId; label: string }> = [
   { id: "confirm", label: "Potvrzení" },
 ];
 
+const EMPLOYMENT_TYPE_OPTIONS: Array<{
+  id: EmploymentType;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "employee",
+    label: "Zaměstnanec",
+    description: "Nemocenské pojištění je součástí zaměstnání.",
+  },
+  {
+    id: "selfEmployed",
+    label: "OSVČ",
+    description: "Ověříme, jestli si klient platí nemocenské pojištění.",
+  },
+];
+
+const SICKNESS_INSURANCE_OPTIONS: Array<{
+  id: SicknessInsuranceChoice;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "yes",
+    label: "Ano",
+    description: "Klient si nemocenské pojištění platí.",
+  },
+  {
+    id: "no",
+    label: "Ne",
+    description: "Klient si nemocenské pojištění neplatí.",
+  },
+];
+
 const LIFE_SETUP_TITLE = "Jak nastavit Životní pojištění";
 const EMPTY_INPUT_VALUES: InputValues = {
   age: "",
@@ -95,7 +131,9 @@ const INVALIDITY_LABELS = ["1. stupeň", "2. stupeň", "3. stupeň"] as const;
 type InvalidityScenarioId = (typeof INVALIDITY_SCENARIOS)[number]["id"];
 const RETIREMENT_AGE = 65;
 const DEATH_COVERAGE_END_AGE = 75;
+const STATE_SICKNESS_BENEFIT_RATIO = 0.6;
 const DAILY_TARGET_RATIO = 0.4;
+const SICK_LEAVE_EXPENSE_RESERVE_RATIO = 0.15;
 const DEFAULT_SOLO_DEATH_YEARS = 5;
 const INVESTIKA_RETURN_RANGE = { min: 0.055, max: 0.06 };
 const INVESTMENT_PRODUCT_NAME = "INVESTIKA Realitní Fond";
@@ -218,9 +256,17 @@ const PDF_COPY = {
     perDay: "den",
     monthlyApprox: "Měsíčně přibližně",
     sickLeaveFormula: "Výpočet bere 40 % čistého příjmu a dělí ho 30 dny.",
+    sickLeaveFormulaNoState:
+      "OSVČ bez nemocenského pojištění: výpočet bere vyšší hodnotu z 40 % čistého příjmu a nutných výdajů navýšených o 15 % rezervu, potom ji dělí 30 dny.",
+    sickLeaveNoStateTitle: "OSVČ bez nemocenského pojištění",
+    sickLeaveNoStateNote:
+      "Klient musí doložit pojišťovně potvrzení od ČSSZ. Obecně je maximální denní dávka přibližně 600 Kč / den bez dokládání příjmu.",
     stateSicknessBenefit: "Orientační státní nemocenská",
     incomeDrop: "Pokles proti příjmu klienta",
+    incomeDropNoState: "Zbytkový pokles po doporučené dávce",
     expenseGapInfo: "Mezera proti nákladům informativně",
+    expenseGapInfoNoState: "Zbytková mezera proti nákladům",
+    expenseReserveTarget: "Závazky + 15 % rezerva",
     disability: "Invalidita",
     investmentByDegree: "Investiční varianta podle stupně",
     insuranceByDegree: "Rentové pojistné částky podle stupně",
@@ -307,9 +353,17 @@ const PDF_COPY = {
     perDay: "day",
     monthlyApprox: "Approximately per month",
     sickLeaveFormula: "The calculation uses 40% of net income and divides it by 30 days.",
+    sickLeaveFormulaNoState:
+      "Self-employed without sickness insurance: the calculation uses the higher of 40% of net income and essential expenses plus a 15% buffer, then divides it by 30 days.",
+    sickLeaveNoStateTitle: "Self-employed without sickness insurance",
+    sickLeaveNoStateNote:
+      "The client must provide the insurer with confirmation from CSSZ. In general, the maximum daily benefit is approximately CZK 600 per day without income documentation.",
     stateSicknessBenefit: "Estimated state sickness benefit",
     incomeDrop: "Drop compared with the client's income",
+    incomeDropNoState: "Remaining drop after the recommended benefit",
     expenseGapInfo: "Indicative gap compared with expenses",
+    expenseGapInfoNoState: "Remaining gap compared with expenses",
+    expenseReserveTarget: "Commitments + 15% buffer",
     disability: "Disability",
     investmentByDegree: "Investment variant by disability degree",
     insuranceByDegree: "Annuity-based sums insured by disability degree",
@@ -396,9 +450,17 @@ const PDF_COPY = {
     perDay: "день",
     monthlyApprox: "Орієнтовно на місяць",
     sickLeaveFormula: "Розрахунок бере 40% чистого доходу і ділить його на 30 днів.",
+    sickLeaveFormulaNoState:
+      "ФОП без страхування на випадок хвороби: розрахунок бере більше значення з 40% чистого доходу і обов'язкових витрат із резервом 15%, потім ділить його на 30 днів.",
+    sickLeaveNoStateTitle: "ФОП без страхування на випадок хвороби",
+    sickLeaveNoStateNote:
+      "Клієнт має надати страховій компанії підтвердження від CSSZ. Загалом максимальна денна виплата становить приблизно 600 Kč на день без підтвердження доходу.",
     stateSicknessBenefit: "Орієнтовна державна лікарняна виплата",
     incomeDrop: "Зниження порівняно з доходом клієнта",
+    incomeDropNoState: "Залишкове зниження після рекомендованої виплати",
     expenseGapInfo: "Орієнтовний розрив відносно витрат",
+    expenseGapInfoNoState: "Залишковий розрив відносно витрат",
+    expenseReserveTarget: "Зобов'язання + резерв 15%",
     disability: "Інвалідність",
     investmentByDegree: "Інвестиційний варіант за ступенем інвалідності",
     insuranceByDegree: "Страхові суми для ренти за ступенем інвалідності",
@@ -486,9 +548,17 @@ const PDF_COPY = {
     perDay: "दिन",
     monthlyApprox: "मासिक करिब",
     sickLeaveFormula: "गणनाले शुद्ध आम्दानीको ४०% लिएर ३० दिनले भाग गर्छ।",
+    sickLeaveFormulaNoState:
+      "बिरामी बीमा नतिर्ने स्वरोजगार ग्राहकका लागि गणनाले शुद्ध आम्दानीको ४०% वा आवश्यक खर्चमा १५% रिजर्भ थपिएको रकममध्ये ठूलो रकम लिएर ३० दिनले भाग गर्छ।",
+    sickLeaveNoStateTitle: "बिरामी बीमा नतिर्ने स्वरोजगार ग्राहक",
+    sickLeaveNoStateNote:
+      "ग्राहकले बीमा कम्पनीलाई CSSZ को पुष्टि पेश गर्नुपर्छ। आम्दानी प्रमाणित नगरी अधिकतम दैनिक भत्ता सामान्यतया करिब CZK 600 प्रति दिन हुन्छ।",
     stateSicknessBenefit: "अनुमानित सरकारी बिरामी भत्ता",
     incomeDrop: "ग्राहकको आम्दानीको तुलनामा कमी",
+    incomeDropNoState: "सिफारिस गरिएको भत्तापछि बाँकी कमी",
     expenseGapInfo: "खर्चको तुलनामा अनुमानित कमी",
+    expenseGapInfoNoState: "खर्चको तुलनामा बाँकी कमी",
+    expenseReserveTarget: "दायित्व + १५% रिजर्भ",
     disability: "अपाङ्गता",
     investmentByDegree: "अपाङ्गताको स्तरअनुसार लगानी विकल्प",
     insuranceByDegree: "अपाङ्गताको स्तरअनुसार रेन्टाका बीमित रकमहरू",
@@ -575,9 +645,17 @@ const PDF_COPY = {
     perDay: "दिन",
     monthlyApprox: "मासिक लगभग",
     sickLeaveFormula: "गणना शुद्ध आय का ४०% लेकर उसे ३० दिनों से विभाजित करती है।",
+    sickLeaveFormulaNoState:
+      "बीमारी बीमा न देने वाले स्व-रोजगार ग्राहक के लिए गणना शुद्ध आय के ४०% और आवश्यक खर्चों में १५% रिजर्व जोड़कर बनी राशि में से बड़ी राशि लेकर उसे ३० दिनों से विभाजित करती है।",
+    sickLeaveNoStateTitle: "बीमारी बीमा न देने वाला स्व-रोजगार ग्राहक",
+    sickLeaveNoStateNote:
+      "ग्राहक को बीमा कंपनी को CSSZ से पुष्टि देनी होगी। आय प्रमाणित किए बिना अधिकतम दैनिक लाभ सामान्यतः लगभग CZK 600 प्रति दिन होता है।",
     stateSicknessBenefit: "अनुमानित सरकारी बीमारी लाभ",
     incomeDrop: "ग्राहक की आय की तुलना में कमी",
+    incomeDropNoState: "अनुशंसित लाभ के बाद बची कमी",
     expenseGapInfo: "खर्चों की तुलना में अनुमानित कमी",
+    expenseGapInfoNoState: "खर्चों की तुलना में बची कमी",
+    expenseReserveTarget: "दायित्व + १५% रिजर्व",
     disability: "विकलांगता",
     investmentByDegree: "विकलांगता स्तर के अनुसार निवेश विकल्प",
     insuranceByDegree: "विकलांगता स्तर के अनुसार रेंट-आधारित बीमित राशियाँ",
@@ -1062,6 +1140,9 @@ export default function LifeInsuranceSetupPage() {
     advisorFooterFromProfile(null, auth.currentUser)
   );
   const [providerRole, setProviderRole] = useState<ProviderRole>("main");
+  const [employmentType, setEmploymentType] = useState<EmploymentType>("employee");
+  const [selfEmployedSicknessInsurance, setSelfEmployedSicknessInsurance] =
+    useState<SicknessInsuranceChoice | null>(null);
   const [invalidityScenarioId, setInvalidityScenarioId] =
     useState<InvalidityScenarioId>("medium");
   const [invalidityModel, setInvalidityModel] =
@@ -1133,23 +1214,56 @@ export default function LifeInsuranceSetupPage() {
   }, [hasChildren, values]);
 
   const sickLeave = useMemo(() => {
-    const stateBenefit = Math.round(numbers.insuredIncome * 0.6);
-    const incomeShortfall = Math.max(0, numbers.insuredIncome - stateBenefit);
-    const commitmentGap = Math.max(0, numbers.monthlyExpenses - stateBenefit);
+    const hasStateSicknessBenefit =
+      employmentType !== "selfEmployed" || selfEmployedSicknessInsurance === "yes";
+    const stateBenefit = hasStateSicknessBenefit
+      ? Math.round(numbers.insuredIncome * STATE_SICKNESS_BENEFIT_RATIO)
+      : 0;
+    const incomeShortfallBeforeRecommendation = Math.max(
+      0,
+      numbers.insuredIncome - stateBenefit
+    );
+    const commitmentGapBeforeRecommendation = Math.max(
+      0,
+      numbers.monthlyExpenses - stateBenefit
+    );
+    const incomeTargetMonthly = roundMoney(numbers.insuredIncome * DAILY_TARGET_RATIO);
+    const expenseReserveTargetMonthly = roundMoney(
+      numbers.monthlyExpenses * (1 + SICK_LEAVE_EXPENSE_RESERVE_RATIO)
+    );
+    const targetMonthly = hasStateSicknessBenefit
+      ? incomeTargetMonthly
+      : Math.max(incomeTargetMonthly, expenseReserveTargetMonthly);
     const recommendedDaily = Math.max(
       0,
-      Math.round((numbers.insuredIncome * DAILY_TARGET_RATIO) / 30)
+      hasStateSicknessBenefit
+        ? Math.round(targetMonthly / 30)
+        : Math.ceil(targetMonthly / 30)
     );
     const recommendedMonthly = recommendedDaily * 30;
+    const totalMonthlyCoverage = stateBenefit + recommendedMonthly;
+    const incomeShortfall = hasStateSicknessBenefit
+      ? incomeShortfallBeforeRecommendation
+      : Math.max(0, numbers.insuredIncome - totalMonthlyCoverage);
+    const commitmentGap = hasStateSicknessBenefit
+      ? commitmentGapBeforeRecommendation
+      : Math.max(0, numbers.monthlyExpenses - totalMonthlyCoverage);
 
     return {
+      hasStateSicknessBenefit,
       stateBenefit,
       incomeShortfall,
       commitmentGap,
+      expenseReserveTargetMonthly,
       recommendedMonthly,
       recommendedDaily,
     };
-  }, [numbers.insuredIncome, numbers.monthlyExpenses]);
+  }, [
+    employmentType,
+    selfEmployedSicknessInsurance,
+    numbers.insuredIncome,
+    numbers.monthlyExpenses,
+  ]);
 
   const invalidityScenario = useMemo(
     () =>
@@ -1273,6 +1387,22 @@ export default function LifeInsuranceSetupPage() {
     setFormError(null);
   };
 
+  const handleEmploymentTypeChoice = (selected: EmploymentType) => {
+    setEmploymentType(selected);
+    setCompleted(false);
+    setFormError(null);
+
+    if (selected === "employee") {
+      setSelfEmployedSicknessInsurance(null);
+    }
+  };
+
+  const handleSicknessInsuranceChoice = (selected: SicknessInsuranceChoice) => {
+    setSelfEmployedSicknessInsurance(selected);
+    setCompleted(false);
+    setFormError(null);
+  };
+
   const clearChildrenValues = () => {
     setValues((prev) => ({
       ...prev,
@@ -1334,6 +1464,15 @@ export default function LifeInsuranceSetupPage() {
 
     if (numbers.insuredIncome <= 0) {
       setFormError("Doplň čistý měsíční příjem klienta.");
+      return false;
+    }
+
+    if (
+      currentStep === "base" &&
+      employmentType === "selfEmployed" &&
+      selfEmployedSicknessInsurance === null
+    ) {
+      setFormError("Vyber, jestli si OSVČ platí nemocenské pojištění.");
       return false;
     }
 
@@ -1587,6 +1726,91 @@ export default function LifeInsuranceSetupPage() {
                         onChange={(value) => updateValue(field.key, value)}
                       />
                     ))}
+                  </div>
+                  <div className="rounded-2xl border border-white/14 bg-white/[0.04] p-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="max-w-xl">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
+                          Je klient
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-violet-100/65">
+                          Vyber typ příjmu klienta. U OSVČ se ptáme zvlášť na dobrovolné nemocenské pojištění.
+                        </p>
+                      </div>
+                      <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-[520px]">
+                        {EMPLOYMENT_TYPE_OPTIONS.map((option) => {
+                          const selected = employmentType === option.id;
+
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => handleEmploymentTypeChoice(option.id)}
+                              className={`min-h-[76px] rounded-2xl border px-4 py-3 text-left transition ${
+                                selected
+                                  ? "border-violet-200/70 bg-violet-400/20 shadow-[0_10px_26px_rgba(139,92,246,0.28)]"
+                                  : "border-white/14 bg-white/[0.03] hover:border-violet-300/40 hover:bg-white/[0.07]"
+                              }`}
+                            >
+                              <span className="life-setup-force-white flex items-center gap-2 text-sm font-semibold text-white">
+                                {selected ? (
+                                  <CheckCircle2 className="h-4 w-4 text-violet-100" />
+                                ) : null}
+                                {option.label}
+                              </span>
+                              <span className="mt-1 block text-xs leading-relaxed text-violet-100/65">
+                                {option.description}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {employmentType === "selfEmployed" ? (
+                      <div className="mt-3 border-t border-white/10 pt-3">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="max-w-xl">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
+                              Platí si nemocenské pojištění?
+                            </div>
+                            <p className="mt-1 text-xs leading-relaxed text-violet-100/65">
+                              Tuhle odpověď pak použijeme pro navazující doporučení k pracovní neschopnosti.
+                            </p>
+                          </div>
+                          <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-[520px]">
+                            {SICKNESS_INSURANCE_OPTIONS.map((option) => {
+                              const selected = selfEmployedSicknessInsurance === option.id;
+
+                              return (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  aria-pressed={selected}
+                                  onClick={() => handleSicknessInsuranceChoice(option.id)}
+                                  className={`min-h-[76px] rounded-2xl border px-4 py-3 text-left transition ${
+                                    selected
+                                      ? "border-violet-200/70 bg-violet-400/20 shadow-[0_10px_26px_rgba(139,92,246,0.28)]"
+                                      : "border-white/14 bg-white/[0.03] hover:border-violet-300/40 hover:bg-white/[0.07]"
+                                  }`}
+                                >
+                                  <span className="life-setup-force-white flex items-center gap-2 text-sm font-semibold text-white">
+                                    {selected ? (
+                                      <CheckCircle2 className="h-4 w-4 text-violet-100" />
+                                    ) : null}
+                                    {option.label}
+                                  </span>
+                                  <span className="mt-1 block text-xs leading-relaxed text-violet-100/65">
+                                    {option.description}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                   <WizardMetrics
                     items={[
@@ -1887,11 +2111,22 @@ export default function LifeInsuranceSetupPage() {
 
               {currentStep === "confirm" ? (
                 <div className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
                     <ConfirmTile
                       label="Klient"
                       value={`${numbers.age} let`}
                       note={`Příjem ${formatMoney(numbers.insuredIncome)}.`}
+                    />
+                    <ConfirmTile
+                      label="Typ klienta"
+                      value={employmentType === "employee" ? "Zaměstnanec" : "OSVČ"}
+                      note={
+                        employmentType === "employee"
+                          ? "Nemocenské pojištění řeší zaměstnavatel."
+                          : selfEmployedSicknessInsurance === "yes"
+                            ? "Platí si nemocenské pojištění."
+                            : "Nemocenské pojištění si neplatí."
+                      }
                     />
                     <ConfirmTile
                       label="Domácnost"
@@ -2275,9 +2510,11 @@ function PreviewPanel({
   providerRole: ProviderRole;
   futureFamilyPlan: FutureFamilyPlan | null;
   sickLeave: {
+    hasStateSicknessBenefit: boolean;
     stateBenefit: number;
     incomeShortfall: number;
     commitmentGap: number;
+    expenseReserveTargetMonthly: number;
     recommendedMonthly: number;
     recommendedDaily: number;
   };
@@ -2433,6 +2670,17 @@ function PreviewPanel({
             <ShieldCheck className="h-8 w-8 text-violet-700" />
           </div>
 
+          {!sickLeave.hasStateSicknessBenefit ? (
+            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">
+                {copy.sickLeaveNoStateTitle}
+              </div>
+              <p className="mt-1 text-sm leading-relaxed">
+                {copy.sickLeaveNoStateNote}
+              </p>
+            </div>
+          ) : null}
+
           <div className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-4">
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-700">
               {copy.set}
@@ -2442,21 +2690,39 @@ function PreviewPanel({
             </div>
             <p className="mt-2 text-sm leading-relaxed text-violet-900">
               {copy.monthlyApprox} {money(sickLeave.recommendedMonthly)}.{" "}
-              {copy.sickLeaveFormula}
+              {sickLeave.hasStateSicknessBenefit
+                ? copy.sickLeaveFormula
+                : copy.sickLeaveFormulaNoState}
             </p>
           </div>
 
           <div className="mt-4 divide-y divide-slate-200 border-y border-slate-100">
+            {sickLeave.hasStateSicknessBenefit ? (
+              <SmallCalcRow
+                label={copy.stateSicknessBenefit}
+                value={money(sickLeave.stateBenefit)}
+              />
+            ) : null}
+            {!sickLeave.hasStateSicknessBenefit ? (
+              <SmallCalcRow
+                label={copy.expenseReserveTarget}
+                value={money(sickLeave.expenseReserveTargetMonthly)}
+              />
+            ) : null}
             <SmallCalcRow
-              label={copy.stateSicknessBenefit}
-              value={money(sickLeave.stateBenefit)}
-            />
-            <SmallCalcRow
-              label={copy.incomeDrop}
+              label={
+                sickLeave.hasStateSicknessBenefit
+                  ? copy.incomeDrop
+                  : copy.incomeDropNoState
+              }
               value={money(sickLeave.incomeShortfall)}
             />
             <SmallCalcRow
-              label={copy.expenseGapInfo}
+              label={
+                sickLeave.hasStateSicknessBenefit
+                  ? copy.expenseGapInfo
+                  : copy.expenseGapInfoNoState
+              }
               value={money(sickLeave.commitmentGap)}
             />
           </div>
