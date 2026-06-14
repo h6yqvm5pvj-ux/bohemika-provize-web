@@ -1146,7 +1146,7 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json(
           {
             ok: false,
-            error: `Slug vizitky je už obsazený (${conflictEmail}). Zvol jiný.`,
+            error: `URL vizitky je už obsazená (${conflictEmail}). Zvol jinou.`,
           } satisfies ApiError,
           { status: 409 }
         );

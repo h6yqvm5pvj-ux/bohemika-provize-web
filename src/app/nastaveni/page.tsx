@@ -532,6 +532,19 @@ const slugifyOnlineCard = (value: unknown): string => {
   return ascii.slice(0, ONLINE_CARD_SLUG_MAX_LEN);
 };
 
+const normalizeOnlineCardSlugInput = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  const lowered = value.toLowerCase();
+  if (!lowered) return "";
+  const ascii = lowered
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+/g, "");
+  return ascii.slice(0, ONLINE_CARD_SLUG_MAX_LEN);
+};
+
 const resolveOnlineCardAutoSlug = ({
   fullName,
   email,
@@ -656,11 +669,14 @@ const normalizeOnlineCardDraft = (
       ? normalizeEmail(row.email)
       : fallback.email;
   const normalizedFullName = fullName || fallback.fullName;
-  const slug = resolveOnlineCardAutoSlug({
-    fullName: normalizedFullName,
-    email,
-    fallbackEmail: fallback.email,
-  });
+  const storedSlug = slugifyOnlineCard(row.slug);
+  const slug =
+    storedSlug ||
+    resolveOnlineCardAutoSlug({
+      fullName: normalizedFullName,
+      email,
+      fallbackEmail: fallback.email,
+    });
   return {
     enabled: row.enabled === true,
     slug,
@@ -1840,13 +1856,27 @@ export default function SettingsPage() {
     setOnlineCardStatus(null);
     setOnlineCardDraft((prev) => {
       const merged = { ...prev, ...patch };
+      const fallbackEmail = user?.email ?? "";
+      const previousAutoSlug = resolveOnlineCardAutoSlug({
+        fullName: prev.fullName,
+        email: prev.email,
+        fallbackEmail,
+      });
+      const shouldRefreshAutoSlug =
+        !Object.prototype.hasOwnProperty.call(patch, "slug") &&
+        (!prev.slug || prev.slug === previousAutoSlug);
+      const slug = Object.prototype.hasOwnProperty.call(patch, "slug")
+        ? normalizeOnlineCardSlugInput(patch.slug)
+        : shouldRefreshAutoSlug
+          ? resolveOnlineCardAutoSlug({
+              fullName: merged.fullName,
+              email: merged.email,
+              fallbackEmail,
+            })
+          : normalizeOnlineCardSlugInput(merged.slug);
       return {
         ...merged,
-        slug: resolveOnlineCardAutoSlug({
-          fullName: merged.fullName,
-          email: merged.email,
-          fallbackEmail: user?.email ?? "",
-        }),
+        slug,
       };
     });
   };
@@ -1939,11 +1969,7 @@ export default function SettingsPage() {
   const handleSaveOnlineCard = async () => {
     const fullName = onlineCardDraft.fullName.trim();
     const email = normalizeEmail(onlineCardDraft.email);
-    const slug = resolveOnlineCardAutoSlug({
-      fullName,
-      email,
-      fallbackEmail: user?.email ?? "",
-    });
+    const slug = slugifyOnlineCard(onlineCardDraft.slug);
     const website = sanitizeOnlineCardWebsiteInput(onlineCardDraft.website);
 
     if (onlineCardDraft.enabled && fullName.length === 0) {
@@ -1957,7 +1983,7 @@ export default function SettingsPage() {
     if (onlineCardDraft.enabled && slug.length < ONLINE_CARD_SLUG_MIN_LEN) {
       setOnlineCardStatus({
         type: "error",
-        message: `Slug musí mít alespoň ${ONLINE_CARD_SLUG_MIN_LEN} znaky.`,
+        message: `URL vizitky musí mít alespoň ${ONLINE_CARD_SLUG_MIN_LEN} znaky.`,
       });
       return;
     }
@@ -2973,11 +2999,7 @@ export default function SettingsPage() {
       Math.min(USER_REQUEST_STEPS.length - 1, prev + 1)
     );
   };
-  const onlineCardSlugNormalized = resolveOnlineCardAutoSlug({
-    fullName: onlineCardDraft.fullName,
-    email: onlineCardDraft.email,
-    fallbackEmail: user?.email ?? "",
-  });
+  const onlineCardSlugNormalized = slugifyOnlineCard(onlineCardDraft.slug);
   const onlineCardSlugValid = onlineCardSlugNormalized.length >= ONLINE_CARD_SLUG_MIN_LEN;
   const onlineCardHasName = onlineCardDraft.fullName.trim().length > 0;
   const onlineCardPublicPath = onlineCardSlugValid && onlineCardHasName
@@ -3290,7 +3312,7 @@ export default function SettingsPage() {
   const onlineCardStudioPublishPanel = (
     <aside className="relative overflow-hidden rounded-[30px] border border-violet-300/25 bg-[radial-gradient(circle_at_8%_0%,rgba(196,181,253,0.24),transparent_30%),linear-gradient(135deg,#140b2f_0%,#24104f_46%,#5b21b6_100%)] p-4 text-white shadow-[0_26px_70px_rgba(60,18,122,0.34)] sm:p-5">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_0%,transparent_45%,rgba(255,255,255,0.1)_100%)]" />
-      <div className="relative z-10 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.32fr)]">
+      <div className="relative z-10 space-y-4">
         <div className="min-w-0 space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
@@ -3344,8 +3366,33 @@ export default function SettingsPage() {
                   Pro vygenerování URL nejdřív vyplň jméno.
                 </p>
               )}
+              <div className="mt-3 rounded-xl border border-white/14 bg-slate-950/20 px-3 py-2">
+                <label
+                  htmlFor="online-card-slug"
+                  className="text-[10px] font-semibold uppercase tracking-[0.18em] !text-violet-100/70"
+                >
+                  Adresa za /vizitka/
+                </label>
+                <div className="mt-1 flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center">
+                  <span className="shrink-0 text-xs font-semibold !text-violet-100/66 sm:text-sm">
+                    bohemka.app/vizitka/
+                  </span>
+                  <input
+                    id="online-card-slug"
+                    type="text"
+                    value={onlineCardDraft.slug}
+                    onChange={(event) => updateOnlineCardDraft({ slug: event.target.value })}
+                    placeholder="jmeno-prijmeni"
+                    maxLength={ONLINE_CARD_SLUG_MAX_LEN}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="min-w-0 flex-1 rounded-lg border border-white/16 bg-white/[0.08] px-2 py-1.5 text-sm font-bold !text-white outline-none transition placeholder:!text-violet-100/34 focus:border-violet-200/70 focus:bg-white/[0.12]"
+                  />
+                </div>
+              </div>
               <p className="mt-2 text-xs !text-violet-100/68">
-                URL se generuje automaticky podle jména. Pokud vizitku vypneš, URL zůstane uložená, ale nebude veřejně dostupná.
+                Použij malá písmena, čísla a pomlčky. Pokud vizitku vypneš, URL zůstane uložená, ale nebude veřejně dostupná.
               </p>
             </div>
 
@@ -3369,39 +3416,30 @@ export default function SettingsPage() {
                 QR kód
                 <QrCodeIcon size={14} strokeWidth={2.2} aria-hidden="true" />
               </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveOnlineCard()}
+                disabled={onlineCardSaving || !onlineCardPublishReady}
+                className="inline-flex items-center justify-center rounded-full border border-white/25 bg-white px-4 py-2 text-sm font-bold text-violet-950 shadow-[0_16px_36px_rgba(255,255,255,0.13)] transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {onlineCardSaving ? "Ukládám..." : "Uložit vizitku"}
+              </button>
             </div>
           </div>
-        </div>
 
-        <div className="flex min-h-full flex-col justify-end gap-3 rounded-2xl border border-white/14 bg-white/[0.08] px-4 py-4">
-          <div className="space-y-3">
-            {onlineCardStatus ? (
-              <p
-                className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${
-                  onlineCardStatus.type === "success"
-                    ? "border-emerald-200/25 bg-emerald-300/12 !text-emerald-50"
-                    : onlineCardStatus.type === "info"
-                      ? "border-white/16 bg-white/[0.08] !text-violet-50"
-                      : "border-rose-200/25 bg-rose-300/12 !text-rose-50"
-                }`}
-              >
-                {onlineCardStatus.message}
-              </p>
-            ) : (
-              <p className="rounded-2xl border border-white/12 bg-white/[0.06] px-3 py-2 text-xs !text-violet-100/76">
-                Uložení zapíše aktuální náhled do profilu.
-              </p>
-            )}
-
-            <button
-              type="button"
-              onClick={() => void handleSaveOnlineCard()}
-              disabled={onlineCardSaving || !onlineCardPublishReady}
-              className="inline-flex w-full items-center justify-center rounded-2xl border border-white/25 bg-white px-4 py-3 text-sm font-bold text-violet-950 shadow-[0_16px_36px_rgba(255,255,255,0.13)] transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+          {onlineCardStatus ? (
+            <p
+              className={`w-fit max-w-full rounded-2xl border px-3 py-2 text-xs font-semibold ${
+                onlineCardStatus.type === "success"
+                  ? "border-emerald-200/25 bg-emerald-300/12 !text-emerald-50"
+                  : onlineCardStatus.type === "info"
+                    ? "border-white/16 bg-white/[0.08] !text-violet-50"
+                    : "border-rose-200/25 bg-rose-300/12 !text-rose-50"
+              }`}
             >
-              {onlineCardSaving ? "Ukládám..." : "Uložit vizitku"}
-            </button>
-          </div>
+              {onlineCardStatus.message}
+            </p>
+          ) : null}
         </div>
       </div>
     </aside>
