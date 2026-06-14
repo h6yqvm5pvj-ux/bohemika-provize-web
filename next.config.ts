@@ -21,6 +21,15 @@ const baseSecurityHeaders = [
 ];
 
 const securityHeaders = [...baseSecurityHeaders];
+const meetingEmbedSecurityHeaders = [
+  ...baseSecurityHeaders.filter(
+    (header) =>
+      header.key !== "Cross-Origin-Opener-Policy" &&
+      header.key !== "Cross-Origin-Resource-Policy"
+  ),
+  { key: "Cross-Origin-Opener-Policy", value: "unsafe-none" },
+  { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+];
 const staticImageCacheHeaders = [
   {
     key: "Cache-Control",
@@ -50,6 +59,10 @@ const nextConfig: NextConfig = {
       {
         source: "/(.*)",
         headers: securityHeaders,
+      },
+      {
+        source: "/embed/schuzka/:path*",
+        headers: meetingEmbedSecurityHeaders,
       },
     ];
   },

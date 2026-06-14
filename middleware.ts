@@ -45,7 +45,22 @@ function maybeAddReportUri(directives: string[]): string[] {
   return directives;
 }
 
-function buildBaselineCsp(frameAncestors: "'none'" | "'self'" = "'none'"): string {
+function normalizeFrameAncestorList(value: string): string {
+  return value
+    .split(/[,\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function getMeetingEmbedFrameAncestors(): string {
+  const configured = normalizeFrameAncestorList(
+    process.env.MEETING_EMBED_FRAME_ANCESTORS ?? ""
+  );
+  return configured ? `'self' ${configured}` : "'self' *";
+}
+
+function buildBaselineCsp(frameAncestors = "'none'"): string {
   const scriptSrc = [
     "'self'",
     "'unsafe-inline'",
@@ -71,7 +86,7 @@ function buildBaselineCsp(frameAncestors: "'none'" | "'self'" = "'none'"): strin
 
 function buildStrictNonceCsp(
   nonce: string,
-  frameAncestors: "'none'" | "'self'" = "'none'"
+  frameAncestors = "'none'"
 ): string {
   const scriptSrc = [
     "'self'",
@@ -115,7 +130,8 @@ export function middleware(req: NextRequest) {
     });
   }
 
-  const frameAncestors = "'none'";
+  const isMeetingEmbed = pathname.startsWith("/embed/schuzka/");
+  const frameAncestors = isMeetingEmbed ? getMeetingEmbedFrameAncestors() : "'none'";
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-csp-nonce", nonce);
 
@@ -126,7 +142,13 @@ export function middleware(req: NextRequest) {
   });
 
   const strictCsp = buildStrictNonceCsp(nonce, frameAncestors);
-  res.headers.set("X-Frame-Options", "DENY");
+  if (isMeetingEmbed) {
+    res.headers.delete("X-Frame-Options");
+    res.headers.set("Cross-Origin-Opener-Policy", "unsafe-none");
+    res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+  } else {
+    res.headers.set("X-Frame-Options", "DENY");
+  }
 
   if (process.env.CSP_STRICT_ENFORCE === "1") {
     res.headers.set("Content-Security-Policy", strictCsp);
