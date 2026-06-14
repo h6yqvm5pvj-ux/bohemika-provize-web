@@ -9,6 +9,7 @@ import {
   Accessibility,
   Activity,
   Banknote,
+  CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -16,10 +17,13 @@ import {
   Clock3,
   FileDown,
   GraduationCap,
+  Hash,
   HeartPulse,
   Home,
   Loader2,
+  Mail,
   Percent,
+  Phone,
   ShieldCheck,
   Users,
   Wallet,
@@ -133,7 +137,7 @@ const RETIREMENT_AGE = 65;
 const DEATH_COVERAGE_END_AGE = 75;
 const STATE_SICKNESS_BENEFIT_RATIO = 0.6;
 const DAILY_TARGET_RATIO = 0.4;
-const SICK_LEAVE_EXPENSE_RESERVE_RATIO = 0.15;
+const SICK_LEAVE_EXPENSE_RESERVE_RATIO = 0.2;
 const DEFAULT_SOLO_DEATH_YEARS = 5;
 const INVESTIKA_RETURN_RANGE = { min: 0.055, max: 0.06 };
 const INVESTMENT_PRODUCT_NAME = "INVESTIKA Realitní Fond";
@@ -257,16 +261,16 @@ const PDF_COPY = {
     monthlyApprox: "Měsíčně přibližně",
     sickLeaveFormula: "Výpočet bere 40 % čistého příjmu a dělí ho 30 dny.",
     sickLeaveFormulaNoState:
-      "OSVČ bez nemocenského pojištění: výpočet bere vyšší hodnotu z 40 % čistého příjmu a nutných výdajů navýšených o 15 % rezervu, potom ji dělí 30 dny.",
+      "Doporučená denní dávka je nastavena tak, aby pokryla měsíční náklady klienta navýšené o 20 % rezervu.",
     sickLeaveNoStateTitle: "OSVČ bez nemocenského pojištění",
     sickLeaveNoStateNote:
-      "Klient musí doložit pojišťovně potvrzení od ČSSZ. Obecně je maximální denní dávka přibližně 600 Kč / den bez dokládání příjmu.",
+      "Klient musí doložit pojišťovně potvrzení od ČSSZ. Obecně je maximální denní dávka přibližně 600 Kč / den bez dokládání příjmu. Výše příjmu se dokládá při vstupu do pojištění a při pojistné události. Pokud je příjem při pojistné události nižší, plnění bude kráceno podle příjmu.",
     stateSicknessBenefit: "Orientační státní nemocenská",
     incomeDrop: "Pokles proti příjmu klienta",
-    incomeDropNoState: "Zbytkový pokles po doporučené dávce",
+    incomeDropNoState: "Pokles oproti příjmu",
     expenseGapInfo: "Mezera proti nákladům informativně",
     expenseGapInfoNoState: "Zbytková mezera proti nákladům",
-    expenseReserveTarget: "Závazky + 15 % rezerva",
+    expenseReserveTarget: "Závazky + 20 % rezerva",
     disability: "Invalidita",
     investmentByDegree: "Investiční varianta podle stupně",
     insuranceByDegree: "Rentové pojistné částky podle stupně",
@@ -354,7 +358,7 @@ const PDF_COPY = {
     monthlyApprox: "Approximately per month",
     sickLeaveFormula: "The calculation uses 40% of net income and divides it by 30 days.",
     sickLeaveFormulaNoState:
-      "Self-employed without sickness insurance: the calculation uses the higher of 40% of net income and essential expenses plus a 15% buffer, then divides it by 30 days.",
+      "The recommended daily benefit covers the client's monthly expenses with a 20% buffer and is converted into a daily amount.",
     sickLeaveNoStateTitle: "Self-employed without sickness insurance",
     sickLeaveNoStateNote:
       "The client must provide the insurer with confirmation from CSSZ. In general, the maximum daily benefit is approximately CZK 600 per day without income documentation.",
@@ -363,7 +367,7 @@ const PDF_COPY = {
     incomeDropNoState: "Remaining drop after the recommended benefit",
     expenseGapInfo: "Indicative gap compared with expenses",
     expenseGapInfoNoState: "Remaining gap compared with expenses",
-    expenseReserveTarget: "Commitments + 15% buffer",
+    expenseReserveTarget: "Commitments + 20% buffer",
     disability: "Disability",
     investmentByDegree: "Investment variant by disability degree",
     insuranceByDegree: "Annuity-based sums insured by disability degree",
@@ -451,7 +455,7 @@ const PDF_COPY = {
     monthlyApprox: "Орієнтовно на місяць",
     sickLeaveFormula: "Розрахунок бере 40% чистого доходу і ділить його на 30 днів.",
     sickLeaveFormulaNoState:
-      "ФОП без страхування на випадок хвороби: розрахунок бере більше значення з 40% чистого доходу і обов'язкових витрат із резервом 15%, потім ділить його на 30 днів.",
+      "Рекомендована денна виплата покриває місячні витрати клієнта з резервом 20% і перераховується на денну суму.",
     sickLeaveNoStateTitle: "ФОП без страхування на випадок хвороби",
     sickLeaveNoStateNote:
       "Клієнт має надати страховій компанії підтвердження від CSSZ. Загалом максимальна денна виплата становить приблизно 600 Kč на день без підтвердження доходу.",
@@ -460,7 +464,7 @@ const PDF_COPY = {
     incomeDropNoState: "Залишкове зниження після рекомендованої виплати",
     expenseGapInfo: "Орієнтовний розрив відносно витрат",
     expenseGapInfoNoState: "Залишковий розрив відносно витрат",
-    expenseReserveTarget: "Зобов'язання + резерв 15%",
+    expenseReserveTarget: "Зобов'язання + резерв 20%",
     disability: "Інвалідність",
     investmentByDegree: "Інвестиційний варіант за ступенем інвалідності",
     insuranceByDegree: "Страхові суми для ренти за ступенем інвалідності",
@@ -549,7 +553,7 @@ const PDF_COPY = {
     monthlyApprox: "मासिक करिब",
     sickLeaveFormula: "गणनाले शुद्ध आम्दानीको ४०% लिएर ३० दिनले भाग गर्छ।",
     sickLeaveFormulaNoState:
-      "बिरामी बीमा नतिर्ने स्वरोजगार ग्राहकका लागि गणनाले शुद्ध आम्दानीको ४०% वा आवश्यक खर्चमा १५% रिजर्भ थपिएको रकममध्ये ठूलो रकम लिएर ३० दिनले भाग गर्छ।",
+      "सिफारिस गरिएको दैनिक भत्ताले ग्राहकका मासिक खर्चमा २०% रिजर्भ थपेर कभर गर्छ र दैनिक रकममा रूपान्तरण गर्छ।",
     sickLeaveNoStateTitle: "बिरामी बीमा नतिर्ने स्वरोजगार ग्राहक",
     sickLeaveNoStateNote:
       "ग्राहकले बीमा कम्पनीलाई CSSZ को पुष्टि पेश गर्नुपर्छ। आम्दानी प्रमाणित नगरी अधिकतम दैनिक भत्ता सामान्यतया करिब CZK 600 प्रति दिन हुन्छ।",
@@ -558,7 +562,7 @@ const PDF_COPY = {
     incomeDropNoState: "सिफारिस गरिएको भत्तापछि बाँकी कमी",
     expenseGapInfo: "खर्चको तुलनामा अनुमानित कमी",
     expenseGapInfoNoState: "खर्चको तुलनामा बाँकी कमी",
-    expenseReserveTarget: "दायित्व + १५% रिजर्भ",
+    expenseReserveTarget: "दायित्व + २०% रिजर्भ",
     disability: "अपाङ्गता",
     investmentByDegree: "अपाङ्गताको स्तरअनुसार लगानी विकल्प",
     insuranceByDegree: "अपाङ्गताको स्तरअनुसार रेन्टाका बीमित रकमहरू",
@@ -646,7 +650,7 @@ const PDF_COPY = {
     monthlyApprox: "मासिक लगभग",
     sickLeaveFormula: "गणना शुद्ध आय का ४०% लेकर उसे ३० दिनों से विभाजित करती है।",
     sickLeaveFormulaNoState:
-      "बीमारी बीमा न देने वाले स्व-रोजगार ग्राहक के लिए गणना शुद्ध आय के ४०% और आवश्यक खर्चों में १५% रिजर्व जोड़कर बनी राशि में से बड़ी राशि लेकर उसे ३० दिनों से विभाजित करती है।",
+      "अनुशंसित दैनिक लाभ ग्राहक के मासिक खर्चों को २०% रिजर्व के साथ कवर करता है और उसे दैनिक राशि में बदला जाता है।",
     sickLeaveNoStateTitle: "बीमारी बीमा न देने वाला स्व-रोजगार ग्राहक",
     sickLeaveNoStateNote:
       "ग्राहक को बीमा कंपनी को CSSZ से पुष्टि देनी होगी। आय प्रमाणित किए बिना अधिकतम दैनिक लाभ सामान्यतः लगभग CZK 600 प्रति दिन होता है।",
@@ -655,7 +659,7 @@ const PDF_COPY = {
     incomeDropNoState: "अनुशंसित लाभ के बाद बची कमी",
     expenseGapInfo: "खर्चों की तुलना में अनुमानित कमी",
     expenseGapInfoNoState: "खर्चों की तुलना में बची कमी",
-    expenseReserveTarget: "दायित्व + १५% रिजर्व",
+    expenseReserveTarget: "दायित्व + २०% रिजर्व",
     disability: "विकलांगता",
     investmentByDegree: "विकलांगता स्तर के अनुसार निवेश विकल्प",
     insuranceByDegree: "विकलांगता स्तर के अनुसार रेंट-आधारित बीमित राशियाँ",
@@ -3029,59 +3033,61 @@ function PdfAdvisorFooter({
   const footerCopy = PDF_COPY[language].footer;
   const advisorRole = translateAdvisorRole(advisor.roleLabel, language);
   const advisorName = advisor.fullName || `${advisorRole} Bohemika`;
-  const contactItems = [
-    { label: footerCopy.companyId, value: advisor.ico || footerCopy.missing },
-    { label: footerCopy.phone, value: advisor.phone || footerCopy.missing },
-    { label: footerCopy.email, value: advisor.email || footerCopy.missing },
-    { label: footerCopy.generated, value: generatedAtLabel },
+  const contactItems: Array<{ label: string; value: string; icon: LucideIcon }> = [
+    { label: footerCopy.companyId, value: advisor.ico || footerCopy.missing, icon: Hash },
+    { label: footerCopy.phone, value: advisor.phone || footerCopy.missing, icon: Phone },
+    { label: footerCopy.email, value: advisor.email || footerCopy.missing, icon: Mail },
+    { label: footerCopy.generated, value: generatedAtLabel, icon: CalendarDays },
   ];
 
   return (
     <footer
       data-pdf-only="1"
-      className="hidden rounded-2xl border border-violet-200 bg-white p-2 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+      className="hidden break-inside-avoid overflow-hidden rounded-2xl border border-violet-200 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_52%,#f5f3ff_100%)] shadow-[0_14px_34px_rgba(15,23,42,0.07)] [break-inside:avoid] [page-break-inside:avoid]"
     >
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-        <div className="h-1.5 bg-[linear-gradient(90deg,#2e1065_0%,#7c3aed_52%,#a855f7_100%)]" />
-        <div className="grid gap-3 px-3 py-2.5 md:grid-cols-[0.9fr_2.35fr] md:items-center">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-white shadow-[0_6px_14px_rgba(124,58,237,0.1)]">
-              <Image
-                src="/icons/bohemika_logo.png"
-                alt="Bohemika"
-                width={28}
-                height={28}
-                className="h-7 w-7 object-contain"
-              />
-            </span>
-            <div className="min-w-0">
-              <div className="text-[8px] font-semibold uppercase tracking-[0.16em] text-violet-700">
-                {advisorRole}
-              </div>
-              <div className="mt-0.5 text-base font-bold leading-tight text-slate-950">
-                {advisorName}
-              </div>
-              <div className="text-[10px] font-semibold leading-tight text-slate-500">
-                Bohemika a.s.
-              </div>
+      <div className="h-1.5 bg-[linear-gradient(90deg,#2e1065_0%,#7c3aed_48%,#a855f7_76%,#22c55e_100%)]" />
+      <div className="grid gap-4 px-5 py-3.5 md:grid-cols-[310px_1fr] md:items-center">
+        <div className="flex min-w-0 items-center gap-3 md:border-r md:border-violet-100 md:pr-5">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center">
+            <Image
+              src="/icons/bohemika_logo.png"
+              alt="Bohemika"
+              width={42}
+              height={42}
+              className="h-[42px] w-[42px] object-contain"
+            />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[8px] font-bold uppercase tracking-[0.2em] text-violet-700">
+              {advisorRole}
+            </div>
+            <div className="mt-0.5 text-2xl font-black leading-tight text-slate-950">
+              {advisorName}
+            </div>
+            <div className="text-xs font-semibold leading-tight text-slate-500">
+              Bohemika a.s.
             </div>
           </div>
+        </div>
 
-          <div className="grid gap-1.5 sm:grid-cols-2 md:grid-cols-4">
-            {contactItems.map((item) => (
-              <div
-                key={item.label}
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5"
-              >
-                <div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  {item.label}
-                </div>
-                <div className="mt-0.5 break-words text-[11px] font-bold leading-tight text-slate-950">
-                  {item.value}
+        <div className="grid min-w-0 gap-x-6 gap-y-2 sm:grid-cols-2">
+          {contactItems.map((item) => {
+            const Icon = item.icon;
+
+            return (
+              <div key={item.label} className="flex min-w-0 items-center gap-2">
+                <Icon className="h-3.5 w-3.5 shrink-0 text-violet-700" />
+                <div className="min-w-0">
+                  <div className="text-[7px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                    {item.label}
+                  </div>
+                  <div className="mt-0.5 break-words text-[13px] font-black leading-tight text-slate-950">
+                    {item.value}
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
       </div>
     </footer>
