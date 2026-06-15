@@ -35,6 +35,9 @@ export type AggregateMetrics = {
 export type ContractStats = {
   total: number;
   month: number;
+  previousMonth: number;
+  monthMetrics: AggregateMetrics;
+  previousMonthMetrics: AggregateMetrics;
   categories: Record<Category, number>;
   categoryMetrics: Record<Category, AggregateMetrics>;
   institutionMetrics: Record<string, AggregateMetrics>;
@@ -44,6 +47,7 @@ export type ContractStats = {
 export type TipStats = {
   total: number;
   month: number;
+  previousMonth: number;
   contracted: number;
 };
 

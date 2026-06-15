@@ -7,7 +7,6 @@ import {
   BarChart3,
   Check,
   Copy,
-  Hash,
   LoaderCircle,
   Mail,
   MessageSquare,
@@ -234,6 +233,9 @@ type AggregateMetrics = { contracts: number; annualPremium: number; monthlyPremi
 type ContractStats = {
   total: number;
   month: number;
+  previousMonth: number;
+  monthMetrics: AggregateMetrics;
+  previousMonthMetrics: AggregateMetrics;
   categories: Record<Category, number>;
   categoryMetrics: Record<Category, AggregateMetrics>;
   institutionMetrics: Record<string, AggregateMetrics>;
@@ -242,6 +244,7 @@ type ContractStats = {
 type TipStats = {
   total: number;
   month: number;
+  previousMonth: number;
   contracted: number;
 };
 const PRODUCTION_CATEGORY_TABS: { key: ProductionCategory; label: string }[] = [
@@ -274,6 +277,76 @@ function insurerLogoPath(insurer: string): string | null {
 
 function formatMoney(value: number): string {
   return formatMoneyValue(value, { nonPositiveAsEmpty: true });
+}
+
+function formatMetricMoney(value: number): string {
+  return formatMoney(value) || "0 Kč";
+}
+
+function emptyAggregateMetrics(): AggregateMetrics {
+  return { contracts: 0, annualPremium: 0, monthlyPremium: 0 };
+}
+
+function normalizeAggregateMetrics(value: Partial<AggregateMetrics> | null | undefined): AggregateMetrics {
+  return {
+    contracts: Number.isFinite(Number(value?.contracts)) ? Number(value?.contracts) : 0,
+    annualPremium: Number.isFinite(Number(value?.annualPremium))
+      ? Number(value?.annualPremium)
+      : 0,
+    monthlyPremium: Number.isFinite(Number(value?.monthlyPremium))
+      ? Number(value?.monthlyPremium)
+      : 0,
+  };
+}
+
+function sumAggregateMetrics(values: Array<Partial<AggregateMetrics> | null | undefined>): AggregateMetrics {
+  return values.reduce<AggregateMetrics>(
+    (acc, value) => {
+      const metrics = normalizeAggregateMetrics(value);
+      return {
+        contracts: acc.contracts + metrics.contracts,
+        annualPremium: acc.annualPremium + metrics.annualPremium,
+        monthlyPremium: acc.monthlyPremium + metrics.monthlyPremium,
+      };
+    },
+    emptyAggregateMetrics()
+  );
+}
+
+function monthTrendSummary(current: number, previous: number): {
+  label: string;
+  className: string;
+} {
+  if (previous <= 0 && current <= 0) {
+    return {
+      label: "beze změny vs minulý měsíc",
+      className: "border-slate-200 bg-slate-50 text-slate-600",
+    };
+  }
+  if (previous <= 0) {
+    return {
+      label: `+${current} vs minulý měsíc`,
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    };
+  }
+
+  const diff = current - previous;
+  const pct = Math.round((diff / previous) * 100);
+  const prefix = diff > 0 ? "+" : "";
+  if (diff === 0) {
+    return {
+      label: `0 % vs minulý měsíc`,
+      className: "border-slate-200 bg-slate-50 text-slate-600",
+    };
+  }
+
+  return {
+    label: `${prefix}${diff} (${prefix}${pct} %) vs minulý měsíc`,
+    className:
+      diff > 0
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+        : "border-rose-200 bg-rose-50 text-rose-700",
+  };
 }
 
 const formatRelative = (ts: number | null | undefined): string => {
@@ -934,13 +1007,15 @@ export default function TeamPage() {
   const selected = members.find((m) => m.email === selectedEmail) ?? null;
   const selectedAgencyNumber = selected?.agencyNumber?.trim() ?? "";
   const selectedIsTipster = selected?.accountType === "tipster";
+  const selectedContractStats = selected ? contractCounts[selected.email] ?? null : null;
+  const selectedTipStats = selected ? tipCounts[selected.email] ?? null : null;
   const showMonthlyPremiumInProduction = productionCategory === "life";
   const productionGridColsClass = showMonthlyPremiumInProduction
     ? "sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px]"
     : "sm:grid-cols-[minmax(180px,1fr)_110px_150px]";
   const selectedProductionRows = useMemo(() => {
     if (!selected) return [] as { name: string; contracts: number; annualPremium: number; monthlyPremium: number }[];
-    const stats = contractCounts[selected.email];
+    const stats = selectedContractStats;
     const raw = stats?.institutionByCategory?.[productionCategory] ?? {};
     return Object.entries(raw)
       .map(([name, row]) => ({
@@ -951,7 +1026,7 @@ export default function TeamPage() {
       }))
       .filter((row) => row.contracts > 0 || row.annualPremium > 0 || row.monthlyPremium > 0)
       .sort((a, b) => b.annualPremium - a.annualPremium || b.contracts - a.contracts || a.name.localeCompare(b.name, "cs"));
-	  }, [selected, productionCategory, contractCounts]);
+	  }, [selected, productionCategory, selectedContractStats]);
   const selectedProductionTotals = useMemo(
     () =>
       selectedProductionRows.reduce(
@@ -964,6 +1039,14 @@ export default function TeamPage() {
       ),
     [selectedProductionRows]
   );
+  const selectedTotalProduction = useMemo(
+    () =>
+      selectedContractStats
+        ? sumAggregateMetrics(Object.values(selectedContractStats.categoryMetrics ?? {}))
+        : emptyAggregateMetrics(),
+    [selectedContractStats]
+  );
+  const selectedMonthMetrics = normalizeAggregateMetrics(selectedContractStats?.monthMetrics);
   const productionBoxTitle = selectedIsTipster ? "Sjednané smlouvy z tipů" : "Produkce";
   const emptyProductionMessage = selectedIsTipster
     ? "V této kategorii zatím nejsou sjednané smlouvy z tipů."
@@ -1031,6 +1114,21 @@ export default function TeamPage() {
 
     return allSubordinates;
   }, [selected, members]);
+  const selectedMonthCount = selectedIsTipster
+    ? selectedTipStats?.month ?? 0
+    : selectedContractStats?.month ?? 0;
+  const selectedPreviousMonthCount = selectedIsTipster
+    ? selectedTipStats?.previousMonth ?? 0
+    : selectedContractStats?.previousMonth ?? 0;
+  const selectedMonthTrend = monthTrendSummary(
+    selectedMonthCount,
+    selectedPreviousMonthCount
+  );
+  const selectedStatsUnavailable =
+    contractsError ||
+    (!contractsLoaded &&
+      Object.keys(contractCounts).length === 0 &&
+      Object.keys(tipCounts).length === 0);
   const isSelectedSubordinate = useMemo(
     () => !!selected?.email && !!userEmail && selected.email.toLowerCase() !== userEmail.toLowerCase(),
     [selected, userEmail]
@@ -1978,8 +2076,7 @@ export default function TeamPage() {
                                     {last.statusLabel}
                                   </span>
                                   {m.agencyNumber ? (
-	                                    <span className="inline-flex max-w-full items-center justify-center gap-1 rounded-full border border-violet-100 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
-                                      <Hash size={10} strokeWidth={2} aria-hidden="true" className="shrink-0" />
+	                                    <span className="inline-flex max-w-full items-center justify-center rounded-full border border-violet-100 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
                                       <span className="max-w-[150px] truncate">{m.agencyNumber}</span>
                                     </span>
                                   ) : null}
@@ -2005,34 +2102,36 @@ export default function TeamPage() {
 
 	              <div className="relative">
 	                  {selected ? (
-	                    <section className="overflow-hidden rounded-[32px] border border-violet-100 bg-white shadow-[0_24px_58px_rgba(76,29,149,0.10)]">
-		                      <div className="relative overflow-hidden border-b border-violet-200/30 bg-[linear-gradient(135deg,#2e1065_0%,#6d28d9_52%,#a855f7_100%)] px-5 py-5 !text-white sm:px-6">
-		                        <span className="pointer-events-none absolute -right-24 -top-28 h-56 w-56 rounded-full bg-white/18 blur-3xl" />
-		                        <span className="pointer-events-none absolute -left-20 -bottom-24 h-48 w-48 rounded-full bg-fuchsia-300/18 blur-3xl" />
-		                        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+	                    <section className="overflow-hidden rounded-[28px] border border-violet-100 bg-white shadow-[0_24px_58px_rgba(76,29,149,0.10)]">
+		                      <div className="relative overflow-hidden border-b border-violet-200/30 bg-[linear-gradient(135deg,#2e1065_0%,#6d28d9_52%,#a855f7_100%)] px-4 py-4 !text-white sm:px-5">
+		                        <span className="pointer-events-none absolute -right-20 -top-28 h-44 w-44 rounded-full bg-white/18 blur-3xl" />
+		                        <span className="pointer-events-none absolute -left-20 -bottom-24 h-40 w-40 rounded-full bg-fuchsia-300/18 blur-3xl" />
+		                        <div className="relative z-10 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
 	                          <div className="min-w-0">
-	                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.22em] !text-violet-100/80">Detail</div>
-	                            <div className="break-words text-4xl font-bold leading-tight !text-white sm:text-5xl">{selected.name}</div>
-	                            <div className="mt-3 space-y-0.5">
-	                              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] !text-violet-100/72">
+	                            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.22em] !text-violet-100/80">Detail</div>
+	                            <div className="break-words text-3xl font-bold leading-tight !text-white sm:text-4xl">{selected.name}</div>
+	                            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+	                              <div className="inline-flex min-w-0 items-center gap-2 text-sm !text-violet-50/86 sm:text-base">
+	                                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] !text-violet-100/72">
 	                                {selected.accountType === "tipster" ? "Role" : "Pozice"}
-	                              </div>
-	                              <div className="text-2xl font-bold leading-tight !text-white">
+	                                </span>
+	                                <span className="font-bold leading-tight !text-white">
 	                                {memberRoleLabel(selected)}
+	                                </span>
 	                              </div>
+	                              <span className="hidden h-1 w-1 rounded-full bg-white/35 sm:inline-flex" aria-hidden="true" />
+	                              <p className="min-w-0 break-all text-sm !text-violet-50/80">{selected.email}</p>
 	                            </div>
-	                            <p className="mt-2 text-sm !text-violet-50/80">{selected.email}</p>
 	                          </div>
-	                          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+	                          <div className="flex flex-wrap items-center gap-2 lg:max-w-[300px] lg:justify-end">
 	                            <span
 	                              className={[
-	                                "inline-flex max-w-full items-start gap-2 rounded-2xl border px-3 py-1.5 text-xs font-semibold backdrop-blur",
+	                                "inline-flex max-w-full items-start gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur",
 	                                selectedAgencyNumber
 		                                  ? "border-white/24 bg-white/15 !text-white"
 		                                : "border-white/18 bg-white/10 !text-violet-100/75",
 	                              ].join(" ")}
 	                            >
-	                              <Hash size={13} strokeWidth={2} aria-hidden="true" className="mt-0.5 shrink-0" />
 	                              <span className="min-w-0 break-all">
 	                                Agenturní číslo: {selectedAgencyNumber || "Nevyplněno"}
 	                              </span>
@@ -2041,8 +2140,8 @@ export default function TeamPage() {
 	                        </div>
 	                      </div>
 
-	                      <div className="space-y-4 bg-white px-5 py-5 sm:px-6">
-	                        <div className="space-y-3">
+	                      <div className="space-y-3 bg-white px-4 py-4 sm:px-5">
+	                        <div className="space-y-2.5">
 	                          {canFillSelectedAgencyNumber ? (
 		                            <div className="mt-3 max-w-2xl rounded-2xl border border-violet-100 bg-white px-3 py-3 shadow-[0_8px_22px_rgba(76,29,149,0.05)]">
                               <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -2083,7 +2182,7 @@ export default function TeamPage() {
                               {agencyNumberStatus.message}
                             </div>
                           ) : null}
-                          <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                          <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                             <div className="flex flex-wrap gap-2">
                               <button
                                 type="button"
@@ -2123,7 +2222,7 @@ export default function TeamPage() {
                               {endCollaborationSuccess}
                             </div>
                           ) : null}
-	                          <div className="mt-3 inline-flex flex-wrap items-center gap-1 rounded-full border border-violet-100 bg-violet-50/70 p-1">
+	                          <div className="mt-2 inline-flex flex-wrap items-center gap-1 rounded-full border border-violet-100 bg-violet-50/70 p-1">
                             <button
                               type="button"
                               onClick={() => setDetailTab("overview")}
@@ -2162,42 +2261,77 @@ export default function TeamPage() {
 
 	                      {detailTab === "overview" ? (
                         <>
-	                          <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-violet-100 py-4 sm:grid-cols-3">
-	                            <div className="team-stat-card rounded-2xl border border-violet-100 bg-white px-3 py-2.5 shadow-[0_10px_24px_rgba(76,29,149,0.06)]">
-                              <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                                {selectedIsTipster ? "Celkem TIPŮ" : "Naposledy aktivní"}
+	                          <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-violet-100 py-4 sm:grid-cols-2 xl:grid-cols-4">
+	                            <div className="team-stat-card relative overflow-hidden rounded-2xl border border-violet-200 bg-[linear-gradient(135deg,#4c1d95_0%,#7c3aed_100%)] px-3 py-3 !text-white shadow-[0_16px_34px_rgba(76,29,149,0.20)]">
+	                              <span className="pointer-events-none absolute -right-10 -top-12 h-28 w-28 rounded-full bg-white/18 blur-2xl" />
+                              <div className="relative z-10 text-[10px] font-semibold uppercase tracking-[0.16em] !text-violet-100/80">
+                                {selectedIsTipster ? "Celkem tipů" : "Celkem smluv"}
                               </div>
-                              {selectedIsTipster ? (
-                                <div className="text-2xl font-bold text-slate-900">
-                                  {tipCountLabel(selected.email, "total")}
-                                </div>
-                              ) : (
-                                <div
-                                  className="text-base font-semibold text-slate-900"
-                                  title={formatLastActive(selected.email)}
-                                >
-                                  {formatRelative(lastActive[selected.email])}
-                                </div>
-                              )}
-                            </div>
-	                            <div className="team-stat-card rounded-2xl border border-violet-100 bg-white px-3 py-2.5 shadow-[0_10px_24px_rgba(76,29,149,0.06)]">
-                              <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                                {selectedIsTipster ? "TIPŮ tento měsíc" : "Celkem smluv"}
+                              <div className="relative z-10 mt-1 text-3xl font-bold leading-none !text-white">
+                                {selectedStatsUnavailable
+                                  ? "—"
+                                  : selectedIsTipster
+                                    ? tipCountLabel(selected.email, "total")
+                                    : contractCountLabel(selected.email, "total")}
                               </div>
-                              <div className="text-2xl font-bold text-slate-900">
+                              <div
+                                className="relative z-10 mt-2 truncate text-xs font-semibold !text-violet-100/80"
+                                title={formatLastActive(selected.email)}
+                              >
                                 {selectedIsTipster
-                                  ? tipCountLabel(selected.email, "month")
-                                  : contractCountLabel(selected.email, "total")}
+                                  ? `${tipCountLabel(selected.email, "contracted")} sjednaných`
+                                  : `Naposledy ${formatRelative(lastActive[selected.email])}`}
                               </div>
                             </div>
-	                            <div className="team-stat-card rounded-2xl border border-violet-100 bg-white px-3 py-2.5 shadow-[0_10px_24px_rgba(76,29,149,0.06)]">
-                              <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                                {selectedIsTipster ? "Sjednaných TIPŮ" : "Smluv tento měsíc"}
+	                            <div className="team-stat-card rounded-2xl border border-violet-100 bg-white px-3 py-3 shadow-[0_10px_24px_rgba(76,29,149,0.06)]">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                {selectedIsTipster ? "Tipů tento měsíc" : "Smluv tento měsíc"}
                               </div>
-                              <div className="text-2xl font-bold text-slate-900">
-                                {selectedIsTipster
-                                  ? tipCountLabel(selected.email, "contracted")
-                                  : contractCountLabel(selected.email, "month")}
+                              <div className="mt-1 text-3xl font-bold leading-none text-slate-950">
+                                {selectedStatsUnavailable
+                                  ? "—"
+                                  : selectedIsTipster
+                                    ? tipCountLabel(selected.email, "month")
+                                    : contractCountLabel(selected.email, "month")}
+                              </div>
+                              <span
+                                className={`mt-2 inline-flex max-w-full rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                                  selectedStatsUnavailable
+                                    ? "border-slate-200 bg-slate-50 text-slate-600"
+                                    : selectedMonthTrend.className
+                                }`}
+                              >
+                                {selectedStatsUnavailable ? "čekám na data" : selectedMonthTrend.label}
+                              </span>
+                            </div>
+	                            <div className="team-stat-card rounded-2xl border border-violet-100 bg-white px-3 py-3 shadow-[0_10px_24px_rgba(76,29,149,0.06)]">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Měsíční produkce
+                              </div>
+                              <div className="mt-1 text-2xl font-bold leading-tight text-violet-700">
+                                {selectedStatsUnavailable
+                                  ? "—"
+                                  : formatMetricMoney(selectedMonthMetrics.monthlyPremium)}
+                              </div>
+                              <div className="mt-1 truncate text-xs font-semibold text-slate-500">
+                                {selectedStatsUnavailable
+                                  ? "bez dat"
+                                  : `${selectedMonthMetrics.contracts} smluv tento měsíc`}
+                              </div>
+                            </div>
+	                            <div className="team-stat-card rounded-2xl border border-violet-100 bg-white px-3 py-3 shadow-[0_10px_24px_rgba(76,29,149,0.06)]">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Roční produkce
+                              </div>
+                              <div className="mt-1 text-2xl font-bold leading-tight text-violet-700">
+                                {selectedStatsUnavailable
+                                  ? "—"
+                                  : formatMetricMoney(selectedTotalProduction.annualPremium)}
+                              </div>
+                              <div className="mt-1 truncate text-xs font-semibold text-slate-500">
+                                {selectedStatsUnavailable
+                                  ? "bez dat"
+                                  : `${selectedTotalProduction.contracts} smluv celkem`}
                               </div>
                             </div>
                           </div>
@@ -2327,13 +2461,12 @@ export default function TeamPage() {
 	                                    </span>
 	                                    <span
 	                                      className={[
-	                                        "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 font-semibold",
+	                                        "inline-flex max-w-full items-center rounded-full border px-2 py-0.5 font-semibold",
 	                                        sub.agencyNumber
 		                                          ? "border-violet-200 bg-violet-50 text-violet-800"
 	                                          : "border-slate-200 bg-slate-50 text-slate-500",
 	                                      ].join(" ")}
 	                                    >
-	                                      <Hash size={11} strokeWidth={2} aria-hidden="true" className="shrink-0" />
 	                                      <span className="min-w-0 break-all">
 	                                        {sub.agencyNumber || "Bez agenturního čísla"}
 	                                      </span>

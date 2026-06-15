@@ -39,7 +39,7 @@ const TEAM_OVERVIEW_RATE_LIMIT = 120;
 const TEAM_OVERVIEW_RATE_LIMIT_WINDOW_MS = 60_000;
 const TEAM_OVERVIEW_PATCH_RATE_LIMIT = 60;
 const TEAM_OVERVIEW_PATCH_RATE_LIMIT_WINDOW_MS = 60_000;
-const TEAM_OVERVIEW_MODEL_VERSION = 2;
+const TEAM_OVERVIEW_MODEL_VERSION = 3;
 const TEAM_OVERVIEW_MODEL_STALE_MS = 5 * 60 * 1000;
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
@@ -291,6 +291,16 @@ function annualPremiumFromEntry(data: any, category: Category): number {
   return raw * paymentsPerYear((data?.frequencyRaw ?? "annual") as PaymentFrequency);
 }
 
+function addAggregateContract(
+  metrics: AggregateMetrics,
+  annualPremium: number,
+  monthlyPremium: number
+): void {
+  metrics.contracts += 1;
+  metrics.annualPremium += annualPremium;
+  metrics.monthlyPremium += monthlyPremium;
+}
+
 function emptyCategoryCounts(): Record<Category, number> {
   return {
     life: 0,
@@ -315,6 +325,10 @@ function emptyCategoryMetrics(): Record<Category, AggregateMetrics> {
   };
 }
 
+function emptyAggregateMetrics(): AggregateMetrics {
+  return { contracts: 0, annualPremium: 0, monthlyPremium: 0 };
+}
+
 function emptyInstitutionByCategory(): Record<Category, Record<string, AggregateMetrics>> {
   return {
     life: {},
@@ -331,6 +345,9 @@ function emptyContractStats(): ContractStats {
   return {
     total: 0,
     month: 0,
+    previousMonth: 0,
+    monthMetrics: emptyAggregateMetrics(),
+    previousMonthMetrics: emptyAggregateMetrics(),
     categories: emptyCategoryCounts(),
     categoryMetrics: emptyCategoryMetrics(),
     institutionMetrics: {},
@@ -342,6 +359,7 @@ function emptyTipStats(): TipStats {
   return {
     total: 0,
     month: 0,
+    previousMonth: 0,
     contracted: 0,
   };
 }
@@ -350,6 +368,13 @@ function cloneContractStats(source: ContractStats): ContractStats {
   return {
     total: source.total,
     month: source.month,
+    previousMonth: source.previousMonth ?? 0,
+    monthMetrics: source.monthMetrics
+      ? { ...source.monthMetrics }
+      : emptyAggregateMetrics(),
+    previousMonthMetrics: source.previousMonthMetrics
+      ? { ...source.previousMonthMetrics }
+      : emptyAggregateMetrics(),
     categories: { ...source.categories },
     categoryMetrics: {
       life: { ...source.categoryMetrics.life },
@@ -500,6 +525,9 @@ function parseContractStatsFromTotalsDoc(data: Record<string, unknown>): Contrac
   return {
     total: finiteNumber(data.total),
     month: 0,
+    previousMonth: 0,
+    monthMetrics: emptyAggregateMetrics(),
+    previousMonthMetrics: emptyAggregateMetrics(),
     categories: parseCategoryCounts(data.categories),
     categoryMetrics: parseCategoryMetrics(data.categoryMetrics),
     institutionMetrics: parseInstitutionMetrics(data.institutionMetrics),
@@ -511,6 +539,10 @@ function currentYearMonth(now: Date): string {
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   return `${yyyy}-${mm}`;
+}
+
+function previousYearMonth(now: Date): string {
+  return currentYearMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
 }
 
 function monthDocId(ownerEmail: string, yearMonth: string): string {
@@ -914,6 +946,7 @@ function consumeOwnerEntry({
   ownerEmailRaw,
   entryId,
   seen,
+  previousMonthStart,
   monthStart,
   nextMonthStart,
 }: {
@@ -923,6 +956,7 @@ function consumeOwnerEntry({
   ownerEmailRaw: string | null | undefined;
   entryId: string;
   seen: Set<string>;
+  previousMonthStart: number;
   monthStart: number;
   nextMonthStart: number;
 }) {
@@ -978,6 +1012,10 @@ function consumeOwnerEntry({
   const ts = signed?.getTime();
   if (ts != null && ts >= monthStart && ts < nextMonthStart) {
     current.month += 1;
+    addAggregateContract(current.monthMetrics, annualPremium, monthlyPremium);
+  } else if (ts != null && ts >= previousMonthStart && ts < monthStart) {
+    current.previousMonth += 1;
+    addAggregateContract(current.previousMonthMetrics, annualPremium, monthlyPremium);
   }
 
   stats[ownerEmail] = current;
@@ -989,6 +1027,7 @@ function consumeTipsterContractEntry({
   data,
   entryPath,
   seen,
+  previousMonthStart,
   monthStart,
   nextMonthStart,
 }: {
@@ -997,6 +1036,7 @@ function consumeTipsterContractEntry({
   data: Record<string, unknown>;
   entryPath: string;
   seen: Set<string>;
+  previousMonthStart: number;
   monthStart: number;
   nextMonthStart: number;
 }) {
@@ -1052,6 +1092,10 @@ function consumeTipsterContractEntry({
   const ts = signed?.getTime();
   if (ts != null && ts >= monthStart && ts < nextMonthStart) {
     current.month += 1;
+    addAggregateContract(current.monthMetrics, annualPremium, monthlyPremium);
+  } else if (ts != null && ts >= previousMonthStart && ts < monthStart) {
+    current.previousMonth += 1;
+    addAggregateContract(current.previousMonthMetrics, annualPremium, monthlyPremium);
   }
 
   stats[tipsterEmail] = current;
@@ -1072,6 +1116,7 @@ async function buildContractStatsByOwnerFromEntries(
   const seen = new Set<string>();
 
   const now = new Date();
+  const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
 
@@ -1092,6 +1137,7 @@ async function buildContractStatsByOwnerFromEntries(
         ownerEmailRaw: docSnap.ref.parent.parent?.id ?? null,
         entryId: docSnap.id,
         seen,
+        previousMonthStart,
         monthStart,
         nextMonthStart,
       });
@@ -1118,6 +1164,7 @@ async function buildContractStatsByTipsterFromEntries(
 
   const seen = new Set<string>();
   const now = new Date();
+  const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
 
@@ -1130,6 +1177,7 @@ async function buildContractStatsByTipsterFromEntries(
       data: docSnap.data() as Record<string, unknown>,
       entryPath: docSnap.ref.path,
       seen,
+      previousMonthStart,
       monthStart,
       nextMonthStart,
     });
@@ -1217,6 +1265,7 @@ async function buildTipStatsByTipster(
   if (emails.length === 0) return stats;
 
   const now = new Date();
+  const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
 
@@ -1242,8 +1291,12 @@ async function buildTipStatsByTipster(
         }
 
         const createdMs = tipCreatedAtMs(data);
-        if (createdMs != null && createdMs >= monthStart && createdMs < nextMonthStart) {
-          current.month += 1;
+        if (createdMs != null) {
+          if (createdMs >= monthStart && createdMs < nextMonthStart) {
+            current.month += 1;
+          } else if (createdMs >= previousMonthStart && createdMs < monthStart) {
+            current.previousMonth += 1;
+          }
         }
       }
 
@@ -1260,6 +1313,7 @@ async function buildTipStatsByTipster(
 async function loadContractStatsFromReadModel(
   owners: string[],
   yearMonth: string,
+  previousMonth: string,
   nowMs: number
 ): Promise<{
   stats: Record<string, ContractStats>;
@@ -1279,10 +1333,14 @@ async function loadContractStatsFromReadModel(
   const monthRefs = owners.map((owner) =>
     db.collection(TEAM_OVERVIEW_MONTHLY_COLLECTION).doc(monthDocId(owner, yearMonth))
   );
+  const previousMonthRefs = owners.map((owner) =>
+    db.collection(TEAM_OVERVIEW_MONTHLY_COLLECTION).doc(monthDocId(owner, previousMonth))
+  );
 
-  const [totalsSnaps, monthSnaps] = await Promise.all([
+  const [totalsSnaps, monthSnaps, previousMonthSnaps] = await Promise.all([
     Promise.all(totalsRefs.map((ref) => ref.get())),
     Promise.all(monthRefs.map((ref) => ref.get())),
+    Promise.all(previousMonthRefs.map((ref) => ref.get())),
   ]);
 
   owners.forEach((owner, idx) => {
@@ -1315,6 +1373,25 @@ async function loadContractStatsFromReadModel(
         monthKey === yearMonth
       ) {
         parsed.month = finiteNumber(monthRaw.monthCount);
+        parsed.monthMetrics = parseAggregateMetrics(monthRaw.monthMetrics);
+      } else {
+        ownersToRefresh.add(owner);
+      }
+    } else {
+      ownersToRefresh.add(owner);
+    }
+
+    const previousMonthSnap = previousMonthSnaps[idx];
+    if (previousMonthSnap?.exists) {
+      const previousMonthRaw = previousMonthSnap.data() as Record<string, unknown>;
+      const previousMonthVersion = finiteNumber(previousMonthRaw.version);
+      const previousMonthKey = String(previousMonthRaw.yearMonth ?? "").trim();
+      if (
+        previousMonthVersion === TEAM_OVERVIEW_MODEL_VERSION &&
+        previousMonthKey === previousMonth
+      ) {
+        parsed.previousMonth = finiteNumber(previousMonthRaw.monthCount);
+        parsed.previousMonthMetrics = parseAggregateMetrics(previousMonthRaw.monthMetrics);
       } else {
         ownersToRefresh.add(owner);
       }
@@ -1331,6 +1408,7 @@ async function loadContractStatsFromReadModel(
 async function persistContractStatsToReadModel(
   stats: Record<string, ContractStats>,
   yearMonth: string,
+  previousMonth: string,
   updatedAtMs: number
 ): Promise<void> {
   if (!adminDb) return;
@@ -1355,6 +1433,9 @@ async function persistContractStatsToReadModel(
     const monthRef = db
       .collection(TEAM_OVERVIEW_MONTHLY_COLLECTION)
       .doc(monthDocId(ownerEmail, yearMonth));
+    const previousMonthRef = db
+      .collection(TEAM_OVERVIEW_MONTHLY_COLLECTION)
+      .doc(monthDocId(ownerEmail, previousMonth));
 
     batch.set(
       totalsRef,
@@ -1377,12 +1458,25 @@ async function persistContractStatsToReadModel(
         ownerEmail,
         yearMonth,
         monthCount: finiteNumber(stat.month),
+        monthMetrics: stat.monthMetrics ?? emptyAggregateMetrics(),
+        updatedAtMs,
+      },
+      { merge: true }
+    );
+    batch.set(
+      previousMonthRef,
+      {
+        version: TEAM_OVERVIEW_MODEL_VERSION,
+        ownerEmail,
+        yearMonth: previousMonth,
+        monthCount: finiteNumber(stat.previousMonth),
+        monthMetrics: stat.previousMonthMetrics ?? emptyAggregateMetrics(),
         updatedAtMs,
       },
       { merge: true }
     );
 
-    ops += 2;
+    ops += 3;
     if (ops >= BATCH_LIMIT) {
       await commit();
     }
@@ -2722,8 +2816,14 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const nowMs = now.getTime();
     const yearMonth = currentYearMonth(now);
+    const previousMonthKey = previousYearMonth(now);
 
-    const readModel = await loadContractStatsFromReadModel(advisorOwners, yearMonth, nowMs);
+    const readModel = await loadContractStatsFromReadModel(
+      advisorOwners,
+      yearMonth,
+      previousMonthKey,
+      nowMs
+    );
     const contractCounts: Record<string, ContractStats> = {};
     Object.entries(readModel.stats).forEach(([owner, stat]) => {
       contractCounts[owner] = cloneContractStats(stat);
@@ -2739,7 +2839,12 @@ export async function GET(req: NextRequest) {
           : emptyContractStats();
       });
 
-      await persistContractStatsToReadModel(rebuiltWithDefaults, yearMonth, nowMs);
+      await persistContractStatsToReadModel(
+        rebuiltWithDefaults,
+        yearMonth,
+        previousMonthKey,
+        nowMs
+      );
       Object.entries(rebuiltWithDefaults).forEach(([owner, stat]) => {
         contractCounts[owner] = stat;
       });
