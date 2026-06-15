@@ -23,6 +23,7 @@ import {
   Home,
   Landmark,
   PenTool,
+  PiggyBank,
   Scale,
   ScrollText,
   Search,
@@ -44,9 +45,9 @@ const toolsFont = Space_Grotesk({
 
 const FILTERS = [
   "Všechny",
+  "Životní pojištění",
   "Pojištění majetku",
   "Pojištění vozidel",
-  "Životní pojištění",
   "Finance",
   "Investice",
   "Obecné",
@@ -55,10 +56,20 @@ const FILTERS = [
 type FilterKey = (typeof FILTERS)[number];
 type ToolCategory = Exclude<FilterKey, "Všechny">;
 
+const FILTER_TAB_LABEL: Record<FilterKey, string> = {
+  Všechny: "Všechny",
+  "Pojištění majetku": "Majetek",
+  "Pojištění vozidel": "Auto",
+  "Životní pojištění": "Život",
+  Finance: "Finance",
+  Investice: "Investice",
+  Obecné: "Obecné",
+};
+
 const CATEGORY_RANK: Record<ToolCategory, number> = {
-  "Pojištění majetku": 0,
-  "Pojištění vozidel": 1,
-  "Životní pojištění": 2,
+  "Životní pojištění": 0,
+  "Pojištění majetku": 1,
+  "Pojištění vozidel": 2,
   Finance: 3,
   Investice: 4,
   Obecné: 5,
@@ -303,6 +314,18 @@ const INSTITUTION_PORTAL_TARGETS: InstitutionPortalTarget[] = [
   },
 ];
 
+type Tool = {
+  key: string;
+  category: ToolCategory;
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  href?: string;
+  external?: boolean;
+  render?: () => ReactElement;
+  onClick?: () => void;
+};
+
 function normalizeSearchValue(value: string): string {
   return value
     .normalize("NFD")
@@ -311,23 +334,19 @@ function normalizeSearchValue(value: string): string {
     .trim();
 }
 
+function toolMatchesSearch(tool: Tool, normalizedQuery: string): boolean {
+  if (!normalizedQuery) return true;
+
+  return [tool.title, tool.description, tool.category]
+    .map(normalizeSearchValue)
+    .some((value) => value.includes(normalizedQuery));
+}
+
 export default function ToolsPage() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("Všechny");
   const [searchQuery, setSearchQuery] = useState("");
   const [tachometerModalOpen, setTachometerModalOpen] = useState(false);
   const [linksModalOpen, setLinksModalOpen] = useState(false);
-
-  type Tool = {
-    key: string;
-    category: ToolCategory;
-    title: string;
-    description: string;
-    icon: LucideIcon;
-    href?: string;
-    external?: boolean;
-    render?: () => ReactElement;
-    onClick?: () => void;
-  };
 
   const tools: Tool[] = useMemo(
     () => [
@@ -403,6 +422,14 @@ export default function ToolsPage() {
         description: "Spočítej konečnou hodnotu investice při pravidelných vkladech.",
         icon: Calculator,
         href: "/pomucky/investicni-kalkulacka",
+      },
+      {
+        key: "hypoteka-vlastni-zdroje",
+        category: "Investice",
+        title: "Hypotéka: vlastní zdroje",
+        description: "Spočítej, kolik je potřeba naspořit na hypotéku a za jak dlouho to vyjde při různých strategiích.",
+        icon: PiggyBank,
+        href: "/pomucky/hypoteka-vlastni-zdroje",
       },
       {
         key: "statistika",
@@ -512,17 +539,26 @@ export default function ToolsPage() {
     [setLinksModalOpen, setTachometerModalOpen]
   );
 
+  const filterCounts = useMemo(() => {
+    const normalizedQuery = normalizeSearchValue(searchQuery);
+    const counts = Object.fromEntries(FILTERS.map((filter) => [filter, 0])) as Record<FilterKey, number>;
+
+    tools.forEach((tool) => {
+      if (!toolMatchesSearch(tool, normalizedQuery)) return;
+      counts.Všechny += 1;
+      counts[tool.category] += 1;
+    });
+
+    return counts;
+  }, [searchQuery, tools]);
+
   const filteredTools = useMemo(
     () => {
       const q = normalizeSearchValue(searchQuery);
       const filtered = tools.filter((tool) => {
         const categoryMatch = activeFilter === "Všechny" || tool.category === activeFilter;
         if (!categoryMatch) return false;
-        if (!q) return true;
-
-        return [tool.title, tool.description, tool.category]
-          .map(normalizeSearchValue)
-          .some((value) => value.includes(q));
+        return toolMatchesSearch(tool, q);
       });
 
       return filtered.sort((a, b) => {
@@ -535,8 +571,6 @@ export default function ToolsPage() {
     },
     [activeFilter, searchQuery, tools]
   );
-
-  const activeFilterVisual = FILTER_VISUALS[activeFilter];
 
   return (
     <AppLayout active="tools">
@@ -576,12 +610,16 @@ export default function ToolsPage() {
             </div>
           </section>
 
-          <section className="pt-1 sm:pt-2">
-            <div className="flex flex-wrap gap-2.5">
+          <nav
+            className="sticky top-2 z-30 rounded-[24px] border border-white/75 bg-white/86 p-2 shadow-[0_18px_44px_rgba(88,28,135,0.14)] backdrop-blur-xl"
+            aria-label="Sekce pomůcek"
+          >
+            <div className="flex gap-2 overflow-x-auto pb-1">
               {FILTERS.map((filter) => {
                 const visual = FILTER_VISUALS[filter];
                 const Icon = visual.icon;
                 const active = filter === activeFilter;
+                const count = filterCounts[filter];
 
                 return (
                   <button
@@ -590,24 +628,29 @@ export default function ToolsPage() {
                     onClick={() => setActiveFilter(filter)}
                     className={[
                       styles.filterChip,
-                      "pomucky-filter-chip inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition",
+                      "pomucky-filter-chip inline-flex shrink-0 items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold transition sm:px-4",
                       active
-                        ? `${visual.active} ${visual.glow}`
-                        : visual.inactive,
-                      active && filter === "Všechny" ? "!text-white" : "",
+                        ? "border-violet-500 bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_52%,#4c1d95_100%)] !text-white shadow-[0_16px_34px_rgba(109,40,217,0.32)] ring-2 ring-violet-100 [&_*]:!text-white"
+                        : "border-violet-100 bg-white/88 text-slate-700 hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-50/80",
                     ].join(" ")}
                   >
                     <Icon className="h-4 w-4" />
-                    {filter}
+                    {FILTER_TAB_LABEL[filter]}
+                    <span
+                      className={[
+                        "ml-0.5 rounded-full px-2 py-0.5 text-[11px] font-bold leading-none",
+                        active
+                          ? "border border-white/35 bg-white/20 text-white"
+                          : "border border-violet-100 bg-violet-50 text-violet-700",
+                      ].join(" ")}
+                    >
+                      {count}
+                    </span>
                   </button>
                 );
               })}
             </div>
-
-            <p className="mt-3 text-xs text-slate-600">
-              {activeFilterVisual.helper}
-            </p>
-          </section>
+          </nav>
 
           {filteredTools.length === 0 ? (
             <div className="rounded-[30px] border border-slate-200/80 bg-white/82 px-6 py-10 text-center shadow-[0_20px_58px_rgba(15,23,42,0.1)] backdrop-blur-xl">

@@ -1133,7 +1133,7 @@ function PollCard({
 
 export default function IntranetPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [selectedSection, setSelectedSection] = useState<IntranetSectionKey>("obecne");
+  const [selectedSection, setSelectedSection] = useState<IntranetSectionKey>("zivot");
   const [posts, setPosts] = useState<WallPost[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [loadingOlderPosts, setLoadingOlderPosts] = useState(false);
@@ -1477,6 +1477,8 @@ export default function IntranetPage() {
     () => INTRANET_SECTION_LABEL_BY_KEY.get(selectedSection) ?? selectedSection,
     [selectedSection]
   );
+  const currentSectionVisual = SECTION_VISUALS[selectedSection];
+  const CurrentSectionIcon = currentSectionVisual.icon;
 
   const selectedPostSectionVisual = SECTION_VISUALS[postSection];
   const SelectedPostIcon = selectedPostSectionVisual.icon;
@@ -2144,41 +2146,36 @@ export default function IntranetPage() {
           <span className={styles.grain} />
         </div>
 
-        <div className="relative z-10 mx-auto max-w-7xl space-y-5">
-          <section className={`${styles.heroPanel} rounded-[34px] border border-white/70 bg-white/72 p-4 shadow-[0_24px_70px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:p-6`}>
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-              <div className="space-y-3">
-                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-800">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Intranet Wall
+        <div className="relative z-10 mx-auto max-w-7xl space-y-4">
+          <section className={`${styles.heroPanel} rounded-[26px] border border-white/70 bg-white/76 p-3 shadow-[0_18px_44px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-4`}>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border ${currentSectionVisual.badge}`}>
+                  <CurrentSectionIcon className="h-5 w-5" />
                 </div>
-
-                <div>
-                  <h1 className="text-3xl font-bold tracking-[-0.02em] text-slate-900 sm:text-4xl">
-                    Týmová zeď, která má styl
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300/80 bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Intranet
+                    </span>
+                    <span className="rounded-full border border-slate-300/80 bg-white/85 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                      {postsHasMore ? `${posts.length}+` : posts.length} příspěvků
+                    </span>
+                  </div>
+                  <h1 className="mt-1 truncate text-2xl font-bold tracking-[-0.02em] text-slate-950 sm:text-3xl">
+                    {currentSectionLabel}
                   </h1>
-                  <p className="mt-2 max-w-3xl text-sm text-slate-700 sm:text-base">
-                    Prostor pro informace, know-how a rychlou spolupráci. Každá sekce má svůj charakter, každý příspěvek jasný vizuální rytmus.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
-                  <span className="rounded-full border border-slate-300/80 bg-white/85 px-2.5 py-1">
-                    Sekce: <strong>{currentSectionLabel}</strong>
-                  </span>
-                  <span className="rounded-full border border-slate-300/80 bg-white/85 px-2.5 py-1">
-                    Příspěvky: <strong>{posts.length}</strong>
-                  </span>
                 </div>
               </div>
 
-              <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
+              <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
                 <button
                   type="button"
                   onClick={() => {
                     if (user) void loadPosts(user, selectedSection);
                   }}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-300/80 bg-white/90 px-4 py-3 text-sm font-semibold text-slate-700 shadow-[0_12px_30px_rgba(15,23,42,0.1)] transition hover:-translate-y-0.5 hover:border-slate-500 hover:bg-white"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-300/80 bg-white/90 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.09)] transition hover:-translate-y-0.5 hover:border-slate-500 hover:bg-white"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Obnovit
@@ -2186,15 +2183,20 @@ export default function IntranetPage() {
                 <button
                   type="button"
                   onClick={openCreatePostModal}
-                  className={`${styles.createButton} inline-flex items-center gap-3 rounded-2xl border border-emerald-700/70 bg-[linear-gradient(135deg,#16a34a_0%,#047857_100%)] px-6 py-3.5 text-lg font-bold text-white shadow-[0_18px_44px_rgba(5,150,105,0.34)] transition hover:-translate-y-1 hover:shadow-[0_22px_52px_rgba(5,150,105,0.42)]`}
+                  className={`${styles.createButton} inline-flex items-center gap-2 rounded-2xl border border-slate-900/80 bg-slate-950 px-4 py-2.5 text-sm font-bold text-white shadow-[0_14px_34px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:bg-slate-900`}
                 >
-                  <Plus className="h-5 w-5" />
-                  Přidat příspěvek +
+                  <Plus className="h-4 w-4" />
+                  Přidat příspěvek
                 </button>
               </div>
             </div>
+          </section>
 
-            <div className="mt-5 flex flex-wrap gap-2 px-1 pb-2 pt-1">
+          <nav
+            className="sticky top-2 z-30 rounded-[24px] border border-white/70 bg-white/82 shadow-[0_18px_44px_rgba(15,23,42,0.13)] backdrop-blur-xl"
+            aria-label="Sekce intranetu"
+          >
+            <div className="flex gap-2 overflow-x-auto px-2 py-2">
               {INTRANET_SECTIONS.map((section) => {
                 const visual = SECTION_VISUALS[section.key];
                 const SectionIcon = visual.icon;
@@ -2207,19 +2209,24 @@ export default function IntranetPage() {
                     onClick={() => setSelectedSection(section.key)}
                     className={[
                       styles.sectionChip,
-                      "inline-flex items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold transition",
+                      "inline-flex shrink-0 items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold transition",
                       isActive
-                        ? `${visual.chipActive} ${visual.chipGlow}`
+                        ? `${visual.chipActive} ${visual.chipGlow} ring-2 ring-white/80 ring-offset-2 ring-offset-white/60`
                         : "border-slate-300/90 bg-white/88 text-slate-700 hover:-translate-y-0.5 hover:border-slate-400 hover:bg-white",
                     ].join(" ")}
                   >
                     <SectionIcon className="h-4 w-4" />
                     {section.label}
+                    {isActive ? (
+                      <span className="ml-1 rounded-full border border-white/40 bg-white/20 px-2 py-0.5 text-[11px] font-bold leading-none text-current">
+                        {postsHasMore ? `${posts.length}+` : posts.length}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
             </div>
-          </section>
+          </nav>
 
           <section>
             {loadingPosts ? (

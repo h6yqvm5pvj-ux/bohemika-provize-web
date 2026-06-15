@@ -1422,7 +1422,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     "bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.24)]";
   const navItemInactiveClass =
     "text-slate-700 hover:bg-slate-100 hover:text-slate-900";
-  const activeNavRailClass = "bg-emerald-400";
+  const activeNavRailClass = "bg-violet-400";
   const layoutCopy = APP_LAYOUT_COPY[language];
 
   const navItems: {

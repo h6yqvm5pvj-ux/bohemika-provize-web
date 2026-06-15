@@ -169,6 +169,22 @@ const WEBSITE_FEATURES: WebsiteFeature[] = [
     keywords: ["investicni kalkulacka", "vklady", "zhodnoceni", "investice"],
   },
   {
+    id: "hypoteka-vlastni-zdroje",
+    title: "Hypotéka: vlastní zdroje",
+    path: "/pomucky/hypoteka-vlastni-zdroje",
+    summary:
+      "Výpočet vlastních zdrojů pro hypotéku podle věku klienta a porovnání investičních nebo spořicích variant.",
+    keywords: [
+      "hypoteka",
+      "vlastni zdroje",
+      "ltv",
+      "sporeni na hypoteku",
+      "efektika",
+      "investika realitni fond",
+      "sporici ucet",
+    ],
+  },
+  {
     id: "zaznam",
     title: "Záznam z jednání",
     path: "/pomucky/zaznam",
