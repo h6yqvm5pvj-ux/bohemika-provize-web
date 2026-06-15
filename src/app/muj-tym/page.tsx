@@ -44,6 +44,8 @@ type Member = {
   tipRecipientEmail?: string | null;
   teamParentEmail?: string | null;
   agencyNumber?: string | null;
+  phoneNumber?: string | null;
+  ico?: string | null;
   docId?: string;
 };
 
@@ -267,7 +269,7 @@ function insurerLogoPath(insurer: string): string | null {
     return "/icons/cclogo.png";
   }
   if (normalized.includes("uniqa")) return "/icons/uniqa.png";
-  if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csob.png";
+  if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csb.png";
   if (normalized.includes("pillow")) return "/icons/pillow.png";
   if (normalized.includes("generali")) return "/icons/generali.png";
   if (normalized.includes("metlife")) return "/icons/metlife.png";
@@ -386,6 +388,8 @@ type TeamOverviewApiSuccess = {
     tipRecipientEmail?: string | null;
     teamParentEmail?: string | null;
     agencyNumber?: string | null;
+    phoneNumber?: string | null;
+    ico?: string | null;
     docId?: string | null;
   }>;
   lastActive?: Record<string, number | null>;
@@ -456,7 +460,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "name", label: "Jméno A-Z" },
 ];
 
-const MEMBER_LIST_ESTIMATED_ROW_HEIGHT = 76;
+const MEMBER_LIST_ESTIMATED_ROW_HEIGHT = 100;
 const MEMBER_LIST_OVERSCAN = 6;
 const AGENCY_NUMBER_MAX_LEN = 80;
 
@@ -650,6 +654,11 @@ export default function TeamPage() {
             (accountType === "tipster" ? tipRecipientEmail : managerEmail) ||
             null;
           const agencyNumber = (raw.agencyNumber ?? "").trim() || null;
+          const phoneNumber = (raw.phoneNumber ?? "").trim() || null;
+          const ico =
+            typeof raw.ico === "string"
+              ? raw.ico.replace(/\D+/g, "").slice(0, 8) || null
+              : null;
           membersByEmail.set(email, {
             email,
             name: (raw.name ?? "").trim() || nameFromEmail(email),
@@ -659,6 +668,8 @@ export default function TeamPage() {
             tipRecipientEmail,
             teamParentEmail,
             agencyNumber,
+            phoneNumber,
+            ico,
             docId: (raw.docId ?? "").trim() || email,
           });
         });
@@ -673,6 +684,8 @@ export default function TeamPage() {
             tipRecipientEmail: null,
             teamParentEmail: null,
             agencyNumber: null,
+            phoneNumber: null,
+            ico: null,
             docId: userEmail,
           });
         }
@@ -807,6 +820,8 @@ export default function TeamPage() {
         m.name.toLowerCase().includes(term) ||
         m.email.toLowerCase().includes(term) ||
         (m.agencyNumber ?? "").toLowerCase().includes(term) ||
+        (m.phoneNumber ?? "").toLowerCase().includes(term) ||
+        (m.ico ?? "").toLowerCase().includes(term) ||
         memberRoleLabel(m).toLowerCase().includes(term)
       );
     });
@@ -1006,6 +1021,8 @@ export default function TeamPage() {
 
   const selected = members.find((m) => m.email === selectedEmail) ?? null;
   const selectedAgencyNumber = selected?.agencyNumber?.trim() ?? "";
+  const selectedPhoneNumber = selected?.phoneNumber?.trim() ?? "";
+  const selectedIco = selected?.ico?.trim() ?? "";
   const selectedIsTipster = selected?.accountType === "tipster";
   const selectedContractStats = selected ? contractCounts[selected.email] ?? null : null;
   const selectedTipStats = selected ? tipCounts[selected.email] ?? null : null;
@@ -2027,7 +2044,7 @@ export default function TeamPage() {
                             key={m.email}
                             onClick={() => setSelectedEmail(m.email)}
 	                            className={[
-	                              "team-member-card relative w-full min-h-[72px] overflow-hidden rounded-xl border px-3 py-1.5 text-left transition",
+	                              "team-member-card relative w-full min-h-[96px] overflow-hidden rounded-xl border px-3 py-2 text-left transition",
 	                              isSelected
 	                                ? "border-violet-300 bg-violet-50/70 text-slate-900 shadow-[0_12px_28px_rgba(76,29,149,0.12)]"
 	                                : "border-violet-100 bg-white text-slate-900 hover:border-violet-200 hover:bg-violet-50/40",
@@ -2080,6 +2097,18 @@ export default function TeamPage() {
                                       <span className="max-w-[150px] truncate">{m.agencyNumber}</span>
                                     </span>
                                   ) : null}
+                                  {m.phoneNumber ? (
+	                                    <span className="inline-flex max-w-full items-center justify-center rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                                      <span className="mr-1 text-slate-400">Tel.</span>
+                                      <span className="max-w-[150px] truncate">{m.phoneNumber}</span>
+                                    </span>
+                                  ) : null}
+                                  {m.ico ? (
+	                                    <span className="inline-flex max-w-full items-center justify-center rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                                      <span className="mr-1 text-slate-400">IČO</span>
+                                      <span className="max-w-[100px] truncate">{m.ico}</span>
+                                    </span>
+                                  ) : null}
                                 </div>
                               </div>
                             </div>
@@ -2123,7 +2152,7 @@ export default function TeamPage() {
 	                              <p className="min-w-0 break-all text-sm !text-violet-50/80">{selected.email}</p>
 	                            </div>
 	                          </div>
-	                          <div className="flex flex-wrap items-center gap-2 lg:max-w-[300px] lg:justify-end">
+	                          <div className="flex flex-wrap items-center gap-2 lg:max-w-[360px] lg:justify-end">
 	                            <span
 	                              className={[
 	                                "inline-flex max-w-full items-start gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur",
@@ -2134,6 +2163,30 @@ export default function TeamPage() {
 	                            >
 	                              <span className="min-w-0 break-all">
 	                                Agenturní číslo: {selectedAgencyNumber || "Nevyplněno"}
+	                              </span>
+	                            </span>
+	                            <span
+	                              className={[
+	                                "inline-flex max-w-full items-start gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur",
+	                                selectedPhoneNumber
+		                                  ? "border-white/24 bg-white/15 !text-white"
+		                                : "border-white/18 bg-white/10 !text-violet-100/75",
+	                              ].join(" ")}
+	                            >
+	                              <span className="min-w-0 break-all">
+	                                Tel.: {selectedPhoneNumber || "Nevyplněno"}
+	                              </span>
+	                            </span>
+	                            <span
+	                              className={[
+	                                "inline-flex max-w-full items-start gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur",
+	                                selectedIco
+		                                  ? "border-white/24 bg-white/15 !text-white"
+		                                : "border-white/18 bg-white/10 !text-violet-100/75",
+	                              ].join(" ")}
+	                            >
+	                              <span className="min-w-0 break-all">
+	                                IČO: {selectedIco || "Nevyplněno"}
 	                              </span>
 	                            </span>
 	                          </div>
@@ -2393,7 +2446,7 @@ export default function TeamPage() {
                                       <div className="min-w-0 flex items-center gap-2">
                                         {logo ? (
                                           <span
-                                            className={`relative inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm ${institutionLogoFrameClass(
+                                            className={`relative inline-flex shrink-0 items-center justify-center ${institutionLogoFrameClass(
                                               logoKey,
                                               "compact"
                                             )}`}
@@ -2469,6 +2522,30 @@ export default function TeamPage() {
 	                                    >
 	                                      <span className="min-w-0 break-all">
 	                                        {sub.agencyNumber || "Bez agenturního čísla"}
+	                                      </span>
+	                                    </span>
+	                                    <span
+	                                      className={[
+	                                        "inline-flex max-w-full items-center rounded-full border px-2 py-0.5 font-semibold",
+	                                        sub.phoneNumber
+		                                          ? "border-slate-200 bg-white text-slate-700"
+	                                          : "border-slate-200 bg-slate-50 text-slate-500",
+	                                      ].join(" ")}
+	                                    >
+	                                      <span className="min-w-0 break-all">
+	                                        Tel. {sub.phoneNumber || "Bez telefonu"}
+	                                      </span>
+	                                    </span>
+	                                    <span
+	                                      className={[
+	                                        "inline-flex max-w-full items-center rounded-full border px-2 py-0.5 font-semibold",
+	                                        sub.ico
+		                                          ? "border-slate-200 bg-white text-slate-700"
+	                                          : "border-slate-200 bg-slate-50 text-slate-500",
+	                                      ].join(" ")}
+	                                    >
+	                                      <span className="min-w-0 break-all">
+	                                        IČO {sub.ico || "Bez IČO"}
 	                                      </span>
 	                                    </span>
 	                                    {sub.depth > 1 ? (

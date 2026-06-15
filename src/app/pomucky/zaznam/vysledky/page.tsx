@@ -18,6 +18,7 @@ import {
 } from "../productCapabilities";
 
 type LifeResultInput = {
+  savedAt?: number;
   hasInvalidity: boolean;
   totalInvalidity: number;
   hasCriticalIllness: boolean;
@@ -28,6 +29,9 @@ type LifeResultInput = {
   isContractTerminationDueToNewOne?: boolean;
   selectedBenefits?: SelectedBenefit[];
 };
+
+const LIFE_RECORD_RESULT_INPUT_KEY = "lifeRecordResultInput";
+const LIFE_RECORD_RESULT_INPUT_TTL_MS = 20 * 60 * 1000;
 
 type SelectedBenefit =
   | {
@@ -644,7 +648,7 @@ export default function RecordResultsPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const raw = window.localStorage.getItem("lifeRecordResultInput");
+    const raw = window.localStorage.getItem(LIFE_RECORD_RESULT_INPUT_KEY);
     if (!raw) {
       setLines([...MANDATORY_IMPACT_TEXTS]);
       setAdditional([]);
@@ -654,6 +658,14 @@ export default function RecordResultsPage() {
 
     try {
       const data: LifeResultInput = JSON.parse(raw);
+      const savedAt = typeof data.savedAt === "number" ? data.savedAt : 0;
+      if (!savedAt || Date.now() - savedAt > LIFE_RECORD_RESULT_INPUT_TTL_MS) {
+        window.localStorage.removeItem(LIFE_RECORD_RESULT_INPUT_KEY);
+        setLines([...MANDATORY_IMPACT_TEXTS]);
+        setAdditional([]);
+        setProductRecs([]);
+        return;
+      }
       const recs: string[] = [...MANDATORY_IMPACT_TEXTS];
       const extras: string[] = [];
 

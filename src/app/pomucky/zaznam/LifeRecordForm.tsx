@@ -114,6 +114,7 @@ function getBenefitCardIcon(title: string): React.ReactNode {
 }
 
 const LIFE_RECORD_DRAFT_KEY = "lifeRecordFormDraft";
+const LIFE_RECORD_DRAFT_TTL_MS = 20 * 60 * 1000;
 const SEGMENTED_CONTROL_CLASS =
   "inline-flex flex-wrap gap-1 rounded-full border border-violet-200/70 bg-[linear-gradient(180deg,#ffffff_0%,#faf5ff_100%)] p-1 text-[11px] shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(88,28,135,0.12)] sm:text-xs";
 
@@ -340,6 +341,11 @@ export function LifeRecordForm() {
 
       const draft = JSON.parse(raw) as any;
       if (!draft || typeof draft !== "object") return;
+      const savedAt = typeof draft.savedAt === "number" ? draft.savedAt : 0;
+      if (!savedAt || Date.now() - savedAt > LIFE_RECORD_DRAFT_TTL_MS) {
+        window.localStorage.removeItem(LIFE_RECORD_DRAFT_KEY);
+        return;
+      }
 
       frameId = window.requestAnimationFrame(() => {
         if (typeof draft.deathOn === "boolean") {
@@ -1421,6 +1427,7 @@ export function LifeRecordForm() {
     }
 
     const payload = {
+      savedAt: Date.now(),
       hasInvalidity,
       totalInvalidity,
       hasCriticalIllness: ci1On || ci2On,
@@ -1435,6 +1442,7 @@ export function LifeRecordForm() {
 
     if (typeof window !== "undefined") {
       const draft = {
+        savedAt: Date.now(),
         deathOn,
         deathAmount,
         terminalOn,

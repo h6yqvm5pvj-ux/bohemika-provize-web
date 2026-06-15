@@ -681,6 +681,8 @@ function candidateFromDoc(
     normalizeEmail(data.tipRecipientEmail as string | undefined) || null;
   const teamParentEmail =
     accountType === "tipster" ? tipRecipientEmail : managerEmail;
+  const phoneNumber = normalizeOptionalText(data.phoneNumber, 40);
+  const icoRaw = typeof data.ico === "string" ? data.ico.replace(/\D+/g, "") : "";
 
   return {
     email,
@@ -699,6 +701,8 @@ function candidateFromDoc(
       typeof data.agencyNumber === "string"
         ? data.agencyNumber.trim() || null
         : null,
+    phoneNumber,
+    ico: icoRaw ? icoRaw.slice(0, 8) : null,
     lastActiveTs: (() => {
       const ts = toDate(data.lastActive)?.getTime();
       return Number.isFinite(ts) ? Number(ts) : null;
@@ -800,6 +804,8 @@ async function loadTeamContext(
       teamParentEmail: null,
       docId: ownEmail,
       agencyNumber: null,
+      phoneNumber: null,
+      ico: null,
       lastActiveTs: null,
       adminFunction: false,
     };
@@ -910,6 +916,8 @@ async function loadTeamContext(
           teamParentEmail: null,
           docId: cursor,
           agencyNumber: null,
+          phoneNumber: null,
+          ico: null,
           lastActiveTs: null,
           adminFunction: false,
         });
@@ -2780,6 +2788,8 @@ export async function GET(req: NextRequest) {
           teamParentEmail: member.teamParentEmail,
           docId: member.docId,
           agencyNumber: member.agencyNumber,
+          phoneNumber: member.phoneNumber,
+          ico: member.ico,
         })),
 	        lastActive: Object.fromEntries(
 	          context.members.map((member) => [member.email, member.lastActiveTs ?? null])
@@ -2889,6 +2899,8 @@ export async function GET(req: NextRequest) {
         teamParentEmail: member.teamParentEmail,
         docId: member.docId,
         agencyNumber: member.agencyNumber,
+        phoneNumber: member.phoneNumber,
+        ico: member.ico,
       })),
       lastActive: Object.fromEntries(
         context.members.map((member) => [member.email, member.lastActiveTs ?? null])

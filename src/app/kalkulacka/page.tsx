@@ -753,6 +753,9 @@ export default function CalculatorPage() {
   const [tipContractSelectedTip, setTipContractSelectedTip] =
     useState<TipContractTipOption | null>(null);
   const [tipContractConfig, setTipContractConfig] = useState<TipContractConfig | null>(null);
+  const selectedTipContractUserEmail = tipContractSelectedUser?.email ?? null;
+  const foundTipContractLookupEmail =
+    tipContractLookupState.status === "found" ? tipContractLookupState.email : null;
   const [comfortGradual, setComfortGradual] = useState<boolean>(false);
   const [comfortPaymentText, setComfortPaymentText] = useState<string>("");
   const [comfortTargetAmountText, setComfortTargetAmountText] = useState<string>("");
@@ -1686,7 +1689,16 @@ export default function CalculatorPage() {
     }
 
     const query = tipContractDraftEmail.trim();
+    const normalizedQuery = query.toLowerCase();
     if (query.length < 2) {
+      setTipContractUserSuggestions([]);
+      setTipContractSuggestionsLoading(false);
+      return;
+    }
+    if (
+      normalizedQuery === selectedTipContractUserEmail ||
+      normalizedQuery === foundTipContractLookupEmail
+    ) {
       setTipContractUserSuggestions([]);
       setTipContractSuggestionsLoading(false);
       return;
@@ -1737,7 +1749,13 @@ export default function CalculatorPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [tipContractModalOpen, tipContractDraftEmail, user]);
+  }, [
+    foundTipContractLookupEmail,
+    selectedTipContractUserEmail,
+    tipContractModalOpen,
+    tipContractDraftEmail,
+    user,
+  ]);
 
   useEffect(() => {
     if (!tipContractModalOpen) return;

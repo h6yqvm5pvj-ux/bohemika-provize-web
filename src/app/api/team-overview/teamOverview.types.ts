@@ -13,6 +13,8 @@ export type TeamMember = {
   teamParentEmail: string | null;
   docId: string;
   agencyNumber: string | null;
+  phoneNumber: string | null;
+  ico: string | null;
   lastActiveTs: number | null;
   adminFunction: boolean;
 };
@@ -66,6 +68,8 @@ export type TeamOverviewSuccess = {
     teamParentEmail: string | null;
     docId: string;
     agencyNumber: string | null;
+    phoneNumber: string | null;
+    ico: string | null;
   }>;
   lastActive: Record<string, number | null>;
   contractCounts: Record<string, ContractStats>;
