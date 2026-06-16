@@ -5,26 +5,30 @@ import { type DragEvent, useCallback, useEffect, useMemo, useState } from "react
 import { onAuthStateChanged } from "firebase/auth";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Space_Grotesk } from "next/font/google";
 import {
   ArrowLeft,
   ArrowUpRight,
+  BellRing,
   CheckCircle2,
   Download,
   FilePlus2,
   FileText,
   ImageIcon,
+  Link2,
   Loader2,
   Pencil,
   Paperclip,
   Plus,
   Save,
   Search,
+  Send,
   ShieldCheck,
   Sparkles,
   Trash2,
   UploadCloud,
+  UsersRound,
   X,
 } from "lucide-react";
 
@@ -75,9 +79,17 @@ type EditorState = {
   file: File | null;
 };
 
+type DocumentNotificationDraft = {
+  documentId: string;
+  section: ToolDocumentRecord["section"];
+  documentTitle: string;
+};
+
 const NEW_TAB_VALUE = "__new__";
 const QUICK_SECTION_EMOJIS = ["📄", "📝", "📎", "📌", "✅", "💼", "🧾", "📊"] as const;
 const DOCUMENT_FILE_ACCEPT = "application/pdf,image/png,image/jpeg,image/gif,image/webp,image/avif";
+const DOCUMENT_NOTIFICATION_TITLE_MAX = 80;
+const DOCUMENT_NOTIFICATION_MESSAGE_MAX = 220;
 
 const emptyEditor = (
   tab: ToolDocumentTab = "prehled",
@@ -134,6 +146,7 @@ const normalizeSearchText = (value: string): string =>
 
 export default function CppLifeDocumentsPage() {
   const pathname = usePathname();
+  const router = useRouter();
   const documentContext = useMemo(() => {
     const slug = pathname.split("/").filter(Boolean).at(-1);
     if (pathname.includes("/pomucky/dokumenty/majetek/")) {
@@ -174,6 +187,14 @@ export default function CppLifeDocumentsPage() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [fileDropActive, setFileDropActive] = useState(false);
+  const [documentNotificationDraft, setDocumentNotificationDraft] =
+    useState<DocumentNotificationDraft | null>(null);
+  const [documentNotificationTitle, setDocumentNotificationTitle] = useState("");
+  const [documentNotificationMessage, setDocumentNotificationMessage] = useState("");
+  const [documentNotificationBusy, setDocumentNotificationBusy] = useState(false);
+  const [documentNotificationStatus, setDocumentNotificationStatus] = useState<string | null>(null);
+  const [documentNotificationError, setDocumentNotificationError] = useState<string | null>(null);
+  const [requestedDocumentId, setRequestedDocumentId] = useState<string | null>(null);
 
   const activeDocumentMeta = useMemo(
     () => documents.find((doc) => doc.id === activeDocumentId) ?? null,
@@ -297,6 +318,25 @@ export default function CppLifeDocumentsPage() {
     setEditorError(null);
     setFileInputKey((key) => key + 1);
   }, [currentInsurer.section, fallbackDocuments]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setRequestedDocumentId(new URLSearchParams(window.location.search).get("document"));
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!requestedDocumentId) return;
+    const normalized = requestedDocumentId
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    if (!normalized) return;
+    const target = documents.find((doc) => doc.id === normalized);
+    if (!target) return;
+    setActiveTab(target.tab);
+    setActiveDocumentId(target.id);
+  }, [documents, requestedDocumentId]);
 
   useEffect(() => {
     if (activeTab === "sprava" || tabInfoById.has(activeTab)) return;
@@ -465,6 +505,30 @@ export default function CppLifeDocumentsPage() {
     setActiveTab("sprava");
   };
 
+  const openDocumentDetail = (doc: ToolDocumentRecord) => {
+    setActiveTab(doc.tab);
+    setActiveDocumentId(doc.id);
+    const params = new URLSearchParams(
+      typeof window === "undefined" ? "" : window.location.search
+    );
+    params.set("document", doc.id);
+    setRequestedDocumentId(doc.id);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const closeDocumentDetail = () => {
+    setActiveDocumentId(null);
+    setRequestedDocumentId(null);
+    if (!requestedDocumentId) return;
+    const params = new URLSearchParams(
+      typeof window === "undefined" ? "" : window.location.search
+    );
+    params.delete("document");
+    params.delete("source");
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
   const startEdit = (doc: ToolDocumentRecord) => {
     setEditor({
       id: doc.id,
@@ -492,6 +556,95 @@ export default function CppLifeDocumentsPage() {
     setEditorStatus(null);
     setEditorError(null);
     setFileInputKey((key) => key + 1);
+  };
+
+  const closeDocumentNotificationPrompt = () => {
+    if (documentNotificationBusy) return;
+    setDocumentNotificationDraft(null);
+    setDocumentNotificationTitle("");
+    setDocumentNotificationMessage("");
+    setDocumentNotificationStatus(null);
+    setDocumentNotificationError(null);
+  };
+
+  const prepareDocumentNotificationPrompt = ({
+    documentId,
+    documentTitle,
+    description,
+  }: {
+    documentId: string;
+    documentTitle: string;
+    description: string;
+  }) => {
+    setDocumentNotificationDraft({
+      documentId,
+      section: currentInsurer.section,
+      documentTitle,
+    });
+    setDocumentNotificationTitle(
+      `Nový dokument: ${documentTitle}`.slice(0, DOCUMENT_NOTIFICATION_TITLE_MAX)
+    );
+    setDocumentNotificationMessage(
+      (description.trim() ||
+        `V dokumentech ${currentInsurer.title} je přidaný nový materiál.`).slice(
+        0,
+        DOCUMENT_NOTIFICATION_MESSAGE_MAX
+      )
+    );
+    setDocumentNotificationStatus(null);
+    setDocumentNotificationError(null);
+  };
+
+  const sendDocumentNotification = async () => {
+    const user = auth.currentUser;
+    if (!user || !documentNotificationDraft) return;
+
+    const title = documentNotificationTitle.trim();
+    const message = documentNotificationMessage.trim();
+    if (!title || !message) {
+      setDocumentNotificationError("Vyplň nadpis i popisek notifikace.");
+      return;
+    }
+
+    setDocumentNotificationBusy(true);
+    setDocumentNotificationError(null);
+    setDocumentNotificationStatus(null);
+    try {
+      const payload = (await fetchAuthedJsonOrThrow(user, "/api/documents/notify", {
+        method: "POST",
+        body: JSON.stringify({
+          id: documentNotificationDraft.documentId,
+          section: documentNotificationDraft.section,
+          title,
+          message,
+        }),
+      })) as {
+        ok?: boolean;
+        sent?: number;
+        recipients?: number;
+        matchedUsers?: number;
+      };
+
+      const sent = typeof payload.sent === "number" ? payload.sent : 0;
+      const recipients = typeof payload.recipients === "number" ? payload.recipients : null;
+      const matchedUsers =
+        typeof payload.matchedUsers === "number" ? payload.matchedUsers : null;
+      const details = [
+        matchedUsers != null ? `poradci ${matchedUsers}` : null,
+        recipients != null ? `příjemci ${recipients}` : null,
+      ].filter(Boolean);
+      setDocumentNotificationStatus(
+        details.length > 0
+          ? `Notifikace odeslána. Doručeno ${sent}. ${details.join(", ")}.`
+          : `Notifikace odeslána. Doručeno ${sent}.`
+      );
+    } catch (error) {
+      setDocumentNotificationError(
+        error instanceof Error ? error.message : "Notifikaci se nepodařilo odeslat."
+      );
+    } finally {
+      setDocumentNotificationBusy(false);
+    }
   };
 
   const submitEditor = async () => {
@@ -539,13 +692,20 @@ export default function CppLifeDocumentsPage() {
       const payload = (await fetchAuthedJsonOrThrow(user, "/api/documents/manage", {
         method: editor.id ? "PATCH" : "POST",
         body: form,
-      })) as { ok?: boolean; documents?: ToolDocumentRecord[] };
+      })) as { ok?: boolean; id?: string; documents?: ToolDocumentRecord[] };
 
       if (payload.documents) setDocuments(payload.documents);
       setEditorStatus(editor.id ? "Dokument byl uložen." : "Dokument byl přidán.");
       if (!editor.id) setActiveTab(nextTab);
       if (addModalOpen && !editor.id) {
         setAddModalOpen(false);
+      }
+      if (!editor.id && payload.id) {
+        prepareDocumentNotificationPrompt({
+          documentId: payload.id,
+          documentTitle: title,
+          description: editor.description,
+        });
       }
       setEditor(emptyEditor(nextTab, resolvedTabLabel, nextEmoji));
       setFileInputKey((key) => key + 1);
@@ -576,7 +736,7 @@ export default function CppLifeDocumentsPage() {
       })) as { ok?: boolean; documents?: ToolDocumentRecord[] };
 
       if (payload.documents) setDocuments(payload.documents);
-      if (activeDocumentId === doc.id) setActiveDocumentId(null);
+      if (activeDocumentId === doc.id) closeDocumentDetail();
       setEditorStatus("Dokument byl skrytý.");
     } catch (error) {
       setEditorError(
@@ -620,7 +780,7 @@ export default function CppLifeDocumentsPage() {
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setActiveDocumentId(doc.id)}
+            onClick={() => openDocumentDetail(doc)}
             className="inline-flex items-center gap-2 rounded-xl border border-cyan-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-cyan-400 hover:bg-cyan-50"
           >
             Otevřít dokument
@@ -748,7 +908,7 @@ export default function CppLifeDocumentsPage() {
                   type="button"
                   onClick={() => {
                     setActiveTab(tab.id);
-                    setActiveDocumentId(null);
+                    closeDocumentDetail();
                   }}
                   className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition ${
                     activeTab === tab.id
@@ -1251,6 +1411,214 @@ export default function CppLifeDocumentsPage() {
         </div>
       ) : null}
 
+      {documentNotificationDraft ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center px-3 py-5"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Upozornit poradce na nový dokument"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/66 backdrop-blur-md"
+            onClick={closeDocumentNotificationPrompt}
+            aria-label="Zavřít notifikaci k dokumentu"
+          />
+          <div className="relative max-h-[calc(100vh-2rem)] w-full max-w-4xl overflow-y-auto rounded-[30px] border border-slate-200 bg-[linear-gradient(145deg,#ffffff_0%,#f8fbff_55%,#eef8ff_100%)] p-4 shadow-[0_34px_92px_rgba(15,23,42,0.38)] sm:p-5">
+            <div className="relative overflow-hidden rounded-[24px] border border-violet-300/30 bg-[linear-gradient(135deg,#4c1d95_0%,#6d28d9_54%,#8b5cf6_100%)] px-4 py-4 text-white shadow-[0_18px_44px_rgba(76,29,149,0.30)] sm:px-5">
+              <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/30" aria-hidden="true" />
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+                      <BellRing className="h-3.5 w-3.5" />
+                      Notifikace k dokumentu
+                    </span>
+                    <span className="rounded-full border border-white/18 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-50">
+                      Dokument uložen
+                    </span>
+                  </div>
+                  <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.02em] text-white sm:text-3xl">
+                    Poslat upozornění poradci?
+                  </h3>
+                  <p className="mt-1 max-w-2xl text-sm leading-relaxed text-violet-100/86">
+                    Notifikace se odešle poradcům a po kliknutí otevře přímo nově přidaný dokument.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeDocumentNotificationPrompt}
+                  disabled={documentNotificationBusy}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/12 text-white shadow-[0_10px_22px_rgba(30,15,70,0.16)] backdrop-blur transition hover:bg-white/18 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label="Zavřít"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="space-y-3">
+                <div className="rounded-[24px] border border-slate-200 bg-white/88 p-4 shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="inline-flex items-center gap-2">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 ring-1 ring-cyan-100">
+                        <FileText className="h-4 w-4" />
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
+                        Text zprávy
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-400">
+                      {documentNotificationTitle.length}/{DOCUMENT_NOTIFICATION_TITLE_MAX} ·{" "}
+                      {documentNotificationMessage.length}/{DOCUMENT_NOTIFICATION_MESSAGE_MAX}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="block space-y-1.5">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        Nadpis notifikace
+                      </span>
+                      <input
+                        type="text"
+                        value={documentNotificationTitle}
+                        onChange={(event) => {
+                          setDocumentNotificationTitle(
+                            event.target.value.slice(0, DOCUMENT_NOTIFICATION_TITLE_MAX)
+                          );
+                          setDocumentNotificationError(null);
+                          setDocumentNotificationStatus(null);
+                        }}
+                        maxLength={DOCUMENT_NOTIFICATION_TITLE_MAX}
+                        className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.04)] outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10"
+                      />
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        Popisek
+                      </span>
+                      <textarea
+                        value={documentNotificationMessage}
+                        onChange={(event) => {
+                          setDocumentNotificationMessage(
+                            event.target.value.slice(0, DOCUMENT_NOTIFICATION_MESSAGE_MAX)
+                          );
+                          setDocumentNotificationError(null);
+                          setDocumentNotificationStatus(null);
+                        }}
+                        rows={4}
+                        maxLength={DOCUMENT_NOTIFICATION_MESSAGE_MAX}
+                        className="min-h-32 w-full resize-none rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm leading-relaxed text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.04)] outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {documentNotificationStatus ? (
+                  <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700">
+                    {documentNotificationStatus}
+                  </p>
+                ) : null}
+                {documentNotificationError ? (
+                  <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-semibold text-rose-700">
+                    {documentNotificationError}
+                  </p>
+                ) : null}
+              </div>
+
+              <aside className="rounded-[24px] border border-slate-200 bg-slate-950 p-4 text-white shadow-[0_20px_48px_rgba(15,23,42,0.20)]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100/80">
+                    Náhled
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[10px] font-semibold text-white/72">
+                    Web push
+                  </span>
+                </div>
+
+                <div className="mt-3 rounded-[22px] border border-white/10 bg-white/[0.08] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                  <div className="flex items-start gap-3">
+                    <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-2xl text-slate-950">
+                      📄
+                    </span>
+                    <div className="min-w-0">
+                      <div className="break-words text-sm font-bold text-white">
+                        📄 {documentNotificationTitle || "Nový dokument"}
+                      </div>
+                      <p className="mt-1 break-words text-sm leading-relaxed text-cyan-50/76">
+                        {documentNotificationMessage || "Popisek notifikace se zobrazí tady."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid gap-2 text-xs">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.08] px-3 py-2">
+                    <span className="flex items-center gap-1.5 font-semibold uppercase tracking-[0.14em] text-cyan-100/60">
+                      <UsersRound className="h-3.5 w-3.5" />
+                      Příjemci
+                    </span>
+                    <span className="mt-1 block font-semibold text-white">Poradci</span>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.08] px-3 py-2">
+                    <span className="flex items-center gap-1.5 font-semibold uppercase tracking-[0.14em] text-cyan-100/60">
+                      <Link2 className="h-3.5 w-3.5" />
+                      Otevře
+                    </span>
+                    <span className="mt-1 block break-words font-semibold text-white">
+                      {documentNotificationDraft.documentTitle}
+                    </span>
+                  </div>
+                </div>
+              </aside>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white/82 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 text-sm text-slate-600">
+                <span className="block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Cíl po kliknutí
+                </span>
+                <span className="mt-0.5 block truncate font-semibold text-slate-900">
+                  Konkrétní detail dokumentu
+                </span>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeDocumentNotificationPrompt}
+                  disabled={documentNotificationBusy}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-[0_10px_22px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus:outline-none focus:ring-4 focus:ring-slate-200/70 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60"
+                >
+                  {documentNotificationStatus ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <X className="h-4 w-4 text-slate-500" />
+                  )}
+                  {documentNotificationStatus ? "Zavřít" : "Teď ne"}
+                </button>
+                {!documentNotificationStatus ? (
+                  <button
+                    type="button"
+                    onClick={() => void sendDocumentNotification()}
+                    disabled={documentNotificationBusy}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-violet-200/70 bg-[linear-gradient(135deg,#6d28d9_0%,#7c3aed_52%,#a855f7_100%)] px-5 py-2.5 text-sm font-bold text-white shadow-[0_16px_34px_rgba(124,58,237,0.32)] transition hover:-translate-y-0.5 hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-violet-200/80 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60"
+                  >
+                    {documentNotificationBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    Odeslat notifikaci
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {activeDocumentMeta ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/62 px-3 py-6 backdrop-blur-[2.5px] sm:px-6">
           <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[30px] border border-slate-200 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_55%,#eff6ff_100%)] p-4 shadow-[0_30px_80px_rgba(15,23,42,0.35)] sm:p-6">
@@ -1292,7 +1660,7 @@ export default function CppLifeDocumentsPage() {
                 ) : null}
                 <button
                   type="button"
-                  onClick={() => setActiveDocumentId(null)}
+                  onClick={closeDocumentDetail}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
                   aria-label="Zavřít"
                 >

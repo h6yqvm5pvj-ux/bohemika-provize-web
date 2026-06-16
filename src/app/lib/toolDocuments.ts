@@ -336,6 +336,18 @@ export const getPropertyToolDocumentInsurerBySlug = (
   PROPERTY_TOOL_DOCUMENT_INSURERS.find((item) => item.slug === slug) ??
   PROPERTY_TOOL_DOCUMENT_INSURERS[0];
 
+export const getToolDocumentSectionHref = (
+  section: ToolDocumentSection
+): string | null => {
+  const life = LIFE_TOOL_DOCUMENT_INSURERS.find((item) => item.section === section);
+  if (life) return `/pomucky/dokumenty/zivotni-pojisteni/${life.slug}`;
+
+  const property = PROPERTY_TOOL_DOCUMENT_INSURERS.find((item) => item.section === section);
+  if (property) return `/pomucky/dokumenty/majetek/${property.slug}`;
+
+  return null;
+};
+
 export const normalizeToolDocumentTabId = (value: unknown): ToolDocumentTab =>
   typeof value === "string"
     ? value

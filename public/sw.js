@@ -13,7 +13,7 @@ const PRECACHE_URLS = [
 
 const SAME_ORIGIN_CACHE_ALLOWLIST = [
   /^\/$/,
-  /^\/(login|nastaveni|smlouvy|muj-tym|pomucky|kalkulacka|cuzk|cashflow|intranet|posta)(\/.*)?$/,
+  /^\/(admin\/zadosti|login|nastaveni|smlouvy|muj-tym|pomucky|kalkulacka|cuzk|cashflow|intranet|posta|tipy|vizitka|jakubrauscher)(\/.*)?$/,
   /^\/_next\/static\/.*/,
   /^\/icons\/.*/,
   /^\/pwa\/.*/,
@@ -52,7 +52,7 @@ function parseObjectFromUnknown(value) {
 function isAppNavigationPath(pathname) {
   return (
     pathname === "/" ||
-    /^\/(login|nastaveni|smlouvy|muj-tym|pomucky|kalkulacka|cuzk|cashflow|intranet|posta)(\/.*)?$/.test(
+    /^\/(admin\/zadosti|login|nastaveni|smlouvy|muj-tym|pomucky|kalkulacka|cuzk|cashflow|intranet|posta|tipy|vizitka|jakubrauscher)(\/.*)?$/.test(
       pathname
     )
   );
@@ -256,9 +256,15 @@ self.addEventListener("push", (event) => {
   const dataPayload =
     payload?.data && typeof payload.data === "object" ? payload.data : {};
 
-  const title = notificationPayload.title || payload?.title || "Bohemika SmartApp";
+  const title =
+    notificationPayload.title ||
+    dataPayload.title ||
+    payload?.title ||
+    "Bohemika SmartApp";
   const body =
     notificationPayload.body ||
+    dataPayload.message ||
+    dataPayload.body ||
     payload?.message ||
     payload?.body ||
     "Máš novou notifikaci.";

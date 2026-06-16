@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/weekly-team-report",
       "schedule": "0 7 * * 1"
+    },
+    {
+      "path": "/api/cron/admin-broadcasts",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

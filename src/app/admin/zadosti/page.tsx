@@ -3,24 +3,31 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   AlertTriangle,
+  BellRing,
   Building2,
   BriefcaseBusiness,
   Check,
   CheckCircle2,
   Clock3,
   Copy,
+  Download,
+  ExternalLink,
   IdCard,
   KeyRound,
   Loader2,
   Inbox,
   Landmark,
+  Link2,
   Mail,
+  Megaphone,
   Pencil,
   PhoneCall,
+  QrCode,
   RefreshCcw,
   RefreshCw,
   Save,
   Search,
+  Send,
   ShieldAlert,
   ShieldCheck,
   Snail,
@@ -32,6 +39,8 @@ import {
   Zap,
 } from "lucide-react";
 import { onAuthStateChanged, type User } from "firebase/auth";
+import Image from "next/image";
+import QRCode from "qrcode";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
@@ -360,6 +369,55 @@ const COMMISSION_MODES: { id: CommissionMode; label: string }[] = [
   { id: "standard", label: "Běžný" },
 ];
 
+const ONLINE_CARD_PUBLIC_BASE_URL = "https://bohemka.app";
+
+const ADMIN_BROADCAST_EMOJI_OPTIONS = ["📣", "🔔", "✅", "⚠️", "🎉", "💡", "📄", "🔥"];
+
+const ADMIN_BROADCAST_TARGETS = [
+  { path: "/", label: "Domů" },
+  { path: "/smlouvy", label: "Smlouvy" },
+  { path: "/pomucky", label: "Pomůcky" },
+  { path: "/intranet", label: "Intranet" },
+  { path: "/muj-tym", label: "Můj tým" },
+  { path: "/tipy", label: "Tipy" },
+  { path: "/posta", label: "Pošta" },
+  { path: "/cashflow", label: "Cashflow" },
+  { path: "/nastaveni?tab=notifications", label: "Nastavení notifikací" },
+  { path: "/pomucky/dokumenty", label: "Dokumenty" },
+  { path: "/pomucky/zprava-tymu", label: "Zpráva týmu" },
+] as const;
+
+const ADMIN_BROADCAST_TOOL_TARGETS = [
+  { path: "/pomucky", label: "Přehled pomůcek" },
+  { path: "/pomucky/argumenty", label: "Argumenty" },
+  { path: "/pomucky/skolici-materialy", label: "Školící materiály" },
+  { path: "/pomucky/dokumenty", label: "Dokumenty" },
+  { path: "/pomucky/zaznam", label: "Záznam z jednání" },
+  { path: "/pomucky/vypoved-smlouvy", label: "Výpověď smlouvy" },
+  { path: "/pomucky/tvorba", label: "Tvorba PDF" },
+  { path: "/pomucky/ai-asistent", label: "AI Asistent" },
+  { path: "/nastaveni?tab=onlineCard", label: "Online Vizitka" },
+  { path: "/pomucky/investicni-kalkulacka", label: "Investiční kalkulačka" },
+  { path: "/pomucky/hypoteka-vlastni-zdroje", label: "Hypotéka: vlastní zdroje" },
+  { path: "/pomucky/statistika", label: "Statistika" },
+  { path: "/pomucky/export-produkce", label: "Export produkce" },
+  { path: "/pomucky/plan-produkce", label: "Plán produkce" },
+  { path: "/pomucky/zlato", label: "Zlato" },
+  { path: "/cuzk", label: "Nahlížení do katastru nemovitostí" },
+  { path: "/pomucky/proklepka-vozidla", label: "Proklepka vozidla" },
+  { path: "/pomucky/ares", label: "ARES" },
+  { path: "/pomucky/projekce-vykonu", label: "Projekce výkonu" },
+  { path: "/pomucky/nastaveni-zivotniho-pojisteni", label: "Jak nastavit životní pojištění" },
+  { path: "/pomucky/srovnavac-trvalych-nasledku", label: "Srovnavač trvalých následků" },
+  { path: "/pomucky/srovnavac-zivotniho-pojisteni", label: "Srovnavač životního pojištění" },
+] as const;
+
+const ADMIN_BROADCAST_GROUPS = [
+  { id: "advisors", label: "Poradci" },
+  { id: "managers", label: "Manažeři" },
+  { id: "specialists", label: "Specialisté" },
+] as const;
+
 type NewUserAccountType = "advisor" | "tipster";
 
 const ACCOUNT_TYPES: { id: NewUserAccountType; label: string; description: string }[] = [
@@ -396,6 +454,35 @@ const formatPositionLabel = (value: string | null | undefined): string => {
   if (managerMatch?.[2]) return `Manažer ${managerMatch[2]}`;
 
   return raw;
+};
+
+const normalizePositionKey = (value: string | null | undefined): string =>
+  (value ?? "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+
+const isAdvisorPositionKey = (value: string | null | undefined): boolean =>
+  /^poradce\d*$/.test(normalizePositionKey(value));
+
+const isManagerPositionKey = (value: string | null | undefined): boolean =>
+  /^(manazer|manažer|manager)\d*$/.test(normalizePositionKey(value));
+
+const formatAdminBroadcastDateTime = (value: string | null | undefined): string => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Intl.DateTimeFormat("cs-CZ", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+};
+
+const toDatetimeLocalInputValue = (date: Date): string => {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
 };
 
 const NEW_USER_AGENCY_NUMBER_MAX_LEN = 80;
@@ -440,7 +527,13 @@ type InlineStatus = {
   message: string;
 };
 
-type AdminSection = "requests" | "createUser" | "users" | "subscriptions" | "security";
+type AdminSection =
+  | "requests"
+  | "createUser"
+  | "users"
+  | "broadcasts"
+  | "subscriptions"
+  | "security";
 
 type SubscriptionPlanValue = "monthly" | "semiannual" | "yearly" | "unlimited";
 
@@ -540,6 +633,24 @@ type AdminSecurityResponse = {
   };
 };
 
+type AdminBroadcastResponse = {
+  ok?: boolean;
+  error?: string;
+  scheduled?: boolean;
+  broadcastId?: string;
+  scheduledBroadcastId?: string;
+  scheduledAtIso?: string;
+  scannedUsers?: number;
+  matchedUsers?: number;
+  recipients?: number;
+  uniqueTokens?: number;
+  sent?: number;
+  failed?: number;
+  skippedPushDisabled?: number;
+  skippedNoToken?: number;
+  cleanedTokens?: number;
+};
+
 type AdminSecurityFilter = "all" | "enabled" | "disabled";
 
 const SECURITY_FILTERS: Array<{
@@ -577,6 +688,11 @@ type AdminUsersRow = {
   lastSignInAt: string | null;
   profileExists: boolean;
   privateProfileExists: boolean;
+  onlineCard: {
+    enabled: boolean;
+    slug: string | null;
+    ready: boolean;
+  };
 };
 
 type AdminUsersResponse = {
@@ -595,6 +711,9 @@ type AdminUsersDeleteTarget = {
 };
 
 type AdminUsersAccountTypeDraft = NewUserAccountType | "";
+type AdminBroadcastRecipientMode = "all" | "group" | "single";
+type AdminBroadcastRecipientGroup = (typeof ADMIN_BROADCAST_GROUPS)[number]["id"];
+type AdminBroadcastDeliveryMode = "now" | "scheduled";
 
 type AdminUsersMissingItem = {
   key: string;
@@ -616,6 +735,17 @@ const hasUsableIco = (value: string | null | undefined): boolean =>
 const hasUsablePositionTimeline = (
   timeline: AdminUsersRow["positionTimeline"]
 ): boolean => Array.isArray(timeline) && timeline.length > 0;
+
+const buildOnlineCardPublicUrl = (slug: string | null | undefined): string =>
+  slug ? `${ONLINE_CARD_PUBLIC_BASE_URL}/vizitka/${slug}` : "";
+
+const getAdminUserOnlineCardLabel = (row: AdminUsersRow): string => {
+  const card = row.onlineCard;
+  if (card?.ready) return "Publikovaná";
+  if (card?.enabled) return "Zapnutá, ale neúplná";
+  if (card?.slug) return "Vypnutá";
+  return "Nenastavená";
+};
 
 const buildAdminUserMissingItems = (row: AdminUsersRow): AdminUsersMissingItem[] => {
   const accountType = (row.accountType ?? "").trim().toLowerCase();
@@ -726,6 +856,23 @@ export default function AdminRequestsPage() {
   const [securityError, setSecurityError] = useState<string | null>(null);
   const [securityFilter, setSecurityFilter] = useState<AdminSecurityFilter>("all");
   const [securitySearch, setSecuritySearch] = useState("");
+  const [broadcastEmoji, setBroadcastEmoji] = useState("📣");
+  const [broadcastTitle, setBroadcastTitle] = useState("");
+  const [broadcastMessage, setBroadcastMessage] = useState("");
+  const [broadcastRecipientMode, setBroadcastRecipientMode] =
+    useState<AdminBroadcastRecipientMode>("all");
+  const [broadcastRecipientEmail, setBroadcastRecipientEmail] = useState("");
+  const [broadcastRecipientGroup, setBroadcastRecipientGroup] =
+    useState<AdminBroadcastRecipientGroup>("advisors");
+  const [broadcastTargetPath, setBroadcastTargetPath] = useState("/");
+  const [broadcastToolTargetPath, setBroadcastToolTargetPath] = useState("/pomucky");
+  const [broadcastCustomTargetPath, setBroadcastCustomTargetPath] = useState("");
+  const [broadcastDeliveryMode, setBroadcastDeliveryMode] =
+    useState<AdminBroadcastDeliveryMode>("now");
+  const [broadcastScheduledAt, setBroadcastScheduledAt] = useState("");
+  const [broadcastConfirmed, setBroadcastConfirmed] = useState(false);
+  const [broadcastSending, setBroadcastSending] = useState(false);
+  const [broadcastStatus, setBroadcastStatus] = useState<InlineStatus | null>(null);
   const [adminUsersRows, setAdminUsersRows] = useState<AdminUsersRow[]>([]);
   const [adminUsersLoading, setAdminUsersLoading] = useState(false);
   const [adminUsersError, setAdminUsersError] = useState<string | null>(null);
@@ -744,6 +891,12 @@ export default function AdminRequestsPage() {
     useState<AdminUsersDeleteTarget | null>(null);
   const [adminUsersDeleteConfirmed, setAdminUsersDeleteConfirmed] = useState(false);
   const [adminUsersDeletingEmail, setAdminUsersDeletingEmail] = useState<string | null>(null);
+  const [adminUserOnlineCardQrDataUrl, setAdminUserOnlineCardQrDataUrl] = useState("");
+  const [adminUserOnlineCardQrLoading, setAdminUserOnlineCardQrLoading] = useState(false);
+  const [adminUserOnlineCardQrError, setAdminUserOnlineCardQrError] =
+    useState<string | null>(null);
+  const [adminUserOnlineCardQrStatus, setAdminUserOnlineCardQrStatus] =
+    useState<string | null>(null);
   const [subscriptionPlanDraft, setSubscriptionPlanDraft] =
     useState<SubscriptionPlanValue>("monthly");
   const [subscriptionFromDraft, setSubscriptionFromDraft] = useState("");
@@ -920,7 +1073,7 @@ export default function AdminRequestsPage() {
   }, [isAllowedAdmin]);
 
   useEffect(() => {
-    if (activeAdminSection !== "users") return;
+    if (activeAdminSection !== "users" && activeAdminSection !== "broadcasts") return;
     void loadAdminUsersRows();
   }, [activeAdminSection, loadAdminUsersRows]);
 
@@ -1157,6 +1310,8 @@ export default function AdminRequestsPage() {
       const positionLabel = formatPositionLabel(row.position).toLowerCase();
       const accountTypeLabel = formatAccountTypeLabel(row.accountType).toLowerCase();
       const specialistLabel = row.specialist ? "specialista dokumenty" : "";
+      const onlineCardSlug = (row.onlineCard?.slug || "").toLowerCase();
+      const onlineCardLabel = getAdminUserOnlineCardLabel(row).toLowerCase();
       const missingLabels = buildAdminUserMissingItems(row)
         .map((item) => item.label.toLowerCase())
         .join(" ");
@@ -1178,6 +1333,8 @@ export default function AdminRequestsPage() {
         positionLabel.includes(query) ||
         accountTypeLabel.includes(query) ||
         specialistLabel.includes(query) ||
+        onlineCardSlug.includes(query) ||
+        onlineCardLabel.includes(query) ||
         missingLabels.includes(query) ||
         relationName.includes(query)
       );
@@ -1194,6 +1351,134 @@ export default function AdminRequestsPage() {
     const complete = total - incomplete;
     return { total, missingProfile, disabled, advisors, tipsters, incomplete, complete };
   }, [adminUsersRows]);
+
+  const broadcastRecipientOptions = useMemo(
+    () =>
+      adminUsersRows
+        .map((row) => {
+          const email = normalizeEmail(row.email);
+          if (!email) return null;
+          return {
+            email,
+            label: row.fullName || nameFromEmail(row.email),
+            disabled: row.disabled,
+          };
+        })
+        .filter(
+          (row): row is { email: string; label: string; disabled: boolean } => row !== null
+        )
+        .sort((a, b) => a.label.localeCompare(b.label, "cs")),
+    [adminUsersRows]
+  );
+
+  const broadcastGroupCounts = useMemo(
+    () => ({
+      advisors: adminUsersRows.filter(
+        (row) => row.accountType === "advisor" && isAdvisorPositionKey(row.position)
+      ).length,
+      managers: adminUsersRows.filter(
+        (row) => row.accountType === "advisor" && isManagerPositionKey(row.position)
+      ).length,
+      specialists: adminUsersRows.filter(
+        (row) => row.specialist === true && row.accountType !== "tipster"
+      ).length,
+    }),
+    [adminUsersRows]
+  );
+
+  const broadcastEffectiveTargetPath = useMemo(() => {
+    const selected =
+      broadcastTargetPath === "__custom__"
+        ? broadcastCustomTargetPath.trim()
+        : broadcastTargetPath === "/pomucky"
+          ? broadcastToolTargetPath
+          : broadcastTargetPath;
+    return selected || "/";
+  }, [broadcastCustomTargetPath, broadcastTargetPath, broadcastToolTargetPath]);
+
+  const broadcastTargetLabel = useMemo(() => {
+    if (broadcastTargetPath === "__custom__") return "Vlastní cesta";
+    if (broadcastTargetPath === "/pomucky") {
+      const toolLabel =
+        ADMIN_BROADCAST_TOOL_TARGETS.find(
+          (target) => target.path === broadcastToolTargetPath
+        )?.label ?? "Pomůcky";
+      return `Pomůcky: ${toolLabel}`;
+    }
+    return (
+      ADMIN_BROADCAST_TARGETS.find((target) => target.path === broadcastTargetPath)?.label ??
+      "Vybraná stránka"
+    );
+  }, [broadcastTargetPath, broadcastToolTargetPath]);
+
+  const broadcastRecipientEmailNormalized = normalizeEmail(broadcastRecipientEmail);
+
+  const broadcastRecipientLabel = useMemo(() => {
+    if (broadcastRecipientMode === "all") return "Všichni s aktivním push tokenem";
+    if (broadcastRecipientMode === "group") {
+      const groupLabel =
+        ADMIN_BROADCAST_GROUPS.find((group) => group.id === broadcastRecipientGroup)?.label ??
+        "Vybraná skupina";
+      return `${groupLabel} (${broadcastGroupCounts[broadcastRecipientGroup]} účtů)`;
+    }
+    const selected = broadcastRecipientOptions.find(
+      (row) => row.email === broadcastRecipientEmailNormalized
+    );
+    if (selected) return `${selected.label} (${selected.email})`;
+    return broadcastRecipientEmailNormalized || "Nevybráno";
+  }, [
+    broadcastRecipientEmailNormalized,
+    broadcastRecipientGroup,
+    broadcastRecipientMode,
+    broadcastRecipientOptions,
+    broadcastGroupCounts,
+  ]);
+
+  const broadcastScheduledAtMs = useMemo(() => {
+    if (broadcastDeliveryMode !== "scheduled" || !broadcastScheduledAt) return null;
+    const parsed = new Date(broadcastScheduledAt).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [broadcastDeliveryMode, broadcastScheduledAt]);
+  const broadcastScheduledAtIso =
+    broadcastScheduledAtMs != null ? new Date(broadcastScheduledAtMs).toISOString() : null;
+  const broadcastScheduleIsValid =
+    broadcastDeliveryMode === "now" ||
+    (broadcastScheduledAtMs != null && broadcastScheduledAtMs > Date.now() + 30_000);
+  const broadcastScheduleMinValue = useMemo(
+    () => toDatetimeLocalInputValue(new Date(Date.now() + 60_000)),
+    []
+  );
+  const broadcastDeliveryLabel =
+    broadcastDeliveryMode === "scheduled" && broadcastScheduledAtIso
+      ? `Naplánováno na ${formatAdminBroadcastDateTime(broadcastScheduledAtIso)}`
+      : "Odeslat hned";
+
+  const broadcastTitleTrimmed = broadcastTitle.trim();
+  const broadcastMessageTrimmed = broadcastMessage.trim();
+  const broadcastCanSubmit =
+    isAllowedAdmin &&
+    !broadcastSending &&
+    broadcastConfirmed &&
+    broadcastTitleTrimmed.length > 0 &&
+    broadcastMessageTrimmed.length > 0 &&
+    (broadcastRecipientMode !== "single" || Boolean(broadcastRecipientEmailNormalized)) &&
+    (broadcastRecipientMode !== "group" || Boolean(broadcastRecipientGroup)) &&
+    broadcastScheduleIsValid &&
+    broadcastEffectiveTargetPath.startsWith("/") &&
+    !broadcastEffectiveTargetPath.startsWith("//");
+
+  useEffect(() => {
+    if (broadcastRecipientMode !== "single") return;
+    if (broadcastRecipientEmailNormalized) return;
+    const first = broadcastRecipientOptions.find((row) => !row.disabled) ?? broadcastRecipientOptions[0];
+    if (first) {
+      setBroadcastRecipientEmail(first.email);
+    }
+  }, [
+    broadcastRecipientEmailNormalized,
+    broadcastRecipientMode,
+    broadcastRecipientOptions,
+  ]);
 
   const handleDecision = useCallback(
     async (requestId: string, action: "approve" | "reject") => {
@@ -1458,6 +1743,168 @@ export default function AdminRequestsPage() {
     newUserManagerEmail,
     newUserMode,
     newUserPassword,
+  ]);
+
+  const handleSendAdminBroadcast = useCallback(async () => {
+    const user = auth.currentUser;
+    if (!user || !isAllowedAdmin) return;
+
+    const message = broadcastMessage.trim();
+    const title = broadcastTitle.trim();
+    const targetPath = broadcastEffectiveTargetPath.trim();
+    const emoji = broadcastEmoji.trim();
+    const recipientEmail = normalizeEmail(broadcastRecipientEmail);
+    const scheduledAt = broadcastDeliveryMode === "scheduled" ? broadcastScheduledAtIso : null;
+
+    if (!title) {
+      setBroadcastStatus({
+        type: "error",
+        message: "Vyplň nadpis notifikace.",
+      });
+      return;
+    }
+    if (!message) {
+      setBroadcastStatus({
+        type: "error",
+        message: "Vyplň text notifikace.",
+      });
+      return;
+    }
+    if (!targetPath.startsWith("/") || targetPath.startsWith("//")) {
+      setBroadcastStatus({
+        type: "error",
+        message: "Cílová stránka musí být interní cesta začínající lomítkem.",
+      });
+      return;
+    }
+    if (broadcastRecipientMode === "single" && !recipientEmail) {
+      setBroadcastStatus({
+        type: "error",
+        message: "Vyber uživatele, kterému chceš testovací notifikaci poslat.",
+      });
+      return;
+    }
+    if (broadcastRecipientMode === "group" && !broadcastRecipientGroup) {
+      setBroadcastStatus({
+        type: "error",
+        message: "Vyber skupinu příjemců.",
+      });
+      return;
+    }
+    if (broadcastDeliveryMode === "scheduled" && !scheduledAt) {
+      setBroadcastStatus({
+        type: "error",
+        message: "Vyber platný budoucí čas odeslání.",
+      });
+      return;
+    }
+    if (!broadcastConfirmed) {
+      setBroadcastStatus({
+        type: "error",
+        message:
+          broadcastRecipientMode === "single"
+            ? "Potvrď odeslání notifikace vybranému uživateli."
+            : broadcastRecipientMode === "group"
+              ? "Potvrď odeslání notifikace vybrané skupině."
+              : "Potvrď, že chceš notifikaci odeslat všem uživatelům.",
+      });
+      return;
+    }
+
+    setBroadcastSending(true);
+    setBroadcastStatus(null);
+    try {
+      const payload = await fetchAuthedJsonOrThrow<AdminBroadcastResponse>(
+        user,
+        "/api/admin/broadcast-notification",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            emoji,
+            title,
+            message,
+            targetPath,
+            targetMode: broadcastRecipientMode,
+            recipientEmail:
+              broadcastRecipientMode === "single" ? recipientEmail : undefined,
+            recipientGroup:
+              broadcastRecipientMode === "group" ? broadcastRecipientGroup : undefined,
+            scheduledAt,
+          }),
+        }
+      );
+
+      if (payload?.scheduled) {
+        setBroadcastStatus({
+          type: "success",
+          message: `Notifikace naplánována pro ${broadcastRecipientLabel} na ${formatAdminBroadcastDateTime(payload.scheduledAtIso ?? scheduledAt)}.`,
+        });
+        setBroadcastTitle("");
+        setBroadcastMessage("");
+        setBroadcastConfirmed(false);
+        setBroadcastDeliveryMode("now");
+        setBroadcastScheduledAt("");
+        return;
+      }
+
+      const sent = typeof payload?.sent === "number" ? payload.sent : 0;
+      const failed = typeof payload?.failed === "number" ? payload.failed : 0;
+      const matched =
+        typeof payload?.matchedUsers === "number" ? payload.matchedUsers : null;
+      const recipients =
+        typeof payload?.recipients === "number" ? payload.recipients : null;
+      const tokens =
+        typeof payload?.uniqueTokens === "number" ? payload.uniqueTokens : null;
+      const skippedNoToken =
+        typeof payload?.skippedNoToken === "number" ? payload.skippedNoToken : null;
+      const skippedPushDisabled =
+        typeof payload?.skippedPushDisabled === "number"
+          ? payload.skippedPushDisabled
+          : null;
+
+      const details = [
+        matched != null && broadcastRecipientMode === "group" ? `skupina ${matched}` : null,
+        recipients != null ? `příjemci ${recipients}` : null,
+        tokens != null ? `tokeny ${tokens}` : null,
+        failed > 0 ? `chyby ${failed}` : null,
+        skippedNoToken != null ? `bez tokenu ${skippedNoToken}` : null,
+        skippedPushDisabled != null ? `push vypnutý ${skippedPushDisabled}` : null,
+      ].filter(Boolean);
+
+      setBroadcastStatus({
+        type: "success",
+        message:
+          details.length > 0
+            ? `Notifikace odeslána ${broadcastRecipientLabel}. Doručeno ${sent}. ${details.join(", ")}.`
+            : `Notifikace odeslána ${broadcastRecipientLabel}. Doručeno ${sent}.`,
+      });
+      setBroadcastTitle("");
+      setBroadcastMessage("");
+      setBroadcastConfirmed(false);
+    } catch (error) {
+      setBroadcastStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Hromadnou notifikaci se nepodařilo odeslat.",
+      });
+    } finally {
+      setBroadcastSending(false);
+    }
+  }, [
+    broadcastConfirmed,
+    broadcastDeliveryMode,
+    broadcastEffectiveTargetPath,
+    broadcastEmoji,
+    broadcastMessage,
+    broadcastRecipientEmail,
+    broadcastRecipientGroup,
+    broadcastRecipientLabel,
+    broadcastRecipientMode,
+    broadcastScheduledAtIso,
+    broadcastTitle,
+    isAllowedAdmin,
   ]);
 
   const loadSubscriptionForEmail = useCallback(
@@ -1793,6 +2240,85 @@ export default function AdminRequestsPage() {
   const selectedAdminUserMissingItems = selectedAdminUserDraft
     ? buildAdminUserMissingItems(selectedAdminUserDraft)
     : [];
+  const selectedAdminUserOnlineCardSlug =
+    selectedAdminUser?.onlineCard?.ready === true ? selectedAdminUser.onlineCard.slug : null;
+  const selectedAdminUserOnlineCardUrl = buildOnlineCardPublicUrl(
+    selectedAdminUserOnlineCardSlug
+  );
+  const selectedAdminUserOnlineCardLabel = selectedAdminUser
+    ? getAdminUserOnlineCardLabel(selectedAdminUser)
+    : "";
+
+  useEffect(() => {
+    if (!selectedAdminUserOnlineCardUrl) {
+      setAdminUserOnlineCardQrDataUrl("");
+      setAdminUserOnlineCardQrLoading(false);
+      setAdminUserOnlineCardQrError(null);
+      setAdminUserOnlineCardQrStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+    setAdminUserOnlineCardQrDataUrl("");
+    setAdminUserOnlineCardQrLoading(true);
+    setAdminUserOnlineCardQrError(null);
+    setAdminUserOnlineCardQrStatus(null);
+
+    void QRCode.toDataURL(selectedAdminUserOnlineCardUrl, {
+      width: 520,
+      margin: 2,
+      errorCorrectionLevel: "M",
+      color: {
+        dark: "#0f172a",
+        light: "#ffffff",
+      },
+    })
+      .then((dataUrl) => {
+        if (!cancelled) {
+          setAdminUserOnlineCardQrDataUrl(dataUrl);
+        }
+      })
+      .catch((error) => {
+        console.error("Chyba při generování QR kódu online vizitky v adminu:", error);
+        if (!cancelled) {
+          setAdminUserOnlineCardQrError("QR kód se nepodařilo vygenerovat.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAdminUserOnlineCardQrLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAdminUserOnlineCardUrl]);
+
+  const handleCopySelectedAdminUserOnlineCardUrl = useCallback(async () => {
+    if (!selectedAdminUserOnlineCardUrl) return;
+    try {
+      await navigator.clipboard.writeText(selectedAdminUserOnlineCardUrl);
+      setAdminUserOnlineCardQrStatus("URL vizitky zkopírována.");
+      setAdminUserOnlineCardQrError(null);
+    } catch {
+      setAdminUserOnlineCardQrError("URL vizitky se nepodařilo zkopírovat.");
+      setAdminUserOnlineCardQrStatus(null);
+    }
+  }, [selectedAdminUserOnlineCardUrl]);
+
+  const handleDownloadSelectedAdminUserOnlineCardQr = useCallback(() => {
+    if (!adminUserOnlineCardQrDataUrl || typeof document === "undefined") return;
+
+    const link = document.createElement("a");
+    link.href = adminUserOnlineCardQrDataUrl;
+    link.download = `vizitka-${selectedAdminUserOnlineCardSlug || "profil"}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setAdminUserOnlineCardQrStatus("QR kód stažen jako PNG.");
+    setAdminUserOnlineCardQrError(null);
+  }, [adminUserOnlineCardQrDataUrl, selectedAdminUserOnlineCardSlug]);
 
   return (
     <AppLayout active="admin">
@@ -2215,6 +2741,14 @@ export default function AdminRequestsPage() {
                       value: selectedAdminUser.profileExists ? "Ano" : "Ne",
                     },
                     {
+                      label: "Online vizitka",
+                      value: selectedAdminUserOnlineCardLabel,
+                    },
+                    {
+                      label: "Slug vizitky",
+                      value: selectedAdminUser.onlineCard?.slug ?? "—",
+                    },
+                    {
                       label: "Soukromý profil",
                       value: selectedAdminUser.privateProfileExists ? "Ano" : "Ne",
                     },
@@ -2231,6 +2765,112 @@ export default function AdminRequestsPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
+                      <QrCode size={13} strokeWidth={2.2} aria-hidden="true" />
+                      QR online vizitky
+                    </div>
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                        selectedAdminUserOnlineCardUrl
+                          ? "border-violet-200 bg-violet-50 text-violet-700"
+                          : "border-slate-200 bg-slate-50 text-slate-600"
+                      }`}
+                    >
+                      {selectedAdminUserOnlineCardLabel}
+                    </span>
+                  </div>
+
+                  {selectedAdminUserOnlineCardUrl ? (
+                    <div className="grid gap-4 sm:grid-cols-[176px_minmax(0,1fr)] sm:items-start">
+                      <div className="flex h-44 w-44 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                        {adminUserOnlineCardQrLoading ? (
+                          <Loader2
+                            size={26}
+                            strokeWidth={2.2}
+                            className="animate-spin text-slate-500"
+                            aria-hidden="true"
+                          />
+                        ) : adminUserOnlineCardQrDataUrl ? (
+                          <Image
+                            src={adminUserOnlineCardQrDataUrl}
+                            alt="QR kód online vizitky"
+                            width={160}
+                            height={160}
+                            unoptimized
+                            className="h-full w-full rounded-xl object-contain"
+                          />
+                        ) : (
+                          <QrCode
+                            size={32}
+                            strokeWidth={2}
+                            className="text-slate-400"
+                            aria-hidden="true"
+                          />
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Veřejná URL
+                          </div>
+                          <div className="mt-1 break-all text-sm font-semibold text-slate-900">
+                            {selectedAdminUserOnlineCardUrl}
+                          </div>
+                        </div>
+
+                        {adminUserOnlineCardQrError ? (
+                          <p className="mt-2 text-xs font-semibold text-rose-700">
+                            {adminUserOnlineCardQrError}
+                          </p>
+                        ) : null}
+                        {adminUserOnlineCardQrStatus ? (
+                          <p className="mt-2 text-xs font-semibold text-violet-700">
+                            {adminUserOnlineCardQrStatus}
+                          </p>
+                        ) : null}
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <a
+                            href={selectedAdminUserOnlineCardUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                          >
+                            <ExternalLink size={14} strokeWidth={2.2} aria-hidden="true" />
+                            Otevřít
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopySelectedAdminUserOnlineCardUrl()}
+                            className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                          >
+                            <Copy size={14} strokeWidth={2.2} aria-hidden="true" />
+                            Kopírovat URL
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDownloadSelectedAdminUserOnlineCardQr}
+                            disabled={!adminUserOnlineCardQrDataUrl}
+                            className="inline-flex items-center gap-1.5 rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Download size={14} strokeWidth={2.2} aria-hidden="true" />
+                            Stáhnout QR
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm font-semibold text-slate-600">
+                      {selectedAdminUser.onlineCard?.enabled
+                        ? "Vizitka je zapnutá, ale nemá platnou adresu nebo jméno."
+                        : "Online vizitka u tohoto uživatele není publikovaná."}
+                    </div>
+                  )}
                 </div>
 
                 {selectedAdminUser.positionTimeline.length > 0 ? (
@@ -2325,6 +2965,17 @@ export default function AdminRequestsPage() {
                       }`}
                     >
                       Uživatelé
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveAdminSection("broadcasts")}
+                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                        activeAdminSection === "broadcasts"
+                          ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]"
+                          : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
+                      }`}
+                    >
+                      Notifikace
                     </button>
                     {isOwnerAdmin ? (
                       <button
@@ -3213,6 +3864,500 @@ export default function AdminRequestsPage() {
                   {createUserBusy ? "Vytvářím..." : "Vytvořit uživatele"}
                 </button>
               </div>
+            </form>
+          </section>
+        ) : null}
+
+        {isAllowedAdmin && activeAdminSection === "broadcasts" ? (
+          <section className={adminDarkSectionClass}>
+            <div className={adminDarkTopBarClass} />
+
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <span className={adminDarkBadgeClass}>
+                  Hromadné upozornění
+                </span>
+                <h2 className="inline-flex items-center gap-1.5 text-xl font-bold tracking-[-0.02em] !text-white sm:text-2xl">
+                  <Megaphone size={20} strokeWidth={2.1} className="!text-violet-100" aria-hidden="true" />
+                  <span>Notifikace</span>
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed !text-violet-100/70">
+                  Push zpráva se odešle na aktivní zařízení a kliknutí otevře vybranou stránku.
+                </p>
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-violet-300/25 bg-violet-400/12 px-3 py-2 text-xs font-semibold !text-violet-100">
+                <BellRing size={15} strokeWidth={2.2} aria-hidden="true" />
+                Web push
+              </div>
+            </div>
+
+            <div className="mb-4 grid gap-2 md:grid-cols-3">
+              {[
+                {
+                  label: "Příjemce",
+                  value: broadcastRecipientLabel,
+                  icon: UserRound,
+                },
+                {
+                  label: "Odeslání",
+                  value: broadcastDeliveryLabel,
+                  icon: Clock3,
+                },
+                {
+                  label: "Cíl",
+                  value: broadcastTargetLabel,
+                  icon: Link2,
+                },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={item.label}
+                    className="min-w-0 rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2.5 shadow-[0_12px_28px_rgba(7,6,25,0.16)]"
+                  >
+                    <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] !text-violet-200/62">
+                      <Icon size={12} strokeWidth={2.2} aria-hidden="true" />
+                      {item.label}
+                    </div>
+                    <div className="truncate text-sm font-semibold !text-white">
+                      {item.value}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <form
+              className={`${adminDarkPanelClass} grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start`}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleSendAdminBroadcast();
+              }}
+            >
+              <div className="space-y-3">
+                <div className="rounded-[22px] border border-white/12 bg-white/[0.055] p-4 shadow-[0_14px_34px_rgba(7,6,25,0.2)]">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="inline-flex items-center gap-2">
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-violet-400/18 text-xs font-bold !text-violet-100 ring-1 ring-violet-200/20">
+                        1
+                      </span>
+                      <span className={createUserLabelClass}>Obsah zprávy</span>
+                    </div>
+                    <span className="text-[11px] font-semibold !text-violet-100/56">
+                      {broadcastTitle.length}/80 · {broadcastMessage.length}/220
+                    </span>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-[150px_minmax(0,1fr)]">
+                    <div className="space-y-2">
+                      <label className={createUserLabelClass}>Emoji</label>
+                      <input
+                        type="text"
+                        value={broadcastEmoji}
+                        onChange={(event) => {
+                          setBroadcastEmoji(event.target.value.slice(0, 12));
+                          setBroadcastStatus(null);
+                        }}
+                        className={`${createUserFieldClass} h-12 text-center text-2xl`}
+                        maxLength={12}
+                        aria-label="Emoji notifikace"
+                      />
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {ADMIN_BROADCAST_EMOJI_OPTIONS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => {
+                              setBroadcastEmoji(emoji);
+                              setBroadcastStatus(null);
+                            }}
+                            className={`inline-flex h-9 items-center justify-center rounded-xl border text-lg transition ${
+                              broadcastEmoji === emoji
+                                ? "border-violet-200 bg-violet-400/24 shadow-[0_8px_18px_rgba(124,58,237,0.18)]"
+                                : "border-white/12 bg-white/[0.055] hover:bg-white/[0.1]"
+                            }`}
+                            aria-label={`Vybrat emoji ${emoji}`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3">
+                      <label className="space-y-2">
+                        <span className={createUserLabelClass}>Nadpis notifikace</span>
+                        <input
+                          type="text"
+                          value={broadcastTitle}
+                          onChange={(event) => {
+                            setBroadcastTitle(event.target.value.slice(0, 80));
+                            setBroadcastStatus(null);
+                          }}
+                          maxLength={80}
+                          className={createUserFieldClass}
+                          placeholder="Nová pomůcka"
+                        />
+                      </label>
+
+                      <label className="space-y-2">
+                        <span className={createUserLabelClass}>Text notifikace</span>
+                        <textarea
+                          value={broadcastMessage}
+                          onChange={(event) => {
+                            setBroadcastMessage(event.target.value.slice(0, 220));
+                            setBroadcastStatus(null);
+                          }}
+                          rows={4}
+                          maxLength={220}
+                          className={`${createUserFieldClass} min-h-[112px] resize-none leading-relaxed`}
+                          placeholder="Krátká zpráva pro uživatele"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 2xl:grid-cols-3">
+                  <div className="rounded-[22px] border border-white/12 bg-white/[0.055] p-3.5 shadow-[0_14px_34px_rgba(7,6,25,0.18)]">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="inline-flex items-center gap-2">
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-violet-400/18 text-xs font-bold !text-violet-100 ring-1 ring-violet-200/20">
+                          2
+                        </span>
+                        <span className={createUserLabelClass}>Příjemci</span>
+                      </div>
+                      {broadcastRecipientMode === "single" ? (
+                        <span className="text-[11px] font-semibold !text-violet-100/58">
+                          {adminUsersLoading ? "Načítám..." : `${broadcastRecipientOptions.length} účtů`}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-3 rounded-2xl border border-white/12 bg-white/[0.06] p-1">
+                      {[
+                        { id: "all" as const, label: "Všem" },
+                        { id: "group" as const, label: "Skupina" },
+                        { id: "single" as const, label: "Osoba" },
+                      ].map((mode) => (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          onClick={() => {
+                            setBroadcastRecipientMode(mode.id);
+                            setBroadcastConfirmed(false);
+                            setBroadcastStatus(null);
+                          }}
+                          className={`min-h-10 rounded-xl px-2 text-[13px] font-semibold transition ${
+                            broadcastRecipientMode === mode.id
+                              ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.26)]"
+                              : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
+                          }`}
+                        >
+                          {mode.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="mt-3">
+                      {broadcastRecipientMode === "group" ? (
+                        <select
+                          value={broadcastRecipientGroup}
+                          onChange={(event) => {
+                            setBroadcastRecipientGroup(
+                              event.target.value as AdminBroadcastRecipientGroup
+                            );
+                            setBroadcastConfirmed(false);
+                            setBroadcastStatus(null);
+                          }}
+                          className={createUserFieldClass}
+                        >
+                          {ADMIN_BROADCAST_GROUPS.map((group) => (
+                            <option key={group.id} value={group.id}>
+                              {group.label} ({broadcastGroupCounts[group.id]})
+                            </option>
+                          ))}
+                        </select>
+                      ) : broadcastRecipientMode === "single" ? (
+                        <select
+                          value={broadcastRecipientEmail}
+                          onChange={(event) => {
+                            setBroadcastRecipientEmail(event.target.value);
+                            setBroadcastConfirmed(false);
+                            setBroadcastStatus(null);
+                          }}
+                          disabled={adminUsersLoading || broadcastRecipientOptions.length === 0}
+                          className={`${createUserFieldClass} disabled:cursor-not-allowed disabled:opacity-50`}
+                        >
+                          {broadcastRecipientOptions.length === 0 ? (
+                            <option value="">
+                              {adminUsersLoading ? "Načítám uživatele..." : "Žádný uživatel"}
+                            </option>
+                          ) : (
+                            broadcastRecipientOptions.map((row) => (
+                              <option key={row.email} value={row.email}>
+                                {row.label} ({row.email}){row.disabled ? " - deaktivovaný" : ""}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      ) : (
+                        <div className="min-h-[46px] rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2 text-sm font-semibold leading-relaxed !text-violet-100/72">
+                          Všichni uživatelé s aktivním push tokenem.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-white/12 bg-white/[0.055] p-3.5 shadow-[0_14px_34px_rgba(7,6,25,0.18)]">
+                    <div className="mb-3 inline-flex items-center gap-2">
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-violet-400/18 text-xs font-bold !text-violet-100 ring-1 ring-violet-200/20">
+                        3
+                      </span>
+                      <span className={createUserLabelClass}>Po kliknutí</span>
+                    </div>
+
+                    <div className="grid gap-3">
+                      <select
+                        value={broadcastTargetPath}
+                        onChange={(event) => {
+                          setBroadcastTargetPath(event.target.value);
+                          setBroadcastStatus(null);
+                        }}
+                        className={createUserFieldClass}
+                        aria-label="Cílová stránka po kliknutí"
+                      >
+                        {ADMIN_BROADCAST_TARGETS.map((target) => (
+                          <option key={target.path} value={target.path}>
+                            {target.label}
+                          </option>
+                        ))}
+                        <option value="__custom__">Vlastní cesta</option>
+                      </select>
+
+                      {broadcastTargetPath === "/pomucky" ? (
+                        <select
+                          value={broadcastToolTargetPath}
+                          onChange={(event) => {
+                            setBroadcastToolTargetPath(event.target.value);
+                            setBroadcastStatus(null);
+                          }}
+                          className={createUserFieldClass}
+                          aria-label="Konkrétní pomůcka"
+                        >
+                          {ADMIN_BROADCAST_TOOL_TARGETS.map((target) => (
+                            <option key={target.path} value={target.path}>
+                              {target.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={broadcastCustomTargetPath}
+                          onChange={(event) => {
+                            setBroadcastCustomTargetPath(event.target.value);
+                            setBroadcastStatus(null);
+                          }}
+                          disabled={broadcastTargetPath !== "__custom__"}
+                          className={`${createUserFieldClass} disabled:cursor-not-allowed disabled:opacity-50`}
+                          placeholder="/pomucky/zlato"
+                          aria-label="Vlastní cesta"
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-white/12 bg-white/[0.055] p-3.5 shadow-[0_14px_34px_rgba(7,6,25,0.18)]">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="inline-flex items-center gap-2">
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-violet-400/18 text-xs font-bold !text-violet-100 ring-1 ring-violet-200/20">
+                          4
+                        </span>
+                        <span className={createUserLabelClass}>Odeslání</span>
+                      </div>
+                      <span className="text-[11px] font-semibold !text-violet-100/58">
+                        {broadcastDeliveryMode === "scheduled" ? "Fronta" : "Ihned"}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 rounded-2xl border border-white/12 bg-white/[0.06] p-1">
+                      {[
+                        { id: "now" as const, label: "Hned" },
+                        { id: "scheduled" as const, label: "Naplánovat" },
+                      ].map((mode) => (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          onClick={() => {
+                            setBroadcastDeliveryMode(mode.id);
+                            if (mode.id === "scheduled" && !broadcastScheduledAt) {
+                              setBroadcastScheduledAt(
+                                toDatetimeLocalInputValue(new Date(Date.now() + 10 * 60 * 1000))
+                              );
+                            }
+                            setBroadcastConfirmed(false);
+                            setBroadcastStatus(null);
+                          }}
+                          className={`min-h-10 rounded-xl px-2 text-sm font-semibold transition ${
+                            broadcastDeliveryMode === mode.id
+                              ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.26)]"
+                              : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
+                          }`}
+                        >
+                          {mode.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <input
+                      type="datetime-local"
+                      value={broadcastScheduledAt}
+                      min={broadcastScheduleMinValue}
+                      onChange={(event) => {
+                        setBroadcastScheduledAt(event.target.value);
+                        setBroadcastConfirmed(false);
+                        setBroadcastStatus(null);
+                      }}
+                      disabled={broadcastDeliveryMode !== "scheduled"}
+                      className={`${createUserFieldClass} mt-3 disabled:cursor-not-allowed disabled:opacity-50`}
+                    />
+                  </div>
+                </div>
+
+                <label className="flex cursor-pointer items-start gap-3 rounded-[22px] border border-amber-300/30 bg-amber-300/10 px-3.5 py-3 shadow-[0_12px_28px_rgba(7,6,25,0.16)]">
+                  <input
+                    type="checkbox"
+                    checked={broadcastConfirmed}
+                    onChange={(event) => {
+                      setBroadcastConfirmed(event.target.checked);
+                      setBroadcastStatus(null);
+                    }}
+                    className="mt-1 h-4 w-4 rounded border-amber-200 text-amber-500 accent-amber-500"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold !text-amber-50">
+                      {broadcastDeliveryMode === "scheduled"
+                        ? `Potvrzuji naplánování notifikace pro ${broadcastRecipientLabel}.`
+                        : broadcastRecipientMode === "single"
+                          ? "Potvrzuji odeslání pouze vybranému uživateli."
+                          : broadcastRecipientMode === "group"
+                            ? "Potvrzuji odeslání vybrané skupině."
+                            : "Potvrzuji odeslání všem uživatelům s aktivním push tokenem."}
+                    </span>
+                    <span className="mt-1 block text-xs leading-relaxed !text-amber-100/74">
+                      Respektuje se vypnutý push kanál v nastavení uživatele.
+                    </span>
+                  </span>
+                </label>
+
+                {broadcastStatus ? (
+                  <div
+                    className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${
+                      broadcastStatus.type === "success"
+                        ? "border-violet-300/30 bg-violet-400/12 !text-violet-100"
+                        : broadcastStatus.type === "info"
+                          ? "border-sky-300/30 bg-sky-400/12 !text-sky-100"
+                          : "border-rose-200 bg-rose-50 text-rose-700"
+                    }`}
+                  >
+                    {broadcastStatus.message}
+                  </div>
+                ) : null}
+
+                <div className="flex flex-col gap-3 rounded-[22px] border border-white/10 bg-slate-950/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] !text-violet-200/58">
+                      Připravený cíl
+                    </span>
+                    <span className="mt-0.5 block truncate text-sm font-semibold !text-violet-50">
+                      {broadcastEffectiveTargetPath}
+                    </span>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!broadcastCanSubmit}
+                    className={adminDarkPrimaryButtonClass}
+                  >
+                    {broadcastSending ? (
+                      <Loader2 size={15} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Send size={15} strokeWidth={2.2} aria-hidden="true" />
+                    )}
+                    {broadcastSending
+                      ? "Odesílám..."
+                      : broadcastDeliveryMode === "scheduled"
+                        ? "Naplánovat"
+                        : broadcastRecipientMode === "single"
+                          ? "Odeslat osobě"
+                          : broadcastRecipientMode === "group"
+                            ? "Odeslat skupině"
+                            : "Odeslat všem"}
+                  </button>
+                </div>
+              </div>
+
+              <aside className="self-start rounded-[24px] border border-white/14 bg-white/[0.07] p-4 shadow-[0_16px_38px_rgba(7,6,25,0.22)] xl:sticky xl:top-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] !text-violet-200/78">
+                    Náhled
+                  </span>
+                  <span className="rounded-full border border-white/12 bg-white/[0.06] px-2 py-1 text-[10px] font-semibold !text-violet-100/70">
+                    Web push
+                  </span>
+                </div>
+                <div className="rounded-[22px] border border-white/16 bg-slate-950/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                  <div className="flex items-start gap-3">
+                    <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-2xl text-slate-950">
+                      {broadcastEmoji || "📣"}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold !text-white">
+                        {broadcastEmoji ? `${broadcastEmoji} ` : ""}
+                        {broadcastTitleTrimmed || "Nadpis notifikace"}
+                      </div>
+                      <p className="mt-1 break-words text-sm leading-relaxed !text-violet-100/78">
+                        {broadcastMessageTrimmed || "Text notifikace se zobrazí tady."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid gap-2 text-xs">
+                  <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2">
+                    <span className="block font-semibold uppercase tracking-[0.14em] !text-violet-200/60">
+                      Příjemce
+                    </span>
+                    <span className="mt-0.5 block break-words font-semibold !text-white">
+                      {broadcastRecipientLabel}
+                    </span>
+                  </div>
+                  <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2">
+                    <span className="block font-semibold uppercase tracking-[0.14em] !text-violet-200/60">
+                      Odeslání
+                    </span>
+                    <span className="mt-0.5 block break-words font-semibold !text-white">
+                      {broadcastDeliveryLabel}
+                    </span>
+                  </div>
+                  <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2">
+                    <span className="block font-semibold uppercase tracking-[0.14em] !text-violet-200/60">
+                      Stránka
+                    </span>
+                    <span className="mt-0.5 block font-semibold !text-white">
+                      {broadcastTargetLabel}
+                    </span>
+                  </div>
+                  <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2">
+                    <span className="block font-semibold uppercase tracking-[0.14em] !text-violet-200/60">
+                      Cesta
+                    </span>
+                    <span className="mt-0.5 block break-all font-semibold !text-white">
+                      {broadcastEffectiveTargetPath}
+                    </span>
+                  </div>
+                </div>
+              </aside>
             </form>
           </section>
         ) : null}

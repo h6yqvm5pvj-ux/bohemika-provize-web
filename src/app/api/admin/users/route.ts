@@ -7,6 +7,10 @@ import {
   adminAuthErrorResponse,
   getAdminAuthContext,
 } from "@/lib/server/adminAuth";
+import {
+  normalizeOnlineCardSlug,
+  ONLINE_CARD_SLUG_RE,
+} from "@/lib/server/onlineCard";
 import { isSpecialistProfile } from "@/lib/specialistAccess";
 
 export const runtime = "nodejs";
@@ -49,6 +53,11 @@ type AdminUsersRow = {
   lastSignInAt: string | null;
   profileExists: boolean;
   privateProfileExists: boolean;
+  onlineCard: {
+    enabled: boolean;
+    slug: string | null;
+    ready: boolean;
+  };
 };
 
 type ProfileSummary = {
@@ -103,6 +112,27 @@ function sanitizePositionTimeline(value: unknown): AdminUsersRow["positionTimeli
       };
     })
     .filter((row): row is AdminUsersRow["positionTimeline"][number] => Boolean(row));
+}
+
+function summarizeOnlineCard(value: unknown): AdminUsersRow["onlineCard"] {
+  if (!isPlainObject(value)) {
+    return {
+      enabled: false,
+      slug: null,
+      ready: false,
+    };
+  }
+
+  const enabled = value.enabled === true;
+  const slug = normalizeOnlineCardSlug(value.slug);
+  const fullName = normalizeText(value.fullName);
+  const validSlug = slug.length >= 3 && ONLINE_CARD_SLUG_RE.test(slug);
+
+  return {
+    enabled,
+    slug: slug || null,
+    ready: enabled && validSlug && Boolean(fullName),
+  };
 }
 
 async function listAllAuthUsers(): Promise<UserRecord[]> {
@@ -204,6 +234,7 @@ function serializeUser(authUser: UserRecord, summary: ProfileSummary | undefined
     lastSignInAt: authUser.metadata.lastSignInTime || null,
     profileExists: Boolean(summary?.publicDocId),
     privateProfileExists: Boolean(summary?.privateDocId || Object.keys(privateData).length > 0),
+    onlineCard: summarizeOnlineCard(publicData.onlineCard),
   };
 }
 
