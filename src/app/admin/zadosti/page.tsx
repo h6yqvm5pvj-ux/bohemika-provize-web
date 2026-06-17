@@ -2240,14 +2240,19 @@ export default function AdminRequestsPage() {
   const selectedAdminUserMissingItems = selectedAdminUserDraft
     ? buildAdminUserMissingItems(selectedAdminUserDraft)
     : [];
-  const selectedAdminUserOnlineCardSlug =
-    selectedAdminUser?.onlineCard?.ready === true ? selectedAdminUser.onlineCard.slug : null;
+  const selectedAdminUserOnlineCardSlug = selectedAdminUser?.onlineCard?.slug ?? null;
   const selectedAdminUserOnlineCardUrl = buildOnlineCardPublicUrl(
     selectedAdminUserOnlineCardSlug
   );
   const selectedAdminUserOnlineCardLabel = selectedAdminUser
     ? getAdminUserOnlineCardLabel(selectedAdminUser)
     : "";
+  const selectedAdminUserOnlineCardBadgeClass =
+    selectedAdminUser?.onlineCard?.ready === true
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : selectedAdminUserOnlineCardSlug
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-slate-200 bg-slate-50 text-slate-600";
 
   useEffect(() => {
     if (!selectedAdminUserOnlineCardUrl) {
@@ -2774,11 +2779,7 @@ export default function AdminRequestsPage() {
                       QR online vizitky
                     </div>
                     <span
-                      className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                        selectedAdminUserOnlineCardUrl
-                          ? "border-violet-200 bg-violet-50 text-violet-700"
-                          : "border-slate-200 bg-slate-50 text-slate-600"
-                      }`}
+                      className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${selectedAdminUserOnlineCardBadgeClass}`}
                     >
                       {selectedAdminUserOnlineCardLabel}
                     </span>
@@ -2822,6 +2823,11 @@ export default function AdminRequestsPage() {
                             {selectedAdminUserOnlineCardUrl}
                           </div>
                         </div>
+                        {selectedAdminUser.onlineCard?.ready !== true ? (
+                          <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                            QR je připravený pro slug vizitky, ale online vizitka není aktivně publikovaná.
+                          </p>
+                        ) : null}
 
                         {adminUserOnlineCardQrError ? (
                           <p className="mt-2 text-xs font-semibold text-rose-700">
@@ -2868,7 +2874,7 @@ export default function AdminRequestsPage() {
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm font-semibold text-slate-600">
                       {selectedAdminUser.onlineCard?.enabled
                         ? "Vizitka je zapnutá, ale nemá platnou adresu nebo jméno."
-                        : "Online vizitka u tohoto uživatele není publikovaná."}
+                        : "Uživatel zatím nemá nastavený slug online vizitky."}
                     </div>
                   )}
                 </div>

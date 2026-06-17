@@ -186,6 +186,9 @@ export default function CppLifeDocumentsPage() {
   const [editorError, setEditorError] = useState<string | null>(null);
   const [editorBusy, setEditorBusy] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [deleteConfirmationDoc, setDeleteConfirmationDoc] = useState<ToolDocumentRecord | null>(
+    null
+  );
   const [fileInputKey, setFileInputKey] = useState(0);
   const [fileDropActive, setFileDropActive] = useState(false);
   const [documentNotificationDraft, setDocumentNotificationDraft] =
@@ -317,6 +320,7 @@ export default function CppLifeDocumentsPage() {
     setDocuments(fallbackDocuments);
     setActiveDocumentId(null);
     setAddModalOpen(false);
+    setDeleteConfirmationDoc(null);
     setActiveTab("prehled");
     setEditor(emptyEditor("prehled"));
     setEditorStatus(null);
@@ -770,10 +774,6 @@ export default function CppLifeDocumentsPage() {
   const deleteDocumentPermanently = async (doc: ToolDocumentRecord) => {
     const user = auth.currentUser;
     if (!user || !canManageDocuments) return;
-    const confirmed = window.confirm(
-      `Trvale smazat dokument „${doc.title}“? Tuto akci nejde vrátit.`
-    );
-    if (!confirmed) return;
 
     setEditorBusy(true);
     setEditorError(null);
@@ -788,17 +788,31 @@ export default function CppLifeDocumentsPage() {
         }),
       })) as { ok?: boolean; documents?: ToolDocumentRecord[] };
 
-      if (payload.documents) setDocuments(payload.documents);
+      setDocuments((current) => {
+        const nextDocuments = Array.isArray(payload.documents) ? payload.documents : current;
+        return nextDocuments.filter((item) => item.id !== doc.id);
+      });
       if (activeDocumentId === doc.id) closeDocumentDetail();
       if (editor.id === doc.id) {
         setEditor(emptyEditor(doc.tab, doc.tabLabel, doc.emoji));
         setFileInputKey((key) => key + 1);
       }
+      setDeleteConfirmationDoc(null);
       setEditorStatus("Dokument byl trvale smazán.");
     } catch (error) {
-      setEditorError(
-        error instanceof Error ? error.message : "Dokument se nepodařilo smazat."
-      );
+      const message = error instanceof Error ? error.message : "Dokument se nepodařilo smazat.";
+      if (message.includes("Dokument nebyl nalezen")) {
+        setDocuments((current) => current.filter((item) => item.id !== doc.id));
+        if (activeDocumentId === doc.id) closeDocumentDetail();
+        if (editor.id === doc.id) {
+          setEditor(emptyEditor(doc.tab, doc.tabLabel, doc.emoji));
+          setFileInputKey((key) => key + 1);
+        }
+        setDeleteConfirmationDoc(null);
+        setEditorStatus("Dokument už byl smazán. Seznam jsem aktualizoval.");
+      } else {
+        setEditorError(message);
+      }
     } finally {
       setEditorBusy(false);
     }
@@ -1092,7 +1106,7 @@ export default function CppLifeDocumentsPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => void deleteDocumentPermanently(doc)}
+                            onClick={() => setDeleteConfirmationDoc(doc)}
                             disabled={editorBusy}
                             className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
                           >
@@ -1498,6 +1512,90 @@ export default function CppLifeDocumentsPage() {
                 >
                   {editorBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Přidat dokument
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteConfirmationDoc ? (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center px-3 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Potvrdit smazání dokumentu"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/62 backdrop-blur-md"
+            onClick={() => {
+              if (!editorBusy) setDeleteConfirmationDoc(null);
+            }}
+            aria-label="Zavřít potvrzení smazání"
+          />
+          <div className="relative w-full max-w-lg overflow-hidden rounded-[28px] border border-rose-100 bg-white shadow-[0_34px_90px_rgba(15,23,42,0.42)]">
+            <div className="bg-[linear-gradient(135deg,#881337_0%,#be123c_52%,#f43f5e_100%)] px-5 py-5 text-white sm:px-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] !text-white">
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Trvalé smazání
+                  </span>
+                  <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.02em] !text-white">
+                    Smazat dokument?
+                  </h3>
+                  <p className="mt-1 text-sm leading-relaxed !text-rose-50/90">
+                    Tato akce odstraní dokument ze správy i z pomůcek. Nejde ji vrátit zpět.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmationDoc(null)}
+                  disabled={editorBusy}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/12 text-white transition hover:bg-white/18 disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label="Zavřít"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-5 sm:p-6">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Dokument
+                </span>
+                <p className="mt-1 break-words text-base font-bold text-slate-950">
+                  {deleteConfirmationDoc.title}
+                </p>
+                <p className="mt-1 break-words text-sm text-slate-500">
+                  {deleteConfirmationDoc.fileName || "Bez přílohy"}
+                </p>
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmationDoc(null)}
+                  disabled={editorBusy}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <X className="h-4 w-4" />
+                  Zrušit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void deleteDocumentPermanently(deleteConfirmationDoc)}
+                  disabled={editorBusy}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-rose-300 bg-rose-600 px-5 py-2.5 text-sm font-bold text-white shadow-[0_16px_34px_rgba(225,29,72,0.28)] transition hover:-translate-y-0.5 hover:bg-rose-700 focus:outline-none focus:ring-4 focus:ring-rose-200 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60"
+                >
+                  {editorBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Trvale smazat
                 </button>
               </div>
             </div>

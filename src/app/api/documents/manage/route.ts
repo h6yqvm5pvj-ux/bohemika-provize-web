@@ -496,12 +496,19 @@ export async function DELETE(req: NextRequest) {
   if (!id || !isToolDocumentSection(sectionRaw)) {
     return responseError("Chybí ID nebo sekce dokumentu.", 400, guard.ctx);
   }
+  const permanent = raw.permanent === true || normalizeText(raw.action) === "delete";
   const mutationTarget = await loadDocumentForMutation(id, sectionRaw);
   if (!mutationTarget.ok) {
+    if (permanent && mutationTarget.status === 404) {
+      const documents = await loadToolDocuments(sectionRaw, { includeInvalid: true });
+      return withRateLimitHeaders(
+        NextResponse.json({ ok: true, id, documents, deleted: true, alreadyDeleted: true }),
+        guard.ctx
+      );
+    }
     return responseError(mutationTarget.error, mutationTarget.status, guard.ctx);
   }
 
-  const permanent = raw.permanent === true || normalizeText(raw.action) === "delete";
   if (!permanent) {
     await writeDocumentInvalidState({
       id,
