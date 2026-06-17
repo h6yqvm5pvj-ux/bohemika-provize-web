@@ -177,6 +177,9 @@ export default function CppLifeDocumentsPage() {
   );
   const [activeTab, setActiveTab] = useState<ActiveTab>("prehled");
   const [documents, setDocuments] = useState<ToolDocumentRecord[]>(fallbackDocuments);
+  const [locallyDeletedDocumentIds, setLocallyDeletedDocumentIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [canManageDocuments, setCanManageDocuments] = useState(false);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
@@ -259,10 +262,11 @@ export default function CppLifeDocumentsPage() {
   );
 
   const filteredDocuments = useMemo(() => {
+    const availableDocuments = documents.filter((doc) => !locallyDeletedDocumentIds.has(doc.id));
     const query = normalizeSearchText(searchQuery.trim());
-    if (!query) return documents;
+    if (!query) return availableDocuments;
 
-    return documents.filter((doc) => {
+    return availableDocuments.filter((doc) => {
       const haystack = normalizeSearchText(
         [
           doc.title,
@@ -276,7 +280,7 @@ export default function CppLifeDocumentsPage() {
       );
       return haystack.includes(query);
     });
-  }, [documents, searchQuery]);
+  }, [documents, locallyDeletedDocumentIds, searchQuery]);
 
   const activeTabDocuments = useMemo(
     () =>
@@ -318,6 +322,7 @@ export default function CppLifeDocumentsPage() {
 
   useEffect(() => {
     setDocuments(fallbackDocuments);
+    setLocallyDeletedDocumentIds(new Set());
     setActiveDocumentId(null);
     setAddModalOpen(false);
     setDeleteConfirmationDoc(null);
@@ -536,6 +541,20 @@ export default function CppLifeDocumentsPage() {
     params.delete("source");
     const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
+  const removeDocumentFromLocalState = (doc: ToolDocumentRecord) => {
+    setLocallyDeletedDocumentIds((current) => {
+      const next = new Set(current);
+      next.add(doc.id);
+      return next;
+    });
+    setDocuments((current) => current.filter((item) => item.id !== doc.id));
+    if (activeDocumentId === doc.id) closeDocumentDetail();
+    if (editor.id === doc.id) {
+      setEditor(emptyEditor(doc.tab, doc.tabLabel, doc.emoji));
+      setFileInputKey((key) => key + 1);
+    }
   };
 
   const startEdit = (doc: ToolDocumentRecord) => {
@@ -788,26 +807,16 @@ export default function CppLifeDocumentsPage() {
         }),
       })) as { ok?: boolean; documents?: ToolDocumentRecord[] };
 
-      setDocuments((current) => {
-        const nextDocuments = Array.isArray(payload.documents) ? payload.documents : current;
-        return nextDocuments.filter((item) => item.id !== doc.id);
-      });
-      if (activeDocumentId === doc.id) closeDocumentDetail();
-      if (editor.id === doc.id) {
-        setEditor(emptyEditor(doc.tab, doc.tabLabel, doc.emoji));
-        setFileInputKey((key) => key + 1);
+      if (Array.isArray(payload.documents)) {
+        setDocuments(payload.documents);
       }
+      removeDocumentFromLocalState(doc);
       setDeleteConfirmationDoc(null);
       setEditorStatus("Dokument byl trvale smazán.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Dokument se nepodařilo smazat.";
-      if (message.includes("Dokument nebyl nalezen")) {
-        setDocuments((current) => current.filter((item) => item.id !== doc.id));
-        if (activeDocumentId === doc.id) closeDocumentDetail();
-        if (editor.id === doc.id) {
-          setEditor(emptyEditor(doc.tab, doc.tabLabel, doc.emoji));
-          setFileInputKey((key) => key + 1);
-        }
+      if (message.includes("Dokument nebyl nalezen") || message.includes("Dokument byl smazán")) {
+        removeDocumentFromLocalState(doc);
         setDeleteConfirmationDoc(null);
         setEditorStatus("Dokument už byl smazán. Seznam jsem aktualizoval.");
       } else {

@@ -92,6 +92,13 @@ async function loadDocumentForMutation(id: string, section: ToolDocumentSection)
       error: "Dokument nebyl nalezen.",
     };
   }
+  if ((existing.stored as { deleted?: unknown } | null)?.deleted === true) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "Dokument byl smazán.",
+    };
+  }
 
   const existingSection =
     existing.publicDoc?.section ??
@@ -529,24 +536,19 @@ export async function DELETE(req: NextRequest) {
     bucketName: mutationTarget.existing.stored?.bucketName,
   });
 
-  const docRef = adminDb.collection(TOOL_DOCUMENTS_COLLECTION).doc(id);
-  if (mutationTarget.existing.fallback) {
-    await docRef.set(
-      {
-        section: sectionRaw,
-        deleted: true,
-        invalid: false,
-        disabled: false,
-        deletedAt: FieldValue.serverTimestamp(),
-        deletedByEmail: guard.ctx.email,
-        updatedAt: FieldValue.serverTimestamp(),
-        updatedByEmail: guard.ctx.email,
-      },
-      { merge: true }
-    );
-  } else {
-    await docRef.delete();
-  }
+  await adminDb.collection(TOOL_DOCUMENTS_COLLECTION).doc(id).set(
+    {
+      section: sectionRaw,
+      deleted: true,
+      invalid: false,
+      disabled: false,
+      deletedAt: FieldValue.serverTimestamp(),
+      deletedByEmail: guard.ctx.email,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedByEmail: guard.ctx.email,
+    },
+    { merge: true }
+  );
 
   const documents = await loadToolDocuments(sectionRaw, { includeInvalid: true });
   return withRateLimitHeaders(
