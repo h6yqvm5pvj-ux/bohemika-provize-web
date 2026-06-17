@@ -167,6 +167,9 @@ export type ToolDocumentRecord = {
   publishedAt: string | null;
   updatedAt: string | null;
   updatedByEmail: string | null;
+  isInvalid?: boolean;
+  invalidAt?: string | null;
+  invalidByEmail?: string | null;
 };
 
 export type ToolDocumentsListResponse = {

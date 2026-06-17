@@ -10,6 +10,7 @@ import {
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 import {
+  BROADCAST_EMOJI_MAX_LEN,
   BROADCAST_MESSAGE_MAX_LEN,
   BROADCAST_TITLE_MAX_LEN,
   sendAdminBroadcastNow,
@@ -31,6 +32,11 @@ type ApiError = { ok: false; error: string };
 
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+
+const normalizeEmoji = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  return Array.from(value.trim().replace(/\s+/g, "")).slice(0, BROADCAST_EMOJI_MAX_LEN).join("");
+};
 
 const responseError = (
   message: string,
@@ -100,6 +106,7 @@ export async function POST(req: NextRequest) {
 
   const title = normalizeText(raw.title).slice(0, BROADCAST_TITLE_MAX_LEN);
   const message = normalizeText(raw.message).slice(0, BROADCAST_MESSAGE_MAX_LEN);
+  const emoji = normalizeEmoji(raw.emoji) || "📄";
   if (!title || !message) {
     return responseError("Vyplň nadpis i popisek notifikace.", 400, guard.ctx);
   }
@@ -107,7 +114,7 @@ export async function POST(req: NextRequest) {
   const targetPath = `${sectionHref}?document=${encodeURIComponent(id)}&source=document-notification`;
   const result = await sendAdminBroadcastNow(
     {
-      emoji: "📄",
+      emoji,
       title,
       message,
       targetPath,

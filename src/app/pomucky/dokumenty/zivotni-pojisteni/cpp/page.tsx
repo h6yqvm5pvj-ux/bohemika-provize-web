@@ -87,6 +87,7 @@ type DocumentNotificationDraft = {
 
 const NEW_TAB_VALUE = "__new__";
 const QUICK_SECTION_EMOJIS = ["📄", "📝", "📎", "📌", "✅", "💼", "🧾", "📊"] as const;
+const DOCUMENT_NOTIFICATION_EMOJIS = ["📄", "📣", "🔔", "✅", "📝", "📎", "💡", "🔥"] as const;
 const DOCUMENT_FILE_ACCEPT = "application/pdf,image/png,image/jpeg,image/gif,image/webp,image/avif";
 const DOCUMENT_NOTIFICATION_TITLE_MAX = 80;
 const DOCUMENT_NOTIFICATION_MESSAGE_MAX = 220;
@@ -189,6 +190,7 @@ export default function CppLifeDocumentsPage() {
   const [fileDropActive, setFileDropActive] = useState(false);
   const [documentNotificationDraft, setDocumentNotificationDraft] =
     useState<DocumentNotificationDraft | null>(null);
+  const [documentNotificationEmoji, setDocumentNotificationEmoji] = useState("📄");
   const [documentNotificationTitle, setDocumentNotificationTitle] = useState("");
   const [documentNotificationMessage, setDocumentNotificationMessage] = useState("");
   const [documentNotificationBusy, setDocumentNotificationBusy] = useState(false);
@@ -274,7 +276,10 @@ export default function CppLifeDocumentsPage() {
   }, [documents, searchQuery]);
 
   const activeTabDocuments = useMemo(
-    () => (activeTab === "sprava" ? [] : filteredDocuments.filter((doc) => doc.tab === activeTab)),
+    () =>
+      activeTab === "sprava"
+        ? []
+        : filteredDocuments.filter((doc) => doc.tab === activeTab && !doc.isInvalid),
     [activeTab, filteredDocuments]
   );
 
@@ -561,6 +566,7 @@ export default function CppLifeDocumentsPage() {
   const closeDocumentNotificationPrompt = () => {
     if (documentNotificationBusy) return;
     setDocumentNotificationDraft(null);
+    setDocumentNotificationEmoji("📄");
     setDocumentNotificationTitle("");
     setDocumentNotificationMessage("");
     setDocumentNotificationStatus(null);
@@ -571,16 +577,19 @@ export default function CppLifeDocumentsPage() {
     documentId,
     documentTitle,
     description,
+    emoji,
   }: {
     documentId: string;
     documentTitle: string;
     description: string;
+    emoji: string;
   }) => {
     setDocumentNotificationDraft({
       documentId,
       section: currentInsurer.section,
       documentTitle,
     });
+    setDocumentNotificationEmoji(normalizeToolDocumentEmoji(emoji, "📄"));
     setDocumentNotificationTitle(
       `Nový dokument: ${documentTitle}`.slice(0, DOCUMENT_NOTIFICATION_TITLE_MAX)
     );
@@ -615,6 +624,7 @@ export default function CppLifeDocumentsPage() {
         body: JSON.stringify({
           id: documentNotificationDraft.documentId,
           section: documentNotificationDraft.section,
+          emoji: documentNotificationEmoji,
           title,
           message,
         }),
@@ -705,6 +715,7 @@ export default function CppLifeDocumentsPage() {
           documentId: payload.id,
           documentTitle: title,
           description: editor.description,
+          emoji: nextEmoji,
         });
       }
       setEditor(emptyEditor(nextTab, resolvedTabLabel, nextEmoji));
@@ -718,10 +729,51 @@ export default function CppLifeDocumentsPage() {
     }
   };
 
-  const deleteDocument = async (doc: ToolDocumentRecord) => {
+  const setDocumentInvalidState = async (doc: ToolDocumentRecord, invalid: boolean) => {
     const user = auth.currentUser;
     if (!user || !canManageDocuments) return;
-    if (!window.confirm(`Opravdu skrýt dokument „${doc.title}“?`)) return;
+    const confirmed = window.confirm(
+      invalid
+        ? `Označit dokument „${doc.title}“ jako neplatný? Poradcům se přestane zobrazovat.`
+        : `Obnovit dokument „${doc.title}“ mezi platné dokumenty?`
+    );
+    if (!confirmed) return;
+
+    setEditorBusy(true);
+    setEditorError(null);
+    setEditorStatus(null);
+    try {
+      const payload = (await fetchAuthedJsonOrThrow(user, "/api/documents/manage", {
+        method: "PATCH",
+        body: JSON.stringify({
+          id: doc.id,
+          section: currentInsurer.section,
+          action: invalid ? "invalidate" : "restore",
+        }),
+      })) as { ok?: boolean; documents?: ToolDocumentRecord[] };
+
+      if (payload.documents) setDocuments(payload.documents);
+      if (invalid && activeDocumentId === doc.id) closeDocumentDetail();
+      setEditorStatus(invalid ? "Dokument byl označen jako neplatný." : "Dokument byl obnoven.");
+    } catch (error) {
+      const fallbackMessage = invalid
+        ? "Dokument se nepodařilo označit jako neplatný."
+        : "Dokument se nepodařilo obnovit.";
+      setEditorError(
+        error instanceof Error ? error.message : fallbackMessage
+      );
+    } finally {
+      setEditorBusy(false);
+    }
+  };
+
+  const deleteDocumentPermanently = async (doc: ToolDocumentRecord) => {
+    const user = auth.currentUser;
+    if (!user || !canManageDocuments) return;
+    const confirmed = window.confirm(
+      `Trvale smazat dokument „${doc.title}“? Tuto akci nejde vrátit.`
+    );
+    if (!confirmed) return;
 
     setEditorBusy(true);
     setEditorError(null);
@@ -732,15 +784,20 @@ export default function CppLifeDocumentsPage() {
         body: JSON.stringify({
           id: doc.id,
           section: currentInsurer.section,
+          permanent: true,
         }),
       })) as { ok?: boolean; documents?: ToolDocumentRecord[] };
 
       if (payload.documents) setDocuments(payload.documents);
       if (activeDocumentId === doc.id) closeDocumentDetail();
-      setEditorStatus("Dokument byl skrytý.");
+      if (editor.id === doc.id) {
+        setEditor(emptyEditor(doc.tab, doc.tabLabel, doc.emoji));
+        setFileInputKey((key) => key + 1);
+      }
+      setEditorStatus("Dokument byl trvale smazán.");
     } catch (error) {
       setEditorError(
-        error instanceof Error ? error.message : "Dokument se nepodařilo skrýt."
+        error instanceof Error ? error.message : "Dokument se nepodařilo smazat."
       );
     } finally {
       setEditorBusy(false);
@@ -947,7 +1004,9 @@ export default function CppLifeDocumentsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900">Dokumenty v sekci</h3>
-                    <p className="text-sm text-slate-600">Uprav existující položku nebo přidej novou.</p>
+                    <p className="text-sm text-slate-600">
+                      Uprav položku, označ ji jako neplatnou nebo ji trvale smaž.
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -961,14 +1020,32 @@ export default function CppLifeDocumentsPage() {
 
                 <div className="mt-4 space-y-3">
                   {filteredDocuments.map((doc) => (
-                    <div key={doc.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <div
+                      key={doc.id}
+                      className={`rounded-2xl border px-3 py-3 ${
+                        doc.isInvalid
+                          ? "border-amber-200 bg-amber-50/70"
+                          : "border-slate-200 bg-slate-50"
+                      }`}
+                    >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="break-words text-sm font-bold text-slate-900">{doc.title}</h4>
+                            <h4
+                              className={`break-words text-sm font-bold ${
+                                doc.isInvalid ? "text-amber-950" : "text-slate-900"
+                              }`}
+                            >
+                              {doc.title}
+                            </h4>
                             <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
                               {doc.emoji || DEFAULT_TOOL_DOCUMENT_EMOJI} {doc.tabLabel || resolveTabInfo(doc.tab).label}
                             </span>
+                            {doc.isInvalid ? (
+                              <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-800">
+                                Neplatný
+                              </span>
+                            ) : null}
                             {doc.isDefault ? (
                               <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold text-cyan-700">
                                 Výchozí
@@ -987,7 +1064,7 @@ export default function CppLifeDocumentsPage() {
                             Upraveno: {formatDateTime(doc.updatedAt)}
                           </p>
                         </div>
-                        <div className="flex shrink-0 gap-2">
+                        <div className="flex shrink-0 flex-wrap justify-end gap-2">
                           <button
                             type="button"
                             onClick={() => startEdit(doc)}
@@ -998,12 +1075,29 @@ export default function CppLifeDocumentsPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => void deleteDocument(doc)}
+                            onClick={() => void setDocumentInvalidState(doc, !doc.isInvalid)}
+                            disabled={editorBusy}
+                            className={`inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:opacity-60 ${
+                              doc.isInvalid
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                            }`}
+                          >
+                            {doc.isInvalid ? (
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                            ) : (
+                              <X className="h-3.5 w-3.5" />
+                            )}
+                            {doc.isInvalid ? "Obnovit" : "Neplatný"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteDocumentPermanently(doc)}
                             disabled={editorBusy}
                             className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                            Skrýt
+                            Smazat
                           </button>
                         </div>
                       </div>
@@ -1424,24 +1518,24 @@ export default function CppLifeDocumentsPage() {
             onClick={closeDocumentNotificationPrompt}
             aria-label="Zavřít notifikaci k dokumentu"
           />
-          <div className="relative max-h-[calc(100vh-2rem)] w-full max-w-4xl overflow-y-auto rounded-[30px] border border-slate-200 bg-[linear-gradient(145deg,#ffffff_0%,#f8fbff_55%,#eef8ff_100%)] p-4 shadow-[0_34px_92px_rgba(15,23,42,0.38)] sm:p-5">
-            <div className="relative overflow-hidden rounded-[24px] border border-violet-300/30 bg-[linear-gradient(135deg,#4c1d95_0%,#6d28d9_54%,#8b5cf6_100%)] px-4 py-4 text-white shadow-[0_18px_44px_rgba(76,29,149,0.30)] sm:px-5">
+          <div className="relative max-h-[calc(100vh-2rem)] w-full max-w-4xl overflow-y-auto rounded-[30px] border border-slate-200 bg-[linear-gradient(145deg,#ffffff_0%,#f8fbff_55%,#eef8ff_100%)] shadow-[0_34px_92px_rgba(15,23,42,0.38)]">
+            <div className="relative overflow-hidden bg-[linear-gradient(135deg,#4c1d95_0%,#6d28d9_54%,#8b5cf6_100%)] px-5 py-5 text-white shadow-[0_18px_44px_rgba(76,29,149,0.24)] sm:px-6">
               <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/30" aria-hidden="true" />
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] !text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
                       <BellRing className="h-3.5 w-3.5" />
                       Notifikace k dokumentu
                     </span>
-                    <span className="rounded-full border border-white/18 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-50">
+                    <span className="rounded-full border border-white/18 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] !text-white">
                       Dokument uložen
                     </span>
                   </div>
-                  <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.02em] text-white sm:text-3xl">
+                  <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.02em] !text-white sm:text-3xl">
                     Poslat upozornění poradci?
                   </h3>
-                  <p className="mt-1 max-w-2xl text-sm leading-relaxed text-violet-100/86">
+                  <p className="mt-1 max-w-2xl text-sm leading-relaxed !text-violet-100/86">
                     Notifikace se odešle poradcům a po kliknutí otevře přímo nově přidaný dokument.
                   </p>
                 </div>
@@ -1457,7 +1551,8 @@ export default function CppLifeDocumentsPage() {
               </div>
             </div>
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="p-4 sm:p-5">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="space-y-3">
                 <div className="rounded-[24px] border border-slate-200 bg-white/88 p-4 shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
                   <div className="mb-3 flex items-center justify-between gap-3">
@@ -1476,6 +1571,43 @@ export default function CppLifeDocumentsPage() {
                   </div>
 
                   <div className="space-y-3">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          Emoji notifikace
+                        </span>
+                        <span className="hidden text-right text-[11px] font-semibold text-slate-400 sm:inline">
+                          Zobrazí se v náhledu i v push zprávě
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+                        {DOCUMENT_NOTIFICATION_EMOJIS.map((emoji) => {
+                          const isSelected = documentNotificationEmoji === emoji;
+                          return (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => {
+                                setDocumentNotificationEmoji(emoji);
+                                setDocumentNotificationError(null);
+                                setDocumentNotificationStatus(null);
+                              }}
+                              disabled={documentNotificationBusy}
+                              className={`flex h-10 items-center justify-center rounded-2xl border text-xl shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-violet-200/70 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60 ${
+                                isSelected
+                                  ? "border-violet-500 bg-violet-50 text-violet-950 ring-2 ring-violet-200"
+                                  : "border-slate-200 bg-white text-slate-900 hover:border-violet-200 hover:bg-violet-50"
+                              }`}
+                              aria-pressed={isSelected}
+                              aria-label={`Emoji ${emoji}`}
+                            >
+                              {emoji}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     <label className="block space-y-1.5">
                       <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                         Nadpis notifikace
@@ -1541,11 +1673,11 @@ export default function CppLifeDocumentsPage() {
                 <div className="mt-3 rounded-[22px] border border-white/10 bg-white/[0.08] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
                   <div className="flex items-start gap-3">
                     <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-2xl text-slate-950">
-                      📄
+                      {documentNotificationEmoji}
                     </span>
                     <div className="min-w-0">
                       <div className="break-words text-sm font-bold text-white">
-                        📄 {documentNotificationTitle || "Nový dokument"}
+                        {documentNotificationEmoji} {documentNotificationTitle || "Nový dokument"}
                       </div>
                       <p className="mt-1 break-words text-sm leading-relaxed text-cyan-50/76">
                         {documentNotificationMessage || "Popisek notifikace se zobrazí tady."}
@@ -1614,6 +1746,7 @@ export default function CppLifeDocumentsPage() {
                   </button>
                 ) : null}
               </div>
+            </div>
             </div>
           </div>
         </div>

@@ -34,6 +34,10 @@ type StoredToolDocument = {
   storagePath?: unknown;
   bucketName?: unknown;
   disabled?: unknown;
+  invalid?: unknown;
+  invalidAt?: unknown;
+  invalidByEmail?: unknown;
+  deleted?: unknown;
   createdAt?: unknown;
   updatedAt?: unknown;
   updatedByEmail?: unknown;
@@ -125,9 +129,13 @@ export const storageBucketCandidates = (bucketName?: string | null): string[] =>
 export function storedToolDocumentToPublic(
   id: string,
   stored: StoredToolDocument,
-  fallback?: ToolDocumentRecord | null
+  fallback?: ToolDocumentRecord | null,
+  options: { includeInvalid?: boolean } = {}
 ): ToolDocumentRecord | null {
-  if (stored.disabled === true) return null;
+  if (stored.deleted === true) return null;
+
+  const isInvalid = stored.invalid === true || stored.disabled === true;
+  if (isInvalid && !options.includeInvalid) return null;
 
   const sectionRaw = normalizeText(stored.section) || fallback?.section;
   const tabRaw = normalizeText(stored.tab) || fallback?.tab;
@@ -171,11 +179,15 @@ export function storedToolDocumentToPublic(
       null,
     updatedAt: timestampToIso(stored.updatedAt) ?? fallback?.updatedAt ?? null,
     updatedByEmail: normalizeText(stored.updatedByEmail) || fallback?.updatedByEmail || null,
+    isInvalid,
+    invalidAt: timestampToIso(stored.invalidAt),
+    invalidByEmail: normalizeText(stored.invalidByEmail) || null,
   };
 }
 
 export async function loadToolDocuments(
-  section: ToolDocumentSection
+  section: ToolDocumentSection,
+  options: { includeInvalid?: boolean } = {}
 ): Promise<ToolDocumentRecord[]> {
   const defaults = DEFAULT_TOOL_DOCUMENTS.filter((doc) => doc.section === section);
   if (!adminDb) return defaults;
@@ -192,7 +204,12 @@ export async function loadToolDocuments(
     const id = normalizeDocumentId(docSnap.id);
     if (!id) return;
     const fallback = DEFAULT_BY_ID.get(id) ?? null;
-    const publicDoc = storedToolDocumentToPublic(id, docSnap.data() as StoredToolDocument, fallback);
+    const publicDoc = storedToolDocumentToPublic(
+      id,
+      docSnap.data() as StoredToolDocument,
+      fallback,
+      options
+    );
     if (publicDoc) {
       byId.set(id, publicDoc);
     } else {

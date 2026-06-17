@@ -43,6 +43,7 @@ const BODY_MAX_LEN = 4_000;
 const FILE_MAX_BYTES = 12 * 1024 * 1024;
 
 type ApiError = { ok: false; error: string };
+type RateLimitCtx = Parameters<typeof withRateLimitHeaders>[1];
 
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
@@ -71,7 +72,7 @@ const normalizeBodyLines = (value: unknown): string[] =>
     .filter(Boolean)
     .slice(0, 40);
 
-const responseError = (message: string, status: number, ctx: Parameters<typeof withRateLimitHeaders>[1]) =>
+const responseError = (message: string, status: number, ctx: RateLimitCtx) =>
   withRateLimitHeaders(
     NextResponse.json({ ok: false, error: message } satisfies ApiError, { status }),
     ctx
@@ -146,7 +147,11 @@ async function requireDocumentsManager(
   if (!canManage) {
     return {
       ok: false as const,
-      response: responseError("Spravovat dokumenty může jen specialista nebo admin.", 403, guard.ctx),
+      response: responseError(
+        "Spravovat dokumenty může jen owner, admin nebo specialista.",
+        403,
+        guard.ctx
+      ),
     };
   }
 
@@ -154,6 +159,67 @@ async function requireDocumentsManager(
     ok: true as const,
     ctx: guard.ctx,
   };
+}
+
+async function writeDocumentInvalidState({
+  id,
+  section,
+  invalid,
+  ctx,
+}: {
+  id: string;
+  section: ToolDocumentSection;
+  invalid: boolean;
+  ctx: RateLimitCtx;
+}) {
+  await adminDb!.collection(TOOL_DOCUMENTS_COLLECTION).doc(id).set(
+    {
+      section,
+      invalid,
+      disabled: false,
+      invalidAt: invalid ? FieldValue.serverTimestamp() : FieldValue.delete(),
+      invalidByEmail: invalid ? ctx.email : FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedByEmail: ctx.email,
+    },
+    { merge: true }
+  );
+}
+
+async function updateDocumentStatus(req: NextRequest, ctx: RateLimitCtx) {
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return responseError("Neplatný payload.", 400, ctx);
+  }
+  const raw = body as Record<string, unknown>;
+
+  const id = safeToolDocumentId(raw.id);
+  const sectionRaw = normalizeText(raw.section) || TOOL_DOCUMENT_SECTION_CPP_LIFE;
+  const action = normalizeText(raw.action);
+  if (!id || !isToolDocumentSection(sectionRaw)) {
+    return responseError("Chybí ID nebo sekce dokumentu.", 400, ctx);
+  }
+  if (action !== "invalidate" && action !== "restore") {
+    return responseError("Neznámá akce dokumentu.", 400, ctx);
+  }
+
+  const mutationTarget = await loadDocumentForMutation(id, sectionRaw);
+  if (!mutationTarget.ok) {
+    return responseError(mutationTarget.error, mutationTarget.status, ctx);
+  }
+
+  await writeDocumentInvalidState({
+    id,
+    section: sectionRaw,
+    invalid: action === "invalidate",
+    ctx,
+  });
+
+  const documents = await loadToolDocuments(sectionRaw, { includeInvalid: true });
+  return withRateLimitHeaders(
+    NextResponse.json({ ok: true, id, documents }),
+    ctx
+  );
 }
 
 export async function GET(req: NextRequest) {
@@ -169,14 +235,12 @@ export async function GET(req: NextRequest) {
     return responseError("Neznámá sekce dokumentů.", 400, guard.ctx);
   }
 
-  const [documents, canManage] = await Promise.all([
-    loadToolDocuments(sectionRaw),
-    canManageToolDocuments({
-      email: guard.ctx.email,
-      uid: guard.ctx.uid,
-      decoded: guard.ctx.decoded as Record<string, unknown>,
-    }),
-  ]);
+  const canManage = await canManageToolDocuments({
+    email: guard.ctx.email,
+    uid: guard.ctx.uid,
+    decoded: guard.ctx.decoded as Record<string, unknown>,
+  });
+  const documents = await loadToolDocuments(sectionRaw, { includeInvalid: canManage });
 
   return withRateLimitHeaders(
     NextResponse.json({
@@ -276,7 +340,9 @@ export async function POST(req: NextRequest) {
     throw error;
   }
 
-  const documents = await loadToolDocuments(section as ToolDocumentSection);
+  const documents = await loadToolDocuments(section as ToolDocumentSection, {
+    includeInvalid: true,
+  });
   return withRateLimitHeaders(
     NextResponse.json({ ok: true, id: docRef.id, documents }),
     guard.ctx
@@ -291,6 +357,11 @@ export async function PATCH(req: NextRequest) {
   });
   if (!guard.ok) return guard.response;
   if (!adminDb) return responseError("Server není správně nakonfigurován (Firestore).", 500, guard.ctx);
+
+  const contentType = req.headers.get("content-type")?.toLowerCase() ?? "";
+  if (contentType.includes("application/json")) {
+    return updateDocumentStatus(req, guard.ctx);
+  }
 
   const form = await req.formData().catch(() => null);
   if (!form) return responseError("Neplatný formulář.", 400, guard.ctx);
@@ -328,6 +399,9 @@ export async function PATCH(req: NextRequest) {
     updatedAt: FieldValue.serverTimestamp(),
     updatedByEmail: guard.ctx.email,
     disabled: false,
+    invalid: false,
+    invalidAt: FieldValue.delete(),
+    invalidByEmail: FieldValue.delete(),
   };
 
   const rawFile = form.get("file");
@@ -393,7 +467,9 @@ export async function PATCH(req: NextRequest) {
     });
   }
 
-  const documents = await loadToolDocuments(section as ToolDocumentSection);
+  const documents = await loadToolDocuments(section as ToolDocumentSection, {
+    includeInvalid: true,
+  });
   return withRateLimitHeaders(
     NextResponse.json({ ok: true, id, documents }),
     guard.ctx
@@ -413,9 +489,10 @@ export async function DELETE(req: NextRequest) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return responseError("Neplatný payload.", 400, guard.ctx);
   }
+  const raw = body as Record<string, unknown>;
 
-  const id = safeToolDocumentId((body as Record<string, unknown>).id);
-  const sectionRaw = normalizeText((body as Record<string, unknown>).section) || TOOL_DOCUMENT_SECTION_CPP_LIFE;
+  const id = safeToolDocumentId(raw.id);
+  const sectionRaw = normalizeText(raw.section) || TOOL_DOCUMENT_SECTION_CPP_LIFE;
   if (!id || !isToolDocumentSection(sectionRaw)) {
     return responseError("Chybí ID nebo sekce dokumentu.", 400, guard.ctx);
   }
@@ -424,19 +501,49 @@ export async function DELETE(req: NextRequest) {
     return responseError(mutationTarget.error, mutationTarget.status, guard.ctx);
   }
 
-  await adminDb.collection(TOOL_DOCUMENTS_COLLECTION).doc(id).set(
-    {
+  const permanent = raw.permanent === true || normalizeText(raw.action) === "delete";
+  if (!permanent) {
+    await writeDocumentInvalidState({
+      id,
       section: sectionRaw,
-      disabled: true,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedByEmail: guard.ctx.email,
-    },
-    { merge: true }
-  );
+      invalid: true,
+      ctx: guard.ctx,
+    });
 
-  const documents = await loadToolDocuments(sectionRaw);
+    const documents = await loadToolDocuments(sectionRaw, { includeInvalid: true });
+    return withRateLimitHeaders(
+      NextResponse.json({ ok: true, id, documents, invalidated: true }),
+      guard.ctx
+    );
+  }
+
+  await deleteStoredDocumentFileBestEffort({
+    storagePath: mutationTarget.existing.stored?.storagePath,
+    bucketName: mutationTarget.existing.stored?.bucketName,
+  });
+
+  const docRef = adminDb.collection(TOOL_DOCUMENTS_COLLECTION).doc(id);
+  if (mutationTarget.existing.fallback) {
+    await docRef.set(
+      {
+        section: sectionRaw,
+        deleted: true,
+        invalid: false,
+        disabled: false,
+        deletedAt: FieldValue.serverTimestamp(),
+        deletedByEmail: guard.ctx.email,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedByEmail: guard.ctx.email,
+      },
+      { merge: true }
+    );
+  } else {
+    await docRef.delete();
+  }
+
+  const documents = await loadToolDocuments(sectionRaw, { includeInvalid: true });
   return withRateLimitHeaders(
-    NextResponse.json({ ok: true, id, documents }),
+    NextResponse.json({ ok: true, id, documents, deleted: true }),
     guard.ctx
   );
 }
