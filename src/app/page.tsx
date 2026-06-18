@@ -1559,7 +1559,7 @@ export default function HomePage() {
               </button>
 
               {widgetPanelOpen && (
-                <div className="absolute right-0 z-40 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                <div className="fixed left-1/2 top-[min(42vh,22rem)] z-50 max-h-[calc(100vh-7rem)] w-[calc(100vw-2rem)] max-w-[20rem] -translate-x-1/2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:z-40 sm:mt-2 sm:w-72 sm:max-w-none sm:translate-x-0 sm:overflow-visible">
                   <div className="flex items-center justify-between gap-2 pb-2">
                     <div className="text-sm font-semibold text-slate-900">
                       {copy.customizeTitle}
