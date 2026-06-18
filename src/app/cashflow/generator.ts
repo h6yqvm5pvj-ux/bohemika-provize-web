@@ -37,14 +37,25 @@ export function monthsBetweenPayments(freq?: PaymentFrequency | null): number {
   }
 }
 
-function normalizeStornoStatus(status: unknown): "active" | "storno" {
+function normalizeContractStatus(status: unknown): "active" | "storno" | "dozita" {
   if (typeof status !== "string") return "active";
   const normalized = status.trim().toLowerCase();
-  return normalized === "storno" ||
+  if (
+    normalized === "storno" ||
     normalized === "stornovana" ||
     normalized === "stornována"
-    ? "storno"
-    : "active";
+  ) {
+    return "storno";
+  }
+  if (
+    normalized === "dozita" ||
+    normalized === "dožitá" ||
+    normalized === "dozito" ||
+    normalized === "dožito"
+  ) {
+    return "dozita";
+  }
+  return "active";
 }
 
 function monthSerial(value: Date): number {
@@ -53,6 +64,10 @@ function monthSerial(value: Date): number {
 
 function isFromStornoMonth(date: Date, stornoDate: Date): boolean {
   return monthSerial(date) >= monthSerial(stornoDate);
+}
+
+function earlierDate(a: Date, b: Date): Date {
+  return a.getTime() <= b.getTime() ? a : b;
 }
 
 export function generateCashflow(
@@ -74,7 +89,7 @@ export function generateCashflow(
     const normalizedOwnerEmail = ownerEmail
       ? ownerEmail.toLowerCase()
       : null;
-    const status = normalizeStornoStatus(entry.status);
+    const status = normalizeContractStatus(entry.status);
     const isStorno = status === "storno";
     const parsedStornoDate = toDate(entry.stornoDate);
     const stornoCutoffDate = isStorno ? parsedStornoDate ?? now : null;
@@ -89,6 +104,12 @@ export function generateCashflow(
       toDate(entry.createdAt) ??
       toDate(entry.policyStartDate) ??
       start;
+    const policyEnd = toDate(entry.policyEndDate);
+    const policyEndPayoutDate = policyEnd ? estimatePayoutDate(policyEnd) : null;
+    const entryHorizonEnd = earlierDate(
+      horizonEnd,
+      policyEndPayoutDate ?? (status === "dozita" ? now : horizonEnd)
+    );
     const product = entry.productKey;
 
     const items = (entry.items ?? []).map((it) => ({
@@ -128,7 +149,7 @@ export function generateCashflow(
       amount: number,
       date: Date,
       note?: string,
-      horizonLimit: Date = horizonEnd
+      horizonLimit: Date = entryHorizonEnd
     ) => {
       if (!Number.isFinite(amount) || amount === 0) return;
       if (date > horizonLimit) return;
@@ -208,7 +229,7 @@ export function generateCashflow(
         if (naslOd5) {
           for (let year = 5; year <= maxYears; year++) {
             const date = annPlusYears(year);
-            if (date > horizonEnd) break;
+            if (date > entryHorizonEnd) break;
             pushItem(naslOd5.amount, date, "ročně");
           }
         }
@@ -223,11 +244,8 @@ export function generateCashflow(
           ? Math.max(1, Math.floor(entry.durationYears as number))
           : null;
         const flexiContractEnd =
-          maxYears != null ? annPlusYears(maxYears) : horizonEnd;
-        const flexiHorizonEnd =
-          flexiContractEnd.getTime() < horizonEnd.getTime()
-            ? flexiContractEnd
-            : horizonEnd;
+          maxYears != null ? annPlusYears(maxYears) : entryHorizonEnd;
+        const flexiHorizonEnd = earlierDate(flexiContractEnd, entryHorizonEnd);
 
         if (immediate) {
           pushItem(
@@ -243,7 +261,6 @@ export function generateCashflow(
         if (naslOd6) {
           let year = 6;
           while (true) {
-            if (maxYears != null && year > maxYears) break;
             const date = annPlusYears(year);
             if (date > flexiHorizonEnd) break;
             pushItem(naslOd6.amount, date, "ročně", flexiHorizonEnd);
@@ -272,18 +289,16 @@ export function generateCashflow(
         const subsequentStart = annPlusYears(1);
 
         let payout = firstPayout;
-        while (payout <= horizonEnd) {
+        while (payout <= entryHorizonEnd) {
           const amount =
             payout < subsequentStart
               ? immediateDomex?.amount
               : subsequentDomex?.amount;
-          const notePrefix =
-            entry.source === "manager" ? "Manažerská · " : "Vlastní · ";
           if (amount && Number.isFinite(amount) && amount !== 0) {
             pushItem(
               amount,
               payout,
-              `${notePrefix}${
+              `${
                 product === "domex"
                   ? "DOMEX"
                   : product === "cpphafan"
@@ -326,7 +341,7 @@ export function generateCashflow(
         const endFirstYear = annPlusYears(1);
 
         let payout = estimatePayoutDate(start, agreement);
-        while (payout <= horizonEnd) {
+        while (payout <= entryHorizonEnd) {
           if (payout < endFirstYear) {
             pushItem(
               perPaymentImmediate,
@@ -362,7 +377,7 @@ export function generateCashflow(
           let year = 1;
           while (true) {
             const date = annPlusYears(year);
-            if (date > horizonEnd) break;
+            if (date > entryHorizonEnd) break;
             pushItem(naslGeneric.amount, date, "roční následná provize");
             year += 1;
           }
@@ -377,7 +392,7 @@ export function generateCashflow(
         if (!immediate) break;
 
         const first = estimatePayoutDate(start, agreement);
-        if (first <= horizonEnd) {
+        if (first <= entryHorizonEnd) {
           pushItem(
             immediate.amount,
             first,
@@ -388,7 +403,7 @@ export function generateCashflow(
         let year = 1;
         while (true) {
           const date = annPlusYears(year);
-          if (date > horizonEnd) break;
+          if (date > entryHorizonEnd) break;
           pushItem(immediate.amount, date, "ročně k výročí");
           year += 1;
         }
@@ -402,7 +417,7 @@ export function generateCashflow(
         const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
 
         let payout = estimatePayoutDate(start, agreement);
-        while (payout <= horizonEnd) {
+        while (payout <= entryHorizonEnd) {
           pushItem(amount, payout);
           payout = new Date(
             payout.getFullYear(),
@@ -425,7 +440,7 @@ export function generateCashflow(
         const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
         let payout = estimatePayoutDate(start, agreement);
 
-        while (payout <= horizonEnd) {
+        while (payout <= entryHorizonEnd) {
           pushItem(amount, payout);
           payout = new Date(
             payout.getFullYear(),
@@ -446,7 +461,7 @@ export function generateCashflow(
 
         const first = estimatePayoutDate(start, agreement);
 
-        if (immediateComfort && first <= horizonEnd) {
+        if (immediateComfort && first <= entryHorizonEnd) {
           pushItem(
             immediateComfort.amount,
             first,
@@ -454,7 +469,7 @@ export function generateCashflow(
           );
         }
 
-        if (subsequentComfort && first <= horizonEnd) {
+        if (subsequentComfort && first <= entryHorizonEnd) {
           // 1. výplatní měsíc: následná jde zároveň s okamžitou
           pushItem(
             subsequentComfort.amount,
@@ -468,7 +483,7 @@ export function generateCashflow(
             first.getMonth() + 1,
             first.getDate()
           );
-          while (payout <= horizonEnd) {
+          while (payout <= entryHorizonEnd) {
             pushItem(
               subsequentComfort.amount,
               payout,

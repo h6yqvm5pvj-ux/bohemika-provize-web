@@ -2166,6 +2166,26 @@ const ensureManagerChainWithDirectManager = (
   ];
 };
 
+const resolveManagerCommissionModeForProduct = (
+  productKey: Product,
+  managerMode: CommissionMode | null | undefined,
+  adviserMode: CommissionMode
+): CommissionMode =>
+  CATALOG_LIFE_PRODUCTS.includes(productKey)
+    ? "standard"
+    : managerMode ?? adviserMode;
+
+const normalizeManagerChainModesForProduct = (
+  chain: NormalizedManagerChainEntry[],
+  productKey: Product
+): NormalizedManagerChainEntry[] => {
+  if (!CATALOG_LIFE_PRODUCTS.includes(productKey)) return chain;
+  return chain.map((row) => ({
+    ...row,
+    commissionMode: "standard",
+  }));
+};
+
 const hasResolvedTopManagerPosition = (
   chain: NormalizedManagerChainEntry[],
   managerEmail: string | null | undefined
@@ -3270,7 +3290,11 @@ const computeManagerOverridesForChain = ({
 
   managerChain.forEach((manager) => {
     if (!manager.position) return;
-    const managerMode = manager.commissionMode ?? adviserMode;
+    const managerMode = resolveManagerCommissionModeForProduct(
+      productKey,
+      manager.commissionMode,
+      adviserMode
+    );
 
     const managerResult = computeItemsForProductPositionAndMode({
       productKey,
@@ -5666,6 +5690,10 @@ export async function handleContractsCreate(req: NextRequest) {
       trustedManagerEmail,
       trustedManagerChain[0]?.position ?? null,
       trustedManagerChain[0]?.commissionMode ?? null
+    );
+    trustedManagerChain = normalizeManagerChainModesForProduct(
+      trustedManagerChain,
+      normalizedEntry.payload.productKey
     );
 
     if (!hasResolvedTopManagerPosition(trustedManagerChain, trustedManagerEmail)) {

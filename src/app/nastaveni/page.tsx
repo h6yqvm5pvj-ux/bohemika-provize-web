@@ -2893,13 +2893,10 @@ export default function SettingsPage() {
 
   const userEmail = user.email ?? "Neznámý e-mail";
   const normalizedUserEmail = normalizeEmail(user.email);
-  const profileDisplayName = normalizedUserEmail
-    ? nameFromEmail(normalizedUserEmail)
-    : "Profil uživatele";
+  const profileDisplayName =
+    onlineCardDraft.fullName.trim() ||
+    (normalizedUserEmail ? nameFromEmail(normalizedUserEmail) : "Profil uživatele");
   const profileInitial = profileDisplayName.trim().charAt(0).toUpperCase() || "P";
-  const profileAgencyNumberFilled = agencyNumber.trim().length > 0;
-  const profileIcoFilled = ico.trim().length > 0;
-  const profilePhoneFilled = phoneNumber.trim().length > 0;
   const mfaIssuer = "Bohemka.App";
   const mfaAccountName = normalizedUserEmail || userEmail;
   const mfaQrCodeUri = mfaEnrollmentSecret
@@ -3581,217 +3578,224 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "profile" && !timelineSetupRequired && (
-              <section className="relative overflow-hidden rounded-[26px] border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_64%,#eef2f7_100%)] shadow-[0_24px_54px_rgba(15,23,42,0.10)] lg:col-span-2">
-                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#10b981_0%,#0f172a_50%,#38bdf8_100%)]" />
+              <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.10)] lg:col-span-2">
+                <div className="grid min-h-[460px] lg:grid-cols-[300px_minmax(0,1fr)]">
+                  <aside className="relative overflow-hidden bg-[#07111f] p-5 text-white sm:p-6">
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#38bdf8_0%,#34d399_52%,#a3e635_100%)]" />
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(14,165,233,0.16)_0%,rgba(7,17,31,0)_38%,rgba(52,211,153,0.13)_100%)]" />
 
-                <div className="grid gap-0 xl:grid-cols-[minmax(260px,0.76fr)_minmax(0,1.24fr)]">
-                  <div className="relative overflow-hidden bg-slate-950 px-5 py-5 text-white sm:px-6 sm:py-6">
-                    <div className="flex items-start gap-4">
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/18 bg-white text-xl font-bold text-slate-950 shadow-[0_16px_32px_rgba(0,0,0,0.24)]">
-                        {profileInitial}
-                      </div>
-                      <div className="min-w-0 space-y-1">
-                        <h2 className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200">
+                    <div className="relative z-10 flex h-full flex-col justify-between gap-8">
+                      <div className="space-y-5">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-emerald-100">
                           <UserRound size={14} strokeWidth={2} aria-hidden="true" />
-                          <span>Profil</span>
-                        </h2>
-                        <div className="break-words text-2xl font-bold leading-tight text-white">
-                          {profileDisplayName}
+                          Profil poradce
                         </div>
-                        <div className="break-all text-sm font-semibold text-slate-300">
-                          {userEmail}
-                        </div>
-                      </div>
-                    </div>
 
-                    <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                      <div className="flex items-center gap-2 rounded-2xl border border-white/12 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-slate-100">
-                        <Landmark size={14} strokeWidth={2} className="shrink-0 text-emerald-200" aria-hidden="true" />
-                        <span>{profileAgencyNumberFilled ? "Agenturní číslo vyplněno" : "Chybí agenturní číslo"}</span>
+                        <div className="space-y-4">
+                          <div className="flex h-[68px] w-[68px] shrink-0 items-center justify-center rounded-[20px] border border-white/20 bg-white text-2xl font-bold text-slate-950 shadow-[0_18px_36px_rgba(0,0,0,0.28)]">
+                            {profileInitial}
+                          </div>
+                          <h2 className="break-words text-[1.85rem] font-bold leading-tight text-white">
+                            {profileDisplayName}
+                          </h2>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 rounded-2xl border border-white/12 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-slate-100">
-                        <Building2 size={14} strokeWidth={2} className="shrink-0 text-cyan-200" aria-hidden="true" />
-                        <span>{profileIcoFilled ? "IČO vyplněno" : "Chybí IČO"}</span>
-                      </div>
-                      <div className="flex items-center gap-2 rounded-2xl border border-white/12 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-slate-100">
-                        <PhoneCall size={14} strokeWidth={2} className="shrink-0 text-sky-200" aria-hidden="true" />
-                        <span>{profilePhoneFilled ? "Telefon uložen" : "Chybí telefon"}</span>
+
+                      <div className="rounded-[22px] border border-white/12 bg-white/[0.07] p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-950">
+                            <ShieldCheck size={17} strokeWidth={2} aria-hidden="true" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                              Bohemka.App
+                            </p>
+                            <p className="mt-1 text-sm font-semibold leading-snug text-slate-100">
+                              Osobní profil
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </aside>
 
                   <form
-                    className="space-y-5 px-5 py-5 sm:px-6 sm:py-6"
+                    className="flex min-w-0 flex-col bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]"
                     onSubmit={(event) => {
                       event.preventDefault();
                       void handleSaveProfile();
                     }}
                   >
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="space-y-1">
-                        <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-                          Kontaktní údaje
-                        </h3>
-                        <p className="text-xs text-slate-500">
-                          Údaje uložené u profilu uživatele.
-                        </p>
-                      </div>
-                      {profileStatus ? (
-                        <p
-                          className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                            profileStatus.type === "success"
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : profileStatus.type === "info"
-                                ? "border-slate-200 bg-slate-50 text-slate-700"
-                                : "border-rose-200 bg-rose-50 text-rose-700"
-                          }`}
-                        >
-                          {profileStatus.message}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                          E-mail
-                        </label>
-                        <div className="flex min-h-[48px] items-center gap-2 rounded-2xl border border-slate-300 bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
-                          <Mail size={15} strokeWidth={2} className="shrink-0 text-slate-500" aria-hidden="true" />
-                          <span className="min-w-0 break-all">{userEmail}</span>
+                    <div className="border-b border-slate-200 px-5 py-5 sm:px-7">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
+                            <ShieldCheck size={14} strokeWidth={2} className="text-emerald-600" aria-hidden="true" />
+                            Údaje účtu
+                          </div>
+                          <h3 className="mt-3 text-2xl font-bold leading-tight text-slate-950">
+                            Kontaktní profil
+                          </h3>
                         </div>
-                      </div>
 
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                          Agenturní číslo
-                        </label>
-                        <div className="relative">
-                          <Landmark
-                            size={15}
-                            strokeWidth={2}
-                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                            aria-hidden="true"
-                          />
-                          <input
-                            type="text"
-                            inputMode="text"
-                            className={`${fieldClass} min-h-[48px] pl-9`}
-                            value={agencyNumber}
-                            onChange={(event) => {
-                              setAgencyNumber(event.target.value);
-                              setProfileStatus(null);
-                            }}
-                            placeholder="Doplň agenturní číslo"
-                            maxLength={AGENCY_NUMBER_MAX_LEN}
-                            disabled={profileSaving}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                          IČO
-                        </label>
-                        <div className="relative">
-                          <Building2
-                            size={15}
-                            strokeWidth={2}
-                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                            aria-hidden="true"
-                          />
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            className={`${fieldClass} min-h-[48px] pl-9 pr-4`}
-                            value={ico}
-                            onChange={(event) => {
-                              setIco(
-                                event.target.value.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN)
-                              );
-                              setProfileStatus(null);
-                            }}
-                            placeholder="12345678"
-                            maxLength={PROFILE_ICO_MAX_LEN}
-                            disabled={profileSaving}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                          Tel. číslo
-                        </label>
-                        <div className="relative">
-                          <PhoneCall
-                            size={15}
-                            strokeWidth={2}
-                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                            aria-hidden="true"
-                          />
-                          <input
-                            type="tel"
-                            inputMode="tel"
-                            className={`${fieldClass} min-h-[48px] pl-9 pr-4`}
-                            value={phoneNumber}
-                            onChange={(event) => {
-                              setPhoneNumber(event.target.value);
-                              setProfileStatus(null);
-                            }}
-                            placeholder="777 123 456"
-                            maxLength={PHONE_NUMBER_MAX_LEN}
-                            disabled={profileSaving}
-                          />
-                        </div>
-                      </div>
-
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="space-y-1">
-                          <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-900">
-                            Servis aplikace
-                          </h4>
-                          <p className="max-w-xl text-xs leading-relaxed text-slate-500">
-                            Vymaže lokální PWA cache a znovu načte aplikaci. Profil, smlouvy ani uložená nastavení se nemažou.
+                        {profileStatus ? (
+                          <p
+                            className={`w-fit rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                              profileStatus.type === "success"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : profileStatus.type === "info"
+                                  ? "border-slate-200 bg-white text-slate-700"
+                                  : "border-rose-200 bg-rose-50 text-rose-700"
+                            }`}
+                          >
+                            {profileStatus.message}
                           </p>
-                          {appCacheStatus ? (
-                            <p
-                              className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
-                                appCacheStatus.type === "success"
-                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                  : appCacheStatus.type === "info"
-                                    ? "border-slate-200 bg-white text-slate-700"
-                                    : "border-rose-200 bg-rose-50 text-rose-700"
-                              }`}
-                            >
-                              {appCacheStatus.message}
-                            </p>
-                          ) : null}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void handleClearAppCache();
-                          }}
-                          disabled={appCacheClearing}
-                          className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-[0_10px_22px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-                        >
-                          <Wrench size={16} strokeWidth={2} aria-hidden="true" />
-                          {appCacheClearing ? "Obnovuji..." : "Obnovit cache aplikace"}
-                        </button>
+                        ) : null}
                       </div>
                     </div>
 
-                    <div className="flex justify-end border-t border-slate-200 pt-4">
+                    <div className="flex-1 space-y-6 px-5 py-5 sm:px-7 sm:py-6">
+                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        <div className="xl:col-span-2">
+                          <label className="mb-2 block text-xs font-semibold text-slate-600">
+                            E-mail
+                          </label>
+                          <div className="flex min-h-[54px] items-center gap-3 rounded-[18px] border border-slate-200 bg-slate-100/80 px-4 py-3 text-sm font-semibold text-slate-700">
+                            <Mail size={17} strokeWidth={2} className="shrink-0 text-slate-500" aria-hidden="true" />
+                            <span className="min-w-0 break-all">{userEmail}</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-xs font-semibold text-slate-600">
+                            Agenturní číslo
+                          </label>
+                          <div className="relative">
+                            <Landmark
+                              size={17}
+                              strokeWidth={2}
+                              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                              aria-hidden="true"
+                            />
+                            <input
+                              type="text"
+                              inputMode="text"
+                              className={`${fieldClass} min-h-[54px] rounded-[18px] border-slate-200 pl-11 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10`}
+                              value={agencyNumber}
+                              onChange={(event) => {
+                                setAgencyNumber(event.target.value);
+                                setProfileStatus(null);
+                              }}
+                              placeholder="Doplň agenturní číslo"
+                              maxLength={AGENCY_NUMBER_MAX_LEN}
+                              disabled={profileSaving}
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-xs font-semibold text-slate-600">
+                            IČO
+                          </label>
+                          <div className="relative">
+                            <Building2
+                              size={17}
+                              strokeWidth={2}
+                              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                              aria-hidden="true"
+                            />
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              className={`${fieldClass} min-h-[54px] rounded-[18px] border-slate-200 pl-11 pr-4 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10`}
+                              value={ico}
+                              onChange={(event) => {
+                                setIco(
+                                  event.target.value.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN)
+                                );
+                                setProfileStatus(null);
+                              }}
+                              placeholder="12345678"
+                              maxLength={PROFILE_ICO_MAX_LEN}
+                              disabled={profileSaving}
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-xs font-semibold text-slate-600">
+                            Tel. číslo
+                          </label>
+                          <div className="relative">
+                            <PhoneCall
+                              size={17}
+                              strokeWidth={2}
+                              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                              aria-hidden="true"
+                            />
+                            <input
+                              type="tel"
+                              inputMode="tel"
+                              className={`${fieldClass} min-h-[54px] rounded-[18px] border-slate-200 pl-11 pr-4 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10`}
+                              value={phoneNumber}
+                              onChange={(event) => {
+                                setPhoneNumber(event.target.value);
+                                setProfileStatus(null);
+                              }}
+                              placeholder="777 123 456"
+                              maxLength={PHONE_NUMBER_MAX_LEN}
+                              disabled={profileSaving}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                              <Wrench size={17} strokeWidth={2} aria-hidden="true" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-sm font-bold text-slate-950">Servis aplikace</h4>
+                              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                                Obnoví lokální PWA cache bez mazání profilu a smluv.
+                              </p>
+                              {appCacheStatus ? (
+                                <p
+                                  className={`mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
+                                    appCacheStatus.type === "success"
+                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                      : appCacheStatus.type === "info"
+                                        ? "border-slate-200 bg-white text-slate-700"
+                                        : "border-rose-200 bg-rose-50 text-rose-700"
+                                  }`}
+                                >
+                                  {appCacheStatus.message}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void handleClearAppCache();
+                            }}
+                            disabled={appCacheClearing}
+                            className="mt-4 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Wrench size={16} strokeWidth={2} aria-hidden="true" />
+                            {appCacheClearing ? "Obnovuji..." : "Obnovit cache aplikace"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-7">
                       <button
                         type="submit"
                         disabled={profileSaving}
-                        className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-950 bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(15,23,42,0.22)] transition hover:-translate-y-0.5 hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:w-auto sm:min-w-[170px]"
+                        className="inline-flex min-h-[50px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-950 bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(15,23,42,0.22)] transition hover:-translate-y-0.5 hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:w-auto sm:min-w-[180px]"
                       >
-                        <ShieldCheck size={16} strokeWidth={2} aria-hidden="true" />
+                        <ShieldCheck size={17} strokeWidth={2} aria-hidden="true" />
                         {profileSaving ? "Ukládám..." : "Uložit profil"}
                       </button>
                     </div>

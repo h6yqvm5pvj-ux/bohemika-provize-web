@@ -622,7 +622,10 @@ export function useCashflowData({
     }
 
     const generatedCashflow = generateCashflow(entriesForCashflow, 10);
-    const includeTipPayouts = tipsterMode || productFilter === "all" || productFilter === "tip";
+    const includeTipPayouts =
+      tipsterMode ||
+      productFilter === "tip" ||
+      (productFilter === "all" && scopeFilter !== "team");
     const tipCashflowItems: CashflowItem[] = includeTipPayouts
       ? snapshot.tipPayouts.reduce<CashflowItem[]>((acc, payout, index) => {
           const payoutTs =

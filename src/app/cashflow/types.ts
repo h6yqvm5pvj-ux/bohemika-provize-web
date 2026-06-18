@@ -50,6 +50,7 @@ export type EntryDoc = {
   comfortTargetAmount?: number | null;
 
   policyStartDate?: unknown;
+  policyEndDate?: unknown;
   createdAt?: unknown;
   durationYears?: number | null;
   durationMonths?: number | null;
