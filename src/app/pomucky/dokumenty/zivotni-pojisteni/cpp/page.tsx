@@ -39,6 +39,7 @@ import {
   DEFAULT_TOOL_DOCUMENT_EMOJI,
   DEFAULT_TOOL_DOCUMENT_TABS,
   defaultToolDocumentsForSection,
+  getAutoToolDocumentInsurerBySlug,
   getDefaultToolDocumentTab,
   getLifeToolDocumentInsurerBySlug,
   getPropertyToolDocumentInsurerBySlug,
@@ -158,6 +159,17 @@ export default function CppLifeDocumentsPage() {
         backHref: "/pomucky/dokumenty/majetek",
         backLabel: "Zpět na majetek",
         subject: "majetkové pojištění",
+      };
+    }
+
+    if (pathname.includes("/pomucky/dokumenty/auto/")) {
+      return {
+        insurer: getAutoToolDocumentInsurerBySlug(slug),
+        categoryChip: "Auto",
+        categoryTitle: "Auto",
+        backHref: "/pomucky/dokumenty/auto",
+        backLabel: "Zpět na auto",
+        subject: "auto pojištění",
       };
     }
 
@@ -342,8 +354,7 @@ export default function CppLifeDocumentsPage() {
     if (!requestedDocumentId) return;
     const normalized = requestedDocumentId
       .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
       .replace(/^-+|-+$/g, "");
     if (!normalized) return;
     const target = documents.find((doc) => doc.id === normalized);
@@ -517,6 +528,26 @@ export default function CppLifeDocumentsPage() {
     setEditorStatus(null);
     setEditorError(null);
     setActiveTab("sprava");
+  };
+
+  const endDocumentManagement = () => {
+    if (editorBusy) return;
+    setActiveTab("prehled");
+    setActiveDocumentId(null);
+    setRequestedDocumentId(null);
+    setAddModalOpen(false);
+    setDeleteConfirmationDoc(null);
+    setEditor(emptyEditor("prehled"));
+    setEditorStatus(null);
+    setEditorError(null);
+    setFileInputKey((key) => key + 1);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      params.delete("document");
+      params.delete("source");
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    }
   };
 
   const openDocumentDetail = (doc: ToolDocumentRecord) => {
@@ -1031,14 +1062,25 @@ export default function CppLifeDocumentsPage() {
                       Uprav položku, označ ji jako neplatnou nebo ji trvale smaž.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => startCreate(documentTabs[0]?.id ?? "prehled")}
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-black"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Nový
-                  </button>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={endDocumentManagement}
+                      disabled={editorBusy}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <X className="h-4 w-4" />
+                      Ukončit spravování
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startCreate(documentTabs[0]?.id ?? "prehled")}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-black"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Nový
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-4 space-y-3">

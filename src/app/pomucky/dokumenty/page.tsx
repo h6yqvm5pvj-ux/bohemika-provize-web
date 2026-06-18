@@ -67,6 +67,7 @@ const DOCUMENT_SECTIONS: readonly DocumentSection[] = [
     title: "Auto",
     description: "Materiály pro povinné ručení a havarijní pojištění.",
     icon: CarFront,
+    href: "/pomucky/dokumenty/auto",
     items: [
       "Checklist pro sjednání pojištění vozidla",
       "Podklady k posouzení historie škod",

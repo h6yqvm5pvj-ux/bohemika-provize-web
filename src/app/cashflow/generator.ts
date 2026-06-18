@@ -104,9 +104,7 @@ export function generateCashflow(
     const nasl25 = items.find((item) =>
       item.title.includes("následná provize (2.–5. rok)")
     );
-    const nasl510 = items.find((item) =>
-      item.title.includes("následná provize (5.–10. rok)")
-    );
+    const nasl510 = items.find((item) => item.title.includes("5.–10."));
     const naslOd6 = items.find((item) =>
       item.title.includes("následná provize (od 6. roku)")
     );

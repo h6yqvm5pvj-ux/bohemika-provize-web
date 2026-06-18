@@ -75,7 +75,7 @@ const DOCUMENTS: Record<string, DocumentMeta> = {
 };
 
 const normalizeDocumentId = (value: string | null): string =>
-  (value ?? "").trim().toLowerCase();
+  (value ?? "").trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
 
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";

@@ -2329,7 +2329,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
           {/* MOBILE NAV OVERLAY */}
           {mobileMenuOpen && (
-            <div className="fixed inset-0 z-30 lg:hidden">
+            <div className="fixed inset-0 z-[70] lg:hidden">
               <div
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                 onClick={() => setMobileMenuOpen(false)}

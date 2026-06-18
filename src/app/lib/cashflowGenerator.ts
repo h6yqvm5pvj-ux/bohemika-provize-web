@@ -151,9 +151,7 @@ export const CashflowGenerator = {
       const nasl25 = items.find((i) =>
         i.titleLower.includes("následná provize (2.–5. rok)")
       );
-      const nasl510 = items.find((i) =>
-        i.titleLower.includes("následná provize (5.–10. rok)")
-      );
+      const nasl510 = items.find((i) => i.titleLower.includes("5.–10."));
       const naslOd6 = items.find((i) =>
         i.titleLower.includes("následná provize (od 6. roku)")
       ); // FLEXI

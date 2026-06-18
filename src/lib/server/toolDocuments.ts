@@ -49,7 +49,9 @@ const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
 const normalizeDocumentId = (value: unknown): string =>
-  normalizeText(value).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  normalizeText(value).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+
+const documentIdLookupKey = (value: unknown): string => normalizeDocumentId(value).toLowerCase();
 
 const normalizeNumber = (value: unknown): number | null => {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
@@ -80,7 +82,7 @@ const timestampToIso = (value: unknown): string | null => {
 export const safeToolDocumentId = normalizeDocumentId;
 
 export const getDefaultToolDocument = (id: unknown): ToolDocumentRecord | null =>
-  DEFAULT_BY_ID.get(normalizeDocumentId(id)) ?? null;
+  DEFAULT_BY_ID.get(normalizeDocumentId(id)) ?? DEFAULT_BY_ID.get(documentIdLookupKey(id)) ?? null;
 
 export const resolveStorageBucketName = (): string | null => {
   const explicit =
@@ -198,12 +200,32 @@ export async function loadToolDocuments(
     .get();
 
   const byId = new Map<string, ToolDocumentRecord>();
-  defaults.forEach((doc) => byId.set(doc.id, doc));
+  const deletedLookupKeys = new Set<string>();
 
   snap.docs.forEach((docSnap) => {
     const id = normalizeDocumentId(docSnap.id);
     if (!id) return;
-    const fallback = DEFAULT_BY_ID.get(id) ?? null;
+    const stored = docSnap.data() as StoredToolDocument;
+    if (stored.deleted === true) {
+      deletedLookupKeys.add(documentIdLookupKey(id));
+    }
+  });
+
+  defaults.forEach((doc) => {
+    if (!deletedLookupKeys.has(documentIdLookupKey(doc.id))) {
+      byId.set(doc.id, doc);
+    }
+  });
+
+  snap.docs.forEach((docSnap) => {
+    const id = normalizeDocumentId(docSnap.id);
+    if (!id) return;
+    if (deletedLookupKeys.has(documentIdLookupKey(id))) {
+      byId.delete(id);
+      byId.delete(documentIdLookupKey(id));
+      return;
+    }
+    const fallback = DEFAULT_BY_ID.get(id) ?? DEFAULT_BY_ID.get(documentIdLookupKey(id)) ?? null;
     const publicDoc = storedToolDocumentToPublic(
       id,
       docSnap.data() as StoredToolDocument,
@@ -239,17 +261,37 @@ export async function loadStoredToolDocument(id: string): Promise<{
   const safeId = normalizeDocumentId(id);
   if (!safeId) return { publicDoc: null, stored: null, fallback: null };
 
-  const fallback = DEFAULT_BY_ID.get(safeId) ?? null;
+  const fallback = DEFAULT_BY_ID.get(safeId) ?? DEFAULT_BY_ID.get(documentIdLookupKey(safeId)) ?? null;
   if (!adminDb) return { publicDoc: fallback, stored: null, fallback };
 
-  const snap = await adminDb.collection(TOOL_DOCUMENTS_COLLECTION).doc(safeId).get();
-  if (!snap.exists) return { publicDoc: fallback, stored: null, fallback };
+  const collection = adminDb.collection(TOOL_DOCUMENTS_COLLECTION);
+  const exactSnap = await collection.doc(safeId).get();
+  let selectedSnap = exactSnap.exists ? exactSnap : null;
+  let selectedId = safeId;
+  const exactStored = exactSnap.exists ? (exactSnap.data() as StoredToolDocument) : null;
 
-  const stored = snap.data() as StoredToolDocument;
+  if (!selectedSnap || exactStored?.deleted === true) {
+    const lookupKey = documentIdLookupKey(safeId);
+    const snap = await collection.get();
+    const activeMatch = snap.docs.find((docSnap) => {
+      if (documentIdLookupKey(docSnap.id) !== lookupKey) return false;
+      return (docSnap.data() as StoredToolDocument).deleted !== true;
+    });
+    if (activeMatch) {
+      selectedSnap = activeMatch;
+      selectedId = normalizeDocumentId(activeMatch.id);
+    }
+  }
+
+  if (!selectedSnap) return { publicDoc: fallback, stored: null, fallback };
+
+  const stored = selectedSnap.data() as StoredToolDocument;
+  const selectedFallback =
+    DEFAULT_BY_ID.get(selectedId) ?? DEFAULT_BY_ID.get(documentIdLookupKey(selectedId)) ?? fallback;
   return {
-    publicDoc: storedToolDocumentToPublic(safeId, stored, fallback),
+    publicDoc: storedToolDocumentToPublic(selectedId, stored, selectedFallback),
     stored,
-    fallback,
+    fallback: selectedFallback,
   };
 }
 

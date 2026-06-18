@@ -8,6 +8,13 @@ export const TOOL_DOCUMENT_SECTION_KOOPERATIVA_PROPERTY = "kooperativa-property"
 export const TOOL_DOCUMENT_SECTION_MAXIMA_PROPERTY = "maxima-property" as const;
 export const TOOL_DOCUMENT_SECTION_ALLIANZ_PROPERTY = "allianz-property" as const;
 export const TOOL_DOCUMENT_SECTION_PILLOW_PROPERTY = "pillow-property" as const;
+export const TOOL_DOCUMENT_SECTION_CPP_AUTO = "cpp-auto" as const;
+export const TOOL_DOCUMENT_SECTION_KOOPERATIVA_AUTO = "kooperativa-auto" as const;
+export const TOOL_DOCUMENT_SECTION_ALLIANZ_AUTO = "allianz-auto" as const;
+export const TOOL_DOCUMENT_SECTION_PILLOW_AUTO = "pillow-auto" as const;
+export const TOOL_DOCUMENT_SECTION_CSOB_AUTO = "csob-auto" as const;
+export const TOOL_DOCUMENT_SECTION_SLAVIA_AUTO = "slavia-auto" as const;
+export const TOOL_DOCUMENT_SECTION_UNIQA_AUTO = "uniqa-auto" as const;
 
 export const TOOL_DOCUMENT_SECTIONS = [
   TOOL_DOCUMENT_SECTION_CPP_LIFE,
@@ -20,15 +27,40 @@ export const TOOL_DOCUMENT_SECTIONS = [
   TOOL_DOCUMENT_SECTION_MAXIMA_PROPERTY,
   TOOL_DOCUMENT_SECTION_ALLIANZ_PROPERTY,
   TOOL_DOCUMENT_SECTION_PILLOW_PROPERTY,
+  TOOL_DOCUMENT_SECTION_CPP_AUTO,
+  TOOL_DOCUMENT_SECTION_KOOPERATIVA_AUTO,
+  TOOL_DOCUMENT_SECTION_ALLIANZ_AUTO,
+  TOOL_DOCUMENT_SECTION_PILLOW_AUTO,
+  TOOL_DOCUMENT_SECTION_CSOB_AUTO,
+  TOOL_DOCUMENT_SECTION_SLAVIA_AUTO,
+  TOOL_DOCUMENT_SECTION_UNIQA_AUTO,
 ] as const;
 
 export type ToolDocumentSection = (typeof TOOL_DOCUMENT_SECTIONS)[number];
 export type ToolDocumentTab = string;
 
-export type ToolDocumentInsurerKey = "cpp" | "kooperativa" | "maxima" | "allianz" | "pillow";
+export type ToolDocumentInsurerKey =
+  | "cpp"
+  | "kooperativa"
+  | "maxima"
+  | "allianz"
+  | "pillow"
+  | "csob"
+  | "slavia"
+  | "uniqa";
+export type LifeToolDocumentInsurerKey = "cpp" | "kooperativa" | "maxima" | "allianz" | "pillow";
+export type PropertyToolDocumentInsurerKey = LifeToolDocumentInsurerKey;
+export type AutoToolDocumentInsurerKey =
+  | "cpp"
+  | "kooperativa"
+  | "allianz"
+  | "pillow"
+  | "csob"
+  | "slavia"
+  | "uniqa";
 
-export type ToolDocumentInsurer = {
-  key: ToolDocumentInsurerKey;
+export type ToolDocumentInsurer<Key extends ToolDocumentInsurerKey = ToolDocumentInsurerKey> = {
+  key: Key;
   slug: string;
   title: string;
   shortLabel: string;
@@ -37,8 +69,9 @@ export type ToolDocumentInsurer = {
   description: string;
 };
 
-export type LifeToolDocumentInsurer = ToolDocumentInsurer;
-export type PropertyToolDocumentInsurer = ToolDocumentInsurer;
+export type LifeToolDocumentInsurer = ToolDocumentInsurer<LifeToolDocumentInsurerKey>;
+export type PropertyToolDocumentInsurer = ToolDocumentInsurer<PropertyToolDocumentInsurerKey>;
+export type AutoToolDocumentInsurer = ToolDocumentInsurer<AutoToolDocumentInsurerKey>;
 
 const DOCUMENT_INSURER_BASE = {
   cpp: {
@@ -75,6 +108,27 @@ const DOCUMENT_INSURER_BASE = {
     title: "Pillow",
     shortLabel: "Pillow",
     logo: "/icons/pillow.png",
+  },
+  csob: {
+    key: "csob",
+    slug: "csob",
+    title: "ČSOB",
+    shortLabel: "ČSOB",
+    logo: "/icons/csb.png",
+  },
+  slavia: {
+    key: "slavia",
+    slug: "slavia",
+    title: "Slavia",
+    shortLabel: "Slavia",
+    logo: "/icons/slavialogo.png",
+  },
+  uniqa: {
+    key: "uniqa",
+    slug: "uniqa",
+    title: "UNIQA",
+    shortLabel: "UNIQA",
+    logo: "/icons/uniqa.png",
   },
 } as const satisfies Record<
   ToolDocumentInsurerKey,
@@ -136,6 +190,44 @@ export const PROPERTY_TOOL_DOCUMENT_INSURERS = [
     description: "Dokumenty a materiály pro majetkové pojištění Pillow.",
   },
 ] as const satisfies readonly PropertyToolDocumentInsurer[];
+
+export const AUTO_TOOL_DOCUMENT_INSURERS = [
+  {
+    ...DOCUMENT_INSURER_BASE.cpp,
+    section: TOOL_DOCUMENT_SECTION_CPP_AUTO,
+    description: "Dokumenty a materiály pro auto pojištění ČPP.",
+  },
+  {
+    ...DOCUMENT_INSURER_BASE.kooperativa,
+    section: TOOL_DOCUMENT_SECTION_KOOPERATIVA_AUTO,
+    description: "Dokumenty a materiály pro auto pojištění Kooperativa.",
+  },
+  {
+    ...DOCUMENT_INSURER_BASE.allianz,
+    section: TOOL_DOCUMENT_SECTION_ALLIANZ_AUTO,
+    description: "Dokumenty a materiály pro auto pojištění Allianz.",
+  },
+  {
+    ...DOCUMENT_INSURER_BASE.pillow,
+    section: TOOL_DOCUMENT_SECTION_PILLOW_AUTO,
+    description: "Dokumenty a materiály pro auto pojištění Pillow.",
+  },
+  {
+    ...DOCUMENT_INSURER_BASE.csob,
+    section: TOOL_DOCUMENT_SECTION_CSOB_AUTO,
+    description: "Dokumenty a materiály pro auto pojištění ČSOB.",
+  },
+  {
+    ...DOCUMENT_INSURER_BASE.slavia,
+    section: TOOL_DOCUMENT_SECTION_SLAVIA_AUTO,
+    description: "Dokumenty a materiály pro auto pojištění Slavia.",
+  },
+  {
+    ...DOCUMENT_INSURER_BASE.uniqa,
+    section: TOOL_DOCUMENT_SECTION_UNIQA_AUTO,
+    description: "Dokumenty a materiály pro auto pojištění UNIQA.",
+  },
+] as const satisfies readonly AutoToolDocumentInsurer[];
 
 export type ToolDocumentTabInfo = {
   id: ToolDocumentTab;
@@ -339,6 +431,12 @@ export const getPropertyToolDocumentInsurerBySlug = (
   PROPERTY_TOOL_DOCUMENT_INSURERS.find((item) => item.slug === slug) ??
   PROPERTY_TOOL_DOCUMENT_INSURERS[0];
 
+export const getAutoToolDocumentInsurerBySlug = (
+  slug: string | null | undefined
+): AutoToolDocumentInsurer =>
+  AUTO_TOOL_DOCUMENT_INSURERS.find((item) => item.slug === slug) ??
+  AUTO_TOOL_DOCUMENT_INSURERS[0];
+
 export const getToolDocumentSectionHref = (
   section: ToolDocumentSection
 ): string | null => {
@@ -347,6 +445,9 @@ export const getToolDocumentSectionHref = (
 
   const property = PROPERTY_TOOL_DOCUMENT_INSURERS.find((item) => item.section === section);
   if (property) return `/pomucky/dokumenty/majetek/${property.slug}`;
+
+  const auto = AUTO_TOOL_DOCUMENT_INSURERS.find((item) => item.section === section);
+  if (auto) return `/pomucky/dokumenty/auto/${auto.slug}`;
 
   return null;
 };
