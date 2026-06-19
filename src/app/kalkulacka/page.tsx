@@ -300,7 +300,9 @@ type ContractsFindApiResponse = {
   contracts?: Array<{
     id?: string;
     contractNumber?: string | null;
+    clientName?: string | null;
     adviserEmail?: string | null;
+    adviserName?: string | null;
     userEmail?: string | null;
     productKey?: Product | null;
     rootContractEntryId?: string | null;
@@ -430,6 +432,14 @@ type ContractNumberLiveCheckState =
   | { status: "ok" }
   | { status: "duplicate"; count: number }
   | { status: "error" };
+
+type RefreshOriginalLookupState =
+  | { status: "idle"; progress: number; adviserName: null }
+  | { status: "checking"; progress: number; adviserName: null }
+  | { status: "found"; progress: number; adviserName: string | null }
+  | { status: "notFound"; progress: number; adviserName: null }
+  | { status: "wrongProduct"; progress: number; adviserName: string | null }
+  | { status: "error"; progress: number; adviserName: null };
 
 type ManagerSnapshotApiChainEntry = {
   email?: string | null;
@@ -819,6 +829,12 @@ export default function CalculatorPage() {
   const [domexLiabilityLandlord, setDomexLiabilityLandlord] = useState(false);
   const [domexAssistancePlus, setDomexAssistancePlus] = useState(false);
   const [refreshOriginalOpen, setRefreshOriginalOpen] = useState(false);
+  const [refreshOriginalContractNumber, setRefreshOriginalContractNumber] = useState("");
+  const [refreshOriginalLookup, setRefreshOriginalLookup] = useState<RefreshOriginalLookupState>({
+    status: "idle",
+    progress: 0,
+    adviserName: null,
+  });
   const [durationHelpOpen, setDurationHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pdfImporting, setPdfImporting] = useState(false);
@@ -1935,6 +1951,104 @@ export default function CalculatorPage() {
     };
   }, [user, contractNumber, endorsementDraft]);
 
+  useEffect(() => {
+    const trimmedOriginalNumber = refreshOriginalContractNumber.trim();
+    const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user?.email);
+    if (
+      !user ||
+      product !== "neon" ||
+      !refreshOriginalOpen ||
+      !trimmedOriginalNumber ||
+      trimmedOriginalNumber.length < 3 ||
+      !targetOwnerEmail
+    ) {
+      setRefreshOriginalLookup({ status: "idle", progress: 0, adviserName: null });
+      return;
+    }
+
+    let cancelled = false;
+    let progressInterval: number | null = null;
+
+    const timer = window.setTimeout(async () => {
+      setRefreshOriginalLookup({ status: "checking", progress: 0, adviserName: null });
+      progressInterval = window.setInterval(() => {
+        setRefreshOriginalLookup((prev) => {
+          if (prev.status !== "checking") return prev;
+          const nextProgress = Math.min(92, prev.progress + Math.max(3, Math.round((94 - prev.progress) / 7)));
+          return { ...prev, progress: nextProgress };
+        });
+      }, 160);
+
+      try {
+        const params = new URLSearchParams({
+          scope: isSavingForSubordinate ? "team" : "my",
+          q: trimmedOriginalNumber,
+        });
+        const payload = await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
+          user,
+          `/api/contracts/find?${params.toString()}`
+        );
+        if (cancelled) return;
+
+        if (payload.ok === false) {
+          setRefreshOriginalLookup({ status: "error", progress: 100, adviserName: null });
+          return;
+        }
+
+        const matchingContracts = (Array.isArray(payload.contracts) ? payload.contracts : []).filter(
+          (item) => {
+            const ownerEmail =
+              normalizeEmailValue(item.userEmail) || normalizeEmailValue(item.adviserEmail);
+            return ownerEmail === targetOwnerEmail;
+          }
+        );
+
+        if (matchingContracts.length === 0) {
+          setRefreshOriginalLookup({ status: "notFound", progress: 100, adviserName: null });
+          return;
+        }
+
+        const neonMatch =
+          matchingContracts.find((item) => item.productKey === "neon") ?? matchingContracts[0];
+        const adviserName =
+          typeof neonMatch.adviserName === "string" && neonMatch.adviserName.trim()
+            ? neonMatch.adviserName.trim()
+            : null;
+
+        if (neonMatch.productKey !== "neon") {
+          setRefreshOriginalLookup({ status: "wrongProduct", progress: 100, adviserName });
+          return;
+        }
+
+        setRefreshOriginalLookup({ status: "found", progress: 100, adviserName });
+      } catch (err) {
+        console.warn("Ověření původní refresh smlouvy selhalo", err);
+        if (!cancelled) {
+          setRefreshOriginalLookup({ status: "error", progress: 100, adviserName: null });
+        }
+      } finally {
+        if (progressInterval != null) {
+          window.clearInterval(progressInterval);
+        }
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      if (progressInterval != null) {
+        window.clearInterval(progressInterval);
+      }
+    };
+  }, [
+    user,
+    product,
+    refreshOriginalOpen,
+    refreshOriginalContractNumber,
+    effectiveSaveOwnerEmail,
+    isSavingForSubordinate,
+  ]);
+
   const persistTipsterMode = async (value: boolean) => {
     if (value === tipsterModeEnabled || tipsterModeSaving) return;
 
@@ -2442,6 +2556,21 @@ export default function CalculatorPage() {
       if (typeof parsed.amount === "number") {
         setAmountText(String(parsed.amount));
         applied += 1;
+      }
+      if (importProduct === "neon") {
+        const parsedRefreshOriginalContractNumber =
+          "refreshOriginalContractNumber" in parsed &&
+          typeof parsed.refreshOriginalContractNumber === "string"
+            ? parsed.refreshOriginalContractNumber.trim()
+            : "";
+        const parsedIsRefresh = "isRefresh" in parsed && parsed.isRefresh === true;
+        if (parsedIsRefresh || parsedRefreshOriginalContractNumber) {
+          setRefreshOriginalOpen(true);
+          if (parsedRefreshOriginalContractNumber) {
+            setRefreshOriginalContractNumber(parsedRefreshOriginalContractNumber);
+            applied += 1;
+          }
+        }
       }
       if ("comfortPayment" in parsed && typeof parsed.comfortPayment === "number") {
         setComfortPaymentText(String(parsed.comfortPayment));
@@ -3131,6 +3260,8 @@ export default function CalculatorPage() {
   useEffect(() => {
     if (product !== "neon") {
       setRefreshOriginalOpen(false);
+      setRefreshOriginalContractNumber("");
+      setRefreshOriginalLookup({ status: "idle", progress: 0, adviserName: null });
     }
     if (product !== "cppcestovko") {
       setPolicyEndDate("");
@@ -3531,6 +3662,16 @@ export default function CalculatorPage() {
     ) {
       missing.push("dobu trvání v měsících");
     }
+    const trimmedContractNumber = contractNumber.trim();
+    const trimmedClientName = clientName.trim();
+    const signedDateIsoDay = contractSignedDate.trim();
+    const shouldRefreshOriginalNeon =
+      product === "neon" &&
+      refreshOriginalOpen;
+    const trimmedRefreshOriginalContractNumber = refreshOriginalContractNumber.trim();
+    if (shouldRefreshOriginalNeon && !trimmedRefreshOriginalContractNumber) {
+      missing.push("číslo původní smlouvy");
+    }
 
     if (missing.length > 0 || items.length === 0) {
       const msg =
@@ -3546,13 +3687,6 @@ export default function CalculatorPage() {
     if (!validateTimelineBeforeSave()) return;
 
     // kontrola duplicitního čísla smlouvy
-    const trimmedContractNumber = contractNumber.trim();
-    const trimmedClientName = clientName.trim();
-    const signedDateIsoDay = contractSignedDate.trim();
-    const shouldRefreshOriginalNeon =
-      product === "neon" &&
-      refreshOriginalOpen;
-
     if (!skipDuplicateCheck) {
       try {
         if (trimmedContractNumber) {
@@ -3972,7 +4106,9 @@ export default function CalculatorPage() {
                   }
                 : null,
             isRefresh: shouldRefreshOriginalNeon,
-            refreshOriginalContractNumber: null,
+            refreshOriginalContractNumber: shouldRefreshOriginalNeon
+              ? trimmedRefreshOriginalContractNumber
+              : null,
           },
         },
         idempotencyKey: buildContractsCreateIdempotencyKey({
@@ -3986,6 +4122,9 @@ export default function CalculatorPage() {
           inputAmount: value,
           frequencyRaw: frequency,
           isRefresh: shouldRefreshOriginalNeon,
+          refreshOriginalContractNumber: shouldRefreshOriginalNeon
+            ? trimmedRefreshOriginalContractNumber
+            : null,
         }),
       });
       const apiError = getContractsMutationError({
@@ -4042,7 +4181,7 @@ export default function CalculatorPage() {
       }
 
       const savedMessage = shouldRefreshOriginalNeon
-        ? "Smlouva byla uložena a označena jako Refresh."
+        ? "Smlouva byla uložena jako Refresh a původní smlouva byla stornována ke dni počátku."
         : "Smlouva byla uložena mezi sepsané.";
       setSaveMessage(`${savedMessage}${pdfAttachmentMessage}`);
       setSaveSuccessFlash({
@@ -4051,6 +4190,8 @@ export default function CalculatorPage() {
       });
       setContractSaveCelebrationKey((prev) => prev + 1);
       setRefreshOriginalOpen(false);
+      setRefreshOriginalContractNumber("");
+      setRefreshOriginalLookup({ status: "idle", progress: 0, adviserName: null });
     } catch (error) {
       const errorMessage =
         error instanceof Error && error.message.trim().length > 0
@@ -5153,10 +5294,15 @@ export default function CalculatorPage() {
                 missingFields={missingFields}
                 hasTipContractConfig={Boolean(tipContractConfig)}
                 refreshOriginalOpen={refreshOriginalOpen}
+                refreshOriginalContractNumber={refreshOriginalContractNumber}
+                refreshOriginalLookupStatus={refreshOriginalLookup.status}
+                refreshOriginalLookupProgress={refreshOriginalLookup.progress}
+                refreshOriginalLookupAdviserName={refreshOriginalLookup.adviserName}
                 onComfortGradualChange={setComfortGradual}
                 onAmountTextChange={setAmountText}
                 onComfortPaymentTextChange={setComfortPaymentText}
                 onComfortTargetAmountTextChange={setComfortTargetAmountText}
+                onRefreshOriginalContractNumberChange={setRefreshOriginalContractNumber}
                 onOpenTipContractModal={openTipContractModal}
                 onToggleRefreshOriginal={() => setRefreshOriginalOpen((prev) => !prev)}
                 onPrepareEndorsement={() => {

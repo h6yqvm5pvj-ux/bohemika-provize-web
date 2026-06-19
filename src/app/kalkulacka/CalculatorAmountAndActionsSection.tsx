@@ -5,6 +5,8 @@ import { RefreshCcw, Repeat2, Tag } from "lucide-react";
 import { type PaymentFrequency, type Product } from "../types/domain";
 import { placeholderForAmount } from "./calculatorHelpers";
 
+type RefreshOriginalLookupStatus = "idle" | "checking" | "found" | "notFound" | "wrongProduct" | "error";
+
 type CalculatorAmountAndActionsSectionProps = {
   embedded?: boolean;
   showAmountInput?: boolean;
@@ -22,10 +24,15 @@ type CalculatorAmountAndActionsSectionProps = {
   missingFields: string[];
   hasTipContractConfig: boolean;
   refreshOriginalOpen: boolean;
+  refreshOriginalContractNumber: string;
+  refreshOriginalLookupStatus: RefreshOriginalLookupStatus;
+  refreshOriginalLookupProgress: number;
+  refreshOriginalLookupAdviserName: string | null;
   onComfortGradualChange: (value: boolean) => void;
   onAmountTextChange: (value: string) => void;
   onComfortPaymentTextChange: (value: string) => void;
   onComfortTargetAmountTextChange: (value: string) => void;
+  onRefreshOriginalContractNumberChange: (value: string) => void;
   onOpenTipContractModal: () => void;
   onToggleRefreshOriginal: () => void;
   onPrepareEndorsement: () => void;
@@ -49,10 +56,15 @@ export function CalculatorAmountAndActionsSection({
   missingFields,
   hasTipContractConfig,
   refreshOriginalOpen,
+  refreshOriginalContractNumber,
+  refreshOriginalLookupStatus,
+  refreshOriginalLookupProgress,
+  refreshOriginalLookupAdviserName,
   onComfortGradualChange,
   onAmountTextChange,
   onComfortPaymentTextChange,
   onComfortTargetAmountTextChange,
+  onRefreshOriginalContractNumberChange,
   onOpenTipContractModal,
   onToggleRefreshOriginal,
   onPrepareEndorsement,
@@ -194,9 +206,67 @@ export function CalculatorAmountAndActionsSection({
               )}
             </div>
             {isLifeProduct && product === "neon" && refreshOriginalOpen && (
-              <p className="mt-2 text-[11px] text-slate-600">
-                Při uložení se nová smlouva označí jako Refresh.
-              </p>
+              <div className="mt-3 space-y-1.5">
+                <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
+                  Číslo původní smlouvy
+                </label>
+                <input
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  value={refreshOriginalContractNumber}
+                  onChange={(event) => onRefreshOriginalContractNumberChange(event.target.value)}
+                  placeholder="Např. 1234567890"
+                  className={`w-full rounded-2xl border bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+                    missingFields.includes("číslo původní smlouvy")
+                      ? "border-rose-400/70"
+                      : "border-slate-300"
+                  }`}
+                />
+                <p className="text-[11px] text-slate-600">
+                  Při uložení se původní smlouva stornuje ke dni počátku nové smlouvy.
+                </p>
+                {refreshOriginalLookupStatus === "checking" && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600">
+                      <span>Ověřuji smlouvu v Bohemka.App</span>
+                      <span>{refreshOriginalLookupProgress}%</span>
+                    </div>
+                    <div
+                      className="h-2 overflow-hidden rounded-full bg-slate-200"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={refreshOriginalLookupProgress}
+                    >
+                      <div
+                        className="h-full rounded-full bg-[linear-gradient(90deg,#e879f9_0%,#a21caf_100%)] transition-[width] duration-200"
+                        style={{ width: `${refreshOriginalLookupProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {refreshOriginalLookupStatus === "found" && (
+                  <p className="text-[11px] font-semibold text-emerald-700">
+                    Smlouva nalezena. Sjednatel: {refreshOriginalLookupAdviserName || "jméno není vyplněné"}.
+                  </p>
+                )}
+                {refreshOriginalLookupStatus === "wrongProduct" && (
+                  <p className="text-[11px] font-semibold text-amber-700">
+                    Smlouva je evidována, ale není vedena jako ČPP ŽP NEON.
+                  </p>
+                )}
+                {refreshOriginalLookupStatus === "notFound" && (
+                  <p className="text-[11px] font-semibold text-rose-700">
+                    Smlouva s tímto číslem není evidována v systému Bohemka.App.
+                  </p>
+                )}
+                {refreshOriginalLookupStatus === "error" && (
+                  <p className="text-[11px] font-semibold text-amber-700">
+                    Ověření smlouvy se nepodařilo. Zkus to prosím znovu.
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}

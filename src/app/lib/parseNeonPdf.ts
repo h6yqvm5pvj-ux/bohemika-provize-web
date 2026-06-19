@@ -47,6 +47,8 @@ export type NeonRiskFields = Partial<{
 
 export type NeonPdfResult = {
   contractNumber?: string | null;
+  isRefresh?: boolean | null;
+  refreshOriginalContractNumber?: string | null;
   clientName?: string | null;
   policyStartDate?: string | null;
   contractSignedDate?: string | null;
@@ -81,10 +83,58 @@ const parseAmount = (val: string | null | undefined): number | null => {
   return Number.isFinite(num) ? Math.round(num) : null;
 };
 
-const digitsOnly = (val: string | null | undefined): string | null => {
-  if (!val) return null;
-  const digits = val.replace(/\D+/g, "");
-  return digits.length > 0 ? digits : null;
+const pickContractNumberFromText = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const compact = value.replace(/\D+/g, "");
+  if (compact.length >= 8 && compact.length <= 12) return compact;
+
+  const direct = value.match(/\b\d{8,12}\b/);
+  if (direct?.[0]) return direct[0];
+
+  return null;
+};
+
+const pickContractNumberAfterLabel = (
+  lines: string[],
+  asciiLines: string[],
+  label: RegExp,
+  maxLookahead = 6
+): string | null => {
+  for (let idx = 0; idx < asciiLines.length; idx += 1) {
+    const asciiLine = asciiLines[idx] ?? "";
+    if (!label.test(asciiLine)) continue;
+
+    const sameLine = lines[idx] ?? "";
+    const afterLabel = sameLine.replace(label, " ");
+    const sameLineCandidate = pickContractNumberFromText(afterLabel);
+    if (sameLineCandidate) return sameLineCandidate;
+
+    for (let step = 1; step <= maxLookahead; step += 1) {
+      const candidate = pickContractNumberFromText(lines[idx + step] ?? "");
+      if (candidate) return candidate;
+    }
+  }
+  return null;
+};
+
+const pickNeonContractNumberFromBarcode = (fullText: string): string | null => {
+  const barcode = fullText.match(/\*(\d{10})\d{0,12}\*/);
+  return barcode?.[1] ?? null;
+};
+
+const pickMostFrequentContractNumber = (
+  fullText: string,
+  exclude: string | null | undefined
+): string | null => {
+  const excluded = exclude?.trim() ?? "";
+  const matches = fullText.match(/\b\d{10}\b/g) ?? [];
+  const counts = new Map<string, number>();
+  matches.forEach((candidate) => {
+    if (candidate === excluded) return;
+    counts.set(candidate, (counts.get(candidate) ?? 0) + 1);
+  });
+  const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  return sorted[0]?.[0] ?? null;
 };
 
 export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
@@ -116,11 +166,12 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   }
 
   const fullText = pagesText.join("\n");
-  // Zachováme řádky, jen odstaníme diakritiku pro hledání.
-  const asciiLines = fullText
+  const lines = fullText
     .split(/\n+/)
-    .map((l) => stripDiacritics(l).toLowerCase().trim())
+    .map((line) => line.trim())
     .filter(Boolean);
+  // Zachováme řádky, jen odstaníme diakritiku pro hledání.
+  const asciiLines = lines.map((l) => stripDiacritics(l).toLowerCase().trim());
   const asciiText = stripDiacritics(fullText).toLowerCase();
 
   const result: NeonPdfResult = {};
@@ -362,27 +413,31 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
     }
   }
 
-  // Číslo pojistné smlouvy
-  const contractMatch =
-    fullText.match(/Číslo\s+pojistné\s+smlouvy:?\s*([\d\s]{6,30})/i)?.[1] ??
-    asciiText.match(/cislo pojistne smlouvy:?\s*([\d\s]{6,30})/i)?.[1];
-  const contractCandidate = digitsOnly(contractMatch);
-  const numberCandidates = [
-    ...(fullText.match(/\b\d{8,12}\b/g) ?? []),
-    contractCandidate ?? "",
-  ].filter(Boolean) as string[];
+  // Refresh / náhrada původní smlouvy
+  const refreshOriginalContractNumber = pickContractNumberAfterLabel(
+    lines,
+    asciiLines,
+    /nahrada\s+pojistne\s+smlouvy\s*c\.?/i,
+    6
+  );
+  const isRefresh =
+    /nahrada\s*-\s*refresh/i.test(asciiText) ||
+    Boolean(refreshOriginalContractNumber);
+  if (isRefresh) {
+    result.isRefresh = true;
+  }
+  if (refreshOriginalContractNumber) {
+    result.refreshOriginalContractNumber = refreshOriginalContractNumber;
+  }
 
-  if (numberCandidates.length > 0) {
-    const unique = Array.from(new Set(numberCandidates));
-    const sorted = unique.sort((a, b) => {
-      // prefer délku 10, pak 9/11, pak kratší
-      const pref = (len: number) => (len === 10 ? 3 : len === 9 || len === 11 ? 2 : 1);
-      const da = pref(a.length);
-      const db = pref(b.length);
-      if (da !== db) return db - da;
-      return b.length - a.length;
-    });
-    result.contractNumber = sorted[0];
+  // Číslo nově sjednávané pojistné smlouvy
+  const contractCandidate =
+    pickContractNumberAfterLabel(lines, asciiLines, /cislo\s+pojistne\s+smlouvy:?/i, 5) ??
+    pickNeonContractNumberFromBarcode(fullText) ??
+    pickMostFrequentContractNumber(fullText, refreshOriginalContractNumber);
+
+  if (contractCandidate) {
+    result.contractNumber = contractCandidate;
   }
 
   // Jméno a příjmení (pojistník)

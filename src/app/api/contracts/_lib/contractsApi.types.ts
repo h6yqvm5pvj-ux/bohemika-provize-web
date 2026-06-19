@@ -33,6 +33,9 @@ export type ContractDoc = {
   stornoDate?: FirestoreTimestamp | Date | string | number | null;
   isRefresh?: boolean | null;
   refreshOriginalContractNumber?: string | null;
+  refreshReplacedByEntryId?: string | null;
+  refreshReplacedByOwnerEmail?: string | null;
+  refreshReplacedBySignedDate?: FirestoreTimestamp | Date | string | number | null;
   note?: string | null;
   managerEmailSnapshot?: string | null;
   managerPositionSnapshot?: Position | null;
@@ -195,6 +198,7 @@ export type TipPayoutDoc = {
 export type ContractResponseItem = ContractDoc & {
   id: string;
   adviserEmail: string | null;
+  adviserName?: string | null;
 };
 
 export type ContractOwnerMeta = {

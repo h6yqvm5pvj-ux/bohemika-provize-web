@@ -1657,6 +1657,33 @@ const normalizeCreateEntryPayload = ({
     120
   );
   if (!refreshOriginalParsed.ok) return refreshOriginalParsed;
+  const isRefresh = isRefreshParsed.value === true;
+  const refreshOriginalContractNumber = refreshOriginalParsed.value;
+  if (isRefresh && productParsed.value !== "neon") {
+    return { ok: false, error: "Refresh smlouvy je podporovaný jen pro produkt ČPP ŽP NEON." };
+  }
+  if (refreshOriginalContractNumber && productParsed.value !== "neon") {
+    return { ok: false, error: "Pole refreshOriginalContractNumber je povolené jen pro produkt ČPP ŽP NEON." };
+  }
+  if (refreshOriginalContractNumber && !isRefresh) {
+    return { ok: false, error: "Při vyplněném refreshOriginalContractNumber musí být isRefresh true." };
+  }
+  if (isRefresh && !refreshOriginalContractNumber) {
+    return { ok: false, error: "Pro Refresh je povinné číslo původní smlouvy." };
+  }
+  if (refreshOriginalContractNumber && !isValidContractNumber(refreshOriginalContractNumber)) {
+    return { ok: false, error: "Pole refreshOriginalContractNumber má neplatný formát." };
+  }
+  if (
+    refreshOriginalContractNumber &&
+    normalizeContractNumber(refreshOriginalContractNumber) ===
+      normalizeContractNumber(contractNumberParsed.value)
+  ) {
+    return {
+      ok: false,
+      error: "Číslo původní smlouvy musí být jiné než číslo nové smlouvy.",
+    };
+  }
 
   const rootEntryIdParsed = parseOptionalTrimmedText(
     raw.rootContractEntryId,
@@ -1861,7 +1888,7 @@ const normalizeCreateEntryPayload = ({
       allowedEmails: [ownerEmail],
       createdAt: new Date(),
       isRefresh: isRefreshParsed.value,
-      refreshOriginalContractNumber: refreshOriginalParsed.value,
+      refreshOriginalContractNumber,
       rootContractEntryId:
         entryTypeParsed.value === "endorsement" ? rootEntryIdParsed.value : null,
       parentContractEntryId:
@@ -5350,6 +5377,19 @@ export async function handleContractsFind(req: NextRequest) {
 
   const contracts: ContractResponseItem[] = [];
   const seenKeys = new Set<string>();
+  const ownerNameByEmail = new Map<string, string | null>();
+
+  const resolveOwnerName = async (ownerEmail: string): Promise<string | null> => {
+    const normalizedOwner = normalizeEmail(ownerEmail);
+    if (!normalizedOwner) return null;
+    if (ownerNameByEmail.has(normalizedOwner)) {
+      return ownerNameByEmail.get(normalizedOwner) ?? null;
+    }
+    const profile = await loadUserProfileByEmail(normalizedOwner);
+    const name = normalizeOptionalDisplayName(profile?.name) ?? null;
+    ownerNameByEmail.set(normalizedOwner, name);
+    return name;
+  };
 
   for (const ref of entryRefs) {
     const ownerFromPath = normalizeEmail(ref.path.split("/")[1] ?? "");
@@ -5376,7 +5416,9 @@ export async function handleContractsFind(req: NextRequest) {
       const itemKey = `${ownerFromPath}___${snap.id}`;
       if (seenKeys.has(itemKey)) continue;
       seenKeys.add(itemKey);
-      contracts.push(toContractResponseItem(snap.id, ownerFromPath, contract));
+      const item = toContractResponseItem(snap.id, ownerFromPath, contract);
+      item.adviserName = await resolveOwnerName(ownerFromPath);
+      contracts.push(item);
     } catch (entryErr) {
       console.warn("GET /api/contracts/find: načtení entry selhalo:", ref.path, entryErr);
     }
@@ -5863,6 +5905,38 @@ export async function handleContractsCreate(req: NextRequest) {
       }
     }
 
+    let refreshOriginalLink: ExistingContractByNumber | null = null;
+    let refreshOriginalForSync: { ownerEmail: string; entryId: string } | null = null;
+    if (trustedPayload.entryType === "contract" && trustedPayload.isRefresh === true) {
+      const originalContractNumber = trustedPayload.refreshOriginalContractNumber ?? "";
+      refreshOriginalLink = await findExistingContractByNumber(originalContractNumber);
+      const ownerEntryPrefix = `users/${targetOwnerEmail}/entries/`;
+      if (!refreshOriginalLink || !refreshOriginalLink.entryPath.startsWith(ownerEntryPrefix)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Původní smlouva pro Refresh nebyla nalezena u vlastníka nové smlouvy.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const refreshOriginalEntryId =
+        refreshOriginalLink.entryId ??
+        refreshOriginalLink.entryPath.split("/").pop()?.trim() ??
+        "";
+      if (!refreshOriginalEntryId) {
+        return NextResponse.json(
+          { ok: false, error: "Původní smlouva pro Refresh nemá platné entryId." },
+          { status: 400 }
+        );
+      }
+      refreshOriginalForSync = {
+        ownerEmail: targetOwnerEmail,
+        entryId: refreshOriginalEntryId,
+      };
+    }
+
     try {
       const createdRef = idempotentEntryRef ?? ownerEntriesRef.doc();
 
@@ -5873,6 +5947,12 @@ export async function handleContractsCreate(req: NextRequest) {
         const contractNumberLoose = normalizeContractNumberLoose(
           trustedPayload.contractNumber
         );
+        const refreshOriginalNumberNormalized = normalizeContractNumber(
+          trustedPayload.refreshOriginalContractNumber
+        );
+        const refreshOriginalRef = refreshOriginalLink
+          ? db.doc(refreshOriginalLink.entryPath)
+          : null;
         const claimRef = db
           .collection(CONTRACT_NUMBER_CLAIMS_COLLECTION)
           .doc(contractNumberClaimDocId(contractNumberNormalized));
@@ -5889,6 +5969,7 @@ export async function handleContractsCreate(req: NextRequest) {
 
         await db.runTransaction(async (tx) => {
           const claimSnap = await tx.get(claimRef);
+          let refreshOriginalSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> | null = null;
           if (claimSnap.exists) {
             const claimData = (claimSnap.data() ?? {}) as {
               entryPath?: string | null;
@@ -5914,6 +5995,68 @@ export async function handleContractsCreate(req: NextRequest) {
                 }
               }
             }
+          }
+
+          if (refreshOriginalRef) {
+            refreshOriginalSnap = await tx.get(refreshOriginalRef);
+            if (!refreshOriginalSnap.exists) {
+              const missingOriginalErr = new Error(
+                "Původní smlouva pro Refresh už nebyla nalezena."
+              ) as Error & { statusCode?: number };
+              missingOriginalErr.statusCode = 400;
+              throw missingOriginalErr;
+            }
+
+            const originalData = (refreshOriginalSnap.data() ?? {}) as ContractDoc;
+            if (normalizeContractEntryType(originalData.entryType ?? "contract") !== "contract") {
+              const entryTypeErr = new Error(
+                "Původní záznam pro Refresh není smlouva."
+              ) as Error & { statusCode?: number };
+              entryTypeErr.statusCode = 400;
+              throw entryTypeErr;
+            }
+            if (originalData.productKey !== "neon") {
+              const productErr = new Error(
+                "Původní smlouva pro Refresh musí být ČPP ŽP NEON."
+              ) as Error & { statusCode?: number };
+              productErr.statusCode = 400;
+              throw productErr;
+            }
+            if (
+              normalizeContractNumber(originalData.contractNumber) !==
+              refreshOriginalNumberNormalized
+            ) {
+              const numberErr = new Error(
+                "Původní smlouva pro Refresh neodpovídá zadanému číslu."
+              ) as Error & { statusCode?: number };
+              numberErr.statusCode = 400;
+              throw numberErr;
+            }
+
+            const existingReplacementEntryId =
+              typeof originalData.refreshReplacedByEntryId === "string"
+                ? originalData.refreshReplacedByEntryId.trim()
+                : "";
+            if (existingReplacementEntryId && existingReplacementEntryId !== createdRef.id) {
+              const linkedErr = new Error(
+                "Původní smlouva už má navazující Refresh."
+              ) as Error & { statusCode?: number };
+              linkedErr.statusCode = 409;
+              throw linkedErr;
+            }
+            if (
+              contractLifecycleStatus(originalData) === "storno" &&
+              existingReplacementEntryId !== createdRef.id
+            ) {
+              const stornoErr = new Error(
+                "Původní smlouva pro Refresh už je stornovaná."
+              ) as Error & { statusCode?: number };
+              stornoErr.statusCode = 409;
+              throw stornoErr;
+            }
+          }
+
+          if (claimSnap.exists) {
             tx.set(claimRef, claimPayload, { merge: true });
           } else {
             tx.create(claimRef, claimPayload);
@@ -5934,6 +6077,20 @@ export async function handleContractsCreate(req: NextRequest) {
             tx.set(contractRef, contractRefPayload, { merge: true });
           } else {
             tx.delete(contractRef);
+          }
+
+          if (refreshOriginalRef && refreshOriginalSnap?.exists) {
+            tx.set(
+              refreshOriginalRef,
+              {
+                status: "storno",
+                stornoDate: trustedPayload.policyStartDate,
+                refreshReplacedByEntryId: createdRef.id,
+                refreshReplacedByOwnerEmail: targetOwnerEmail,
+                refreshReplacedBySignedDate: trustedPayload.contractSignedDate,
+              },
+              { merge: true }
+            );
           }
         });
       } else {
@@ -5969,6 +6126,29 @@ export async function handleContractsCreate(req: NextRequest) {
           "POST /api/contracts create: TIP payout sync selhal:",
           tipSyncErr
         );
+      }
+
+      if (refreshOriginalForSync) {
+        try {
+          const refreshOriginalSnap = await db
+            .collection("users")
+            .doc(refreshOriginalForSync.ownerEmail)
+            .collection("entries")
+            .doc(refreshOriginalForSync.entryId)
+            .get();
+          if (refreshOriginalSnap.exists) {
+            await syncTipPayoutDocsForEntry({
+              ownerEmail: refreshOriginalForSync.ownerEmail,
+              entryId: refreshOriginalSnap.id,
+              entryData: refreshOriginalSnap.data() as ContractDoc,
+            });
+          }
+        } catch (refreshTipSyncErr) {
+          console.warn(
+            "POST /api/contracts create: TIP payout sync původní refresh smlouvy selhal:",
+            refreshTipSyncErr
+          );
+        }
       }
 
       try {
@@ -6008,6 +6188,7 @@ export async function handleContractsCreate(req: NextRequest) {
       const response = NextResponse.json({
         ok: true,
         entryId: createdRef.id,
+        refreshOriginalEntryId: refreshOriginalForSync?.entryId ?? null,
       });
       return withRateLimit(response);
     } catch (createErr: any) {
@@ -6031,7 +6212,7 @@ export async function handleContractsCreate(req: NextRequest) {
           ? createErr.message.trim()
           : "Neznámá chyba při ukládání smlouvy.";
       const statusCode = Number((createErr as any)?.statusCode);
-      if (statusCode === 409) {
+      if ([400, 403, 404, 409].includes(statusCode)) {
         return NextResponse.json(
           {
             ok: false,
@@ -6041,7 +6222,7 @@ export async function handleContractsCreate(req: NextRequest) {
                 ? (createErr as any).duplicatePath
                 : null,
           },
-          { status: 409 }
+          { status: statusCode }
         );
       }
       console.error("POST /api/contracts create selhal:", createErr);
