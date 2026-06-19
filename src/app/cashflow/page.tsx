@@ -263,6 +263,16 @@ export default function CashflowPage() {
               />
             )}
           </div>
+
+          <aside className="rounded-[24px] border border-amber-200/80 bg-amber-50/90 px-5 py-4 text-sm leading-relaxed text-amber-950 shadow-[0_16px_38px_rgba(146,64,14,0.08)] backdrop-blur-lg">
+            <p className="font-semibold">Upozornění k predikci cashflow</p>
+            <p className="mt-1">
+              Jedná se pouze o predikci na základě data sjednání, počátku a frekvencí
+              plateb smluv. Predikce může mít odchylky například z důvodu pozdního
+              uhrazení klientem. Za správnost dat si zodpovídá každý uživatel sám.
+              Při stornu smlouvy si uživatel musí sám označit smlouvu jako stornovanou.
+            </p>
+          </aside>
         </div>
 
         <CashflowMonthModal
