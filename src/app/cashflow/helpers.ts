@@ -128,6 +128,28 @@ export function filterPastItems(
   return cashflowItems.filter((item) => item.date >= startCurrentMonth);
 }
 
+export function normalizeContractNumberSearch(value?: string | null): string {
+  return (value ?? "").replace(/[^a-z0-9]+/gi, "").trim().toLowerCase();
+}
+
+export function filterItemsByContractNumber(
+  cashflowItems: CashflowItem[],
+  contractNumberQuery: string
+): CashflowItem[] {
+  const normalizedQuery = normalizeContractNumberSearch(contractNumberQuery);
+  if (!normalizedQuery) return cashflowItems;
+
+  const looseQuery = normalizedQuery.replace(/^0+/, "");
+  return cashflowItems.filter((item) => {
+    const normalizedContractNumber = normalizeContractNumberSearch(item.contractNumber);
+    if (!normalizedContractNumber) return false;
+    if (normalizedContractNumber.includes(normalizedQuery)) return true;
+
+    const looseContractNumber = normalizedContractNumber.replace(/^0+/, "");
+    return Boolean(looseQuery) && looseContractNumber.includes(looseQuery);
+  });
+}
+
 export function groupItemsByMonth(
   filteredCashflowItems: CashflowItem[]
 ): MonthGroup[] {

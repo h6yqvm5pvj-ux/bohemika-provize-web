@@ -7,21 +7,38 @@ import {
   Home,
   Landmark,
   Plane,
+  Search,
   Tag,
   UserRound,
   UsersRound,
   Sparkles,
+  X,
 } from "lucide-react";
 
 import { REVENUE_SCOPE_THEME } from "@/app/lib/revenueScopeTheme";
-import type { ProductFilter, ScopeFilter } from "../types";
+import { formatMoney, frequencyText, productLabel } from "../helpers";
+import type { CashflowItem, ProductFilter, ScopeFilter } from "../types";
+
+type ContractSearchSummary = {
+  productKey: CashflowItem["productKey"];
+  clientName: string | null;
+  inputAmount: number | null;
+  frequency: CashflowItem["frequency"];
+  contractStatus: CashflowItem["contractStatus"];
+};
 
 type CashflowFiltersProps = {
   hasTeam: boolean;
   scopeFilter: ScopeFilter;
   productFilter: ProductFilter;
+  contractNumberQuery: string;
+  contractNumberSearchActive: boolean;
+  contractNumberMatchCount: number;
+  contractNumberContractCount: number;
+  contractNumberSummary: ContractSearchSummary | null;
   onScopeChange: (scope: ScopeFilter) => void;
   onProductChange: (filter: ProductFilter) => void;
+  onContractNumberChange: (value: string) => void;
 };
 
 const PRODUCT_FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
@@ -103,18 +120,69 @@ const PRODUCT_FILTER_VISUALS: Record<ProductFilter, ChipVisual> = {
   },
 };
 
+function formatCount(count: number, singular: string, few: string, many: string): string {
+  if (count === 1) return `1 ${singular}`;
+  if (count >= 2 && count <= 4) return `${count} ${few}`;
+  return `${count} ${many}`;
+}
+
+function contractStatusLabel(
+  status: ContractSearchSummary["contractStatus"] | undefined
+): string | null {
+  if (typeof status !== "string") return null;
+  const normalized = status.trim().toLowerCase();
+  if (
+    normalized === "storno" ||
+    normalized === "stornovana" ||
+    normalized === "stornována"
+  ) {
+    return "stornovaná";
+  }
+  if (
+    normalized === "dozita" ||
+    normalized === "dožitá" ||
+    normalized === "dozito" ||
+    normalized === "dožito"
+  ) {
+    return "dožitá";
+  }
+  return null;
+}
+
 export function CashflowFilters({
   hasTeam,
   scopeFilter,
   productFilter,
+  contractNumberQuery,
+  contractNumberSearchActive,
+  contractNumberMatchCount,
+  contractNumberContractCount,
+  contractNumberSummary,
   onScopeChange,
   onProductChange,
+  onContractNumberChange,
 }: CashflowFiltersProps) {
   const baseChip =
     "ui-focus relative inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-semibold transition duration-200";
   const inactiveChip =
     "border-slate-200 bg-white text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.06)] hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50";
   const iconClass = "h-4 w-4";
+  const foundPrefix = contractNumberMatchCount === 1 ? "Nalezena" : "Nalezeno";
+  const searchResultLabel =
+    contractNumberMatchCount === 0
+      ? "Smlouva s tímto číslem není v aktuálním cashflow výběru."
+      : `${foundPrefix} ${formatCount(contractNumberMatchCount, "položka", "položky", "položek")} · ${formatCount(contractNumberContractCount, "smlouva", "smlouvy", "smluv")}`;
+  const summaryClientName = contractNumberSummary?.clientName?.trim() || "—";
+  const summaryAmount =
+    contractNumberSummary &&
+    Number.isFinite(Number(contractNumberSummary.inputAmount)) &&
+    Number(contractNumberSummary.inputAmount) > 0
+      ? formatMoney(Number(contractNumberSummary.inputAmount))
+      : "neuvedeno";
+  const summaryFrequency = contractNumberSummary?.frequency
+    ? frequencyText(contractNumberSummary.frequency)
+    : "frekvence neuvedena";
+  const summaryStatus = contractStatusLabel(contractNumberSummary?.contractStatus);
 
   return (
     <section className="relative overflow-visible px-1 py-1">
@@ -209,6 +277,80 @@ export function CashflowFilters({
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="mt-1 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(280px,390px)_minmax(0,1fr)] lg:items-end">
+        <label className="block min-w-0">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            Číslo smlouvy
+          </span>
+          <span className="relative mt-2.5 flex h-12 items-center">
+            <Search
+              className="pointer-events-none absolute left-3.5 h-4.5 w-4.5 text-slate-400"
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+            <input
+              type="search"
+              inputMode="search"
+              autoComplete="off"
+              value={contractNumberQuery}
+              onChange={(event) => onContractNumberChange(event.target.value)}
+              placeholder="Zadej číslo smlouvy"
+              className="ui-focus h-full w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-11 font-mono text-[1.05rem] font-semibold text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.07)] outline-none transition placeholder:font-sans placeholder:text-sm placeholder:font-medium placeholder:text-slate-400 hover:border-slate-300 focus:border-[#a65af2] focus:ring-4 focus:ring-[#c084fc]/18"
+            />
+            {contractNumberQuery.trim() ? (
+              <button
+                type="button"
+                onClick={() => onContractNumberChange("")}
+                className="ui-focus absolute right-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-900"
+                aria-label="Vyčistit číslo smlouvy"
+              >
+                <X className="h-4 w-4" strokeWidth={2.2} />
+              </button>
+            ) : null}
+          </span>
+        </label>
+
+        {contractNumberSearchActive ? (
+          <div
+            className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-[0_10px_24px_rgba(15,23,42,0.06)] ${
+              contractNumberMatchCount === 0
+                ? "border-amber-200 bg-amber-50 text-amber-950"
+                : "border-emerald-200 bg-emerald-50 text-emerald-900"
+            }`}
+          >
+            {contractNumberSummary ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <span>
+                  Nalezena smlouva{" "}
+                  <strong className="font-black">
+                    {productLabel(contractNumberSummary.productKey)}
+                  </strong>
+                </span>
+                <span className="hidden h-1.5 w-1.5 rounded-full bg-emerald-400 sm:inline-block" />
+                <span>
+                  Klient: <strong className="font-black">{summaryClientName}</strong>
+                </span>
+                <span className="hidden h-1.5 w-1.5 rounded-full bg-emerald-400 sm:inline-block" />
+                <span>
+                  Pojistné:{" "}
+                  <strong className="font-black">{summaryAmount}</strong> / {summaryFrequency}
+                </span>
+                {summaryStatus ? (
+                  <>
+                    <span className="hidden h-1.5 w-1.5 rounded-full bg-emerald-400 sm:inline-block" />
+                    <span className="rounded-full border border-emerald-300 bg-white/65 px-2.5 py-1 text-xs font-black uppercase tracking-[0.08em] text-emerald-950">
+                      Stav: {summaryStatus}
+                    </span>
+                  </>
+                ) : null}
+              </div>
+            ) : (
+              searchResultLabel
+            )}
+          </div>
+        ) : null}
       </div>
     </section>
   );

@@ -172,6 +172,8 @@ export function generateCashflow(
         source: entry.source,
         contractNumber: entry.contractNumber ?? null,
         clientName: entry.clientName ?? null,
+        inputAmount: Number.isFinite(Number(entry.inputAmount)) ? Number(entry.inputAmount) : null,
+        contractStatus: status,
         ownerEmail: normalizedOwnerEmail,
         entryId: baseEntryId ?? null,
         isManagerOverride: entry.source === "manager",

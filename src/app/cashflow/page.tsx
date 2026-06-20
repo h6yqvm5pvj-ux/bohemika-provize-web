@@ -11,9 +11,11 @@ import { AppLayout } from "@/components/AppLayout";
 import { auth } from "../firebase";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import {
+  filterItemsByContractNumber,
   filterPastItems,
   groupItemsByMonth,
   groupMonthsByYear,
+  normalizeContractNumberSearch,
 } from "./helpers";
 import type { CashflowItem, MonthGroup, ProductFilter, ScopeFilter } from "./types";
 import { useCashflowData } from "./useCashflowData";
@@ -61,6 +63,7 @@ export default function CashflowPage() {
 
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("combined");
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
+  const [contractNumberQuery, setContractNumberQuery] = useState("");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -131,10 +134,52 @@ export default function CashflowPage() {
     enabled: profileReady && Boolean(user?.email) && hasInternalProfile === true,
   });
 
-  const filteredCashflowItems = useMemo(
-    () => filterPastItems(cashflowItems, showPastYears),
-    [cashflowItems, showPastYears]
+  const contractNumberSearchActive = useMemo(
+    () => normalizeContractNumberSearch(contractNumberQuery).length > 0,
+    [contractNumberQuery]
   );
+
+  const periodCashflowItems = useMemo(
+    () =>
+      contractNumberSearchActive
+        ? cashflowItems
+        : filterPastItems(cashflowItems, showPastYears),
+    [cashflowItems, contractNumberSearchActive, showPastYears]
+  );
+
+  const filteredCashflowItems = useMemo(
+    () => filterItemsByContractNumber(periodCashflowItems, contractNumberQuery),
+    [periodCashflowItems, contractNumberQuery]
+  );
+
+  const contractSearchStats = useMemo(() => {
+    if (!contractNumberSearchActive) {
+      return { itemCount: 0, contractCount: 0, summary: null };
+    }
+
+    const contracts = new Map<string, CashflowItem>();
+    filteredCashflowItems.forEach((item) => {
+      const normalized = normalizeContractNumberSearch(item.contractNumber);
+      if (normalized && !contracts.has(normalized)) {
+        contracts.set(normalized, item);
+      }
+    });
+    const summaryItem = contracts.size === 1 ? Array.from(contracts.values())[0] : null;
+
+    return {
+      itemCount: filteredCashflowItems.length,
+      contractCount: contracts.size,
+      summary: summaryItem
+        ? {
+            productKey: summaryItem.productKey,
+            clientName: summaryItem.clientName ?? null,
+            inputAmount: summaryItem.inputAmount ?? null,
+            frequency: summaryItem.frequency ?? null,
+            contractStatus: summaryItem.contractStatus ?? null,
+          }
+        : null,
+    };
+  }, [contractNumberSearchActive, filteredCashflowItems]);
 
   const monthGroups = useMemo(
     () => groupItemsByMonth(filteredCashflowItems),
@@ -143,16 +188,35 @@ export default function CashflowPage() {
 
   const yearGroups = useMemo(() => groupMonthsByYear(monthGroups), [monthGroups]);
 
+  const displayedExpandedYears = useMemo(() => {
+    if (!contractNumberSearchActive) return expandedYears;
+
+    const next = { ...expandedYears };
+    yearGroups.forEach((yearGroup) => {
+      if (next[yearGroup.year] !== false) {
+        next[yearGroup.year] = true;
+      }
+    });
+    return next;
+  }, [contractNumberSearchActive, expandedYears, yearGroups]);
+
   const totalCashflow = useMemo(
     () => filteredCashflowItems.reduce((sum, item) => sum + item.amount, 0),
     [filteredCashflowItems]
   );
 
   const toggleYear = (year: number) => {
-    setExpandedYears((previous) => ({
-      ...previous,
-      [year]: !previous[year],
-    }));
+    setExpandedYears((previous) => {
+      const isCurrentlyOpen =
+        contractNumberSearchActive && previous[year] !== false
+          ? true
+          : Boolean(previous[year]);
+
+      return {
+        ...previous,
+        [year]: !isCurrentlyOpen,
+      };
+    });
   };
 
   return (
@@ -174,8 +238,14 @@ export default function CashflowPage() {
                 hasTeam={hasTeam}
                 scopeFilter={scopeFilter}
                 productFilter={productFilter}
+                contractNumberQuery={contractNumberQuery}
+                contractNumberSearchActive={contractNumberSearchActive}
+                contractNumberMatchCount={contractSearchStats.itemCount}
+                contractNumberContractCount={contractSearchStats.contractCount}
+                contractNumberSummary={contractSearchStats.summary}
                 onScopeChange={setScopeFilter}
                 onProductChange={setProductFilter}
+                onContractNumberChange={setContractNumberQuery}
               />
             </div>
           )}
@@ -249,14 +319,16 @@ export default function CashflowPage() {
               </p>
             ) : yearGroups.length === 0 ? (
               <p className="rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
-                {isTipsterMode
+                {contractNumberSearchActive
+                  ? "Smlouva s tímto číslem není v aktuálním cashflow výběru."
+                  : isTipsterMode
                   ? "Zatím nemáš žádné sjednané tipy, ze kterých by šlo cashflow zobrazit."
                   : "Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat."}
               </p>
             ) : (
               <CashflowAccordion
                 yearGroups={yearGroups}
-                expandedYears={expandedYears}
+                expandedYears={displayedExpandedYears}
                 onToggleYear={toggleYear}
                 onSelectMonth={setSelectedMonth}
                 tipsterMode={isTipsterMode}

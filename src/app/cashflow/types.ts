@@ -68,6 +68,8 @@ export type CashflowItem = {
   source?: "own" | "manager";
   contractNumber?: string | null;
   clientName?: string | null;
+  inputAmount?: number | null;
+  contractStatus?: "active" | "storno" | "dozita" | string | null;
   ownerEmail: string | null;
   entryId: string | null;
   isManagerOverride?: boolean;
