@@ -15,6 +15,7 @@ import {
   Building2,
   Calculator,
   CarFront,
+  Clock3,
   Files,
   FileSignature,
   Gauge,
@@ -389,6 +390,14 @@ export default function ToolsPage() {
         description: "Pomůcka pro přípravu výpovědi smlouvy.",
         icon: ScrollText,
         href: "/pomucky/vypoved-smlouvy",
+      },
+      {
+        key: "jak-stiham-vypoved-smlouvy",
+        category: "Obecné",
+        title: "Jak stíhám výpověď smlouvy?",
+        description: "Ověření výpovědních lhůt a výpočet data ukončení smlouvy.",
+        icon: Clock3,
+        href: "/pomucky/jak-stiham-vypoved-smlouvy",
       },
       {
         key: "tvorba",
