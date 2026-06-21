@@ -908,7 +908,8 @@ export const hasContractAccess = ({
 const toContractResponseItem = (
   docId: string,
   ownerEmail: string,
-  data: ContractDoc
+  data: ContractDoc,
+  adviserName?: string | null
 ): ContractResponseItem => {
   const normalizedOwner = normalizeEmail(ownerEmail);
   return {
@@ -923,6 +924,7 @@ const toContractResponseItem = (
     stornoDate: toMillis((data as any).stornoDate),
     id: docId,
     adviserEmail: normalizedOwner,
+    adviserName: normalizeOptionalDisplayName(adviserName) ?? null,
     userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
   };
 };
@@ -932,17 +934,21 @@ const toContractListResponseItem = ({
   ownerEmail,
   data,
   shape,
+  adviserName,
 }: {
   docId: string;
   ownerEmail: string;
   data: ContractDoc;
   shape: ContractListResponseShape;
+  adviserName?: string | null;
 }): ContractResponseItem => {
+  const normalizedAdviserName = normalizeOptionalDisplayName(adviserName) ?? null;
   if (shape === "home") {
     const normalizedOwner = normalizeEmail(ownerEmail);
     return {
       id: docId,
       adviserEmail: normalizedOwner,
+      adviserName: normalizedAdviserName,
       userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
       contractSignedDate: toMillis(data.contractSignedDate),
       createdAt: toMillis(data.createdAt),
@@ -957,7 +963,7 @@ const toContractListResponseItem = ({
     };
   }
 
-  return toContractResponseItem(docId, ownerEmail, data);
+  return toContractResponseItem(docId, ownerEmail, data, normalizedAdviserName);
 };
 
 const normalizeRootEntryId = (entry: ContractDoc): string => {
@@ -2027,8 +2033,8 @@ const profileFromRaw = (
     docId,
     email,
     name:
-      normalizeOptionalDisplayName(raw.name) ||
       normalizeOptionalDisplayName(raw.fullName) ||
+      normalizeOptionalDisplayName(raw.name) ||
       null,
     userId:
       typeof raw.userId === "string" && raw.userId.trim().length > 0
@@ -4307,6 +4313,10 @@ const buildUserTree = async (): Promise<UserTreeResult> => {
     const position = (data.position as Position | null | undefined) ?? null;
     const candidate: UserNode = {
       email,
+      name:
+        normalizeOptionalDisplayName(data.fullName) ||
+        normalizeOptionalDisplayName(data.name) ||
+        null,
       managerEmail: managerEmail || null,
       position,
       accountType: resolveAccountType(data),
@@ -4319,9 +4329,13 @@ const buildUserTree = async (): Promise<UserTreeResult> => {
 
     // Keep the record that contains more hierarchy information.
     const existingScore =
-      (existing.position ? 1 : 0) + (existing.managerEmail ? 1 : 0);
+      (existing.position ? 1 : 0) +
+      (existing.managerEmail ? 1 : 0) +
+      (existing.name ? 1 : 0);
     const candidateScore =
-      (candidate.position ? 1 : 0) + (candidate.managerEmail ? 1 : 0);
+      (candidate.position ? 1 : 0) +
+      (candidate.managerEmail ? 1 : 0) +
+      (candidate.name ? 1 : 0);
     if (candidateScore > existingScore) {
       usersByEmail.set(email, candidate);
     }
@@ -4337,6 +4351,7 @@ const buildUserTree = async (): Promise<UserTreeResult> => {
         : null;
     return {
       email: user.email,
+      name: user.name,
       managerEmail,
       position: user.position,
       accountType: user.accountType,
@@ -4480,7 +4495,8 @@ async function fetchContractsForOwners(
   cursor: ParsedCursor | null,
   pageSize: number,
   filters?: ContractListFilters,
-  responseShape: ContractListResponseShape = "full"
+  responseShape: ContractListResponseShape = "full",
+  ownerNames?: Map<string, string | null>
 ): Promise<{
   list: ContractResponseItem[];
   hasMore: boolean;
@@ -4568,6 +4584,7 @@ async function fetchContractsForOwners(
           ownerEmail,
           data,
           shape: responseShape,
+          adviserName: ownerNames?.get(ownerEmail) ?? null,
         })
       );
     };
@@ -4649,6 +4666,7 @@ async function fetchContractsForOwners(
         ownerEmail,
         data,
         shape: responseShape,
+        adviserName: ownerNames?.get(ownerEmail) ?? null,
       })
     );
   };
@@ -5076,6 +5094,7 @@ export async function handleContractsGet(
   if (!guard.ok) return guard.response;
   const { ctx, withRateLimit } = guard;
   const { email, position, teamEmails, users } = ctx;
+  const usersByEmail = new Map(users.map((item) => [item.email, item]));
 
   const search = req.nextUrl.searchParams;
   const detailOwnerEmail = normalizeEmail(search.get("ownerEmail"));
@@ -5122,7 +5141,8 @@ export async function handleContractsGet(
     const contract = toContractResponseItem(
       detailSnap.id,
       detailOwnerEmail,
-      contractRaw
+      contractRaw,
+      usersByEmail.get(detailOwnerEmail)?.name ?? null
     );
 
     const includeTimeline =
@@ -5148,7 +5168,8 @@ export async function handleContractsGet(
           toContractResponseItem(
             snap.id,
             detailOwnerEmail,
-            snap.data() as ContractDoc
+            snap.data() as ContractDoc,
+            usersByEmail.get(detailOwnerEmail)?.name ?? null
           )
         );
 
@@ -5189,7 +5210,6 @@ export async function handleContractsGet(
       }
     }
 
-    const usersByEmail = new Map(users.map((item) => [item.email, item]));
     const ownerNode = usersByEmail.get(detailOwnerEmail) ?? null;
     const ownerPosition = ownerNode?.position ?? null;
     let managerEmail = normalizeEmail(ownerNode?.managerEmail ?? null);
@@ -5239,6 +5259,9 @@ export async function handleContractsGet(
   const includeTeam = search.get("includeTeam") === "1" || search.get("includeTeam") === "true";
   const responseShape: ContractListResponseShape =
     search.get("shape") === "home" ? "home" : "full";
+  const ownerNamesByEmail = new Map(
+    users.map((item) => [item.email, normalizeOptionalDisplayName(item.name) ?? null] as const)
+  );
   const cursor = parseCursor(search);
   const listFilters = parseContractListFilters(search);
   const limitParam = Number(search.get("limit"));
@@ -5274,8 +5297,22 @@ export async function handleContractsGet(
 
   if (shouldFetchTeamInParallel) {
     [primaryRes, teamRes] = await Promise.all([
-      fetchContractsForOwners(owners, cursor, pageSize, listFilters, responseShape),
-      fetchContractsForOwners(teamEmails, null, pageSize, undefined, responseShape),
+      fetchContractsForOwners(
+        owners,
+        cursor,
+        pageSize,
+        listFilters,
+        responseShape,
+        ownerNamesByEmail
+      ),
+      fetchContractsForOwners(
+        teamEmails,
+        null,
+        pageSize,
+        undefined,
+        responseShape,
+        ownerNamesByEmail
+      ),
     ]);
   } else {
     primaryRes = await fetchContractsForOwners(
@@ -5283,7 +5320,8 @@ export async function handleContractsGet(
       cursor,
       pageSize,
       listFilters,
-      responseShape
+      responseShape,
+      ownerNamesByEmail
     );
     if (includeTeam && teamEmails.length > 0) {
       teamRes = await fetchContractsForOwners(
@@ -5291,7 +5329,8 @@ export async function handleContractsGet(
         null,
         pageSize,
         undefined,
-        responseShape
+        responseShape,
+        ownerNamesByEmail
       );
     }
   }

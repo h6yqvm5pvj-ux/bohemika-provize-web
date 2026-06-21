@@ -95,8 +95,8 @@ function candidateFromRaw(
     docId,
     email,
     name:
-      normalizeOptionalName(raw.name) ||
       normalizeOptionalName(raw.fullName) ||
+      normalizeOptionalName(raw.name) ||
       null,
     accountType: resolveAccountType(raw),
   };

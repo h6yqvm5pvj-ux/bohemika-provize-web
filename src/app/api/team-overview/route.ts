@@ -683,10 +683,14 @@ function candidateFromDoc(
     accountType === "tipster" ? tipRecipientEmail : managerEmail;
   const phoneNumber = normalizeOptionalText(data.phoneNumber, 40);
   const icoRaw = typeof data.ico === "string" ? data.ico.replace(/\D+/g, "") : "";
+  const fullName =
+    normalizeOptionalText(data.fullName, 200) ||
+    normalizeOptionalText(data.name, 200) ||
+    nameFromEmail(email);
 
   return {
     email,
-    name: nameFromEmail(email),
+    name: fullName,
     accountType,
     position: hasValidTimeline ? timelinePosition : fallbackPosition,
     commissionMode:

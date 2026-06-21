@@ -16,6 +16,7 @@ import {
 export type EntryDoc = {
   id: string;
   userEmail?: string | null;
+  adviserName?: string | null;
   createdAt?: any;
   contractSignedDate?: any;
   items?: CommissionResultItemDTO[];
@@ -99,7 +100,7 @@ type ContractsApiResponse = {
   position?: Position | null;
   hasTeam?: boolean;
   teamEmails?: string[];
-  contracts?: (EntryDoc & { adviserEmail?: string | null })[];
+  contracts?: (EntryDoc & { adviserEmail?: string | null; adviserName?: string | null })[];
   hasMore?: boolean;
   nextCursorToken?: string | null;
   nextCursor?: number | null;
@@ -460,6 +461,7 @@ export function useHomeData({
 
             const chunk = (response.contracts ?? []) as (EntryDoc & {
               adviserEmail?: string | null;
+              adviserName?: string | null;
             })[];
             if (chunk.length === 0) break;
 

@@ -519,6 +519,7 @@ const ONLINE_CARD_OFFICE_MAX_LEN = 160;
 const ONLINE_CARD_OFFICE_PHOTOS_MAX = 3;
 const ONLINE_CARD_OFFICE_PHOTO_URL_MAX_LEN = 1_200;
 const ONLINE_CARD_PUBLIC_BASE_URL = "https://bohemka.app";
+const PROFILE_FULL_NAME_MAX_LEN = 120;
 
 const slugifyOnlineCard = (value: unknown): string => {
   if (typeof value !== "string") return "";
@@ -620,6 +621,62 @@ const nameFromEmail = (email: string): string => {
   const parts = local.split(/[.\-_]/).filter(Boolean);
   if (parts.length === 0) return "";
   return parts.map((part) => titleCaseWord(part)).join(" ");
+};
+
+type SettingsTeamMember = {
+  email?: string | null;
+  name?: string | null;
+  managerEmail?: string | null;
+  teamParentEmail?: string | null;
+};
+
+type SettingsTeamMembersResponse = {
+  ok?: boolean;
+  members?: SettingsTeamMember[];
+  error?: string;
+};
+
+type DirectManagerInfo = {
+  email: string;
+  name: string;
+};
+
+const resolveDirectManagerFromTeam = async (
+  user: FirebaseUser,
+  userEmail: string,
+  fallbackManagerEmail: string
+): Promise<DirectManagerInfo | null> => {
+  const payload = await fetchAuthedJsonOrThrow<SettingsTeamMembersResponse>(
+    user,
+    "/api/team-overview?action=members&includeAncestors=1",
+    { method: "GET" }
+  );
+  const members = Array.isArray(payload?.members) ? payload.members : [];
+  const byEmail = new Map<string, SettingsTeamMember>();
+
+  members.forEach((member) => {
+    const email = normalizeEmail(member.email);
+    if (email) byEmail.set(email, member);
+  });
+
+  const ownMember = byEmail.get(normalizeEmail(userEmail));
+  const managerEmail =
+    normalizeEmail(ownMember?.managerEmail) ||
+    normalizeEmail(ownMember?.teamParentEmail) ||
+    fallbackManagerEmail;
+
+  if (!managerEmail) return null;
+
+  const manager = byEmail.get(managerEmail);
+  const managerName =
+    typeof manager?.name === "string" && manager.name.trim()
+      ? manager.name.trim()
+      : nameFromEmail(managerEmail);
+
+  return {
+    email: managerEmail,
+    name: managerName || managerEmail,
+  };
 };
 
 const defaultOnlineCardFromUser = (
@@ -966,6 +1023,9 @@ export default function SettingsPage() {
 
   const [position, setPosition] = useState<Position>("manazer7");
   const [mode, setMode] = useState<CommissionMode>("accelerated");
+  const [fullName, setFullName] = useState("");
+  const [managerEmail, setManagerEmail] = useState("");
+  const [directManager, setDirectManager] = useState<DirectManagerInfo | null>(null);
   const [agencyNumber, setAgencyNumber] = useState("");
   const [ico, setIco] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -1315,8 +1375,24 @@ export default function SettingsPage() {
           profile?: Record<string, unknown>;
         }>(user, "/api/user/profile", { method: "GET" });
 
+        let profileManagerEmailForHierarchy = "";
+
         if (payload?.hasProfile) {
           const data = payload.profile ?? {};
+          const profileFullName =
+            typeof data.fullName === "string" && data.fullName.trim()
+              ? data.fullName.trim()
+              : typeof data.name === "string" && data.name.trim()
+                ? data.name.trim()
+                : nameFromEmail(email);
+          setFullName(profileFullName);
+          const profileManagerEmail =
+            typeof data.managerEmail === "string"
+              ? normalizeEmail(data.managerEmail)
+              : "";
+          profileManagerEmailForHierarchy = profileManagerEmail;
+          setManagerEmail(profileManagerEmail);
+          setDirectManager(null);
 
           if (data.position) {
             setPosition(data.position as Position);
@@ -1413,6 +1489,9 @@ export default function SettingsPage() {
           setPositionTimelineDraft([]);
           setPositionTimelineLocked(false);
           setTimelineSetupRequired(true);
+          setFullName(nameFromEmail(email));
+          setManagerEmail("");
+          setDirectManager(null);
           setAgencyNumber("");
           setPhoneNumber("");
           setProfileStatus(null);
@@ -1441,6 +1520,28 @@ export default function SettingsPage() {
               applyMotionPreference(true);
             }
           }
+        }
+
+        try {
+          const resolvedManager = await resolveDirectManagerFromTeam(
+            user,
+            email,
+            profileManagerEmailForHierarchy
+          );
+          setDirectManager(resolvedManager);
+          if (resolvedManager?.email) {
+            setManagerEmail(resolvedManager.email);
+          }
+        } catch (managerError) {
+          console.warn("Přímého manažera se nepodařilo načíst z týmové hierarchie:", managerError);
+          setDirectManager(
+            profileManagerEmailForHierarchy
+              ? {
+                  email: profileManagerEmailForHierarchy,
+                  name: nameFromEmail(profileManagerEmailForHierarchy) || profileManagerEmailForHierarchy,
+                }
+              : null
+          );
         }
       } catch (e) {
         console.error("Chyba při načítání nastavení:", e);
@@ -1752,9 +1853,24 @@ export default function SettingsPage() {
   };
 
   const handleSaveProfile = async () => {
+    const nextFullName = fullName.trim();
     const nextAgencyNumber = agencyNumber.trim();
     const nextIco = ico.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN);
     const nextPhoneNumber = phoneNumber.trim();
+    if (!nextFullName) {
+      setProfileStatus({
+        type: "error",
+        message: "Jméno a příjmení musí být vyplněné.",
+      });
+      return;
+    }
+    if (nextFullName.length > PROFILE_FULL_NAME_MAX_LEN) {
+      setProfileStatus({
+        type: "error",
+        message: `Jméno a příjmení může mít maximálně ${PROFILE_FULL_NAME_MAX_LEN} znaků.`,
+      });
+      return;
+    }
     if (nextAgencyNumber.length > AGENCY_NUMBER_MAX_LEN) {
       setProfileStatus({
         type: "error",
@@ -1781,6 +1897,7 @@ export default function SettingsPage() {
     setProfileStatus(null);
     try {
       const saved = await saveUserFields({
+        fullName: nextFullName,
         agencyNumber: nextAgencyNumber,
         ico: nextIco,
         phoneNumber: nextPhoneNumber,
@@ -1789,6 +1906,7 @@ export default function SettingsPage() {
         setProfileStatus({ type: "error", message: saved.error });
         return;
       }
+      setFullName(nextFullName);
       setAgencyNumber(nextAgencyNumber);
       setIco(nextIco);
       setPhoneNumber(nextPhoneNumber);
@@ -2893,10 +3011,52 @@ export default function SettingsPage() {
 
   const userEmail = user.email ?? "Neznámý e-mail";
   const normalizedUserEmail = normalizeEmail(user.email);
-  const profileDisplayName =
+  const profileFullNameDisplay =
+    fullName.trim() ||
     onlineCardDraft.fullName.trim() ||
     (normalizedUserEmail ? nameFromEmail(normalizedUserEmail) : "Profil uživatele");
+  const profileDisplayName =
+    profileFullNameDisplay;
   const profileInitial = profileDisplayName.trim().charAt(0).toUpperCase() || "P";
+  const profilePositionLabel =
+    POSITIONS.find((item) => item.id === position)?.label ?? "Nenastaveno";
+  const commissionModeLabel =
+    COMMISSION_MODES.find((item) => item.id === mode)?.label ?? "Nenastaveno";
+  const managerNameDisplay =
+    directManager?.name ||
+    (managerEmail ? nameFromEmail(managerEmail) || managerEmail : "Nenastaveno");
+  const managerEmailDisplay = directManager?.email || managerEmail;
+  const profileCompletionItems = [
+    fullName.trim(),
+    agencyNumber.trim(),
+    ico.trim(),
+    phoneNumber.trim(),
+  ];
+  const profileCompletionCount = profileCompletionItems.filter(Boolean).length;
+  const profileCompletionPercent = Math.round(
+    (profileCompletionCount / profileCompletionItems.length) * 100
+  );
+  const securityScoreItems = [
+    true,
+    mfaEnabled,
+    passkeyCredentials.length > 0,
+    true,
+  ];
+  const securityScoreCount = securityScoreItems.filter(Boolean).length;
+  const securityScorePercent = Math.round(
+    (securityScoreCount / securityScoreItems.length) * 100
+  );
+  const securityScoreLabel =
+    securityScorePercent >= 100
+      ? "Výborné"
+      : securityScorePercent >= 75
+        ? "Dobré"
+        : "Doplnit";
+  const passkeySummary = passkeysLoading
+    ? "Načítám"
+    : passkeyCredentials.length > 0
+      ? `${passkeyCredentials.length} aktivní`
+      : "Nenastaveno";
   const mfaIssuer = "Bohemka.App";
   const mfaAccountName = normalizedUserEmail || userEmail;
   const mfaQrCodeUri = mfaEnrollmentSecret
@@ -3654,8 +3814,89 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
+                    <div className="border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <div className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                                Úplnost profilu
+                              </p>
+                              <p className="mt-1 text-2xl font-black text-emerald-950">
+                                {profileCompletionPercent} %
+                              </p>
+                            </div>
+                            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-[0_10px_20px_rgba(16,185,129,0.16)]">
+                              <CheckCircle2 size={21} strokeWidth={2.2} aria-hidden="true" />
+                            </span>
+                          </div>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-100">
+                            <div
+                              className="h-full rounded-full bg-emerald-600"
+                              style={{ width: `${profileCompletionPercent}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Pozice a režim
+                          </p>
+                          <p className="mt-2 text-sm font-black text-slate-950">
+                            {profilePositionLabel}
+                          </p>
+                          <p className="mt-1 text-xs font-semibold text-slate-500">
+                            Provize: {commissionModeLabel}
+                          </p>
+                        </div>
+
+                        <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Přímý manažer
+                          </p>
+                          <p className="mt-2 text-sm font-black text-slate-950">
+                            {managerNameDisplay}
+                          </p>
+                          <p className="mt-1 text-xs font-semibold text-slate-500">
+                            {managerEmailDisplay
+                              ? managerEmailDisplay
+                              : "Není doplněn v týmové hierarchii"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="flex-1 space-y-6 px-5 py-5 sm:px-7 sm:py-6">
                       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        <div className="xl:col-span-2">
+                          <label className="mb-2 block text-xs font-semibold text-slate-600">
+                            Jméno a příjmení
+                          </label>
+                          <div className="relative">
+                            <UserRound
+                              size={17}
+                              strokeWidth={2}
+                              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                              aria-hidden="true"
+                            />
+                            <input
+                              type="text"
+                              className={`${fieldClass} min-h-[54px] rounded-[18px] border-slate-200 pl-11 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10`}
+                              value={fullName}
+                              onChange={(event) => {
+                                setFullName(event.target.value.slice(0, PROFILE_FULL_NAME_MAX_LEN));
+                                setProfileStatus(null);
+                              }}
+                              placeholder="Jméno a příjmení"
+                              maxLength={PROFILE_FULL_NAME_MAX_LEN}
+                              disabled={profileSaving}
+                            />
+                          </div>
+                          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                            Toto jméno se používá v PDF, pomůckách, exportech, notifikacích a týmových přehledech.
+                          </p>
+                        </div>
+
                         <div className="xl:col-span-2">
                           <label className="mb-2 block text-xs font-semibold text-slate-600">
                             E-mail
@@ -5567,6 +5808,66 @@ export default function SettingsPage() {
                   />
                   2FA {mfaEnabled ? "zapnuto" : "vypnuto"}
                 </span>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Stav ochrany
+                      </p>
+                      <p className="mt-1 text-2xl font-black text-slate-950">
+                        {securityScoreLabel}
+                      </p>
+                    </div>
+                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                      <ShieldCheck size={21} strokeWidth={2.2} aria-hidden="true" />
+                    </span>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#10b981_100%)]"
+                      style={{ width: `${securityScorePercent}%` }}
+                    />
+                  </div>
+                </article>
+
+                <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Automatické odhlášení
+                  </p>
+                  <p className="mt-2 text-xl font-black text-slate-950">
+                    120 minut
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    Neaktivní relace se sama ukončí.
+                  </p>
+                </article>
+
+                <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Dvoufaktor
+                  </p>
+                  <p className={`mt-2 text-xl font-black ${mfaEnabled ? "text-emerald-700" : "text-amber-700"}`}>
+                    {mfaEnabled ? "Zapnuto" : "Vypnuto"}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    Microsoft Authenticator.
+                  </p>
+                </article>
+
+                <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Passkeys
+                  </p>
+                  <p className={`mt-2 text-xl font-black ${passkeyCredentials.length > 0 ? "text-emerald-700" : "text-slate-950"}`}>
+                    {passkeySummary}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    Face ID / Touch ID podle zařízení.
+                  </p>
+                </article>
               </div>
 
               <div className="grid gap-4 xl:grid-cols-[minmax(430px,1.12fr)_minmax(320px,0.88fr)] xl:items-start">

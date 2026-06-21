@@ -512,15 +512,15 @@ export function durationTooltip(
 ): string | null {
   if (product === "neon") {
     if (neonHistoricalBySignedDate) {
-      return "U NEON smluv sjednaných od 01.10.2019 do 30.06.2024 se pro výpočet provize používá maximálně 20 let. V tomto období se nepoužívá režim zrychlený/běžný.";
+      return "Uživatel musí zadat celkovou dobu trvání smlouvy. U NEON smluv sjednaných od 01.10.2019 do 30.06.2024 se pro výpočet provize používá maximálně 20 let. V tomto období se nepoužívá režim zrychlený/běžný.";
     }
-    return "U NEON se od 01.07.2024 pro výpočet provize používá maximálně 15 let (pokud je doba kratší, použije se skutečná hodnota). Pro starší období 01.10.2019–30.06.2024 je limit 20 let.";
+    return "Uživatel musí zadat celkovou dobu trvání smlouvy. U NEON se od 01.07.2024 pro výpočet provize používá maximálně 15 let (pokud je doba kratší, použije se skutečná hodnota). Pro starší období 01.10.2019–30.06.2024 je limit 20 let.";
   }
   if (product === "flexi") {
-    return "Zadej dobu trvání smlouvy v letech (např. do roku 2050). Následná provize od 6. roku se počítá ročně do konce zadané doby.";
+    return "Uživatel musí zadat celkovou dobu trvání smlouvy v letech (např. do roku 2050). Následná provize od 6. roku se počítá ročně do konce zadané doby.";
   }
   if (product === "maximaMaxEfekt") {
-    return "Zadej dobu trvání smlouvy, maximálně však 20 let. Pokud je smlouva uzavřena na déle než 20 let, zadej 20.";
+    return "Uživatel musí zadat celkovou dobu trvání smlouvy, maximálně však 20 let. Pokud je smlouva uzavřena na déle než 20 let, zadej 20.";
   }
   return null;
 }

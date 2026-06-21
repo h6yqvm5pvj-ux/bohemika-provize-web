@@ -279,6 +279,7 @@ export type ContractListFilters = {
 
 export type UserNode = {
   email: string;
+  name: string | null;
   managerEmail: string | null;
   position: Position | null;
   accountType: "advisor" | "tipster";

@@ -250,7 +250,7 @@ async function loadTeamPushRecipients(
       );
       if (tokens.length === 0) return null;
 
-      const nameRaw = merged.name;
+      const nameRaw = merged.fullName ?? merged.name;
       const name =
         typeof nameRaw === "string" && nameRaw.trim().length > 0
           ? nameRaw.trim()

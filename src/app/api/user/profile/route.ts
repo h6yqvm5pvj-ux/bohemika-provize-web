@@ -95,9 +95,11 @@ const ONLINE_CARD_OFFICE_MAX_LEN = 160;
 const ONLINE_CARD_OFFICE_PHOTOS_MAX = 3;
 const ONLINE_CARD_OFFICE_PHOTO_URL_MAX_LEN = 1_200;
 const AGENCY_NUMBER_MAX_LEN = 80;
+const FULL_NAME_MAX_LEN = 120;
 const PHONE_NUMBER_MAX_LEN = 40;
 const PROFILE_ICO_MAX_LEN = 8;
 const ALLOWED_PATCH_KEYS = new Set([
+  "fullName",
   "commissionMode",
   "agencyNumber",
   "ico",
@@ -823,6 +825,18 @@ function buildPatchFromBody(
       return { error: "Pole commissionMode má neplatnou hodnotu." };
     }
     patch.commissionMode = value;
+  }
+
+  if (body.fullName != null) {
+    const value = normalizeOptionalText(body.fullName, FULL_NAME_MAX_LEN);
+    if (value == null) {
+      return { error: `Jméno a příjmení může mít maximálně ${FULL_NAME_MAX_LEN} znaků.` };
+    }
+    if (!value) {
+      return { error: "Jméno a příjmení musí být vyplněné." };
+    }
+    patch.fullName = value;
+    patch.name = value;
   }
 
   if (body.agencyNumber != null) {

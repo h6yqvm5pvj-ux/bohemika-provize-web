@@ -106,6 +106,10 @@ function SplitTextHeading({ text }: { text: string }) {
   );
 }
 
+function cleanDisplayName(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function HomeBackgroundLines() {
   return (
     <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
@@ -1371,8 +1375,11 @@ export default function HomePage() {
     for (const entry of teamEntries) {
       const email = (entry.userEmail ?? "").toLowerCase();
       if (!email) continue;
-      if (map.has(email)) continue;
-      map.set(email, { email, name: nameFromEmail(email) });
+      const adviserName = cleanDisplayName(entry.adviserName);
+      const existing = map.get(email);
+      if (!existing || adviserName) {
+        map.set(email, { email, name: adviserName || existing?.name || nameFromEmail(email) });
+      }
     }
     return Array.from(map.values()).sort((a, b) =>
       a.name.localeCompare(b.name, HOME_LOCALES[language])
@@ -1476,6 +1483,7 @@ export default function HomePage() {
     ];
 
     const sums = new Map<string, number>();
+    const names = new Map<string, string>();
 
     for (const entry of teamEntries) {
       const signed = entrySignedDate(entry);
@@ -1504,6 +1512,10 @@ export default function HomePage() {
 
       const email = entry.userEmail ?? "";
       if (!email) continue;
+      const adviserName = cleanDisplayName(entry.adviserName);
+      if (adviserName || !names.has(email)) {
+        names.set(email, adviserName || nameFromEmail(email));
+      }
 
       const rawPremium = entry.inputAmount ?? 0;
       if (!rawPremium || !Number.isFinite(rawPremium)) continue;
@@ -1520,7 +1532,7 @@ export default function HomePage() {
     const rows: TeamLeaderboardEntry[] = Array.from(sums.entries())
       .map(([email, totalPremium]) => ({
         email,
-        name: nameFromEmail(email),
+        name: names.get(email) || nameFromEmail(email),
         totalPremium,
       }))
       .sort((a, b) => b.totalPremium - a.totalPremium);

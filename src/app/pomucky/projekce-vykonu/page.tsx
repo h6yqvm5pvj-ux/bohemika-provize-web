@@ -47,6 +47,7 @@ type AdvisorPosition =
 type UserProfileApiResponse = {
   ok?: boolean;
   profile?: {
+    fullName?: string | null;
     position?: Position | null;
   };
 };
@@ -279,6 +280,7 @@ function addPayouts(target: Map<number, number>, payouts: Payout[]) {
 
 export default function ProjectionPage() {
   const [user, setUser] = useState<User | null>(null);
+  const [profileFullName, setProfileFullName] = useState<string | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
 
   const [lifeMonthly, setLifeMonthly] = useState("0");
@@ -310,6 +312,7 @@ export default function ProjectionPage() {
     const unsub = onAuthStateChanged(auth, async (current) => {
       setUser(current);
       if (!current?.email) {
+        setProfileFullName(null);
         setPosition(null);
         return;
       }
@@ -319,6 +322,11 @@ export default function ProjectionPage() {
           "/api/user/profile",
           { method: "GET" }
         );
+        const fullName =
+          typeof payload?.profile?.fullName === "string"
+            ? payload.profile.fullName.trim()
+            : "";
+        setProfileFullName(fullName || null);
         const profilePosition = payload?.profile?.position;
         if (typeof profilePosition === "string") {
           setPosition(profilePosition as Position);
@@ -327,6 +335,7 @@ export default function ProjectionPage() {
         }
       } catch (err) {
         console.error("Načtení profilu pro projekci výkonu selhalo:", err);
+        setProfileFullName(null);
         setPosition(null);
       }
     });
@@ -707,7 +716,7 @@ export default function ProjectionPage() {
     };
 
     const hasTeamData = teamYears.some((y) => y.total > 0);
-    const managerName = displayNameFromUser(user);
+    const managerName = profileFullName || displayNameFromUser(user);
 
     return (
       <div className="w-full max-w-none space-y-6">

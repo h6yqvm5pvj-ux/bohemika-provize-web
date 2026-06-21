@@ -119,6 +119,7 @@ type BlockEstimate = {
 type UserProfileApiResponse = {
   ok?: boolean;
   profile?: {
+    fullName?: string | null;
     position?: Position | null;
     managerEmail?: string | null;
   };
@@ -156,6 +157,7 @@ type RecipientOption = {
 
 export default function PlanProdukcePage() {
   const [user, setUser] = useState<User | null>(null);
+  const [profileFullName, setProfileFullName] = useState<string | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
   const [directManager, setDirectManager] = useState<RecipientOption | null>(null);
 
@@ -191,6 +193,7 @@ export default function PlanProdukcePage() {
       if (!alive) return;
       setUser(current);
       if (!current?.email) {
+        setProfileFullName(null);
         setPosition(null);
         setDirectManager(null);
         return;
@@ -204,6 +207,12 @@ export default function PlanProdukcePage() {
         if (!alive) return;
 
         const profilePosition = payload?.profile?.position;
+        const fullName =
+          typeof payload?.profile?.fullName === "string"
+            ? payload.profile.fullName.trim()
+            : "";
+        setProfileFullName(fullName || null);
+
         if (typeof profilePosition === "string") {
           setPosition(profilePosition as Position);
         } else {
@@ -238,6 +247,7 @@ export default function PlanProdukcePage() {
       } catch (err) {
         console.error("Načtení profilu pro plán produkce selhalo:", err);
         if (!alive) return;
+        setProfileFullName(null);
         setPosition(null);
         setDirectManager(null);
       }
@@ -312,7 +322,7 @@ export default function PlanProdukcePage() {
       timeStyle: "short",
     });
 
-    const fullName = nameFromEmail(user?.email);
+    const fullName = profileFullName || nameFromEmail(user?.email);
     const posLabel = positionLabel(position);
 
     const planRows = [

@@ -134,6 +134,7 @@ const ACCOUNT_SETUP_STEPS: { id: AccountSetupStepId; label: string }[] = [
 const MFA_ISSUER = "Bohemka.App";
 const MFA_FACTOR_LABEL = "Microsoft Authenticator";
 const MFA_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
+const AUTO_LOGOUT_AFTER_MS = 120 * 60 * 1000;
 const MICROSOFT_AUTHENTICATOR_APP_STORE_URL =
   "https://apps.apple.com/cz/app/microsoft-authenticator/id983156458";
 const MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL =
@@ -629,6 +630,65 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       console.error(e);
     }
   };
+
+  useEffect(() => {
+    if (!user || typeof window === "undefined") return;
+
+    let timeoutId: number | null = null;
+    let lastResetAt = 0;
+
+    const scheduleLogout = (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastResetAt < 1000) return;
+      lastResetAt = now;
+
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+
+      timeoutId = window.setTimeout(() => {
+        void signOut(auth)
+          .catch((error) => {
+            console.error("Automatické odhlášení se nepodařilo dokončit:", error);
+          })
+          .finally(() => {
+            window.location.href = "/login";
+          });
+      }, AUTO_LOGOUT_AFTER_MS);
+    };
+
+    const onActivity = () => scheduleLogout();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        scheduleLogout(true);
+      }
+    };
+    const activityEvents: Array<keyof WindowEventMap> = [
+      "focus",
+      "keydown",
+      "mousedown",
+      "mousemove",
+      "scroll",
+      "touchstart",
+      "wheel",
+    ];
+
+    scheduleLogout(true);
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, onActivity);
+    });
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, onActivity);
+      });
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [user]);
 
   // Načtení subscription profilu přes API
   const applySubscriptionPayload = useCallback((

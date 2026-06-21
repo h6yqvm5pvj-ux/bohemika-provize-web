@@ -82,6 +82,7 @@ type ContractDoc = {
   total?: number;
 
   userEmail?: string | null;
+  adviserName?: string | null;
   clientName?: string | null;
   clientEmail?: string | null;
   clientPhone?: string | null;
@@ -100,6 +101,8 @@ type ContractDoc = {
 type AppUser = {
   id: string;
   email: string | null;
+  fullName?: string | null;
+  name?: string | null;
   position: Position | null;
   managerEmail?: string | null;
 };
@@ -307,6 +310,14 @@ function adviserNameFromEmail(email?: string | null): string {
   return parts
     .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
     .join(" ");
+}
+
+function cleanDisplayName(value?: string | null): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function adviserLabelForEmail(email: string, knownName?: string | null): string {
+  return cleanDisplayName(knownName) || adviserNameFromEmail(email) || email;
 }
 
 function nextAnniversaryDate(start: Date, now: Date): Date {
@@ -685,7 +696,10 @@ function ContractsPageContent() {
   const [selectedSubordinates, setSelectedSubordinates] = useState<Set<string>>(new Set());
   const [subordinateSearchText, setSubordinateSearchText] = useState("");
   const [listMicroAnimating, setListMicroAnimating] = useState(false);
+  const [searchProgress, setSearchProgress] = useState(0);
+  const [searchProgressVisible, setSearchProgressVisible] = useState(false);
   const contractsListRef = useRef<HTMLDivElement | null>(null);
+  const searchProgressHideTimerRef = useRef<number | null>(null);
   const [contractsColumns, setContractsColumns] = useState(1);
   const [contractsWindowMetrics, setContractsWindowMetrics] = useState({
     scrollY: 0,
@@ -696,6 +710,7 @@ function ContractsPageContent() {
   const shouldRestoreView = searchParams?.get("restore") === "1";
   const normalizedUserEmail = normalizeEmail(user?.email);
   const deferredSearchText = useDeferredValue(searchText);
+  const hasImmediateSearchQuery = normalizeSearchValue(searchText).length > 0;
   const hasSearchQuery = normalizeSearchValue(deferredSearchText).length > 0;
   const canShowTeamToggle =
     isManagerPosition(currentUserPosition) || teamUsersRef.current.length > 0;
@@ -1176,21 +1191,28 @@ function ContractsPageContent() {
   const subordinateFilterOptions = useMemo(() => {
     if (!canShowTeamToggle) return [] as { email: string; label: string }[];
     const emails = new Set<string>();
+    const namesByEmail = new Map<string, string>();
 
     for (const member of teamUsersRef.current) {
       const email = normalizeEmail(member.email);
-      if (email) emails.add(email);
+      if (!email) continue;
+      emails.add(email);
+      const name = cleanDisplayName(member.fullName) || cleanDisplayName(member.name);
+      if (name) namesByEmail.set(email, name);
     }
 
     for (const contract of teamContracts) {
       const email = contractOwnerEmail(contract);
-      if (email) emails.add(email);
+      if (!email) continue;
+      emails.add(email);
+      const name = cleanDisplayName(contract.adviserName);
+      if (name) namesByEmail.set(email, name);
     }
 
     return Array.from(emails)
       .map((email) => ({
         email,
-        label: adviserNameFromEmail(email) || email,
+        label: adviserLabelForEmail(email, namesByEmail.get(email)),
       }))
       .sort((a, b) => {
         const labelCompare = a.label.localeCompare(b.label, "cs", {
@@ -1213,7 +1235,7 @@ function ContractsPageContent() {
     );
 
     return Array.from(selectedSubordinates)
-      .map((email) => knownByEmail.get(email) ?? { email, label: adviserNameFromEmail(email) || email })
+      .map((email) => knownByEmail.get(email) ?? { email, label: adviserLabelForEmail(email) })
       .sort((a, b) => {
         const labelCompare = a.label.localeCompare(b.label, "cs", {
           sensitivity: "base",
@@ -1641,6 +1663,61 @@ function ContractsPageContent() {
     serverFilterActive &&
     effectiveFilteredContracts.length === 0 &&
     (loading || loadingMore || isFilterPending);
+  const isSearchProgressComplete =
+    searchProgressVisible &&
+    hasImmediateSearchQuery &&
+    searchText === deferredSearchText &&
+    !loading &&
+    !loadingMore &&
+    !isFilterPending;
+
+  useEffect(() => {
+    if (searchProgressHideTimerRef.current != null) {
+      window.clearTimeout(searchProgressHideTimerRef.current);
+      searchProgressHideTimerRef.current = null;
+    }
+
+    if (!hasImmediateSearchQuery) {
+      setSearchProgressVisible(false);
+      setSearchProgress(0);
+      return;
+    }
+
+    setSearchProgressVisible(true);
+    setSearchProgress(0);
+  }, [searchText, hasImmediateSearchQuery]);
+
+  useEffect(() => {
+    if (!searchProgressVisible || !hasImmediateSearchQuery) return;
+
+    if (isSearchProgressComplete) {
+      setSearchProgress(100);
+      if (searchProgressHideTimerRef.current != null) {
+        window.clearTimeout(searchProgressHideTimerRef.current);
+      }
+      searchProgressHideTimerRef.current = window.setTimeout(() => {
+        setSearchProgressVisible(false);
+        setSearchProgress(0);
+        searchProgressHideTimerRef.current = null;
+      }, 550);
+      return () => {
+        if (searchProgressHideTimerRef.current != null) {
+          window.clearTimeout(searchProgressHideTimerRef.current);
+          searchProgressHideTimerRef.current = null;
+        }
+      };
+    }
+
+    const timer = window.setInterval(() => {
+      setSearchProgress((prev) => {
+        if (prev < 35) return Math.min(prev + 12, 35);
+        if (prev < 70) return Math.min(prev + 7, 70);
+        return Math.min(prev + 3, 95);
+      });
+    }, 120);
+
+    return () => window.clearInterval(timer);
+  }, [searchProgressVisible, hasImmediateSearchQuery, isSearchProgressComplete]);
 
   const persistContractsViewState = useCallback(() => {
     if (!normalizedUserEmail) return;
@@ -1862,49 +1939,46 @@ function ContractsPageContent() {
       <div className="min-h-screen w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl space-y-6 font-mono text-slate-900">
         {/* SEARCH BAR + FILTER + BULK ACTIONS */}
-        <div className="sticky top-16 z-40 space-y-2 rounded-2xl border border-slate-200/80 bg-slate-50/95 p-2 shadow-[0_8px_20px_rgba(15,23,42,0.06)] backdrop-blur supports-[backdrop-filter]:bg-slate-50/85 lg:top-2">
-          <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
-            <div className="ui-card ui-card-quiet flex flex-1 items-center gap-2 rounded-2xl bg-white px-4 py-2.5 xl:min-w-[320px]">
-              <span className="text-sm">🔍</span>
-              <input
-                type="text"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Hledat klienta nebo číslo smlouvy"
-                className="w-full border-none bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500"
-              />
+        <div className="sticky top-16 z-40 space-y-3 rounded-[28px] border border-slate-200/80 bg-white/88 p-3 shadow-[0_16px_38px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-white/78 lg:top-2">
+          <div className="grid gap-3 xl:grid-cols-[420px_minmax(0,1fr)_auto] xl:items-start">
+            <div className="space-y-2">
+              <div className="ui-card ui-card-quiet flex w-full items-center gap-2 rounded-2xl bg-white px-4 py-2.5">
+                <span className="text-sm">🔍</span>
+                <input
+                  type="text"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  placeholder="Hledat klienta nebo číslo smlouvy"
+                  className="w-full border-none bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500"
+                />
+              </div>
+
+              {searchProgressVisible && hasImmediateSearchQuery && (
+                <div
+                  className="w-full overflow-hidden rounded-2xl border border-emerald-100/80 bg-white/85 px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(searchProgress)}
+                  aria-label="Prohledávání smluv"
+                >
+                  <div className="mb-1.5 flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-600">
+                    <span className="truncate">Prohledávám databázi smluv</span>
+                    <span className="tabular-nums text-emerald-700">
+                      {Math.round(searchProgress)} %
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-[linear-gradient(90deg,#10b981_0%,#22c55e_52%,#86efac_100%)] shadow-[0_0_18px_rgba(16,185,129,0.42)] transition-[width] duration-150 ease-out"
+                      style={{ width: `${searchProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
-              <button
-                type="button"
-                onClick={() => setFilterModalOpen(true)}
-                className="ui-focus inline-flex items-center gap-1.5 rounded-full border border-emerald-700 bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] px-3 py-1.5 text-xs font-semibold !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)] transition hover:brightness-95"
-              >
-                <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                <span>Filtr</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectMode) {
-                    clearSelection();
-                  } else {
-                    setSelectMode(true);
-                  }
-                }}
-                className={`ui-focus rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                  selectMode
-                    ? "border-rose-600 bg-rose-100 text-rose-700"
-                    : "border-emerald-700 bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)] hover:brightness-95"
-                }`}
-              >
-                {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-1.5 shadow-inner">
             {canShowTeamToggle && (
               <div className="ui-chip-group text-xs">
                 <button
@@ -1976,6 +2050,35 @@ function ContractsPageContent() {
               <AlertCircle size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
               <span>Jen nezaplacené</span>
             </button>
+          </div>
+
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-emerald-100/70 bg-emerald-50/70 p-1.5 shadow-[0_10px_24px_rgba(5,150,105,0.08)] xl:justify-end">
+              <button
+                type="button"
+                onClick={() => setFilterModalOpen(true)}
+                className="ui-focus inline-flex items-center gap-1.5 rounded-full border border-emerald-700 bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] px-3 py-1.5 text-xs font-semibold !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)] transition hover:brightness-95"
+              >
+                <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                <span>Filtr</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectMode) {
+                    clearSelection();
+                  } else {
+                    setSelectMode(true);
+                  }
+                }}
+                className={`ui-focus rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  selectMode
+                    ? "border-rose-600 bg-rose-100 text-rose-700"
+                    : "border-emerald-700 bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)] hover:brightness-95"
+                }`}
+              >
+                {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
+              </button>
+            </div>
           </div>
 
           {selectMode && (
@@ -2155,7 +2258,7 @@ function ContractsPageContent() {
 
                 const adviserName =
                   showTeam && ownerEmail
-                    ? adviserNameFromEmail(ownerEmail)
+                    ? cleanDisplayName(c.adviserName) || adviserNameFromEmail(ownerEmail)
                     : "";
                 const premiumDisplay = premiumDisplayForContract(c as ContractDoc);
                 const isEndorsement = c.entryType === "endorsement";
@@ -2392,44 +2495,36 @@ function ContractsPageContent() {
                             : c.paid
                               ? {
                                   label: "Zaplaceno",
-                                wrapper:
-                                  "border-emerald-200 bg-[linear-gradient(135deg,#dcfce7_0%,#bbf7d0_100%)] text-emerald-950 shadow-[0_12px_28px_rgba(16,185,129,0.34)] ring-1 ring-white/55",
-                                  style: {
-                                    background: "linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%)",
-                                    borderColor: "#bbf7d0",
-                                    color: "#052e16",
-                                  },
+                                  wrapper:
+                                    "border-emerald-200/75 bg-emerald-300/24 text-emerald-50 shadow-[0_10px_24px_rgba(5,150,105,0.28)] ring-1 ring-emerald-100/20",
+                                  style: undefined,
                                   iconWrap:
                                     "border-emerald-500/80 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(5,150,105,0.34)]",
-                                icon: (
-                                  <span
-                                    className="text-[13px] font-black leading-none"
-                                    aria-hidden="true"
-                                  >
-                                    ✓
-                                  </span>
-                                ),
-                              }
+                                  icon: (
+                                    <span
+                                      className="text-[13px] font-black leading-none"
+                                      aria-hidden="true"
+                                    >
+                                      ✓
+                                    </span>
+                                  ),
+                                }
                               : {
                                   label: "Nezaplaceno",
                                   wrapper:
-                                  "border-rose-200 bg-[linear-gradient(135deg,#ffe4e6_0%,#fecdd3_100%)] text-rose-950 shadow-[0_12px_28px_rgba(225,29,72,0.34)] ring-1 ring-white/55",
-                                  style: {
-                                    background: "linear-gradient(135deg,#ffe4e6 0%,#fecdd3 100%)",
-                                    borderColor: "#fecdd3",
-                                    color: "#4c0519",
-                                  },
+                                    "border-rose-200/75 bg-rose-300/24 text-rose-50 shadow-[0_10px_24px_rgba(225,29,72,0.28)] ring-1 ring-rose-100/20",
+                                  style: undefined,
                                   iconWrap:
                                     "border-rose-500/80 bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(225,29,72,0.34)]",
-                                icon: (
-                                  <span
-                                    className="text-[13px] font-black leading-none"
-                                    aria-hidden="true"
-                                  >
-                                    !
-                                  </span>
-                                ),
-                              };
+                                  icon: (
+                                    <span
+                                      className="text-[13px] font-black leading-none"
+                                      aria-hidden="true"
+                                    >
+                                      !
+                                    </span>
+                                  ),
+                                };
 
                           return (
                             <span

@@ -74,8 +74,8 @@ const nameFromEmail = (email: string): string => {
 };
 
 const pickProfileName = (data: Record<string, unknown>): string =>
-  normalizeText(data.name) ||
   normalizeText(data.fullName) ||
+  normalizeText(data.name) ||
   normalizeText(data.displayName);
 
 const resolveUserDocId = async ({

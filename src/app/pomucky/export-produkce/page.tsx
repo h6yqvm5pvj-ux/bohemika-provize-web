@@ -162,6 +162,7 @@ type PerUserStats = AggregatedStats & {
 
 type UserProfileApiResponse = {
   profile?: {
+    fullName?: string | null;
     managerEmail?: string | null;
   };
 };
@@ -748,6 +749,7 @@ function getDateRange(option: DateRangeOption): { from: Date; to: Date } {
 
 export default function ExportProductionPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [profileFullName, setProfileFullName] = useState<string | null>(null);
 
   const [dateRangeOption, setDateRangeOption] =
     useState<DateRangeOption>("last3");
@@ -838,6 +840,7 @@ export default function ExportProductionPage() {
     let alive = true;
     const loadDirectManager = async () => {
       if (!user?.email) {
+        setProfileFullName(null);
         setDirectManager(null);
         return;
       }
@@ -849,6 +852,12 @@ export default function ExportProductionPage() {
           { method: "GET" }
         );
         if (!alive) return;
+
+        const fullName =
+          typeof profilePayload?.profile?.fullName === "string"
+            ? profilePayload.profile.fullName.trim()
+            : "";
+        setProfileFullName(fullName || null);
 
         const managerEmail = normalizeEmail(profilePayload?.profile?.managerEmail);
         if (!managerEmail) {
@@ -879,6 +888,7 @@ export default function ExportProductionPage() {
       } catch (err) {
         console.error("Načtení přímého nadřízeného selhalo:", err);
         if (!alive) return;
+        setProfileFullName(null);
         setDirectManager(null);
       }
     };
@@ -1490,7 +1500,7 @@ export default function ExportProductionPage() {
 
     // hezký HTML layout (glassy cards)
 
-    const adviserNameRaw = nameFromEmail(email);
+    const adviserNameRaw = profileFullName || nameFromEmail(email);
     const adviserEmailRaw = email;
     const dateLabelRaw = labelForDateRange(dateRangeOption);
     const scopeLabelRaw = labelForScope(scopeOption);
