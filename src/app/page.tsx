@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
 import Link from "next/link";
-import { Mail, SlidersHorizontal } from "lucide-react";
+import { Globe2, Mail, SlidersHorizontal } from "lucide-react";
 
 import { auth } from "./firebase";
 import {
@@ -36,6 +36,7 @@ import { ProductionSummarySection } from "./home/components/ProductionSummarySec
 import { TeamLeaderboardSection } from "./home/components/TeamLeaderboardSection";
 import { TipsterHomeView } from "./home/components/TipsterHomeView";
 import { invalidateHomeCache, useHomeData } from "./home/useHomeData";
+import { InstitutionPortalLinksModal } from "./pomucky/InstitutionPortalLinksModal";
 import { type PaymentFrequency, type Product } from "./types/domain";
 import {
   entrySignedDate,
@@ -101,6 +102,83 @@ function SplitTextHeading({ text }: { text: string }) {
           ))}
         </span>
       ))}
+    </div>
+  );
+}
+
+function HomeBackgroundLines() {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
+      <svg
+        className="absolute -right-20 top-8 h-[34rem] w-[58rem] opacity-70"
+        viewBox="0 0 920 540"
+        fill="none"
+      >
+        <defs>
+          <linearGradient id="homeLinePrimary" x1="34" y1="74" x2="876" y2="386" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#ec4899" stopOpacity="0" />
+            <stop offset="0.38" stopColor="#ec4899" stopOpacity="0.34" />
+            <stop offset="0.72" stopColor="#38bdf8" stopOpacity="0.26" />
+            <stop offset="1" stopColor="#38bdf8" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="homeLineSecondary" x1="58" y1="320" x2="822" y2="106" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#0f172a" stopOpacity="0" />
+            <stop offset="0.42" stopColor="#0f172a" stopOpacity="0.14" />
+            <stop offset="1" stopColor="#a855f7" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M42 134C180 42 314 34 446 110C578 186 676 182 876 54"
+          stroke="url(#homeLinePrimary)"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+        <path
+          d="M74 302C220 210 342 218 484 292C628 368 744 360 860 284"
+          stroke="url(#homeLineSecondary)"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+        <path
+          d="M106 458C248 374 390 364 526 416C642 460 748 464 848 410"
+          stroke="url(#homeLinePrimary)"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          strokeDasharray="10 14"
+        />
+      </svg>
+
+      <svg
+        className="absolute -left-24 bottom-4 h-[28rem] w-[48rem] opacity-60"
+        viewBox="0 0 760 430"
+        fill="none"
+      >
+        <defs>
+          <linearGradient id="homeLineLeft" x1="22" y1="310" x2="724" y2="92" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#38bdf8" stopOpacity="0" />
+            <stop offset="0.46" stopColor="#38bdf8" stopOpacity="0.22" />
+            <stop offset="0.78" stopColor="#ec4899" stopOpacity="0.2" />
+            <stop offset="1" stopColor="#ec4899" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M28 318C140 230 248 202 380 226C502 248 602 208 724 98"
+          stroke="url(#homeLineLeft)"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M84 380C208 314 326 300 454 322C560 340 652 318 728 260"
+          stroke="url(#homeLineLeft)"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          strokeDasharray="8 12"
+        />
+      </svg>
+
+      <span className="absolute left-[18%] top-24 h-px w-72 -rotate-6 bg-[linear-gradient(90deg,transparent,rgba(15,23,42,0.12),transparent)]" />
+      <span className="absolute right-[12%] top-[37rem] h-px w-96 rotate-3 bg-[linear-gradient(90deg,transparent,rgba(236,72,153,0.18),transparent)]" />
+      <span className="absolute left-[31%] bottom-16 h-px w-80 -rotate-3 bg-[linear-gradient(90deg,transparent,rgba(56,189,248,0.18),transparent)]" />
     </div>
   );
 }
@@ -459,6 +537,7 @@ export default function HomePage() {
   } | null>(null);
   const [subPickerOpen, setSubPickerOpen] = useState(false);
   const [subSearch, setSubSearch] = useState("");
+  const [portalLinksModalOpen, setPortalLinksModalOpen] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [accessProfileReady, setAccessProfileReady] = useState(false);
   const [accessProfileError, setAccessProfileError] = useState<string | null>(null);
@@ -1528,11 +1607,26 @@ export default function HomePage() {
   return (
     <AppLayout active="home">
       {user && <AutoAnniversaryModal userEmail={user.email} />}
-      <div className="w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
-        <div className="mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
+      {portalLinksModalOpen && (
+        <InstitutionPortalLinksModal onClose={() => setPortalLinksModalOpen(false)} />
+      )}
+      <div className="relative isolate w-full overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_52%,#f8fafc_100%)] px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+        <HomeBackgroundLines />
+        <div className="relative z-10 mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
         <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SplitTextHeading text={`${copy.homeHeadingPrefix} ${monthLabelCapitalized} ${year}`} />
           <div className="self-start flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setPortalLinksModalOpen(true)}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-pink-500 bg-gradient-to-br from-pink-500 to-rose-600 px-4 text-sm font-bold text-white shadow-[0_12px_24px_rgba(219,39,119,0.32)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300 focus-visible:ring-offset-2"
+              aria-label="Portály"
+              title="Portály"
+            >
+              <Globe2 size={20} aria-hidden="true" />
+              <span>Portály</span>
+            </button>
+
             <Link
               href="/posta"
               className="relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-blue-700 bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-[0_12px_24px_rgba(37,99,235,0.35)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2"

@@ -1416,14 +1416,17 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   };
 
   const navItemBase =
-    "group relative flex items-center rounded-2xl px-3 py-2.5 transition-all duration-200";
+    "group relative flex items-center rounded-[18px] px-3 py-2.5 text-[15px] font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white";
   const navLabelBase = "flex w-full items-center gap-3";
   const navItemActiveClass =
-    "bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.24)]";
+    "bg-[linear-gradient(135deg,#111827_0%,#211442_54%,#090d1c_100%)] text-white shadow-[0_14px_28px_rgba(18,12,43,0.28)] ring-1 ring-white/10";
   const navItemInactiveClass =
-    "text-slate-700 hover:bg-slate-100 hover:text-slate-900";
-  const activeNavRailClass = "bg-violet-400";
+    "text-slate-600 hover:bg-white/80 hover:text-slate-950 hover:shadow-[0_10px_22px_rgba(15,23,42,0.08)]";
+  const activeNavRailClass =
+    "bg-[linear-gradient(180deg,#a855f7_0%,#ec4899_100%)] shadow-[0_0_16px_rgba(168,85,247,0.55)]";
   const layoutCopy = APP_LAYOUT_COPY[language];
+  const userEmail = user?.email ?? "";
+  const userInitial = userEmail.trim().charAt(0).toUpperCase() || "B";
 
   const navItems: {
     key: ActivePage;
@@ -1485,15 +1488,15 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
   const renderNavIcon = (Icon: LucideIcon, isActive: boolean) => (
     <span
-      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition ${
+      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border transition ${
         isActive
-          ? "border-white/30 bg-white/10"
-          : "border-slate-300 bg-white group-hover:border-slate-400 group-hover:bg-slate-50"
+          ? "border-white/20 bg-white/10 text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]"
+          : "border-slate-200/90 bg-white/90 text-slate-500 shadow-sm group-hover:border-fuchsia-200 group-hover:bg-fuchsia-50/80 group-hover:text-fuchsia-700"
       }`}
       aria-hidden="true"
     >
       <Icon
-        className={`h-[18px] w-[18px] ${isActive ? "text-white" : "text-slate-700"}`}
+        className={`h-[18px] w-[18px] ${isActive ? "text-white" : ""}`}
         strokeWidth={2}
       />
     </span>
@@ -2197,25 +2200,35 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
         {/* SIDEBAR */}
         <aside
-          className={`hidden w-56 flex-col border-r border-slate-200 bg-white/95 shadow-[8px_0_30px_rgba(15,23,42,0.08)] backdrop-blur-sm lg:flex ${shellFontClass}`}
+          className={`hidden w-64 shrink-0 flex-col border-r border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_48%,#fff6fb_100%)] shadow-[10px_0_34px_rgba(15,23,42,0.08)] backdrop-blur-sm lg:flex ${shellFontClass}`}
         >
-          <div className="border-b border-slate-200 px-5 py-5">
-            <div className="flex items-center gap-3 justify-center">
-              <Image
-                src="/icons/bohemika_logo.png"
-                alt="Bohemika logo"
-                width={140}
-                height={50}
-                className="h-12 w-auto"
-                priority
-              />
-              <div className="text-base font-semibold tracking-tight text-slate-900">
-                Bohemka.App
-              </div>
-            </div>
+          <div className="px-4 pb-3 pt-5">
+            <Link
+              href="/"
+              className="group flex items-center gap-3 rounded-[26px] border border-white/75 bg-white/80 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(15,23,42,0.11)]"
+            >
+              <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sky-100 bg-sky-50/80">
+                <Image
+                  src="/icons/bohemika_logo.png"
+                  alt="Bohemika logo"
+                  width={52}
+                  height={52}
+                  className="h-9 w-auto"
+                  priority
+                />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-base font-bold tracking-tight text-slate-950">
+                  Bohemka.App
+                </span>
+                <span className="mt-0.5 block truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  SmartApp
+                </span>
+              </span>
+            </Link>
           </div>
 
-          <nav className="flex-1 space-y-2 px-3 py-5 text-base">
+          <nav className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-3 pr-2">
             {activeNavItems.map((item) => {
               if ("requiresTeam" in item && item.requiresTeam && !hasTeam) return null;
               if ("requiresTipsters" in item && item.requiresTipsters && !hasTipsters) return null;
@@ -2233,7 +2246,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                   >
                     {isActive ? (
                       <span
-                        className={`absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full ${activeNavRailClass}`}
+                        className={`absolute left-1.5 top-1/2 h-7 w-1 -translate-y-1/2 rounded-full ${activeNavRailClass}`}
                         aria-hidden="true"
                       />
                     ) : null}
@@ -2253,7 +2266,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
                   >
                     {isActive ? (
                       <span
-                        className={`absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full ${activeNavRailClass}`}
+                        className={`absolute left-1.5 top-1/2 h-7 w-1 -translate-y-1/2 rounded-full ${activeNavRailClass}`}
                         aria-hidden="true"
                       />
                     ) : null}
@@ -2267,22 +2280,27 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             })}
           </nav>
 
-          <div
-            className="mt-auto border-t border-slate-200 px-4 py-4 text-sm"
-          >
-            <div className="ui-card ui-card-quiet rounded-2xl bg-slate-50 p-3">
+          <div className="mt-auto px-3 pb-4 pt-3">
+            <div className="overflow-hidden rounded-[24px] border border-white/75 bg-white/85 p-3 shadow-[0_16px_34px_rgba(15,23,42,0.1)]">
               {user && (
-                <div className="mb-2 text-[11px] text-slate-600">
-                  Přihlášen jako{" "}
-                  <span className="block truncate text-slate-900">
-                    {user.email ?? ""}
+                <div className="mb-3 flex min-w-0 items-center gap-3">
+                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#101827_0%,#2d1a62_100%)] text-sm font-bold text-white shadow-[0_10px_20px_rgba(45,26,98,0.28)]">
+                    {userInitial}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Přihlášen
+                    </span>
+                    <span className="block truncate text-xs font-semibold text-slate-800">
+                      {userEmail}
+                    </span>
                   </span>
                 </div>
               )}
               <button
                 type="button"
                 onClick={handleLogout}
-                className="ui-btn-primary ui-focus w-full rounded-xl py-2 text-xs"
+                className="w-full rounded-2xl bg-slate-950 px-3 py-2.5 text-xs font-bold text-white shadow-[0_12px_22px_rgba(15,23,42,0.18)] transition hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300/70 focus-visible:ring-offset-2"
               >
                 {layoutCopy.logout}
               </button>

@@ -390,10 +390,10 @@ const ADMIN_BROADCAST_TARGETS = [
 const ADMIN_BROADCAST_TOOL_TARGETS = [
   { path: "/pomucky", label: "Přehled pomůcek" },
   { path: "/pomucky/argumenty", label: "Argumenty" },
-  { path: "/pomucky/skolici-materialy", label: "Školící materiály" },
   { path: "/pomucky/dokumenty", label: "Dokumenty" },
   { path: "/pomucky/zaznam", label: "Záznam z jednání" },
   { path: "/pomucky/vypoved-smlouvy", label: "Výpověď smlouvy" },
+  { path: "/pomucky/jak-stiham-vypoved-smlouvy", label: "Jak stíhám výpověď smlouvy?" },
   { path: "/pomucky/tvorba", label: "Tvorba PDF" },
   { path: "/pomucky/ai-asistent", label: "AI Asistent" },
   { path: "/nastaveni?tab=onlineCard", label: "Online Vizitka" },
